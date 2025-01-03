@@ -1,6 +1,6 @@
 # DESTINY Repository
 
-## Powering a comprehensive repository of climate and health research
+*Powering a comprehensive repository of climate and health research*
 
 ## Setup
 
