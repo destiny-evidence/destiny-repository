@@ -1,3 +1,5 @@
+"""Main module for the DESTINY Climate and Health Repository API."""
+
 from fastapi import FastAPI
 
 from .routers import example
@@ -10,5 +12,12 @@ app.include_router(example.router)
 
 
 @app.get("/")
-async def root():
+async def root() -> dict[str, str]:
+    """
+    Root endpoint for the API.
+
+    Returns:
+        dict[str, str]: A simple message.
+
+    """
     return {"message": "Hello World"}

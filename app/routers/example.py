@@ -1,3 +1,5 @@
+"""Example router module."""
+
 from fastapi import APIRouter, HTTPException
 
 from app.models.example import Example
@@ -31,11 +33,31 @@ router = APIRouter(prefix="/examples", tags=["example"])
 
 @router.get("/")
 async def list_examples() -> list[Example]:
+    """
+    List all examples.
+
+    Returns:
+        list[Example]: _description_
+
+    """
     return examples
 
 
 @router.get("/{example_id}")
 async def get_example(example_id: str) -> Example:
+    """
+    Retrieve a specific example.
+
+    Args:
+        example_id (str): An example ID.
+
+    Raises:
+        HTTPException: HTTP status code error if example is not found.
+
+    Returns:
+        Example: The example object.
+
+    """
     for e in examples:
         if e.id == example_id:
             return e
