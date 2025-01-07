@@ -43,6 +43,24 @@ Each data class should be expressed as a Pydantic model.
 
 These are stored in the [app/models](app/models/) directory.
 
+## Development
+
+Before commiting any changes, please run the pre-commit hooks. This will ensure that the code is formatted correctly and minimise diffs to code changes when submitting a pull request.
+
+Install the pre-commit hooks:
+
+```sh
+poetry run pre-commit install
+```
+
+pre-commit hooks will run automatically when you commit changes. To run them manually, use:
+
+```sh
+poetry run pre-commit run --all-files
+```
+
+See [.pre-commit-config.yaml](.pre-commit-config.yaml) for the list of pre-commit hooks and their configuration.
+
 ## Tests
 
 Tests are in the [tests](/tests) directory. They are run using `pytest`
