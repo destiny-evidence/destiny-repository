@@ -1,6 +1,6 @@
-from fastapi.testclient import TestClient
-from fastapi import FastAPI
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from app.routers import example
 

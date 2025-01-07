@@ -1,26 +1,26 @@
 [build-system]
-requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
-
-[tool.poetry]
-package-mode = false
-name = "destiny-repository"
-description = ""
-authors = ["Andrew Harvey <aharvey@futureevidence.org"]
-readme = "README.md"
-
-[tool.poetry.dependencies]
-python = "^3.10"
-fastapi = {extras = ["standard"], version = "^0.115.6"}
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.3.4"
-pre-commit = "^4.0.1"
-ruff = "^0.8.6"
-mypy = "^1.14.1"
+requires = ["poetry-core"]
 
 [tool.mypy]
 explicit_package_bases = true
+
+[tool.poetry]
+authors = ["Andrew Harvey <aharvey@futureevidence.org"]
+description = ""
+name = "destiny-repository"
+package-mode = false
+readme = "README.md"
+
+[tool.poetry.dependencies]
+fastapi = {extras = ["standard"], version = "^0.115.6"}
+python = "^3.10"
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.14.1"
+pre-commit = "^4.0.1"
+pytest = "^8.3.4"
+ruff = "^0.8.6"
 
 [tool.pytest.ini_options]
 addopts = [
