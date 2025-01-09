@@ -1,8 +1,7 @@
 """Defines tests for the example router."""
 
 import pytest
-from fastapi import FastAPI
-from fastapi.status import HTTP_200_OK, HTTP_404_NOT_FOUND
+from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
 
 from app.routers import example
