@@ -46,7 +46,7 @@ def test_example_index(client: TestClient) -> None:
     """
     response = client.get("/examples")
     expected_response_length = 3
-    assert response.status_code == HTTP_200_OK
+    assert response.status_code == status.HTTP_200_OK
     assert len(response.json()) == expected_response_length
 
 
@@ -59,7 +59,7 @@ def test_get_example(client: TestClient) -> None:
 
     """
     response = client.get("/examples/foo")
-    assert response.status_code == HTTP_200_OK
+    assert response.status_code == status.HTTP_200_OK
     assert response.json()["id"] == "foo"
 
 
@@ -72,4 +72,4 @@ def test_get_missing_example(client: TestClient) -> None:
 
     """
     response = client.get("/examples/missing")
-    assert response.status_code == HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_404_NOT_FOUND
