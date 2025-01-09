@@ -28,6 +28,7 @@ addopts = [
     "--import-mode=importlib",
     "--verbose",
 ]
+pythonpath = "."
 testpaths = [
     "tests",
 ]
