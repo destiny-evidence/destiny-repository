@@ -6,7 +6,10 @@ requires = ["poetry-core"]
 explicit_package_bases = true
 
 [tool.poetry]
-authors = ["Andrew Harvey <aharvey@futureevidence.org"]
+authors = [
+    "Andrew Harvey <aharvey@futureevidence.org>",
+    "Harry Moss <h.moss@ucl.ac.uk",
+]
 description = ""
 name = "destiny-repository"
 package-mode = false
