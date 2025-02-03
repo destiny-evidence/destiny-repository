@@ -1,18 +1,67 @@
+[build-system]
+build-backend = "poetry.core.masonry.api"
+requires = ["poetry-core"]
+
+[tool.mypy]
+explicit_package_bases = true
+
 [tool.poetry]
-package-mode = false
-name = "destiny-repository"
+authors = [
+    "Andrew Harvey <aharvey@futureevidence.org>",
+    "Harry Moss <h.moss@ucl.ac.uk",
+]
 description = ""
-authors = ["Andrew Harvey <aharvey@futureevidence.org"]
+name = "destiny-repository"
+package-mode = false
 readme = "README.md"
 
 [tool.poetry.dependencies]
+fastapi = {extras = ["standard"], version = "^0.115.6"}
 python = "^3.10"
-fastapi = { extras = ["standard"], version = "^0.115.6" }
-
 
 [tool.poetry.group.dev.dependencies]
+mypy = "^1.14.1"
+pre-commit = "^4.0.1"
 pytest = "^8.3.4"
+ruff = "^0.8.6"
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[tool.pytest.ini_options]
+addopts = [
+    "--color=yes",
+    "--import-mode=importlib",
+    "--verbose",
+]
+pythonpath = "."
+testpaths = [
+    "tests",
+]
+
+[tool.ruff]
+fix = true
+force-exclude = true
+lint.ignore = [
+    "COM812", # trailing commas (ruff-format recommended)
+    "D203", # no-blank-line-before-class
+    "D212", # multi-line-summary-first-line
+    "D407", # removed dashes lines under sections
+    "D417", # argument description in docstring (unreliable)
+    "ISC001", # simplify implicit str concatenation (ruff-format recommended)
+]
+lint.per-file-ignores = {"tests*" = [
+    "INP001", # File is part of an implicit namespace package.
+    "S101", # Use of `assert` detected
+]}
+lint.select = [
+    "ALL",
+]
+lint.mccabe.max-complexity = 18
+lint.pep8-naming.classmethod-decorators = [
+    "classmethod",
+]
+
+[tool.tomlsort]
+all = true
+spaces_indent_inline_array = 4
+trailing_comma_inline_array = true
+overrides."project.classifiers".inline_arrays = false
+overrides."tool.coverage.paths.source".inline_arrays = false
