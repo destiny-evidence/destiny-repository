@@ -20,6 +20,17 @@ Once Poetry is installed, install dependencies:
 poetry install
 ```
 
+### Configuration
+
+A `.env` file is used to pass environment variables to the server. To avoid
+accidental exposure of secrets, this file is ignored using the `.gitignore`
+file. To set up a copy of the configuration (which should not require
+modification to run the application), copy the example file:
+
+```shell
+cp .env.example .env
+```
+
 ### Starting the development server
 
 Run the development server:
