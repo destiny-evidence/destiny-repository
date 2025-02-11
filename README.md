@@ -33,6 +33,18 @@ cp .env.example .env
 
 ### Starting the development server
 
+First you will need to start the database server:
+
+```sh
+docker compose up -d
+```
+
+Once the database server is running, run the migrations to setup the database.
+
+```sh
+poetry run allembic upgrade head
+```
+
 Run the development server:
 
 ```sh
@@ -53,6 +65,20 @@ kept in the [app/routers](app/routers/) directory. To provide a worked example, 
 Each data class should be expressed as a Pydantic model.
 
 These are stored in the [app/models](app/models/) directory.
+
+### Migrations
+
+Changes to the database structure are managed through Alembic migrations. To generate a migration, update a model (eg. add a column) and then auto generate the migration:
+
+```sh
+poetry run alembic revision --autogenerate -m "Added column to model"
+```
+
+Your migration will be added to the [`app/migrations`](app/migrations/) directory.
+
+While automatic migrations can be useful, ensure the migration `upgrade` and `downgrade` models are as you want/expect.
+
+If you are adding a new model, ensure you import that model into the `app/migrations/env.py` file to ensure it is auto detected.
 
 ## Development
 
