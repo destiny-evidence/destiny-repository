@@ -22,7 +22,7 @@ jobs:
         image: postgres
         # Provide the password for postgres
         env:
-          POSTGRES_PASSWORD: localpass
+          POSTGRES_PASSWORD: ${{ secrets.db_password }}
         # Set health checks to wait until postgres has started
         options: >-
           --health-cmd pg_isready
@@ -65,5 +65,5 @@ jobs:
 
       - name: Run test with pytest via poetry
         env:
-          DB_URL: postgresql+asyncpg://postgres:localpass@localhost:5432/destiny_test
+          DB_URL: "postgresql+asyncpg://postgres:${{ secrets.db_password }}@localhost:5432/destiny_test"
         run: poetry run pytest
