@@ -42,7 +42,7 @@ docker compose up -d
 Once the database server is running, run the migrations to setup the database.
 
 ```sh
-poetry run allembic upgrade head
+poetry run alembic upgrade head
 ```
 
 Run the development server:
