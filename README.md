@@ -103,5 +103,5 @@ See [.pre-commit-config.yaml](.pre-commit-config.yaml) for the list of pre-commi
 Tests are in the [tests](/tests) directory. They are run using `pytest`
 
 ```sh
-pytest
+poetry run pytest
 ```
