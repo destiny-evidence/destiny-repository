@@ -69,6 +69,10 @@ def do_run_migrations(connection: Connection) -> None:  # noqa: D103
         with context.begin_transaction():
             context.run_migrations()
     except AttributeError:
+        # When we're running migrations inside tests, the context won't have
+        # been set up.  So we catch the AttributeError and set up our own
+        # context (from the data we've) stashed outside our async context. It's
+        # a bit of a hack but it seems to work.
         context_data = ctx_var.get()
         with EnvironmentContext(
             config=context_data["config"],
