@@ -2,10 +2,15 @@
 
 import uuid
 from enum import Enum, auto
+from typing import TYPE_CHECKING
 
 from pydantic import PastDatetime
 from sqlalchemy import TIMESTAMP, Column
-from sqlmodel import Field, SQLModel
+from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlmodel import Field, Relationship, SQLModel
+
+if TYPE_CHECKING:
+    from app.models.import_batch import ImportBatch
 
 
 class ImportStatus(str, Enum):
@@ -30,10 +35,11 @@ class ImportRecordBase(SQLModel):
     status: str = ImportStatus.created
 
 
-class ImportRecord(ImportRecordBase, table=True):
+class ImportRecord(ImportRecordBase, AsyncAttrs, table=True):
     """Database model for Import Records."""
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    batches: list["ImportBatch"] = Relationship(back_populates="import_record")
 
 
 class ImportRecordCreate(ImportRecordBase):
