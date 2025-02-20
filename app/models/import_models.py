@@ -21,7 +21,9 @@ class ExternalIdentifierBase(BaseModel, ABC):
             ..., description="The discriminator of which type of identifier this is."
         ),
     ]
-    identifier: Annotated[str, Field(..., description="The value of the identifier.")]
+    identifier: Annotated[
+        str | int | HttpUrl, Field(..., description="The value of the identifier.")
+    ]
 
 
 class OtherIdentifier(ExternalIdentifierBase):
@@ -44,6 +46,24 @@ later consolidation into a documented identifier type.
     ]
 
 
+class DoiIdentifier(ExternalIdentifierBase):
+    """Represents a DOI for the purposes of identifying a reference."""
+
+    identifier_type: Literal["doi"]
+    identifier: Annotated[
+        HttpUrl, Field(description="The DOI which identifies a reference")
+    ]
+
+
+class PubMedIdentifier(ExternalIdentifierBase):
+    """Represents pmid from PubMed."""
+
+    identifier_type: Literal["pmid"]
+    identifier: Annotated[
+        int, Field(description="The pmid which identifies a reference")
+    ]
+
+
 class OpenAlexIdentifier(ExternalIdentifierBase):
     """Represents an external identifier specific to OpenAlex."""
 
@@ -57,7 +77,8 @@ class OpenAlexIdentifier(ExternalIdentifierBase):
 
 
 ExternalIdentifier = Annotated[
-    OpenAlexIdentifier | OtherIdentifier, Field(discriminator="identifier_type")
+    OpenAlexIdentifier | DoiIdentifier | PubMedIdentifier | OtherIdentifier,
+    Field(discriminator="identifier_type"),
 ]
 
 
@@ -342,7 +363,10 @@ class LocationsEnhancement(EnhancementBase):
 
 
 Enhancement = Annotated[
-    BibliographicMetadata | AbstractContentEnhancement | AnnotationsEnhancement,
+    BibliographicMetadata
+    | AbstractContentEnhancement
+    | AnnotationsEnhancement
+    | LocationsEnhancement,
     Field(discriminator="enhancement_type"),
 ]
 
