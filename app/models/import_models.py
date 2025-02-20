@@ -7,26 +7,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, HttpUrl, PastDate
 
 
-class ExternalIdentifierBase(BaseModel, ABC):
-    """
-    The base class for External Identifiers.
-
-    Any external identifier should have the specified attributes, however
-    will also enforce other constraints (eg. a specific identifier type).
-    """
-
-    identifier_type: Annotated[
-        str,
-        Field(
-            ..., description="The discriminator of which type of identifier this is."
-        ),
-    ]
-    identifier: Annotated[
-        str | int | HttpUrl, Field(..., description="The value of the identifier.")
-    ]
-
-
-class OtherIdentifier(ExternalIdentifierBase):
+class OtherIdentifier(BaseModel):
     """
     Any other identifier not defined.
 
@@ -44,9 +25,10 @@ later consolidation into a documented identifier type.
 """,
         ),
     ]
+    identifier: Annotated[str, Field(description="The value of the identifier.")]
 
 
-class DoiIdentifier(ExternalIdentifierBase):
+class DoiIdentifier(BaseModel):
     """Represents a DOI for the purposes of identifying a reference."""
 
     identifier_type: Literal["doi"]
@@ -55,7 +37,7 @@ class DoiIdentifier(ExternalIdentifierBase):
     ]
 
 
-class PubMedIdentifier(ExternalIdentifierBase):
+class PubMedIdentifier(BaseModel):
     """Represents pmid from PubMed."""
 
     identifier_type: Literal["pmid"]
@@ -64,7 +46,7 @@ class PubMedIdentifier(ExternalIdentifierBase):
     ]
 
 
-class OpenAlexIdentifier(ExternalIdentifierBase):
+class OpenAlexIdentifier(BaseModel):
     """Represents an external identifier specific to OpenAlex."""
 
     identifier_type: Literal["openalex"]
