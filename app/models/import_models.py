@@ -95,12 +95,6 @@ class EnhancementBase(BaseModel, ABC):
     enhancement classes.
     """
 
-    enhancement_type: Annotated[
-        str,
-        Field(
-            ..., description="The discriminator for the type of enhancement this is."
-        ),
-    ]
     source: Annotated[
         str,
         Field(
