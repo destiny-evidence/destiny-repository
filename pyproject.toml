@@ -24,6 +24,7 @@ pydantic-settings = "^2.7.1"
 python = "^3.12"
 sqlalchemy-utils = "^0.41.2"
 sqlmodel = "^0.0.22"
+structlog = "^25.1.0"
 uvloop = "^0.21.0"
 
 [tool.poetry.group.dev.dependencies]
