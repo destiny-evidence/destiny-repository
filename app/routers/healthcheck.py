@@ -1,4 +1,4 @@
-"""Router for handling management of imports."""
+"""Router for healthcheck endpoints."""
 
 from typing import Annotated
 
