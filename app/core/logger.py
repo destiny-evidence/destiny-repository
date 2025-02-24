@@ -7,7 +7,7 @@ class Logger:
     """Structured logging wrapper class."""
 
     def __init__(self) -> None:
-        """Initialize the logger with the specified logger name."""
+        """Initialize the logger."""
         self.logger = structlog.get_logger()
 
     def debug(self, message: str, **kwargs: dict) -> None:
