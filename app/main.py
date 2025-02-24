@@ -7,7 +7,7 @@ from fastapi import FastAPI
 
 from app.core.config import get_settings
 from app.core.db import db_manager
-from app.routers import imports
+from app.routers import healthcheck, imports
 
 from .routers import example
 
@@ -28,6 +28,7 @@ app = FastAPI(title="DESTINY Climate and Health Repository", lifespan=lifespan)
 # than just a skeleton.
 app.include_router(example.router)
 app.include_router(imports.router)
+app.include_router(healthcheck.router)
 
 
 @app.get("/")
