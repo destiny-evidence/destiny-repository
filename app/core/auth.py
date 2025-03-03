@@ -1,5 +1,6 @@
 """Tools for authorising requests."""
 
+from collections.abc import Callable
 from enum import Enum
 from typing import Annotated, Any, Protocol
 
@@ -42,12 +43,86 @@ class AuthMethod(Protocol):
         raise NotImplementedError
 
 
-class FakeAuth(AuthMethod):
+class StrategyAuth(AuthMethod):
+    """A meta-auth method which chooses the auth method at runtime."""
+
+    _selector: Callable[[], str]
+    _strategies: dict[str, AuthMethod]
+
+    def __init__(
+        self,
+        strategies: dict[str, AuthMethod],
+        selector: Callable[[], str],
+    ) -> None:
+        """
+        Initialise strategy.
+
+        Args:
+        - strategies (dict[str, AuthMethod]): A dictionary of AuthMethod values,
+        keyed with the name which will be returned by the selector.
+        - selector (Callable[[], str]): A callable which returns a string which
+        will be used to choose the correct function.
+
+        """
+        self._strategies = strategies
+        self._selector = selector
+
+    def _get_strategy(self) -> AuthMethod:
+        strategy_name = self._selector()
+        chosen = self._strategies.get(strategy_name)
+        if not chosen:
+            available = self._strategies.keys()
+            message = f"""
+Could not find strategy '{strategy_name}'. Available strategies: {available}
+"""
+            raise RuntimeError(message)
+        return chosen
+
+    async def __call__(
+        self, credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)]
+    ) -> bool:
+        """Callable interface to allow use as a dependency."""
+        return await self._get_strategy()(credentials=credentials)
+
+
+class CachingStrategyAuth(StrategyAuth):
+    """A subclass of StrategyAuth which caches the selected strategy across calls."""
+
+    _cached_strategy: AuthMethod | None
+
+    def __init__(
+        self, strategies: dict[str, AuthMethod], selector: Callable[[], str]
+    ) -> None:
+        """
+        Initialise strategy.
+
+        Args:
+        - strategies (dict[str, AuthMethod]): A dictionary of AuthMethod values,
+        keyed with the name which will be returned by the selector.
+        - selector (Callable[[], str]): A callable which returns a string which
+        will be used to choose the correct function.
+
+        """
+        super().__init__(strategies, selector)
+        self._cached_strategy = None
+
+    def _get_strategy(self) -> AuthMethod:
+        if self._cached_strategy:
+            return self._cached_strategy
+        self._cached_strategy = super()._get_strategy()
+        return self._cached_strategy
+
+    def reset(self) -> None:
+        """Reset the cached strategy so it is fetch at next call."""
+        self._cached_strategy = None
+
+
+class SuccessAuth(AuthMethod):
     """A fake auth class that will always respond how you tell it to."""
 
     _succeed: bool
 
-    def __init__(self, *, always_succeed: bool = True) -> None:
+    def __init__(self) -> None:
         """
         Initialize the fake auth callable.
 
@@ -56,18 +131,15 @@ class FakeAuth(AuthMethod):
         we will always fail by raising an AuthException.
 
         """
-        self._succeed = always_succeed
 
     async def __call__(
-        self, _credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)]
+        self,
+        credentials: Annotated[  # noqa: ARG002
+            HTTPAuthorizationCredentials, Depends(security)
+        ],
     ) -> bool:
         """Return true or raise an AuthException."""
-        if self._succeed:
-            return True
-
-        raise AuthException(
-            status.HTTP_403_FORBIDDEN, "FakeAuth will never permit this request."
-        )
+        return True
 
 
 class AzureJwtAuth(AuthMethod):

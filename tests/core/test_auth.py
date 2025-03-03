@@ -2,13 +2,20 @@
 
 import datetime
 from collections.abc import Callable
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials
 from pytest_httpx import HTTPXMock
 
-from app.core.auth import AuthScopes, AzureJwtAuth, FakeAuth
+from app.core.auth import (
+    AuthMethod,
+    AuthScopes,
+    AzureJwtAuth,
+    StrategyAuth,
+    SuccessAuth,
+)
 
 
 @pytest.fixture
@@ -223,18 +230,34 @@ async def test_requires_read_all_scope_not_present(
 
 async def test_fake_auth_success(generate_fake_token: Callable[..., str]):
     """Test that our fake auth method succeeds on demand."""
-    auth = FakeAuth(always_succeed=True)
+    auth = SuccessAuth()
     creds = Mock(credentials=generate_fake_token())
 
     assert await auth(creds)
 
 
-async def test_fake_auth_failure(generate_fake_token: Callable[..., str]):
-    """Test that our fake auth fails on demand."""
-    auth = FakeAuth(always_succeed=False)
-    creds = Mock(credentials=generate_fake_token())
+async def test_strategy_auth_selection():
+    """Test that we can use a strategy."""
+    mock_auth_method = AsyncMock(AuthMethod)
+    strategy_auth = StrategyAuth(
+        strategies={"mock": mock_auth_method}, selector=lambda: "mock"
+    )
 
-    with pytest.raises(HTTPException) as excinfo:
-        await auth(creds)
-    assert excinfo.value.status_code == status.HTTP_403_FORBIDDEN
-    assert excinfo.value.detail == "FakeAuth will never permit this request."
+    await strategy_auth(
+        HTTPAuthorizationCredentials(scheme="Bearer", credentials="foo")
+    )
+    assert mock_auth_method.called
+
+
+async def test_strategy_auth_bad_selector():
+    """Test that we can use a strategy."""
+    mock_auth_method = AsyncMock(AuthMethod)
+    strategy_auth = StrategyAuth(
+        strategies={"mock": mock_auth_method}, selector=lambda: "fail"
+    )
+    with pytest.raises(RuntimeError):
+        await strategy_auth(
+            HTTPAuthorizationCredentials(scheme="Bearer", credentials="foo")
+        )
+
+    assert not mock_auth_method.called

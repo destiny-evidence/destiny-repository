@@ -36,7 +36,9 @@ async def client(app: FastAPI = app) -> AsyncIterator[AsyncClient]:
 
     """
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"Authorization": "Bearer foo"},
     ) as client:
         yield client
 

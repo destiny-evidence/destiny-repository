@@ -6,7 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import AuthScopes, AzureJwtAuth
+from app.core.auth import (
+    AuthScopes,
+    AzureJwtAuth,
+    CachingStrategyAuth,
+    SuccessAuth,
+)
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.models.import_batch import ImportBatch
@@ -15,10 +20,24 @@ from app.models.import_record import ImportRecord, ImportRecordCreate
 settings = get_settings()
 
 
-import_auth = AzureJwtAuth(
-    tenant_id=settings.azure_tenant_id,
-    application_id=settings.azure_tenant_id,
-    scope=AuthScopes.IMPORT,
+def choose_auth_strategy() -> str:
+    """Choose a strategy for our authorization."""
+    if settings.env == "dev":
+        return "success"
+
+    return "azure"
+
+
+import_auth = CachingStrategyAuth(
+    strategies={
+        "success": SuccessAuth(),
+        "azure": AzureJwtAuth(
+            tenant_id=settings.azure_tenant_id,
+            application_id=settings.azure_tenant_id,
+            scope=AuthScopes.IMPORT,
+        ),
+    },
+    selector=choose_auth_strategy,
 )
 
 

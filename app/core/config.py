@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     azure_application_id: str
     azure_tenant_id: str
 
+    env: str = Field("dev", description="The environment the app is running in.")
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

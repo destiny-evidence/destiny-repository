@@ -8,7 +8,6 @@ from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import AuthScopes, AzureJwtAuth, FakeAuth
 from app.models.import_batch import ImportBatch, ImportBatchStatus
 from app.models.import_record import ImportRecord, ImportStatus
 from app.routers import imports
@@ -27,8 +26,6 @@ def app() -> FastAPI:
 
     """
     app = FastAPI()
-    # For most tests, we do not want the exercise authentication
-    app.dependency_overrides[imports.import_auth] = FakeAuth(always_succeed=True)
     app.include_router(imports.router)
     return app
 
@@ -151,27 +148,32 @@ async def test_get_batches(
 @pytest.mark.usefixtures("stubbed_jwks_response")
 async def test_auth_failure(
     client: AsyncClient,
-    app: FastAPI,
     fake_application_id: str,
     fake_tenant_id: str,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     """Test that we reject invalid tokens."""
-    import_params = {
-        "search_string": "climate AND health",
-        "searched_at": "2025-02-02T13:29:30Z",
-        "processor_name": "Test Importer",
-        "processor_version": "0.0.1",
-        "notes": "This is not a real import, it is only a test run.",
-        "expected_record_count": 100,
-        "source_name": "OpenAlex",
-    }
+    with monkeypatch.context():
+        monkeypatch.setenv("ENV", "production")
+        monkeypatch.setenv("AZURE_APPLICATION_ID", fake_application_id)
+        monkeypatch.setenv("AZURE_TENANT_ID", fake_tenant_id)
+        imports.import_auth.reset()
+        imports.settings.__init__()  # type: ignore[call-args, misc]
+        import_params = {
+            "search_string": "climate AND health",
+            "searched_at": "2025-02-02T13:29:30Z",
+            "processor_name": "Test Importer",
+            "processor_version": "0.0.1",
+            "notes": "This is not a real import, it is only a test run.",
+            "expected_record_count": 100,
+            "source_name": "OpenAlex",
+        }
 
-    app.dependency_overrides[imports.import_auth] = AzureJwtAuth(
-        fake_tenant_id, fake_application_id, AuthScopes.IMPORT
-    )
-    response = await client.post(
-        "/imports/",
-        json=import_params,
-        headers={"Authorization": "Bearer Nonsense-token"},
-    )
-    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        response = await client.post(
+            "/imports/",
+            json=import_params,
+            headers={"Authorization": "Bearer Nonsense-token"},
+        )
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    imports.import_auth.reset()
+    imports.settings.__init__()  # type: ignore[call-args, misc]
