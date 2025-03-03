@@ -8,7 +8,7 @@ import pytest
 from fastapi import HTTPException, status
 from pytest_httpx import HTTPXMock
 
-from app.core.auth import AuthScopes, AzureJwtAuth
+from app.core.auth import AuthScopes, AzureJwtAuth, FakeAuth
 
 
 @pytest.fixture
@@ -219,3 +219,22 @@ async def test_requires_read_all_scope_not_present(
         excinfo.value.detail
         == "IDW10201: No app permissions (role) claim was found in the bearer token"
     )
+
+
+async def test_fake_auth_success(generate_fake_token: Callable[..., str]):
+    """Test that our fake auth method succeeds on demand."""
+    auth = FakeAuth(always_succeed=True)
+    creds = Mock(credentials=generate_fake_token())
+
+    assert await auth(creds)
+
+
+async def test_fake_auth_failure(generate_fake_token: Callable[..., str]):
+    """Test that our fake auth fails on demand."""
+    auth = FakeAuth(always_succeed=False)
+    creds = Mock(credentials=generate_fake_token())
+
+    with pytest.raises(HTTPException) as excinfo:
+        await auth(creds)
+    assert excinfo.value.status_code == status.HTTP_403_FORBIDDEN
+    assert excinfo.value.detail == "FakeAuth will never permit this request."

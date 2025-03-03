@@ -1,7 +1,7 @@
 """Tools for authorising requests."""
 
 from enum import Enum
-from typing import Annotated, Any
+from typing import Annotated, Any, Protocol
 
 from cachetools import TTLCache
 from fastapi import Depends, status
@@ -32,7 +32,43 @@ class AuthScopes(Enum):
 CACHE_TTL = 60 * 60 * 24  # 24 hours
 
 
-class AzureJwtAuth:
+class AuthMethod(Protocol):
+    """Protocol for auth methods."""
+
+    async def __call__(
+        self, credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)]
+    ) -> bool:
+        """Callable interface to allow use as a dependency."""
+        raise NotImplementedError
+
+
+class FakeAuth(AuthMethod):
+    """A fake auth class that will always respond how you tell it to."""
+
+    _succeed: bool
+
+    def __init__(self, *, always_succeed: bool = True) -> None:
+        """
+        Initialize the fake auth callable.
+
+        Args:
+        - always_succeed (bool): Whether or not we should always succeed. If not,
+        we will always fail by raising an AuthException.
+
+        """
+        self._succeed = always_succeed
+
+    async def __call__(self, _credentials: HTTPAuthorizationCredentials) -> bool:
+        """Return true or raise an AuthException."""
+        if self._succeed:
+            return True
+
+        raise AuthException(
+            status.HTTP_403_FORBIDDEN, "FakeAuth will never permit this request."
+        )
+
+
+class AzureJwtAuth(AuthMethod):
     """Dependency for authorizing requests using the JWT provided by Azure."""
 
     def __init__(self, tenant_id: str, application_id: str, scope: AuthScopes) -> None:
