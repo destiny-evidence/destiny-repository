@@ -58,7 +58,9 @@ class FakeAuth(AuthMethod):
         """
         self._succeed = always_succeed
 
-    async def __call__(self, _credentials: HTTPAuthorizationCredentials) -> bool:
+    async def __call__(
+        self, _credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)]
+    ) -> bool:
         """Return true or raise an AuthException."""
         if self._succeed:
             return True

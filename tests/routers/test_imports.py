@@ -8,7 +8,7 @@ from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import AuthScopes, AzureJwtAuth
+from app.core.auth import AuthScopes, AzureJwtAuth, FakeAuth
 from app.models.import_batch import ImportBatch, ImportBatchStatus
 from app.models.import_record import ImportRecord, ImportStatus
 from app.routers import imports
@@ -28,7 +28,7 @@ def app() -> FastAPI:
     """
     app = FastAPI()
     # For most tests, we do not want the exercise authentication
-    app.dependency_overrides[imports.import_auth] = lambda: True
+    app.dependency_overrides[imports.import_auth] = FakeAuth(always_succeed=True)
     app.include_router(imports.router)
     return app
 
@@ -46,7 +46,9 @@ async def client(app: FastAPI) -> AsyncGenerator[AsyncClient]:
 
     """
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"Authorization": "Bearer Nonsense-token"},
     ) as client:
         yield client
 
