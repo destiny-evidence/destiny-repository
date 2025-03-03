@@ -6,11 +6,25 @@ from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import AuthScopes, AzureJwtAuth
+from app.core.config import get_settings
 from app.core.db import get_session
 from app.models.import_batch import ImportBatch
 from app.models.import_record import ImportRecord, ImportRecordCreate
 
-router = APIRouter(prefix="/imports", tags=["imports"])
+settings = get_settings()
+
+
+import_auth = AzureJwtAuth(
+    tenant_id=settings.azure_tenant_id,
+    application_id=settings.azure_tenant_id,
+    scope=AuthScopes.IMPORT,
+)
+
+
+router = APIRouter(
+    prefix="/imports", tags=["imports"], dependencies=[Depends(import_auth)]
+)
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)

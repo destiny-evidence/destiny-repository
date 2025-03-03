@@ -26,6 +26,7 @@ class AuthScopes(Enum):
     """Enum describing the available auth scopes that we understand."""
 
     READ_ALL = "read.all"
+    IMPORT = "import"
 
 
 CACHE_TTL = 60 * 60 * 24  # 24 hours
