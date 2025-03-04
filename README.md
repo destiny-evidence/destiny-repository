@@ -120,11 +120,14 @@ Then within the application code of the client app you can do something like thi
 import msal
 import requests
 
-auth_client = msal.ManagedServiceIdentityClient({"ManagedIdentityIdType": "ClientId", "Id": "<CLIENT_ID>"}, http_client=requests.Session())
+auth_client = msal.ManagedServiceIdentityClient(
+    {"ManagedIdentityIdType": "ClientId", "Id": "<CLIENT_ID>"},
+    http_client=requests.Session()
+)
 auth_client.acquire_token_for_client(resource="<APPLICATION URL>")
 ```
 
-In the above example `<CLIENT ID>` should be the client id of the user defined identity you created with terraform, and `<APPLICATION ID>` should be the URL for the DESTINY Repo application (it should start with `api://`).
+In the above example `<CLIENT ID>` should be the client id of the user defined identity you created with terraform, and `<APPLICATION URL>` should be the URL for the DESTINY Repo application (it should start with `api://`).
 
 ## Development
 
