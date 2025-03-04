@@ -80,6 +80,52 @@ While automatic migrations can be useful, ensure the migration `upgrade` and `do
 
 If you are adding a new model, ensure you import that model into the `app/migrations/env.py` file to ensure it is auto detected.
 
+## Authentication
+
+In development mode, we don't enforce authentication, but once deployed to production the service will require
+a token from Azure Entra to call authenticated APIs (which will initially be all APIs).
+
+A token can be acquired by an application running in a container app or VM when it has been configured with a role-assignment to the application. In terraform that would look like this:
+
+```terraform
+# Get the existing application that we want to access from our app.
+data "azuread_application" "destiny_repo" {
+  display_name = "DESTINY Repository"
+}
+
+# Get the service principal for that application.
+resource "azuread_service_principal" "destiny_repo" {
+  client_id = azuread_application.destiny_repo.client_id
+  use_existing = true
+}
+
+# Create a user assigned identity for our client app
+resource "azurerm_user_assigned_identity" "my_app" {
+  location            = azurerm_resource_group.example.location # Replace the example!
+  name                = "my_app"
+  resource_group_name = azurerm_resource_group.example.name # Replace the example!
+}
+
+# Finally create the role assignment for the client app
+resource "azuread_app_role_assignment" "example" {
+  app_role_id         = azuread_service_principal.destiny_repo.app_role_ids["import"]
+  principal_object_id = azurerm_user_assigned_identity.my_app
+  resource_object_id  = azuread_service_principal.destiny_repo.object_id
+}
+```
+
+Then within the application code of the client app you can do something like this:
+
+```python
+import msal
+import requests
+
+auth_client = msal.ManagedServiceIdentityClient({"ManagedIdentityIdType": "ClientId", "Id": "<CLIENT_ID>"}, http_client=requests.Session())
+auth_client.acquire_token_for_client(resource="<APPLICATION URL>")
+```
+
+In the above example `<CLIENT ID>` should be the client id of the user defined identity you created with terraform, and `<APPLICATION ID>` should be the URL for the DESTINY Repo application (it should start with `api://`).
+
 ## Development
 
 Before commiting any changes, please run the pre-commit hooks. This will ensure that the code is formatted correctly and minimise diffs to code changes when submitting a pull request.
