@@ -4,6 +4,16 @@ variable "app_name" {
   description = "Application Name"
 }
 
+variable "admin_login" {
+  type        = string
+  description = "admin login for the app database"
+}
+
+variable "admin_password" {
+  type        = string
+  description = "admin password for the app database"
+}
+
 variable "app_max_replicas" {
   description = "Maximum number of replicas for the app container app"
   type        = number
