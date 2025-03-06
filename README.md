@@ -129,6 +129,12 @@ auth_client.acquire_token_for_client(resource="<APPLICATION URL>")
 
 In the above example `<CLIENT ID>` should be the client id of the user defined identity you created with terraform, and `<APPLICATION URL>` should be the URL for the DESTINY Repo application (it should start with `api://`).
 
+To get a token for use in a development environment, there is a utility module:
+
+```shell
+poetry run python -m app.utils.get_token
+```
+
 ## Development
 
 Before commiting any changes, please run the pre-commit hooks. This will ensure that the code is formatted correctly and minimise diffs to code changes when submitting a pull request.

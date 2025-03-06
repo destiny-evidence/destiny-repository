@@ -30,6 +30,7 @@ structlog = "^25.1.0"
 uvloop = "^0.21.0"
 
 [tool.poetry.group.dev.dependencies]
+msal = "^1.31.1"
 mypy = "^1.14.1"
 pre-commit = "^4.0.1"
 pytest = "^8.3.4"

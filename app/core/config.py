@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     azure_application_id: str
     azure_tenant_id: str
+    cli_client_id: str | None = None
 
     env: str = Field("dev", description="The environment the app is running in.")
 
