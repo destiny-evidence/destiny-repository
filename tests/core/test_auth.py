@@ -239,25 +239,9 @@ async def test_fake_auth_success(generate_fake_token: Callable[..., str]):
 async def test_strategy_auth_selection():
     """Test that we can use a strategy."""
     mock_auth_method = AsyncMock(AuthMethod)
-    strategy_auth = StrategyAuth(
-        strategies={"mock": mock_auth_method}, selector=lambda: "mock"
-    )
+    strategy_auth = StrategyAuth(selector=lambda: mock_auth_method)
 
     await strategy_auth(
         HTTPAuthorizationCredentials(scheme="Bearer", credentials="foo")
     )
     assert mock_auth_method.called
-
-
-async def test_strategy_auth_bad_selector():
-    """Test that we can use a strategy."""
-    mock_auth_method = AsyncMock(AuthMethod)
-    strategy_auth = StrategyAuth(
-        strategies={"mock": mock_auth_method}, selector=lambda: "fail"
-    )
-    with pytest.raises(RuntimeError):
-        await strategy_auth(
-            HTTPAuthorizationCredentials(scheme="Bearer", credentials="foo")
-        )
-
-    assert not mock_auth_method.called

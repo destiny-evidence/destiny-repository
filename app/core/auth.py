@@ -46,13 +46,11 @@ class AuthMethod(Protocol):
 class StrategyAuth(AuthMethod):
     """A meta-auth method which chooses the auth method at runtime."""
 
-    _selector: Callable[[], str]
-    _strategies: dict[str, AuthMethod]
+    _selector: Callable[[], AuthMethod]
 
     def __init__(
         self,
-        strategies: dict[str, AuthMethod],
-        selector: Callable[[], str],
+        selector: Callable[[], AuthMethod],
     ) -> None:
         """
         Initialise strategy.
@@ -64,19 +62,10 @@ class StrategyAuth(AuthMethod):
         will be used to choose the correct function.
 
         """
-        self._strategies = strategies
         self._selector = selector
 
     def _get_strategy(self) -> AuthMethod:
-        strategy_name = self._selector()
-        chosen = self._strategies.get(strategy_name)
-        if not chosen:
-            available = self._strategies.keys()
-            message = f"""
-Could not find strategy '{strategy_name}'. Available strategies: {available}
-"""
-            raise RuntimeError(message)
-        return chosen
+        return self._selector()
 
     async def __call__(
         self, credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)]
@@ -90,20 +79,16 @@ class CachingStrategyAuth(StrategyAuth):
 
     _cached_strategy: AuthMethod | None
 
-    def __init__(
-        self, strategies: dict[str, AuthMethod], selector: Callable[[], str]
-    ) -> None:
+    def __init__(self, selector: Callable[[], AuthMethod]) -> None:
         """
         Initialise strategy.
 
         Args:
-        - strategies (dict[str, AuthMethod]): A dictionary of AuthMethod values,
-        keyed with the name which will be returned by the selector.
-        - selector (Callable[[], str]): A callable which returns a string which
-        will be used to choose the correct function.
+        - selector (Callable[[], AuthMethod]): A callable which returns the AuthMethod
+        to be used.
 
         """
-        super().__init__(strategies, selector)
+        super().__init__(selector)
         self._cached_strategy = None
 
     def _get_strategy(self) -> AuthMethod:
