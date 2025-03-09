@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.core.db import get_session
 from app.models.import_batch import ImportBatch
@@ -60,9 +61,13 @@ async def get_batches(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[ImportBatch]:
     """Get batches associated to an import."""
-    import_record = await session.get(ImportRecord, import_id)
+    import_record = await session.get(
+        ImportRecord,
+        import_id,
+        options=[joinedload(ImportRecord.batches)],  # type: ignore[arg-type]
+    )
     if not import_record:
         raise HTTPException(
             status_code=404, detail=f"Import record with id {import_id} not found."
         )
-    return await import_record.awaitable_attrs.batches
+    return import_record.batches
