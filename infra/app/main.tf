@@ -1,5 +1,5 @@
 # Azure container registry will be defined in shared infrastructure repository
-data "azurerm_container_registry" "registry" {
+data "azurerm_container_registry" "this" {
   name                = var.container_registry_name
   resource_group_name = var.container_registry_resource_group
 }
@@ -22,19 +22,32 @@ locals {
       value = var.app_name
     },
     {
+      name        = "DB_URL"
+      secret_name = "db-url"
+    },
+    {
       name  = "ENVIRONMENT"
       value = var.environment
+    }
+  ]
+
+  secrets = [
+    {
+      name  = "db-url"
+      value = "postgresql+asyncpg://${var.admin_login}:${var.admin_password}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.this.name}"
     }
   ]
 }
 
 module "container_app" {
-  source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
-  version                         = "1.0.0"
+  source = "/Users/jackwalmisley/Code/evidence-data-platforms/terraform-azure-container-app"
+  # source = "app.terraform.io/future-evidence-foundation/container-app/azure"
+  # version                         = "1.0.0"
   app_name                        = var.app_name
   environment                     = var.environment
-  container_registry_id           = data.azurerm_container_registry.registry.id
-  container_registry_login_server = data.azurerm_container_registry.registry.login_server
+  container_registry_id           = data.azurerm_container_registry.this.id
+  container_registry_login_server = data.azurerm_container_registry.this.login_server
+  infrastructure_subnet_id        = azurerm_subnet.app.id
   resource_group_name             = azurerm_resource_group.this.name
   region                          = azurerm_resource_group.this.location
   max_replicas                    = var.app_max_replicas
@@ -46,12 +59,13 @@ module "container_app" {
   }
 
   env_vars = local.env_vars
+  secrets  = local.secrets
 
   # NOTE: ingress changes will be ignored to avoid messing up manual custom domain config. See https://github.com/hashicorp/terraform-provider-azurerm/issues/21866#issuecomment-1755381572.
   ingress = {
     external_enabled           = true
     allow_insecure_connections = false
-    target_port                = 80
+    target_port                = 8000
     transport                  = "auto"
     traffic_weight = {
       latest_revision = true
@@ -71,63 +85,17 @@ module "container_app" {
   ]
 }
 
-resource "azurerm_network_security_group" "this" {
-  name                = "${local.name}-vn-sg"
-  location            = azurerm_resource_group.this.location
-  resource_group_name = azurerm_resource_group.this.name
-}
-
-resource "azurerm_virtual_network" "this" {
-  name                = "${local.name}-vn"
-  location            = azurerm_resource_group.this.location
-  resource_group_name = azurerm_resource_group.this.name
-  address_space       = ["10.0.0.0/16"]
-
-  tags = {
-    environment = "${var.environment}"
-  }
-}
-
-resource "azurerm_subnet" "db" {
-  name                 = "${local.name}-db-subnet"
-  resource_group_name  = azurerm_resource_group.this.name
-  virtual_network_name = azurerm_virtual_network.this.name
-  address_prefixes     = ["10.0.1.0/24"]
-  service_endpoints    = ["Microsoft.Storage"]
-  delegation {
-    name = "fs"
-    service_delegation {
-      name = "Microsoft.DBforPostgreSQL/flexibleServers"
-      actions = [
-        "Microsoft.Network/virtualNetworks/subnets/join/action",
-      ]
-    }
-  }
-}
-
-resource "azurerm_private_dns_zone" "this" {
-  name                = "${local.name}.postgres.database.azure.com"
-  resource_group_name = azurerm_resource_group.this.name
-}
-
-resource "azurerm_private_dns_zone_virtual_network_link" "this" {
-  name                  = "${local.name}-vnl"
-  private_dns_zone_name = azurerm_private_dns_zone.this.name
-  virtual_network_id    = azurerm_virtual_network.this.id
-  resource_group_name   = azurerm_resource_group.this.name
-  depends_on            = [azurerm_subnet.db]
-}
-
 resource "azurerm_postgresql_flexible_server" "this" {
   name                          = "${local.name}-psqlflexibleserver"
   resource_group_name           = azurerm_resource_group.this.name
   location                      = azurerm_resource_group.this.location
   version                       = "16"
   delegated_subnet_id           = azurerm_subnet.db.id
-  private_dns_zone_id           = azurerm_private_dns_zone.this.id
+  private_dns_zone_id           = azurerm_private_dns_zone.db.id
   public_network_access_enabled = false
   administrator_login           = var.admin_login
   administrator_password        = var.admin_password
+  zone                          = "1"
 
   storage_mb   = 32768
   storage_tier = "P4"
@@ -139,7 +107,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
     password_auth_enabled = true
   }
 
-  depends_on = [azurerm_private_dns_zone_virtual_network_link.this]
+  depends_on = [azurerm_private_dns_zone_virtual_network_link.db]
 }
 
 resource "azurerm_postgresql_flexible_server_database" "this" {
@@ -153,5 +121,3 @@ resource "azurerm_postgresql_flexible_server_database" "this" {
     prevent_destroy = true
   }
 }
-
-
