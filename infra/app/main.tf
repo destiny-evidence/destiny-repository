@@ -40,9 +40,8 @@ locals {
 }
 
 module "container_app" {
-  source = "/Users/jackwalmisley/Code/evidence-data-platforms/terraform-azure-container-app"
-  # source = "app.terraform.io/future-evidence-foundation/container-app/azure"
-  # version                         = "1.0.0"
+  source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
+  version                         = "1.1.0"
   app_name                        = var.app_name
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id
@@ -103,7 +102,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
   sku_name = "GP_Standard_D2ds_v4"
 
   authentication {
-    # We'll want to update this to use Entra ID & managed identities for access 
+    # We'll want to update this to use Entra ID & managed identities for access
     password_auth_enabled = true
   }
 
