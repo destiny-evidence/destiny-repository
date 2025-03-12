@@ -48,8 +48,9 @@ locals {
 }
 
 module "container_app" {
-  source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
-  version                         = "1.1.0"
+  source = "/Users/jackwalmisley/Code/evidence-data-platforms/terraform-azure-container-app"
+  # source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
+  # version                         = "1.1.0"
   app_name                        = var.app_name
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id
@@ -78,6 +79,20 @@ module "container_app" {
       latest_revision = true
       percentage      = 100
     }
+  }
+
+  init_container = {
+    name    = "${local.name}-database-init"
+    image   = "futureevidence.azurecr.io/destiny-repository:latest"
+    command = ["/venv/bin/alembic", "upgrade", "head"]
+    cpu     = 0.5
+    memory  = "1Gi"
+    env = [
+      {
+        name        = "DB_URL"
+        secret_name = "db-url"
+      }
+    ]
   }
 
   custom_scale_rules = [
