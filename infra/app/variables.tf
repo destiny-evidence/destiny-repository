@@ -42,6 +42,28 @@ variable "environment" {
   type        = string
 }
 
+variable "github_app_id" {
+  description = "The app id for GitHub app used to configure github"
+  type        = string
+}
+
+variable "github_app_installation_id" {
+  description = "The app installation ID for the GitHub App used to configure github"
+  type        = string
+}
+
+variable "github_app_pem" {
+  description = "The app pem file for authenticating as a GitHub App"
+  type        = string
+  sensitive   = true
+}
+
+variable "github_repo" {
+  type        = string
+  default     = "destiny-evidence/destiny-repository"
+  description = "GitHub repo to use for GitHub Actions"
+}
+
 variable "region" {
   description = "The region resources will be deployed into"
   type        = string
