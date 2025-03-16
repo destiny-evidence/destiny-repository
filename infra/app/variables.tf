@@ -21,6 +21,16 @@ variable "app_max_replicas" {
   default     = 10
 }
 
+variable "azure_application_id" {
+  description = "ID of the azure application "
+  type        = string
+}
+
+variable "azure_tenant_id" {
+  description = "ID of the azure application "
+  type        = string
+}
+
 variable "container_registry_name" {
   description = "The name of the container registry being used"
   type        = string

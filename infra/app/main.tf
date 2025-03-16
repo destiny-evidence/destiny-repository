@@ -4,6 +4,11 @@ data "azurerm_container_registry" "this" {
   resource_group_name = var.container_registry_resource_group
 }
 
+# Get the existing application that we want to access from our app.
+data "azuread_application" "destiny_repo" {
+  display_name = "DESTINY Repository Test"
+}
+
 resource "azurerm_resource_group" "this" {
   name     = local.name
   location = var.region
@@ -15,11 +20,36 @@ resource "azurerm_user_assigned_identity" "container_apps_identity" {
   resource_group_name = azurerm_resource_group.this.name
 }
 
+# Get the service principal for that application.
+resource "azuread_service_principal" "destiny_repo" {
+  client_id    = data.azuread_application.destiny_repo.client_id
+  use_existing = true
+}
+
+# Finally create the role assignment for the client app
+resource "azuread_app_role_assignment" "container_app_auth" {
+  app_role_id         = azuread_service_principal.destiny_repo.app_role_ids["import"]
+  principal_object_id = azurerm_user_assigned_identity.container_apps_identity.principal_id
+  resource_object_id  = azuread_service_principal.destiny_repo.object_id
+}
+
 locals {
   env_vars = [
     {
       name  = "APP_NAME"
       value = var.app_name
+    },
+    {
+      name  = "AZURE_APPLICATION_ID"
+      value = var.azure_application_id
+    },
+    {
+      name  = "AZURE_TENANT_ID"
+      value = var.azure_tenant_id
+    },
+    {
+      name  = "CLI_CLIENT_ID"
+      value = azurerm_user_assigned_identity.container_apps_identity.client_id
     },
     {
       name        = "DB_URL"
