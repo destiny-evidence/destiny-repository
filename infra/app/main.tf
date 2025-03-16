@@ -48,9 +48,8 @@ locals {
 }
 
 module "container_app" {
-  source = "/Users/jackwalmisley/Code/evidence-data-platforms/terraform-azure-container-app"
-  # source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
-  # version                         = "1.1.0"
+  source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
+  version                         = "1.2.0"
   app_name                        = var.app_name
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id
@@ -88,6 +87,14 @@ module "container_app" {
     cpu     = 0.5
     memory  = "1Gi"
     env = [
+      {
+        name  = "AZURE_APPLICATION_ID"
+        value = var.azure_application_id
+      },
+      {
+        name  = "AZURE_TENANT_ID"
+        value = var.azure_tenant_id
+      },
       {
         name        = "DB_URL"
         secret_name = "db-url"
