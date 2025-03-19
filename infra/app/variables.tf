@@ -31,6 +31,11 @@ variable "azure_tenant_id" {
   type        = string
 }
 
+variable "budget_code" {
+  description = "Budget code for tagging resource groups. Required tag for resource groups"
+  type        = string
+}
+
 variable "container_registry_name" {
   description = "The name of the container registry being used"
   type        = string
@@ -45,6 +50,11 @@ variable "cpu_scaling_threshold" {
   description = "CPU threshold for scaling the app container app"
   type        = number
   default     = 70
+}
+
+variable "created_by" {
+  description = "Who created this infrastrcuture. Required tag for resource groups"
+  type        = string
 }
 
 variable "environment" {
@@ -72,6 +82,16 @@ variable "github_repo" {
   type        = string
   default     = "destiny-evidence/destiny-repository"
   description = "GitHub repo to use for GitHub Actions"
+}
+
+variable "owner" {
+  description = "Email of the owner of this infrastructure. Required tag for resource groups"
+  type        = string
+}
+
+variable "project" {
+  description = "Email of the owner of this infrastructure. Required tag for resource groups"
+  type        = string
 }
 
 variable "region" {

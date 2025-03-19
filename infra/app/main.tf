@@ -5,8 +5,9 @@ data "azurerm_container_registry" "this" {
 }
 
 resource "azurerm_resource_group" "this" {
-  name     = local.name
+  name     = "rg-${local.name}"
   location = var.region
+  tags     = merge({ "Budget Code" = var.budget_code }, local.minimum_resource_tags)
 }
 
 resource "azurerm_user_assigned_identity" "container_apps_identity" {
