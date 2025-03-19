@@ -109,7 +109,7 @@ resource "azurerm_user_assigned_identity" "my_app" {
 # Finally create the role assignment for the client app
 resource "azuread_app_role_assignment" "example" {
   app_role_id         = azuread_service_principal.destiny_repo.app_role_ids["import"]
-  principal_object_id = azurerm_user_assigned_identity.my_app
+  principal_object_id = azurerm_user_assigned_identity.my_app.principal_id
   resource_object_id  = azuread_service_principal.destiny_repo.object_id
 }
 ```

@@ -21,6 +21,16 @@ variable "app_max_replicas" {
   default     = 10
 }
 
+variable "azure_application_id" {
+  description = "ID of the azure application "
+  type        = string
+}
+
+variable "azure_tenant_id" {
+  description = "ID of the azure application "
+  type        = string
+}
+
 variable "container_registry_name" {
   description = "The name of the container registry being used"
   type        = string
@@ -40,6 +50,28 @@ variable "cpu_scaling_threshold" {
 variable "environment" {
   description = "The name of the environment this stack is being deployed to"
   type        = string
+}
+
+variable "github_app_id" {
+  description = "The app id for GitHub app used to configure github"
+  type        = string
+}
+
+variable "github_app_installation_id" {
+  description = "The app installation ID for the GitHub App used to configure github"
+  type        = string
+}
+
+variable "github_app_pem" {
+  description = "The app pem file for authenticating as a GitHub App"
+  type        = string
+  sensitive   = true
+}
+
+variable "github_repo" {
+  type        = string
+  default     = "destiny-evidence/destiny-repository"
+  description = "GitHub repo to use for GitHub Actions"
 }
 
 variable "region" {

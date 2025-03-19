@@ -22,6 +22,14 @@ locals {
       value = var.app_name
     },
     {
+      name  = "AZURE_APPLICATION_ID"
+      value = var.azure_application_id
+    },
+    {
+      name  = "AZURE_TENANT_ID"
+      value = var.azure_tenant_id
+    },
+    {
       name        = "DB_URL"
       secret_name = "db-url"
     },
