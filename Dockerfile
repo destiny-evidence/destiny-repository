@@ -11,6 +11,7 @@ RUN poetry bundle venv  --only=main /venv
 FROM base AS final
 COPY --from=builder /venv /venv
 COPY app/ ./app
+COPY alembic.ini .
 
 ENV PATH="/app/.venv/bin:$PATH"
 
