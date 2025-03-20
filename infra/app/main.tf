@@ -50,7 +50,7 @@ locals {
 
 module "container_app" {
   source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
-  version                         = "1.2.0"
+  version                         = "1.3.0"
   app_name                        = var.app_name
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id
@@ -59,6 +59,7 @@ module "container_app" {
   resource_group_name             = azurerm_resource_group.this.name
   region                          = azurerm_resource_group.this.location
   max_replicas                    = var.app_max_replicas
+  tags                            = local.minimum_resource_tags
 
   identity = {
     id           = azurerm_user_assigned_identity.container_apps_identity.id
@@ -83,7 +84,7 @@ module "container_app" {
 
   init_container = {
     name    = "${local.name}-database-init"
-    image   = "futureevidence.azurecr.io/destiny-repository:${var.environment}"
+    image   = "${data.azurerm_container_registry.this.login_server}/destiny-repository:${var.environment}"
     command = ["/venv/bin/alembic", "upgrade", "head"]
     cpu     = 0.5
     memory  = "1Gi"
@@ -138,6 +139,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
   }
 
   depends_on = [azurerm_private_dns_zone_virtual_network_link.db]
+  tags       = local.minimum_resource_tags
 }
 
 resource "azurerm_postgresql_flexible_server_database" "this" {
