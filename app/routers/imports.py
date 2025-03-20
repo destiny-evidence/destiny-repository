@@ -17,6 +17,28 @@ from app.core.config import get_settings
 from app.core.db import get_session
 from app.models.import_batch import ImportBatch
 from app.models.import_record import ImportRecord, ImportRecordCreate
+from app.services.import_service import ImportService
+from app.services.uow import (
+    AsyncSqlUnitOfWork,
+    AsyncUnitOfWorkBase,
+)
+
+settings = get_settings()
+
+
+def unit_of_work(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AsyncUnitOfWorkBase:
+    """Return the unit of work for operating on imports."""
+    return AsyncSqlUnitOfWork(session=session)
+
+
+def import_service(
+    uow: Annotated[AsyncUnitOfWorkBase, Depends(unit_of_work)],
+) -> ImportService:
+    """Return the import service using the provided unit of work dependency."""
+    return ImportService(uow=uow)
+
 
 settings = get_settings()
 
@@ -46,22 +68,18 @@ router = APIRouter(
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_import(
     import_params: ImportRecordCreate,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    import_service: Annotated[ImportService, Depends(import_service)],
 ) -> ImportRecord:
     """Create a record for an import process."""
-    import_record = ImportRecord(**import_params.model_dump())
-    session.add(import_record)
-    await session.commit()
-    await session.refresh(import_record)
-    return import_record
+    return await import_service.register_import(import_params)
 
 
 @router.get("/{import_id}")
 async def get_import(
-    import_id: UUID4, session: Annotated[AsyncSession, Depends(get_session)]
+    import_id: UUID4, import_service: Annotated[ImportService, Depends(import_service)]
 ) -> ImportRecord:
     """Get an import from the database."""
-    import_record = await session.get(ImportRecord, import_id)
+    import_record = await import_service.get_import(import_id)
     if not import_record:
         raise HTTPException(
             status_code=404, detail=f"Import record with id {import_id} not found."
@@ -74,25 +92,22 @@ async def get_import(
 async def create_batch(
     import_id: Annotated[UUID4, Path(title="The id of the associated import")],
     batch: ImportBatch,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    import_service: Annotated[ImportService, Depends(import_service)],
 ) -> ImportBatch:
     """Register an import batch for a given import."""
-    batch.import_id = import_id
-    session.add(batch)
-    await session.commit()
-    await session.refresh(batch)
-    return batch
+    return await import_service.register_batch(import_id, batch)
 
 
 @router.get("/{import_id}/batches")
 async def get_batches(
     import_id: Annotated[UUID4, Path(title="The id of the associated import")],
-    session: Annotated[AsyncSession, Depends(get_session)],
+    import_service: Annotated[ImportService, Depends(import_service)],
 ) -> list[ImportBatch]:
     """Get batches associated to an import."""
-    import_record = await session.get(ImportRecord, import_id)
+    import_record = await import_service.get_import_with_batches(import_id)
+
     if not import_record:
         raise HTTPException(
             status_code=404, detail=f"Import record with id {import_id} not found."
         )
-    return await import_record.awaitable_attrs.batches
+    return import_record.batches
