@@ -8,8 +8,8 @@ import structlog
 from fastapi import FastAPI, Request, Response, status
 
 from app.core.config import get_settings
-from app.core.db import db_manager
 from app.core.logger import configure_logger, get_logger
+from app.persistence.sql.session import db_manager
 from app.routers import healthcheck, imports
 
 from .routers import example

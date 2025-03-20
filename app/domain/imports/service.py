@@ -2,9 +2,8 @@
 
 from pydantic import UUID4
 
-from app.models.import_batch import ImportBatch
-from app.models.import_record import ImportRecord, ImportRecordCreate
-from app.services.uow import AsyncUnitOfWorkBase
+from app.domain.imports.models import ImportBatch, ImportRecord, ImportRecordCreate
+from app.persistence.uow import AsyncUnitOfWorkBase
 
 
 class ImportService:

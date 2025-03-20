@@ -7,7 +7,7 @@ import pytest
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 
-from app.core.db import get_session
+from app.persistence.sql.session import get_session
 from app.routers import healthcheck
 
 

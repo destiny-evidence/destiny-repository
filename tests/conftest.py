@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel
 
 from app.core.config import get_settings
-from app.core.db import DatabaseSessionManager, db_manager
+from app.persistence.sql.session import AsyncDatabaseSessionManager, db_manager
 from tests.db_utils import alembic_config_from_url, tmp_database
 
 settings = get_settings()
@@ -53,7 +53,7 @@ async def migrated_postgres_template() -> AsyncGenerator[str]:
 @pytest.fixture(scope="session")
 async def sessionmanager_for_tests(
     migrated_postgres_template: str,
-) -> AsyncGenerator[DatabaseSessionManager]:
+) -> AsyncGenerator[AsyncDatabaseSessionManager]:
     """Build shared session manager for tests."""
     db_manager.init(db_url=migrated_postgres_template)
     # can add another init (redis, etc...)
@@ -63,7 +63,7 @@ async def sessionmanager_for_tests(
 
 @pytest.fixture
 async def session(
-    sessionmanager_for_tests: DatabaseSessionManager,
+    sessionmanager_for_tests: AsyncDatabaseSessionManager,
 ) -> AsyncGenerator[AsyncSession]:
     """Yield the session for the test and cleanup tables."""
     async with sessionmanager_for_tests.session() as session:

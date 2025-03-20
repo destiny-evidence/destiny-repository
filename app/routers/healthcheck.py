@@ -7,8 +7,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db import get_session
 from app.core.logger import get_logger
+from app.persistence.sql.session import get_session
 
 router = APIRouter(prefix="/healthcheck", tags=["healthcheck"])
 logger = get_logger()

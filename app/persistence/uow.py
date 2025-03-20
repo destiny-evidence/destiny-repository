@@ -7,7 +7,7 @@ from typing import Self
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.repositories.imports import (
+from app.domain.imports.repository import (
     ImportBatchRepository,
     ImportBatchRepositoryBase,
     ImportRepository,

@@ -14,14 +14,13 @@ from app.core.auth import (
     SuccessAuth,
 )
 from app.core.config import get_settings
-from app.models.import_batch import ImportBatch
-from app.models.import_record import ImportRecord, ImportRecordCreate
+from app.domain.imports.models import ImportBatch, ImportRecord, ImportRecordCreate
+from app.domain.imports.service import ImportService
 from app.persistence.sql.session import get_session
 from app.persistence.uow import (
     AsyncSqlUnitOfWork,
     AsyncUnitOfWorkBase,
 )
-from app.services.import_service import ImportService
 
 settings = get_settings()
 

@@ -4,12 +4,9 @@ from abc import ABC
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.import_batch import ImportBatch
-from app.models.import_record import ImportRecord
-from app.repositories.generic import (
-    GenericAsyncRepository,
-    GenericAsyncSqlRepository,
-)
+from app.domain.imports.models import ImportBatch, ImportRecord
+from app.persistence.repository import GenericAsyncRepository
+from app.persistence.sql.repository import GenericAsyncSqlRepository
 
 
 class ImportRepositoryBase(GenericAsyncRepository[ImportRecord], ABC):
