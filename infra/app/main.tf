@@ -82,7 +82,7 @@ module "container_app" {
 
   init_container = {
     name    = "${local.name}-database-init"
-    image   = "futureevidence.azurecr.io/destiny-repository:latest"
+    image   = "futureevidence.azurecr.io/destiny-repository:${var.environment}"
     command = ["/venv/bin/alembic", "upgrade", "head"]
     cpu     = 0.5
     memory  = "1Gi"

@@ -65,6 +65,15 @@ resource "github_actions_environment_variable" "container_app_env" {
   value         = module.container_app.container_app_env_name
 }
 
+resource "github_actions_environment_variable" "github_environment_name" {
+  # Part of a workaround where environment name isn't present in github action workflow contexts
+  # https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/accessing-contextual-information-about-workflow-runs#about-contexts
+  environment   = github_repository_environment.environment.environment
+  repository    = github_repository_environment.environment.repository
+  variable_name = "ENVIRONMENT_NAME"
+  value         = github_repository_environment.environment.environment
+}
+
 resource "github_actions_environment_variable" "resource_group" {
   repository    = github_repository_environment.environment.repository
   environment   = github_repository_environment.environment.environment
