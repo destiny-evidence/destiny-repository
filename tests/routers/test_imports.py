@@ -63,7 +63,7 @@ async def test_create_import(session: AsyncSession, client: AsyncClient) -> None
         "processor_name": "Test Importer",
         "processor_version": "0.0.1",
         "notes": "This is not a real import, it is only a test run.",
-        "expected_record_count": 100,
+        "expected_reference_count": 100,
         "source_name": "OpenAlex",
     }
 
@@ -86,7 +86,7 @@ def valid_import() -> ImportRecord:
         processor_version="0.0.1",
         notes="No notes.",
         source_name="The internet",
-        expected_record_count=12,
+        expected_reference_count=12,
         status=ImportStatus.created,
     )
 
@@ -165,7 +165,7 @@ async def test_auth_failure(
             "processor_name": "Test Importer",
             "processor_version": "0.0.1",
             "notes": "This is not a real import, it is only a test run.",
-            "expected_record_count": 100,
+            "expected_reference_count": 100,
             "source_name": "OpenAlex",
         }
 

@@ -14,7 +14,7 @@ valid_import_record_params = {
     "processor_name": "Test Importer",
     "processor_version": "0.0.1",
     "notes": "This is not a real import, it is only a test run.",
-    "expected_record_count": 100,
+    "expected_reference_count": 100,
     "source_name": "OpenAlex",
 }
 

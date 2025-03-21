@@ -14,29 +14,30 @@ from app.core.auth import (
     SuccessAuth,
 )
 from app.core.config import get_settings
-from app.domain.imports.models import ImportBatch, ImportRecord, ImportRecordCreate
+from app.domain.imports.models.models import (
+    ImportBatch,
+    ImportRecord,
+    ImportRecordCreate,
+)
 from app.domain.imports.service import ImportService
 from app.persistence.sql.session import get_session
-from app.persistence.uow import (
-    AsyncSqlUnitOfWork,
-    AsyncUnitOfWorkBase,
-)
+from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 settings = get_settings()
 
 
 def unit_of_work(
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> AsyncUnitOfWorkBase:
+) -> AsyncSqlUnitOfWork:
     """Return the unit of work for operating on imports."""
     return AsyncSqlUnitOfWork(session=session)
 
 
 def import_service(
-    uow: Annotated[AsyncUnitOfWorkBase, Depends(unit_of_work)],
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
 ) -> ImportService:
-    """Return the import service using the provided unit of work dependency."""
-    return ImportService(uow=uow)
+    """Return the import service using the provided unit of work dependencies."""
+    return ImportService(sql_uow=sql_uow)
 
 
 settings = get_settings()
@@ -73,7 +74,7 @@ async def create_import(
     return await import_service.register_import(import_params)
 
 
-@router.get("/{import_id}")
+@router.get("/{import_id}/")
 async def get_import(
     import_id: UUID4, import_service: Annotated[ImportService, Depends(import_service)]
 ) -> ImportRecord:
@@ -87,7 +88,7 @@ async def get_import(
     return import_record
 
 
-@router.post("/{import_id}/batches", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/{import_id}/batches/", status_code=status.HTTP_202_ACCEPTED)
 async def create_batch(
     import_id: Annotated[UUID4, Path(title="The id of the associated import")],
     batch: ImportBatch,
@@ -97,7 +98,7 @@ async def create_batch(
     return await import_service.register_batch(import_id, batch)
 
 
-@router.get("/{import_id}/batches")
+@router.get("/{import_id}/batches/")
 async def get_batches(
     import_id: Annotated[UUID4, Path(title="The id of the associated import")],
     import_service: Annotated[ImportService, Depends(import_service)],

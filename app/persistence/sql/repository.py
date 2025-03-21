@@ -1,37 +1,54 @@
 """Generic repositories define expected functionality."""
 
 from abc import ABC
-from typing import TypeVar
+from typing import Generic
 
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
-from sqlmodel import SQLModel
 
+from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
+from app.persistence.sql.generics import GenericSQLModelType, SQLDTOType
 
-T = TypeVar("T", bound=SQLModel)
 
-
-class GenericAsyncSqlRepository(GenericAsyncRepository[T], ABC):
+class GenericAsyncSqlRepository(
+    GenericAsyncRepository[SQLDTOType, GenericDomainModelType],
+    Generic[SQLDTOType, GenericDomainModelType, GenericSQLModelType],
+    ABC,
+):
     """A generic implementation of a repository backed by SQLAlchemy."""
 
     _session: AsyncSession
-    _model_cls: type[T]
+    _sql_cls: type[GenericSQLModelType]
 
-    def __init__(self, session: AsyncSession, model_cls: type[T]) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        dto_cls: type[SQLDTOType],
+        domain_cls: type[GenericDomainModelType],
+        sql_cls: type[GenericSQLModelType],
+    ) -> None:
         """
         Initialize the repository.
 
         Args:
         - session (AsyncSession): The current active database session.
-        - model_cls (type[T]): The class of model which will be persisted.
+        - _dto_cls (type[SQLDTO]): The SQLDTO of model which will be persisted.
+        - _domain_cls (type[GenericDomainModelType]):
+            The domain class of model which will be persisted.
+        - _sql_cls (type[GenericSQLModelType]):
+            The sql class of model which will be persisted.
 
         """
         self._session = session
-        self._model_cls = model_cls
+        self._dto_cls = dto_cls
+        self._domain_cls = domain_cls
+        self._sql_cls = sql_cls
 
-    async def get_by_pk(self, pk: UUID4, preload: list[str] | None = None) -> T | None:
+    async def get_by_pk(
+        self, pk: UUID4, preload: list[str] | None = None
+    ) -> GenericDomainModelType | None:
         """
         Get a record using its primary key.
 
@@ -43,11 +60,15 @@ class GenericAsyncSqlRepository(GenericAsyncRepository[T], ABC):
         options = []
         if preload:
             for p in preload:
-                relationship = getattr(self._model_cls, p)
+                relationship = getattr(self._sql_cls, p)
                 options.append(joinedload(relationship))
-        return await self._session.get(self._model_cls, pk, options=options)
+        result = await self._session.get(self._sql_cls, pk, options=options)
+        if not result:
+            return None
+        dto = await self._dto_cls.from_sql(result)
+        return await dto.to_domain()
 
-    async def add(self, record: T) -> T:
+    async def add(self, record: GenericDomainModelType) -> GenericDomainModelType:
         """
         Add a record to the repository.
 
@@ -60,7 +81,10 @@ class GenericAsyncSqlRepository(GenericAsyncRepository[T], ABC):
         (probably the job of the service through the unit of work.)
 
         """
-        self._session.add(record)
+        dto = await self._dto_cls.from_domain(record)
+        sql_record = await dto.to_sql()
+        self._session.add(sql_record)
         await self._session.flush()
-        await self._session.refresh(record)
-        return record
+        await self._session.refresh(sql_record)
+        dto = await self._dto_cls.from_sql(sql_record)
+        return await dto.to_domain()

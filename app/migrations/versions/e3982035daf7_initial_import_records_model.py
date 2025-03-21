@@ -32,7 +32,7 @@ def upgrade() -> None:
             "processor_version", sqlmodel.sql.sqltypes.AutoString(), nullable=False
         ),
         sa.Column("notes", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-        sa.Column("expected_record_count", sa.Integer(), nullable=False),
+        sa.Column("expected_reference_count", sa.Integer(), nullable=False),
         sa.Column("source_name", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column(
             "status",

@@ -1,19 +1,23 @@
 """Generic repositories define expected functionality."""
 
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar
+from typing import Generic
 
 from pydantic import UUID4
-from sqlmodel import SQLModel
 
-T = TypeVar("T", bound=SQLModel)
+from app.persistence.generics import DTOType, GenericDomainModelType
 
 
-class GenericAsyncRepository(Generic[T], ABC):
+class GenericAsyncRepository(Generic[DTOType, GenericDomainModelType], ABC):
     """The core interface expected of a repository implementation."""
 
+    _dto_cls: type[DTOType]
+    _domain_cls: type[GenericDomainModelType]
+
     @abstractmethod
-    async def get_by_pk(self, pk: UUID4, preload: list[str] | None = None) -> T | None:
+    async def get_by_pk(
+        self, pk: UUID4, preload: list[str] | None = None
+    ) -> GenericDomainModelType | None:
         """
         Get a record using its primary key.
 
@@ -25,7 +29,7 @@ class GenericAsyncRepository(Generic[T], ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def add(self, record: T) -> T:
+    async def add(self, record: GenericDomainModelType) -> GenericDomainModelType:
         """
         Add a record to the repository.
 
