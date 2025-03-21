@@ -31,7 +31,7 @@ class AsyncDatabaseSessionManager:
         )
         self._sessionmaker = async_sessionmaker(
             bind=self._engine,
-            expire_on_commit=False,
+            expire_on_commit=True,
         )
 
     async def close(self) -> None:

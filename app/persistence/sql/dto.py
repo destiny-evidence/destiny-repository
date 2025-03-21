@@ -15,11 +15,11 @@ class GenericSQLDTO(
     """
     Generic Data Transfer Object for a domain model.
 
-    This should be implemented by each sql implementation.
+    At a minimum, the `from_sql` and `to_sql` methods should be implemented.
     """
 
-    @abstractmethod
     @classmethod
+    @abstractmethod
     async def from_sql(cls, sql_obj: GenericSQLModelType) -> Self:
         """Create a DTO from a sql model."""
 

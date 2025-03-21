@@ -24,7 +24,9 @@ class ImportRecord(Base):
     search_string: Mapped[str | None] = mapped_column(
         String,
     )
-    searched_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+    searched_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     processor_name: Mapped[str] = mapped_column(String, nullable=False)
     processor_version: Mapped[str] = mapped_column(String, nullable=False)
     notes: Mapped[str] = mapped_column(String)
@@ -39,7 +41,7 @@ class ImportRecord(Base):
     )
 
     batches: Mapped[list["ImportBatch"]] = relationship(
-        "ImportBatch", back_populates="import_record"
+        "ImportBatch", back_populates="import_record", lazy="selectin"
     )
 
 
@@ -62,5 +64,5 @@ class ImportBatch(Base):
     storage_url: Mapped[str] = mapped_column(String, nullable=False)
 
     import_record: Mapped[ImportRecord] = relationship(
-        "ImportRecord", back_populates="batches"
+        "ImportRecord", back_populates="batches", lazy="selectin"
     )

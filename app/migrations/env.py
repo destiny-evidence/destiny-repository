@@ -11,11 +11,10 @@ from alembic.runtime.environment import EnvironmentContext
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
-from sqlmodel import SQLModel
 
 from app.core.config import get_settings
-from app.models.import_batch import ImportBatch
-from app.models.import_record import ImportRecord
+from app.domain.imports.models.sql import *  # noqa: F403
+from app.persistence.sql.declarative_base import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -33,7 +32,7 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-target_metadata = SQLModel.metadata
+target_metadata = Base.metadata
 
 ctx_var: ContextVar[dict[str, Any]] = ContextVar("ctx_var")
 

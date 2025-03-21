@@ -8,9 +8,17 @@ from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.import_batch import ImportBatch, ImportBatchStatus
-from app.models.import_record import ImportRecord, ImportStatus
-from app.routers import imports
+from app.domain.imports import routes as imports
+from app.domain.imports.models.models import (
+    ImportBatchStatus,
+    ImportRecordStatus,
+)
+from app.domain.imports.models.sql import (
+    ImportBatch as SQLImportBatch,
+)
+from app.domain.imports.models.sql import (
+    ImportRecord as SQLImportRecord,
+)
 
 # Use the database session in all tests to set up the database manager.
 pytestmark = pytest.mark.usefixtures("session")
@@ -67,19 +75,19 @@ async def test_create_import(session: AsyncSession, client: AsyncClient) -> None
         "source_name": "OpenAlex",
     }
 
-    response = await client.post("/imports/", json=import_params)
+    response = await client.post("/imports/record/", json=import_params)
 
     assert response.status_code == status.HTTP_201_CREATED
     assert response.json().items() >= {**import_params}.items()
-    assert response.json()["status"] == ImportStatus.created
-    data = await session.get(ImportRecord, response.json()["id"])
+    assert response.json()["status"] == ImportRecordStatus.CREATED
+    data = await session.get(SQLImportRecord, response.json()["id"])
     assert data is not None
 
 
 @pytest.fixture
-def valid_import() -> ImportRecord:
+def valid_import() -> SQLImportRecord:
     """Create a new valid import for testing."""
-    return ImportRecord(
+    return SQLImportRecord(
         search_string="search AND string",
         searched_at=datetime.datetime.now(datetime.UTC),
         processor_name="test processor",
@@ -87,28 +95,28 @@ def valid_import() -> ImportRecord:
         notes="No notes.",
         source_name="The internet",
         expected_reference_count=12,
-        status=ImportStatus.created,
+        status=ImportRecordStatus.CREATED,
     )
 
 
 async def test_get_import(
-    session: AsyncSession, client: AsyncClient, valid_import: ImportRecord
+    session: AsyncSession, client: AsyncClient, valid_import: SQLImportRecord
 ) -> None:
     """Test that we can read an import from the database."""
     session.add(valid_import)
     await session.commit()
-    response = await client.get(f"/imports/{valid_import.id}")
+    response = await client.get(f"/imports/record/{valid_import.id}/")
     assert response.json()["id"] == str(valid_import.id)
 
 
 async def test_get_missing_import(client: AsyncClient) -> None:
     """Test that we return a 404 when we can't find an import record."""
-    response = await client.get("/imports/2526e938-b27c-44c2-887e-3bbe1c8e898a")
+    response = await client.get("/imports/2526e938-b27c-44c2-887e-3bbe1c8e898a/")
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 async def test_create_batch_for_import(
-    client: AsyncClient, session: AsyncSession, valid_import: ImportRecord
+    client: AsyncClient, session: AsyncSession, valid_import: SQLImportRecord
 ) -> None:
     """Test that we can create a batch for an import that exists."""
     session.add(valid_import)
@@ -116,31 +124,37 @@ async def test_create_batch_for_import(
 
     batch_params = {"storage_url": "https://example.com/batch_data.json"}
     response = await client.post(
-        f"/imports/{valid_import.id}/batches", json=batch_params
+        f"/imports/{valid_import.id}/batches/", json=batch_params
     )
     assert response.status_code == status.HTTP_202_ACCEPTED
     assert response.json()["import_id"] == str(valid_import.id)
-    assert response.json()["status"] == ImportBatchStatus.created
+    assert response.json()["status"] == ImportBatchStatus.CREATED
     assert response.json().items() >= batch_params.items()
 
 
+@pytest.mark.asyncio
 async def test_get_batches(
-    client: AsyncClient, session: AsyncSession, valid_import: ImportRecord
+    client: AsyncClient, session: AsyncSession, valid_import: SQLImportRecord
 ) -> None:
     """Test that we can retrieve batches for an import."""
     session.add(valid_import)
-    batch1 = ImportBatch(
-        import_id=valid_import.id, storage_url="https://some.url/file.json"
+    await session.flush()
+    await session.refresh(valid_import)
+    batch1 = SQLImportBatch(
+        import_record_id=valid_import.id,
+        status=ImportBatchStatus.CREATED,
+        storage_url="https://some.url/file.json",
     )
     session.add(batch1)
-    batch2 = ImportBatch(
-        import_id=valid_import.id,
+    batch2 = SQLImportBatch(
+        import_record_id=valid_import.id,
+        status=ImportBatchStatus.CREATED,
         storage_url="https://files.storage/something.json",
     )
     session.add(batch2)
     await session.commit()
 
-    response = await client.get(f"/imports/{valid_import.id}/batches")
+    response = await client.get(f"/imports/record/{valid_import.id}/batches/")
     assert response.status_code == status.HTTP_200_OK
     assert len(response.json()) == 2
 

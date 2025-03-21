@@ -141,7 +141,7 @@ class ImportRecordDTO(GenericSQLDTO[DomainImportRecord, SQLImportRecord]):
             notes=sql_obj.notes,
             expected_reference_count=sql_obj.expected_reference_count,
             source_name=sql_obj.source_name,
-            status=ImportRecordStatus[sql_obj.status],
+            status=sql_obj.status,
             batches=await asyncio.gather(
                 *(ImportBatchDTO.from_sql(batch) for batch in sql_obj.batches)
             ),

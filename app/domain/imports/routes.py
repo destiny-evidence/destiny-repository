@@ -65,7 +65,7 @@ router = APIRouter(
 )
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post("/record/", status_code=status.HTTP_201_CREATED)
 async def create_import(
     import_params: ImportRecordCreate,
     import_service: Annotated[ImportService, Depends(import_service)],
@@ -74,7 +74,7 @@ async def create_import(
     return await import_service.register_import(import_params)
 
 
-@router.get("/{import_id}/")
+@router.get("/record/{import_id}/")
 async def get_import(
     import_id: UUID4, import_service: Annotated[ImportService, Depends(import_service)]
 ) -> ImportRecord:
@@ -88,7 +88,7 @@ async def get_import(
     return import_record
 
 
-@router.post("/{import_id}/batches/", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/record/{import_id}/batches/", status_code=status.HTTP_202_ACCEPTED)
 async def create_batch(
     import_id: Annotated[UUID4, Path(title="The id of the associated import")],
     batch: ImportBatch,
@@ -98,7 +98,7 @@ async def create_batch(
     return await import_service.register_batch(import_id, batch)
 
 
-@router.get("/{import_id}/batches/")
+@router.get("/record/{import_id}/batches/")
 async def get_batches(
     import_id: Annotated[UUID4, Path(title="The id of the associated import")],
     import_service: Annotated[ImportService, Depends(import_service)],

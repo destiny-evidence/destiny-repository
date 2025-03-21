@@ -13,8 +13,8 @@ from app.persistence.sql.generics import GenericSQLModelType, SQLDTOType
 
 
 class GenericAsyncSqlRepository(
-    GenericAsyncRepository[SQLDTOType, GenericDomainModelType],
     Generic[SQLDTOType, GenericDomainModelType, GenericSQLModelType],
+    GenericAsyncRepository[SQLDTOType, GenericDomainModelType],
     ABC,
 ):
     """A generic implementation of a repository backed by SQLAlchemy."""

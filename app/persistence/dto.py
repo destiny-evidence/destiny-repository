@@ -8,15 +8,15 @@ from pydantic import BaseModel
 from app.persistence.generics import GenericDomainModelType
 
 
-class GenericDTO(ABC, Generic[GenericDomainModelType], BaseModel):
+class GenericDTO(BaseModel, Generic[GenericDomainModelType], ABC):
     """
     Generic Data Transfer Object for a domain model.
 
-    This should be implemented by each persistence implementation.
+    At a minimum, the `from_domain` and `to_domain` methods should be implemented.
     """
 
-    @abstractmethod
     @classmethod
+    @abstractmethod
     async def from_domain(cls, domain_obj: GenericDomainModelType) -> Self:
         """Create a DTO from a domain model."""
 

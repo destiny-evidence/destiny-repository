@@ -43,7 +43,6 @@ async def client(app: FastAPI) -> AsyncGenerator[AsyncClient]:
         yield client
 
 
-@pytest.mark.asyncio
 async def test_healthcheck_success(app: FastAPI, client: AsyncClient) -> None:
     """Test the happy path of the healthcheck."""
     mock_session = AsyncMock()
@@ -59,7 +58,6 @@ async def test_healthcheck_success(app: FastAPI, client: AsyncClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
-@pytest.mark.asyncio
 async def test_healthcheck_failure(app: FastAPI, client: AsyncClient) -> None:
     """Test the DB connection failure path of the healthcheck."""
     mock_session = AsyncMock()

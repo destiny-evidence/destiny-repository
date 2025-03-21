@@ -86,7 +86,7 @@ issues).
         description="The source of the reference being imported (eg. Open Alex)"
     )
     status: ImportRecordStatus = Field(
-        ImportRecordStatus.CREATED,
+        default=ImportRecordStatus.CREATED,
         description="""
 The status of the upload.
 """,
