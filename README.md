@@ -160,3 +160,90 @@ Tests are in the [tests](/tests) directory. They are run using `pytest`
 ```sh
 poetry run pytest
 ```
+
+## Structure
+
+Simplified diagram of inheritance, object visibility and data flow for a domain router:
+
+```mermaid
+flowchart TD
+    subgraph Legend
+        direction LR
+        L[Business Logic] -->|call| A[ ]
+        BC{{Base Class}} -.->|inheritance| B[ ]
+        M[[Model]] --o|object visibility| C[ ]
+        CM(Context Manager) ---|wraps| D[ ]
+        style A height:0px;
+        style B height:0px;
+        style C height:0px;
+        style D height:0px;
+    end
+
+    USER@{ shape: circle, label: "User" }
+
+    P_UOW{{Persistence UOW}}
+    SQL_UOW(SQL UOW)
+
+    P_REPO{{Persistence Repository}}
+    SQL_REPO{{SQL Repository}}
+
+    P_DTO{{Persistence DTO}}
+    SQL_DTO{{SQL DTO}}
+
+    D_REPO[Domain Repository]
+    D_MODELS[[Domain Models]]
+    D_SQL[[Domain SQL Models]]
+    D_DTO[[Domain DTO]]
+    D_SERVICE[Domain Service]
+    D_ROUTES[Domain Routes]
+
+    DB@{ shape: cyl, label: "SQL DB" }
+
+    USER-->D_ROUTES
+    P_UOW-.->SQL_UOW
+    P_REPO-.->SQL_REPO
+    P_DTO-.->SQL_DTO
+    SQL_REPO-.->D_REPO
+    D_MODELS--oD_DTO
+    SQL_DTO-.->D_DTO
+    SQL_UOW---D_SERVICE
+    D_ROUTES-->D_SERVICE
+    D_SERVICE-->D_REPO
+    D_DTO--oD_REPO
+    D_MODELS--oD_SERVICE
+    D_MODELS--oD_ROUTES
+    D_SQL--oD_DTO
+    D_SQL-->DB
+```
+
+Below is an overview of the project structure.
+
+### Core
+
+- **Operational Classes:** Used for aspects like authentication, configuration, and logging.
+
+### Domain
+
+Contains a directory for each set of related structures. Each directory includes:
+
+- **Models**
+
+  - **Models:** Domain models used throughout the domain.
+  - **Persistence (e.g. SQL):** Models used for persisting to data stores.
+  - **DTO:** Data transfer objects – the only interface between domain and persistence models.
+
+- **Repository**
+
+  - Contains interfaces between the domain and persistence implementations. It only accepts domain models as input and output, using the DTO for any persistence changes.
+
+- **Routes**
+
+  - Provides the FastAPI router for external interfacing and generates Units of Work (UOWs) for the service.
+
+- **Service**
+  - Performs business processing and logic.
+
+### Persistence
+
+- **Base Classes:** For each persistence implementation to inherit.
+  - **Persistence implementation (SQL):** Base classes designed for each domain module to inherit, and the interface to the data store itself (eg, a SQL session generator).
