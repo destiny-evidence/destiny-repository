@@ -116,4 +116,4 @@ async def get_batches(
             status_code=404,
             detail=f"Import record with id {import_record_id} not found.",
         )
-    return import_record.batches
+    return import_record.batches or []

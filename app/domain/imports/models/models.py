@@ -103,8 +103,8 @@ The ID of the import, which may be set by the processor or will be generated
 on creation.
 """,
     )
-    batches: list["ImportBatch"] = Field(
-        default=[], description="The batches derived from this import."
+    batches: list["ImportBatch"] | None = Field(
+        None, description="The batches associated with this import."
     )
 
 
@@ -145,12 +145,9 @@ generated on creation.
     import_record_id: uuid.UUID = Field(
         description="The ID of the parent import record."
     )
-
-
-class ImportBatchHydrated(ImportBatch):
-    """An import batch with the parent import record included."""
-
-    import_record: ImportRecord = Field(description="The parent import record.")
+    import_record: ImportRecord | None = Field(
+        None, description="The parent import record."
+    )
 
 
 class ImportBatchCreate(ImportBatchBase):

@@ -41,7 +41,7 @@ class ImportRecord(Base):
     )
 
     batches: Mapped[list["ImportBatch"]] = relationship(
-        "ImportBatch", back_populates="import_record", lazy="selectin"
+        "ImportBatch", back_populates="import_record"
     )
 
 
@@ -64,5 +64,5 @@ class ImportBatch(Base):
     storage_url: Mapped[str] = mapped_column(String, nullable=False)
 
     import_record: Mapped[ImportRecord] = relationship(
-        "ImportRecord", back_populates="batches", lazy="selectin"
+        "ImportRecord", back_populates="batches"
     )

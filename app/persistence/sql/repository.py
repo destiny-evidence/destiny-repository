@@ -65,7 +65,7 @@ class GenericAsyncSqlRepository(
         result = await self._session.get(self._sql_cls, pk, options=options)
         if not result:
             return None
-        dto = await self._dto_cls.from_sql(result)
+        dto = await self._dto_cls.from_sql(result, preloaded=preload)
         return await dto.to_domain()
 
     async def add(self, record: GenericDomainModelType) -> GenericDomainModelType:

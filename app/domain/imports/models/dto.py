@@ -3,7 +3,7 @@
 import asyncio
 import datetime
 import uuid
-from typing import Self
+from typing import Optional, Self
 
 from pydantic import HttpUrl
 
@@ -39,6 +39,8 @@ class ImportBatchDTO(GenericSQLDTO[DomainImportBatch, SQLImportBatch]):
     status: ImportBatchStatus
     storage_url: str
 
+    import_record: Optional["ImportRecordDTO"] = None
+
     @classmethod
     async def from_domain(cls, domain_obj: DomainImportBatch) -> Self:
         """Create a DTO from a domain ImportBatch object."""
@@ -50,13 +52,21 @@ class ImportBatchDTO(GenericSQLDTO[DomainImportBatch, SQLImportBatch]):
         )
 
     @classmethod
-    async def from_sql(cls, sql_obj: SQLImportBatch) -> Self:
+    async def from_sql(
+        cls, sql_obj: SQLImportBatch, preloaded: list[str] | None = None
+    ) -> Self:
         """Create a DTO from a SQL ImportBatch object."""
+        if not preloaded:
+            preloaded = []
         return cls(
             id=sql_obj.id,
             import_record_id=sql_obj.import_record_id,
             status=sql_obj.status,
             storage_url=sql_obj.storage_url,
+            preloaded=preloaded if preloaded else [],
+            import_record=await ImportRecordDTO.from_sql(sql_obj.import_record)
+            if "import_record" in preloaded
+            else None,
         )
 
     async def to_sql(self) -> SQLImportBatch:
@@ -70,11 +80,17 @@ class ImportBatchDTO(GenericSQLDTO[DomainImportBatch, SQLImportBatch]):
 
     async def to_domain(self) -> DomainImportBatch:
         """Convert the DTO into an Domain ImportBatch object."""
+        if (self.import_record is not None) == ("import_record" in self.preloaded):
+            msg = "Inconsistent state: import_record must be present iff preloaded."
+            raise AssertionError(msg)
         return DomainImportBatch(
             id=self.id,
             import_record_id=self.import_record_id,
             status=self.status,
             storage_url=HttpUrl(self.storage_url),
+            import_record=await self.import_record.to_domain()  # type: ignore[union-attr]
+            if "import_record" in self.preloaded
+            else None,
         )
 
 
@@ -95,7 +111,8 @@ class ImportRecordDTO(GenericSQLDTO[DomainImportRecord, SQLImportRecord]):
     expected_reference_count: int
     source_name: str
     status: ImportRecordStatus
-    batches: list[ImportBatchDTO]
+
+    batches: list[ImportBatchDTO] | None = None
 
     @classmethod
     async def from_domain(cls, domain_obj: DomainImportRecord) -> Self:
@@ -110,14 +127,15 @@ class ImportRecordDTO(GenericSQLDTO[DomainImportRecord, SQLImportRecord]):
             expected_reference_count=domain_obj.expected_reference_count,
             source_name=domain_obj.source_name,
             status=domain_obj.status,
-            batches=await asyncio.gather(
-                *(ImportBatchDTO.from_domain(batch) for batch in domain_obj.batches)
-            ),
         )
 
     @classmethod
-    async def from_sql(cls, sql_obj: SQLImportRecord) -> Self:
+    async def from_sql(
+        cls, sql_obj: SQLImportRecord, preloaded: list[str] | None = None
+    ) -> Self:
         """Create a DTO from a SQL ImportRecord object."""
+        if not preloaded:
+            preloaded = []
         return cls(
             id=sql_obj.id,
             search_string=sql_obj.search_string,
@@ -128,9 +146,12 @@ class ImportRecordDTO(GenericSQLDTO[DomainImportRecord, SQLImportRecord]):
             expected_reference_count=sql_obj.expected_reference_count,
             source_name=sql_obj.source_name,
             status=sql_obj.status,
+            preloaded=preloaded,
             batches=await asyncio.gather(
                 *(ImportBatchDTO.from_sql(batch) for batch in sql_obj.batches)
-            ),
+            )
+            if "batches" in preloaded
+            else None,
         )
 
     async def to_sql(self) -> SQLImportRecord:
@@ -145,11 +166,13 @@ class ImportRecordDTO(GenericSQLDTO[DomainImportRecord, SQLImportRecord]):
             expected_reference_count=self.expected_reference_count,
             source_name=self.source_name,
             status=self.status,
-            batches=await asyncio.gather(*(batch.to_sql() for batch in self.batches)),
         )
 
     async def to_domain(self) -> DomainImportRecord:
         """Convert the DTO into an Domain ImportRecord object."""
+        if (self.batches is not None) == ("batches" in self.preloaded):
+            msg = "Inconsistent state: batches must be present iff preloaded."
+            raise AssertionError(msg)
         return DomainImportRecord(
             id=self.id,
             search_string=self.search_string,
@@ -160,7 +183,7 @@ class ImportRecordDTO(GenericSQLDTO[DomainImportRecord, SQLImportRecord]):
             expected_reference_count=self.expected_reference_count,
             source_name=self.source_name,
             status=self.status,
-            batches=await asyncio.gather(
-                *(batch.to_domain() for batch in self.batches)
-            ),
+            batches=await asyncio.gather(*(batch.to_domain() for batch in self.batches))  # type: ignore[union-attr]
+            if "batches" in self.preloaded
+            else None,
         )
