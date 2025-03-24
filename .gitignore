@@ -179,3 +179,6 @@ cython_debug/
 # VS Code Workspace settings
 *.code-workspace
 .vscode/
+
+# Mac Finder config
+.DS_Store
