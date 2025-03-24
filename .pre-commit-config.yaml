@@ -27,8 +27,7 @@ repos:
     hooks:
       - id: mypy
         args: [--config-file=pyproject.toml, --ignore-missing-imports]
-        additional_dependencies:
-          [pytest, pydantic, fastapi, sqlmodel, types-cachetools]
+        additional_dependencies: [pytest, pydantic, fastapi, types-cachetools]
   - repo: https://github.com/pre-commit/mirrors-prettier
     rev: v3.1.0
     hooks:
