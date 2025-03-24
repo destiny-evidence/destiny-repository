@@ -3,9 +3,9 @@
 import asyncio
 import datetime
 import uuid
-from typing import Optional, Self
+from typing import Self
 
-from pydantic import HttpUrl, ValidationError
+from pydantic import HttpUrl
 
 from app.domain.imports.models.models import (
     ImportBatch as DomainImportBatch,
@@ -38,7 +38,6 @@ class ImportBatchDTO(GenericSQLDTO[DomainImportBatch, SQLImportBatch]):
     import_record_id: uuid.UUID
     status: ImportBatchStatus
     storage_url: str
-    import_record: Optional["ImportRecordDTO"]
 
     @classmethod
     async def from_domain(cls, domain_obj: DomainImportBatch) -> Self:
@@ -48,9 +47,6 @@ class ImportBatchDTO(GenericSQLDTO[DomainImportBatch, SQLImportBatch]):
             import_record_id=domain_obj.import_record_id,
             status=domain_obj.status,
             storage_url=str(domain_obj.storage_url),
-            import_record=await ImportRecordDTO.from_domain(domain_obj.import_record)
-            if domain_obj.import_record
-            else None,
         )
 
     @classmethod
@@ -61,9 +57,6 @@ class ImportBatchDTO(GenericSQLDTO[DomainImportBatch, SQLImportBatch]):
             import_record_id=sql_obj.import_record_id,
             status=sql_obj.status,
             storage_url=sql_obj.storage_url,
-            import_record=await ImportRecordDTO.from_sql(sql_obj.import_record)
-            if sql_obj.import_record
-            else None,
         )
 
     async def to_sql(self) -> SQLImportBatch:
@@ -73,22 +66,15 @@ class ImportBatchDTO(GenericSQLDTO[DomainImportBatch, SQLImportBatch]):
             import_record_id=self.import_record_id,
             status=self.status,
             storage_url=self.storage_url,
-            import_record=await self.import_record.to_sql()
-            if self.import_record
-            else None,
         )
 
     async def to_domain(self) -> DomainImportBatch:
         """Convert the DTO into an Domain ImportBatch object."""
-        if not self.import_record:
-            msg = "ImportRecord must be set to convert to domain."
-            raise ValidationError(msg)
         return DomainImportBatch(
             id=self.id,
             import_record_id=self.import_record_id,
             status=self.status,
             storage_url=HttpUrl(self.storage_url),
-            import_record=await self.import_record.to_domain(),
         )
 
 

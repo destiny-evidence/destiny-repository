@@ -124,22 +124,20 @@ async def test_create_batch_for_import(
 
     batch_params = {"storage_url": "https://example.com/batch_data.json"}
     response = await client.post(
-        f"/imports/{valid_import.id}/batches/", json=batch_params
+        f"/imports/record/{valid_import.id}/batches/", json=batch_params
     )
     assert response.status_code == status.HTTP_202_ACCEPTED
-    assert response.json()["import_id"] == str(valid_import.id)
+    assert response.json()["import_record_id"] == str(valid_import.id)
     assert response.json()["status"] == ImportBatchStatus.CREATED
     assert response.json().items() >= batch_params.items()
 
 
-@pytest.mark.asyncio
 async def test_get_batches(
     client: AsyncClient, session: AsyncSession, valid_import: SQLImportRecord
 ) -> None:
     """Test that we can retrieve batches for an import."""
     session.add(valid_import)
-    await session.flush()
-    await session.refresh(valid_import)
+    await session.commit()
     batch1 = SQLImportBatch(
         import_record_id=valid_import.id,
         status=ImportBatchStatus.CREATED,
@@ -184,7 +182,7 @@ async def test_auth_failure(
         }
 
         response = await client.post(
-            "/imports/",
+            "/imports/record/",
             json=import_params,
             headers={"Authorization": "Bearer Nonsense-token"},
         )

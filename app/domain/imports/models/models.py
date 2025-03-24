@@ -121,9 +121,6 @@ class ImportBatchBase(DomainBaseModel):
     file at that storage url.
     """
 
-    import_record_id: uuid.UUID = Field(
-        description="The ID of the parent import record."
-    )
     status: ImportBatchStatus = Field(
         default=ImportBatchStatus.CREATED, description="The status of the batch."
     )
@@ -144,6 +141,14 @@ The identifier of the batch, which may be set by the processor or will be
 generated on creation.
 """,
     )
+
+    import_record_id: uuid.UUID = Field(
+        description="The ID of the parent import record."
+    )
+
+
+class ImportBatchHydrated(ImportBatch):
+    """An import batch with the parent import record included."""
 
     import_record: ImportRecord = Field(description="The parent import record.")
 
