@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     project_root: Path = Path(__file__).joinpath("../../..").resolve()
 
     azure_application_id: str
-    azure_login_url: HttpUrl
+    azure_login_url: HttpUrl = HttpUrl("https://login.microsoftonline.com")
     azure_tenant_id: str
     cli_client_id: str | None = None
 
