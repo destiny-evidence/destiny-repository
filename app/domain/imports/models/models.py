@@ -94,7 +94,7 @@ The status of the upload.
 
 
 class ImportRecord(ImportRecordBase):
-    """Import Record model for database use."""
+    """Core import record model with database attributes included."""
 
     id: uuid.UUID = Field(
         default_factory=uuid.uuid4,
@@ -132,7 +132,7 @@ The URL at which the set of references for this batch are stored.
 
 
 class ImportBatch(ImportBatchBase):
-    """Import Batch model for database use."""
+    """Core import batch model with database attributes included."""
 
     id: uuid.UUID = Field(
         default_factory=uuid.uuid4,

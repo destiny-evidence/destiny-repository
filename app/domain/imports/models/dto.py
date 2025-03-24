@@ -80,7 +80,7 @@ class ImportBatchDTO(GenericSQLDTO[DomainImportBatch, SQLImportBatch]):
 
     async def to_domain(self) -> DomainImportBatch:
         """Convert the DTO into an Domain ImportBatch object."""
-        if (self.import_record is not None) == ("import_record" in self.preloaded):
+        if (self.import_record is None) == ("import_record" in self.preloaded):
             msg = "Inconsistent state: import_record must be present iff preloaded."
             raise AssertionError(msg)
         return DomainImportBatch(
@@ -170,7 +170,7 @@ class ImportRecordDTO(GenericSQLDTO[DomainImportRecord, SQLImportRecord]):
 
     async def to_domain(self) -> DomainImportRecord:
         """Convert the DTO into an Domain ImportRecord object."""
-        if (self.batches is not None) == ("batches" in self.preloaded):
+        if (self.batches is None) == ("batches" in self.preloaded):
             msg = "Inconsistent state: batches must be present iff preloaded."
             raise AssertionError(msg)
         return DomainImportRecord(
