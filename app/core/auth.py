@@ -20,7 +20,7 @@ from app.core.exceptions.auth_exception import AuthException
 
 
 # Dependency to get the token from the Authorization header
-# `auto_error=False` allows us to both ignore bearer tokens when using SpoofAuth and
+# `auto_error=False` allows us to both ignore bearer tokens when using SuccessAuth and
 # also provide a more meaningful error message when the token is missing.
 security = HTTPBearer(auto_error=False)
 
@@ -115,21 +115,13 @@ class CachingStrategyAuth(StrategyAuth):
         self._cached_strategy = None
 
 
-class SpoofAuth(AuthMethod):
-    """A fake auth class that will always respond how you tell it to."""
+class SuccessAuth(AuthMethod):
+    """A fake auth class that will always respond successfully."""
 
     _succeed: bool
 
-    def __init__(self, *, succeed: bool = True) -> None:
-        """
-        Initialize the fake auth callable.
-
-        Args:
-        - always_succeed (bool): Whether or not we should always succeed. If not,
-        we will always fail by raising an AuthException.
-
-        """
-        self._succeed = succeed
+    def __init__(self) -> None:
+        """Initialize the fake auth callable."""
 
     async def __call__(
         self,
@@ -138,12 +130,7 @@ class SpoofAuth(AuthMethod):
             Depends(security),
         ],
     ) -> bool:
-        """Return true or raise an AuthException."""
-        if not self._succeed:
-            raise AuthException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authorization failure from SpoofAuth.",
-            ) from None
+        """Return true."""
         return True
 
 

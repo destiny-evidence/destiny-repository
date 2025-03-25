@@ -13,8 +13,8 @@ from app.core.auth import (
     AuthMethod,
     AuthScopes,
     AzureJwtAuth,
-    SpoofAuth,
     StrategyAuth,
+    SuccessAuth,
 )
 
 
@@ -230,25 +230,11 @@ async def test_requires_read_all_scope_not_present(
 
 async def test_fake_auth_success(generate_fake_token: Callable[..., str]):
     """Test that our fake auth method succeeds on demand, with and without tokens."""
-    auth = SpoofAuth()
+    auth = SuccessAuth()
     creds = Mock(credentials=generate_fake_token())
 
     assert await auth(creds)
     assert await auth(None)
-
-
-async def test_fake_auth_failure(generate_fake_token: Callable[..., str]):
-    """Test that our fake auth method fails on demand."""
-    auth = SpoofAuth(succeed=False)
-    creds = Mock(credentials=generate_fake_token())
-
-    with pytest.raises(HTTPException) as excinfo:
-        await auth(creds)
-    assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
-
-    with pytest.raises(HTTPException) as excinfo:
-        await auth(None)
-    assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 async def test_strategy_auth_selection():
