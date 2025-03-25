@@ -89,6 +89,8 @@ def valid_import() -> SQLImportRecord:
     return SQLImportRecord(
         search_string="search AND string",
         searched_at=datetime.datetime.now(datetime.UTC),
+        created_at=datetime.datetime.now(datetime.UTC),
+        updated_at=datetime.datetime.now(datetime.UTC),
         processor_name="test processor",
         processor_version="0.0.1",
         notes="No notes.",
@@ -140,12 +142,16 @@ async def test_get_batches(
     batch1 = SQLImportBatch(
         import_record_id=valid_import.id,
         status=ImportBatchStatus.CREATED,
+        created_at=datetime.datetime.now(datetime.UTC),
+        updated_at=datetime.datetime.now(datetime.UTC),
         storage_url="https://some.url/file.json",
     )
     session.add(batch1)
     batch2 = SQLImportBatch(
         import_record_id=valid_import.id,
         status=ImportBatchStatus.CREATED,
+        created_at=datetime.datetime.now(datetime.UTC),
+        updated_at=datetime.datetime.now(datetime.UTC),
         storage_url="https://files.storage/something.json",
     )
     session.add(batch2)

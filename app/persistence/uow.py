@@ -8,6 +8,7 @@ from typing import Self
 from app.domain.imports.repository import (
     ImportBatchRepositoryBase,
     ImportRecordRepositoryBase,
+    ImportResultRepositoryBase,
 )
 
 
@@ -16,6 +17,7 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
 
     imports: ImportRecordRepositoryBase
     batches: ImportBatchRepositoryBase
+    results: ImportResultRepositoryBase
 
     async def __aenter__(self) -> Self:
         """Set up the unit of work, including any repositories or sessions."""

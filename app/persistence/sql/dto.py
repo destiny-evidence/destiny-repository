@@ -27,6 +27,11 @@ hence be parsed into the domain layer.""",
         default_factory=list,
     )
 
+    @property
+    @abstractmethod
+    def _possible_preloads(self) -> list[str]:
+        """A list of attributes that can be preloaded from the SQL layer."""
+
     @classmethod
     @abstractmethod
     async def from_sql(
@@ -37,3 +42,14 @@ hence be parsed into the domain layer.""",
     @abstractmethod
     async def to_sql(self) -> GenericSQLModelType:
         """Create a sql model from this DTO."""
+
+    def _validate_preloads(self) -> None:
+        """Ensure that preloaded attributes are consistent with the preloaded list."""
+        for possible_preload in self._possible_preloads:
+            if (getattr(self, possible_preload) is None) == (
+                possible_preload in self.preloaded
+            ):
+                msg = f"""
+                Inconsistent state: {possible_preload} must be present iff preloaded.
+                """
+                raise AssertionError(msg)

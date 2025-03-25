@@ -7,6 +7,8 @@ from app.domain.imports.models.models import (
     ImportBatchCreate,
     ImportRecord,
     ImportRecordCreate,
+    ImportResult,
+    ImportResultCreate,
 )
 from app.persistence.uow import AsyncUnitOfWorkBase
 
@@ -51,3 +53,17 @@ class ImportService:
             batch = await self.sql_uow.batches.add(batch)
             await self.sql_uow.commit()
             return batch
+
+    async def add_batch_result(
+        self,
+        batch_id: UUID4,
+        import_result: ImportResultCreate,
+    ) -> ImportResult:
+        """Persist an import result to the database."""
+        async with self.sql_uow:
+            db_import_result = ImportResult(
+                **import_result.model_dump(), import_batch_id=batch_id
+            )
+            created = await self.sql_uow.results.add(db_import_result)
+            await self.sql_uow.commit()
+            return created

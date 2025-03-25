@@ -11,7 +11,11 @@ from sqlalchemy import UUID, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.domain.imports.models.models import ImportBatchStatus, ImportRecordStatus
+from app.domain.imports.models.models import (
+    ImportBatchStatus,
+    ImportRecordStatus,
+    ImportResultStatus,
+)
 from app.persistence.sql.declarative_base import Base
 
 
@@ -39,6 +43,12 @@ class ImportRecord(Base):
         ),
         nullable=False,
     )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
     batches: Mapped[list["ImportBatch"]] = relationship(
         "ImportBatch", back_populates="import_record"
@@ -62,7 +72,46 @@ class ImportBatch(Base):
         nullable=False,
     )
     storage_url: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
     import_record: Mapped[ImportRecord] = relationship(
         "ImportRecord", back_populates="batches"
+    )
+    import_results: Mapped[list["ImportResult"]] = relationship(
+        "ImportResult", back_populates="import_batch"
+    )
+
+
+class ImportResult(Base):
+    """SQL model for an individual import result."""
+
+    __tablename__ = "import_result"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    import_batch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("import_batch.id"), nullable=False
+    )
+    status: Mapped[ImportResultStatus] = mapped_column(
+        ENUM(
+            *[status.value for status in ImportResultStatus],
+            name="import_result_status",
+        ),
+        nullable=False,
+    )
+    reference_id: Mapped[uuid.UUID] = mapped_column(UUID)
+    failure_details: Mapped[str] = mapped_column(String)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    import_batch: Mapped[ImportBatch] = relationship(
+        "ImportBatch", back_populates="import_results"
     )
