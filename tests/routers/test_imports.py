@@ -53,7 +53,6 @@ async def client(app: FastAPI) -> AsyncGenerator[AsyncClient]:
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
-        headers={"Authorization": "Bearer Nonsense-token"},
     ) as client:
         yield client
 
@@ -187,5 +186,38 @@ async def test_auth_failure(
             headers={"Authorization": "Bearer Nonsense-token"},
         )
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    imports.import_auth.reset()
+    imports.settings.__init__()  # type: ignore[call-args, misc]
+
+
+async def test_missing_auth(
+    client: AsyncClient,
+    fake_application_id: str,
+    fake_tenant_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Test that we reject missing tokens."""
+    with monkeypatch.context():
+        monkeypatch.setenv("ENV", "production")
+        monkeypatch.setenv("AZURE_APPLICATION_ID", fake_application_id)
+        monkeypatch.setenv("AZURE_TENANT_ID", fake_tenant_id)
+        imports.import_auth.reset()
+        imports.settings.__init__()  # type: ignore[call-args, misc]
+        import_params = {
+            "search_string": "climate AND health",
+            "searched_at": "2025-02-02T13:29:30Z",
+            "processor_name": "Test Importer",
+            "processor_version": "0.0.1",
+            "notes": "This is not a real import, it is only a test run.",
+            "expected_reference_count": 100,
+            "source_name": "OpenAlex",
+        }
+
+        response = await client.post(
+            "/imports/record/",
+            json=import_params,
+        )
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.text == '{"detail":"Authorization HTTPBearer header missing."}'
     imports.import_auth.reset()
     imports.settings.__init__()  # type: ignore[call-args, misc]

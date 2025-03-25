@@ -11,7 +11,7 @@ from app.core.auth import (
     AuthScopes,
     AzureJwtAuth,
     CachingStrategyAuth,
-    SuccessAuth,
+    SpoofAuth,
 )
 from app.core.config import get_settings
 from app.domain.imports.models.models import (
@@ -47,7 +47,7 @@ settings = get_settings()
 def choose_auth_strategy() -> AuthMethod:
     """Choose a strategy for our authorization."""
     if settings.env == "dev":
-        return SuccessAuth()
+        return SpoofAuth()
 
     return AzureJwtAuth(
         tenant_id=settings.azure_tenant_id,

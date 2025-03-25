@@ -20,7 +20,9 @@ from app.core.exceptions.auth_exception import AuthException
 
 
 # Dependency to get the token from the Authorization header
-security = HTTPBearer()
+# `auto_error=False` allows us to both ignore bearer tokens when using SpoofAuth and
+# also provide a more meaningful error message when the token is missing.
+security = HTTPBearer(auto_error=False)
 
 
 class AuthScopes(Enum):
@@ -36,10 +38,20 @@ CACHE_TTL = 60 * 60 * 24  # 24 hours
 class AuthMethod(Protocol):
     """Protocol for auth methods."""
 
+    # This allows FastAPI to call instances of this class as dependencies in
+    # FastAPI routes.  See https://fastapi.tiangolo.com/advanced/advanced-dependencies
     async def __call__(
-        self, credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)]
+        self,
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
     ) -> bool:
-        """Callable interface to allow use as a dependency."""
+        """
+        Callable interface to allow use as a dependency.
+
+        Args:
+        credentials (HTTPAuthorizationCredentials): The bearer token provided in the
+                                                    request (as a dependency)
+
+        """
         raise NotImplementedError
 
 
@@ -68,7 +80,8 @@ class StrategyAuth(AuthMethod):
         return self._selector()
 
     async def __call__(
-        self, credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)]
+        self,
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
     ) -> bool:
         """Callable interface to allow use as a dependency."""
         return await self._get_strategy()(credentials=credentials)
@@ -102,12 +115,12 @@ class CachingStrategyAuth(StrategyAuth):
         self._cached_strategy = None
 
 
-class SuccessAuth(AuthMethod):
+class SpoofAuth(AuthMethod):
     """A fake auth class that will always respond how you tell it to."""
 
     _succeed: bool
 
-    def __init__(self) -> None:
+    def __init__(self, *, succeed: bool = True) -> None:
         """
         Initialize the fake auth callable.
 
@@ -116,14 +129,21 @@ class SuccessAuth(AuthMethod):
         we will always fail by raising an AuthException.
 
         """
+        self._succeed = succeed
 
     async def __call__(
         self,
         credentials: Annotated[  # noqa: ARG002
-            HTTPAuthorizationCredentials, Depends(security)
+            HTTPAuthorizationCredentials | None,
+            Depends(security),
         ],
     ) -> bool:
         """Return true or raise an AuthException."""
+        if not self._succeed:
+            raise AuthException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authorization failure from SpoofAuth.",
+            ) from None
         return True
 
 
@@ -235,18 +255,15 @@ class AzureJwtAuth(AuthMethod):
             detail="IDW10201: No app permissions (role) claim was found in the bearer token",  # noqa: E501
         )
 
-    # This allows FastAPI to call instances of this class as dependencies in
-    # FastAPI routes.  See https://fastapi.tiangolo.com/advanced/advanced-dependencies
     async def __call__(
-        self, credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)]
+        self,
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
     ) -> bool:
-        """
-        Call the instance as a dependency.
-
-        Args:
-        credentials (HTTPAuthorizationCredentials): The bearer token provided in the
-                                                    request (as a dependency)
-
-        """
+        """Authenticate the request."""
+        if not credentials:
+            raise AuthException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authorization HTTPBearer header missing.",
+            )
         verified_claims = await self.verify_token(credentials.credentials)
         return self._require_scope(self.scope, verified_claims)
