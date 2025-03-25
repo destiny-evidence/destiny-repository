@@ -33,7 +33,7 @@ class ImportRecord(Base):
     )
     processor_name: Mapped[str] = mapped_column(String, nullable=False)
     processor_version: Mapped[str] = mapped_column(String, nullable=False)
-    notes: Mapped[str] = mapped_column(String)
+    notes: Mapped[str | None] = mapped_column(String)
     expected_reference_count: Mapped[int] = mapped_column(Integer, nullable=False)
     source_name: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[ImportRecordStatus] = mapped_column(
@@ -103,8 +103,8 @@ class ImportResult(Base):
         ),
         nullable=False,
     )
-    reference_id: Mapped[uuid.UUID] = mapped_column(UUID)
-    failure_details: Mapped[str] = mapped_column(String)
+    reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    failure_details: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

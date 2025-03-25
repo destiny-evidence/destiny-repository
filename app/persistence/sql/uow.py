@@ -18,6 +18,10 @@ class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
 
     session: AsyncSession
 
+    imports: ImportRecordSQLRepository
+    batches: ImportBatchSQLRepository
+    results: ImportResultSQLRepository
+
     def __init__(self, session: AsyncSession) -> None:
         """Initialize the unit of work with a session."""
         self.session = session

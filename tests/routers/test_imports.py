@@ -12,12 +12,16 @@ from app.domain.imports import routes as imports
 from app.domain.imports.models.models import (
     ImportBatchStatus,
     ImportRecordStatus,
+    ImportResultStatus,
 )
 from app.domain.imports.models.sql import (
     ImportBatch as SQLImportBatch,
 )
 from app.domain.imports.models.sql import (
     ImportRecord as SQLImportRecord,
+)
+from app.domain.imports.models.sql import (
+    ImportResult as SQLImportResult,
 )
 
 # Use the database session in all tests to set up the database manager.
@@ -160,6 +164,114 @@ async def test_get_batches(
     response = await client.get(f"/imports/record/{valid_import.id}/batches/")
     assert response.status_code == status.HTTP_200_OK
     assert len(response.json()) == 2
+
+
+async def test_get_import_batch_summary(
+    client: AsyncClient, session: AsyncSession, valid_import: SQLImportRecord
+) -> None:
+    """Test that we can retrieve a summary of an import batch."""
+    session.add(valid_import)
+    await session.commit()
+    batch = SQLImportBatch(
+        import_record_id=valid_import.id,
+        status=ImportBatchStatus.CREATED,
+        created_at=datetime.datetime.now(datetime.UTC),
+        updated_at=datetime.datetime.now(datetime.UTC),
+        storage_url="https://some.url/file.json",
+    )
+    session.add(batch)
+    await session.commit()
+    result1 = SQLImportResult(
+        import_batch_id=batch.id,
+        status=ImportResultStatus.CREATED,
+        created_at=datetime.datetime.now(datetime.UTC),
+        updated_at=datetime.datetime.now(datetime.UTC),
+    )
+    session.add(result1)
+    result2 = SQLImportResult(
+        import_batch_id=batch.id,
+        status=ImportResultStatus.FAILED,
+        created_at=datetime.datetime.now(datetime.UTC),
+        updated_at=datetime.datetime.now(datetime.UTC),
+        failure_details="Some failure details.",
+    )
+    session.add(result2)
+    result3 = SQLImportResult(
+        import_batch_id=batch.id,
+        status=ImportResultStatus.PARTIALLY_FAILED,
+        created_at=datetime.datetime.now(datetime.UTC),
+        updated_at=datetime.datetime.now(datetime.UTC),
+        failure_details="Some other failure details.",
+    )
+    session.add(result3)
+    await session.commit()
+
+    response = await client.get(f"/imports/batch/{batch.id}/summary/")
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["id"] == str(batch.id)
+    assert response.json()["results"] == {
+        ImportResultStatus.CREATED.value: 1,
+        ImportResultStatus.FAILED.value: 1,
+        ImportResultStatus.PARTIALLY_FAILED.value: 1,
+        ImportResultStatus.COMPLETED.value: 0,
+        ImportResultStatus.CANCELLED.value: 0,
+        ImportResultStatus.STARTED.value: 0,
+    }
+    assert response.json()["failure_details"] == [
+        "Some failure details.",
+        "Some other failure details.",
+    ]
+
+
+async def test_get_import_results(
+    client: AsyncClient, session: AsyncSession, valid_import: SQLImportRecord
+) -> None:
+    """Test that we can retrieve a summary of an import batch."""
+    session.add(valid_import)
+    await session.commit()
+    batch = SQLImportBatch(
+        import_record_id=valid_import.id,
+        status=ImportBatchStatus.CREATED,
+        created_at=datetime.datetime.now(datetime.UTC),
+        updated_at=datetime.datetime.now(datetime.UTC),
+        storage_url="https://some.url/file.json",
+    )
+    session.add(batch)
+    await session.commit()
+    result1 = SQLImportResult(
+        import_batch_id=batch.id,
+        status=ImportResultStatus.CREATED,
+        created_at=datetime.datetime.now(datetime.UTC),
+        updated_at=datetime.datetime.now(datetime.UTC),
+    )
+    session.add(result1)
+    result2 = SQLImportResult(
+        import_batch_id=batch.id,
+        status=ImportResultStatus.FAILED,
+        created_at=datetime.datetime.now(datetime.UTC),
+        updated_at=datetime.datetime.now(datetime.UTC),
+        failure_details="Some failure details.",
+    )
+    session.add(result2)
+    result3 = SQLImportResult(
+        import_batch_id=batch.id,
+        status=ImportResultStatus.PARTIALLY_FAILED,
+        created_at=datetime.datetime.now(datetime.UTC),
+        updated_at=datetime.datetime.now(datetime.UTC),
+        failure_details="Some other failure details.",
+    )
+    session.add(result3)
+    await session.commit()
+
+    response = await client.get(f"/imports/batch/{batch.id}/results/")
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.json()) == 3
+    response = await client.get(
+        f"/imports/batch/{batch.id}/results/?result_status=failed"
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.json()) == 1
+    assert response.json()[0]["id"] == str(result2.id)
 
 
 @pytest.mark.usefixtures("stubbed_jwks_response")

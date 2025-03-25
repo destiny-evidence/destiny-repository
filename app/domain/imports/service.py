@@ -5,18 +5,20 @@ from pydantic import UUID4
 from app.domain.imports.models.models import (
     ImportBatch,
     ImportBatchCreate,
+    ImportBatchSummary,
     ImportRecord,
     ImportRecordCreate,
     ImportResult,
     ImportResultCreate,
+    ImportResultStatus,
 )
-from app.persistence.uow import AsyncUnitOfWorkBase
+from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 
 class ImportService:
     """The service which manages our imports and their processing."""
 
-    def __init__(self, sql_uow: AsyncUnitOfWorkBase) -> None:
+    def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:
         """Initialize the service with a unit of work."""
         self.sql_uow = sql_uow
 
@@ -67,3 +69,46 @@ class ImportService:
             created = await self.sql_uow.results.add(db_import_result)
             await self.sql_uow.commit()
             return created
+
+    async def get_import_batch_summary(
+        self, import_batch_id: UUID4
+    ) -> ImportBatchSummary | None:
+        """Get an import batch with its results."""
+        async with self.sql_uow:
+            import_batch = await self.sql_uow.batches.get_by_pk(
+                import_batch_id, preload=["import_results"]
+            )
+            if not import_batch:
+                return None
+            result_summary: dict[ImportResultStatus, int] = dict.fromkeys(
+                ImportResultStatus, 0
+            )
+            failure_details: list[str] = []
+            for result in import_batch.import_results or []:
+                result_summary[result.status] += 1
+                if (
+                    result.status
+                    in (
+                        ImportResultStatus.FAILED,
+                        ImportResultStatus.PARTIALLY_FAILED,
+                    )
+                    and result.failure_details
+                ):
+                    failure_details.append(result.failure_details)
+            return ImportBatchSummary(
+                **import_batch.model_dump(),
+                results=result_summary,
+                failure_details=failure_details,
+            )
+
+    async def get_import_results(
+        self,
+        import_batch_id: UUID4,
+        result_status: ImportResultStatus | None = None,
+    ) -> list[ImportResult]:
+        """Get a list of results for an import batch."""
+        async with self.sql_uow:
+            return await self.sql_uow.results.get_by_filter(
+                import_batch_id=import_batch_id,
+                status=result_status,
+            )

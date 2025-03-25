@@ -1,7 +1,10 @@
 """Repositories for imports and associated models."""
 
+import asyncio
+import uuid
 from abc import ABC
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.imports.models.dto import (
@@ -17,6 +20,9 @@ from app.domain.imports.models.models import (
 )
 from app.domain.imports.models.models import (
     ImportResult as DomainImportResult,
+)
+from app.domain.imports.models.models import (
+    ImportResultStatus,
 )
 from app.domain.imports.models.sql import (
     ImportBatch as SQLImportBatch,
@@ -89,3 +95,20 @@ class ImportResultSQLRepository(
     def __init__(self, session: AsyncSession) -> None:
         """Initialize the repository with the session."""
         super().__init__(session, ImportResultDTO, DomainImportResult, SQLImportResult)
+
+    async def get_by_filter(
+        self,
+        import_batch_id: uuid.UUID | None = None,
+        status: ImportResultStatus | None = None,
+    ) -> list[DomainImportResult]:
+        """Get a list of import results based on the provided filters."""
+        query = select(SQLImportResult)
+        if import_batch_id:
+            query = query.where(SQLImportResult.import_batch_id == import_batch_id)
+        if status:
+            query = query.where(SQLImportResult.status == status)
+        result = await self._session.execute(query)
+        dtos = await asyncio.gather(
+            *(ImportResultDTO.from_sql(r) for r in result.scalars())
+        )
+        return await asyncio.gather(*(dtos.to_domain() for dtos in dtos))

@@ -242,3 +242,31 @@ class ImportResult(ImportResultBase):
 
 class ImportResultCreate(ImportResultBase):
     """Input for creating an import result."""
+
+
+class ImportBatchSummary(ImportBatchBase):
+    """A view for an import batch that includes a summary of its results."""
+
+    id: uuid.UUID = Field(
+        default_factory=uuid.uuid4,
+        description="""
+The identifier of the batch, which may be set by the processor or will be
+generated on creation.
+""",
+    )
+
+    created_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
+        description="The timestamp at which the batch was created.",
+    )
+    updated_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
+        description="The timestamp at which the batch's status was last updated.",
+    )
+
+    results: dict[ImportResultStatus, int] = Field(
+        description="A count of references by their current import status."
+    )
+    failure_details: list[str] | None = Field(
+        description="The details of the failures that occurred.",
+    )
