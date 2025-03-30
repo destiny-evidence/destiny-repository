@@ -3,7 +3,7 @@
 import asyncio
 import datetime
 import uuid
-from typing import Optional, Self
+from typing import Self
 
 from pydantic import HttpUrl
 
@@ -39,7 +39,7 @@ class ImportBatchDTO(GenericSQLDTO[DomainImportBatch, SQLImportBatch]):
     status: ImportBatchStatus
     storage_url: str
 
-    import_record: Optional["ImportRecordDTO"] = None
+    import_record: "ImportRecordDTO | None" = None
 
     @classmethod
     async def from_domain(cls, domain_obj: DomainImportBatch) -> Self:
@@ -63,7 +63,7 @@ class ImportBatchDTO(GenericSQLDTO[DomainImportBatch, SQLImportBatch]):
             import_record_id=sql_obj.import_record_id,
             status=sql_obj.status,
             storage_url=sql_obj.storage_url,
-            preloaded=preloaded if preloaded else [],
+            preloaded=preloaded,
             import_record=await ImportRecordDTO.from_sql(sql_obj.import_record)
             if "import_record" in preloaded
             else None,
