@@ -1,5 +1,5 @@
 """
-Data transfer objects used to interface between domain and persistence models.
+Objects used to interface with persistence implementations.
 
 This is not inherited anywhere as the mixing of metaclasses causes mayhem (for instance,
 ABCMeta and SQLAlchemy's DeclarativeMeta) but is used as a guide to define the interface

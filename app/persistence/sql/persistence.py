@@ -1,4 +1,4 @@
-"""Data transfer objects used to interface between domain and sql models."""
+"""Objects used to interface with SQL implementations."""
 
 import uuid
 from abc import abstractmethod

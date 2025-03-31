@@ -1,4 +1,4 @@
-"""Data transfer objects used to interface between domain and persistence models."""
+"""Objects used to interface with SQL implementations."""
 
 import asyncio
 import datetime
