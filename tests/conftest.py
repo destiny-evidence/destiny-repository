@@ -14,7 +14,7 @@ from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.persistence.sql.declarative_base import Base
+from app.persistence.sql.persistence import Base
 from app.persistence.sql.session import AsyncDatabaseSessionManager, db_manager
 from tests.db_utils import alembic_config_from_url, tmp_database
 

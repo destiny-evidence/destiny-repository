@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
     from app.domain.base import DomainBaseModel
-    from app.persistence.dto import GenericDTO
+    from app.persistence.persistence import GenericPersistence
 
-DTOType = TypeVar("DTOType", bound="GenericDTO")
+GenericPersistenceType = TypeVar("GenericPersistenceType", bound="GenericPersistence")
 GenericDomainModelType = TypeVar("GenericDomainModelType", bound="DomainBaseModel")

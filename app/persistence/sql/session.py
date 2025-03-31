@@ -32,7 +32,8 @@ class AsyncDatabaseSessionManager:
         self._sessionmaker = async_sessionmaker(
             bind=self._engine,
             # https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html#asyncio-orm-avoid-lazyloads
-            # This is safe to use because the object is transient through the DTO layer
+            # This is safe to use because the object is transient through the
+            # persistence layer
             expire_on_commit=False,
         )
 
