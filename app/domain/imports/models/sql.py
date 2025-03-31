@@ -122,8 +122,6 @@ class ImportRecord(GenericSQLPersistence[DomainImportRecord]):
 
     async def to_domain(self, preload: list[str] | None = None) -> DomainImportRecord:
         """Convert the persistence model into an Domain ImportRecord object."""
-        if preload is None:
-            preload = []
         return DomainImportRecord(
             id=self.id,
             search_string=self.search_string,
