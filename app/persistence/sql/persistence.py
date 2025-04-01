@@ -14,11 +14,7 @@ from sqlalchemy.orm import (
 )
 
 from app.persistence.generics import GenericDomainModelType
-
-
-def utc_now() -> datetime.datetime:
-    """Return the current UTC time."""
-    return datetime.datetime.now(datetime.UTC)
+from app.utils.time_and_date import utc_now
 
 
 class Base(DeclarativeBase, AsyncAttrs):

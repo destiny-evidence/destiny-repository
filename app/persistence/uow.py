@@ -10,6 +10,11 @@ from app.domain.imports.repository import (
     ImportRecordRepositoryBase,
     ImportResultRepositoryBase,
 )
+from app.domain.references.repository import (
+    EnhancementRepositoryBase,
+    ExternalIdentifierRepositoryBase,
+    ReferenceRepositoryBase,
+)
 
 
 class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
@@ -18,6 +23,9 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
     imports: ImportRecordRepositoryBase
     batches: ImportBatchRepositoryBase
     results: ImportResultRepositoryBase
+    references: ReferenceRepositoryBase
+    external_identifiers: ExternalIdentifierRepositoryBase
+    enhancements: EnhancementRepositoryBase
 
     async def __aenter__(self) -> Self:
         """Set up the unit of work, including any repositories or sessions."""

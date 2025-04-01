@@ -4,6 +4,7 @@ requires = ["poetry-core"]
 
 [tool.mypy]
 explicit_package_bases = true
+plugins = ["pydantic.mypy"]
 
 [tool.poetry]
 authors = [
