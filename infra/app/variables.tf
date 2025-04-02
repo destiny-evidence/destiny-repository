@@ -21,11 +21,6 @@ variable "app_max_replicas" {
   default     = 10
 }
 
-variable "azure_application_id" {
-  description = "ID of the azure application "
-  type        = string
-}
-
 variable "azure_tenant_id" {
   description = "ID of the azure application "
   type        = string

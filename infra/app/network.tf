@@ -48,8 +48,6 @@ resource "azurerm_private_dns_zone_virtual_network_link" "db" {
   virtual_network_id    = azurerm_virtual_network.this.id
   resource_group_name   = azurerm_resource_group.this.name
   depends_on            = [azurerm_subnet.db]
-
-  tags = local.minimum_resource_tags
 }
 
 resource "azurerm_subnet" "app" {

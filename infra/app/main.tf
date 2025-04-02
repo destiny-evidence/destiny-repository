@@ -24,7 +24,7 @@ locals {
     },
     {
       name  = "AZURE_APPLICATION_ID"
-      value = var.azure_application_id
+      value = azuread_application.destiny_repository.id
     },
     {
       name  = "AZURE_TENANT_ID"
@@ -91,7 +91,7 @@ module "container_app" {
     env = [
       {
         name  = "AZURE_APPLICATION_ID"
-        value = var.azure_application_id
+        value = azuread_application.destiny_repository.id
       },
       {
         name  = "AZURE_TENANT_ID"
