@@ -54,7 +54,7 @@ def choose_auth_strategy() -> AuthMethod:
 
     return AzureJwtAuth(
         tenant_id=settings.azure_tenant_id,
-        application_id=settings.azure_tenant_id,
+        application_id=settings.azure_application_id,
         scope=AuthScopes.IMPORT,
     )
 
