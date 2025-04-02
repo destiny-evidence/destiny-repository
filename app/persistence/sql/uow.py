@@ -8,6 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.imports.repository import (
     ImportBatchSQLRepository,
     ImportRecordSQLRepository,
+    ImportResultSQLRepository,
+)
+from app.domain.references.repository import (
+    EnhancementSQLRepository,
+    ExternalIdentifierSQLRepository,
+    ReferenceSQLRepository,
 )
 from app.persistence.uow import AsyncUnitOfWorkBase
 
@@ -17,6 +23,13 @@ class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
 
     session: AsyncSession
 
+    imports: ImportRecordSQLRepository
+    batches: ImportBatchSQLRepository
+    results: ImportResultSQLRepository
+    references: ReferenceSQLRepository
+    external_identifiers: ExternalIdentifierSQLRepository
+    enhancements: EnhancementSQLRepository
+
     def __init__(self, session: AsyncSession) -> None:
         """Initialize the unit of work with a session."""
         self.session = session
@@ -25,6 +38,10 @@ class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
         """Set up the SQL repositories and open the session."""
         self.imports = ImportRecordSQLRepository(self.session)
         self.batches = ImportBatchSQLRepository(self.session)
+        self.results = ImportResultSQLRepository(self.session)
+        self.references = ReferenceSQLRepository(self.session)
+        self.external_identifiers = ExternalIdentifierSQLRepository(self.session)
+        self.enhancements = EnhancementSQLRepository(self.session)
 
         return await super().__aenter__()
 

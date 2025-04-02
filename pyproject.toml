@@ -4,6 +4,7 @@ requires = ["poetry-core"]
 
 [tool.mypy]
 explicit_package_bases = true
+plugins = ["pydantic.mypy"]
 
 [tool.poetry]
 authors = [
@@ -55,6 +56,7 @@ lint.ignore = [
     "D212", # multi-line-summary-first-line
     "D407", # removed dashes lines under sections
     "D417", # argument description in docstring (unreliable)
+    "FIX002", # implicit trust that TODOs are not trivial, or else they would be fixed
     "ISC001", # simplify implicit str concatenation (ruff-format recommended)
 ]
 lint.per-file-ignores = {"app/migrations/env.py" = [
@@ -64,6 +66,12 @@ lint.per-file-ignores = {"app/migrations/env.py" = [
     "INP001", # File is part of an implicit namespace package.
     "PLR2004", # Magic value used in comparison
     "S101", # Use of `assert` detected
+], "tests/unit*" = [
+    "A002", # Mocking pydantic classes with built in classes causes shadows
+    "ANN", # Relax type hinting constraints in unit tests
+    "ARG002", # Unused arguments sometimes required for mocking
+    "D", # Relax documentation constraints in unit tests
+    "PLR0913", # Mocking pydantic classes can require many arguments
 ]}
 lint.select = ["ALL"]
 lint.mccabe.max-complexity = 18

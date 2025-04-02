@@ -3,8 +3,8 @@
 from typing import TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
-    from app.persistence.sql.declarative_base import Base
-    from app.persistence.sql.dto import GenericSQLDTO
+    from app.persistence.sql.persistence import GenericSQLPersistence
 
-SQLDTOType = TypeVar("SQLDTOType", bound="GenericSQLDTO")
-GenericSQLModelType = TypeVar("GenericSQLModelType", bound="Base")
+GenericSQLPersistenceType = TypeVar(
+    "GenericSQLPersistenceType", bound="GenericSQLPersistence"
+)

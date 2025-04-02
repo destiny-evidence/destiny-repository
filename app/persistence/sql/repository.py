@@ -9,42 +9,38 @@ from sqlalchemy.orm import joinedload
 
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
-from app.persistence.sql.generics import GenericSQLModelType, SQLDTOType
+from app.persistence.sql.generics import GenericSQLPersistenceType
 
 
 class GenericAsyncSqlRepository(
-    Generic[SQLDTOType, GenericDomainModelType, GenericSQLModelType],
-    GenericAsyncRepository[SQLDTOType, GenericDomainModelType],
+    Generic[GenericDomainModelType, GenericSQLPersistenceType],
+    GenericAsyncRepository[GenericDomainModelType, GenericSQLPersistenceType],  # type:ignore[type-var]
     ABC,
 ):
     """A generic implementation of a repository backed by SQLAlchemy."""
 
     _session: AsyncSession
-    _sql_cls: type[GenericSQLModelType]
 
     def __init__(
         self,
         session: AsyncSession,
-        dto_cls: type[SQLDTOType],
         domain_cls: type[GenericDomainModelType],
-        sql_cls: type[GenericSQLModelType],
+        persistence_cls: type[GenericSQLPersistenceType],
     ) -> None:
         """
         Initialize the repository.
 
         Args:
         - session (AsyncSession): The current active database session.
-        - _dto_cls (type[SQLDTO]): The SQLDTO of model which will be persisted.
+        - _persistence_cls (type[GenericSQLPersistenceType]):
+            The SQL model which will be persisted.
         - _domain_cls (type[GenericDomainModelType]):
             The domain class of model which will be persisted.
-        - _sql_cls (type[GenericSQLModelType]):
-            The sql class of model which will be persisted.
 
         """
         self._session = session
-        self._dto_cls = dto_cls
+        self._persistence_cls = persistence_cls
         self._domain_cls = domain_cls
-        self._sql_cls = sql_cls
 
     async def get_by_pk(
         self, pk: UUID4, preload: list[str] | None = None
@@ -60,13 +56,12 @@ class GenericAsyncSqlRepository(
         options = []
         if preload:
             for p in preload:
-                relationship = getattr(self._sql_cls, p)
+                relationship = getattr(self._persistence_cls, p)
                 options.append(joinedload(relationship))
-        result = await self._session.get(self._sql_cls, pk, options=options)
+        result = await self._session.get(self._persistence_cls, pk, options=options)
         if not result:
             return None
-        dto = await self._dto_cls.from_sql(result, preloaded=preload)
-        return await dto.to_domain()
+        return await result.to_domain(preload=preload)
 
     async def add(self, record: GenericDomainModelType) -> GenericDomainModelType:
         """
@@ -81,10 +76,8 @@ class GenericAsyncSqlRepository(
         (probably the job of the service through the unit of work.)
 
         """
-        dto = await self._dto_cls.from_domain(record)
-        sql_record = await dto.to_sql()
-        self._session.add(sql_record)
+        persistence = await self._persistence_cls.from_domain(record)
+        self._session.add(persistence)
         await self._session.flush()
-        await self._session.refresh(sql_record)
-        dto = await self._dto_cls.from_sql(sql_record)
-        return await dto.to_domain()
+        await self._session.refresh(persistence)
+        return await persistence.to_domain()

@@ -5,14 +5,16 @@ from typing import Generic
 
 from pydantic import UUID4
 
-from app.persistence.generics import DTOType, GenericDomainModelType
+from app.persistence.generics import GenericDomainModelType, GenericPersistenceType
 
 
-class GenericAsyncRepository(Generic[DTOType, GenericDomainModelType], ABC):
+class GenericAsyncRepository(
+    Generic[GenericDomainModelType, GenericPersistenceType], ABC
+):
     """The core interface expected of a repository implementation."""
 
-    _dto_cls: type[DTOType]
     _domain_cls: type[GenericDomainModelType]
+    _persistence_cls: type[GenericPersistenceType]
 
     @abstractmethod
     async def get_by_pk(

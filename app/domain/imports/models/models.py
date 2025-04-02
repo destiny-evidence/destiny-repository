@@ -10,7 +10,7 @@ from pydantic import (
     PastDatetime,
 )
 
-from app.domain.base import DomainBaseModel
+from app.domain.base import DomainBaseModel, SQLAttributeMixin
 
 
 class ImportRecordStatus(StrEnum):
@@ -41,8 +41,31 @@ class ImportBatchStatus(StrEnum):
 
     CREATED = "created"
     STARTED = "started"
+    FAILED = "failed"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
+
+
+class ImportResultStatus(StrEnum):
+    """
+    Describes the status of an import result.
+
+    - `created`: Created, but no processing has started.
+    - `started`: The reference is currently being processed.
+    - `completed`: The reference has been created.
+    - `cancelled`: Processing was cancelled by calling the API.
+    - `partially_failed`: The reference was created but one or more enhancements failed
+        to be added. See the result's `failure_details` field for more information.
+    - `failed`: The reference failed to be created.
+        See the result's `failure_details` field for more information.
+    """
+
+    CREATED = "created"
+    STARTED = "started"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    PARTIALLY_FAILED = "partially_failed"
+    FAILED = "failed"
 
 
 class ImportRecordBase(DomainBaseModel):
@@ -93,16 +116,9 @@ The status of the upload.
     )
 
 
-class ImportRecord(ImportRecordBase):
+class ImportRecord(ImportRecordBase, SQLAttributeMixin):
     """Core import record model with database attributes included."""
 
-    id: uuid.UUID = Field(
-        default_factory=uuid.uuid4,
-        description="""
-The ID of the import, which may be set by the processor or will be generated
-on creation.
-""",
-    )
     batches: list["ImportBatch"] | None = Field(
         None, description="The batches associated with this import."
     )
@@ -131,8 +147,59 @@ The URL at which the set of references for this batch are stored.
     )
 
 
-class ImportBatch(ImportBatchBase):
+class ImportBatch(ImportBatchBase, SQLAttributeMixin):
     """Core import batch model with database attributes included."""
+
+    import_record_id: uuid.UUID = Field(
+        description="The ID of the parent import record."
+    )
+    import_record: ImportRecord | None = Field(
+        None, description="The parent import record."
+    )
+    import_results: list["ImportResult"] | None = Field(
+        None, description="The results from processing the batch."
+    )
+
+
+class ImportBatchCreate(ImportBatchBase):
+    """Input for creating an import batch."""
+
+
+class ImportResultBase(DomainBaseModel):
+    """
+    The base class for import results.
+
+    An import result is a record of the outcome of a single imported reference.
+    It is essentially a "Reference attempt".
+    These are created during the processing of an ImportBatch file.
+    """
+
+    import_batch_id: uuid.UUID = Field(description="The ID of the parent import batch.")
+    status: ImportResultStatus = Field(
+        default=ImportResultStatus.CREATED, description="The status of the result."
+    )
+    failure_details: str | None = Field(
+        description="Details of any failure that occurred during processing."
+    )
+
+
+class ImportResult(ImportResultBase, SQLAttributeMixin):
+    """Core import result model with database attributes included."""
+
+    import_batch: ImportBatch | None = Field(
+        None, description="The parent import batch."
+    )
+    reference_id: uuid.UUID | None = Field(
+        description="The ID of the created reference."
+    )
+
+
+class ImportResultCreate(ImportResultBase):
+    """Input for creating an import result."""
+
+
+class ImportBatchSummary(ImportBatchBase):
+    """A view for an import batch that includes a summary of its results."""
 
     id: uuid.UUID = Field(
         default_factory=uuid.uuid4,
@@ -142,13 +209,18 @@ generated on creation.
 """,
     )
 
-    import_record_id: uuid.UUID = Field(
-        description="The ID of the parent import record."
+    created_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
+        description="The timestamp at which the batch was created.",
     )
-    import_record: ImportRecord | None = Field(
-        None, description="The parent import record."
+    updated_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
+        description="The timestamp at which the batch's status was last updated.",
     )
 
-
-class ImportBatchCreate(ImportBatchBase):
-    """Input for creating an import batch."""
+    results: dict[ImportResultStatus, int] = Field(
+        description="A count of references by their current import status."
+    )
+    failure_details: list[str] | None = Field(
+        description="The details of the failures that occurred.",
+    )
