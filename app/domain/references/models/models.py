@@ -119,6 +119,8 @@ if identifier_type is `other`.
         if self.identifier_type == ExternalIdentifierType.DOI and not re.match(
             RE_DOI, self.identifier, re.IGNORECASE
         ):
+            # TODO(Adam): consider validating against DOI itself
+            # https://github.com/destiny-evidence/destiny-repository/issues/33
             msg = "The provided DOI is not in a valid format."
             raise ValueError(msg)
         if (

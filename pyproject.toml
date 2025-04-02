@@ -56,6 +56,7 @@ lint.ignore = [
     "D212", # multi-line-summary-first-line
     "D407", # removed dashes lines under sections
     "D417", # argument description in docstring (unreliable)
+    "FIX002", # implicit trust that TODOs are not trivial, or else they would be fixed
     "ISC001", # simplify implicit str concatenation (ruff-format recommended)
 ]
 lint.per-file-ignores = {"app/migrations/env.py" = [
