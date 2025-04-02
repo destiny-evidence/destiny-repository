@@ -14,7 +14,7 @@ valid_import_record_params = {
     "processor_name": "Test Importer",
     "processor_version": "0.0.1",
     "notes": "This is not a real import, it is only a test run.",
-    "expected_record_count": 100,
+    "expected_reference_count": 100,
     "source_name": "OpenAlex",
 }
 
@@ -45,9 +45,11 @@ async def client(app: FastAPI = app) -> AsyncIterator[AsyncClient]:
 
 async def test_create_and_read_import_record(client: AsyncClient) -> None:
     """Test creating an import record then reading it."""
-    create_response = await client.post("/imports/", json=valid_import_record_params)
+    create_response = await client.post(
+        "/imports/record/", json=valid_import_record_params
+    )
     assert create_response.status_code == status.HTTP_201_CREATED
 
     import_id = create_response.json()["id"]
-    read_response = await client.get(f"/imports/{import_id}")
+    read_response = await client.get(f"/imports/record/{import_id}/")
     assert read_response.json().items() >= valid_import_record_params.items()

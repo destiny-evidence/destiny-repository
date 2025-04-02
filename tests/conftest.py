@@ -12,10 +12,10 @@ from alembic.command import upgrade
 from jose import jwt
 from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import SQLModel
 
 from app.core.config import get_settings
-from app.core.db import DatabaseSessionManager, db_manager
+from app.persistence.sql.persistence import Base
+from app.persistence.sql.session import AsyncDatabaseSessionManager, db_manager
 from tests.db_utils import alembic_config_from_url, tmp_database
 
 settings = get_settings()
@@ -53,7 +53,7 @@ async def migrated_postgres_template() -> AsyncGenerator[str]:
 @pytest.fixture(scope="session")
 async def sessionmanager_for_tests(
     migrated_postgres_template: str,
-) -> AsyncGenerator[DatabaseSessionManager]:
+) -> AsyncGenerator[AsyncDatabaseSessionManager]:
     """Build shared session manager for tests."""
     db_manager.init(db_url=migrated_postgres_template)
     # can add another init (redis, etc...)
@@ -63,9 +63,14 @@ async def sessionmanager_for_tests(
 
 @pytest.fixture
 async def session(
-    sessionmanager_for_tests: DatabaseSessionManager,
+    sessionmanager_for_tests: AsyncDatabaseSessionManager,
 ) -> AsyncGenerator[AsyncSession]:
     """Yield the session for the test and cleanup tables."""
+    engine = sessionmanager_for_tests._engine  # noqa: SLF001
+    assert engine
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
     async with sessionmanager_for_tests.session() as session:
         yield session
     # Clean tables. I tried
@@ -76,11 +81,9 @@ async def session(
     # Doing DELETE FROM is the fastest
     # https://www.lob.com/blog/truncate-vs-delete-efficiently-clearing-data-from-a-postgres-table
     # BUT DELETE FROM query does not reset any AUTO_INCREMENT counters
-    async with sessionmanager_for_tests.connect() as conn:
-        for table in reversed(SQLModel.metadata.sorted_tables):
-            # Clean tables in such order that tables which depend on another go first
+    async with engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
             await conn.execute(table.delete())
-        await conn.commit()
 
 
 @pytest.fixture

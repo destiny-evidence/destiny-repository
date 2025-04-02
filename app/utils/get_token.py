@@ -16,7 +16,7 @@ def get_token() -> str:
 
     app = PublicClientApplication(
         settings.cli_client_id,
-        authority=f"https://login.microsoftonline.com/{settings.azure_tenant_id}",
+        authority=f"{settings.azure_login_url}/{settings.azure_tenant_id}",
         client_credential=None,
     )
 

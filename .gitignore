@@ -151,6 +151,9 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
+# ruff
+.ruff_cache/
+
 # Pyre type checker
 .pyre/
 
@@ -173,5 +176,9 @@ cython_debug/
 # Terraform
 .terraform/
 
-# VSCode
+# VS Code Workspace settings
+*.code-workspace
 .vscode/
+
+# Mac Finder config
+.DS_Store

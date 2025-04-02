@@ -8,11 +8,11 @@ import structlog
 from fastapi import FastAPI, Request, Response, status
 
 from app.core.config import get_settings
-from app.core.db import db_manager
 from app.core.logger import configure_logger, get_logger
-from app.routers import healthcheck, imports
-
-from .routers import example
+from app.domain.imports.routes import router as import_router
+from app.domain.references.routes import router as reference_router
+from app.persistence.sql.session import db_manager
+from app.utils.healthcheck import router as healthcheck_router
 
 settings = get_settings()
 logger = get_logger()
@@ -28,11 +28,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="DESTINY Climate and Health Repository", lifespan=lifespan)
 
-# This is an example router which can be removed when the project is more
-# than just a skeleton.
-app.include_router(example.router)
-app.include_router(imports.router)
-app.include_router(healthcheck.router)
+app.include_router(import_router)
+app.include_router(reference_router)
+app.include_router(healthcheck_router)
 
 configure_logger()
 

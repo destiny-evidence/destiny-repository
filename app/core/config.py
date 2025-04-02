@@ -3,7 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, PostgresDsn
+from pydantic import Field, HttpUrl, PostgresDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     project_root: Path = Path(__file__).joinpath("../../..").resolve()
 
     azure_application_id: str
+    azure_login_url: HttpUrl = HttpUrl("https://login.microsoftonline.com")
     azure_tenant_id: str
     cli_client_id: str | None = None
 

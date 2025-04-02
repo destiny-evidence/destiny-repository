@@ -13,11 +13,11 @@ from sqlalchemy.ext.asyncio import (
 )
 
 
-class DatabaseSessionManager:
+class AsyncDatabaseSessionManager:
     """Manages database sessions."""
 
     def __init__(self) -> None:
-        """Init DatabaseSessionManager."""
+        """Init AsyncDatabaseSessionManager."""
         self._engine: AsyncEngine | None = None
         self._sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
@@ -31,6 +31,9 @@ class DatabaseSessionManager:
         )
         self._sessionmaker = async_sessionmaker(
             bind=self._engine,
+            # https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html#asyncio-orm-avoid-lazyloads
+            # This is safe to use because the object is transient through the
+            # persistence layer
             expire_on_commit=False,
         )
 
@@ -46,7 +49,7 @@ class DatabaseSessionManager:
     async def session(self) -> AsyncIterator[AsyncSession]:
         """Yield a database session."""
         if self._sessionmaker is None:
-            msg = "DatabaseSessionManager is not initialized"
+            msg = "AsyncDatabaseSessionManager is not initialized"
             raise RuntimeError(msg)
         async with self._sessionmaker() as session:
             try:
@@ -59,7 +62,7 @@ class DatabaseSessionManager:
     async def connect(self) -> AsyncIterator[AsyncConnection]:
         """Yield a database connection."""
         if self._engine is None:
-            msg = "DatabaseSessionManager is not initialized"
+            msg = "AsyncDatabaseSessionManager is not initialized"
             raise RuntimeError(msg)
         async with self._engine.begin() as connection:
             try:
@@ -69,7 +72,7 @@ class DatabaseSessionManager:
                 raise
 
 
-db_manager = DatabaseSessionManager()
+db_manager = AsyncDatabaseSessionManager()
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:
