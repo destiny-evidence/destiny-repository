@@ -182,8 +182,6 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
             status=domain_obj.status,
             reference_id=domain_obj.reference_id,
             failure_details=domain_obj.failure_details,
-            created_at=domain_obj.created_at,
-            updated_at=domain_obj.updated_at,
         )
 
     async def to_domain(self, preload: list[str] | None = None) -> DomainImportResult:
@@ -194,8 +192,6 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
             status=self.status,
             reference_id=self.reference_id,
             failure_details=self.failure_details,
-            created_at=self.created_at,
-            updated_at=self.updated_at,
             import_batch=await self.import_batch.to_domain()
             if "import_batch" in (preload or [])
             else None,

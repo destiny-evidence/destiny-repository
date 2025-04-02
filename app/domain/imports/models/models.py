@@ -10,7 +10,7 @@ from pydantic import (
     PastDatetime,
 )
 
-from app.domain.base import DomainBaseModel
+from app.domain.base import DomainBaseModel, SQLAttributeMixin
 
 
 class ImportRecordStatus(StrEnum):
@@ -41,6 +41,7 @@ class ImportBatchStatus(StrEnum):
 
     CREATED = "created"
     STARTED = "started"
+    FAILED = "failed"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
@@ -115,25 +116,8 @@ The status of the upload.
     )
 
 
-class ImportRecord(ImportRecordBase):
+class ImportRecord(ImportRecordBase, SQLAttributeMixin):
     """Core import record model with database attributes included."""
-
-    id: uuid.UUID = Field(
-        default_factory=uuid.uuid4,
-        description="""
-The ID of the import, which may be set by the processor or will be generated
-on creation.
-""",
-    )
-
-    created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
-        description="The timestamp at which the record was created.",
-    )
-    updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
-        description="The timestamp at which the record's status was last updated.",
-    )
 
     batches: list["ImportBatch"] | None = Field(
         None, description="The batches associated with this import."
@@ -163,25 +147,8 @@ The URL at which the set of references for this batch are stored.
     )
 
 
-class ImportBatch(ImportBatchBase):
+class ImportBatch(ImportBatchBase, SQLAttributeMixin):
     """Core import batch model with database attributes included."""
-
-    id: uuid.UUID = Field(
-        default_factory=uuid.uuid4,
-        description="""
-The identifier of the batch, which may be set by the processor or will be
-generated on creation.
-""",
-    )
-
-    created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
-        description="The timestamp at which the batch was created.",
-    )
-    updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
-        description="The timestamp at which the batch's status was last updated.",
-    )
 
     import_record_id: uuid.UUID = Field(
         description="The ID of the parent import record."
@@ -216,21 +183,8 @@ class ImportResultBase(DomainBaseModel):
     )
 
 
-class ImportResult(ImportResultBase):
+class ImportResult(ImportResultBase, SQLAttributeMixin):
     """Core import result model with database attributes included."""
-
-    id: uuid.UUID = Field(
-        default_factory=uuid.uuid4, description="""The identifier of the result."""
-    )
-
-    created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
-        description="The timestamp at which the result was created.",
-    )
-    updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
-        description="The timestamp at which the result's status was last updated.",
-    )
 
     import_batch: ImportBatch | None = Field(
         None, description="The parent import batch."
