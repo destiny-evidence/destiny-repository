@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request, Response, status
 from app.core.config import get_settings
 from app.core.logger import configure_logger, get_logger
 from app.domain.imports.routes import router as import_router
+from app.domain.references.routes import router as reference_router
 from app.persistence.sql.session import db_manager
 from app.utils.healthcheck import router as healthcheck_router
 
@@ -28,6 +29,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="DESTINY Climate and Health Repository", lifespan=lifespan)
 
 app.include_router(import_router)
+app.include_router(reference_router)
 app.include_router(healthcheck_router)
 
 configure_logger()
