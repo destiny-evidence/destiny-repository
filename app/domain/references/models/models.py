@@ -9,6 +9,7 @@ from typing import Annotated, Literal, Self
 from pydantic import BaseModel, Field, HttpUrl, PastDate, model_validator
 
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
+from app.utils.regex import RE_DOI, RE_OPEN_ALEX_IDENTIFIER
 
 
 class Visibility(StrEnum):
@@ -116,7 +117,7 @@ if identifier_type is `other`.
     def validate_identifier_format(self) -> Self:
         """Validate the format of the identifier according to the identifier type."""
         if self.identifier_type == ExternalIdentifierType.DOI and not re.match(
-            r"^10\.\d{4,9}/[-._;()/:A-Z0-9]+$", self.identifier, re.IGNORECASE
+            RE_DOI, self.identifier, re.IGNORECASE
         ):
             msg = "The provided DOI is not in a valid format."
             raise ValueError(msg)
@@ -127,7 +128,7 @@ if identifier_type is `other`.
             msg = "PM ID must be an integer."
             raise ValueError(msg)
         if self.identifier_type == ExternalIdentifierType.OPEN_ALEX and not re.match(
-            r"^W\d+$", self.identifier
+            RE_OPEN_ALEX_IDENTIFIER, self.identifier
         ):
             msg = "The provided OpenAlex ID is not in a valid format."
             raise ValueError(msg)
@@ -338,6 +339,11 @@ class DriverVersion(StrEnum):
     before peer-review. Its content may differ significantly from that of the accepted
     article.
     """
+
+    PUBLISHED_VERSION = "publishedVersion"
+    ACCEPTED_VERSION = "acceptedVersion"
+    SUBMITTED_VERSION = "submittedVersion"
+    OTHER = "other"
 
 
 class Location(BaseModel):
