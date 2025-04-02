@@ -72,6 +72,37 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
     entrypoint: watchmedo auto-restart --directory=./ --pattern=*.py --recursive -- celery -A app.tasks worker --loglevel=INFO
 
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+
+  app:
+    build:
+      context: .
+      args:
+        POETRY_INSTALL_DEV: "true"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app
+    env_file:
+      - .env
+    entrypoint: fastapi dev app/main.py --host 0.0.0.0 --port 8000
+
+  celery:
+    build:
+      context: .
+      args:
+        POETRY_INSTALL_DEV: "true"
+    depends_on:
+      - redis
+    volumes:
+      - ./app:/app/app
+    env_file:
+      - .env
+    entrypoint: watchmedo auto-restart --directory=./ --pattern=*.py --recursive -- celery -A app.tasks worker --loglevel=INFO
+
 volumes:
   db_data:
   fs_data:
