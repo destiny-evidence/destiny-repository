@@ -37,7 +37,11 @@ locals {
     {
       name  = "ENV"
       value = var.environment
-    }
+    },
+    {
+      name  = "CELERY_BROKER_URL"
+      value = "azurestoragequeues://DefaultAzureCredential@${azurerm_storage_account.this.primary_queue_endpoint}"
+    },
   ]
 
   secrets = [
@@ -118,6 +122,52 @@ module "container_app" {
       }
     }
   ]
+}
+
+module "container_app_tasks" {
+  source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
+  version                         = "1.3.0"
+  app_name                        = "${var.app_name}-tasks"
+  environment                     = var.environment
+  container_registry_id           = data.azurerm_container_registry.this.id
+  container_registry_login_server = data.azurerm_container_registry.this.login_server
+  infrastructure_subnet_id        = azurerm_subnet.app.id
+  resource_group_name             = azurerm_resource_group.this.name
+  region                          = azurerm_resource_group.this.location
+  max_replicas                    = var.tasks_max_replicas
+  tags                            = local.minimum_resource_tags
+
+  identity = {
+    id           = azurerm_user_assigned_identity.container_apps_identity.id
+    principal_id = azurerm_user_assigned_identity.container_apps_identity.principal_id
+    client_id    = azurerm_user_assigned_identity.container_apps_identity.client_id
+  }
+
+  env_vars = local.env_vars
+  secrets  = local.secrets
+
+  command = ["celery", "-A", "app.tasks", "worker", "--loglevel=INFO"]
+
+  custom_scale_rules = [
+    {
+      name             = "queue-length-scale-rule"
+      custom_rule_type = "azure-queue"
+      metadata = {
+        accountName = azurerm_storage_account.this.name
+        queueName   = "celery"
+        queueLength = var.queue_length_scaling_threshold
+        identity    = azurerm_user_assigned_identity.container_apps_identity.client_id
+      }
+    }
+  ]
+}
+
+resource "azurerm_storage_account" "this" {
+  name                     = "${replace(var.app_name, "-", "")}${substr(var.environment, 0, 4)}"
+  resource_group_name      = azurerm_resource_group.this.name
+  location                 = azurerm_resource_group.this.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
 }
 
 resource "azurerm_postgresql_flexible_server" "this" {
