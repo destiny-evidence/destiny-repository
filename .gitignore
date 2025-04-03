@@ -182,6 +182,3 @@ cython_debug/
 
 # Mac Finder config
 .DS_Store
-
-# MinIO config
-.minio/data/.minio.sys*
