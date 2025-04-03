@@ -52,6 +52,11 @@ variable "created_by" {
   type        = string
 }
 
+variable "developers_group_id" {
+  type        = string
+  description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs"
+}
+
 variable "environment" {
   description = "The name of the environment this stack is being deployed to"
   type        = string
