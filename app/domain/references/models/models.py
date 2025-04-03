@@ -478,3 +478,15 @@ class Enhancement(EnhancementBase, SQLAttributeMixin):
 
 class EnhancementCreate(EnhancementBase):
     """Input for creating an enhancement."""
+
+
+class ReferenceCreate(ReferenceBase):
+    """Input for creating a reference."""
+
+    identifiers: list[ExternalIdentifierCreate] = Field(
+        description="A list of `ExternalIdentifiers` for the Reference"
+    )
+    enhancements: list[EnhancementCreate] | None = Field(
+        None,
+        description="A list of enhancements for the reference",
+    )

@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from contextlib import AbstractAsyncContextManager
 from types import TracebackType
-from typing import Self
+from typing import Final, Self
 
 from app.domain.imports.repository import (
     ImportBatchRepositoryBase,
@@ -15,17 +15,29 @@ from app.domain.references.repository import (
     ExternalIdentifierRepositoryBase,
     ReferenceRepositoryBase,
 )
+from app.persistence.repository import GenericAsyncRepository
 
 
 class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
     """An asynchronous context manager which handles the persistence lifecyle."""
 
+    # Consider adding method of protection to these attributes
+    # to disallow access when self._is_active is False
     imports: ImportRecordRepositoryBase
     batches: ImportBatchRepositoryBase
     results: ImportResultRepositoryBase
     references: ReferenceRepositoryBase
     external_identifiers: ExternalIdentifierRepositoryBase
     enhancements: EnhancementRepositoryBase
+
+    _protected_attrs: Final[set[str]] = {
+        "imports",
+        "batches",
+        "results",
+        "references",
+        "external_identifiers",
+        "enhancements",
+    }
 
     def __init__(self) -> None:
         """
@@ -35,6 +47,20 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
         a nested fashion.
         """
         self._is_active = False
+
+    def __getattribute__(self, name: str) -> GenericAsyncRepository:
+        """Protect access to repositories unless UoW is active."""
+        protected = object.__getattribute__(self, "_protected_attrs")
+        if name not in protected:
+            return object.__getattribute__(self, name)
+        is_active = object.__getattribute__(self, "_is_active")
+        if not is_active:
+            msg = (
+                "Unit of work is not active. "
+                "Make sure you are in a decorated function."
+            )
+            raise RuntimeError(msg)
+        return object.__getattribute__(self, name)
 
     async def __aenter__(self) -> Self:
         """Set up the unit of work, including any repositories or sessions."""

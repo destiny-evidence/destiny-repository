@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -99,11 +99,10 @@ async def register_batch(
     import_record_id: Annotated[UUID4, Path(title="The id of the associated import")],
     batch: ImportBatchCreate,
     import_service: Annotated[ImportService, Depends(import_service)],
-    background_tasks: BackgroundTasks,
 ) -> ImportBatch:
     """Register an import batch for a given import."""
     import_batch = await import_service.register_batch(import_record_id, batch)
-    background_tasks.add_task(import_service.process_batch, import_batch)
+    await import_service.process_batch(import_batch)
     return import_batch
 
 

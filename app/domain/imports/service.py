@@ -14,6 +14,7 @@ from app.domain.imports.models.models import (
     ImportResultCreate,
     ImportResultStatus,
 )
+from app.domain.references.service import ReferenceService
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 
@@ -39,6 +40,17 @@ class ImportService(GenericService):
     async def get_import_batch(self, import_batch_id: UUID4) -> ImportBatch | None:
         """Get a single import by id."""
         return await self.sql_uow.batches.get_by_pk(import_batch_id)
+
+    async def _update_import_result_status(
+        self, import_result_id: UUID4, import_result_status: ImportResultStatus
+    ) -> ImportResult:
+        """Update the status of an import batch."""
+        updated = await self.sql_uow.results.update_by_pk(
+            import_result_id, status=import_result_status
+        )
+        if not updated:
+            raise RuntimeError
+        return updated
 
     async def _update_import_batch_status(
         self, import_batch_id: UUID4, import_batch_status: ImportBatchStatus
@@ -71,6 +83,38 @@ class ImportService(GenericService):
         )
         return await self.sql_uow.batches.add(batch)
 
+    async def import_reference(
+        self,
+        import_batch_id: UUID4,
+        reference_str: str,
+        reference_service: ReferenceService,
+    ) -> None:
+        """Import a reference and persist it to the database."""
+        import_result = await self.sql_uow.results.add(
+            ImportResult(import_batch_id=import_batch_id)
+        )
+        import_result = await self._update_import_result_status(
+            import_result.id, ImportResultStatus.STARTED
+        )
+        reference = await reference_service.ingest_record(reference_str)
+        if not reference:
+            import_result = await self._update_import_result_status(
+                import_result.id, ImportResultStatus.FAILED
+            )
+            await self.sql_uow.results.update_by_pk(
+                import_result.id, failure_details="Failed to ingest record"
+            )
+            import_result.failure_details = "Failed to ingest record"
+            raise RuntimeError
+        import_result = await self._update_import_result_status(
+            import_result.id, ImportResultStatus.COMPLETED
+        )
+        await self.sql_uow.results.update_by_pk(
+            import_result.id,
+            reference_id=reference.id,
+        )
+
+    @unit_of_work
     async def process_batch(self, import_batch: ImportBatch) -> None:
         """
         Process an import batch.
@@ -85,6 +129,9 @@ class ImportService(GenericService):
             import_batch.id, ImportBatchStatus.STARTED
         )
 
+        # Note: if parallelised, you would need to create a different
+        # reference service with a new uow for each thread.
+        reference_service = ReferenceService(self.sql_uow)
         async with (
             httpx.AsyncClient() as client,
             client.stream("GET", str(import_batch.storage_url)) as response,
@@ -92,7 +139,13 @@ class ImportService(GenericService):
             response.raise_for_status()
             async for line in response.aiter_lines():
                 if line.strip():
-                    pass
+                    await self.import_reference(
+                        import_batch.id, line, reference_service
+                    )
+
+        await self._update_import_batch_status(
+            import_batch.id, ImportBatchStatus.COMPLETED
+        )
 
     @unit_of_work
     async def add_batch_result(

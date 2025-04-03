@@ -176,9 +176,6 @@ class ImportResultBase(DomainBaseModel):
     status: ImportResultStatus = Field(
         default=ImportResultStatus.CREATED, description="The status of the result."
     )
-    failure_details: str | None = Field(
-        description="Details of any failure that occurred during processing."
-    )
 
 
 class ImportResult(ImportResultBase, SQLAttributeMixin):
@@ -188,7 +185,10 @@ class ImportResult(ImportResultBase, SQLAttributeMixin):
         None, description="The parent import batch."
     )
     reference_id: uuid.UUID | None = Field(
-        description="The ID of the created reference."
+        None, description="The ID of the created reference."
+    )
+    failure_details: str | None = Field(
+        None, description="Details of any failure that occurred during processing."
     )
 
 

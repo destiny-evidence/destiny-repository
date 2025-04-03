@@ -114,6 +114,7 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
             reference_id=domain_obj.reference_id,
             identifier_type=domain_obj.identifier_type,
             identifier=str(domain_obj.identifier),
+            other_identifier_name=domain_obj.other_identifier_name,
         )
 
     async def to_domain(

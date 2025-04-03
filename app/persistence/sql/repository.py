@@ -1,7 +1,7 @@
 """Generic repositories define expected functionality."""
 
 from abc import ABC
-from typing import Generic, get_type_hints
+from typing import Generic
 
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -78,14 +78,7 @@ class GenericAsyncSqlRepository(
         if not persistence:
             return None
 
-        # Validate the types of the attributes being set
-        # against the expected types in the persistence class.
-        type_hints = get_type_hints(self._persistence_cls)
         for key, value in kwargs.items():
-            expected_type = type_hints.get(key)
-            if expected_type and not isinstance(value, expected_type):
-                msg = f"Expected type {expected_type} for '{key}', got {type(value)}"
-                raise ValueError(msg)
             setattr(persistence, key, value)
 
         await self._session.flush()

@@ -49,18 +49,20 @@ poetry run alembic upgrade head
 
 #### MinIO
 
-You also may need the MinIO fileserver. This can be accessed at localhost:9001 or automatically seeded using the below:
+You also may need the MinIO fileserver. This requires the MinIO Client. Install instructions for Mac:
+
+```sh
+brew install minio-mc
+```
+
+This can be accessed at localhost:9001 or automatically seeded using the below:
 
 ```sh
 chmod +x ./.minio/seed_fileserver.sh
 ./.minio/seed_fileserver.sh
 ```
 
-This requires the MinIO Client. Install instructions for Mac:
-
-```sh
-brew install minio-mc
-```
+Seeding also creates a configuration file at `.minio/presigned_urls.json` which can be used to pass to the application as storage URLs.
 
 #### Application
 
