@@ -16,6 +16,8 @@ services:
       - "6379:6379"
 
   app:
+    profiles:
+      - optional
     build:
       context: .
       args:
@@ -29,6 +31,8 @@ services:
     entrypoint: fastapi dev app/main.py --host 0.0.0.0 --port 8000
 
   celery:
+    profiles:
+      - optional
     build:
       context: .
       args:
@@ -39,6 +43,8 @@ services:
       - ./app:/app/app
     env_file:
       - .env
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
     entrypoint: watchmedo auto-restart --directory=./ --pattern=*.py --recursive -- celery -A app.tasks worker --loglevel=INFO
 
 volumes:
