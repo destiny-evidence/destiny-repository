@@ -9,6 +9,18 @@ services:
       - "5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+  fs:
+    image: minio/minio:latest
+    environment:
+      MINIO_ROOT_USER: localuser
+      MINIO_ROOT_PASSWORD: localpass
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - fs_data:/data
+    command: server /data --console-address ":9001"
 
 volumes:
   db_data:
+  fs_data:

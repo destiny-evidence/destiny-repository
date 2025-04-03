@@ -33,17 +33,36 @@ cp .env.example .env
 
 ### Starting the development server
 
-First you will need to start the database server:
+First you will need to start the auxiliary servers:
 
 ```sh
 docker compose up -d
 ```
+
+#### Database
 
 Once the database server is running, run the migrations to setup the database.
 
 ```sh
 poetry run alembic upgrade head
 ```
+
+#### MinIO
+
+You also may need the MinIO fileserver. This can be accessed at localhost:9001 or automatically seeded using the below:
+
+```sh
+chmod +x ./.minio/seed_fileserver.sh
+./.minio/seed_fileserver.sh
+```
+
+This requires the MinIO Client. Install instructions for Mac:
+
+```sh
+brew install minio-mc
+```
+
+#### Application
 
 Run the development server:
 
