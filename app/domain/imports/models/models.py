@@ -108,17 +108,15 @@ issues).
     source_name: str = Field(
         description="The source of the reference being imported (eg. Open Alex)"
     )
-    status: ImportRecordStatus = Field(
-        default=ImportRecordStatus.CREATED,
-        description="""
-The status of the upload.
-""",
-    )
 
 
 class ImportRecord(ImportRecordBase, SQLAttributeMixin):
-    """Core import record model with database attributes included."""
+    """Core import record model with database and internal attributes included."""
 
+    status: ImportRecordStatus = Field(
+        default=ImportRecordStatus.CREATED,
+        description="The status of the upload.",
+    )
     batches: list["ImportBatch"] | None = Field(
         None, description="The batches associated with this import."
     )
@@ -137,9 +135,6 @@ class ImportBatchBase(DomainBaseModel):
     file at that storage url.
     """
 
-    status: ImportBatchStatus = Field(
-        default=ImportBatchStatus.CREATED, description="The status of the batch."
-    )
     storage_url: HttpUrl = Field(
         description="""
 The URL at which the set of references for this batch are stored.
@@ -148,8 +143,11 @@ The URL at which the set of references for this batch are stored.
 
 
 class ImportBatch(ImportBatchBase, SQLAttributeMixin):
-    """Core import batch model with database attributes included."""
+    """Core import batch model with database and internal attributes included."""
 
+    status: ImportBatchStatus = Field(
+        default=ImportBatchStatus.CREATED, description="The status of the batch."
+    )
     import_record_id: uuid.UUID = Field(
         description="The ID of the parent import record."
     )

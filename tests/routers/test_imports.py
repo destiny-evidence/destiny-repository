@@ -127,7 +127,7 @@ async def test_create_batch_for_import(
 
     batch_params = {"storage_url": "https://example.com/batch_data.json"}
     response = await client.post(
-        f"/imports/record/{valid_import.id}/batches/", json=batch_params
+        f"/imports/record/{valid_import.id}/batch/", json=batch_params
     )
     assert response.status_code == status.HTTP_202_ACCEPTED
     assert response.json()["import_record_id"] == str(valid_import.id)
@@ -155,7 +155,7 @@ async def test_get_batches(
     session.add(batch2)
     await session.commit()
 
-    response = await client.get(f"/imports/record/{valid_import.id}/batches/")
+    response = await client.get(f"/imports/record/{valid_import.id}/batch/")
     assert response.status_code == status.HTTP_200_OK
     assert len(response.json()) == 2
 

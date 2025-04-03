@@ -257,6 +257,7 @@ Contains a directory for each set of related structures. Each directory includes
 
 - **Service**
   - Performs business processing and logic.
+  - Note that some functions are decorated with UoWs, and others aren't. Careful decision needs to be made to where the UoW boundary is drawn. Don't worry, if you try to call a decorated function from within a decorated function the app will tell you!
 
 ### Persistence
 

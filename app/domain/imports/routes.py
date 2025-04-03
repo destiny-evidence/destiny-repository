@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, status
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -70,21 +70,21 @@ router = APIRouter(
 
 
 @router.post("/record/", status_code=status.HTTP_201_CREATED)
-async def create_import(
-    import_params: ImportRecordCreate,
+async def create_record(
+    import_record: ImportRecordCreate,
     import_service: Annotated[ImportService, Depends(import_service)],
 ) -> ImportRecord:
     """Create a record for an import process."""
-    return await import_service.register_import(import_params)
+    return await import_service.register_import(import_record)
 
 
 @router.get("/record/{import_record_id}/")
-async def get_import(
+async def get_record(
     import_record_id: UUID4,
     import_service: Annotated[ImportService, Depends(import_service)],
 ) -> ImportRecord:
     """Get an import from the database."""
-    import_record = await import_service.get_import(import_record_id)
+    import_record = await import_service.get_import_record(import_record_id)
     if not import_record:
         raise HTTPException(
             status_code=404,
@@ -94,25 +94,28 @@ async def get_import(
     return import_record
 
 
-@router.post(
-    "/record/{import_record_id}/batches/", status_code=status.HTTP_202_ACCEPTED
-)
-async def create_batch(
+@router.post("/record/{import_record_id}/batch/", status_code=status.HTTP_202_ACCEPTED)
+async def register_batch(
     import_record_id: Annotated[UUID4, Path(title="The id of the associated import")],
     batch: ImportBatchCreate,
     import_service: Annotated[ImportService, Depends(import_service)],
+    background_tasks: BackgroundTasks,
 ) -> ImportBatch:
     """Register an import batch for a given import."""
-    return await import_service.register_batch(import_record_id, batch)
+    import_batch = await import_service.register_batch(import_record_id, batch)
+    background_tasks.add_task(import_service.process_batch, import_batch)
+    return import_batch
 
 
-@router.get("/record/{import_record_id}/batches/")
+@router.get("/record/{import_record_id}/batch/")
 async def get_batches(
     import_record_id: Annotated[UUID4, Path(title="The id of the associated import")],
     import_service: Annotated[ImportService, Depends(import_service)],
 ) -> list[ImportBatch]:
     """Get batches associated to an import."""
-    import_record = await import_service.get_import_with_batches(import_record_id)
+    import_record = await import_service.get_import_record_with_batches(
+        import_record_id
+    )
 
     if not import_record:
         raise HTTPException(
@@ -120,6 +123,22 @@ async def get_batches(
             detail=f"Import record with id {import_record_id} not found.",
         )
     return import_record.batches or []
+
+
+@router.get("/batch/{import_batch_id}/")
+async def get_batch(
+    import_batch_id: Annotated[UUID4, Path(title="The id of the import batch")],
+    import_service: Annotated[ImportService, Depends(import_service)],
+) -> ImportBatch:
+    """Get batches associated to an import."""
+    import_batch = await import_service.get_import_batch(import_batch_id)
+
+    if not import_batch:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Import batch with id {import_batch_id} not found.",
+        )
+    return import_batch
 
 
 @router.get("/batch/{import_batch_id}/summary/")

@@ -20,7 +20,8 @@ if [ ! -d "$DATA_DIR" ]; then
     exit 1
 fi
 
-# For each folder in the data directory, create a bucket and upload its files
+# For each folder in the data directory, create a bucket and upload its files, overwriting existing objects
+OVERWRITE_FLAG="--overwrite"
 for dir in "$DATA_DIR"/*/; do
     bucket=$(basename "$dir")
     echo "Creating bucket: $bucket"

@@ -9,16 +9,18 @@ from app.domain.references.models.models import (
     ExternalIdentifierCreate,
     Reference,
 )
-from app.persistence.sql.uow import AsyncSqlUnitOfWork
+from app.domain.service import GenericService
+from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 
 
-class ReferenceService:
+class ReferenceService(GenericService):
     """The service which manages our imports and their processing."""
 
     def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:
         """Initialize the service with a unit of work."""
-        self.sql_uow = sql_uow
+        super().__init__(sql_uow)
 
+    @unit_of_work
     async def get_reference(self, reference_id: UUID4) -> Reference | None:
         """Get a single import by id."""
         async with self.sql_uow:
@@ -26,6 +28,7 @@ class ReferenceService:
                 reference_id, preload=["identifiers", "enhancements"]
             )
 
+    @unit_of_work
     async def register_reference(self) -> Reference:
         """Create a new reference."""
         async with self.sql_uow:
@@ -33,6 +36,7 @@ class ReferenceService:
             await self.sql_uow.commit()
             return created
 
+    @unit_of_work
     async def add_identifier(
         self, reference_id: UUID4, identifier: ExternalIdentifierCreate
     ) -> ExternalIdentifier:
@@ -49,6 +53,7 @@ class ReferenceService:
             await self.sql_uow.commit()
             return created
 
+    @unit_of_work
     async def add_enhancement(
         self, reference_id: UUID4, enhancement: EnhancementCreate
     ) -> Enhancement:

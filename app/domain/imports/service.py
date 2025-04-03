@@ -1,10 +1,12 @@
 """The service for interacting with and managing imports."""
 
+import httpx
 from pydantic import UUID4
 
 from app.domain.imports.models.models import (
     ImportBatch,
     ImportBatchCreate,
+    ImportBatchStatus,
     ImportBatchSummary,
     ImportRecord,
     ImportRecordCreate,
@@ -12,103 +14,137 @@ from app.domain.imports.models.models import (
     ImportResultCreate,
     ImportResultStatus,
 )
-from app.persistence.sql.uow import AsyncSqlUnitOfWork
+from app.domain.service import GenericService
+from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 
 
-class ImportService:
+class ImportService(GenericService):
     """The service which manages our imports and their processing."""
 
     def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:
         """Initialize the service with a unit of work."""
-        self.sql_uow = sql_uow
+        super().__init__(sql_uow)
 
-    async def get_import(self, import_record_id: UUID4) -> ImportRecord | None:
+    @unit_of_work
+    async def get_import_record(self, import_record_id: UUID4) -> ImportRecord | None:
         """Get a single import by id."""
-        async with self.sql_uow:
-            return await self.sql_uow.imports.get_by_pk(import_record_id)
+        return await self.sql_uow.imports.get_by_pk(import_record_id)
 
-    async def get_import_with_batches(self, pk: UUID4) -> ImportRecord | None:
+    @unit_of_work
+    async def get_import_record_with_batches(self, pk: UUID4) -> ImportRecord | None:
         """Get a single import, eager loading its batches."""
-        async with self.sql_uow:
-            return await self.sql_uow.imports.get_by_pk(pk, preload=["batches"])
+        return await self.sql_uow.imports.get_by_pk(pk, preload=["batches"])
 
+    @unit_of_work
+    async def get_import_batch(self, import_batch_id: UUID4) -> ImportBatch | None:
+        """Get a single import by id."""
+        return await self.sql_uow.batches.get_by_pk(import_batch_id)
+
+    async def _update_import_batch_status(
+        self, import_batch_id: UUID4, import_batch_status: ImportBatchStatus
+    ) -> ImportBatch:
+        """Update the status of an import batch."""
+        updated = await self.sql_uow.batches.update_by_pk(
+            import_batch_id, import_batch_status=import_batch_status
+        )
+        if not updated:
+            raise RuntimeError
+        return updated
+
+    @unit_of_work
     async def register_import(self, import_record: ImportRecordCreate) -> ImportRecord:
         """Register an import, persisting it to the database."""
-        async with self.sql_uow:
-            db_import_record = ImportRecord(**import_record.model_dump())
-            created = await self.sql_uow.imports.add(db_import_record)
-            await self.sql_uow.commit()
-            return created
+        db_import_record = ImportRecord(**import_record.model_dump())
+        return await self.sql_uow.imports.add(db_import_record)
 
+    @unit_of_work
     async def register_batch(
         self, import_record_id: UUID4, batch_create: ImportBatchCreate
     ) -> ImportBatch:
         """Register an import batch, persisting it to the database."""
-        async with self.sql_uow:
-            import_record = await self.sql_uow.imports.get_by_pk(import_record_id)
-            if not import_record:
-                raise RuntimeError
-            batch = ImportBatch(
-                import_record_id=import_record.id,
-                **batch_create.model_dump(),
-            )
-            batch = await self.sql_uow.batches.add(batch)
-            await self.sql_uow.commit()
-            return batch
+        import_record = await self.sql_uow.imports.get_by_pk(import_record_id)
+        if not import_record:
+            raise RuntimeError
+        batch = ImportBatch(
+            import_record_id=import_record.id,
+            **batch_create.model_dump(),
+        )
+        return await self.sql_uow.batches.add(batch)
 
+    async def process_batch(self, import_batch: ImportBatch) -> None:
+        """
+        Process an import batch.
+
+        Actions:
+        - Stream the file from the storage URL.
+        - Parse each entry of the file via the Reference service.
+        - Persist the file via the Reference service.
+        - Hit the callback URL with the results.
+        """
+        await self._update_import_batch_status(
+            import_batch.id, ImportBatchStatus.STARTED
+        )
+
+        async with (
+            httpx.AsyncClient() as client,
+            client.stream("GET", str(import_batch.storage_url)) as response,
+        ):
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if line.strip():
+                    pass
+
+    @unit_of_work
     async def add_batch_result(
         self,
         batch_id: UUID4,
         import_result: ImportResultCreate,
     ) -> ImportResult:
         """Persist an import result to the database."""
-        async with self.sql_uow:
-            db_import_result = ImportResult(
-                **import_result.model_dump(), import_batch_id=batch_id
-            )
-            created = await self.sql_uow.results.add(db_import_result)
-            await self.sql_uow.commit()
-            return created
+        db_import_result = ImportResult(
+            **import_result.model_dump(), import_batch_id=batch_id
+        )
+        return await self.sql_uow.results.add(db_import_result)
 
+    @unit_of_work
     async def get_import_batch_summary(
         self, import_batch_id: UUID4
     ) -> ImportBatchSummary | None:
         """Get an import batch with its results."""
-        async with self.sql_uow:
-            import_batch = await self.sql_uow.batches.get_by_pk(
-                import_batch_id, preload=["import_results"]
-            )
-            if not import_batch:
-                return None
-            result_summary: dict[ImportResultStatus, int] = dict.fromkeys(
-                ImportResultStatus, 0
-            )
-            failure_details: list[str] = []
-            for result in import_batch.import_results or []:
-                result_summary[result.status] += 1
-                if (
-                    result.status
-                    in (
-                        ImportResultStatus.FAILED,
-                        ImportResultStatus.PARTIALLY_FAILED,
-                    )
-                    and result.failure_details
-                ):
-                    failure_details.append(result.failure_details)
-            return ImportBatchSummary(
-                **import_batch.model_dump(),
-                results=result_summary,
-                failure_details=failure_details,
-            )
+        import_batch = await self.sql_uow.batches.get_by_pk(
+            import_batch_id, preload=["import_results"]
+        )
+        if not import_batch:
+            return None
+        result_summary: dict[ImportResultStatus, int] = dict.fromkeys(
+            ImportResultStatus, 0
+        )
+        failure_details: list[str] = []
+        for result in import_batch.import_results or []:
+            result_summary[result.status] += 1
+            if (
+                result.status
+                in (
+                    ImportResultStatus.FAILED,
+                    ImportResultStatus.PARTIALLY_FAILED,
+                )
+                and result.failure_details
+            ):
+                failure_details.append(result.failure_details)
+        return ImportBatchSummary(
+            **import_batch.model_dump(),
+            results=result_summary,
+            failure_details=failure_details,
+        )
 
+    @unit_of_work
     async def get_import_results(
         self,
         import_batch_id: UUID4,
         result_status: ImportResultStatus | None = None,
     ) -> list[ImportResult]:
         """Get a list of results for an import batch."""
-        async with self.sql_uow:
-            return await self.sql_uow.results.get_by_filter(
-                import_batch_id=import_batch_id,
-                status=result_status,
-            )
+        return await self.sql_uow.results.get_by_filter(
+            import_batch_id=import_batch_id,
+            status=result_status,
+        )
