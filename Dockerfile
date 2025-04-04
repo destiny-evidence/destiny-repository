@@ -2,7 +2,6 @@ FROM python:3.12-slim-bookworm AS base
 WORKDIR /app
 
 FROM base AS builder
-ENV POETRY_VIRTUALENVS_IN_PROJECT=true
 
 RUN pip install poetry poetry-plugin-bundle
 COPY pyproject.toml poetry.lock README.md ./
