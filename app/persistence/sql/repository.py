@@ -84,6 +84,22 @@ class GenericAsyncSqlRepository(
         await self._session.refresh(persistence)
         return await persistence.to_domain()
 
+    async def delete_by_pk(self, pk: UUID4) -> None:
+        """
+        Delete a record using its primary key.
+
+        Args:
+        - pk (UUID4): The primary key to use to look up the record.
+
+        """
+        persistence = await self._session.get(self._persistence_cls, pk)
+        if not persistence:
+            msg = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
+            raise RuntimeError(msg)
+
+        await self._session.delete(persistence)
+        await self._session.flush()
+
     async def add(self, record: GenericDomainModelType) -> GenericDomainModelType:
         """
         Add a record to the repository.

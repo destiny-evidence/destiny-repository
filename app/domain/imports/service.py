@@ -66,6 +66,7 @@ class ImportService(GenericService):
         import_batch_id: UUID4,
         reference_str: str,
         reference_service: ReferenceService,
+        entry_ref: int,
     ) -> None:
         """Import a reference and persist it to the database."""
         import_result = await self.sql_uow.results.add(
@@ -74,7 +75,9 @@ class ImportService(GenericService):
         import_result = await self.sql_uow.results.update_by_pk(
             import_result.id, status=ImportResultStatus.STARTED
         )
-        reference_result = await reference_service.ingest_reference(reference_str)
+        reference_result = await reference_service.ingest_reference(
+            reference_str, entry_ref
+        )
         if not reference_result.reference:
             # Reference was not created
             import_result = await self.sql_uow.results.update_by_pk(
@@ -124,11 +127,13 @@ class ImportService(GenericService):
             client.stream("GET", str(import_batch.storage_url)) as response,
         ):
             response.raise_for_status()
+            i = 1
             async for line in response.aiter_lines():
                 if line.strip():
                     await self.import_reference(
-                        import_batch.id, line, reference_service
+                        import_batch.id, line, reference_service, i
                     )
+                    i += 1
 
         await self.sql_uow.batches.update_by_pk(
             import_batch.id, import_batch_status=ImportBatchStatus.COMPLETED

@@ -6,7 +6,7 @@ import uuid
 from typing import Self
 
 from pydantic import HttpUrl
-from sqlalchemy import UUID, DateTime, ForeignKey, Integer, String
+from sqlalchemy import UUID, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -54,6 +54,14 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
     )
     import_results: Mapped[list["ImportResult"]] = relationship(
         "ImportResult", back_populates="import_batch"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "import_record_id",
+            "storage_url",
+            name="uix_import_batch",
+        ),
     )
 
     @classmethod

@@ -109,9 +109,10 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
     __table_args__ = (
         UniqueConstraint(
             "identifier_type",
-            "other_identifier_name",
             "identifier",
+            "other_identifier_name",
             name="uix_external_identifier",
+            postgresql_nulls_not_distinct=True,
         ),
     )
 

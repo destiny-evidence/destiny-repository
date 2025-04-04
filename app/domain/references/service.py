@@ -3,7 +3,6 @@
 import json
 
 from pydantic import UUID4
-from sqlalchemy.exc import IntegrityError
 
 from app.core.logger import get_logger
 from app.domain.references.models.models import (
@@ -80,6 +79,7 @@ class ReferenceService(GenericService):
         self,
         reference_id: UUID4,
         raw_identifier: JSON,
+        entry_ref: int,
     ) -> ExternalIdentifierCreateResult:
         """Parse and ingest an external identifier into the database."""
         try:
@@ -88,40 +88,49 @@ class ReferenceService(GenericService):
             except (TypeError, ValueError) as error:
                 return ExternalIdentifierCreateResult(
                     error=f"""
-Invalid identifier. Check the format and content of the identifier.
-Attempted to parse:
-{raw_identifier}
-Error:
-{error}
+Identifier {entry_ref}:
+    Invalid identifier. Check the format and content of the identifier.
+    Attempted to parse:
+    {raw_identifier}
+    Error:
+    {error}
 """,
                 )
 
-            db_identifier = ExternalIdentifier(
-                reference_id=reference_id,
-                **identifier.model_dump(),
-            )
-
-            try:
-                created = await self.sql_uow.external_identifiers.add(db_identifier)
-            except IntegrityError:
+            if await self.sql_uow.external_identifiers.get_by_type_and_identifier(
+                identifier.identifier_type,
+                identifier.identifier,
+                identifier.other_identifier_name,
+            ):
                 return ExternalIdentifierCreateResult(
                     error=f"""
-Identifier already exists on an existing reference.
-Attempted to parse: {raw_identifier}
+Identifier {entry_ref}:
+    Identifier already exists on an existing reference.
+    Attempted to parse:
+    {raw_identifier}
 """
                 )
-            return ExternalIdentifierCreateResult(identifier=created)
+
+            return ExternalIdentifierCreateResult(
+                identifier=await self.sql_uow.external_identifiers.add(
+                    ExternalIdentifier(
+                        reference_id=reference_id,
+                        **identifier.model_dump(),
+                    )
+                )
+            )
 
         except Exception as error:
             msg = f"Failed to create identifier from {raw_identifier}"
             logger.exception(msg)
             return ExternalIdentifierCreateResult(
                 error=f"""
-Failed to create identifier.
-Attempted to parse:
-{raw_identifier}
-Error:
-{error}
+Identifier {entry_ref}:
+    Failed to create identifier.
+    Attempted to parse:
+    {raw_identifier}
+    Error:
+    {error}
 """,
             )
 
@@ -129,6 +138,7 @@ Error:
         self,
         reference_id: UUID4,
         raw_enhancement: JSON,
+        entry_ref: int,
     ) -> EnhancementCreateResult:
         """Parse and ingest an enhancement into the database."""
         try:
@@ -137,9 +147,10 @@ Error:
             except (TypeError, ValueError) as error:
                 return EnhancementCreateResult(
                     error=f"""
-Invalid enhancement. Check the format and content of the enhancement.
-Error:
-{error}
+Enhancement {entry_ref}:
+    Invalid enhancement. Check the format and content of the enhancement.
+    Error:
+    {error}
 """,
                 )
             db_enhancement = Enhancement(
@@ -154,13 +165,16 @@ Error:
             logger.exception(msg)
             return EnhancementCreateResult(
                 error=f"""
-Failed to create enhancement.
-Error:
-{error}
+Enhancement {entry_ref}:
+    Failed to create enhancement.
+    Error:
+    {error}
 """,
             )
 
-    async def ingest_reference(self, record_str: str) -> ReferenceCreateResult:
+    async def ingest_reference(
+        self, record_str: str, entry_ref: int
+    ) -> ReferenceCreateResult:
         """
         Attempt to ingest a reference into the database.
 
@@ -172,44 +186,70 @@ Error:
         if type(raw_reference) is not dict:
             return ReferenceCreateResult(
                 errors=[
+                    f"Entry {entry_ref}:",
                     f"""
-Could not parse reference: {record_str}.
-Ensure the format is correct.
-                """
+    Could not parse reference: {record_str}.
+    Ensure the format is correct.
+""",
                 ]
             )
 
-        reference = Reference(visibility=raw_reference.get("visibility"))
+        reference = Reference(
+            visibility=raw_reference.get(
+                "visibility", Reference.model_fields["visibility"].get_default()
+            )
+        )
 
-        # Check no keys other than enhancements and identifiers are present
-        if surplus_keys := raw_reference.keys() - {"identifiers", "enhancements"}:
+        # Check no keys other than enhancements, identifiers and visibility are present
+        if surplus_keys := raw_reference.keys() - {
+            "identifiers",
+            "enhancements",
+            "visibility",
+        }:
             return ReferenceCreateResult(
                 errors=[
+                    f"Entry {entry_ref}:",
                     f"""
-Unexpected keys found: {surplus_keys}.
-Ensure the format is correct.
-"""
+    Unexpected keys found: {surplus_keys}.
+    Ensure the format is correct.
+""",
                 ]
             )
 
+        # Check the basic top-level structure
         if (
             not (raw_identifiers := raw_reference.get("identifiers"))
             or type(raw_identifiers) is not list
         ):
             return ReferenceCreateResult(
                 errors=[
+                    f"Entry {entry_ref}:",
                     """
-Could not parse identifiers.
-Identifiers must be provided as a non-empty list. Ensure the format is correct."""
+    Could not parse identifiers. Identifiers must be provided as a non-empty list.
+    Ensure the format is correct.
+""",
                 ]
             )
 
-        identifier_results: list[ExternalIdentifierCreateResult] = [
-            await self.parse_and_ingest_external_identifier(
-                reference.id,
-                identifier,
+        raw_enhancements = raw_reference.get("enhancements", [])
+        if type(raw_enhancements) is not list:
+            return ReferenceCreateResult(
+                errors=[
+                    f"Entry {entry_ref}:",
+                    """
+    Could not parse enhancements. Enhancements if providedmust be a list.
+    Ensure the format is correct.
+""",
+                ]
             )
-            for identifier in raw_identifiers
+
+        # Create the reference in the database so the identifier FK can be set.
+        # If no identifiers are created, we will remove it again.
+        reference = await self.sql_uow.references.add(reference)
+
+        identifier_results: list[ExternalIdentifierCreateResult] = [
+            await self.parse_and_ingest_external_identifier(reference.id, identifier, i)
+            for i, identifier in enumerate(raw_identifiers, 1)
         ]
 
         # Fail out if all identifiers failed
@@ -217,40 +257,32 @@ Identifiers must be provided as a non-empty list. Ensure the format is correct."
             result.error for result in identifier_results if result.error
         ]
         if len(identifier_errors) == len(identifier_results):
-            return ReferenceCreateResult(
-                errors=["Could not parse any identifier.", *identifier_errors]
-            )
-
-        raw_enhancements = raw_reference.get("enhancements", [])
-        if type(raw_enhancements) is not list:
+            await self.sql_uow.references.delete_by_pk(reference.id)
             return ReferenceCreateResult(
                 errors=[
+                    f"Entry {entry_ref:}",
+                    "   All identifiers failed to parse.",
                     *identifier_errors,
-                    f"""
-Could not parse enhancements: {raw_enhancements}.
-Ensure the format is correct.
-""",
                 ]
             )
 
-        # We have at least one identifier and the enhancements are either missing or
-        # well-formed if we reach here, so we will proceed with the reference
-        await self.sql_uow.references.add(reference)
         reference_result = ReferenceCreateResult(
-            reference=Reference(),
-            errors=[result.error for result in identifier_results if result.error],
+            reference=reference,
+            errors=[
+                *[result.error for result in identifier_results if result.error],
+            ],
         )
 
         enhancement_results: list[EnhancementCreateResult] = [
-            await self.parse_and_ingest_enhancement(
-                reference.id,
-                enhancement,
-            )
-            for enhancement in raw_enhancements
+            await self.parse_and_ingest_enhancement(reference.id, enhancement, i)
+            for i, enhancement in enumerate(raw_enhancements, 1)
         ]
 
         reference_result.errors.extend(
             [result.error for result in enhancement_results if result.error]
         )
+
+        if reference_result.errors:
+            reference_result.errors = [f"Entry {entry_ref}:", *reference_result.errors]
 
         return reference_result
