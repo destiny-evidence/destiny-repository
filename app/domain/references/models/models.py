@@ -153,6 +153,18 @@ class ExternalIdentifierCreate(ExternalIdentifierBase):
     """Input for creating an external identifier."""
 
 
+class ExternalIdentifierCreateResult(BaseModel):
+    """Result of an attempt to create an external identifier."""
+
+    external_identifier: ExternalIdentifier | None = Field(
+        None, description="The created external identifier"
+    )
+    error: str | None = Field(
+        None,
+        description="A list of errors encountered during the creation process",
+    )
+
+
 class ReferenceBase(DomainBaseModel):
     """
     Base class for references.
@@ -480,6 +492,16 @@ class EnhancementCreate(EnhancementBase):
     """Input for creating an enhancement."""
 
 
+class EnhancementCreateResult(BaseModel):
+    """Result of an attempt to create an enhancement."""
+
+    enhancement: Enhancement | None = Field(None, description="The created enhancement")
+    error: str | None = Field(
+        None,
+        description="A list of errors encountered during the creation process",
+    )
+
+
 class ReferenceCreate(ReferenceBase):
     """Input for creating a reference."""
 
@@ -490,3 +512,18 @@ class ReferenceCreate(ReferenceBase):
         None,
         description="A list of enhancements for the reference",
     )
+
+
+class ReferenceCreateResult(BaseModel):
+    """Result of an attempt to create a reference."""
+
+    reference: Reference | None = Field(None, description="The created reference")
+    errors: list[str] = Field(
+        default_factory=list,
+        description="A list of errors encountered during the creation process",
+    )
+
+    @property
+    def error_str(self) -> str | None:
+        """Return a string of errors if they exist."""
+        return "\n\n".join(self.errors) if self.errors else None

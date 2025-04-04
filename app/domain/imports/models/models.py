@@ -54,8 +54,9 @@ class ImportResultStatus(StrEnum):
     - `started`: The reference is currently being processed.
     - `completed`: The reference has been created.
     - `cancelled`: Processing was cancelled by calling the API.
-    - `partially_failed`: The reference was created but one or more enhancements failed
-        to be added. See the result's `failure_details` field for more information.
+    - `partially_failed`: The reference was created but one or more enhancements or
+        identifiers failed to be added. See the result's `failure_details` field for
+        more information.
     - `failed`: The reference failed to be created.
         See the result's `failure_details` field for more information.
     """

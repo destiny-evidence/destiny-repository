@@ -63,9 +63,7 @@ class GenericAsyncSqlRepository(
             return None
         return await result.to_domain(preload=preload)
 
-    async def update_by_pk(
-        self, pk: UUID4, **kwargs: object
-    ) -> GenericDomainModelType | None:
+    async def update_by_pk(self, pk: UUID4, **kwargs: object) -> GenericDomainModelType:
         """
         Update a record using its primary key.
 
@@ -76,7 +74,8 @@ class GenericAsyncSqlRepository(
         """
         persistence = await self._session.get(self._persistence_cls, pk)
         if not persistence:
-            return None
+            msg = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
+            raise RuntimeError(msg)
 
         for key, value in kwargs.items():
             setattr(persistence, key, value)

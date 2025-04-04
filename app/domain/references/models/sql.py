@@ -5,7 +5,7 @@ import json
 import uuid
 from typing import Self
 
-from sqlalchemy import UUID, ForeignKey, String
+from sqlalchemy import UUID, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ENUM, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -104,6 +104,15 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
 
     reference: Mapped["Reference"] = relationship(
         "Reference", back_populates="identifiers"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "identifier_type",
+            "other_identifier_name",
+            "identifier",
+            name="uix_external_identifier",
+        ),
     )
 
     @classmethod
