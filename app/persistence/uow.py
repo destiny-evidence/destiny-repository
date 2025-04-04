@@ -21,8 +21,6 @@ from app.persistence.repository import GenericAsyncRepository
 class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
     """An asynchronous context manager which handles the persistence lifecyle."""
 
-    # Consider adding method of protection to these attributes
-    # to disallow access when self._is_active is False
     imports: ImportRecordRepositoryBase
     batches: ImportBatchRepositoryBase
     results: ImportResultRepositoryBase
