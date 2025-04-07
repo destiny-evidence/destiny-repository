@@ -153,15 +153,15 @@ class ExternalIdentifierCreate(ExternalIdentifierBase):
     """Input for creating an external identifier."""
 
 
-class ExternalIdentifierCreateResult(BaseModel):
-    """Result of an attempt to create an external identifier."""
+class ExternalIdentifierParseResult(BaseModel):
+    """Result of an attempt to parse an external identifier."""
 
-    external_identifier: ExternalIdentifier | None = Field(
-        None, description="The created external identifier"
+    external_identifier: ExternalIdentifierCreate | None = Field(
+        None, description="The external identifier to create"
     )
     error: str | None = Field(
         None,
-        description="A list of errors encountered during the creation process",
+        description="A list of errors encountered during the parsing process",
     )
 
 
@@ -492,13 +492,16 @@ class EnhancementCreate(EnhancementBase):
     """Input for creating an enhancement."""
 
 
-class EnhancementCreateResult(BaseModel):
-    """Result of an attempt to create an enhancement."""
+class EnhancementParseResult(BaseModel):
+    """Result of an attempt to parse an enhancement."""
 
-    enhancement: Enhancement | None = Field(None, description="The created enhancement")
+    enhancement: Enhancement | None = Field(
+        None,
+        description="The enhancement to create",
+    )
     error: str | None = Field(
         None,
-        description="A list of errors encountered during the creation process",
+        description="A list of errors encountered during the parsing process",
     )
 
 
@@ -515,9 +518,23 @@ class ReferenceCreate(ReferenceBase):
 
 
 class ReferenceCreateResult(BaseModel):
-    """Result of an attempt to create a reference."""
+    """
+    Result of an attempt to create a reference.
 
-    reference: Reference | None = Field(None, description="The created reference")
+    If reference is None, no reference was created and errors will be populated.
+    If reference exists and there are errors, the reference was created but there
+    were errors in the hydration.
+    If reference exists and there are no errors, the reference was created and all
+    enhancements/identifiers were hydrated successfully from the input.
+    """
+
+    reference: Reference | None = Field(
+        None,
+        description="""
+    The created reference.
+    If None, no reference was created.
+    """,
+    )
     errors: list[str] = Field(
         default_factory=list,
         description="A list of errors encountered during the creation process",

@@ -110,7 +110,7 @@ class GenericAsyncSqlRepository(
         Note:
         This only adds a record to the session and flushes it. To persist the
         record after this transaction you will need to commit the session
-        (probably the job of the service through the unit of work.)
+        (generally through the unit of work).
 
         """
         persistence = await self._persistence_cls.from_domain(record)

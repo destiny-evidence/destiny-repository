@@ -36,7 +36,7 @@ for dir in "$DATA_DIR"/*/; do
 done
 
 # Generate configuration file mapping bucket/file to a presigned URL with no expiry
-CONFIG_FILE="/Users/adamhamilton/Repos/destiny-repository/.minio/presigned_urls.json"
+CONFIG_FILE="/Users/jackwalmisley/Code/evidence-data-platforms/destiny-repository/.minio/presigned_urls.json"
 echo "{" > "$CONFIG_FILE"
 firstEntry=true
 for dir in "$DATA_DIR"/*/; do

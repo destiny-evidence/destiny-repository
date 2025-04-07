@@ -70,34 +70,29 @@ class ImportService(GenericService):
     ) -> None:
         """Import a reference and persist it to the database."""
         import_result = await self.sql_uow.results.add(
-            ImportResult(import_batch_id=import_batch_id)
-        )
-        import_result = await self.sql_uow.results.update_by_pk(
-            import_result.id, status=ImportResultStatus.STARTED
+            ImportResult(
+                import_batch_id=import_batch_id, status=ImportResultStatus.STARTED
+            )
         )
         reference_result = await reference_service.ingest_reference(
             reference_str, entry_ref
         )
         if not reference_result.reference:
             # Reference was not created
-            import_result = await self.sql_uow.results.update_by_pk(
+            await self.sql_uow.results.update_by_pk(
                 import_result.id,
                 failure_details=reference_result.error_str,
                 status=ImportResultStatus.FAILED,
             )
         elif reference_result.errors:
             # Reference was created, but errors occurred
-            import_result = await self.sql_uow.results.update_by_pk(
+            await self.sql_uow.results.update_by_pk(
                 import_result.id,
                 status=ImportResultStatus.PARTIALLY_FAILED,
                 reference_id=reference_result.reference.id,
                 failure_details=reference_result.error_str,
             )
-            import_result.failure_details = "\n\n".join(reference_result.errors)
         else:
-            import_result = await self.sql_uow.results.update_by_pk(
-                import_result.id, status=ImportResultStatus.COMPLETED
-            )
             await self.sql_uow.results.update_by_pk(
                 import_result.id,
                 status=ImportResultStatus.COMPLETED,
