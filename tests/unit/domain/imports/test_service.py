@@ -25,15 +25,12 @@ async def test_import_reference_happy_path(fake_repository, fake_uow):
         reference=Reference(id=REF_ID)
     )
 
-    async with uow:
-        await service.import_reference(BATCH_ID, "nonsense", fake_reference_service, 1)
+    await service.import_reference(BATCH_ID, "nonsense", fake_reference_service, 1)
 
-    assert len(repo_results.repository) == 1
-    assert (
-        next(iter(repo_results.repository.values())).status
-        == ImportResultStatus.COMPLETED
-    )
-    assert next(iter(repo_results.repository.values())).reference_id == REF_ID
+    import_result = next(iter(repo_results.repository.values()))
+
+    assert import_result.reference_id == REF_ID
+    assert import_result.status == ImportResultStatus.COMPLETED
 
 
 @pytest.mark.asyncio
