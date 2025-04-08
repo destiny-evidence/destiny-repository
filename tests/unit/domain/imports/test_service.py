@@ -147,7 +147,7 @@ async def test_add_batch_result(fake_repository, fake_uow):
 
 
 @pytest.mark.asyncio
-async def test_get_import_batch_summary_single_record(
+async def test_get_import_batch_summary_batch_completed_no_failures(
     fake_repository, fake_uow, fake_import_batch
 ):
     fake_import_result_completed = ImportResult(
@@ -173,10 +173,11 @@ async def test_get_import_batch_summary_single_record(
     assert summary.results.get(ImportResultStatus.COMPLETED) == 1
     assert summary.results.get(ImportResultStatus.FAILED) == 0
     assert summary.results.get(ImportResultStatus.PARTIALLY_FAILED) == 0
+    assert summary.import_batch_status == ImportBatchStatus.COMPLETED
 
 
 @pytest.mark.asyncio
-async def test_get_import_batch_summary_failed_records(
+async def test_get_import_batch_summary_batch_completed_with_failures(
     fake_repository, fake_uow, fake_import_batch
 ):
     fake_import_result_failed = ImportResult(
@@ -210,3 +211,39 @@ async def test_get_import_batch_summary_failed_records(
     assert summary.results.get(ImportResultStatus.FAILED) == 1
     assert summary.results.get(ImportResultStatus.PARTIALLY_FAILED) == 1
     assert summary.failure_details == ["ded", "not ded, but close"]
+    assert summary.import_batch_status == ImportBatchStatus.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_get_import_batch_summary_batch_in_progress(
+    fake_repository, fake_uow, fake_import_batch
+):
+    fake_import_result_failed = ImportResult(
+        id=uuid.uuid4(),
+        import_batch_id=BATCH_ID,
+        status=ImportResultStatus.STARTED,
+    )
+
+    fake_import_result_partial_failed = ImportResult(
+        id=uuid.uuid4(),
+        import_batch_id=BATCH_ID,
+        status=ImportResultStatus.COMPLETED,
+        reference_id=uuid.uuid4(),
+    )
+
+    fake_batch = fake_import_batch(
+        id=BATCH_ID,
+        status=ImportBatchStatus.STARTED,
+        import_results=[fake_import_result_failed, fake_import_result_partial_failed],
+    )
+
+    repo_batches = fake_repository(init_entries=[fake_batch])
+
+    uow = fake_uow(batches=repo_batches)
+    service = ImportService(uow)
+
+    summary = await service.get_import_batch_summary(BATCH_ID)
+
+    assert summary.results.get(ImportResultStatus.COMPLETED) == 1
+    assert summary.results.get(ImportResultStatus.STARTED) == 1
+    assert summary.import_batch_status == ImportBatchStatus.STARTED

@@ -186,6 +186,8 @@ This should not happen.
                 failure_details.append(result.failure_details)
         return ImportBatchSummary(
             **import_batch.model_dump(),
+            import_batch_id=import_batch.id,
+            import_batch_status=import_batch.status,
             results=result_summary,
             failure_details=failure_details,
         )
