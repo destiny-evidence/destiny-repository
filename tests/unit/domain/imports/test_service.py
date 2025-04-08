@@ -8,9 +8,9 @@ import pytest
 from app.domain.imports.models.models import (
     ImportBatchCreate,
     ImportBatchStatus,
-    ImportRecord,
     ImportRecordCreate,
     ImportRecordStatus,
+    ImportResultCreate,
     ImportResultStatus,
 )
 from app.domain.imports.service import ImportService
@@ -47,19 +47,8 @@ async def test_register_import(fake_repository, fake_uow):
 
 
 @pytest.mark.asyncio
-async def test_register_batch(fake_repository, fake_uow):
-    fake_import = ImportRecord(
-        id=RECORD_ID,
-        search_string="climate AND health",
-        searched_at="2025-02-02T13:29:30Z",
-        processor_name="Test Importer",
-        processor_version="0.0.1",
-        notes="test import",
-        expected_reference_count=100,
-        source_name="OpenAlex",
-    )
-
-    repo_imports = fake_repository(init_entries=[fake_import])
+async def test_register_batch(fake_repository, fake_uow, fake_import_record):
+    repo_imports = fake_repository(init_entries=[fake_import_record(RECORD_ID)])
     repo_batches = fake_repository()
     uow = fake_uow(imports=repo_imports, batches=repo_batches)
     service = ImportService(uow)
@@ -139,3 +128,18 @@ async def test_import_reference_reference_created_with_errors(
     import_result = next(iter(repo_results.repository.values()))
     assert import_result.status == ImportResultStatus.PARTIALLY_FAILED
     assert import_result.failure_details == import_reference_error
+
+
+@pytest.mark.asyncio
+async def test_add_batch_result(fake_repository, fake_uow):
+    repo_results = fake_repository()
+    uow = fake_uow(results=repo_results)
+    service = ImportService(uow)
+
+    import_result_create = ImportResultCreate(
+        import_batch_id=BATCH_ID, status=ImportResultStatus.CREATED
+    )
+
+    import_result = await service.add_batch_result(import_result=import_result_create)
+
+    assert import_result.import_batch_id == BATCH_ID

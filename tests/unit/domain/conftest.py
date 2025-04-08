@@ -3,6 +3,7 @@ from uuid import UUID
 import pytest
 
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
+from app.domain.imports.models.models import ImportRecord
 
 
 class DummyDomainSQLModel(DomainBaseModel, SQLAttributeMixin): ...
@@ -66,6 +67,25 @@ class FakeUnitOfWork:
 
     async def rollback(self):
         pass
+
+
+@pytest.fixture
+def fake_import_record():
+    """Function to construct a fake ImportRecord with a given record_id"""
+
+    def _fake_import_record(record_id: UUID) -> ImportRecord:
+        return ImportRecord(
+            id=record_id,
+            search_string="search string",
+            searched_at="2025-02-02T13:29:30Z",
+            processor_name="Test Importer",
+            processor_version="0.0.1",
+            notes="test import",
+            expected_reference_count=100,
+            source_name="OpenAlex",
+        )
+
+    return _fake_import_record
 
 
 @pytest.fixture
