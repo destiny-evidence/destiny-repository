@@ -17,6 +17,8 @@ resource "azurerm_user_assigned_identity" "container_apps_identity" {
 }
 
 locals {
+  celery_broker_url = "azurestoragequeues://DefaultAzureCredential@${azurerm_storage_account.this.primary_queue_endpoint}"
+
   env_vars = [
     {
       name  = "APP_NAME"
@@ -40,7 +42,7 @@ locals {
     },
     {
       name  = "CELERY_BROKER_URL"
-      value = "azurestoragequeues://DefaultAzureCredential@${azurerm_storage_account.this.primary_queue_endpoint}"
+      value = local.celery_broker_url
     },
   ]
 
@@ -100,6 +102,10 @@ module "container_app" {
       {
         name  = "AZURE_TENANT_ID"
         value = var.azure_tenant_id
+      },
+      {
+        name  = "CELERY_BROKER_URL"
+        value = locals.celery_broker_url
       },
       {
         name        = "DB_URL"
