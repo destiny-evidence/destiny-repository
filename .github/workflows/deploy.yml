@@ -81,3 +81,11 @@ jobs:
           resourceGroup: ${{vars.RESOURCE_GROUP}}
           containerAppEnvironment: ${{vars.CONTAINER_APP_ENV}}
           imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ needs.build.outputs.image_tag }}
+      - name: Deploy built image to tasks container
+        uses: Azure/container-apps-deploy-action@v1
+        with:
+          acrName: ${{vars.REGISTRY_NAME}}
+          containerAppName: ${{vars.CONTAINER_APP_TASKS_NAME}}
+          resourceGroup: ${{vars.RESOURCE_GROUP}}
+          containerAppEnvironment: ${{vars.CONTAINER_APP_ENV}}
+          imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ needs.build.outputs.image_tag }}
