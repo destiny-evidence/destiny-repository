@@ -56,3 +56,10 @@ resource "azurerm_subnet" "app" {
   virtual_network_name = azurerm_virtual_network.this.name
   address_prefixes     = ["10.0.4.0/23"]
 }
+
+resource "azurerm_subnet" "tasks" {
+  name                 = "sn-${local.name}-tasks"
+  resource_group_name  = azurerm_resource_group.this.name
+  virtual_network_name = azurerm_virtual_network.this.name
+  address_prefixes     = ["10.0.6.0/23"]
+}

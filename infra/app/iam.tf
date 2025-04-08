@@ -51,3 +51,9 @@ resource "azurerm_role_assignment" "container-app-queue-contributor" {
   scope                = azurerm_storage_account.this.id
   principal_id         = azurerm_user_assigned_identity.container_apps_identity.principal_id
 }
+
+resource "azurerm_role_assignment" "container-app-tasks-queue-contributor" {
+  role_definition_name = "Storage Queue Data Contributor"
+  scope                = azurerm_storage_account.this.id
+  principal_id         = azurerm_user_assigned_identity.container_apps_tasks_identity.principal_id
+}

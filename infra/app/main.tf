@@ -16,6 +16,12 @@ resource "azurerm_user_assigned_identity" "container_apps_identity" {
   resource_group_name = azurerm_resource_group.this.name
 }
 
+resource "azurerm_user_assigned_identity" "container_apps_tasks_identity" {
+  name                = "${local.name}-tasks"
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+}
+
 locals {
   celery_broker_url = "azurestoragequeues://DefaultAzureCredential@${azurerm_storage_account.this.primary_queue_endpoint}"
 
@@ -105,7 +111,7 @@ module "container_app" {
       },
       {
         name  = "CELERY_BROKER_URL"
-        value = locals.celery_broker_url
+        value = local.celery_broker_url
       },
       {
         name        = "DB_URL"
@@ -133,20 +139,20 @@ module "container_app" {
 module "container_app_tasks" {
   source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
   version                         = "1.3.0"
-  app_name                        = "${var.app_name}-tasks"
+  app_name                        = "${var.app_name}-task"
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id
   container_registry_login_server = data.azurerm_container_registry.this.login_server
-  infrastructure_subnet_id        = azurerm_subnet.app.id
+  infrastructure_subnet_id        = azurerm_subnet.tasks.id
   resource_group_name             = azurerm_resource_group.this.name
   region                          = azurerm_resource_group.this.location
   max_replicas                    = var.tasks_max_replicas
   tags                            = local.minimum_resource_tags
 
   identity = {
-    id           = azurerm_user_assigned_identity.container_apps_identity.id
-    principal_id = azurerm_user_assigned_identity.container_apps_identity.principal_id
-    client_id    = azurerm_user_assigned_identity.container_apps_identity.client_id
+    id           = azurerm_user_assigned_identity.container_apps_tasks_identity.id
+    principal_id = azurerm_user_assigned_identity.container_apps_tasks_identity.principal_id
+    client_id    = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
   }
 
   env_vars = local.env_vars
@@ -162,7 +168,7 @@ module "container_app_tasks" {
         accountName = azurerm_storage_account.this.name
         queueName   = "celery"
         queueLength = var.queue_length_scaling_threshold
-        identity    = azurerm_user_assigned_identity.container_apps_identity.client_id
+        identity    = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
       }
     }
   ]
