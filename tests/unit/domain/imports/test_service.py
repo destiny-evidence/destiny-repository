@@ -10,6 +10,7 @@ from app.domain.imports.models.models import (
     ImportBatchStatus,
     ImportRecordCreate,
     ImportRecordStatus,
+    ImportResult,
     ImportResultCreate,
     ImportResultStatus,
 )
@@ -143,3 +144,69 @@ async def test_add_batch_result(fake_repository, fake_uow):
     import_result = await service.add_batch_result(import_result=import_result_create)
 
     assert import_result.import_batch_id == BATCH_ID
+
+
+@pytest.mark.asyncio
+async def test_get_import_batch_summary_single_record(
+    fake_repository, fake_uow, fake_import_batch
+):
+    fake_import_result_completed = ImportResult(
+        id=uuid.uuid4(),
+        import_batch_id=BATCH_ID,
+        status=ImportResultStatus.COMPLETED,
+        reference_id=REF_ID,
+    )
+
+    fake_completed_batch = fake_import_batch(
+        id=BATCH_ID,
+        status=ImportBatchStatus.COMPLETED,
+        import_results=[fake_import_result_completed],
+    )
+
+    repo_batches = fake_repository(init_entries=[fake_completed_batch])
+
+    uow = fake_uow(batches=repo_batches)
+    service = ImportService(uow)
+
+    summary = await service.get_import_batch_summary(BATCH_ID)
+
+    assert summary.results.get(ImportResultStatus.COMPLETED) == 1
+    assert summary.results.get(ImportResultStatus.FAILED) == 0
+    assert summary.results.get(ImportResultStatus.PARTIALLY_FAILED) == 0
+
+
+@pytest.mark.asyncio
+async def test_get_import_batch_summary_failed_records(
+    fake_repository, fake_uow, fake_import_batch
+):
+    fake_import_result_failed = ImportResult(
+        id=uuid.uuid4(),
+        import_batch_id=BATCH_ID,
+        status=ImportResultStatus.FAILED,
+        failure_details="ded",
+    )
+
+    fake_import_result_partial_failed = ImportResult(
+        id=uuid.uuid4(),
+        import_batch_id=BATCH_ID,
+        status=ImportResultStatus.PARTIALLY_FAILED,
+        reference_id=uuid.uuid4(),
+        failure_details="not ded, but close",
+    )
+
+    fake_batch = fake_import_batch(
+        id=BATCH_ID,
+        status=ImportBatchStatus.COMPLETED,
+        import_results=[fake_import_result_failed, fake_import_result_partial_failed],
+    )
+
+    repo_batches = fake_repository(init_entries=[fake_batch])
+
+    uow = fake_uow(batches=repo_batches)
+    service = ImportService(uow)
+
+    summary = await service.get_import_batch_summary(BATCH_ID)
+
+    assert summary.results.get(ImportResultStatus.FAILED) == 1
+    assert summary.results.get(ImportResultStatus.PARTIALLY_FAILED) == 1
+    assert summary.failure_details == ["ded", "not ded, but close"]
