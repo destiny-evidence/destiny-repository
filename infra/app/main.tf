@@ -24,7 +24,7 @@ locals {
     },
     {
       name  = "AZURE_APPLICATION_ID"
-      value = var.azure_application_id
+      value = azuread_application_registration.destiny_repository.client_id
     },
     {
       name  = "AZURE_TENANT_ID"
@@ -35,7 +35,7 @@ locals {
       secret_name = "db-url"
     },
     {
-      name  = "ENVIRONMENT"
+      name  = "ENV"
       value = var.environment
     }
   ]
@@ -91,7 +91,7 @@ module "container_app" {
     env = [
       {
         name  = "AZURE_APPLICATION_ID"
-        value = var.azure_application_id
+        value = azuread_application_registration.destiny_repository.client_id
       },
       {
         name  = "AZURE_TENANT_ID"
@@ -100,6 +100,10 @@ module "container_app" {
       {
         name        = "DB_URL"
         secret_name = "db-url"
+      },
+      {
+        name  = "ENV"
+        value = var.environment
       }
     ]
   }
