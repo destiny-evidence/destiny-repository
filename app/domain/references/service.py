@@ -39,9 +39,7 @@ class ReferenceService(GenericService):
     @unit_of_work
     async def register_reference(self) -> Reference:
         """Create a new reference."""
-        created = await self.sql_uow.references.add(Reference())
-        await self.sql_uow.commit()
-        return created
+        return await self.sql_uow.references.add(Reference())
 
     @unit_of_work
     async def add_identifier(
@@ -55,9 +53,7 @@ class ReferenceService(GenericService):
             reference_id=reference.id,
             **identifier.model_dump(),
         )
-        created = await self.sql_uow.external_identifiers.add(db_identifier)
-        await self.sql_uow.commit()
-        return created
+        return await self.sql_uow.external_identifiers.add(db_identifier)
 
     @unit_of_work
     async def add_enhancement(
@@ -71,9 +67,7 @@ class ReferenceService(GenericService):
             reference_id=reference.id,
             **enhancement.model_dump(),
         )
-        created = await self.sql_uow.enhancements.add(db_enhancement)
-        await self.sql_uow.commit()
-        return created
+        return await self.sql_uow.enhancements.add(db_enhancement)
 
     async def parse_external_identifier(
         self,

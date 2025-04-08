@@ -95,7 +95,7 @@ async def get_record(
 
 
 @router.post("/record/{import_record_id}/batch/", status_code=status.HTTP_202_ACCEPTED)
-async def register_batch(
+async def enqueue_batch(
     import_record_id: Annotated[UUID4, Path(title="The id of the associated import")],
     batch: ImportBatchCreate,
     import_service: Annotated[ImportService, Depends(import_service)],

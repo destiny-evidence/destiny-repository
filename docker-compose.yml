@@ -20,6 +20,21 @@ services:
     volumes:
       - fs_data:/data
     command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 2s
+      timeout: 2s
+      retries: 5
+
+  fs-seeder:
+    image: minio/mc
+    depends_on:
+      fs:
+        condition: service_healthy
+    volumes:
+      - ./.minio:/.minio
+    working_dir: /.minio
+    entrypoint: ["bash", "seed_fileserver.sh"]
 
 volumes:
   db_data:
