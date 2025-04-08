@@ -46,6 +46,30 @@ class ImportBatchStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class CollisionStrategy(StrEnum):
+    """
+    The strategy to use when an identifier collision is detected.
+
+    **Allowed values**:
+    - `discard`: Do nothing with the incoming reference.
+    - `fail`: Do nothing with the incoming reference and mark it as failed. This
+        allows the importing process to "follow up" on the failure.
+    - `overwrite`: Delete the existing reference and replace it with the incoming
+        reference.
+    - `merge_aggressive`: Prioritize the incoming reference by preserving all
+        incoming fields and supplementing them with any matching values from the
+        existing reference.
+    - `merge_defensive`: Prioritize the existing reference by preserving all existing
+        fields while incorporating non-conflicting data from the incoming reference.
+    """
+
+    DISCARD = "discard"
+    FAIL = "fail"
+    OVERWRITE = "overwrite"
+    MERGE_AGGRESSIVE = "merge_aggressive"
+    MERGE_DEFENSIVE = "merge_defensive"
+
+
 class ImportResultStatus(StrEnum):
     """
     Describes the status of an import result.
@@ -136,6 +160,13 @@ class ImportBatchBase(DomainBaseModel):
     file at that storage url.
     """
 
+    collision_strategy: CollisionStrategy = Field(
+        default=CollisionStrategy.FAIL,
+        description="""
+The strategy to use for each reference when an identifier collision occurs.
+Default is `fail`, which allows the importing process to "follow up" on the collision.
+        """,
+    )
     storage_url: HttpUrl = Field(
         description="""
 The URL at which the set of references for this batch are stored.

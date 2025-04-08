@@ -112,6 +112,10 @@ class GenericAsyncSqlRepository(
         record after this transaction you will need to commit the session
         (generally through the unit of work).
 
+        Note:
+        If the record already exists in the database per its PK, it will be updated
+        instead of added. Consider renaming to upsert().
+
         """
         persistence = await self._persistence_cls.from_domain(record)
         self._session.add(persistence)

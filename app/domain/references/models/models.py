@@ -6,7 +6,13 @@ from abc import ABC
 from enum import Enum, StrEnum
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, Field, HttpUrl, PastDate, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    HttpUrl,
+    PastDate,
+    model_validator,
+)
 
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 from app.utils.regex import RE_DOI, RE_OPEN_ALEX_IDENTIFIER
@@ -161,7 +167,7 @@ class ExternalIdentifierParseResult(BaseModel):
     )
     error: str | None = Field(
         None,
-        description="A list of errors encountered during the parsing process",
+        description="Error encountered during the parsing process",
     )
 
 
@@ -188,6 +194,38 @@ class Reference(ReferenceBase, SQLAttributeMixin):
     )
     enhancements: list["Enhancement"] | None = Field(
         None,
+        description="A list of enhancements for the reference",
+    )
+
+    @classmethod
+    def from_create(
+        cls, reference_create: "ReferenceCreate", reference_id: uuid.UUID | None = None
+    ) -> Self:
+        """Create a reference including id hydration."""
+        reference = cls(
+            visibility=reference_create.visibility,
+        )
+        if reference_id:
+            reference.id = reference_id
+        reference.identifiers = [
+            ExternalIdentifier(**identifier.model_dump(), reference_id=reference.id)
+            for identifier in reference_create.identifiers or []
+        ]
+        reference.enhancements = [
+            Enhancement(**enhancement.model_dump(), reference_id=reference.id)
+            for enhancement in reference_create.enhancements or []
+        ]
+        return reference
+
+
+class ReferenceCreate(ReferenceBase):
+    """Input for creating a reference."""
+
+    identifiers: list[ExternalIdentifierCreate] = Field(
+        description="A list of `ExternalIdentifiers` for the Reference"
+    )
+    enhancements: list["EnhancementCreate"] = Field(
+        default_factory=list,
         description="A list of enhancements for the reference",
     )
 
@@ -495,25 +533,13 @@ class EnhancementCreate(EnhancementBase):
 class EnhancementParseResult(BaseModel):
     """Result of an attempt to parse an enhancement."""
 
-    enhancement: Enhancement | None = Field(
+    enhancement: EnhancementCreate | None = Field(
         None,
         description="The enhancement to create",
     )
     error: str | None = Field(
         None,
-        description="A list of errors encountered during the parsing process",
-    )
-
-
-class ReferenceCreate(ReferenceBase):
-    """Input for creating a reference."""
-
-    identifiers: list[ExternalIdentifierCreate] = Field(
-        description="A list of `ExternalIdentifiers` for the Reference"
-    )
-    enhancements: list[EnhancementCreate] | None = Field(
-        None,
-        description="A list of enhancements for the reference",
+        description="Error encountered during the parsing process",
     )
 
 

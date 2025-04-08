@@ -45,10 +45,12 @@ class Reference(GenericSQLPersistence[DomainReference]):
     )
 
     identifiers: Mapped[list["ExternalIdentifier"]] = relationship(
-        "ExternalIdentifier", back_populates="reference"
+        "ExternalIdentifier",
+        back_populates="reference",
+        cascade="all, delete, delete-orphan",
     )
     enhancements: Mapped[list["Enhancement"]] = relationship(
-        "Enhancement", back_populates="reference"
+        "Enhancement", back_populates="reference", cascade="all, delete, delete-orphan"
     )
 
     @classmethod
@@ -57,6 +59,18 @@ class Reference(GenericSQLPersistence[DomainReference]):
         return cls(
             id=domain_obj.id,
             visibility=domain_obj.visibility,
+            identifiers=await asyncio.gather(
+                *(
+                    ExternalIdentifier.from_domain(identifier)
+                    for identifier in domain_obj.identifiers or []
+                )
+            ),
+            enhancements=await asyncio.gather(
+                *(
+                    Enhancement.from_domain(enhancement)
+                    for enhancement in domain_obj.enhancements or []
+                )
+            ),
         )
 
     async def to_domain(self, preload: list[str] | None = None) -> DomainReference:
@@ -177,6 +191,16 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
 
     reference: Mapped["Reference"] = relationship(
         "Reference", back_populates="enhancements"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "enhancement_type",
+            "reference_id",
+            "source",
+            "content",
+            name="uix_enhancement",
+        ),
     )
 
     @classmethod

@@ -4,6 +4,7 @@ from abc import ABC
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.domain.references.models.models import Enhancement as DomainEnhancement
 from app.domain.references.models.models import (
@@ -69,6 +70,7 @@ class ExternalIdentifierSQLRepository(
         identifier_type: ExternalIdentifierType,
         identifier: str,
         other_identifier_name: str | None = None,
+        preload: list[str] | None = None,
     ) -> DomainExternalIdentifier | None:
         """
         Get a single external identifier by type and identifier, if it exists.
@@ -90,9 +92,13 @@ class ExternalIdentifierSQLRepository(
             query = query.where(
                 SQLExternalIdentifier.other_identifier_name == other_identifier_name
             )
+        if preload:
+            for p in preload:
+                relationship = getattr(SQLExternalIdentifier, p)
+                query = query.options(joinedload(relationship))
         result = await self._session.execute(query)
         db_identifier = result.scalar_one_or_none()
-        return await db_identifier.to_domain() if db_identifier else None
+        return await db_identifier.to_domain(preload=preload) if db_identifier else None
 
 
 class EnhancementRepositoryBase(

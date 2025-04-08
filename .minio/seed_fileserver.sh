@@ -5,7 +5,7 @@ set -e
 
 # Alias for the MinIO server
 ALIAS="local"
-MINIO_URL="http://fs:9000"
+MINIO_URL="http://localhost:9000"
 # Use credentials from the env vars (with fallback values)
 ACCESS_KEY="localuser"
 SECRET_KEY="localpass"
@@ -13,7 +13,7 @@ SECRET_KEY="localpass"
 # Configure alias if not already set
 mc alias set "$ALIAS" "$MINIO_URL" "$ACCESS_KEY" "$SECRET_KEY"
 
-DATA_DIR="./data"
+DATA_DIR="./.minio/data"
 
 if [ ! -d "$DATA_DIR" ]; then
     echo "Directory '$DATA_DIR' does not exist."
@@ -36,7 +36,7 @@ for dir in "$DATA_DIR"/*/; do
 done
 
 # Generate configuration file mapping bucket/file to a presigned URL with no expiry
-CONFIG_FILE="./presigned_urls.json"
+CONFIG_FILE="./.minio/presigned_urls.json"
 echo "{" > "$CONFIG_FILE"
 firstEntry=true
 for dir in "$DATA_DIR"/*/; do

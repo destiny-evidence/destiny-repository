@@ -4,6 +4,7 @@ import httpx
 from pydantic import UUID4
 
 from app.domain.imports.models.models import (
+    CollisionStrategy,
     ImportBatch,
     ImportBatchCreate,
     ImportBatchStatus,
@@ -64,6 +65,7 @@ class ImportService(GenericService):
     async def import_reference(
         self,
         import_batch_id: UUID4,
+        collision_strategy: CollisionStrategy,
         reference_str: str,
         reference_service: ReferenceService,
         entry_ref: int,
@@ -75,8 +77,18 @@ class ImportService(GenericService):
             )
         )
         reference_result = await reference_service.ingest_reference(
-            reference_str, entry_ref
+            reference_str, entry_ref, collision_strategy
         )
+        if not reference_result:
+            if collision_strategy == CollisionStrategy.DISCARD:
+                # Reference was discarded
+                return
+            msg = """
+Reference was not created, discarded or failed.
+This should not happen.
+"""
+            raise RuntimeError(msg)
+
         if not reference_result.reference:
             # Reference was not created
             await self.sql_uow.results.update_by_pk(
@@ -126,7 +138,11 @@ class ImportService(GenericService):
             async for line in response.aiter_lines():
                 if line.strip():
                     await self.import_reference(
-                        import_batch.id, line, reference_service, i
+                        import_batch.id,
+                        import_batch.collision_strategy,
+                        line,
+                        reference_service,
+                        i,
                     )
                     i += 1
 

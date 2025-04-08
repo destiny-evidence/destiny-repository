@@ -26,16 +26,6 @@ services:
       timeout: 2s
       retries: 5
 
-  fs-seeder:
-    image: minio/mc
-    depends_on:
-      fs:
-        condition: service_healthy
-    volumes:
-      - ./.minio:/.minio
-    working_dir: /.minio
-    entrypoint: ["bash", "seed_fileserver.sh"]
-
 volumes:
   db_data:
   fs_data:
