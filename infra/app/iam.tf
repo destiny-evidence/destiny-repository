@@ -39,3 +39,21 @@ resource "azurerm_role_assignment" "gha-container-app-contributor" {
   scope                = module.container_app.container_app_id
   principal_id         = azuread_service_principal.github-actions.object_id
 }
+
+resource "azurerm_role_assignment" "gha-container-app-tasks-contributor" {
+  role_definition_name = "Contributor"
+  scope                = module.container_app_tasks.container_app_id
+  principal_id         = azuread_service_principal.github-actions.object_id
+}
+
+resource "azurerm_role_assignment" "container-app-queue-contributor" {
+  role_definition_name = "Storage Queue Data Contributor"
+  scope                = azurerm_storage_account.this.id
+  principal_id         = azurerm_user_assigned_identity.container_apps_identity.principal_id
+}
+
+resource "azurerm_role_assignment" "container-app-tasks-queue-contributor" {
+  role_definition_name = "Storage Queue Data Contributor"
+  scope                = azurerm_storage_account.this.id
+  principal_id         = azurerm_user_assigned_identity.container_apps_tasks_identity.principal_id
+}

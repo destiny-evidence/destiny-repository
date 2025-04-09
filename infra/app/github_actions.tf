@@ -58,6 +58,13 @@ resource "github_actions_environment_variable" "container_app_name" {
   value         = module.container_app.container_app_name
 }
 
+resource "github_actions_environment_variable" "container_app_tasks_name" {
+  repository    = github_repository_environment.environment.repository
+  environment   = github_repository_environment.environment.environment
+  variable_name = "CONTAINER_APP_TASKS_NAME"
+  value         = module.container_app_tasks.container_app_name
+}
+
 resource "github_actions_environment_variable" "container_app_env" {
   repository    = github_repository_environment.environment.repository
   environment   = github_repository_environment.environment.environment

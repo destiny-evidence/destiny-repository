@@ -21,6 +21,12 @@ variable "app_max_replicas" {
   default     = 10
 }
 
+variable "tasks_max_replicas" {
+  description = "Maximum number of replicas for the tasks container app"
+  type        = number
+  default     = 10
+}
+
 variable "azure_tenant_id" {
   description = "ID of the azure application "
   type        = string
@@ -45,6 +51,12 @@ variable "cpu_scaling_threshold" {
   description = "CPU threshold for scaling the app container app"
   type        = number
   default     = 70
+}
+
+variable "queue_length_scaling_threshold" {
+  description = "Queue length threshold for scaling the tasks container app"
+  type        = number
+  default     = 100
 }
 
 variable "created_by" {
