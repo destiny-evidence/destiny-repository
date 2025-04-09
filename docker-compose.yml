@@ -9,6 +9,11 @@ services:
       - "5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-d", "destiny_dev"]
+      interval: 2s
+      timeout: 2s
+      retries: 5
   fs:
     image: minio/minio:latest
     environment:
@@ -29,6 +34,11 @@ services:
     image: hashicorp/http-echo:latest
     ports:
       - "5678:5678"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5678"]
+      interval: 2s
+      timeout: 2s
+      retries: 5
 
 volumes:
   db_data:

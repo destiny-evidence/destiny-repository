@@ -4,11 +4,10 @@ set -e
 # Seeds MinIO buckets and files from ./data
 
 # Alias for the MinIO server
-ALIAS="local"
-MINIO_URL="http://localhost:9000"
-# Use credentials from the env vars (with fallback values)
-ACCESS_KEY="localuser"
-SECRET_KEY="localpass"
+ALIAS="${ALIAS:-local}"
+MINIO_URL="${MINIO_URL:-http://localhost:9000}"
+ACCESS_KEY="${MINIO_ACCESS_KEY:-localuser}"
+SECRET_KEY="${MINIO_SECRET_KEY:-localpass}"
 
 # Configure alias if not already set
 mc alias set "$ALIAS" "$MINIO_URL" "$ACCESS_KEY" "$SECRET_KEY"

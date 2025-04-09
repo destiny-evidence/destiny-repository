@@ -182,6 +182,12 @@ Tests are in the [tests](/tests) directory. They are run using `pytest`
 poetry run pytest
 ```
 
+End-to-end testing is run separately:
+
+```sh
+./test-e2e.sh
+```
+
 ## Structure
 
 Simplified diagram of inheritance, object visibility and data flow for a domain router:

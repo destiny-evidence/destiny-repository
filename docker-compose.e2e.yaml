@@ -1,0 +1,60 @@
+include:
+  - docker-compose.yml
+services:
+  fs-seed:
+    image: minio/mc
+    depends_on:
+      fs:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: localuser
+      MINIO_ROOT_PASSWORD: localpass
+    entrypoint: ./.minio/seed_fileserver.sh
+  db-seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: "postgresql+asyncpg://postgres:localpass@db:5432/destiny_dev"
+      ENV: "dev"
+    command: alembic upgrade head
+  repo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db-seed:
+        condition: service_completed_successfully
+      fs-seed:
+        condition: service_completed_successfully
+      http:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    environment:
+      DB_URL: "postgresql+asyncpg://postgres:localpass@db:5432/destiny_dev"
+      HTTP_CLIENT_URL: "http://http:5678"
+      MINIO_URL: "http://fs:9000"
+      ENV: "dev"
+    command: poetry run fastapi dev
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthcheck"]
+      interval: 2s
+      timeout: 2s
+      retries: 5
+  e2e:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      repo:
+        condition: service_healthy
+    environment:
+      DB_URL: "postgresql+asyncpg://postgres:localpass@db:5432/destiny_dev"
+      MINIO_URL: "http://fs:9000"
+      ALIAS: "local"
+      ENV: "dev"
+    command: poetry run pytest tests/e2e"

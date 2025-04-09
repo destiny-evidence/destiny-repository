@@ -32,6 +32,33 @@ jobs:
         ports:
           # Maps tcp port 5432 on service container to the host
           - 5432:5432
+      minio:
+        # Note regular minio image is not fit-for-purpose in CICD testing
+        # https://stackoverflow.com/a/64188150
+        # Version pinned as this is a slightly tenuous workaround
+        image: lazybit/minio:02e6dd9af1e5
+        ports:
+          - 9000:9000
+        env:
+          MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+        volumes:
+          - ${{ github.workspace }}/data:/data
+        options: >-
+          --name=minio
+          --health-cmd "curl http://localhost:9000/minio/health/live"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      http:
+        image: hashicorp/http-echo
+        ports:
+          - 5678:5678
+        options: >-
+          --health-cmd "curl http://localhost:5678"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout source
@@ -63,9 +90,33 @@ jobs:
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install --no-interaction
 
+      - name: Seed fileserver
+        run: ./.minio/seed_fileserver.sh
+        env:
+          MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+          MINIO_URL: http://localhost:9000
+          ALIAS: local
+
       - name: Run test with pytest via poetry
         env:
           DB_URL: "postgresql+asyncpg://postgres:${{ secrets.db_password }}@localhost:5432/destiny_test"
           AZURE_APPLICATION_ID: ${{ vars.azure_application_id }}
           AZURE_TENANT_ID: ${{ vars.azure_tenant_id }}
-        run: poetry run pytest
+        run: poetry run pytest --ignore=tests/e2e/
+
+      - name: Run application for end-to-end test
+        env:
+          DB_URL: "postgresql+asyncpg://postgres:${{ secrets.db_password }}@localhost:5432/destiny_test"
+          # TODO: Add auth to E2E test and set env to "prod"
+          ENV: "dev"
+          AZURE_APPLICATION_ID: ${{ vars.azure_application_id }}
+          AZURE_TENANT_ID: ${{ vars.azure_tenant_id }}
+        run: poetry run fastapi run
+
+      - name: Run end-to-end test
+        env:
+          API_URL: http://0.0.0.0:8000
+          DB_URL: "postgresql+asyncpg://postgres:${{ secrets.db_password }}@localhost:5432/destiny_test"
+          MOCK_CLIENT_URL: http://localhost:5678
+        run: poetry run pytest tests/e2e/
