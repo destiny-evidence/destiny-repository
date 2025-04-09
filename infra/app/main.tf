@@ -95,7 +95,7 @@ module "container_app" {
   init_container = {
     name    = "${local.name}-database-init"
     image   = "${data.azurerm_container_registry.this.login_server}/destiny-repository:${var.environment}"
-    command = ["/venv/bin/alembic", "upgrade", "head"]
+    command = ["alembic", "upgrade", "head"]
     cpu     = 0.5
     memory  = "1Gi"
     env = local.env_vars
