@@ -43,6 +43,28 @@ class FakeRepository:
             raise RuntimeError
         del self.repository[pk]
 
+    def iter_records(self):
+        """Create an iterator over the records in the repository
+        Returns:
+            iterator[DummyDomainSQLModel]: iterator over the records in the repository
+        """
+        return iter(self.repository.values())
+
+    def get_first_record(self) -> DummyDomainSQLModel:
+        """Get the first record from the repository
+
+        Returns:
+            DummyDomainSQLModel: The first record in the FakeRepository
+
+        Raises:
+            RuntimeError: if the repository contains no records
+        """
+        record = next(self.iter_records(), None)
+        if not record:
+            error = "No record found in FakeRepository"
+            raise RuntimeError(error)
+        return record
+
 
 class FakeUnitOfWork:
     def __init__(

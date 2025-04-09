@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.domain.imports.models.models import (
+    CollisionStrategy,
     ImportBatchCreate,
     ImportBatchStatus,
     ImportRecordCreate,
@@ -80,9 +81,11 @@ async def test_import_reference_happy_path(fake_repository, fake_uow):
         reference=Reference(id=REF_ID)
     )
 
-    await service.import_reference(BATCH_ID, "nonsense", fake_reference_service, 1)
+    await service.import_reference(
+        BATCH_ID, CollisionStrategy.FAIL, "nonsense", fake_reference_service, 1
+    )
 
-    import_result = next(iter(repo_results.repository.values()))
+    import_result = repo_results.get_first_record()
 
     assert import_result.reference_id == REF_ID
     assert import_result.status == ImportResultStatus.COMPLETED
@@ -101,9 +104,11 @@ async def test_import_reference_reference_not_created(fake_repository, fake_uow)
         errors=[import_reference_error]
     )
 
-    await service.import_reference(BATCH_ID, "nonsense", fake_reference_service, 1)
+    await service.import_reference(
+        BATCH_ID, CollisionStrategy.FAIL, "nonsense", fake_reference_service, 1
+    )
 
-    import_result = next(iter(repo_results.repository.values()))
+    import_result = repo_results.get_first_record()
 
     assert import_result.status == ImportResultStatus.FAILED
     assert import_result.failure_details == import_reference_error
@@ -124,9 +129,11 @@ async def test_import_reference_reference_created_with_errors(
         reference=Reference(id=REF_ID), errors=[import_reference_error]
     )
 
-    await service.import_reference(BATCH_ID, "nonsense", fake_reference_service, 1)
+    await service.import_reference(
+        BATCH_ID, CollisionStrategy.FAIL, "nonsense", fake_reference_service, 1
+    )
 
-    import_result = next(iter(repo_results.repository.values()))
+    import_result = repo_results.get_first_record()
     assert import_result.status == ImportResultStatus.PARTIALLY_FAILED
     assert import_result.failure_details == import_reference_error
 
