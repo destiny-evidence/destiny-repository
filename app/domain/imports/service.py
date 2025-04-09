@@ -123,7 +123,7 @@ This should not happen.
         - Hit the callback URL with the results.
         """
         await self.sql_uow.batches.update_by_pk(
-            import_batch.id, import_batch_status=ImportBatchStatus.STARTED
+            import_batch.id, status=ImportBatchStatus.STARTED
         )
 
         # Note: if parallelised, you would need to create a different
@@ -153,13 +153,10 @@ This should not happen.
     @unit_of_work
     async def add_batch_result(
         self,
-        batch_id: UUID4,
         import_result: ImportResultCreate,
     ) -> ImportResult:
         """Persist an import result to the database."""
-        db_import_result = ImportResult(
-            **import_result.model_dump(), import_batch_id=batch_id
-        )
+        db_import_result = ImportResult(**import_result.model_dump())
         return await self.sql_uow.results.add(db_import_result)
 
     @unit_of_work
@@ -189,6 +186,8 @@ This should not happen.
                 failure_details.append(result.failure_details)
         return ImportBatchSummary(
             **import_batch.model_dump(),
+            import_batch_id=import_batch.id,
+            import_batch_status=import_batch.status,
             results=result_summary,
             failure_details=failure_details,
         )

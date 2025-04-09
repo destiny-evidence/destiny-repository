@@ -248,6 +248,14 @@ generated on creation.
         description="The timestamp at which the batch's status was last updated.",
     )
 
+    import_batch_id: uuid.UUID = Field(
+        description="The ID of the batch being summarised"
+    )
+
+    import_batch_status: ImportBatchStatus = Field(
+        description="The status of the batch being summarised"
+    )
+
     results: dict[ImportResultStatus, int] = Field(
         description="A count of references by their current import status."
     )
