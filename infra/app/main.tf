@@ -23,8 +23,6 @@ resource "azurerm_user_assigned_identity" "container_apps_tasks_identity" {
 }
 
 locals {
-  celery_broker_url = "azurestoragequeues://DefaultAzureCredential@${azurerm_storage_account.this.primary_queue_endpoint}"
-
   env_vars = [
     {
       name  = "APP_NAME"
@@ -48,7 +46,7 @@ locals {
     },
     {
       name  = "CELERY_BROKER_URL"
-      value = local.celery_broker_url
+      value = "azurestoragequeues://DefaultAzureCredential@${azurerm_storage_account.this.primary_queue_endpoint}"
     },
   ]
 
@@ -100,28 +98,7 @@ module "container_app" {
     command = ["/venv/bin/alembic", "upgrade", "head"]
     cpu     = 0.5
     memory  = "1Gi"
-    env = [
-      {
-        name  = "AZURE_APPLICATION_ID"
-        value = azuread_application_registration.destiny_repository.client_id
-      },
-      {
-        name  = "AZURE_TENANT_ID"
-        value = var.azure_tenant_id
-      },
-      {
-        name  = "CELERY_BROKER_URL"
-        value = local.celery_broker_url
-      },
-      {
-        name        = "DB_URL"
-        secret_name = "db-url"
-      },
-      {
-        name  = "ENV"
-        value = var.environment
-      }
-    ]
+    env = local.env_vars
   }
 
   custom_scale_rules = [
