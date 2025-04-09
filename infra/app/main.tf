@@ -160,6 +160,8 @@ module "container_app_tasks" {
 
   command = ["celery", "-A", "app.tasks", "worker", "--loglevel=INFO"]
 
+  # Unfortunately the Azure terraform provider doesn't support setting up managed identity auth for scaling rules.
+  # So we have to set the identity manually after this is applied, otherwise deployments will fail. See https://github.com/covidence/study-data-service/pull/72
   custom_scale_rules = [
     {
       name             = "queue-length-scale-rule"
@@ -168,7 +170,6 @@ module "container_app_tasks" {
         accountName = azurerm_storage_account.this.name
         queueName   = "celery"
         queueLength = var.queue_length_scaling_threshold
-        identity    = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
       }
     }
   ]
