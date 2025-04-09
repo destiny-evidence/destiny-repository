@@ -8,6 +8,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     HttpUrl,
     PastDate,
@@ -16,6 +17,7 @@ from pydantic import (
 
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 from app.utils.regex import RE_DOI, RE_OPEN_ALEX_IDENTIFIER
+from app.utils.types import JSON
 
 
 class Visibility(StrEnum):
@@ -228,6 +230,15 @@ class ReferenceCreate(ReferenceBase):
         default_factory=list,
         description="A list of enhancements for the reference",
     )
+
+
+class ReferenceCreateInputValidator(ReferenceBase):
+    """Validator for the top-level schema of a reference creation input."""
+
+    identifiers: list[JSON]
+    enhancements: list[JSON] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class EnhancementContentBase(BaseModel, ABC):

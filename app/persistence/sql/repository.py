@@ -122,3 +122,21 @@ class GenericAsyncSqlRepository(
         await self._session.flush()
         await self._session.refresh(persistence)
         return await persistence.to_domain()
+
+    async def merge(self, record: GenericDomainModelType) -> GenericDomainModelType:
+        """
+        Merge a record into the repository.
+
+        If the record already exists in the database based on the PK, it will be
+        updated. If it does not exist, it will be added.
+        See also: https://docs.sqlalchemy.org/en/20/orm/session_state_management.html#merge-tips
+
+        Args:
+        - record (T): The record to be persisted.
+
+        """
+        persistence = await self._persistence_cls.from_domain(record)
+        persistence = await self._session.merge(persistence)
+        await self._session.flush()
+        await self._session.refresh(persistence)
+        return await persistence.to_domain()

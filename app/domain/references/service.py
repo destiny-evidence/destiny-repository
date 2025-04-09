@@ -2,7 +2,7 @@
 
 import json
 
-from pydantic import UUID4
+from pydantic import UUID4, ValidationError
 
 from app.core.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
@@ -15,6 +15,7 @@ from app.domain.references.models.models import (
     ExternalIdentifierParseResult,
     Reference,
     ReferenceCreate,
+    ReferenceCreateInputValidator,
     ReferenceCreateResult,
 )
 from app.domain.service import GenericService
@@ -72,28 +73,23 @@ class ReferenceService(GenericService):
         return await self.sql_uow.enhancements.add(db_enhancement)
 
     async def parse_external_identifier(
-        self,
-        raw_identifier: JSON,
-        entry_ref: int,
+        self, raw_identifier: JSON, entry_ref: int
     ) -> ExternalIdentifierParseResult:
         """Parse and ingest an external identifier into the database."""
         try:
-            try:
-                identifier = ExternalIdentifierCreate.model_validate(raw_identifier)
-            except (TypeError, ValueError) as error:
-                return ExternalIdentifierParseResult(
-                    error=f"""
+            identifier = ExternalIdentifierCreate.model_validate(raw_identifier)
+            return ExternalIdentifierParseResult(external_identifier=identifier)
+        except (TypeError, ValueError) as error:
+            return ExternalIdentifierParseResult(
+                error=f"""
 Identifier {entry_ref}:
     Invalid identifier. Check the format and content of the identifier.
     Attempted to parse:
     {raw_identifier}
     Error:
     {error}
-""",
-                )
-
-            return ExternalIdentifierParseResult(external_identifier=identifier)
-
+    """
+            )
         except Exception as error:
             msg = f"Failed to create identifier from {raw_identifier}"
             logger.exception(msg)
@@ -105,29 +101,25 @@ Identifier {entry_ref}:
     {raw_identifier}
     Error:
     {error}
-""",
+    """
             )
 
     async def parse_enhancement(
-        self,
-        raw_enhancement: JSON,
-        entry_ref: int,
+        self, raw_enhancement: JSON, entry_ref: int
     ) -> EnhancementParseResult:
         """Parse and ingest an enhancement into the database."""
         try:
-            try:
-                enhancement = EnhancementCreate.model_validate(raw_enhancement)
-            except (TypeError, ValueError) as error:
-                return EnhancementParseResult(
-                    error=f"""
+            enhancement = EnhancementCreate.model_validate(raw_enhancement)
+            return EnhancementParseResult(enhancement=enhancement)
+        except (TypeError, ValueError) as error:
+            return EnhancementParseResult(
+                error=f"""
 Enhancement {entry_ref}:
     Invalid enhancement. Check the format and content of the enhancement.
     Error:
     {error}
-""",
-                )
-            return EnhancementParseResult(enhancement=enhancement)
-
+    """
+            )
         except Exception as error:
             msg = f"Failed to create enhancement from {raw_enhancement}"
             logger.exception(msg)
@@ -137,203 +129,170 @@ Enhancement {entry_ref}:
     Failed to create enhancement.
     Error:
     {error}
-""",
+    """
             )
 
     async def detect_and_handle_collision(
         self,
         reference: ReferenceCreate,
         collision_strategy: CollisionStrategy,
-    ) -> tuple[Reference | None, str | None]:
+    ) -> Reference | str | None:
         """
         Detect and handle a collision with an existing reference.
 
-        This is a placeholder for the actual collision handling logic.
-
         Args:
-            incoming_reference: The incoming reference to check for collisions.
-            collision_strategy: The strategy to use for handling collisions.
+            - reference (ReferenceCreate): The incoming reference.
+            - collision_strategy (CollisionStrategy): The strategy to use for
+                handling collisions.
 
         Returns:
-            A tuple containing the target state of the reference in the database
-            (or None if no database operations are required), and an optional error
-            message.
+            - Reference | str | None: The final reference to be persisted, an
+                error message, or None if the reference should be discarded.
 
         """
         if not reference.identifiers:
-            msg = "Cannot detect collision without identifiers."
+            msg = "No identifiers found in reference. This should not happen."
             raise RuntimeError(msg)
 
-        collided_identifiers = [
-            _identifier
-            for identifier in reference.identifiers
-            if (
-                _identifier
-                := await self.sql_uow.external_identifiers.get_by_type_and_identifier(
+        collided_identifiers = await self._fetch_collided_identifiers(
+            reference.identifiers
+        )
+
+        if not collided_identifiers:
+            # No collision detected
+            return Reference.from_create(reference)
+
+        if collision_strategy == CollisionStrategy.DISCARD:
+            return None
+
+        collided_refs = {identifier.reference_id for identifier in collided_identifiers}
+        if len(collided_refs) != 1:
+            return "Incoming reference collides with more than one existing reference."
+
+        existing_reference = await self.sql_uow.references.get_by_pk(
+            collided_refs.pop(), preload=["identifiers", "enhancements"]
+        )
+        if not existing_reference:
+            msg = "Existing reference not found in database. This should not happen."
+            raise RuntimeError(msg)
+
+        incoming_reference = Reference.from_create(reference, existing_reference.id)
+
+        if collision_strategy == CollisionStrategy.FAIL:
+            return f"""
+Identifier(s) are already mapped on an existing reference:
+{collided_identifiers}
+"""
+
+        # Merge collision strategies
+        return await self._merge_references(
+            incoming_reference, existing_reference, collision_strategy
+        )
+
+    async def _fetch_collided_identifiers(
+        self, identifiers: list[ExternalIdentifierCreate]
+    ) -> list[ExternalIdentifier]:
+        """
+        Fetch identifiers that collide with existing identifiers in the database.
+
+        Args:
+            - identifiers (list[ExternalIdentifierCreate]): The identifiers to check.
+
+        Returns:
+            - list[ExternalIdentifier]: The collided identifiers.
+
+        """
+        collided = []
+        for identifier in identifiers:
+            existing_identifier = (
+                await self.sql_uow.external_identifiers.get_by_type_and_identifier(
                     identifier.identifier_type,
                     identifier.identifier,
                     identifier.other_identifier_name,
                 )
             )
-        ]
+            if existing_identifier:
+                collided.append(existing_identifier)
+        return collided
 
-        if not collided_identifiers:
-            # No collision, proceed with a new reference
-            return Reference.from_create(reference), None
+    async def _merge_references(
+        self,
+        incoming_reference: Reference,
+        existing_reference: Reference,
+        collision_strategy: CollisionStrategy,
+    ) -> Reference:
+        """
+        Merge two references together.
 
-        if collision_strategy == CollisionStrategy.DISCARD:
-            return None, None
+        Args:
+            - existing_reference (Reference): The existing reference.
+            - incoming_reference (Reference): The incoming reference.
+            - collision_strategy (CollisionStrategy): The strategy to use for
+                handling collisions.
 
-        collided_references = {
-            identifier.reference_id for identifier in collided_identifiers
-        }
+        Returns:
+            - Reference: The final reference to be persisted.
 
-        if len(collided_references) != 1:
-            return (
-                None,
-                """
-            Incoming reference collides with more than one existing reference.
-            """,
-            )
+        """
+        # Graft matching IDs from existing to incoming
+        # This allows SQLAlchemy to handle the merge correctly
+        for identifier in incoming_reference.identifiers or []:
+            for existing_identifier in existing_reference.identifiers or []:
+                if (identifier.identifier_type, identifier.other_identifier_name) == (
+                    existing_identifier.identifier_type,
+                    existing_identifier.other_identifier_name,
+                ):
+                    identifier.id = existing_identifier.id
+        for enhancement in incoming_reference.enhancements or []:
+            for existing_enhancement in existing_reference.enhancements or []:
+                if (enhancement.enhancement_type, enhancement.source) == (
+                    existing_enhancement.enhancement_type,
+                    existing_enhancement.source,
+                ):
+                    enhancement.id = existing_enhancement.id
 
-        # If we get here, we have a single collision which we can now handle
-        # First, we standardise the IDs
-        existing_reference = await self.sql_uow.references.get_by_pk(
-            collided_references.pop(), preload=["identifiers", "enhancements"]
-        )
-        if not existing_reference:
-            msg = "Existing reference not found in database. This should not happen."
-            raise RuntimeError(msg)
-        incoming_reference = Reference.from_create(reference, existing_reference.id)
-
-        if collision_strategy == CollisionStrategy.FAIL:
-            return (
-                None,
-                f"""
-    Identifier(s) are already mapped on an existing reference:
-    {collided_identifiers}
-    """,
-            )
         if collision_strategy == CollisionStrategy.OVERWRITE:
-            return incoming_reference, None
+            return incoming_reference
 
-        # If we get here, we are merging
-        target_reference_state, supplementary_reference_state = (
+        # Decide merge order based on strategy
+        target, supplementary = (
             (existing_reference, incoming_reference)
             if collision_strategy == CollisionStrategy.MERGE_DEFENSIVE
             else (incoming_reference, existing_reference)
         )
 
-        if (
-            not target_reference_state.identifiers
-            or not supplementary_reference_state.identifiers
-        ):
+        if not target.identifiers or not supplementary.identifiers:
             msg = "No identifiers found in merge. This should not happen."
             raise RuntimeError(msg)
 
-        target_reference_state.enhancements = target_reference_state.enhancements or []
-        supplementary_reference_state.enhancements = (
-            supplementary_reference_state.enhancements or []
-        )
+        target.enhancements = target.enhancements or []
+        supplementary.enhancements = supplementary.enhancements or []
 
-        # Merge the identifiers and enhancements
-        target_reference_state.id = existing_reference.id
-        target_reference_state.identifiers.extend(
+        # Merge identifiers and enhancements
+        target.identifiers.extend(
             [
                 identifier
-                for identifier in supplementary_reference_state.identifiers
-                if identifier.identifier_type
+                for identifier in supplementary.identifiers
+                if (identifier.identifier_type, identifier.other_identifier_name)
                 not in {
-                    identifier.identifier_type
-                    for identifier in target_reference_state.identifiers
+                    (identifier.identifier_type, identifier.other_identifier_name)
+                    for identifier in target.identifiers
                 }
             ]
         )
-        target_reference_state.enhancements.extend(
+        target.enhancements.extend(
             [
                 enhancement
-                for enhancement in supplementary_reference_state.enhancements
+                for enhancement in supplementary.enhancements
                 if (enhancement.enhancement_type, enhancement.source)
                 not in {
                     (enhancement.enhancement_type, enhancement.source)
-                    for enhancement in target_reference_state.enhancements
+                    for enhancement in target.enhancements
                 }
             ]
         )
 
-        return target_reference_state, None
-
-    async def validate_reference_format(
-        self, raw_reference: JSON
-    ) -> tuple[list[JSON], list[JSON], ReferenceCreateResult | None]:
-        """Validate the format of the reference JSON."""
-        if type(raw_reference) is not dict:
-            return (
-                [],
-                [],
-                ReferenceCreateResult(
-                    errors=[
-                        """
-    Could not parse reference.
-    Ensure the format is correct.
-""",
-                    ]
-                ),
-            )
-
-        # Check no keys other than enhancements, identifiers and visibility are present
-        if surplus_keys := raw_reference.keys() - {
-            "identifiers",
-            "enhancements",
-            "visibility",
-        }:
-            return (
-                [],
-                [],
-                ReferenceCreateResult(
-                    errors=[
-                        f"""
-    Unexpected keys found: {surplus_keys}.
-    Ensure the format is correct.
-""",
-                    ]
-                ),
-            )
-
-        # Check the basic top-level structure
-        if (
-            not (raw_identifiers := raw_reference.get("identifiers"))
-            or type(raw_identifiers) is not list
-        ):
-            return (
-                [],
-                [],
-                ReferenceCreateResult(
-                    errors=[
-                        """
-    Could not parse identifiers. Identifiers must be provided as a non-empty list.
-    Ensure the format is correct.
-""",
-                    ]
-                ),
-            )
-
-        raw_enhancements = raw_reference.get("enhancements", [])
-        if type(raw_enhancements) is not list:
-            return (
-                [],
-                [],
-                ReferenceCreateResult(
-                    errors=[
-                        """
-    Could not parse enhancements. Enhancements if providedmust be a list.
-    Ensure the format is correct.
-""",
-                    ]
-                ),
-            )
-
-        return raw_identifiers, raw_enhancements, None
+        return target
 
     async def ingest_reference(
         self, record_str: str, entry_ref: int, collision_strategy: CollisionStrategy
@@ -345,17 +304,18 @@ Enhancement {entry_ref}:
         `ReferenceCreate` model) to provide more useful error messages to the user and
         allow for partial successes.
         """
-        raw_reference: JSON = json.loads(record_str)
-
-        raw_identifiers, raw_enhancements, error = await self.validate_reference_format(
-            raw_reference
-        )
-        if error:
-            return ReferenceCreateResult(errors=[f"Entry {entry_ref}:", *error.errors])
+        try:
+            raw_reference = json.loads(record_str)
+            # Validate top-level JSON schema using Pydantic
+            validated_input = ReferenceCreateInputValidator.model_validate(
+                raw_reference
+            )
+        except (json.JSONDecodeError, ValidationError) as exc:
+            return ReferenceCreateResult(errors=[f"Entry {entry_ref}:", str(exc)])
 
         identifier_results: list[ExternalIdentifierParseResult] = [
             await self.parse_external_identifier(identifier, i)
-            for i, identifier in enumerate(raw_identifiers, 1)
+            for i, identifier in enumerate(validated_input.identifiers, 1)
         ]
 
         # Fail out if all identifiers failed
@@ -373,7 +333,7 @@ Enhancement {entry_ref}:
 
         enhancement_results: list[EnhancementParseResult] = [
             await self.parse_enhancement(enhancement, i)
-            for i, enhancement in enumerate(raw_enhancements, 1)
+            for i, enhancement in enumerate(validated_input.enhancements, 1)
         ]
 
         reference = ReferenceCreate(
@@ -392,19 +352,20 @@ Enhancement {entry_ref}:
             ],
         )
 
-        final_reference, collision_error = await self.detect_and_handle_collision(
+        collision_result = await self.detect_and_handle_collision(
             reference, collision_strategy
         )
 
-        if collision_error:
-            return ReferenceCreateResult(
-                errors=[f"Entry {entry_ref}:", collision_error]
-            )
-        if not final_reference:
+        if collision_result is None:
             # Record to be discarded
             return None
 
-        await self.sql_uow.references.add(final_reference)
+        if isinstance(collision_result, str):
+            return ReferenceCreateResult(
+                errors=[f"Entry {entry_ref}:", collision_result]
+            )
+
+        final_reference = await self.sql_uow.references.merge(collision_result)
 
         reference_result = ReferenceCreateResult(
             reference=final_reference,
