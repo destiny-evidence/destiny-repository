@@ -126,7 +126,7 @@ async def enqueue_batch(
             detail=f"Import record with id {import_record_id} not found.",
         )
     import_batch = await import_service.register_batch(import_record_id, batch)
-    process_import_batch.delay(
+    await process_import_batch.kiq(
         import_batch_id=import_batch.id,
     )
     return import_batch

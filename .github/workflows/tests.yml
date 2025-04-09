@@ -67,5 +67,5 @@ jobs:
           DB_URL: "postgresql+asyncpg://postgres:${{ secrets.db_password }}@localhost:5432/destiny_test"
           AZURE_APPLICATION_ID: ${{ vars.azure_application_id }}
           AZURE_TENANT_ID: ${{ vars.azure_tenant_id }}
-          CELERY_BROKER_URL: redis://localhost:6379/0
+          MESSAGE_BROKER_URL: amqp://guest:guest@localhost:5672
         run: poetry run pytest

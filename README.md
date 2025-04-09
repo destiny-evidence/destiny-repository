@@ -72,13 +72,13 @@ Run the development server:
 poetry run fastapi dev
 ```
 
-Run the celery worker:
+Run the taskiq worker:
 
 ```sh
-poetry run bash -c 'watchmedo auto-restart --directory=./ --pattern=*.py --recursive -- celery -A app.tasks worker --loglevel=INFO'
+poetry run taskiq worker app.tasks:broker --fs-discover --reload
 ```
 
-Alternatively, you can run the development server and celery worker via docker:
+Alternatively, you can run the development server and taskiq worker via docker:
 
 ```sh
 docker compose --profile optional up --build

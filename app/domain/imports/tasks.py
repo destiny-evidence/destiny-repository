@@ -1,6 +1,4 @@
-"""Tasks module for the DESTINY Climate and Health Repository API."""
-
-import asyncio
+"""Import tasks module for the DESTINY Climate and Health Repository API."""
 
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +7,7 @@ from app.core.exceptions.task_exception import TaskError
 from app.domain.imports.service import ImportService
 from app.persistence.sql.session import db_manager
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
-from app.tasks import celery_app
+from app.tasks import broker
 
 
 async def get_unit_of_work(
@@ -32,7 +30,8 @@ async def get_import_service(
     return ImportService(sql_uow=sql_uow)
 
 
-async def _process_import_batch_async(import_batch_id: UUID4) -> None:
+@broker.task
+async def process_import_batch(import_batch_id: UUID4) -> None:
     """Async logic for processing an import batch."""
     import_service = await get_import_service()
 
@@ -41,9 +40,3 @@ async def _process_import_batch_async(import_batch_id: UUID4) -> None:
         raise TaskError(detail=f"Import batch with ID {import_batch_id} not found.")
 
     await import_service.process_batch(import_batch)
-
-
-@celery_app.task
-def process_import_batch(import_batch_id: UUID4) -> None:
-    """Celery-compatible sync wrapper for async logic."""
-    asyncio.run(_process_import_batch_async(import_batch_id))
