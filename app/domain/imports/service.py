@@ -3,6 +3,7 @@
 import httpx
 from pydantic import UUID4
 
+from app.core.logger import get_logger
 from app.domain.imports.models.models import (
     CollisionStrategy,
     ImportBatch,
@@ -18,6 +19,8 @@ from app.domain.imports.models.models import (
 from app.domain.references.service import ReferenceService
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
+
+logger = get_logger()
 
 
 class ImportService(GenericService):
@@ -128,27 +131,55 @@ This should not happen.
 
         # Note: if parallelised, you would need to create a different
         # reference service with a new uow for each thread.
-        reference_service = ReferenceService(self.sql_uow)
-        async with (
-            httpx.AsyncClient() as client,
-            client.stream("GET", str(import_batch.storage_url)) as response,
-        ):
-            response.raise_for_status()
-            i = 1
-            async for line in response.aiter_lines():
-                if line.strip():
-                    await self.import_reference(
-                        import_batch.id,
-                        import_batch.collision_strategy,
-                        line,
-                        reference_service,
-                        i,
-                    )
-                    i += 1
+        try:
+            reference_service = ReferenceService(self.sql_uow)
+            async with (
+                httpx.AsyncClient() as client,
+                client.stream("GET", str(import_batch.storage_url)) as response,
+            ):
+                response.raise_for_status()
+                i = 1
+                async for line in response.aiter_lines():
+                    if line.strip():
+                        await self.import_reference(
+                            import_batch.id,
+                            import_batch.collision_strategy,
+                            line,
+                            reference_service,
+                            i,
+                        )
+                        i += 1
+        except Exception:
+            msg = f"""
+Failed to process batch {import_batch.id} from URL {import_batch.storage_url}
+            """
+            logger.exception(msg)
+            await self.sql_uow.batches.update_by_pk(
+                import_batch.id, status=ImportBatchStatus.FAILED
+            )
+            return
 
         await self.sql_uow.batches.update_by_pk(
             import_batch.id, import_batch_status=ImportBatchStatus.COMPLETED
         )
+        if import_batch.callback_url:
+            batch_result = await self.get_import_batch_summary(import_batch.id)
+            if not batch_result:
+                raise RuntimeError
+            try:
+                async with httpx.AsyncClient(
+                    transport=httpx.AsyncHTTPTransport(retries=2)
+                ) as client:
+                    response = await client.post(
+                        str(import_batch.callback_url),
+                        json=batch_result.model_dump(),
+                    )
+                    response.raise_for_status()
+            except Exception:
+                msg = f"""
+Failed to send callback for batch {import_batch.id} to URL {import_batch.callback_url}
+                """
+                logger.exception(msg)
 
     @unit_of_work
     async def add_batch_result(

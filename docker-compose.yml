@@ -25,6 +25,10 @@ services:
       interval: 2s
       timeout: 2s
       retries: 5
+  http:
+    image: hashicorp/http-echo:latest
+    ports:
+      - "5678:5678"
 
 volumes:
   db_data:
