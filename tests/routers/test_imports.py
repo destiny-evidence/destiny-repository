@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.imports import routes as imports
 from app.domain.imports.models.models import (
+    CollisionStrategy,
     ImportBatchStatus,
     ImportRecordStatus,
     ImportResultStatus,
@@ -143,12 +144,14 @@ async def test_get_batches(
     await session.commit()
     batch1 = SQLImportBatch(
         import_record_id=valid_import.id,
+        collision_strategy=CollisionStrategy.FAIL,
         status=ImportBatchStatus.CREATED,
         storage_url="https://some.url/file.json",
     )
     session.add(batch1)
     batch2 = SQLImportBatch(
         import_record_id=valid_import.id,
+        collision_strategy=CollisionStrategy.FAIL,
         status=ImportBatchStatus.CREATED,
         storage_url="https://files.storage/something.json",
     )
@@ -168,6 +171,7 @@ async def test_get_import_batch_summary(
     await session.commit()
     batch = SQLImportBatch(
         import_record_id=valid_import.id,
+        collision_strategy=CollisionStrategy.FAIL,
         status=ImportBatchStatus.CREATED,
         storage_url="https://some.url/file.json",
     )
@@ -217,6 +221,7 @@ async def test_get_import_results(
     await session.commit()
     batch = SQLImportBatch(
         import_record_id=valid_import.id,
+        collision_strategy=CollisionStrategy.FAIL,
         status=ImportBatchStatus.CREATED,
         storage_url="https://some.url/file.json",
     )
