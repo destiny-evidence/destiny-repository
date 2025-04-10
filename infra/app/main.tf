@@ -98,7 +98,7 @@ module "container_app" {
     command = ["alembic", "upgrade", "head"]
     cpu     = 0.5
     memory  = "1Gi"
-    env = local.env_vars
+    env     = local.env_vars
   }
 
   custom_scale_rules = [
