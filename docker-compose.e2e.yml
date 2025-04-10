@@ -1,0 +1,81 @@
+services:
+  db:
+    volumes:
+      - /var/lib/postgresql/data
+  fs:
+    volumes:
+      - /data
+  fs-seed:
+    image: minio/mc
+    depends_on:
+      fs:
+        condition: service_healthy
+    volumes:
+      - .minio:/.minio
+    environment:
+      MINIO_URL: "http://fs:9000"
+      MINIO_ROOT_USER: localuser
+      MINIO_ROOT_PASSWORD: localpass
+      MINIO_SEED_DATA_DIR: .minio/data
+      MINIO_PRESIGNED_URL_FILEPATH: .minio/presigned_urls.json
+    entrypoint: ./.minio/seed_fileserver.sh
+  db-seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: "postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"
+      ENV: "dev"
+      AZURE_APPLICATION_ID: "dummy"
+      AZURE_TENANT_ID: "dummy"
+    entrypoint: /venv/bin/alembic upgrade head
+  repo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db-seed:
+        condition: service_completed_successfully
+      fs-seed:
+        condition: service_completed_successfully
+      http:
+        condition: service_started
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    environment:
+      # Overwrite with docker network hostname
+      DB_URL: "postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import socket; sock = socket.create_connection(('localhost',8000), 2); sock.close()",
+        ]
+      interval: 2s
+      timeout: 2s
+      retries: 5
+  e2e:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test_builder
+    depends_on:
+      repo:
+        condition: service_healthy
+    environment:
+      DB_URL: "postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"
+      REPO_URL: "http://repo:8000"
+      HTTP_CLIENT_URL: "http://http:5678"
+      MINIO_URL: "http://fs:9000"
+      ENV: "dev"
+    entrypoint: /venv/bin/pytest tests/e2e --noconftest
+
+# Use fresh volumes for tests
+volumes: {}

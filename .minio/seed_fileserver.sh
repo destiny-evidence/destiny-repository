@@ -12,7 +12,8 @@ SECRET_KEY="${MINIO_SECRET_KEY:-localpass}"
 # Configure alias if not already set
 mc alias set "$ALIAS" "$MINIO_URL" "$ACCESS_KEY" "$SECRET_KEY"
 
-DATA_DIR="./.minio/data"
+DATA_DIR="${MINIO_SEED_DATA_DIR:-./.minio/data}"
+CONFIG_FILE="${MINIO_PRESIGNED_URL_FILEPATH:-./.minio/presigned_urls.json}"
 
 if [ ! -d "$DATA_DIR" ]; then
     echo "Directory '$DATA_DIR' does not exist."
@@ -35,7 +36,6 @@ for dir in "$DATA_DIR"/*/; do
 done
 
 # Generate configuration file mapping bucket/file to a presigned URL with no expiry
-CONFIG_FILE="./.minio/presigned_urls.json"
 echo "{" > "$CONFIG_FILE"
 firstEntry=true
 for dir in "$DATA_DIR"/*/; do

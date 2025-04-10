@@ -182,10 +182,10 @@ Tests are in the [tests](/tests) directory. They are run using `pytest`
 poetry run pytest
 ```
 
-End-to-end testing is run separately:
+End-to-end testing is run separately in a containerised context:
 
 ```sh
-./test-e2e.sh
+docker compose -f docker-compose.yml -f docker-compose.e2e.yml run e2e
 ```
 
 ## Structure
