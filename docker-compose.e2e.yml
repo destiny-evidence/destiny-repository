@@ -36,6 +36,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: destiny-repo
     depends_on:
       db-seed:
         condition: service_completed_successfully
@@ -64,8 +65,7 @@ services:
   e2e:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: test_builder
+      dockerfile: Dockerfile.tests
     depends_on:
       repo:
         condition: service_healthy
