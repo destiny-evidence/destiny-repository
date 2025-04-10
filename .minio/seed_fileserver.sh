@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+shopt -s globstar
 
 # Seeds MinIO buckets and files from ./data
 
@@ -20,17 +21,18 @@ if [ ! -d "$DATA_DIR" ]; then
     exit 1
 fi
 
-# For each folder in the data directory, create a bucket and upload its files, overwriting existing objects
-OVERWRITE_FLAG="--overwrite"
+# For each folder in the data directory, create a bucket and upload its files recursively, preserving subfolder paths
 for dir in "$DATA_DIR"/*/; do
     bucket=$(basename "$dir")
     echo "Creating bucket: $bucket"
     mc mb "$ALIAS/$bucket" || true
 
     echo "Uploading files from $dir to bucket: $bucket"
-    for file in "$dir"*; do
+    for file in "$dir"**/*; do
         if [ -f "$file" ]; then
-            mc cp "$file" "$ALIAS/$bucket"
+            rel_path="${file#$dir}"
+            echo "Uploading $file as $rel_path"
+            mc cp "$file" "$ALIAS/$bucket/$rel_path"
         fi
     done
 done
@@ -40,10 +42,10 @@ echo "{" > "$CONFIG_FILE"
 firstEntry=true
 for dir in "$DATA_DIR"/*/; do
     bucket=$(basename "$dir")
-    for file in "$dir"*; do
+    for file in "$dir"**/*; do
         if [ -f "$file" ]; then
-            filename=$(basename "$file")
-            raw=$(mc share download --expire 168h "$ALIAS/$bucket/$filename")
+            rel_path="${file#$dir}"
+            raw=$(mc share download --expire 168h "$ALIAS/$bucket/$rel_path")
             url=""
             while IFS= read -r line; do
                 case "$line" in
@@ -55,7 +57,7 @@ for dir in "$DATA_DIR"/*/; do
             else
                 echo "," >> "$CONFIG_FILE"
             fi
-            echo "  \"${bucket}/${filename}\": \"${url}\"" >> "$CONFIG_FILE"
+            echo "  \"${bucket}/${rel_path}\": \"${url}\"" >> "$CONFIG_FILE"
         fi
     done
 done

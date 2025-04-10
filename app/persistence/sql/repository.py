@@ -77,6 +77,7 @@ class GenericAsyncSqlRepository(
             msg = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
             raise RuntimeError(msg)
 
+        # Check if key is in the persistence model.
         for key, value in kwargs.items():
             setattr(persistence, key, value)
 

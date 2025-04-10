@@ -56,6 +56,7 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
         nullable=False,
     )
     storage_url: Mapped[str] = mapped_column(String, nullable=False)
+    callback_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
     import_record: Mapped["ImportRecord"] = relationship(
         "ImportRecord", back_populates="batches"
@@ -81,6 +82,9 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
             collision_strategy=domain_obj.collision_strategy,
             status=domain_obj.status,
             storage_url=str(domain_obj.storage_url),
+            callback_url=str(domain_obj.callback_url)
+            if domain_obj.callback_url
+            else None,
         )
 
     async def to_domain(self, preload: list[str] | None = None) -> DomainImportBatch:
@@ -91,6 +95,7 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
             collision_strategy=self.collision_strategy,
             status=self.status,
             storage_url=HttpUrl(self.storage_url),
+            callback_url=HttpUrl(self.callback_url) if self.callback_url else None,
             import_record=await self.import_record.to_domain()
             if "import_record" in (preload or [])
             else None,

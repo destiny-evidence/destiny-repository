@@ -1,10 +1,9 @@
-FROM destiny-repo
+FROM destiny-repository
 WORKDIR /src
 
 RUN pip install poetry poetry-plugin-bundle
 COPY pyproject.toml poetry.lock README.md ./
 RUN poetry bundle venv --with=dev /venv
 
-COPY tests/ ./tests
-
-CMD ["pytest", "tests/"]
+COPY tests/e2e /e2e
+COPY .minio/presigned_urls.json /presigned_urls.json

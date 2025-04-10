@@ -56,11 +56,8 @@ class ImportService(GenericService):
         self, import_record_id: UUID4, batch_create: ImportBatchCreate
     ) -> ImportBatch:
         """Register an import batch, persisting it to the database."""
-        import_record = await self.sql_uow.imports.get_by_pk(import_record_id)
-        if not import_record:
-            raise RuntimeError
         batch = ImportBatch(
-            import_record_id=import_record.id,
+            import_record_id=import_record_id,
             **batch_create.model_dump(),
         )
         return await self.sql_uow.batches.add(batch)
@@ -160,10 +157,10 @@ Failed to process batch {import_batch.id} from URL {import_batch.storage_url}
             return
 
         await self.sql_uow.batches.update_by_pk(
-            import_batch.id, import_batch_status=ImportBatchStatus.COMPLETED
+            import_batch.id, status=ImportBatchStatus.COMPLETED
         )
         if import_batch.callback_url:
-            batch_result = await self.get_import_batch_summary(import_batch.id)
+            batch_result = await self._get_import_batch_summary(import_batch.id)
             if not batch_result:
                 raise RuntimeError
             try:
@@ -172,7 +169,7 @@ Failed to process batch {import_batch.id} from URL {import_batch.storage_url}
                 ) as client:
                     response = await client.post(
                         str(import_batch.callback_url),
-                        json=batch_result.model_dump(),
+                        json=batch_result.model_dump(mode="json"),
                     )
                     response.raise_for_status()
             except Exception:
@@ -192,6 +189,12 @@ Failed to send callback for batch {import_batch.id} to URL {import_batch.callbac
 
     @unit_of_work
     async def get_import_batch_summary(
+        self, import_batch_id: UUID4
+    ) -> ImportBatchSummary | None:
+        """Get an import batch with its results."""
+        return await self._get_import_batch_summary(import_batch_id)
+
+    async def _get_import_batch_summary(
         self, import_batch_id: UUID4
     ) -> ImportBatchSummary | None:
         """Get an import batch with its results."""

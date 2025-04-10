@@ -101,11 +101,17 @@ async def enqueue_batch(
     import_service: Annotated[ImportService, Depends(import_service)],
 ) -> ImportBatch:
     """Register an import batch for a given import."""
+    import_record = await import_service.get_import_record(import_record_id)
+    if not import_record:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Import record with id {import_record_id} not found.",
+        )
     import_batch = await import_service.register_batch(import_record_id, batch)
-    # Commented out for now so tests pass - this will be handled by celery
-    # which we can mock in the tests in the future.
-    # await import_service.process_batch(import_batch)  # noqa: ERA001
-    return import_batch  # noqa: RET504
+    # TODO(Adam): Distribute task.
+    # https://github.com/destiny-evidence/destiny-repository/issues/36
+    await import_service.process_batch(import_batch)
+    return import_batch
 
 
 @router.get("/record/{import_record_id}/batch/")

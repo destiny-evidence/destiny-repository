@@ -54,20 +54,19 @@ class CollisionStrategy(StrEnum):
     - `discard`: Do nothing with the incoming reference.
     - `fail`: Do nothing with the incoming reference and mark it as failed. This
         allows the importing process to "follow up" on the failure.
-    - `overwrite`: Delete the existing reference and replace it with the incoming
-        reference.
-    - `merge_aggressive`: Prioritize the incoming reference by preserving all
-        incoming fields and supplementing them with any matching values from the
-        existing reference.
-    - `merge_defensive`: Prioritize the existing reference by preserving all existing
-        fields while incorporating non-conflicting data from the incoming reference.
+    - `merge_aggressive`: Prioritize the incoming reference's identifiers and
+        enhancements in the merge.
+    - `merge_defensive`: Prioritize the existing reference's identifiers and
+        enhancements in the merge.
+    - `overwrite`: Performs an aggressive merge of identifiers, and an overwrite of
+        enhancements (deleting existing and recreating what is imported)
     """
 
     DISCARD = "discard"
     FAIL = "fail"
-    OVERWRITE = "overwrite"
     MERGE_AGGRESSIVE = "merge_aggressive"
     MERGE_DEFENSIVE = "merge_defensive"
+    OVERWRITE = "overwrite"
 
 
 class ImportResultStatus(StrEnum):
@@ -105,6 +104,7 @@ class ImportRecordBase(DomainBaseModel):
     """
 
     search_string: str | None = Field(
+        None,
         description="The search string used to produce this import",
     )
     searched_at: PastDatetime = Field(
@@ -122,13 +122,18 @@ is assumed to be in UTC.
         description="The version of the processor that is importing the data."
     )
     notes: str | None = Field(
+        None,
         description="""
 Any additional notes regarding the import (eg. reason for importing, known
 issues).
         """,
     )
     expected_reference_count: int = Field(
-        description="The number of references expected to be included in this import."
+        description="""
+The number of references expected to be included in this import.
+-1 is accepted if the number is unknown.
+""",
+        ge=-1,
     )
     source_name: str = Field(
         description="The source of the reference being imported (eg. Open Alex)"

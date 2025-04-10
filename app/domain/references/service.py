@@ -169,6 +169,12 @@ Enhancement {entry_ref}:
         if len(collided_refs) != 1:
             return "Incoming reference collides with more than one existing reference."
 
+        if collision_strategy == CollisionStrategy.FAIL:
+            return f"""
+Identifier(s) are already mapped on an existing reference:
+{collided_identifiers}
+"""
+
         existing_reference = await self.sql_uow.references.get_by_pk(
             collided_refs.pop(), preload=["identifiers", "enhancements"]
         )
@@ -177,12 +183,6 @@ Enhancement {entry_ref}:
             raise RuntimeError(msg)
 
         incoming_reference = Reference.from_create(reference, existing_reference.id)
-
-        if collision_strategy == CollisionStrategy.FAIL:
-            return f"""
-Identifier(s) are already mapped on an existing reference:
-{collided_identifiers}
-"""
 
         # Merge collision strategies
         return await self._merge_references(
@@ -251,9 +251,6 @@ Identifier(s) are already mapped on an existing reference:
                 ):
                     enhancement.id = existing_enhancement.id
 
-        if collision_strategy == CollisionStrategy.OVERWRITE:
-            return incoming_reference
-
         # Decide merge order based on strategy
         target, supplementary = (
             (existing_reference, incoming_reference)
@@ -280,6 +277,11 @@ Identifier(s) are already mapped on an existing reference:
                 }
             ]
         )
+
+        # On an overwrite, we don't preserve the existing enhancements, only identifiers
+        if collision_strategy == CollisionStrategy.OVERWRITE:
+            return target
+
         target.enhancements.extend(
             [
                 enhancement

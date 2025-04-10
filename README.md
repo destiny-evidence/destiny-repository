@@ -185,7 +185,9 @@ poetry run pytest
 End-to-end testing is run separately in a containerised context:
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.e2e.yml run e2e
+docker compose down -v \
+&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --force-recreate --remove-orphans \
+&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs -f --tail=0 e2e repository
 ```
 
 ## Structure

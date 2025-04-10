@@ -32,11 +32,11 @@ services:
       AZURE_APPLICATION_ID: "dummy"
       AZURE_TENANT_ID: "dummy"
     entrypoint: /venv/bin/alembic upgrade head
-  repo:
+  repository:
     build:
       context: .
       dockerfile: Dockerfile
-    image: destiny-repo
+    image: destiny-repository
     depends_on:
       db-seed:
         condition: service_completed_successfully
@@ -45,7 +45,7 @@ services:
       http:
         condition: service_started
     volumes:
-      - .:/app
+      - ./app:/src/app
     env_file:
       - .env
     environment:
@@ -65,17 +65,24 @@ services:
   e2e:
     build:
       context: .
-      dockerfile: Dockerfile.tests
+      dockerfile: Dockerfile.e2e
+    volumes:
+      - ./tests/e2e:/e2e
+      - ./.minio/presigned_urls.json:/.minio/presigned_urls.json
+    ports:
+      - 8001:8001
     depends_on:
-      repo:
+      repository:
         condition: service_healthy
     environment:
       DB_URL: "postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"
-      REPO_URL: "http://repo:8000"
+      REPO_URL: "http://repository:8000"
       HTTP_CLIENT_URL: "http://http:5678"
       MINIO_URL: "http://fs:9000"
+      CALLBACK_URL: "http://e2e:8001"
       ENV: "dev"
-    entrypoint: /venv/bin/pytest tests/e2e --noconftest
+      MINIO_PRESIGNED_URL_FILEPATH: /.minio/presigned_urls.json
+    entrypoint: /venv/bin/pytest /e2e
 
 # Use fresh volumes for tests
 volumes: {}

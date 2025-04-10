@@ -13,4 +13,4 @@ COPY alembic.ini .
 ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8000
-ENTRYPOINT ["/venv/bin/fastapi", "run", "app/main.py", "--port", "8000"]
+ENTRYPOINT ["/venv/bin/fastapi", "run", "app/main.py", "--port", "8000", "--no-reload"]

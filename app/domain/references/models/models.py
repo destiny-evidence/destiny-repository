@@ -235,7 +235,7 @@ class ReferenceCreate(ReferenceBase):
 class ReferenceCreateInputValidator(ReferenceBase):
     """Validator for the top-level schema of a reference creation input."""
 
-    identifiers: list[JSON]
+    identifiers: list[JSON] = Field(min_length=1)
     enhancements: list[JSON] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
