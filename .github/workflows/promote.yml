@@ -40,12 +40,12 @@ jobs:
           registry: ${{vars.REGISTRY_NAME}}.azurecr.io
           username: 00000000-0000-0000-0000-000000000000
           password: ${{ steps.acr_login.outputs.docker_token }}
-      - name: tag image with production tag for init container
+      - name: Tag image with production tag for init container
         run: |
           sha_short=$(git rev-parse --short HEAD)
           docker pull ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:$sha_short
           docker tag ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:$sha_short ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ vars.ENVIRONMENT_NAME }}
-          docker push ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ vars.ENVIRONMENT_NAME }}
+          docker push ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ vars.ENVIRONMENT_NAME }}
   deploy-production:
     if: github.ref == 'refs/heads/main' # Only run on main
     name: "Deploy Container"
