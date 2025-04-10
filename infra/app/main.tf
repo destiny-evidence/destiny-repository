@@ -60,7 +60,7 @@ locals {
 
 module "container_app" {
   source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
-  version                         = "1.3.0"
+  version                         = "1.4.0"
   app_name                        = var.app_name
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id
@@ -115,7 +115,7 @@ module "container_app" {
 
 module "container_app_tasks" {
   source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
-  version                         = "1.3.0"
+  version                         = "1.4.0"
   app_name                        = "${var.app_name}-task"
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id
