@@ -4,7 +4,7 @@ End-to-end test for complete import workflow.
 Consider reducing number of assertions, particularly string-sensitive, once
 unit and integration test coverage is sound.
 """
-# ruff: noqa: T201 E501
+# ruff: noqa: T201 E501 ERA001
 
 import datetime
 import json
@@ -17,6 +17,7 @@ from pathlib import Path
 import httpx
 import uvicorn
 from fastapi import FastAPI
+from sqlalchemy import create_engine, text  # noqa: F401
 
 with Path(os.environ["MINIO_PRESIGNED_URL_FILEPATH"]).open() as f:
     PRESIGNED_URLS: dict[str, str] = json.load(f)
@@ -27,12 +28,15 @@ CALLBACK_URL = os.environ["CALLBACK_URL"]
 
 callback_payload: dict = {}
 
+# db_url = os.environ["DB_URL"]
+# engine = create_engine(db_url)
+
 
 def test_complete_batch_import_workflow():  # noqa: PLR0915
     """Test the complete batch import workflow."""
-    ################################
-    # 0. Start the callback server #
-    ################################
+    #############################
+    # Start the callback server #
+    #############################
     callback_app = FastAPI()
 
     @callback_app.post("/callback/")
@@ -63,9 +67,9 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
     server_thread.start()
 
     with httpx.Client(base_url=os.environ["REPO_URL"]) as client:
-        #############################
-        # 1. Register import record #
-        #############################
+        ##########################
+        # Register import record #
+        ##########################
         # 1.a: Missing source name
         response = client.post(
             "/imports/record/",
@@ -108,9 +112,9 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             import_record["searched_at"], "%Y-%m-%dT%H:%M:%S.%f%z"
         ) > datetime.datetime.now(tz=datetime.UTC) - datetime.timedelta(minutes=1)
 
-        ##########################################
-        # 2. Enqueue import batch for each file  #
-        ##########################################
+        #######################################
+        # Enqueue import batch for each file  #
+        #######################################
         # Define helper to factorise batch submission
         def submit_happy_batch(
             import_record_id: str, url: str, **kwargs: object
@@ -124,9 +128,9 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             ), f"Expected 202, got {response.status_code}"
             return response.json()
 
-        # 2.a: A detailed import file with valid records
+        # 2: A detailed import file with valid records
         url = PRESIGNED_URLS[f"{BKT}1_completely_valid_file.jsonl"]
-        # 2.a.1: Missing import record id
+        # 2.a: Missing import record id
         response = client.post(
             "/imports/record/batch/",
             json={
@@ -134,7 +138,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             },
         )
         assert response.status_code == 405
-        # 2.a.2 Invalid enum
+        # 2.b: Invalid enum
         response = client.post(
             f"/imports/record/{import_record['id']}/batch/",
             json={
@@ -142,7 +146,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             },
         )
         assert response.status_code == 422
-        # 2.a.3: Wrong import record
+        # 2.c: Wrong import record
         response = client.post(
             f"/imports/record/{(u:=uuid.uuid4())}/batch/",
             json={
@@ -151,7 +155,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         )
         assert response.status_code == 404
         assert response.json()["detail"] == f"Import record with id {u} not found."
-        # 2.a.4: Correct batch creation
+        # 2.d: Correct batch creation
         import_batch_a = submit_happy_batch(
             import_record["id"],
             url,
@@ -163,7 +167,12 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         assert sum(cp["results"].values()) == 6
         assert cp["results"]["completed"] == 6
         assert not cp["failure_details"]
-        # 2.a.5: Duplicate URL
+
+        # with engine.connect() as connection:
+        #     result = connection.execute(text("SELECT * FROM reference"))
+        #     rows = [dict(row) for row in result]
+
+        # 2.e: Duplicate URL
         response = client.post(
             f"/imports/record/{import_record['id']}/batch/",
             json={
@@ -173,7 +182,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         )
         assert response.status_code in (409, 500)
 
-        # 2.b: An import file with invalid records
+        # 3: An import file with invalid records
         url = PRESIGNED_URLS[f"{BKT}2_file_with_some_failures.jsonl"]
         import_batch_b = submit_happy_batch(
             import_record["id"],
@@ -212,7 +221,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             in cp["failure_details"][7]
         )
 
-        # 2.c: Duplicate entries for each in 2.a
+        # 4: Duplicate entries for each in 2
         url = PRESIGNED_URLS[f"{BKT}3_file_with_duplicates.jsonl"]
         import_batch_c = submit_happy_batch(
             import_record["id"],
@@ -235,7 +244,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             == "Entry 7:\n\nIncoming reference collides with more than one existing reference."
         )
 
-        # 2.d: Subset of duplicates, overwriting
+        # 5: Subset of duplicates, overwriting
         url = PRESIGNED_URLS[f"{BKT}4_file_with_duplicates_to_overwrite.jsonl"]
         import_batch_d = submit_happy_batch(
             import_record["id"],
@@ -255,7 +264,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             == "Entry 3:\n\nIncoming reference collides with more than one existing reference."
         )
 
-        # 2.e: Subset of duplicates, defensive merge
+        # 6: Subset of duplicates, defensive merge
         url = PRESIGNED_URLS[f"{BKT}5_file_with_duplicates_to_left_merge.jsonl"]
         import_batch_e = submit_happy_batch(
             import_record["id"],
@@ -270,7 +279,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         assert cp["results"]["completed"] == 2
         assert not cp["failure_details"]
 
-        # 2.f: Subset of duplicates, aggressive merge
+        # 7: Subset of duplicates, aggressive merge
         url = PRESIGNED_URLS[f"{BKT}6_file_with_duplicates_to_right_merge.jsonl"]
         import_batch_f = submit_happy_batch(
             import_record["id"],
