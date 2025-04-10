@@ -62,6 +62,10 @@ locals {
     {
       name  = "servicebus-amqp-connection-string"
       value = "amqps://${azurerm_servicebus_namespace_authorization_rule.this.name}:${urlencode(azurerm_servicebus_namespace_authorization_rule.this.primary_key)}@${azurerm_servicebus_namespace.this.name}.servicebus.windows.net:5671"
+    },
+    {
+      name  = "storage-account-connection-string"
+      value = azurerm_storage_account.this.primary_connection_string
     }
   ]
 }
@@ -123,7 +127,7 @@ module "container_app" {
 
 module "container_app_tasks" {
   source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
-  version                         = "1.4.0"
+  version                         = "1.3.0"
   app_name                        = "${var.app_name}-task"
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id
@@ -155,7 +159,10 @@ module "container_app_tasks" {
         accountName = azurerm_storage_account.this.name
         queueName   = "celery"
         queueLength = var.queue_length_scaling_threshold
-        identity = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
+      }
+      authentication = {
+        secret_name = "storage-account-connection-string"
+        trigger_parameter = "connection"
       }
     }
   ]
