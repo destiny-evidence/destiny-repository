@@ -62,14 +62,6 @@ jobs:
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install --no-interaction
 
-      - name: Seed fileserver
-        run: ./.minio/seed_fileserver.sh
-        env:
-          MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
-          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
-          MINIO_URL: http://localhost:9000
-          ALIAS: local
-
       - name: Run test with pytest via poetry
         env:
           DB_URL: "postgresql+asyncpg://postgres:${{ secrets.db_password }}@localhost:5432/destiny_test"
