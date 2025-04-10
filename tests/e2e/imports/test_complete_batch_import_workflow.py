@@ -25,6 +25,8 @@ BKT = "e2e/test_complete_batch_import_workflow/"
 
 CALLBACK_URL = os.environ["CALLBACK_URL"]
 
+callback_payload: dict = {}
+
 
 def test_complete_batch_import_workflow():  # noqa: PLR0915
     """Test the complete batch import workflow."""
@@ -32,13 +34,25 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
     # 0. Start the callback server #
     ################################
     callback_app = FastAPI()
-    callback_payloads: list[dict] = []
 
     @callback_app.post("/callback/")
     def callback_endpoint(payload: dict) -> dict:
         """Receive callback payloads."""
-        callback_payloads.append(payload)
+        callback_payload.clear()
+        callback_payload.update(payload)
         return {"status": "received"}
+
+    # Helper to wait for a callback and then clear it
+    def wait_for_callback(timeout: int = 10) -> dict:
+        start = time.time()
+        while time.time() - start < timeout:
+            if callback_payload:
+                cp = callback_payload.copy()
+                callback_payload.clear()
+                return cp
+            time.sleep(0.1)
+        msg = "Callback not received in time"
+        raise TimeoutError(msg)
 
     def run_callback_server() -> None:
         """Run the FastAPI server."""
@@ -143,6 +157,12 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             url,
             callback_url=f"{CALLBACK_URL}/callback/",
         )
+        cp = wait_for_callback()
+        assert cp["import_batch_id"] == import_batch_a["id"]
+        assert cp["import_batch_status"] == "completed"
+        assert sum(cp["results"].values()) == 6
+        assert cp["results"]["completed"] == 6
+        assert not cp["failure_details"]
         # 2.a.5: Duplicate URL
         response = client.post(
             f"/imports/record/{import_record['id']}/batch/",
@@ -153,14 +173,43 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         )
         assert response.status_code in (409, 500)
 
-        time.sleep(1)
-
         # 2.b: An import file with invalid records
         url = PRESIGNED_URLS[f"{BKT}2_file_with_some_failures.jsonl"]
         import_batch_b = submit_happy_batch(
             import_record["id"],
             url,
             callback_url=f"{CALLBACK_URL}/callback/",
+        )
+        cp = wait_for_callback()
+        assert cp["import_batch_id"] == import_batch_b["id"]
+        assert cp["import_batch_status"] == "completed"
+        assert sum(cp["results"].values()) == 9
+        assert cp["results"]["failed"] == 5
+        assert cp["results"]["partially_failed"] == 3
+        assert cp["results"]["completed"] == 1
+        assert len(cp["failure_details"]) == 8
+        assert "Entry 2:" in cp["failure_details"][0]
+        assert "identifiers\n  Field required" in cp["failure_details"][0]
+        assert (
+            "identifiers\n  List should have at least 1 item"
+            in cp["failure_details"][1]
+        )
+        assert "identifiers\n  Input should be a valid list" in cp["failure_details"][2]
+        assert "All identifiers failed to parse." in cp["failure_details"][3]
+        assert (
+            "Enhancement 1:\n    Invalid enhancement. Check the format and content of the enhancement."
+            in cp["failure_details"][4]
+        )
+        assert "All identifiers failed to parse." in cp["failure_details"][5]
+        assert "Identifier 1:\n    Invalid identifier." in cp["failure_details"][5]
+        assert "Identifier 2:\n    Invalid identifier." in cp["failure_details"][5]
+        assert (
+            "Entry 8:\n\nEnhancement 2:\n    Invalid enhancement. Check the format and content of the enhancement."
+            in cp["failure_details"][6]
+        )
+        assert (
+            "Enhancement 1:\n    Invalid enhancement. Check the format and content of the enhancement."
+            in cp["failure_details"][7]
         )
 
         # 2.c: Duplicate entries for each in 2.a
@@ -171,6 +220,20 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             collision_strategy="fail",
             callback_url=f"{CALLBACK_URL}/callback/",
         )
+        cp = wait_for_callback()
+        assert cp["import_batch_id"] == import_batch_c["id"]
+        assert cp["import_batch_status"] == "completed"
+        assert sum(cp["results"].values()) == 7
+        assert cp["results"]["failed"] == 7
+        for i, failure in enumerate(cp["failure_details"][:6]):
+            assert f"Entry {i + 1}:" in failure
+            assert (
+                "Identifier(s) are already mapped on an existing reference" in failure
+            )
+        assert (
+            cp["failure_details"][6]
+            == "Entry 7:\n\nIncoming reference collides with more than one existing reference."
+        )
 
         # 2.d: Subset of duplicates, overwriting
         url = PRESIGNED_URLS[f"{BKT}4_file_with_duplicates_to_overwrite.jsonl"]
@@ -179,6 +242,17 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             url,
             collision_strategy="overwrite",
             callback_url=f"{CALLBACK_URL}/callback/",
+        )
+        cp = wait_for_callback()
+        assert cp["import_batch_id"] == import_batch_d["id"]
+        assert cp["import_batch_status"] == "completed"
+        assert sum(cp["results"].values()) == 3
+        assert cp["results"]["failed"] == 1
+        assert cp["results"]["completed"] == 2
+        assert len(cp["failure_details"]) == 1
+        assert (
+            cp["failure_details"][0]
+            == "Entry 3:\n\nIncoming reference collides with more than one existing reference."
         )
 
         # 2.e: Subset of duplicates, defensive merge
@@ -189,6 +263,12 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             collision_strategy="merge_defensive",
             callback_url=f"{CALLBACK_URL}/callback/",
         )
+        cp = wait_for_callback()
+        assert cp["import_batch_id"] == import_batch_e["id"]
+        assert cp["import_batch_status"] == "completed"
+        assert sum(cp["results"].values()) == 2
+        assert cp["results"]["completed"] == 2
+        assert not cp["failure_details"]
 
         # 2.f: Subset of duplicates, aggressive merge
         url = PRESIGNED_URLS[f"{BKT}6_file_with_duplicates_to_right_merge.jsonl"]
@@ -198,93 +278,9 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             collision_strategy="merge_aggressive",
             callback_url=f"{CALLBACK_URL}/callback/",
         )
-
-    ##########################
-    # 3. Callback validation #
-    ##########################
-    # Detailed callback payload checks for each batch
-
-    # 2.a callback verification
-    cp = callback_payloads[0]
-    assert cp["import_batch_id"] == import_batch_a["id"]
-    assert cp["import_batch_status"] == "completed"
-    assert sum(cp["results"].values()) == 6
-    assert cp["results"]["completed"] == 6
-    assert not cp["failure_details"]
-
-    # 2.b callback verification
-    cp = callback_payloads[1]
-    assert cp["import_batch_id"] == import_batch_b["id"]
-    assert cp["import_batch_status"] == "completed"
-    assert sum(cp["results"].values()) == 9
-    assert cp["results"]["failed"] == 5
-    assert cp["results"]["partially_failed"] == 3
-    assert cp["results"]["completed"] == 1
-    assert len(cp["failure_details"]) == 8
-    assert "Entry 2:" in cp["failure_details"][0]
-    assert "identifiers\n  Field required" in cp["failure_details"][0]
-    assert "identifiers\n  List should have at least 1 item" in cp["failure_details"][1]
-    assert "identifiers\n  Input should be a valid list" in cp["failure_details"][2]
-    assert "All identifiers failed to parse." in cp["failure_details"][3]
-    assert (
-        "Enhancement 1:\n    Invalid enhancement. Check the format and content of the enhancement."
-        in cp["failure_details"][4]
-    )
-    assert "All identifiers failed to parse." in cp["failure_details"][5]
-    assert "Identifier 1:\n    Invalid identifier." in cp["failure_details"][5]
-    assert "Identifier 2:\n    Invalid identifier." in cp["failure_details"][5]
-    assert (
-        "Entry 8:\n\nEnhancement 2:\n    Invalid enhancement. Check the format and content of the enhancement."
-        in cp["failure_details"][6]
-    )
-    assert (
-        "Enhancement 1:\n    Invalid enhancement. Check the format and content of the enhancement."
-        in cp["failure_details"][7]
-    )
-
-    # 2.c callback verification
-    cp = callback_payloads[2]
-    assert cp["import_batch_id"] == import_batch_c["id"]
-    assert cp["import_batch_status"] == "completed"
-    assert sum(cp["results"].values()) == 7
-    assert cp["results"]["failed"] == 7
-    for i, failure in enumerate(cp["failure_details"][:6]):
-        assert f"Entry {i + 1}:" in failure
-        assert "Identifier(s) are already mapped on an existing reference" in failure
-    assert (
-        cp["failure_details"][6]
-        == "Entry 7:\n\nIncoming reference collides with more than one existing reference."
-    )
-
-    # 2.d callback verification
-    cp = callback_payloads[3]
-    assert cp["import_batch_id"] == import_batch_d["id"]
-    assert cp["import_batch_status"] == "completed"
-    assert sum(cp["results"].values()) == 3
-    assert cp["results"]["failed"] == 1
-    assert cp["results"]["completed"] == 2
-    assert len(cp["failure_details"]) == 1
-    assert (
-        cp["failure_details"][0]
-        == "Entry 3:\n\nIncoming reference collides with more than one existing reference."
-    )
-
-    # 2.e callback verification
-    cp = callback_payloads[4]
-    assert cp["import_batch_id"] == import_batch_e["id"]
-    assert cp["import_batch_status"] == "completed"
-    assert sum(cp["results"].values()) == 2
-    assert cp["results"]["completed"] == 2
-    assert not cp["failure_details"]
-
-    # 2.f callback verification
-    cp = callback_payloads[5]
-    assert cp["import_batch_id"] == import_batch_f["id"]
-    assert cp["import_batch_status"] == "completed"
-    assert sum(cp["results"].values()) == 2
-    assert cp["results"]["completed"] == 2
-    assert not cp["failure_details"]
-
-    ################################
-    # 4. Database state validation #
-    ################################
+        cp = wait_for_callback()
+        assert cp["import_batch_id"] == import_batch_f["id"]
+        assert cp["import_batch_status"] == "completed"
+        assert sum(cp["results"].values()) == 2
+        assert cp["results"]["completed"] == 2
+        assert not cp["failure_details"]
