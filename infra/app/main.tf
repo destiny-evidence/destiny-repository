@@ -48,12 +48,20 @@ locals {
       name  = "CELERY_BROKER_URL"
       value = "azurestoragequeues://DefaultAzureCredential@${azurerm_storage_account.this.primary_queue_endpoint}"
     },
+    {
+      name  = "MESSAGE_BROKER_URL"
+      secret_name = "servicebus-amqp-connection-string"
+    },
   ]
 
   secrets = [
     {
       name  = "db-url"
       value = "postgresql+asyncpg://${var.admin_login}:${var.admin_password}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.this.name}"
+    },
+    {
+      name  = "servicebus-amqp-connection-string"
+      value = "amqps://${azurerm_servicebus_namespace_authorization_rule.this.name}:${urlencode(azurerm_servicebus_namespace_authorization_rule.this.primary_key)}@${azurerm_servicebus_namespace.this.name}.servicebus.windows.net:5671"
     }
   ]
 }
@@ -147,6 +155,7 @@ module "container_app_tasks" {
         accountName = azurerm_storage_account.this.name
         queueName   = "celery"
         queueLength = var.queue_length_scaling_threshold
+        identity = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
       }
     }
   ]
@@ -196,4 +205,29 @@ resource "azurerm_postgresql_flexible_server_database" "this" {
   lifecycle {
     prevent_destroy = true
   }
+}
+
+resource "azurerm_servicebus_namespace" "this" {
+  name                = local.name
+  resource_group_name = azurerm_resource_group.this.name
+  location            = azurerm_resource_group.this.location
+  sku                 = "Standard"
+
+  tags = local.minimum_resource_tags
+}
+
+resource "azurerm_servicebus_queue" "taskiq" {
+  name         = "taskiq"
+  namespace_id = azurerm_servicebus_namespace.this.id
+
+  partitioning_enabled = true
+}
+
+resource "azurerm_servicebus_namespace_authorization_rule" "this" {
+  name         = "${local.name}-sb-auth-rule"
+  namespace_id = azurerm_servicebus_namespace.this.id
+
+  listen = true
+  send   = true
+  manage = false
 }
