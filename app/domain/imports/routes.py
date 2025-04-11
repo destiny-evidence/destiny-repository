@@ -94,6 +94,23 @@ async def get_record(
     return import_record
 
 
+@router.patch(
+    "/record/{import_record_id}/finalise/", status_code=status.HTTP_204_NO_CONTENT
+)
+async def finalise_record(
+    import_record_id: UUID4,
+    import_service: Annotated[ImportService, Depends(import_service)],
+) -> None:
+    """Finalise an import record."""
+    import_record = await import_service.get_import_record(import_record_id)
+    if not import_record:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Import record with id {import_record_id} not found.",
+        )
+    await import_service.finalise_record(import_record_id)
+
+
 @router.post("/record/{import_record_id}/batch/", status_code=status.HTTP_202_ACCEPTED)
 async def enqueue_batch(
     import_record_id: Annotated[UUID4, Path(title="The id of the associated import")],

@@ -12,6 +12,7 @@ from app.domain.imports.models.models import (
     ImportBatchSummary,
     ImportRecord,
     ImportRecordCreate,
+    ImportRecordStatus,
     ImportResult,
     ImportResultCreate,
     ImportResultStatus,
@@ -235,4 +236,11 @@ This should not happen.
         return await self.sql_uow.results.get_by_filter(
             import_batch_id=import_batch_id,
             status=result_status,
+        )
+
+    @unit_of_work
+    async def finalise_record(self, import_record_id: UUID4) -> None:
+        """Finalise an import record."""
+        await self.sql_uow.imports.update_by_pk(
+            import_record_id, status=ImportRecordStatus.COMPLETED
         )

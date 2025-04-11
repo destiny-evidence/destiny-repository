@@ -81,7 +81,7 @@ Sample files can be found in the ``.minio/data`` directory.
 Callbacks
 ---------
 
-An optional callback parameter can be provided where the importer can receive a POST request with the batch summary (:class:`ImportBatchSummary <app.domain.imports.models.models.ImportBatchSummary>`).
+An optional callback parameter can be provided where the importer can receive a POST request with the batch summary (:class:`ImportBatchSummary <app.domain.imports.models.models.ImportBatchSummary>`) once the batch has finished processing.
 
 Collision Handling
 ------------------

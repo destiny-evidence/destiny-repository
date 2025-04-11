@@ -428,5 +428,14 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
                 )
 
         # 8: Mark import record as completed
-        # TODO(Adam): Implement this in the API
         # https://github.com/destiny-evidence/destiny-repository/issues/41
+        response = client.patch(
+            f"/imports/record/{import_record['id']}/finalise/",
+        )
+        assert response.status_code == 204
+        response = client.get(
+            f"/imports/record/{import_record['id']}/",
+        )
+        assert response.status_code == 200
+        import_record = response.json()
+        assert import_record["status"] == "completed"
