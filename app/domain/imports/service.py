@@ -137,6 +137,7 @@ This should not happen.
         # reference service with a new uow for each thread.
         try:
             reference_service = ReferenceService(self.sql_uow)
+            logger.info("Processing batch", extra={"batch": import_batch})
             async with (
                 httpx.AsyncClient() as client,
                 client.stream("GET", str(import_batch.storage_url)) as response,
@@ -154,10 +155,7 @@ This should not happen.
                         )
                         i += 1
         except Exception:
-            msg = f"""
-Failed to process batch {import_batch.id} from URL {import_batch.storage_url}
-            """
-            logger.exception(msg)
+            logger.exception("Failed to process batch", extra={"batch": import_batch})
             await self._update_import_batch_status(
                 import_batch.id, ImportBatchStatus.FAILED
             )
@@ -181,10 +179,9 @@ Failed to process batch {import_batch.id} from URL {import_batch.storage_url}
                     )
                     response.raise_for_status()
             except Exception:
-                msg = f"""
-Failed to send callback for batch {import_batch.id} to URL {import_batch.callback_url}
-                """
-                logger.exception(msg)
+                logger.exception(
+                    "Failed to send callback", extra={"batch": import_batch}
+                )
 
     @unit_of_work
     async def add_batch_result(

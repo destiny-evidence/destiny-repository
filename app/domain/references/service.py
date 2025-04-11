@@ -110,8 +110,9 @@ Identifier {entry_ref}:
     """
             )
         except Exception as error:
-            msg = f"Failed to create identifier from {raw_identifier}"
-            logger.exception(msg)
+            logger.exception(
+                "Failed to create identifier", extra={"raw_identifier": raw_identifier}
+            )
             return ExternalIdentifierParseResult(
                 error=f"""
 Identifier {entry_ref}:
@@ -140,8 +141,10 @@ Enhancement {entry_ref}:
     """
             )
         except Exception as error:
-            msg = f"Failed to create enhancement from {raw_enhancement}"
-            logger.exception(msg)
+            logger.exception(
+                "Failed to create enhancement",
+                extra={"raw_enhancement": raw_enhancement},
+            )
             return EnhancementParseResult(
                 error=f"""
 Enhancement {entry_ref}:
@@ -204,6 +207,13 @@ Identifier(s) are already mapped on an existing reference:
         incoming_reference = Reference.from_create(reference, existing_reference.id)
 
         # Merge collision strategies
+        logger.info(
+            "Merging reference",
+            extra={
+                "collision_strategy": collision_strategy,
+                "reference_id": existing_reference.id,
+            },
+        )
         return await self._merge_references(
             incoming_reference, existing_reference, collision_strategy
         )
@@ -326,7 +336,7 @@ Identifier(s) are already mapped on an existing reference:
         allow for partial successes.
         """
         try:
-            raw_reference = json.loads(record_str)
+            raw_reference: dict = json.loads(record_str)
             # Validate top-level JSON schema using Pydantic
             validated_input = ReferenceCreateInputValidator.model_validate(
                 raw_reference
@@ -382,6 +392,10 @@ Identifier(s) are already mapped on an existing reference:
             return None
 
         if isinstance(collision_result, str):
+            logger.info(
+                "Reference collision could not be resolved",
+                extra={"error": collision_result},
+            )
             return ReferenceCreateResult(
                 errors=[f"Entry {entry_ref}:", collision_result]
             )
@@ -394,6 +408,16 @@ Identifier(s) are already mapped on an existing reference:
                 [result.error for result in identifier_results if result.error]
                 + [result.error for result in enhancement_results if result.error]
             ),
+        )
+
+        logger.info(
+            "Reference ingested",
+            extra={
+                "reference_id": final_reference.id,
+                "n_identifiers": len(final_reference.identifiers or []),
+                "n_enhancements": len(final_reference.enhancements or []),
+                "n_errors": len(reference_result.errors),
+            },
         )
 
         if reference_result.errors:
