@@ -33,6 +33,7 @@ structlog = "^25.1.0"
 uvloop = "^0.21.0"
 
 [tool.poetry.group.dev.dependencies]
+autodoc_pydantic = "^2.2.0"
 celery-types = "^0.23.0"
 msal = "^1.31.1"
 mypy = "^1.14.1"
@@ -43,6 +44,8 @@ pytest-asyncio = "^0.25.3"
 pytest-httpx = "^0.35.0"
 redis = "^5.2.1"
 ruff = "^0.8.6"
+sphinx = "^8.2.3"
+sphinxcontrib-mermaid = "^1.0.0"
 types-cachetools = "^5.5.0.20240820"
 types-python-jose = "^3.4.0.20250224"
 watchdog = "^6.0.0"
@@ -54,7 +57,7 @@ pythonpath = "."
 testpaths = ["tests"]
 
 [tool.ruff]
-extend-exclude = ["app/migrations/versions/*.py"]
+extend-exclude = ["app/migrations/versions/*.py", "docs/*.py"]
 fix = true
 force-exclude = true
 target-version = "py312"

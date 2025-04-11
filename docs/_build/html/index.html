@@ -1,0 +1,617 @@
+<!doctype html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>
+      DESTINY Repository documentation &#8212; DESTINY Repository 0.1
+      documentation
+    </title>
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="_static/pygments.css?v=5ecbeea2"
+    />
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="_static/basic.css?v=b08954a9"
+    />
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="_static/alabaster.css?v=27fed22d"
+    />
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="_static/autodoc_pydantic.css"
+    />
+    <script src="_static/documentation_options.js?v=2709fde1"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link
+      rel="next"
+      title="Importing References with Batches"
+      href="procedures/batch-importing.html"
+    />
+
+    <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  </head>
+  <body>
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            <section id="destiny-repository-documentation">
+              <h1>
+                DESTINY Repository documentation<a
+                  class="headerlink"
+                  href="#destiny-repository-documentation"
+                  title="Link to this heading"
+                  >¶</a
+                >
+              </h1>
+              <div class="toctree-wrapper compound">
+                <p class="caption" role="heading">
+                  <span class="caption-text">Contents:</span>
+                </p>
+                <ul>
+                  <li class="toctree-l1">
+                    <a
+                      class="reference internal"
+                      href="procedures/batch-importing.html"
+                      >Importing References with Batches</a
+                    >
+                    <ul>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="procedures/batch-importing.html#the-import-process"
+                          >The Import Process</a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="procedures/batch-importing.html#participants"
+                          >Participants</a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="procedures/batch-importing.html#entities"
+                          >Entities</a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="procedures/batch-importing.html#file-format"
+                          >File Format</a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="procedures/batch-importing.html#callbacks"
+                          >Callbacks</a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="procedures/batch-importing.html#collision-handling"
+                          >Collision Handling</a
+                        >
+                      </li>
+                    </ul>
+                  </li>
+                  <li class="toctree-l1">
+                    <a class="reference internal" href="models/imports.html"
+                      >Import Models Documentation</a
+                    >
+                    <ul>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/imports.html#app.domain.imports.models.models.CollisionStrategy"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">CollisionStrategy</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/imports.html#app.domain.imports.models.models.ImportBatch"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">ImportBatch</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/imports.html#app.domain.imports.models.models.ImportBatchBase"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">ImportBatchBase</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/imports.html#app.domain.imports.models.models.ImportBatchCreate"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">ImportBatchCreate</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/imports.html#app.domain.imports.models.models.ImportBatchStatus"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">ImportBatchStatus</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/imports.html#app.domain.imports.models.models.ImportBatchSummary"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">ImportBatchSummary</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/imports.html#app.domain.imports.models.models.ImportRecord"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">ImportRecord</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/imports.html#app.domain.imports.models.models.ImportRecordBase"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">ImportRecordBase</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/imports.html#app.domain.imports.models.models.ImportRecordCreate"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">ImportRecordCreate</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/imports.html#app.domain.imports.models.models.ImportRecordStatus"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">ImportRecordStatus</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/imports.html#app.domain.imports.models.models.ImportResult"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">ImportResult</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/imports.html#app.domain.imports.models.models.ImportResultBase"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">ImportResultBase</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/imports.html#app.domain.imports.models.models.ImportResultCreate"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">ImportResultCreate</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/imports.html#app.domain.imports.models.models.ImportResultStatus"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">ImportResultStatus</span></code
+                          ></a
+                        >
+                      </li>
+                    </ul>
+                  </li>
+                  <li class="toctree-l1">
+                    <a class="reference internal" href="models/references.html"
+                      >Reference Models Documentation</a
+                    >
+                    <ul>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.AbstractContentEnhancement"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre"
+                              >AbstractContentEnhancement</span
+                            ></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.AbstractProcessType"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">AbstractProcessType</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.Annotation"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">Annotation</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.AnnotationEnhancement"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre"
+                              >AnnotationEnhancement</span
+                            ></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.AuthorPosition"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">AuthorPosition</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.Authorship"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">Authorship</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.BibliographicMetadataEnhancement"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre"
+                              >BibliographicMetadataEnhancement</span
+                            ></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.DriverVersion"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">DriverVersion</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.Enhancement"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">Enhancement</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.EnhancementBase"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">EnhancementBase</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.EnhancementContentBase"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre"
+                              >EnhancementContentBase</span
+                            ></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.EnhancementCreate"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">EnhancementCreate</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.EnhancementParseResult"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre"
+                              >EnhancementParseResult</span
+                            ></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.EnhancementType"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">EnhancementType</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.ExternalIdentifier"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">ExternalIdentifier</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.ExternalIdentifierBase"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre"
+                              >ExternalIdentifierBase</span
+                            ></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.ExternalIdentifierCreate"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre"
+                              >ExternalIdentifierCreate</span
+                            ></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.ExternalIdentifierParseResult"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre"
+                              >ExternalIdentifierParseResult</span
+                            ></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.ExternalIdentifierSearch"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre"
+                              >ExternalIdentifierSearch</span
+                            ></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.ExternalIdentifierType"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre"
+                              >ExternalIdentifierType</span
+                            ></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.Location"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">Location</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.LocationEnhancement"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">LocationEnhancement</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.Reference"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">Reference</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.ReferenceBase"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">ReferenceBase</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.ReferenceCreate"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">ReferenceCreate</span></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.ReferenceCreateInputValidator"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre"
+                              >ReferenceCreateInputValidator</span
+                            ></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.ReferenceCreateResult"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre"
+                              >ReferenceCreateResult</span
+                            ></code
+                          ></a
+                        >
+                      </li>
+                      <li class="toctree-l2">
+                        <a
+                          class="reference internal"
+                          href="models/references.html#app.domain.references.models.models.Visibility"
+                          ><code class="docutils literal notranslate"
+                            ><span class="pre">Visibility</span></code
+                          ></a
+                        >
+                      </li>
+                    </ul>
+                  </li>
+                </ul>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+          <h1 class="logo"><a href="#">DESTINY Repository</a></h1>
+
+          <search id="searchbox" style="display: none" role="search">
+            <div class="searchformwrapper">
+              <form class="search" action="search.html" method="get">
+                <input
+                  type="text"
+                  name="q"
+                  aria-labelledby="searchlabel"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                  spellcheck="false"
+                  placeholder="Search"
+                />
+                <input type="submit" value="Go" />
+              </form>
+            </div>
+          </search>
+          <script>
+            document.getElementById("searchbox").style.display = "block";
+          </script>
+          <h3>Navigation</h3>
+          <p class="caption" role="heading">
+            <span class="caption-text">Contents:</span>
+          </p>
+          <ul>
+            <li class="toctree-l1">
+              <a
+                class="reference internal"
+                href="procedures/batch-importing.html"
+                >Importing References with Batches</a
+              >
+            </li>
+            <li class="toctree-l1">
+              <a class="reference internal" href="models/imports.html"
+                >Import Models Documentation</a
+              >
+            </li>
+            <li class="toctree-l1">
+              <a class="reference internal" href="models/references.html"
+                >Reference Models Documentation</a
+              >
+            </li>
+          </ul>
+
+          <div class="relations">
+            <h3>Related Topics</h3>
+            <ul>
+              <li>
+                <a href="#">Documentation overview</a>
+                <ul>
+                  <li>
+                    Next:
+                    <a
+                      href="procedures/batch-importing.html"
+                      title="next chapter"
+                      >Importing References with Batches</a
+                    >
+                  </li>
+                </ul>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, DESTINY Team. | Powered by
+      <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a> &amp;
+      <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+
+      |
+      <a href="_sources/index.rst.txt" rel="nofollow">Page source</a>
+    </div>
+  </body>
+</html>

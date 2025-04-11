@@ -50,17 +50,16 @@ class CollisionStrategy(StrEnum):
     """
     The strategy to use when an identifier collision is detected.
 
-    **Allowed values**:
     - `discard`: Do nothing with the incoming reference.
     - `fail`: Do nothing with the incoming reference and mark it as failed. This
-        allows the importing process to "follow up" on the failure.
+      allows the importing process to "follow up" on the failure.
     - `merge_aggressive`: Prioritize the incoming reference's identifiers and
-        enhancements in the merge.
+      enhancements in the merge.
     - `merge_defensive`: Prioritize the existing reference's identifiers and
-        enhancements in the merge.
+      enhancements in the merge.
     - `overwrite`: Performs an aggressive merge of identifiers, and an overwrite of
-        enhancements (deleting existing and recreating what is imported). This should
-        be used sparingly and carefully.
+      enhancements (deleting existing and recreating what is imported). This should
+      be used sparingly and carefully.
     """
 
     DISCARD = "discard"
@@ -77,12 +76,12 @@ class ImportResultStatus(StrEnum):
     - `created`: Created, but no processing has started.
     - `started`: The reference is currently being processed.
     - `completed`: The reference has been created.
-    - `cancelled`: Processing was cancelled by calling the API.
     - `partially_failed`: The reference was created but one or more enhancements or
-        identifiers failed to be added. See the result's `failure_details` field for
-        more information.
-    - `failed`: The reference failed to be created.
-        See the result's `failure_details` field for more information.
+      identifiers failed to be added. See the result's `failure_details` field for
+      more information.
+    - `failed`: The reference failed to be created. See the result's `failure_details`
+      field for more information.
+    - `cancelled`: Processing was cancelled by calling the API.
     """
 
     CREATED = "created"
@@ -244,10 +243,8 @@ class ImportBatchSummary(ImportBatchBase):
     """A view for an import batch that includes a summary of its results."""
 
     id: uuid.UUID = Field(
-        default_factory=uuid.uuid4,
         description="""
-The identifier of the batch, which may be set by the processor or will be
-generated on creation.
+The identifier of the batch.
 """,
     )
 
@@ -272,5 +269,9 @@ generated on creation.
         description="A count of references by their current import status."
     )
     failure_details: list[str] | None = Field(
-        description="The details of the failures that occurred.",
+        description="""
+        The details of the failures that occurred.
+        Each failure will start with `"Entry x"` where x is the line number of the
+        jsonl object attempted to be imported.
+        """,
     )

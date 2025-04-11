@@ -49,10 +49,10 @@ class ExternalIdentifierType(StrEnum):
     class.
     **Allowed values**:
     - `doi`: A DOI (Digital Object Identifier) which is a unique identifier for a
-        document.
+    document.
     - `pmid`: A PubMed ID which is a unique identifier for a document in PubMed.
     - `openalex`: An OpenAlex ID which is a unique identifier for a document in
-        OpenAlex.
+    OpenAlex.
     - `other`: Any other identifier not defined. This should be used sparingly.
     """
 
