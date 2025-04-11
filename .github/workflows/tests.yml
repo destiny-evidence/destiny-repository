@@ -67,4 +67,4 @@ jobs:
           DB_URL: "postgresql+asyncpg://postgres:${{ secrets.db_password }}@localhost:5432/destiny_test"
           AZURE_APPLICATION_ID: ${{ vars.azure_application_id }}
           AZURE_TENANT_ID: ${{ vars.azure_tenant_id }}
-        run: poetry run pytest --ignore=tests/e2e/
+        run: poetry run pytest

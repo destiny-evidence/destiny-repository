@@ -2,6 +2,7 @@
 
 import datetime
 from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI, status
@@ -24,6 +25,7 @@ from app.domain.imports.models.sql import (
 from app.domain.imports.models.sql import (
     ImportResult as SQLImportResult,
 )
+from app.domain.imports.service import ImportService
 
 # Use the database session in all tests to set up the database manager.
 pytestmark = pytest.mark.usefixtures("session")
@@ -120,11 +122,18 @@ async def test_get_missing_import(client: AsyncClient) -> None:
 
 
 async def test_create_batch_for_import(
-    client: AsyncClient, session: AsyncSession, valid_import: SQLImportRecord
+    client: AsyncClient,
+    session: AsyncSession,
+    valid_import: SQLImportRecord,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test that we can create a batch for an import that exists."""
     session.add(valid_import)
     await session.commit()
+
+    # Mock the ImportService.process_batch call
+    mock_process = AsyncMock(return_value=None)
+    monkeypatch.setattr(ImportService, "process_batch", mock_process)
 
     batch_params = {"storage_url": "https://example.com/batch_data.json"}
     response = await client.post(
@@ -134,6 +143,8 @@ async def test_create_batch_for_import(
     assert response.json()["import_record_id"] == str(valid_import.id)
     assert response.json()["status"] == ImportBatchStatus.CREATED
     assert response.json().items() >= batch_params.items()
+
+    mock_process.assert_awaited_once()
 
 
 async def test_get_batches(

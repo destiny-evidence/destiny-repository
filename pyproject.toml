@@ -43,6 +43,7 @@ types-python-jose = "^3.4.0.20250224"
 
 [tool.pytest.ini_options]
 addopts = ["--color=yes", "--import-mode=importlib", "--verbose"]
+norecursedirs = ["tests/e2e"]
 pythonpath = "."
 testpaths = ["tests"]
 
