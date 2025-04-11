@@ -41,303 +41,7 @@ Search.setIndex({
     "models/references.rst",
     "procedures/batch-importing.rst",
   ],
-  indexentries: {
-    "app.domain.imports.models.models": [
-      [1, "module-app.domain.imports.models.models", false],
-    ],
-    "batches (app.domain.imports.models.models.importrecord attribute)": [
-      [1, "app.domain.imports.models.models.ImportRecord.batches", false],
-    ],
-    "callback_url (app.domain.imports.models.models.importbatchbase attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportBatchBase.callback_url",
-          false,
-        ],
-      ],
-    "cancelled (app.domain.imports.models.models.importbatchstatus attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportBatchStatus.CANCELLED",
-          false,
-        ],
-      ],
-    "cancelled (app.domain.imports.models.models.importrecordstatus attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportRecordStatus.CANCELLED",
-          false,
-        ],
-      ],
-    "cancelled (app.domain.imports.models.models.importresultstatus attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportResultStatus.CANCELLED",
-          false,
-        ],
-      ],
-    "collision_strategy (app.domain.imports.models.models.importbatchbase attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportBatchBase.collision_strategy",
-          false,
-        ],
-      ],
-    "collisionstrategy (class in app.domain.imports.models.models)": [
-      [1, "app.domain.imports.models.models.CollisionStrategy", false],
-    ],
-    "completed (app.domain.imports.models.models.importbatchstatus attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportBatchStatus.COMPLETED",
-          false,
-        ],
-      ],
-    "completed (app.domain.imports.models.models.importrecordstatus attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportRecordStatus.COMPLETED",
-          false,
-        ],
-      ],
-    "completed (app.domain.imports.models.models.importresultstatus attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportResultStatus.COMPLETED",
-          false,
-        ],
-      ],
-    "created (app.domain.imports.models.models.importbatchstatus attribute)": [
-      [1, "app.domain.imports.models.models.ImportBatchStatus.CREATED", false],
-    ],
-    "created (app.domain.imports.models.models.importrecordstatus attribute)": [
-      [1, "app.domain.imports.models.models.ImportRecordStatus.CREATED", false],
-    ],
-    "created (app.domain.imports.models.models.importresultstatus attribute)": [
-      [1, "app.domain.imports.models.models.ImportResultStatus.CREATED", false],
-    ],
-    "created_at (app.domain.imports.models.models.importbatchsummary attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportBatchSummary.created_at",
-          false,
-        ],
-      ],
-    "discard (app.domain.imports.models.models.collisionstrategy attribute)": [
-      [1, "app.domain.imports.models.models.CollisionStrategy.DISCARD", false],
-    ],
-    "expected_reference_count (app.domain.imports.models.models.importrecordbase attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportRecordBase.expected_reference_count",
-          false,
-        ],
-      ],
-    "fail (app.domain.imports.models.models.collisionstrategy attribute)": [
-      [1, "app.domain.imports.models.models.CollisionStrategy.FAIL", false],
-    ],
-    "failed (app.domain.imports.models.models.importbatchstatus attribute)": [
-      [1, "app.domain.imports.models.models.ImportBatchStatus.FAILED", false],
-    ],
-    "failed (app.domain.imports.models.models.importresultstatus attribute)": [
-      [1, "app.domain.imports.models.models.ImportResultStatus.FAILED", false],
-    ],
-    "failure_details (app.domain.imports.models.models.importbatchsummary attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportBatchSummary.failure_details",
-          false,
-        ],
-      ],
-    "failure_details (app.domain.imports.models.models.importresult attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportResult.failure_details",
-          false,
-        ],
-      ],
-    "id (app.domain.imports.models.models.importbatchsummary attribute)": [
-      [1, "app.domain.imports.models.models.ImportBatchSummary.id", false],
-    ],
-    "import_batch (app.domain.imports.models.models.importresult attribute)": [
-      [1, "app.domain.imports.models.models.ImportResult.import_batch", false],
-    ],
-    "import_batch_id (app.domain.imports.models.models.importbatchsummary attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportBatchSummary.import_batch_id",
-          false,
-        ],
-      ],
-    "import_batch_id (app.domain.imports.models.models.importresultbase attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportResultBase.import_batch_id",
-          false,
-        ],
-      ],
-    "import_batch_status (app.domain.imports.models.models.importbatchsummary attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportBatchSummary.import_batch_status",
-          false,
-        ],
-      ],
-    "import_record (app.domain.imports.models.models.importbatch attribute)": [
-      [1, "app.domain.imports.models.models.ImportBatch.import_record", false],
-    ],
-    "import_record_id (app.domain.imports.models.models.importbatch attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportBatch.import_record_id",
-          false,
-        ],
-      ],
-    "import_results (app.domain.imports.models.models.importbatch attribute)": [
-      [1, "app.domain.imports.models.models.ImportBatch.import_results", false],
-    ],
-    "importbatchstatus (class in app.domain.imports.models.models)": [
-      [1, "app.domain.imports.models.models.ImportBatchStatus", false],
-    ],
-    "importrecordstatus (class in app.domain.imports.models.models)": [
-      [1, "app.domain.imports.models.models.ImportRecordStatus", false],
-    ],
-    "importresultstatus (class in app.domain.imports.models.models)": [
-      [1, "app.domain.imports.models.models.ImportResultStatus", false],
-    ],
-    "merge_aggressive (app.domain.imports.models.models.collisionstrategy attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.CollisionStrategy.MERGE_AGGRESSIVE",
-          false,
-        ],
-      ],
-    "merge_defensive (app.domain.imports.models.models.collisionstrategy attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.CollisionStrategy.MERGE_DEFENSIVE",
-          false,
-        ],
-      ],
-    module: [[1, "module-app.domain.imports.models.models", false]],
-    "notes (app.domain.imports.models.models.importrecordbase attribute)": [
-      [1, "app.domain.imports.models.models.ImportRecordBase.notes", false],
-    ],
-    "overwrite (app.domain.imports.models.models.collisionstrategy attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.CollisionStrategy.OVERWRITE",
-          false,
-        ],
-      ],
-    "partially_failed (app.domain.imports.models.models.importresultstatus attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportResultStatus.PARTIALLY_FAILED",
-          false,
-        ],
-      ],
-    "processor_name (app.domain.imports.models.models.importrecordbase attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportRecordBase.processor_name",
-          false,
-        ],
-      ],
-    "processor_version (app.domain.imports.models.models.importrecordbase attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportRecordBase.processor_version",
-          false,
-        ],
-      ],
-    "reference_id (app.domain.imports.models.models.importresult attribute)": [
-      [1, "app.domain.imports.models.models.ImportResult.reference_id", false],
-    ],
-    "results (app.domain.imports.models.models.importbatchsummary attribute)": [
-      [1, "app.domain.imports.models.models.ImportBatchSummary.results", false],
-    ],
-    "search_string (app.domain.imports.models.models.importrecordbase attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportRecordBase.search_string",
-          false,
-        ],
-      ],
-    "searched_at (app.domain.imports.models.models.importrecordbase attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportRecordBase.searched_at",
-          false,
-        ],
-      ],
-    "source_name (app.domain.imports.models.models.importrecordbase attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportRecordBase.source_name",
-          false,
-        ],
-      ],
-    "started (app.domain.imports.models.models.importbatchstatus attribute)": [
-      [1, "app.domain.imports.models.models.ImportBatchStatus.STARTED", false],
-    ],
-    "started (app.domain.imports.models.models.importrecordstatus attribute)": [
-      [1, "app.domain.imports.models.models.ImportRecordStatus.STARTED", false],
-    ],
-    "started (app.domain.imports.models.models.importresultstatus attribute)": [
-      [1, "app.domain.imports.models.models.ImportResultStatus.STARTED", false],
-    ],
-    "status (app.domain.imports.models.models.importbatch attribute)": [
-      [1, "app.domain.imports.models.models.ImportBatch.status", false],
-    ],
-    "status (app.domain.imports.models.models.importrecord attribute)": [
-      [1, "app.domain.imports.models.models.ImportRecord.status", false],
-    ],
-    "status (app.domain.imports.models.models.importresultbase attribute)": [
-      [1, "app.domain.imports.models.models.ImportResultBase.status", false],
-    ],
-    "storage_url (app.domain.imports.models.models.importbatchbase attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportBatchBase.storage_url",
-          false,
-        ],
-      ],
-    "updated_at (app.domain.imports.models.models.importbatchsummary attribute)":
-      [
-        [
-          1,
-          "app.domain.imports.models.models.ImportBatchSummary.updated_at",
-          false,
-        ],
-      ],
-  },
+  indexentries: {},
   objects: {
     "app.domain.imports.models": [[1, 0, 0, "-", "models"]],
     "app.domain.imports.models.models": [
@@ -615,6 +319,7 @@ Search.setIndex({
     By: 2,
     For: 2,
     If: [1, 2, 3],
+    In: 3,
     It: [1, 2],
     Its: 2,
     Not: 2,
@@ -622,7 +327,7 @@ Search.setIndex({
     These: [1, 2],
     abc: 2,
     abl: 2,
-    about: [1, 2],
+    about: [1, 2, 3],
     abstract: 2,
     abstractcontentenhanc: 2,
     abstractprocesstyp: 2,
@@ -640,7 +345,7 @@ Search.setIndex({
     after: 2,
     aggress: 1,
     alex: 1,
-    all: 2,
+    all: [2, 3],
     allow: [1, 2, 3],
     almost: 2,
     also: 2,
@@ -652,7 +357,7 @@ Search.setIndex({
     annotationenhanc: 2,
     anyof: [1, 2],
     anyth: 2,
-    api: [1, 2],
+    api: [0, 1, 2],
     app: [1, 2],
     applic: 3,
     ar: [1, 2, 3],
@@ -671,8 +376,10 @@ Search.setIndex({
     auto: [1, 2],
     autogener: [1, 2],
     avail: 2,
+    azur: 3,
     b: 2,
     backfil: 2,
+    background: 3,
     base: [1, 2],
     basemodel: 2,
     batch: [0, 1],
@@ -683,6 +390,7 @@ Search.setIndex({
     bibliograph: 2,
     bibliographicmetadata: 2,
     bibliographicmetadataenhanc: 2,
+    blob: 3,
     bool: [1, 2],
     boolean: 2,
     borrow: 2,
@@ -691,7 +399,7 @@ Search.setIndex({
     call: 1,
     callback: 1,
     callback_url: 1,
-    can: [2, 3],
+    can: [0, 2, 3],
     cancel: 1,
     carefulli: 1,
     carri: 2,
@@ -764,11 +472,13 @@ Search.setIndex({
     displai: 2,
     display_nam: 2,
     do: [1, 2, 3],
-    doc: 2,
+    doc: [0, 2],
     document: 3,
     doi: 2,
     domain: [1, 2],
     domainbasemodel: [1, 2],
+    done: 3,
+    download: 3,
     driver: 2,
     driververs: 2,
     due: 2,
@@ -787,6 +497,7 @@ Search.setIndex({
     enhancementcr: 2,
     enhancementparseresult: 2,
     enhancementtyp: 2,
+    enrich: 3,
     ensur: 2,
     entiti: 2,
     entri: 1,
@@ -815,14 +526,16 @@ Search.setIndex({
     field: [1, 2],
     fieldinfo: 2,
     file: 1,
+    finalis: 3,
     find: 2,
+    finish: 3,
     first: 2,
     flatten: 2,
     follow: [1, 3],
     forbid: 2,
     form: 2,
     format: [1, 2],
-    found: [2, 3],
+    found: [0, 2, 3],
     free: 2,
     from: [1, 2, 3],
     from_attribut: [1, 2],
@@ -836,10 +549,10 @@ Search.setIndex({
     govern: 2,
     guidelin: 2,
     ha: [1, 2, 3],
-    handl: [],
     have: 2,
     hidden: 2,
     high: 2,
+    host: 0,
     http: [2, 3],
     httpurl: [1, 2],
     hydrat: 2,
@@ -878,6 +591,7 @@ Search.setIndex({
     input: [1, 2],
     int: [1, 2],
     integ: [1, 2],
+    interact: 3,
     interchang: 2,
     intern: 1,
     is_oa: 2,
@@ -886,7 +600,7 @@ Search.setIndex({
     item: [1, 2],
     its: [1, 3],
     itself: 2,
-    json: [1, 2, 3],
+    json: [0, 1, 2, 3],
     jsonl: [1, 3],
     keep: 1,
     kind: 2,
@@ -921,7 +635,7 @@ Search.setIndex({
     merge_aggress: 1,
     merge_defens: 1,
     mesh: 2,
-    metadata: 2,
+    metadata: [2, 3],
     middl: 2,
     min_length: 2,
     mine: 2,
@@ -946,7 +660,6 @@ Search.setIndex({
     nat: 2,
     nauthorit: 2,
     nbackfil: 2,
-    nbe: [],
     nbefor: 2,
     nclass: 2,
     ncommon: 2,
@@ -955,11 +668,10 @@ Search.setIndex({
     ndefault: 1,
     ndescript: 2,
     ndocument: 2,
-    need: 2,
+    need: [2, 3],
     nenhanc: 2,
     network: [1, 2],
     new: 2,
-    nfield: [],
     nfile: 1,
     nfor: 2,
     ngener: 2,
@@ -972,7 +684,6 @@ Search.setIndex({
     nit: 1,
     nlater: 2,
     nmap: 2,
-    nmore: [],
     nn: 2,
     nnot: 2,
     nobject: 2,
@@ -988,26 +699,27 @@ Search.setIndex({
     nrefer: [1, 2],
     nrestrict: 2,
     nruntim: 2,
-    nsee: [],
     nthe: [1, 2],
     nthese: 1,
     nthi: [1, 2],
     ntodo: 2,
     ntreat: 2,
     null: [1, 2],
-    number: [1, 2],
+    number: [1, 2, 3],
     nwere: 2,
     nwhich: 2,
     oa: 2,
     object: [1, 2, 3],
     occur: 1,
     offici: 2,
+    onc: 3,
     one: 1,
     oneof: 2,
     onli: 2,
     open: [1, 2],
     open_alex: 2,
     openalex: [2, 3],
+    openapi: 0,
     option: [1, 2, 3],
     orcid: 2,
     org: 2,
@@ -1022,7 +734,6 @@ Search.setIndex({
     pars: 2,
     part: 1,
     partially_fail: 1,
-    particip: [],
     pass: 2,
     pastdat: 2,
     pastdatetim: 1,
@@ -1064,6 +775,7 @@ Search.setIndex({
     receiv: 3,
     record: [1, 2, 3],
     recreat: 1,
+    redoc: 0,
     ref: [1, 2],
     refer: [0, 1],
     reference_cr: 2,
@@ -1074,6 +786,8 @@ Search.setIndex({
     referencecreateresult: 2,
     regard: 1,
     regener: 2,
+    regist: 3,
+    repeat: 3,
     repo: [1, 3],
     repositori: [2, 3],
     repres: 2,
@@ -1159,9 +873,9 @@ Search.setIndex({
     up: [1, 2, 3],
     updat: [1, 3],
     updated_at: 1,
-    upload: 1,
+    upload: [1, 3],
     uri: [1, 2],
-    url: [1, 2],
+    url: [1, 2, 3],
     us: [1, 2, 3],
     utc: 1,
     uuid: [1, 2],
@@ -1170,6 +884,7 @@ Search.setIndex({
     validate_other_identifier_nam: 2,
     valu: [1, 2],
     version: [1, 2],
+    via: 3,
     view: 1,
     visibl: 2,
     wa: [1, 2],
@@ -1184,6 +899,7 @@ Search.setIndex({
     which: [1, 2],
     within: [1, 2],
     without: 2,
+    word: 3,
     work: 2,
     wrap: 1,
     x: 1,

@@ -6,6 +6,7 @@
 DESTINY Repository documentation
 ================================
 
+API Documentation can be found at ``<api host>/docs, /redoc or /openapi.json``.
 
 .. toctree::
    :maxdepth: 1

@@ -28,7 +28,7 @@
     <link
       rel="stylesheet"
       type="text/css"
-      href="../_static/autodoc_pydantic.css?v=a0a71c94"
+      href="../_static/autodoc_pydantic.css?v=e2a7fc1a"
     />
     <script src="../_static/documentation_options.js?v=2709fde1"></script>
     <script src="../_static/doctools.js?v=9bcbadda"></script>
@@ -175,10 +175,58 @@
         R -&gt;&gt;- I: POST &lt;callback url&gt;: ImportBatchSummary
         I -&gt;&gt; S: Delete Enhancement Batch (file url)
     end
-    I -&gt;&gt; R: POST /imports/&lt;record_id&gt;/complete/ Finalise Import (import id)
-    R --&gt;&gt;- I: Import Results
+    I -&gt;&gt; R: POST /imports/&lt;record_id&gt;/finalise/ Finalise Import
     </pre
                 >
+                <p>
+                  In words, the interaction with the repository is as follows:
+                </p>
+                <ul class="simple">
+                  <li>
+                    <p>
+                      The importer registers the import with the repository,
+                      providing metadata about the import and the number of
+                      records to be imported.
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                      The importer uploads the enriched references file to a
+                      storage provider (e.g. Azure blob storage).
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                      The importer registers a batch with the repository,
+                      providing the URL of the enriched references file.
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                      In the background, the repository downloads the file from
+                      the storage provider and processes it.
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                      Once the processing is done, the repository notifies the
+                      importer via a callback URL, providing a summary of the
+                      batch processing.
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                      The importer repeats this for each file that needs
+                      processing.
+                    </p>
+                  </li>
+                  <li>
+                    <p>
+                      Once all batches are processed, the importer finalises the
+                      import with the repository.
+                    </p>
+                  </li>
+                </ul>
               </section>
               <section id="participants">
                 <h2>
@@ -327,7 +375,7 @@ Reference ||--o{ Enhancement : &quot;has&quot;
                     ><code class="xref py py-class docutils literal notranslate"
                       ><span class="pre">ImportBatchSummary</span></code
                     ></a
-                  >).
+                  >) once the batch has finished processing.
                 </p>
               </section>
               <section id="collision-handling">

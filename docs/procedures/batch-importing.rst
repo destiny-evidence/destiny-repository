@@ -34,8 +34,17 @@ References are bulk imported using batches per the following process:
             R ->>- I: POST <callback url>: ImportBatchSummary
             I ->> S: Delete Enhancement Batch (file url)
         end
-        I ->> R: POST /imports/<record_id>/complete/ Finalise Import (import id)
-        R -->>- I: Import Results
+        I ->> R: POST /imports/<record_id>/finalise/ Finalise Import
+
+In words, the interaction with the repository is as follows:
+
+- The importer registers the import with the repository, providing metadata about the import.
+- The importer uploads the enriched references file to a storage provider (e.g. Azure blob storage).
+- The importer registers a batch with the repository, providing the URL of the enriched references file.
+- In the background, the repository downloads the file from the storage provider and processes it.
+- Once the processing is done, the repository notifies the importer via a callback URL, providing a summary of the batch processing.
+- The importer repeats this for each file that needs processing.
+- Once all batches are processed, the importer finalises the import with the repository.
 
 Participants
 ------------
