@@ -72,6 +72,18 @@ Run the development server:
 poetry run fastapi dev
 ```
 
+Run the celery worker:
+
+```sh
+poetry run bash -c 'watchmedo auto-restart --directory=./ --pattern=*.py --recursive -- celery -A app.tasks worker --loglevel=INFO'
+```
+
+Alternatively, you can run the development server and celery worker via docker:
+
+```sh
+docker compose --profile optional up --build
+```
+
 ## Organisation
 
 The initial project includes some folders to organise the code.

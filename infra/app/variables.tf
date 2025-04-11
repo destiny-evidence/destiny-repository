@@ -21,9 +21,10 @@ variable "app_max_replicas" {
   default     = 10
 }
 
-variable "azure_application_id" {
-  description = "ID of the azure application "
-  type        = string
+variable "tasks_max_replicas" {
+  description = "Maximum number of replicas for the tasks container app"
+  type        = number
+  default     = 10
 }
 
 variable "azure_tenant_id" {
@@ -52,9 +53,20 @@ variable "cpu_scaling_threshold" {
   default     = 70
 }
 
+variable "queue_length_scaling_threshold" {
+  description = "Queue length threshold for scaling the tasks container app"
+  type        = number
+  default     = 100
+}
+
 variable "created_by" {
   description = "Who created this infrastrcuture. Required tag for resource groups"
   type        = string
+}
+
+variable "developers_group_id" {
+  type        = string
+  description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs"
 }
 
 variable "environment" {

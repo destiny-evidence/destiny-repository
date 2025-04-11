@@ -16,6 +16,12 @@ resource "azurerm_user_assigned_identity" "container_apps_identity" {
   resource_group_name = azurerm_resource_group.this.name
 }
 
+resource "azurerm_user_assigned_identity" "container_apps_tasks_identity" {
+  name                = "${local.name}-tasks"
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+}
+
 locals {
   env_vars = [
     {
@@ -24,7 +30,7 @@ locals {
     },
     {
       name  = "AZURE_APPLICATION_ID"
-      value = var.azure_application_id
+      value = azuread_application_registration.destiny_repository.client_id
     },
     {
       name  = "AZURE_TENANT_ID"
@@ -35,9 +41,13 @@ locals {
       secret_name = "db-url"
     },
     {
-      name  = "ENVIRONMENT"
+      name  = "ENV"
       value = var.environment
-    }
+    },
+    {
+      name  = "CELERY_BROKER_URL"
+      value = "azurestoragequeues://DefaultAzureCredential@${azurerm_storage_account.this.primary_queue_endpoint}"
+    },
   ]
 
   secrets = [
@@ -50,7 +60,7 @@ locals {
 
 module "container_app" {
   source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
-  version                         = "1.3.0"
+  version                         = "1.4.0"
   app_name                        = var.app_name
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id
@@ -85,23 +95,10 @@ module "container_app" {
   init_container = {
     name    = "${local.name}-database-init"
     image   = "${data.azurerm_container_registry.this.login_server}/destiny-repository:${var.environment}"
-    command = ["/venv/bin/alembic", "upgrade", "head"]
+    command = ["alembic", "upgrade", "head"]
     cpu     = 0.5
     memory  = "1Gi"
-    env = [
-      {
-        name  = "AZURE_APPLICATION_ID"
-        value = var.azure_application_id
-      },
-      {
-        name  = "AZURE_TENANT_ID"
-        value = var.azure_tenant_id
-      },
-      {
-        name        = "DB_URL"
-        secret_name = "db-url"
-      }
-    ]
+    env     = local.env_vars
   }
 
   custom_scale_rules = [
@@ -114,6 +111,53 @@ module "container_app" {
       }
     }
   ]
+}
+
+module "container_app_tasks" {
+  source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
+  version                         = "1.4.0"
+  app_name                        = "${var.app_name}-task"
+  environment                     = var.environment
+  container_registry_id           = data.azurerm_container_registry.this.id
+  container_registry_login_server = data.azurerm_container_registry.this.login_server
+  infrastructure_subnet_id        = azurerm_subnet.tasks.id
+  resource_group_name             = azurerm_resource_group.this.name
+  region                          = azurerm_resource_group.this.location
+  max_replicas                    = var.tasks_max_replicas
+  tags                            = local.minimum_resource_tags
+
+  identity = {
+    id           = azurerm_user_assigned_identity.container_apps_tasks_identity.id
+    principal_id = azurerm_user_assigned_identity.container_apps_tasks_identity.principal_id
+    client_id    = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
+  }
+
+  env_vars = local.env_vars
+  secrets  = local.secrets
+
+  command = ["celery", "-A", "app.tasks", "worker", "--loglevel=INFO"]
+
+  # Unfortunately the Azure terraform provider doesn't support setting up managed identity auth for scaling rules.
+  # So we have to set the identity manually after this is applied, otherwise deployments will fail. See https://github.com/covidence/study-data-service/pull/72
+  custom_scale_rules = [
+    {
+      name             = "queue-length-scale-rule"
+      custom_rule_type = "azure-queue"
+      metadata = {
+        accountName = azurerm_storage_account.this.name
+        queueName   = "celery"
+        queueLength = var.queue_length_scaling_threshold
+      }
+    }
+  ]
+}
+
+resource "azurerm_storage_account" "this" {
+  name                     = "${replace(var.app_name, "-", "")}${substr(var.environment, 0, 4)}"
+  resource_group_name      = azurerm_resource_group.this.name
+  location                 = azurerm_resource_group.this.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
 }
 
 resource "azurerm_postgresql_flexible_server" "this" {
