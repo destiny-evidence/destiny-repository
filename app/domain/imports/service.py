@@ -62,6 +62,14 @@ class ImportService(GenericService):
         )
         return await self.sql_uow.batches.add(batch)
 
+    @unit_of_work
+    async def _update_import_batch_status(
+        self, import_batch_id: UUID4, status: ImportBatchStatus
+    ) -> ImportBatch:
+        """Update the status of an import batch."""
+        return await self.sql_uow.batches.update_by_pk(import_batch_id, status=status)
+
+    @unit_of_work
     async def import_reference(
         self,
         import_batch_id: UUID4,
@@ -111,7 +119,6 @@ This should not happen.
                 reference_id=reference_result.reference.id,
             )
 
-    @unit_of_work
     async def process_batch(self, import_batch: ImportBatch) -> None:
         """
         Process an import batch.
@@ -122,8 +129,8 @@ This should not happen.
         - Persist the file via the Reference service.
         - Hit the callback URL with the results.
         """
-        await self.sql_uow.batches.update_by_pk(
-            import_batch.id, status=ImportBatchStatus.STARTED
+        await self._update_import_batch_status(
+            import_batch.id, ImportBatchStatus.STARTED
         )
 
         # Note: if parallelised, you would need to create a different
@@ -151,16 +158,17 @@ This should not happen.
 Failed to process batch {import_batch.id} from URL {import_batch.storage_url}
             """
             logger.exception(msg)
-            await self.sql_uow.batches.update_by_pk(
-                import_batch.id, status=ImportBatchStatus.FAILED
+            await self._update_import_batch_status(
+                import_batch.id, ImportBatchStatus.FAILED
             )
             return
 
-        await self.sql_uow.batches.update_by_pk(
-            import_batch.id, status=ImportBatchStatus.COMPLETED
+        await self._update_import_batch_status(
+            import_batch.id, ImportBatchStatus.COMPLETED
         )
+
         if import_batch.callback_url:
-            batch_result = await self._get_import_batch_summary(import_batch.id)
+            batch_result = await self.get_import_batch_summary(import_batch.id)
             if not batch_result:
                 raise RuntimeError
             try:
@@ -189,12 +197,6 @@ Failed to send callback for batch {import_batch.id} to URL {import_batch.callbac
 
     @unit_of_work
     async def get_import_batch_summary(
-        self, import_batch_id: UUID4
-    ) -> ImportBatchSummary | None:
-        """Get an import batch with its results."""
-        return await self._get_import_batch_summary(import_batch_id)
-
-    async def _get_import_batch_summary(
         self, import_batch_id: UUID4
     ) -> ImportBatchSummary | None:
         """Get an import batch with its results."""
