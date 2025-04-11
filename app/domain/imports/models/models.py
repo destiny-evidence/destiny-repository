@@ -59,7 +59,8 @@ class CollisionStrategy(StrEnum):
     - `merge_defensive`: Prioritize the existing reference's identifiers and
         enhancements in the merge.
     - `overwrite`: Performs an aggressive merge of identifiers, and an overwrite of
-        enhancements (deleting existing and recreating what is imported)
+        enhancements (deleting existing and recreating what is imported). This should
+        be used sparingly and carefully.
     """
 
     DISCARD = "discard"

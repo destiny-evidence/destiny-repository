@@ -12,12 +12,13 @@ import os
 import threading
 import time
 import uuid
+from collections import defaultdict
 from pathlib import Path
 
 import httpx
 import uvicorn
 from fastapi import FastAPI
-from sqlalchemy import create_engine, text  # noqa: F401
+from sqlalchemy import create_engine, text
 
 with Path(os.environ["MINIO_PRESIGNED_URL_FILEPATH"]).open() as f:
     PRESIGNED_URLS: dict[str, str] = json.load(f)
@@ -28,8 +29,8 @@ CALLBACK_URL = os.environ["CALLBACK_URL"]
 
 callback_payload: dict = {}
 
-# db_url = os.environ["DB_URL"]
-# engine = create_engine(db_url)
+db_url = os.environ["DB_URL"]
+engine = create_engine(db_url)
 
 
 def test_complete_batch_import_workflow():  # noqa: PLR0915
@@ -65,6 +66,46 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
 
     server_thread = threading.Thread(target=run_callback_server, daemon=True)
     server_thread.start()
+
+    def get_reference_details() -> list[dict]:
+        """Get reference details from the database."""
+        with engine.connect() as connection:
+            result = connection.execute(
+                text("""
+                SELECT *
+                FROM reference r
+                LEFT JOIN enhancement e ON r.id = e.reference_id
+                JOIN external_identifier i ON r.id = i.reference_id;
+                """)
+            )
+            references: dict[uuid.UUID, dict[str, list[dict]]] = defaultdict(
+                lambda: {"enhancements": [], "identifiers": []}
+            )
+            for row in result:
+                references[row.reference_id]["enhancements"].append(
+                    {
+                        "enhancement_type": row.enhancement_type,
+                        "enhancement_content": json.loads(row.content)
+                        if row.content
+                        else None,
+                        "source": row.source,
+                    }
+                )
+                references[row.reference_id]["identifiers"].append(
+                    {
+                        "identifier_type": row.identifier_type,
+                        "identifier": row.identifier,
+                        "other_identifier_name": row.other_identifier_name,
+                    }
+                )
+            return [
+                {
+                    "reference_id": ref_id,
+                    "enhancements": details["enhancements"],
+                    "identifiers": details["identifiers"],
+                }
+                for ref_id, details in sorted(references.items())
+            ]
 
     with httpx.Client(base_url=os.environ["REPO_URL"]) as client:
         ##########################
@@ -161,6 +202,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             url,
             callback_url=f"{CALLBACK_URL}/callback/",
         )
+
         cp = wait_for_callback()
         assert cp["import_batch_id"] == import_batch_a["id"]
         assert cp["import_batch_status"] == "completed"
@@ -168,9 +210,18 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         assert cp["results"]["completed"] == 6
         assert not cp["failure_details"]
 
-        # with engine.connect() as connection:
-        #     result = connection.execute(text("SELECT * FROM reference"))
-        #     rows = [dict(row) for row in result]
+        # Check an import
+        rd = get_reference_details()
+        assert len(rd) == 6
+
+        response = client.get(
+            "/references/",
+            params={"identifier_type": "doi", "identifier": "10.1234/sampledoi"},
+        )
+        assert response.status_code == 200
+        reference = response.json()
+        assert len(reference["enhancements"]) == 2
+        assert len(reference["identifiers"]) == 2
 
         # 2.e: Duplicate URL
         response = client.post(
@@ -221,6 +272,19 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             in cp["failure_details"][7]
         )
 
+        rd = get_reference_details()
+        assert len(rd) == 10
+
+        # Check the import of a partial failure
+        response = client.get(
+            "/references/",
+            params={"identifier_type": "open_alex", "identifier": "W123456793"},
+        )
+        assert response.status_code == 200
+        reference = response.json()
+        assert len(reference["enhancements"]) == 0
+        assert len(reference["identifiers"]) == 1
+
         # 4: Duplicate entries for each in 2
         url = PRESIGNED_URLS[f"{BKT}3_file_with_duplicates.jsonl"]
         import_batch_c = submit_happy_batch(
@@ -244,6 +308,9 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             == "Entry 7:\n\nIncoming reference collides with more than one existing reference."
         )
 
+        rd = get_reference_details()
+        assert len(rd) == 10
+
         # 5: Subset of duplicates, overwriting
         url = PRESIGNED_URLS[f"{BKT}4_file_with_duplicates_to_overwrite.jsonl"]
         import_batch_d = submit_happy_batch(
@@ -264,6 +331,20 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             == "Entry 3:\n\nIncoming reference collides with more than one existing reference."
         )
 
+        rd = get_reference_details()
+        assert len(rd) == 10
+
+        # Same reference as in part 2
+        # Check that the number of enhancements has reduced, and that the number of identifiers has increased
+        response = client.get(
+            "/references/",
+            params={"identifier_type": "doi", "identifier": "10.1234/sampledoi"},
+        )
+        assert response.status_code == 200
+        reference = response.json()
+        assert len(reference["enhancements"]) == 1
+        assert len(reference["identifiers"]) == 3
+
         # 6: Subset of duplicates, defensive merge
         url = PRESIGNED_URLS[f"{BKT}5_file_with_duplicates_to_left_merge.jsonl"]
         import_batch_e = submit_happy_batch(
@@ -279,6 +360,35 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         assert cp["results"]["completed"] == 2
         assert not cp["failure_details"]
 
+        # Check that the enhancement did not update (since defensive)
+        response = client.get(
+            "/references/",
+            params={
+                "identifier_type": "other",
+                "identifier": "1234567891011",
+                "other_identifier_name": "ISBN",
+            },
+        )
+        assert response.status_code == 200
+        reference = response.json()
+        assert len(reference["enhancements"]) == 3
+        assert len(reference["identifiers"]) == 2
+        for enhancement in reference["enhancements"]:
+            if enhancement["enhancement_type"] == "bibliographic":
+                assert enhancement["content"]["cited_by_count"] == 5
+        # Check that the next reference did add a new enhancement
+        response = client.get(
+            "/references/",
+            params={
+                "identifier_type": "pm_id",
+                "identifier": "55555",
+            },
+        )
+        assert response.status_code == 200
+        reference = response.json()
+        assert len(reference["enhancements"]) == 3
+        assert len(reference["identifiers"]) == 2
+
         # 7: Subset of duplicates, aggressive merge
         url = PRESIGNED_URLS[f"{BKT}6_file_with_duplicates_to_right_merge.jsonl"]
         import_batch_f = submit_happy_batch(
@@ -293,3 +403,30 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         assert sum(cp["results"].values()) == 2
         assert cp["results"]["completed"] == 2
         assert not cp["failure_details"]
+
+        # Check that the existing enhancement & identifier updated, and new identifier added
+        response = client.get(
+            "/references/",
+            params={
+                "identifier_type": "open_alex",
+                "identifier": "W123456791",
+            },
+        )
+        assert response.status_code == 200
+        reference = response.json()
+        assert len(reference["enhancements"]) == 1
+        assert len(reference["identifiers"]) == 3
+        for identifier in reference["identifiers"]:
+            if identifier["identifier_type"] == "doi":
+                assert (
+                    identifier["identifier"] == "10.1235/sampledoitwoelectricboogaloo"
+                )
+        for enhancement in reference["enhancements"]:
+            if enhancement["enhancement_type"] == "bibliographic":
+                assert (
+                    enhancement["content"]["authorship"][0]["display_name"] == "Wynstan"
+                )
+
+        # 8: Mark import record as completed
+        # TODO(Adam): Implement this in the API
+        # https://github.com/destiny-evidence/destiny-repository/issues/41

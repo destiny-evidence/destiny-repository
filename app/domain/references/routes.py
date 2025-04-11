@@ -19,6 +19,8 @@ from app.domain.references.models.models import (
     EnhancementCreate,
     ExternalIdentifier,
     ExternalIdentifierCreate,
+    ExternalIdentifierSearch,
+    ExternalIdentifierType,
     Reference,
 )
 from app.domain.references.service import ReferenceService
@@ -67,7 +69,7 @@ router = APIRouter(
 )
 
 
-@router.get("/{reference_id}/", status_code=status.HTTP_201_CREATED)
+@router.get("/{reference_id}/")
 async def get_reference(
     reference_id: Annotated[uuid.UUID, Path(description="The ID of the reference.")],
     reference_service: Annotated[ReferenceService, Depends(import_service)],
@@ -78,6 +80,30 @@ async def get_reference(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Reference with id {reference_id} not found.",
+        )
+    return reference
+
+
+@router.get("/")
+async def get_reference_from_identifier(
+    identifier: str,
+    identifier_type: ExternalIdentifierType,
+    reference_service: Annotated[ReferenceService, Depends(import_service)],
+    other_identifier_name: str | None = None,
+) -> Reference:
+    """Create a record for an import process."""
+    external_identifier = ExternalIdentifierSearch(
+        identifier=identifier,
+        identifier_type=identifier_type,
+        other_identifier_name=other_identifier_name,
+    )
+    reference = await reference_service.get_reference_from_identifier(
+        external_identifier
+    )
+    if not reference:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Reference with identifier {external_identifier} not found.",
         )
     return reference
 

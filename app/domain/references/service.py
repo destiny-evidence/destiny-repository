@@ -13,6 +13,7 @@ from app.domain.references.models.models import (
     ExternalIdentifier,
     ExternalIdentifierCreate,
     ExternalIdentifierParseResult,
+    ExternalIdentifierSearch,
     Reference,
     ReferenceCreate,
     ReferenceCreateInputValidator,
@@ -34,9 +35,27 @@ class ReferenceService(GenericService):
 
     @unit_of_work
     async def get_reference(self, reference_id: UUID4) -> Reference | None:
-        """Get a single import by id."""
+        """Get a single reference by id."""
         return await self.sql_uow.references.get_by_pk(
             reference_id, preload=["identifiers", "enhancements"]
+        )
+
+    @unit_of_work
+    async def get_reference_from_identifier(
+        self, identifier: ExternalIdentifierSearch
+    ) -> Reference | None:
+        """Get a single reference by identifier."""
+        db_identifier = (
+            await self.sql_uow.external_identifiers.get_by_type_and_identifier(
+                identifier.identifier_type,
+                identifier.identifier,
+                identifier.other_identifier_name,
+            )
+        )
+        if not db_identifier:
+            return None
+        return await self.sql_uow.references.get_by_pk(
+            db_identifier.reference_id, preload=["identifiers", "enhancements"]
         )
 
     @unit_of_work

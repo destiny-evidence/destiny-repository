@@ -75,7 +75,7 @@ services:
       repository:
         condition: service_healthy
     environment:
-      DB_URL: "postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"
+      DB_URL: "postgresql+psycopg://localuser:localpass@db:5432/destiny_dev"
       REPO_URL: "http://repository:8000"
       HTTP_CLIENT_URL: "http://http:5678"
       MINIO_URL: "http://fs:9000"

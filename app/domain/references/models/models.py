@@ -161,6 +161,10 @@ class ExternalIdentifierCreate(ExternalIdentifierBase):
     """Input for creating an external identifier."""
 
 
+class ExternalIdentifierSearch(ExternalIdentifierBase):
+    """Input for search on external identifiers."""
+
+
 class ExternalIdentifierParseResult(BaseModel):
     """Result of an attempt to parse an external identifier."""
 
