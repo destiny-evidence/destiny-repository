@@ -428,7 +428,6 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
                 )
 
         # 8: Mark import record as completed
-        # https://github.com/destiny-evidence/destiny-repository/issues/41
         response = client.patch(
             f"/imports/record/{import_record['id']}/finalise/",
         )

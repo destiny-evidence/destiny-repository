@@ -185,8 +185,7 @@
                   <li>
                     <p>
                       The importer registers the import with the repository,
-                      providing metadata about the import and the number of
-                      records to be imported.
+                      providing metadata about the import.
                     </p>
                   </li>
                   <li>
@@ -414,6 +413,37 @@ Reference ||--o{ Enhancement : &quot;has&quot;
                     ></a
                   >. This allows the importer to “follow up” these records with
                   an alternate strategy if desired.
+                </p>
+                <p>
+                  Identifier collisions are identified on the combination of
+                  <code class="docutils literal notranslate"
+                    ><span class="pre">identifier_type</span></code
+                  >
+                  and
+                  <code class="docutils literal notranslate"
+                    ><span class="pre">identifier</span></code
+                  >, with
+                  <code class="docutils literal notranslate"
+                    ><span class="pre">other_identifier_name</span></code
+                  >
+                  also used if
+                  <code class="docutils literal notranslate"
+                    ><span class="pre">identifier_type</span></code
+                  >
+                  is
+                  <code class="docutils literal notranslate"
+                    ><span class="pre">&quot;other&quot;</span></code
+                  >.
+                </p>
+                <p>
+                  Enhancement updates are performed on the combination of
+                  <code class="docutils literal notranslate"
+                    ><span class="pre">enhancement_type</span></code
+                  >
+                  and
+                  <code class="docutils literal notranslate"
+                    ><span class="pre">source</span></code
+                  >.
                 </p>
               </section>
             </section>

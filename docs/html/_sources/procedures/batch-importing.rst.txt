@@ -38,7 +38,7 @@ References are bulk imported using batches per the following process:
 
 In words, the interaction with the repository is as follows:
 
-- The importer registers the import with the repository, providing metadata about the import and the number of records to be imported.
+- The importer registers the import with the repository, providing metadata about the import.
 - The importer uploads the enriched references file to a storage provider (e.g. Azure blob storage).
 - The importer registers a batch with the repository, providing the URL of the enriched references file.
 - In the background, the repository downloads the file from the storage provider and processes it.
@@ -98,5 +98,9 @@ Collision Handling
 If an imported reference has the same identifier as an existing reference, the collision will be handled according to the :class:`CollisionStrategy <app.domain.imports.models.models.CollisionStrategy>`.
 
 The default strategy is to do nothing and notify the importer in the batch's :attr:`failure_details <app.domain.imports.models.models.ImportBatchSummary.failure_details>`. This allows the importer to "follow up" these records with an alternate strategy if desired.
+
+Identifier collisions are identified on the combination of ``identifier_type`` and ``identifier``, with ``other_identifier_name`` also used if ``identifier_type`` is ``"other"``.
+
+Enhancement updates are performed on the combination of ``enhancement_type`` and ``source``.
 
 .. _jsonl: https://jsonlines.org

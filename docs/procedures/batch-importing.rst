@@ -99,4 +99,8 @@ If an imported reference has the same identifier as an existing reference, the c
 
 The default strategy is to do nothing and notify the importer in the batch's :attr:`failure_details <app.domain.imports.models.models.ImportBatchSummary.failure_details>`. This allows the importer to "follow up" these records with an alternate strategy if desired.
 
+Identifier collisions are identified on the combination of ``identifier_type`` and ``identifier``, with ``other_identifier_name`` also used if ``identifier_type`` is ``"other"``.
+
+Enhancement updates are performed on the combination of ``enhancement_type`` and ``source``.
+
 .. _jsonl: https://jsonlines.org

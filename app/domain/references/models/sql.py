@@ -198,7 +198,6 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             "enhancement_type",
             "reference_id",
             "source",
-            "content",
             name="uix_enhancement",
         ),
     )
