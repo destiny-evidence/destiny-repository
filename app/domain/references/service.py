@@ -67,14 +67,16 @@ class ReferenceService(GenericService):
         return await self.sql_uow.references.add(Reference())
 
     @unit_of_work
-    async def register_enhancement_request(
+    async def trigger_enhancement_request(
         self, reference_id: UUID4, enhancement_type: EnhancementType
     ) -> EnhancementRequest:
-        """Create an enhancement request."""
+        """Create an enhancement request and send it to robot."""
         enhancement_request = EnhancementRequest(
             reference_id=reference_id,
             enhancement_type=enhancement_type,
         )
+
+        # Need to update this to actually send it off to the robot
 
         return await self.sql_uow.enhancement_requests.add(enhancement_request)
 
