@@ -1,6 +1,7 @@
 """The service for interacting with and managing imports."""
 
 import json
+import uuid
 
 from pydantic import UUID4, ValidationError
 
@@ -10,6 +11,8 @@ from app.domain.references.models.models import (
     Enhancement,
     EnhancementCreate,
     EnhancementParseResult,
+    EnhancementRequest,
+    EnhancementType,
     ExternalIdentifier,
     ExternalIdentifierCreate,
     ExternalIdentifierParseResult,
@@ -62,6 +65,19 @@ class ReferenceService(GenericService):
     async def register_reference(self) -> Reference:
         """Create a new reference."""
         return await self.sql_uow.references.add(Reference())
+
+    @unit_of_work
+    async def register_enhancement_request(
+        self, reference_id: UUID4, enhancement_type: EnhancementType
+    ) -> EnhancementRequest:
+        """Create an enhancement request."""
+        enhancement_request = EnhancementRequest(
+            request_id=uuid.uuid4(),
+            reference_id=reference_id,
+            enhancement_type=enhancement_type,
+        )
+
+        return await self.sql_uow.enhancement_requests.add(enhancement_request)
 
     @unit_of_work
     async def add_identifier(

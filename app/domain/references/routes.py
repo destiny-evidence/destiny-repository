@@ -15,8 +15,8 @@ from app.core.auth import (
 )
 from app.core.config import get_settings
 from app.domain.references.models.models import (
-    Enhancement,
-    EnhancementCreate,
+    EnhancementRequest,
+    EnhancementType,
     ExternalIdentifier,
     ExternalIdentifierCreate,
     ExternalIdentifierSearch,
@@ -148,10 +148,14 @@ async def add_identifier(
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(reference_writer_auth)],
 )
-async def add_enhancement(
-    reference_id: Annotated[uuid.UUID, Path(description="The ID of the reference.")],
+async def request_enhancement(
+    reference_id: Annotated[
+        uuid.UUID, Path(description="The ID of the reference to enhance.")
+    ],
+    enhancement_type: EnhancementType,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    enhancement: EnhancementCreate,
-) -> Enhancement:
-    """Add an enhancemenet to a reference."""
-    return await reference_service.add_enhancement(reference_id, enhancement)
+) -> EnhancementRequest:
+    """Request the creation of an enhancement against a provided reference id."""
+    return await reference_service.register_enhancement_request(
+        reference_id, enhancement_type
+    )
