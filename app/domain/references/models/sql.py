@@ -263,6 +263,7 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             name="request_status",
         )
     )
+    error: Mapped[str] = mapped_column(String, nullable=True)
 
     @classmethod
     async def from_domain(cls, domain_obj: DomainEnhancementRequest) -> Self:
@@ -272,6 +273,7 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             reference_id=domain_obj.reference_id,
             enhancement_type=domain_obj.enhancement_type,
             request_status=domain_obj.request_status,
+            error=domain_obj.error,
         )
 
     async def to_domain(
@@ -289,6 +291,7 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             reference_id=self.reference_id,
             enhancement_type=self.enhancement_type,
             request_status=self.request_status,
+            error=self.error,
         )
         if preload:
             return request

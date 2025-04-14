@@ -278,6 +278,11 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
         description="The status of the request to create an enhancement",
     )
 
+    error: str | None = Field(
+        None,
+        description="Error encountered during the enhancement process",
+    )
+
 
 class EnhancementContentBase(BaseModel, ABC):
     """
