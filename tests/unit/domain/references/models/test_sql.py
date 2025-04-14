@@ -82,11 +82,12 @@ class DummyDomainEnhancement:
 
 
 class DummyDomainEnhancementRequest:
-    def __init__(self, id, reference_id, enhancement_type, request_status):
+    def __init__(self, id, reference_id, enhancement_type, request_status, error=None):
         self.id = id
         self.reference_id = reference_id
         self.enhancement_type = enhancement_type
         self.request_status = request_status
+        self.error = error
 
 
 @pytest.mark.asyncio
@@ -200,13 +201,15 @@ async def test_enhancement_request_from_and_to_domain():
     req_id = uuid.uuid4()
     reference_id = uuid.uuid4()
     enhancement_type = EnhancementType.ANNOTATION
-    request_status = EnhancementRequestStatus.CREATED
+    request_status = EnhancementRequestStatus.FAILED
+    error = "Didn't work"
 
     dummy_enh_req = DummyDomainEnhancementRequest(
         id=req_id,
         reference_id=reference_id,
         enhancement_type=enhancement_type,
         request_status=request_status,
+        error=error,
     )
 
     # # Convert from domain to SQL model
@@ -215,6 +218,7 @@ async def test_enhancement_request_from_and_to_domain():
     assert sql_enh_req.reference_id == dummy_enh_req.reference_id
     assert sql_enh_req.enhancement_type == dummy_enh_req.enhancement_type
     assert sql_enh_req.request_status == dummy_enh_req.request_status
+    assert sql_enh_req.error == dummy_enh_req.error
 
     # # Convert back to domain with preload reference
     domain_enh_req = await sql_enh_req.to_domain()
@@ -222,6 +226,7 @@ async def test_enhancement_request_from_and_to_domain():
     assert domain_enh_req.reference_id == dummy_enh_req.reference_id
     assert domain_enh_req.enhancement_type == dummy_enh_req.enhancement_type
     assert domain_enh_req.request_status == dummy_enh_req.request_status
+    assert domain_enh_req.error == dummy_enh_req.error
 
 
 @pytest.mark.asyncio

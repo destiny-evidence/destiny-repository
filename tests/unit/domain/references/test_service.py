@@ -7,6 +7,9 @@ import pytest
 from app.domain.references.models.models import (
     AnnotationEnhancement,
     EnhancementCreate,
+    EnhancementRequest,
+    EnhancementRequestStatus,
+    EnhancementType,
     ExternalIdentifierCreate,
     Reference,
 )
@@ -43,6 +46,77 @@ async def test_register_reference_happy_path(fake_repository, fake_uow):
     # Verify that an id was assigned during registration.
     assert hasattr(created, "id")
     assert isinstance(created.id, uuid.UUID)
+
+
+@pytest.mark.asyncio
+async def test_register_enhancement_request_happy_path(fake_repository, fake_uow):
+    fake_enhancement_requests = fake_repository()
+    uow = fake_uow(enhancement_requests=fake_enhancement_requests)
+    service = ReferenceService(uow)
+
+    enhancement_request = await service.register_enhancement_request(
+        reference_id=uuid.uuid4(), enhancement_type=EnhancementType.BIBLIOGRAPHIC
+    )
+
+    stored_request = fake_enhancement_requests.get_first_record()
+
+    assert hasattr(enhancement_request, "id")
+    assert enhancement_request == stored_request
+
+
+@pytest.mark.asyncio
+async def test_update_enhancement_request_completed(fake_repository, fake_uow):
+    enhancement_request_id = uuid.uuid4()
+    enhancement_request = EnhancementRequest(
+        id=enhancement_request_id,
+        reference_id=uuid.uuid4(),
+        enhancement_type=EnhancementType.ANNOTATION,
+        request_status=EnhancementRequestStatus.CREATED,
+    )
+
+    fake_enhancement_requests = fake_repository([enhancement_request])
+    uow = fake_uow(enhancement_requests=fake_enhancement_requests)
+    service = ReferenceService(uow)
+
+    updated_enhancement_request = await service.update_enhancement_request(
+        request_id=enhancement_request_id,
+        request_status=EnhancementRequestStatus.COMPLETED,
+    )
+
+    stored_request = fake_enhancement_requests.get_first_record()
+
+    assert updated_enhancement_request == stored_request
+    assert (
+        updated_enhancement_request.request_status == EnhancementRequestStatus.COMPLETED
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_enhancement_request_failed_with_error(fake_repository, fake_uow):
+    enhancement_request_id = uuid.uuid4()
+
+    enhancement_request = EnhancementRequest(
+        id=enhancement_request_id,
+        reference_id=uuid.uuid4(),
+        enhancement_type=EnhancementType.ANNOTATION,
+        request_status=EnhancementRequestStatus.CREATED,
+    )
+
+    fake_enhancement_requests = fake_repository([enhancement_request])
+    uow = fake_uow(enhancement_requests=fake_enhancement_requests)
+    service = ReferenceService(uow)
+
+    updated_request = await service.update_enhancement_request(
+        request_id=enhancement_request_id,
+        request_status=EnhancementRequestStatus.FAILED,
+        error="it bronked",
+    )
+
+    stored_request = fake_enhancement_requests.get_first_record()
+
+    assert updated_request == stored_request
+    assert updated_request.request_status == EnhancementRequestStatus.FAILED
+    assert updated_request.error == "it bronked"
 
 
 @pytest.mark.asyncio
