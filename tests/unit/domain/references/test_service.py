@@ -54,7 +54,7 @@ async def test_register_enhancement_request_happy_path(fake_repository, fake_uow
     uow = fake_uow(enhancement_requests=fake_enhancement_requests)
     service = ReferenceService(uow)
 
-    enhancement_request = await service.register_enhancement_request(
+    enhancement_request = await service.trigger_enhancement_request(
         reference_id=uuid.uuid4(), enhancement_type=EnhancementType.BIBLIOGRAPHIC
     )
 
