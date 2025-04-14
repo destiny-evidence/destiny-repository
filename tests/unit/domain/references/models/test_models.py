@@ -14,6 +14,7 @@ from app.domain.references.models.models import (
     EnhancementType,
     ExternalIdentifierBase,
     ExternalIdentifierType,
+    FullTextEnhancement,
     Location,
     LocationEnhancement,
 )
@@ -103,6 +104,23 @@ def test_location_enhancement_valid():
         reference_id=uuid.uuid4(),
     )
     assert enhancement.content.locations[0].license == "cc-by"
+
+
+def test_full_text_enhancement_valid():
+    fake_full_text_location = "https://theres-totally-some-full-text-here.co.au/"
+
+    full_text_content = FullTextEnhancement(full_text_location=fake_full_text_location)
+
+    enhancement = Enhancement(
+        source="test_source",
+        visibility="restricted",
+        processor_version="1.2",
+        enhancement_type=EnhancementType.FULL_TEXT,
+        content=full_text_content,
+        reference_id=uuid.uuid4(),
+    )
+
+    assert str(enhancement.content.full_text_location) == fake_full_text_location
 
 
 def test_mismatched_enhancement_type():

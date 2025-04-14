@@ -5,11 +5,17 @@ import pytest
 
 from app.domain.references.models.models import (
     AnnotationEnhancement,
+    EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifierType,
     Visibility,
 )
-from app.domain.references.models.sql import Enhancement, ExternalIdentifier, Reference
+from app.domain.references.models.sql import (
+    Enhancement,
+    EnhancementRequest,
+    ExternalIdentifier,
+    Reference,
+)
 
 # Dummy domain objects for testing conversion
 
@@ -73,6 +79,14 @@ class DummyDomainEnhancement:
         self.content = content
         # For preload test on Enhancement.to_domain
         self.reference = None
+
+
+class DummyDomainEnhancementRequest:
+    def __init__(self, id, reference_id, enhancement_type, request_status):
+        self.id = id
+        self.reference_id = reference_id
+        self.enhancement_type = enhancement_type
+        self.request_status = request_status
 
 
 @pytest.mark.asyncio
@@ -178,6 +192,36 @@ async def test_enhancement_from_and_to_domain():
     # Verify that the preloaded reference was converted
     assert domain_enh.reference.id == dummy_sql_ref.id
     assert domain_enh.reference.visibility == dummy_sql_ref.visibility
+
+
+@pytest.mark.asyncio
+async def test_enhancement_request_from_and_to_domain():
+    # Create dummy domain enhancement reqest
+    req_id = uuid.uuid4()
+    reference_id = uuid.uuid4()
+    enhancement_type = EnhancementType.ANNOTATION
+    request_status = EnhancementRequestStatus.CREATED
+
+    dummy_enh_req = DummyDomainEnhancementRequest(
+        id=req_id,
+        reference_id=reference_id,
+        enhancement_type=enhancement_type,
+        request_status=request_status,
+    )
+
+    # # Convert from domain to SQL model
+    sql_enh_req = await EnhancementRequest.from_domain(dummy_enh_req)
+    assert sql_enh_req.id == dummy_enh_req.id
+    assert sql_enh_req.reference_id == dummy_enh_req.reference_id
+    assert sql_enh_req.enhancement_type == dummy_enh_req.enhancement_type
+    assert sql_enh_req.request_status == dummy_enh_req.request_status
+
+    # # Convert back to domain with preload reference
+    domain_enh_req = await sql_enh_req.to_domain()
+    assert domain_enh_req.id == dummy_enh_req.id
+    assert domain_enh_req.reference_id == dummy_enh_req.reference_id
+    assert domain_enh_req.enhancement_type == dummy_enh_req.enhancement_type
+    assert domain_enh_req.request_status == dummy_enh_req.request_status
 
 
 @pytest.mark.asyncio

@@ -13,6 +13,10 @@ from app.domain.references.models.models import (
     Enhancement as DomainEnhancement,
 )
 from app.domain.references.models.models import (
+    EnhancementRequest as DomainEnhancementRequest,
+)
+from app.domain.references.models.models import (
+    EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifierType,
     Visibility,
@@ -231,3 +235,61 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             if "reference" in (preload or [])
             else None,
         )
+
+
+class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
+    """
+    SQL Persistence model for an EnhancementRequest.
+
+    This is used in the repository layer to pass data between the domain and the
+    database.
+    """
+
+    __tablename__ = "enhancementrequest"
+
+    reference_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("reference.id"), nullable=False
+    )
+    enhancement_type: Mapped[EnhancementType] = mapped_column(
+        ENUM(
+            *[enhancement.value for enhancement in EnhancementType],
+            name="enhancement_type",
+        ),
+        nullable=False,
+    )
+    request_status: Mapped[EnhancementRequestStatus] = mapped_column(
+        ENUM(
+            *[status.value for status in EnhancementRequestStatus],
+            name="request_status",
+        )
+    )
+
+    @classmethod
+    async def from_domain(cls, domain_obj: DomainEnhancementRequest) -> Self:
+        """Create a persistence model from a domain Enhancement object."""
+        return cls(
+            id=domain_obj.id,
+            reference_id=domain_obj.reference_id,
+            enhancement_type=domain_obj.enhancement_type,
+            request_status=domain_obj.request_status,
+        )
+
+    async def to_domain(
+        self, preload: list[str] | None = None
+    ) -> DomainEnhancementRequest:
+        """
+        Convert the persistence model into a Domain Enhancement object.
+
+        Just ignoring the preloads for now.
+        Doing horrible stuff to stop formatting shouting at me.
+
+        """
+        request = DomainEnhancementRequest(
+            id=self.id,
+            reference_id=self.reference_id,
+            enhancement_type=self.enhancement_type,
+            request_status=self.request_status,
+        )
+        if preload:
+            return request
+        return request

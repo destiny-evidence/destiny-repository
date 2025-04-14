@@ -8,6 +8,9 @@ from sqlalchemy.orm import joinedload
 
 from app.domain.references.models.models import Enhancement as DomainEnhancement
 from app.domain.references.models.models import (
+    EnhancementRequest as DomainEnhancementRequest,
+)
+from app.domain.references.models.models import (
     ExternalIdentifier as DomainExternalIdentifier,
 )
 from app.domain.references.models.models import (
@@ -15,6 +18,7 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.models import Reference as DomainReference
 from app.domain.references.models.sql import Enhancement as SQLEnhancement
+from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import ExternalIdentifier as SQLExternalIdentifier
 from app.domain.references.models.sql import Reference as SQLReference
 from app.persistence.generics import GenericPersistenceType
@@ -120,4 +124,26 @@ class EnhancementSQLRepository(
             session,
             DomainEnhancement,
             SQLEnhancement,
+        )
+
+
+class EnhancementRequestRepositoryBase(
+    GenericAsyncRepository[DomainEnhancementRequest, GenericPersistenceType],
+    ABC,
+):
+    """Abstract implementation of a repository for enhancement requests."""
+
+
+class EnhancementRequestSQLRepository(
+    GenericAsyncSqlRepository[DomainEnhancementRequest, SQLEnhancement],
+    EnhancementRequestRepositoryBase,
+):
+    """Concrete implementation of a repository for identifiers using SQLAlchemy."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Initialize the repository with the database session."""
+        super().__init__(
+            session,
+            DomainEnhancementRequest,
+            SQLEnhancementRequest,
         )

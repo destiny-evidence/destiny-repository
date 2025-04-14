@@ -79,6 +79,23 @@ class EnhancementType(StrEnum):
     ABSTRACT = "abstract"
     ANNOTATION = "annotation"
     LOCATION = "location"
+    FULL_TEXT = "full text"
+
+
+class EnhancementRequestStatus(StrEnum):
+    """
+    Describes the status of creating an enhancement.
+
+    - `created`: Received request to create enhancement.
+    - `started`: Enhancement is being created
+    - `failed`: Enhancement failed to create
+    - `completed`: Enhancement has been created.
+    """
+
+    CREATED = "created"
+    STARTED = "started"
+    FAILED = "failed"
+    COMPLETED = "completed"
 
 
 class ExternalIdentifierBase(DomainBaseModel):
@@ -243,6 +260,23 @@ class ReferenceCreateInputValidator(ReferenceBase):
     enhancements: list[JSON] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
+
+
+class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
+    """Request to add an enhancement to a specific reference."""
+
+    reference_id: uuid.UUID = Field(
+        description="The ID of the reference this enhancement is associated with."
+    )
+
+    enhancement_type: EnhancementType = Field(
+        description="The type of enhancement requested on the reference"
+    )
+
+    request_status: EnhancementRequestStatus = Field(
+        default=EnhancementRequestStatus.CREATED,
+        description="The status of the request to create an enhancement",
+    )
 
 
 class EnhancementContentBase(BaseModel, ABC):
@@ -471,11 +505,21 @@ class LocationEnhancement(EnhancementContentBase):
     )
 
 
+class FullTextEnhancement(EnhancementContentBase):
+    """An enhancement for location to full text of reference."""
+
+    enhancement_type: Literal[EnhancementType.FULL_TEXT] = EnhancementType.FULL_TEXT
+    full_text_location: HttpUrl | None = Field(
+        None, description="Location of the full text of the reference"
+    )
+
+
 EnhancementContentType = (
     BibliographicMetadataEnhancement
     | AbstractContentEnhancement
     | AnnotationEnhancement
     | LocationEnhancement
+    | FullTextEnhancement
 )
 
 
