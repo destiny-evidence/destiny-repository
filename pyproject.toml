@@ -72,6 +72,8 @@ lint.ignore = [
 ]
 lint.per-file-ignores = {"app/migrations/env.py" = [
     "F401", # imported but not used
+], "libs/samples*" = [
+    "INP001", # Standalone scripts, not a module
 ], "tests*" = [
     "ANN201", # No return type annotation. It's always None for tests.
     "INP001", # File is part of an implicit namespace package.
