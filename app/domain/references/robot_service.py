@@ -79,16 +79,20 @@ class RobotService(GenericService):
             reference_id=enhancement_request.reference_id, enhancement=enhancement
         )
 
-        if created_enhancement:
-            await self.sql_uow.enhancement_requests.update_by_pk(
-                enhancement_request.id,
-                request_status=EnhancementRequestStatus.COMPLETED,
-            )
-        else:
-            await self.sql_uow.enhancement_requests.update_by_pk(
-                enhancement_request.id,
-                request_status=EnhancementRequestStatus.FAILED,
-                # want to pass error here
-            )
+        await self.sql_uow.enhancement_requests.update_by_pk(
+            enhancement_request.id,
+            request_status=EnhancementRequestStatus.COMPLETED,
+        )
 
         return created_enhancement
+
+    @unit_of_work
+    async def mark_enhancement_request_failed(
+        self, enhancement_request_id: UUID4, error: str
+    ) -> EnhancementRequest:
+        """Mark an enhancement request as failed and supply error message."""
+        return await self.sql_uow.enhancement_requests.update_by_pk(
+            pk=enhancement_request_id,
+            request_status=EnhancementRequestStatus.FAILED,
+            error=error,
+        )
