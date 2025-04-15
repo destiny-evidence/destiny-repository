@@ -26,8 +26,15 @@ class RobotService(GenericService):
         self,
         reference_id: UUID4,
         enhancement_type: EnhancementType,
+        reference_service: ReferenceService,
     ) -> EnhancementRequest:
         """Create an enhancement request and send it to robot."""
+        reference = await reference_service.get_reference(reference_id)
+
+        if not reference:
+            msg = "Reference does not exist. This should not happen."
+            raise RuntimeError(msg)
+
         enhancement_request = await self.sql_uow.enhancement_requests.add(
             EnhancementRequest(
                 reference_id=reference_id,
@@ -64,6 +71,10 @@ class RobotService(GenericService):
             msg = "Enhancement request does not exist. This should not happen"
             raise RuntimeError(msg)
 
+        if enhancement.enhancement_type != enhancement_request.enhancement_type:
+            msg = "Enhancement creation is for different enhancement type to request"
+            raise RuntimeError(msg)
+
         created_enhancement = await reference_service.add_enhancement(
             reference_id=enhancement_request.reference_id, enhancement=enhancement
         )
@@ -75,7 +86,9 @@ class RobotService(GenericService):
             )
         else:
             await self.sql_uow.enhancement_requests.update_by_pk(
-                enhancement_request.id, request_status=EnhancementRequestStatus.FAILED
+                enhancement_request.id,
+                request_status=EnhancementRequestStatus.FAILED,
+                # want to pass error here
             )
 
         return created_enhancement

@@ -1,9 +1,9 @@
 """
-Added enhancement request table
+Added enhancement requst table
 
-Revision ID: 75854ff00ca7
-Revises: a59a0d4dc6dc
-Create Date: 2025-04-14 04:52:29.897405+00:00
+Revision ID: 6d3329de5c13
+Revises: e55630485612
+Create Date: 2025-04-15 03:01:55.240392+00:00
 
 """
 from collections.abc import Sequence
@@ -14,8 +14,8 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '75854ff00ca7'
-down_revision: Union[str, None] = 'a59a0d4dc6dc'
+revision: str = '6d3329de5c13'
+down_revision: Union[str, None] = 'e55630485612'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -25,7 +25,7 @@ def upgrade() -> None:
     op.create_table('enhancementrequest',
     sa.Column('reference_id', sa.UUID(), nullable=False),
     sa.Column('enhancement_type', postgresql.ENUM('bibliographic', 'abstract', 'annotation', 'location', 'full text', name='enhancement_type'), nullable=False),
-    sa.Column('request_status', postgresql.ENUM('created', 'started', 'failed', 'completed', name='request_status'), nullable=False),
+    sa.Column('request_status', postgresql.ENUM('created', 'accepted', 'rejected', 'failed', 'completed', name='request_status'), nullable=False),
     sa.Column('error', sa.String(), nullable=True),
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
