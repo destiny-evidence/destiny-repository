@@ -25,6 +25,7 @@ from app.domain.references.models.models import (
     ExternalIdentifierType,
     Reference,
 )
+from app.domain.references.robot_service import RobotService
 from app.domain.references.service import ReferenceService
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -44,6 +45,12 @@ def reference_service(
 ) -> ReferenceService:
     """Return the reference service using the provided unit of work dependencies."""
     return ReferenceService(sql_uow=sql_uow)
+
+def robot_service(
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
+) -> RobotService:
+    """Return the robot service using the provided unit of work dependencies."""
+    return RobotService(sql_uow=sql_uow)
 
 
 def choose_auth_strategy(auth_scope: AuthScopes) -> AuthMethod:
@@ -155,10 +162,10 @@ async def request_enhancement(
         uuid.UUID, Path(description="The ID of the reference to enhance.")
     ],
     enhancement_type: EnhancementType,
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    robot_service: Annotated[RobotService, Depends(robot_service)],
 ) -> EnhancementRequest:
     """Request the creation of an enhancement against a provided reference id."""
-    return await reference_service.trigger_enhancement_request(
+    return await robot_service.request_reference_enhancement(
         reference_id, enhancement_type
     )
 

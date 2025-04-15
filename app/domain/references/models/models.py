@@ -93,7 +93,8 @@ class EnhancementRequestStatus(StrEnum):
     """
 
     CREATED = "created"
-    STARTED = "started"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
     FAILED = "failed"
     COMPLETED = "completed"
 

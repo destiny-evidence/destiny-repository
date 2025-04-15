@@ -1,4 +1,4 @@
-"""The service for interacting with and managing imports."""
+"""The service for interacting with and managing references."""
 
 import json
 
@@ -10,9 +10,6 @@ from app.domain.references.models.models import (
     Enhancement,
     EnhancementCreate,
     EnhancementParseResult,
-    EnhancementRequest,
-    EnhancementRequestStatus,
-    EnhancementType,
     ExternalIdentifier,
     ExternalIdentifierCreate,
     ExternalIdentifierParseResult,
@@ -30,7 +27,7 @@ logger = get_logger()
 
 
 class ReferenceService(GenericService):
-    """The service which manages our imports and their processing."""
+    """The service which manages our references."""
 
     def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:
         """Initialize the service with a unit of work."""
@@ -67,32 +64,6 @@ class ReferenceService(GenericService):
         return await self.sql_uow.references.add(Reference())
 
     @unit_of_work
-    async def trigger_enhancement_request(
-        self, reference_id: UUID4, enhancement_type: EnhancementType
-    ) -> EnhancementRequest:
-        """Create an enhancement request and send it to robot."""
-        enhancement_request = EnhancementRequest(
-            reference_id=reference_id,
-            enhancement_type=enhancement_type,
-        )
-
-        # Need to update this to actually send it off to the robot
-
-        return await self.sql_uow.enhancement_requests.add(enhancement_request)
-
-    @unit_of_work
-    async def update_enhancement_request(
-        self,
-        request_id: UUID4,
-        request_status: EnhancementRequestStatus,
-        error: str | None = None,
-    ) -> EnhancementRequest:
-        """Create an enhancement request."""
-        return await self.sql_uow.enhancement_requests.update_by_pk(
-            request_id, request_status=request_status, error=error
-        )
-
-    @unit_of_work
     async def add_identifier(
         self, reference_id: UUID4, identifier: ExternalIdentifierCreate
     ) -> ExternalIdentifier:
@@ -110,7 +81,7 @@ class ReferenceService(GenericService):
     async def add_enhancement(
         self, reference_id: UUID4, enhancement: EnhancementCreate
     ) -> Enhancement:
-        """Register an import, persisting it to the database."""
+        """Add an enhancement to a reference."""
         reference = await self.sql_uow.references.get_by_pk(reference_id)
         if not reference:
             raise RuntimeError
