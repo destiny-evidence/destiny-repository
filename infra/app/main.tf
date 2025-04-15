@@ -197,3 +197,28 @@ resource "azurerm_postgresql_flexible_server_database" "this" {
     prevent_destroy = true
   }
 }
+
+resource "azurerm_servicebus_namespace" "this" {
+  name                = local.name
+  resource_group_name = azurerm_resource_group.this.name
+  location            = azurerm_resource_group.this.location
+  sku                 = "Standard"
+
+  tags = local.minimum_resource_tags
+}
+
+resource "azurerm_servicebus_queue" "taskiq" {
+  name         = "taskiq"
+  namespace_id = azurerm_servicebus_namespace.this.id
+
+  partitioning_enabled = true
+}
+
+resource "azurerm_servicebus_namespace_authorization_rule" "this" {
+  name         = "${local.name}-sb-auth-rule"
+  namespace_id = azurerm_servicebus_namespace.this.id
+
+  listen = true
+  send   = true
+  manage = false
+}
