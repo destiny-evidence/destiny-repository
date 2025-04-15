@@ -73,5 +73,6 @@ resource "azuread_application_redirect_uris" "local_redirect" {
 
   redirect_uris = [
     "http://localhost",
+    "https://oauth.pstmn.io/v1/callback",
   ]
 }
