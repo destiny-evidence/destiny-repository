@@ -1,6 +1,5 @@
 """Models associated with references."""
 
-import re
 import uuid
 from abc import ABC
 from enum import Enum, StrEnum
@@ -12,6 +11,7 @@ from pydantic import (
     Field,
     HttpUrl,
     PastDate,
+    TypeAdapter,
     model_validator,
 )
 
@@ -81,72 +81,16 @@ class EnhancementType(StrEnum):
     LOCATION = "location"
 
 
-class ExternalIdentifierBase(DomainBaseModel):
-    """
-    Base class for external identifiers.
+class DOIExternalIdentifierBase(DomainBaseModel):
+    """External identifier for DOI."""
 
-    This is used to identify a reference in an external system.
-    """
-
-    identifier_type: ExternalIdentifierType = Field(
-        description="The type of identifier used."
-    )
-    identifier: str = Field(description="The identifier itself.")
-    other_identifier_name: str | None = Field(
-        None,
-        description="""
-The name of the undocumented identifier type. This should be consistent to allow
-later consolidation into a documented identifier type. This should only be used
-if identifier_type is `other`.
-""",
-    )
-
-    @model_validator(mode="after")
-    def validate_other_identifier_name(self) -> Self:
-        """
-        Validate that the other_identifier_name is set correctly.
-
-        It should be populated if and only if the identifier_type is `other`.
-        """
-        if self.identifier_type == ExternalIdentifierType.OTHER:
-            if not self.other_identifier_name:
-                msg = """
-                other_identifier_name must be provided when identifier_type is 'other'
-                """
-                raise ValueError(msg)
-        elif self.other_identifier_name:
-            msg = """
-                other_identifier_name must be empty when identifier_type is not 'other'"
-                """
-            raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def validate_identifier_format(self) -> Self:
-        """Validate the format of the identifier according to the identifier type."""
-        if self.identifier_type == ExternalIdentifierType.DOI and not re.match(
-            RE_DOI, self.identifier, re.IGNORECASE
-        ):
-            # TODO(Adam): consider validating against DOI itself
-            # https://github.com/destiny-evidence/destiny-repository/issues/33
-            msg = "The provided DOI is not in a valid format."
-            raise ValueError(msg)
-        if (
-            self.identifier_type == ExternalIdentifierType.PM_ID
-            and not self.identifier.isdigit()
-        ):
-            msg = "PM ID must be an integer."
-            raise ValueError(msg)
-        if self.identifier_type == ExternalIdentifierType.OPEN_ALEX and not re.match(
-            RE_OPEN_ALEX_IDENTIFIER, self.identifier
-        ):
-            msg = "The provided OpenAlex ID is not in a valid format."
-            raise ValueError(msg)
-        return self
+    identifier_type: Literal[ExternalIdentifierType.DOI] = ExternalIdentifierType.DOI
+    identifier: str = Field(description="The DOI identifier.", pattern=RE_DOI)
+    other_identifier_name: Literal[None] = None
 
 
-class ExternalIdentifier(ExternalIdentifierBase, SQLAttributeMixin):
-    """External identifier model with database attributes included."""
+class DOIExternalIdentifier(DOIExternalIdentifierBase, SQLAttributeMixin):
+    """External identifier for DOI with database attributes included."""
 
     reference_id: uuid.UUID = Field(
         description="The ID of the reference this identifier identifies."
@@ -157,12 +101,118 @@ class ExternalIdentifier(ExternalIdentifierBase, SQLAttributeMixin):
     )
 
 
-class ExternalIdentifierCreate(ExternalIdentifierBase):
-    """Input for creating an external identifier."""
+class PMIDExternalIdentifierBase(DomainBaseModel):
+    """External identifier for PubMed ID."""
+
+    identifier_type: Literal[ExternalIdentifierType.PM_ID] = (
+        ExternalIdentifierType.PM_ID
+    )
+    identifier: int = Field(description="The PubMed ID identifier.")
+    other_identifier_name: Literal[None] = None
 
 
-class ExternalIdentifierSearch(ExternalIdentifierBase):
-    """Input for search on external identifiers."""
+class PMIDExternalIdentifier(PMIDExternalIdentifierBase, SQLAttributeMixin):
+    """External identifier for PubMed ID with database attributes included."""
+
+    reference_id: uuid.UUID = Field(
+        description="The ID of the reference this identifier identifies."
+    )
+    reference: "Reference | None" = Field(
+        None,
+        description="The reference this identifier identifies.",
+    )
+
+
+class OpenAlexExternalIdentifierBase(DomainBaseModel):
+    """External identifier for OpenAlex."""
+
+    identifier_type: Literal[ExternalIdentifierType.OPEN_ALEX] = (
+        ExternalIdentifierType.OPEN_ALEX
+    )
+    identifier: str = Field(
+        description="The OpenAlex identifier.", pattern=RE_OPEN_ALEX_IDENTIFIER
+    )
+    other_identifier_name: Literal[None] = None
+
+
+class OpenAlexExternalIdentifier(OpenAlexExternalIdentifierBase, SQLAttributeMixin):
+    """External identifier for OpenAlex with database attributes included."""
+
+    reference_id: uuid.UUID = Field(
+        description="The ID of the reference this identifier identifies."
+    )
+    reference: "Reference | None" = Field(
+        None,
+        description="The reference this identifier identifies.",
+    )
+
+
+class OtherExternalIdentifierBase(DomainBaseModel):
+    """External identifier for other types."""
+
+    identifier_type: Literal[ExternalIdentifierType.OTHER] = (
+        ExternalIdentifierType.OTHER
+    )
+    identifier: str = Field(description="The identifier itself.")
+    other_identifier_name: str = Field(
+        description="The name of the undocumented identifier type."
+    )
+
+
+class OtherExternalIdentifier(OtherExternalIdentifierBase, SQLAttributeMixin):
+    """External identifier for other types with database attributes included."""
+
+    reference_id: uuid.UUID = Field(
+        description="The ID of the reference this identifier identifies."
+    )
+    reference: "Reference | None" = Field(
+        None,
+        description="The reference this identifier identifies.",
+    )
+
+
+ExternalIdentifierBase = (
+    DOIExternalIdentifierBase
+    | PMIDExternalIdentifierBase
+    | OpenAlexExternalIdentifierBase
+    | OtherExternalIdentifierBase
+)
+ExternalIdentifierCreate = ExternalIdentifierBase
+ExternalIdentifierCreateAdapter: TypeAdapter[ExternalIdentifierCreate] = TypeAdapter(
+    ExternalIdentifierCreate
+)
+ExternalIdentifier = (
+    DOIExternalIdentifier
+    | PMIDExternalIdentifier
+    | OpenAlexExternalIdentifier
+    | OtherExternalIdentifier
+)
+T_ExternalIdentifier = (
+    type[DOIExternalIdentifier]
+    | type[PMIDExternalIdentifier]
+    | type[OpenAlexExternalIdentifier]
+    | type[OtherExternalIdentifier]
+)
+ExternalIdentifierAdapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
+    ExternalIdentifier
+)
+
+
+class ExternalIdentifierSearch(BaseModel):
+    """External identifier for searching references."""
+
+    identifier: str = Field(
+        description="The identifier itself.",
+    )
+    identifier_type: ExternalIdentifierType = Field(
+        description="The type of identifier.",
+    )
+    other_identifier_name: str | None = Field(
+        None,
+        description="""
+        The name of the undocumented identifier type if identifier_type is 'other'.
+        """,
+    )
 
 
 class ExternalIdentifierParseResult(BaseModel):
@@ -214,7 +264,9 @@ class Reference(ReferenceBase, SQLAttributeMixin):
         if reference_id:
             reference.id = reference_id
         reference.identifiers = [
-            ExternalIdentifier(**identifier.model_dump(), reference_id=reference.id)
+            ExternalIdentifierAdapter.validate_python(
+                identifier.model_dump() | {"reference_id": reference.id}
+            )
             for identifier in reference_create.identifiers or []
         ]
         reference.enhancements = [

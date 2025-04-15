@@ -7,7 +7,7 @@ import pytest
 from app.domain.references.models.models import (
     AnnotationEnhancement,
     EnhancementCreate,
-    ExternalIdentifierCreate,
+    ExternalIdentifierCreateAdapter,
     Reference,
 )
 from app.domain.references.service import ReferenceService
@@ -54,7 +54,9 @@ async def test_add_identifier_happy_path(fake_repository, fake_uow):
     uow = fake_uow(references=repo_refs, external_identifiers=repo_ids)
     service = ReferenceService(uow)
     identifier_data = {"identifier": "W1234", "identifier_type": "open_alex"}
-    fake_identifier_create = ExternalIdentifierCreate(**identifier_data)
+    fake_identifier_create = ExternalIdentifierCreateAdapter.validate_python(
+        identifier_data
+    )
     returned_identifier = await service.add_identifier(dummy_id, fake_identifier_create)
     assert getattr(returned_identifier, "reference_id", None) == dummy_id
     for k, v in identifier_data.items():
@@ -104,8 +106,8 @@ async def test_add_identifier_reference_not_found(fake_repository, fake_uow):
     uow = fake_uow(references=repo_refs, external_identifiers=repo_ids)
     service = ReferenceService(uow)
     dummy_id = uuid.uuid4()
-    fake_identifier_create = ExternalIdentifierCreate(
-        identifier="W1234", identifier_type="open_alex"
+    fake_identifier_create = ExternalIdentifierCreateAdapter.validate_python(
+        {"identifier": "W1234", "identifier_type": "open_alex"}
     )
     with pytest.raises(RuntimeError):
         await service.add_identifier(dummy_id, fake_identifier_create)

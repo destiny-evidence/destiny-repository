@@ -12,7 +12,7 @@ from app.domain.references.models.models import (
     BibliographicMetadataEnhancement,
     Enhancement,
     EnhancementType,
-    ExternalIdentifierBase,
+    ExternalIdentifierCreateAdapter,
     ExternalIdentifierType,
     Location,
     LocationEnhancement,
@@ -132,90 +132,78 @@ def test_mismatched_enhancement_type():
 
 
 def test_valid_doi():
-    obj = ExternalIdentifierBase(
-        identifier_type=ExternalIdentifierType.DOI,
-        identifier="10.1000/xyz123",
-        other_identifier_name=None,
+    obj = ExternalIdentifierCreateAdapter.validate_python(
+        {
+            "identifier_type": ExternalIdentifierType.DOI,
+            "identifier": "10.1000/xyz123",
+            "other_identifier_name": None,
+        },
     )
     assert obj.identifier == "10.1000/xyz123"
 
 
 def test_invalid_doi():
-    with pytest.raises(ValueError, match="The provided DOI is not in a valid format."):
-        ExternalIdentifierBase(
-            identifier_type=ExternalIdentifierType.DOI,
-            identifier="invalid_doi",
-            other_identifier_name=None,
+    with pytest.raises(ValidationError):
+        ExternalIdentifierCreateAdapter.validate_python(
+            {
+                "identifier_type": ExternalIdentifierType.DOI,
+                "identifier": "invalid_doi",
+                "other_identifier_name": None,
+            }
         )
 
 
 def test_valid_pmid():
-    obj = ExternalIdentifierBase(
-        identifier_type=ExternalIdentifierType.PM_ID,
-        identifier="123456",
-        other_identifier_name=None,
+    obj = ExternalIdentifierCreateAdapter.validate_python(
+        {
+            "identifier_type": ExternalIdentifierType.PM_ID,
+            "identifier": "123456",
+            "other_identifier_name": None,
+        }
     )
-    assert obj.identifier == "123456"
+    assert obj.identifier == 123456
 
 
 def test_invalid_pmid():
-    with pytest.raises(ValueError, match="PM ID must be an integer."):
-        ExternalIdentifierBase(
-            identifier_type=ExternalIdentifierType.PM_ID,
-            identifier="abc123",
-            other_identifier_name=None,
+    with pytest.raises(ValidationError):
+        ExternalIdentifierCreateAdapter.validate_python(
+            {
+                "identifier_type": ExternalIdentifierType.PM_ID,
+                "identifier": "abc123",
+                "other_identifier_name": None,
+            }
         )
 
 
 def test_valid_open_alex():
     valid_openalex = "W123456789"
-    obj = ExternalIdentifierBase(
-        identifier_type=ExternalIdentifierType.OPEN_ALEX,
-        identifier=valid_openalex,
-        other_identifier_name=None,
+    obj = ExternalIdentifierCreateAdapter.validate_python(
+        {
+            "identifier_type": ExternalIdentifierType.OPEN_ALEX,
+            "identifier": valid_openalex,
+            "other_identifier_name": None,
+        }
     )
     assert obj.identifier == valid_openalex
 
 
 def test_invalid_open_alex():
-    with pytest.raises(
-        ValueError, match="The provided OpenAlex ID is not in a valid format."
-    ):
-        ExternalIdentifierBase(
-            identifier_type=ExternalIdentifierType.OPEN_ALEX,
-            identifier="invalid-openalex",
-            other_identifier_name=None,
+    with pytest.raises(ValidationError):
+        ExternalIdentifierCreateAdapter.validate_python(
+            {
+                "identifier_type": ExternalIdentifierType.OPEN_ALEX,
+                "identifier": "invalid-openalex",
+                "other_identifier_name": None,
+            }
         )
 
 
 def test_valid_other_identifier():
-    obj = ExternalIdentifierBase(
-        identifier_type=ExternalIdentifierType.OTHER,
-        identifier="custom_identifier",
-        other_identifier_name="custom_type",
+    obj = ExternalIdentifierCreateAdapter.validate_python(
+        {
+            "identifier_type": ExternalIdentifierType.OTHER,
+            "identifier": "custom_identifier",
+            "other_identifier_name": "custom_type",
+        }
     )
     assert obj.other_identifier_name == "custom_type"
-
-
-def test_invalid_other_identifier_missing_name():
-    with pytest.raises(
-        ValueError,
-        match="other_identifier_name must be provided when identifier_type is 'other'",
-    ):
-        ExternalIdentifierBase(
-            identifier_type=ExternalIdentifierType.OTHER,
-            identifier="custom_identifier",
-            other_identifier_name=None,
-        )
-
-
-def test_invalid_other_identifier_provided_when_not_other():
-    with pytest.raises(
-        ValueError,
-        match="other_identifier_name must be empty when identifier_type is not 'other'",
-    ):
-        ExternalIdentifierBase(
-            identifier_type=ExternalIdentifierType.DOI,
-            identifier="10.1000/xyz123",
-            other_identifier_name="unexpected",
-        )

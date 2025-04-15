@@ -11,7 +11,9 @@ from app.domain.references.models.models import (
     EnhancementCreate,
     EnhancementParseResult,
     ExternalIdentifier,
+    ExternalIdentifierAdapter,
     ExternalIdentifierCreate,
+    ExternalIdentifierCreateAdapter,
     ExternalIdentifierParseResult,
     ExternalIdentifierSearch,
     Reference,
@@ -71,9 +73,8 @@ class ReferenceService(GenericService):
         reference = await self.sql_uow.references.get_by_pk(reference_id)
         if not reference:
             raise RuntimeError
-        db_identifier = ExternalIdentifier(
-            reference_id=reference.id,
-            **identifier.model_dump(),
+        db_identifier = ExternalIdentifierAdapter.validate_python(
+            identifier.model_dump() | {"reference_id": reference.id}
         )
         return await self.sql_uow.external_identifiers.add(db_identifier)
 
@@ -96,7 +97,7 @@ class ReferenceService(GenericService):
     ) -> ExternalIdentifierParseResult:
         """Parse and ingest an external identifier into the database."""
         try:
-            identifier = ExternalIdentifierCreate.model_validate(raw_identifier)
+            identifier = ExternalIdentifierCreateAdapter.validate_python(raw_identifier)
             return ExternalIdentifierParseResult(external_identifier=identifier)
         except (TypeError, ValueError) as error:
             return ExternalIdentifierParseResult(
@@ -236,7 +237,7 @@ Identifier(s) are already mapped on an existing reference:
             existing_identifier = (
                 await self.sql_uow.external_identifiers.get_by_type_and_identifier(
                     identifier.identifier_type,
-                    identifier.identifier,
+                    str(identifier.identifier),
                     identifier.other_identifier_name,
                 )
             )

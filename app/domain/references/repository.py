@@ -61,7 +61,7 @@ class ExternalIdentifierSQLRepository(
         """Initialize the repository with the database session."""
         super().__init__(
             session,
-            DomainExternalIdentifier,
+            DomainExternalIdentifier,  # type:ignore[arg-type]
             SQLExternalIdentifier,
         )
 

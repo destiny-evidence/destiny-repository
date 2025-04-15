@@ -21,6 +21,9 @@ from app.domain.references.models.models import (
     ExternalIdentifier as DomainExternalIdentifier,
 )
 from app.domain.references.models.models import (
+    ExternalIdentifierAdapter as DomainExternalIdentifierAdapter,
+)
+from app.domain.references.models.models import (
     Reference as DomainReference,
 )
 from app.persistence.sql.persistence import GenericSQLPersistence
@@ -138,22 +141,28 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
             reference_id=domain_obj.reference_id,
             identifier_type=domain_obj.identifier_type,
             identifier=str(domain_obj.identifier),
-            other_identifier_name=domain_obj.other_identifier_name,
+            other_identifier_name=domain_obj.other_identifier_name
+            if domain_obj.identifier_type == ExternalIdentifierType.OTHER
+            else None,
         )
 
     async def to_domain(
         self, preload: list[str] | None = None
     ) -> DomainExternalIdentifier:
         """Convert the persistence model into a Domain ExternalIdentifier object."""
-        return DomainExternalIdentifier(
-            id=self.id,
-            reference_id=self.reference_id,
-            identifier_type=self.identifier_type,
-            identifier=self.identifier,
-            other_identifier_name=self.other_identifier_name,
-            reference=await self.reference.to_domain()
-            if "reference" in (preload or [])
-            else None,
+        return DomainExternalIdentifierAdapter.validate_python(
+            {
+                "id": self.id,
+                "reference_id": self.reference_id,
+                "identifier_type": self.identifier_type,
+                "identifier": self.identifier,
+                "other_identifier_name": self.other_identifier_name
+                if self.identifier_type == ExternalIdentifierType.OTHER
+                else None,
+                "reference": await self.reference.to_domain()
+                if "reference" in (preload or [])
+                else None,
+            }
         )
 
 
