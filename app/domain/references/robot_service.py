@@ -26,15 +26,8 @@ class RobotService(GenericService):
         self,
         reference_id: UUID4,
         enhancement_type: EnhancementType,
-        reference_service: ReferenceService,
     ) -> EnhancementRequest:
         """Create an enhancement request and send it to robot."""
-        reference = await reference_service.get_reference(reference_id)
-
-        if not reference:
-            msg = "Reference does not exist. This should not happen."
-            raise RuntimeError(msg)
-
         enhancement_request = await self.sql_uow.enhancement_requests.add(
             EnhancementRequest(
                 reference_id=reference_id,

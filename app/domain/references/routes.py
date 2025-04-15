@@ -153,9 +153,9 @@ async def add_identifier(
 
 
 @router.post(
-    "/{reference_id}/enhancement/request",
+    "/{reference_id}/request-enhancement/",
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(reference_writer_auth)],
+    dependencies=[Depends(reference_writer_auth)]
 )
 async def request_enhancement(
     reference_id: Annotated[
@@ -163,8 +163,17 @@ async def request_enhancement(
     ],
     enhancement_type: EnhancementType,
     robot_service: Annotated[RobotService, Depends(robot_service)],
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
 ) -> EnhancementRequest:
     """Request the creation of an enhancement against a provided reference id."""
+    reference = await reference_service.get_reference(reference_id)
+
+    if not reference:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Reference with id {reference_id} not found",
+        )
+
     return await robot_service.request_reference_enhancement(
         reference_id, enhancement_type
     )
