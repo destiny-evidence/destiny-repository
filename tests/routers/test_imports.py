@@ -8,6 +8,7 @@ import pytest
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+from taskiq import InMemoryBroker
 
 from app.domain.imports import routes as imports
 from app.domain.imports.models.models import (
@@ -145,7 +146,8 @@ async def test_create_batch_for_import(
     assert response.json()["status"] == ImportBatchStatus.CREATED
     assert response.json().items() >= batch_params.items()
 
-    await broker.wait_all()
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()  # Wait for all async tasks to complete
     mock_process.assert_awaited_once()
 
 

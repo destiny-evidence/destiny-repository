@@ -7,7 +7,6 @@ values and handling messaging operations.
 """
 
 import asyncio
-import json
 from collections.abc import AsyncGenerator, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
@@ -18,11 +17,13 @@ from azure.servicebus.aio import ServiceBusClient, ServiceBusReceiver, ServiceBu
 from azure.servicebus.amqp import AmqpAnnotatedMessage, AmqpMessageBodyType
 from taskiq import AckableMessage, AsyncBroker, AsyncResultBackend, BrokerMessage
 
+from app.core.config import get_settings
 from app.core.exceptions.message_broker_exception import MessageBrokerError
 from app.core.logger import get_logger
 
 _T = TypeVar("_T")
 
+settings = get_settings()
 logger = get_logger()
 
 
@@ -47,7 +48,11 @@ def parse_val(
 
 
 class AzureServiceBusBroker(AsyncBroker):
-    """Broker that works with Azure Service Bus."""
+    """
+    Broker that works with Azure Service Bus.
+
+    See https://taskiq-python.github.io/extending-taskiq/broker.html
+    """
 
     def __init__(  # noqa: PLR0913
         self,
@@ -92,16 +97,16 @@ class AzureServiceBusBroker(AsyncBroker):
         """Initialize connections and create queues if needed."""
         await super().startup()
 
-        if self.connection_string is None and self.namespace is not None:
+        if self.connection_string is not None:
+            self.service_bus_client = ServiceBusClient.from_connection_string(
+                self.connection_string,
+                **self._conn_kwargs,
+            )
+        elif self.namespace is not None:
             self.credential = DefaultAzureCredential()
             self.service_bus_client = ServiceBusClient(
                 fully_qualified_namespace=self.namespace,
                 credential=self.credential,
-                **self._conn_kwargs,
-            )
-        elif self.connection_string is not None:
-            self.service_bus_client = ServiceBusClient.from_connection_string(
-                self.connection_string,
                 **self._conn_kwargs,
             )
         else:
@@ -152,7 +157,7 @@ class AzureServiceBusBroker(AsyncBroker):
 
         # Create service bus message
         service_bus_message = AmqpAnnotatedMessage(
-            value_body=message.message,
+            data_body=message.message,
             header=headers,
             properties={
                 "message_id": message.task_id,
@@ -214,17 +219,9 @@ class AzureServiceBusBroker(AsyncBroker):
                     if body_type == AmqpMessageBodyType.DATA:
                         # Join all byte chunks together
                         data = b"".join(raw_body)
-                    elif body_type == AmqpMessageBodyType.VALUE:
-                        # Assume the value is JSON-serializable and convert it back
-                        data = raw_body
-                    elif body_type == AmqpMessageBodyType.SEQUENCE:
-                        # Flatten the list and serialize it
-                        data = json.dumps(
-                            [item for sublist in raw_body for item in sublist]
-                        ).encode("utf-8")
                     else:
                         logger.warning(
-                            "Unknown body type, defaulting to string encoding",
+                            "Unsupported body type, defaulting to string encoding",
                             extra={body_type: body_type},
                         )
                         data = str(raw_body).encode("utf-8")
