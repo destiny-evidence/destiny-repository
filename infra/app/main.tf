@@ -54,13 +54,17 @@ locals {
     {
       name  = "db-url"
       value = "postgresql+asyncpg://${var.admin_login}:${var.admin_password}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.this.name}"
+    },
+    {
+      name  = "storage-account-connection-string"
+      value = azurerm_storage_account.this.primary_connection_string
     }
   ]
 }
 
 module "container_app" {
   source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
-  version                         = "1.4.0"
+  version                         = "1.3.0"
   app_name                        = var.app_name
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id
@@ -115,7 +119,7 @@ module "container_app" {
 
 module "container_app_tasks" {
   source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
-  version                         = "1.4.0"
+  version                         = "1.3.0"
   app_name                        = "${var.app_name}-task"
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id
@@ -147,6 +151,10 @@ module "container_app_tasks" {
         accountName = azurerm_storage_account.this.name
         queueName   = "celery"
         queueLength = var.queue_length_scaling_threshold
+      }
+      authentication = {
+        secret_name = "storage-account-connection-string"
+        trigger_parameter = "connection"
       }
     }
   ]
@@ -196,4 +204,29 @@ resource "azurerm_postgresql_flexible_server_database" "this" {
   lifecycle {
     prevent_destroy = true
   }
+}
+
+resource "azurerm_servicebus_namespace" "this" {
+  name                = local.name
+  resource_group_name = azurerm_resource_group.this.name
+  location            = azurerm_resource_group.this.location
+  sku                 = "Standard"
+
+  tags = local.minimum_resource_tags
+}
+
+resource "azurerm_servicebus_queue" "taskiq" {
+  name         = "taskiq"
+  namespace_id = azurerm_servicebus_namespace.this.id
+
+  partitioning_enabled = true
+}
+
+resource "azurerm_servicebus_namespace_authorization_rule" "this" {
+  name         = "${local.name}-sb-auth-rule"
+  namespace_id = azurerm_servicebus_namespace.this.id
+
+  listen = true
+  send   = true
+  manage = false
 }
