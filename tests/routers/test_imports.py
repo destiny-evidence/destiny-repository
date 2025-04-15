@@ -26,6 +26,7 @@ from app.domain.imports.models.sql import (
     ImportResult as SQLImportResult,
 )
 from app.domain.imports.service import ImportService
+from app.tasks import broker
 
 # Use the database session in all tests to set up the database manager.
 pytestmark = pytest.mark.usefixtures("session")
@@ -144,6 +145,7 @@ async def test_create_batch_for_import(
     assert response.json()["status"] == ImportBatchStatus.CREATED
     assert response.json().items() >= batch_params.items()
 
+    await broker.wait_all()
     mock_process.assert_awaited_once()
 
 

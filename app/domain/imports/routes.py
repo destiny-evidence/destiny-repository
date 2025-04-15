@@ -50,7 +50,7 @@ settings = get_settings()
 
 def choose_auth_strategy() -> AuthMethod:
     """Choose a strategy for our authorization."""
-    if settings.env == "dev":
+    if settings.env in ("dev", "test"):
         return SuccessAuth()
 
     return AzureJwtAuth(

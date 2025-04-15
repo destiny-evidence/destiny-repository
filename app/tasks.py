@@ -1,6 +1,6 @@
 """Tasks module for the DESTINY Climate and Health Repository API."""
 
-from taskiq import TaskiqEvents, TaskiqState
+from taskiq import AsyncBroker, InMemoryBroker, TaskiqEvents, TaskiqState
 from taskiq_aio_pika import AioPikaBroker
 
 from app.core.broker import AzureServiceBusBroker
@@ -9,11 +9,12 @@ from app.persistence.sql.session import db_manager
 
 settings = get_settings()
 
-broker = (
-    AzureServiceBusBroker(settings.message_broker_url)
-    if settings.env != "dev"
-    else AioPikaBroker(settings.message_broker_url)
-)
+broker: AsyncBroker = AzureServiceBusBroker(settings.message_broker_url)
+
+if settings.env == "dev":
+    broker = AioPikaBroker(settings.message_broker_url)
+elif settings.env == "test":
+    broker = InMemoryBroker()
 
 
 @broker.on_event(TaskiqEvents.WORKER_STARTUP)
