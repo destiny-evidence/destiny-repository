@@ -17,8 +17,8 @@ from app.core.config import get_settings
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
+    EnhancementRequestCreate,
     EnhancementRequestStatus,
-    EnhancementType,
     ExternalIdentifier,
     ExternalIdentifierCreate,
     ExternalIdentifierSearch,
@@ -154,14 +154,14 @@ async def add_identifier(
 
 @router.post(
     "/{reference_id}/request-enhancement/",
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(reference_writer_auth)]
 )
 async def request_enhancement(
     reference_id: Annotated[
         uuid.UUID, Path(description="The ID of the reference to enhance.")
     ],
-    enhancement_type: EnhancementType,
+    enhancement_request: EnhancementRequestCreate,
     robot_service: Annotated[RobotService, Depends(robot_service)],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
 ) -> EnhancementRequest:
@@ -175,7 +175,7 @@ async def request_enhancement(
         )
 
     return await robot_service.request_reference_enhancement(
-        reference_id, enhancement_type
+        reference_id, enhancement_request.enhancement_type
     )
 
 

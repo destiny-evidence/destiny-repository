@@ -285,6 +285,18 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
     )
 
 
+class EnhancementRequestCreate(DomainBaseModel):
+    """
+    Request to add an enhancement to a specific reference.
+
+    Only here as a temporary meausre until we get the robot schemas from the sdk
+    """
+
+    enhancement_type: EnhancementType = Field(
+        description="The type of enhancement requested on the reference"
+    )
+
+
 class EnhancementContentBase(BaseModel, ABC):
     """
     Base class for enhancement content.
