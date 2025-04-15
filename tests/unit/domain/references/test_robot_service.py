@@ -9,8 +9,6 @@ from app.domain.references.models.models import (
     EnhancementRequest,
     EnhancementRequestStatus,
     EnhancementType,
-    Reference,
-    Visibility,
 )
 from app.domain.references.robot_service import RobotService
 
@@ -41,15 +39,9 @@ async def test_trigger_reference_enhancement_request_happy_path(
     uow = fake_uow(enhancement_requests=fake_enhancement_requests)
     service = RobotService(uow)
 
-    fake_reference_service = AsyncMock()
-    fake_reference_service.get_reference.return_value = Reference(
-        id=reference_id, visibility=Visibility.RESTRICTED
-    )
-
     enhancement_request = await service.request_reference_enhancement(
         reference_id=reference_id,
         enhancement_type=EnhancementType.BIBLIOGRAPHIC,
-        reference_service=fake_reference_service,
     )
 
     stored_request = fake_enhancement_requests.get_first_record()
@@ -57,26 +49,6 @@ async def test_trigger_reference_enhancement_request_happy_path(
     assert hasattr(enhancement_request, "id")
     assert enhancement_request == stored_request
     assert enhancement_request.request_status == EnhancementRequestStatus.ACCEPTED
-
-
-@pytest.mark.asyncio
-async def test_request_reference_enhancement_reference_doesnt_exist(
-    fake_repository, fake_uow
-):
-    reference_id = uuid.uuid4()
-    fake_enhancement_requests = fake_repository()
-    uow = fake_uow(enhancement_requests=fake_enhancement_requests)
-    service = RobotService(uow)
-
-    fake_reference_service = AsyncMock()
-    fake_reference_service.get_reference.return_value = None
-
-    with pytest.raises(RuntimeError):
-        await service.request_reference_enhancement(
-            reference_id=reference_id,
-            enhancement_type=EnhancementType.BIBLIOGRAPHIC,
-            reference_service=fake_reference_service,
-        )
 
 
 @pytest.mark.asyncio
