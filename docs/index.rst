@@ -10,9 +10,25 @@ API Documentation can be found at ``<api host>/docs, /redoc or /openapi.json``.
 
 .. toctree::
    :maxdepth: 1
-   :caption: Contents:
+   :caption: User Guides:
 
    procedures/batch-importing
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Models:
+
    models/imports
    models/references
-   codebase/codebase
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Technical Documentation:
+
+   codebase/structure
+
+Indices and tables
+==================
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`

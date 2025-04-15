@@ -30,12 +30,9 @@ class GenericAsyncSqlRepository(
         """
         Initialize the repository.
 
-        Args:
-        - session (AsyncSession): The current active database session.
-        - _persistence_cls (type[GenericSQLPersistenceType]):
-            The SQL model which will be persisted.
-        - _domain_cls (type[GenericDomainModelType]):
-            The domain class of model which will be persisted.
+        :param session: The current active database session.
+        :param domain_cls: The domain model type which will be persisted.
+        :param persistence_cls: The SQL model type which will be persisted.
 
         """
         self._session = session
@@ -48,9 +45,10 @@ class GenericAsyncSqlRepository(
         """
         Get a record using its primary key.
 
-        Args:
-        - pk (UUID4): The primary key to use to look up the record.
-        - preload (list[str]): A list of attributes to preload using a join.
+        :param pk: The primary key to use to look up the record.
+        :param preload: A list of attributes to preload using a join.
+
+        :return: Domain model instance or None if not found.
 
         """
         options = []
@@ -67,9 +65,10 @@ class GenericAsyncSqlRepository(
         """
         Update a record using its primary key.
 
-        Args:
-        - pk (UUID4): The primary key to use to look up the record.
-        - kwargs (object): The attributes to update.
+        :param pk: The primary key to use to look up the record.
+        :param kwargs: The attributes to update.
+
+        :return: Domain model instance of the updated record.
 
         """
         persistence = await self._session.get(self._persistence_cls, pk)
@@ -89,8 +88,7 @@ class GenericAsyncSqlRepository(
         """
         Delete a record using its primary key.
 
-        Args:
-        - pk (UUID4): The primary key to use to look up the record.
+        :param pk: The primary key to use to look up the record.
 
         """
         persistence = await self._session.get(self._persistence_cls, pk)
@@ -105,17 +103,14 @@ class GenericAsyncSqlRepository(
         """
         Add a record to the repository.
 
-        Args:
-        - record (T): The record to be persisted.
+        :param record: The record to be persisted.
+
+        :return: Domain model instance of the persisted record.
 
         Note:
         This only adds a record to the session and flushes it. To persist the
         record after this transaction you will need to commit the session
         (generally through the unit of work).
-
-        Note:
-        If the record already exists in the database per its PK, it will be updated
-        instead of added. Consider renaming to upsert().
 
         """
         persistence = await self._persistence_cls.from_domain(record)
@@ -132,8 +127,9 @@ class GenericAsyncSqlRepository(
         updated. If it does not exist, it will be added.
         See also: https://docs.sqlalchemy.org/en/20/orm/session_state_management.html#merge-tips
 
-        Args:
-        - record (T): The record to be persisted.
+        :param record: The record to be persisted.
+
+        :return: Domain model instance of the persisted record.
 
         """
         persistence = await self._persistence_cls.from_domain(record)

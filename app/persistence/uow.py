@@ -1,4 +1,10 @@
-"""The unit of work manages the session transaction lifecycle."""
+"""
+The unit of work (UoW) manages the session transaction lifecycle.
+
+A UoW defines the transaction boundaries and ensures that all changes are committed or
+rolled back. Any persistence operations within the context of a unit of work are
+guaranteed to either all succeed or all fail, maintaining data integrity.
+"""
 
 from abc import ABC, abstractmethod
 from contextlib import AbstractAsyncContextManager
@@ -19,7 +25,12 @@ from app.persistence.repository import GenericAsyncRepository
 
 
 class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
-    """An asynchronous context manager which handles the persistence lifecyle."""
+    """
+    An asynchronous context manager which handles the persistence lifecyle.
+
+    All persistence implementations should inherit from this class, which ensures that
+    transactions are logically grouped.
+    """
 
     imports: ImportRecordRepositoryBase
     batches: ImportBatchRepositoryBase
@@ -47,7 +58,13 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
         self._is_active = False
 
     def __getattribute__(self, name: str) -> GenericAsyncRepository:
-        """Protect access to repositories unless UoW is active."""
+        """
+        Protect access to repositories unless UoW is active.
+
+        :raises: RuntimeError: If the unit of work is not active and an attempt is made
+            to access a repository.
+
+        """
         protected = object.__getattribute__(self, "_protected_attrs")
         if name not in protected:
             return object.__getattribute__(self, name)
@@ -61,7 +78,12 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
         return object.__getattribute__(self, name)
 
     async def __aenter__(self) -> Self:
-        """Set up the unit of work, including any repositories or sessions."""
+        """
+        Set up the unit of work, including any repositories or sessions.
+
+        :raises: RuntimeError: If the unit of work is already active.
+
+        """
         if self._is_active:
             msg = """
             Unit of work is already active.

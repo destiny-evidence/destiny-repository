@@ -28,7 +28,10 @@ class GenericSQLPersistence(
     Generic[GenericDomainModelType],
 ):
     """
-    Generic implementation for a persistence model.
+    Generic implementation for a SQLAlchemy persistence model.
+
+    All SQLAlchemy persistence models should inherit from this class. The
+    DeclarativeBase has been mixed in to allow for the use of SQLAlchemy's ORM features.
 
     At a minimum, the `from_domain` and `to_domain` methods should be implemented.
     """
@@ -49,10 +52,23 @@ class GenericSQLPersistence(
     @classmethod
     @abstractmethod
     async def from_domain(cls, domain_obj: GenericDomainModelType) -> Self:
-        """Create a persistence model from a domain model."""
+        """
+        Create a persistence model from a domain model.
+
+        :param domain_obj: Domain model instance to be converted.
+
+        :return: Persistence model instance.
+        """
 
     @abstractmethod
     async def to_domain(
         self, preload: list[str] | None = None
     ) -> GenericDomainModelType:
-        """Create a domain model from this persistence model."""
+        """
+        Create a domain model from this persistence model.
+
+        :param preload: A list of attributes that have already been preloaded into this
+                        persistence instance.
+
+        :return: Domain model instance.
+        """

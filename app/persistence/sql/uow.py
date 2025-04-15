@@ -1,4 +1,4 @@
-"""The unit of work manages the session transaction lifecycle."""
+"""SQL implementation of AsyncUnitOfWork."""
 
 import functools
 from collections.abc import Awaitable, Callable
@@ -72,7 +72,16 @@ P = ParamSpec("P")
 
 
 def unit_of_work(fn: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
-    """Handle unit of work lifecycle with a decorator."""
+    """
+    Implementats the unit of work as a decorator.
+
+    This is the only way a unit of work should be implemented. As well as maintaining
+    transaction barriers, this helps maintain healthy function boundaries as well (by
+    making it impossible to assume a unit of work inside a function).
+
+    If a decorated function is called from another decorated function, the unit of work
+    will raise a RuntimeError to avoid nested transactions.
+    """
 
     @functools.wraps(fn)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:

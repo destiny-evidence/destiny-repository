@@ -1,4 +1,8 @@
-"""Generic repositories define expected functionality."""
+"""
+Generic repositories define expected functionality for every persistence implementation.
+
+Repositories are the sole interface for interacting with the persistence layer.
+"""
 
 from abc import ABC, abstractmethod
 from typing import Generic
@@ -23,9 +27,10 @@ class GenericAsyncRepository(
         """
         Get a record using its primary key.
 
-        Args:
-        - pk (UUID4): The primary key to use to look up the record.
-        - preload (list[str]): A list of attributes to preload using a join.
+        :param pk: The primary key to use to look up the record.
+        :param preload: A list of attributes to preload using a join.
+
+        :return: Domain model instance or None if not found.
 
         """
         raise NotImplementedError
@@ -35,8 +40,9 @@ class GenericAsyncRepository(
         """
         Add a record to the repository.
 
-        Args:
-        - record (T): The record to be persisted.
+        :param record: The record to be persisted.
+
+        :return: Domain model instance of the persisted record.
 
         Note:
         While a record may have been added to a repository, its persistence

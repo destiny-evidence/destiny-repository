@@ -1,4 +1,4 @@
-"""Generic types for inheritance of persistance classes."""
+"""Generic types for inheritance of persistence classes."""
 
 from typing import TYPE_CHECKING, TypeVar
 
