@@ -9,6 +9,31 @@ services:
       - "5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-d", "destiny_dev", "-U", "localuser"]
+      interval: 2s
+      timeout: 2s
+      retries: 5
+  fs:
+    image: minio/minio:latest
+    environment:
+      MINIO_ROOT_USER: localuser
+      MINIO_ROOT_PASSWORD: localpass
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - fs_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 2s
+      timeout: 2s
+      retries: 5
+  http:
+    image: hashicorp/http-echo:latest
+    ports:
+      - "5678:5678"
 
   redis:
     image: redis:latest
@@ -49,3 +74,4 @@ services:
 
 volumes:
   db_data:
+  fs_data:

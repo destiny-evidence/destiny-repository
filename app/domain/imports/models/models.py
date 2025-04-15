@@ -46,6 +46,29 @@ class ImportBatchStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class CollisionStrategy(StrEnum):
+    """
+    The strategy to use when an identifier collision is detected.
+
+    - `discard`: Do nothing with the incoming reference.
+    - `fail`: Do nothing with the incoming reference and mark it as failed. This
+      allows the importing process to "follow up" on the failure.
+    - `merge_aggressive`: Prioritize the incoming reference's identifiers and
+      enhancements in the merge.
+    - `merge_defensive`: Prioritize the existing reference's identifiers and
+      enhancements in the merge.
+    - `overwrite`: Performs an aggressive merge of identifiers, and an overwrite of
+      enhancements (deleting existing and recreating what is imported). This should
+      be used sparingly and carefully.
+    """
+
+    DISCARD = "discard"
+    FAIL = "fail"
+    MERGE_AGGRESSIVE = "merge_aggressive"
+    MERGE_DEFENSIVE = "merge_defensive"
+    OVERWRITE = "overwrite"
+
+
 class ImportResultStatus(StrEnum):
     """
     Describes the status of an import result.
@@ -53,11 +76,12 @@ class ImportResultStatus(StrEnum):
     - `created`: Created, but no processing has started.
     - `started`: The reference is currently being processed.
     - `completed`: The reference has been created.
+    - `partially_failed`: The reference was created but one or more enhancements or
+      identifiers failed to be added. See the result's `failure_details` field for
+      more information.
+    - `failed`: The reference failed to be created. See the result's `failure_details`
+      field for more information.
     - `cancelled`: Processing was cancelled by calling the API.
-    - `partially_failed`: The reference was created but one or more enhancements failed
-        to be added. See the result's `failure_details` field for more information.
-    - `failed`: The reference failed to be created.
-        See the result's `failure_details` field for more information.
     """
 
     CREATED = "created"
@@ -80,6 +104,7 @@ class ImportRecordBase(DomainBaseModel):
     """
 
     search_string: str | None = Field(
+        None,
         description="The search string used to produce this import",
     )
     searched_at: PastDatetime = Field(
@@ -97,28 +122,31 @@ is assumed to be in UTC.
         description="The version of the processor that is importing the data."
     )
     notes: str | None = Field(
+        None,
         description="""
 Any additional notes regarding the import (eg. reason for importing, known
 issues).
         """,
     )
     expected_reference_count: int = Field(
-        description="The number of references expected to be included in this import."
+        description="""
+The number of references expected to be included in this import.
+-1 is accepted if the number is unknown.
+""",
+        ge=-1,
     )
     source_name: str = Field(
         description="The source of the reference being imported (eg. Open Alex)"
     )
-    status: ImportRecordStatus = Field(
-        default=ImportRecordStatus.CREATED,
-        description="""
-The status of the upload.
-""",
-    )
 
 
 class ImportRecord(ImportRecordBase, SQLAttributeMixin):
-    """Core import record model with database attributes included."""
+    """Core import record model with database and internal attributes included."""
 
+    status: ImportRecordStatus = Field(
+        default=ImportRecordStatus.CREATED,
+        description="The status of the upload.",
+    )
     batches: list["ImportBatch"] | None = Field(
         None, description="The batches associated with this import."
     )
@@ -137,19 +165,32 @@ class ImportBatchBase(DomainBaseModel):
     file at that storage url.
     """
 
-    status: ImportBatchStatus = Field(
-        default=ImportBatchStatus.CREATED, description="The status of the batch."
+    collision_strategy: CollisionStrategy = Field(
+        default=CollisionStrategy.FAIL,
+        description="""
+The strategy to use for each reference when an identifier collision occurs.
+Default is `fail`, which allows the importing process to "follow up" on the collision.
+        """,
     )
     storage_url: HttpUrl = Field(
         description="""
 The URL at which the set of references for this batch are stored.
     """,
     )
+    callback_url: HttpUrl | None = Field(
+        None,
+        description="""
+The URL to which the processor should send a callback when the batch has been processed.
+        """,
+    )
 
 
 class ImportBatch(ImportBatchBase, SQLAttributeMixin):
-    """Core import batch model with database attributes included."""
+    """Core import batch model with database and internal attributes included."""
 
+    status: ImportBatchStatus = Field(
+        default=ImportBatchStatus.CREATED, description="The status of the batch."
+    )
     import_record_id: uuid.UUID = Field(
         description="The ID of the parent import record."
     )
@@ -178,9 +219,6 @@ class ImportResultBase(DomainBaseModel):
     status: ImportResultStatus = Field(
         default=ImportResultStatus.CREATED, description="The status of the result."
     )
-    failure_details: str | None = Field(
-        description="Details of any failure that occurred during processing."
-    )
 
 
 class ImportResult(ImportResultBase, SQLAttributeMixin):
@@ -190,7 +228,10 @@ class ImportResult(ImportResultBase, SQLAttributeMixin):
         None, description="The parent import batch."
     )
     reference_id: uuid.UUID | None = Field(
-        description="The ID of the created reference."
+        None, description="The ID of the created reference."
+    )
+    failure_details: str | None = Field(
+        None, description="Details of any failure that occurred during processing."
     )
 
 
@@ -202,10 +243,8 @@ class ImportBatchSummary(ImportBatchBase):
     """A view for an import batch that includes a summary of its results."""
 
     id: uuid.UUID = Field(
-        default_factory=uuid.uuid4,
         description="""
-The identifier of the batch, which may be set by the processor or will be
-generated on creation.
+The identifier of the batch.
 """,
     )
 
@@ -218,9 +257,21 @@ generated on creation.
         description="The timestamp at which the batch's status was last updated.",
     )
 
+    import_batch_id: uuid.UUID = Field(
+        description="The ID of the batch being summarised"
+    )
+
+    import_batch_status: ImportBatchStatus = Field(
+        description="The status of the batch being summarised"
+    )
+
     results: dict[ImportResultStatus, int] = Field(
         description="A count of references by their current import status."
     )
     failure_details: list[str] | None = Field(
-        description="The details of the failures that occurred.",
+        description="""
+        The details of the failures that occurred.
+        Each failure will start with `"Entry x"` where x is the line number of the
+        jsonl object attempted to be imported.
+        """,
     )

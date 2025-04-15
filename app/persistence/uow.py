@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from contextlib import AbstractAsyncContextManager
 from types import TracebackType
-from typing import Self
+from typing import Final, Self
 
 from app.domain.imports.repository import (
     ImportBatchRepositoryBase,
@@ -15,6 +15,7 @@ from app.domain.references.repository import (
     ExternalIdentifierRepositoryBase,
     ReferenceRepositoryBase,
 )
+from app.persistence.repository import GenericAsyncRepository
 
 
 class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
@@ -27,8 +28,51 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
     external_identifiers: ExternalIdentifierRepositoryBase
     enhancements: EnhancementRepositoryBase
 
+    _protected_attrs: Final[set[str]] = {
+        "imports",
+        "batches",
+        "results",
+        "references",
+        "external_identifiers",
+        "enhancements",
+    }
+
+    def __init__(self) -> None:
+        """
+        Initialize tracking of UOW instance.
+
+        The _is_active logic ensures that the unit of work is not re-entered in
+        a nested fashion.
+        """
+        self._is_active = False
+
+    def __getattribute__(self, name: str) -> GenericAsyncRepository:
+        """Protect access to repositories unless UoW is active."""
+        protected = object.__getattribute__(self, "_protected_attrs")
+        if name not in protected:
+            return object.__getattribute__(self, name)
+        is_active = object.__getattribute__(self, "_is_active")
+        if not is_active:
+            msg = (
+                "Unit of work is not active. "
+                "Make sure you are in a decorated function."
+            )
+            raise RuntimeError(msg)
+        return object.__getattribute__(self, name)
+
     async def __aenter__(self) -> Self:
         """Set up the unit of work, including any repositories or sessions."""
+        if self._is_active:
+            msg = """
+            Unit of work is already active.
+
+            This is likely due to a nested decorator being used
+            incorrectly. Ensure that the unit of work is not being
+            re-entered in a nested fashion, i.e. by calling a decorated
+            function from inside another decorated function.
+            """
+            raise RuntimeError(msg)
+        self._is_active = True
         return self
 
     async def __aexit__(
@@ -40,6 +84,7 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
         """Clean up any connections and rollback if an exception has been raised."""
         if exc_type:
             await self.rollback()
+        self._is_active = False
 
     @abstractmethod
     async def rollback(self) -> None:

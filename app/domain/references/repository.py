@@ -2,11 +2,16 @@
 
 from abc import ABC
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.domain.references.models.models import Enhancement as DomainEnhancement
 from app.domain.references.models.models import (
     ExternalIdentifier as DomainExternalIdentifier,
+)
+from app.domain.references.models.models import (
+    ExternalIdentifierType,
 )
 from app.domain.references.models.models import Reference as DomainReference
 from app.domain.references.models.sql import Enhancement as SQLEnhancement
@@ -59,6 +64,41 @@ class ExternalIdentifierSQLRepository(
             DomainExternalIdentifier,
             SQLExternalIdentifier,
         )
+
+    async def get_by_type_and_identifier(
+        self,
+        identifier_type: ExternalIdentifierType,
+        identifier: str,
+        other_identifier_name: str | None = None,
+        preload: list[str] | None = None,
+    ) -> DomainExternalIdentifier | None:
+        """
+        Get a single external identifier by type and identifier, if it exists.
+
+        Args:
+            identifier_type (ExternalIdentifierType): The type of the identifier.
+            identifier (str): The identifier value.
+            other_identifier_name (str | None): An optional name for another identifier.
+
+        Returns:
+            DomainExternalIdentifier | None: The external identifier if found.
+
+        """
+        query = select(SQLExternalIdentifier).where(
+            SQLExternalIdentifier.identifier_type == identifier_type,
+            SQLExternalIdentifier.identifier == identifier,
+        )
+        if other_identifier_name:
+            query = query.where(
+                SQLExternalIdentifier.other_identifier_name == other_identifier_name
+            )
+        if preload:
+            for p in preload:
+                relationship = getattr(SQLExternalIdentifier, p)
+                query = query.options(joinedload(relationship))
+        result = await self._session.execute(query)
+        db_identifier = result.scalar_one_or_none()
+        return await db_identifier.to_domain(preload=preload) if db_identifier else None
 
 
 class EnhancementRepositoryBase(

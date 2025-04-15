@@ -63,6 +63,44 @@ class GenericAsyncSqlRepository(
             return None
         return await result.to_domain(preload=preload)
 
+    async def update_by_pk(self, pk: UUID4, **kwargs: object) -> GenericDomainModelType:
+        """
+        Update a record using its primary key.
+
+        Args:
+        - pk (UUID4): The primary key to use to look up the record.
+        - kwargs (object): The attributes to update.
+
+        """
+        persistence = await self._session.get(self._persistence_cls, pk)
+        if not persistence:
+            msg = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
+            raise RuntimeError(msg)
+
+        # Check if key is in the persistence model.
+        for key, value in kwargs.items():
+            setattr(persistence, key, value)
+
+        await self._session.flush()
+        await self._session.refresh(persistence)
+        return await persistence.to_domain()
+
+    async def delete_by_pk(self, pk: UUID4) -> None:
+        """
+        Delete a record using its primary key.
+
+        Args:
+        - pk (UUID4): The primary key to use to look up the record.
+
+        """
+        persistence = await self._session.get(self._persistence_cls, pk)
+        if not persistence:
+            msg = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
+            raise RuntimeError(msg)
+
+        await self._session.delete(persistence)
+        await self._session.flush()
+
     async def add(self, record: GenericDomainModelType) -> GenericDomainModelType:
         """
         Add a record to the repository.
@@ -73,11 +111,33 @@ class GenericAsyncSqlRepository(
         Note:
         This only adds a record to the session and flushes it. To persist the
         record after this transaction you will need to commit the session
-        (probably the job of the service through the unit of work.)
+        (generally through the unit of work).
+
+        Note:
+        If the record already exists in the database per its PK, it will be updated
+        instead of added. Consider renaming to upsert().
 
         """
         persistence = await self._persistence_cls.from_domain(record)
         self._session.add(persistence)
+        await self._session.flush()
+        await self._session.refresh(persistence)
+        return await persistence.to_domain()
+
+    async def merge(self, record: GenericDomainModelType) -> GenericDomainModelType:
+        """
+        Merge a record into the repository.
+
+        If the record already exists in the database based on the PK, it will be
+        updated. If it does not exist, it will be added.
+        See also: https://docs.sqlalchemy.org/en/20/orm/session_state_management.html#merge-tips
+
+        Args:
+        - record (T): The record to be persisted.
+
+        """
+        persistence = await self._persistence_cls.from_domain(record)
+        persistence = await self._session.merge(persistence)
         await self._session.flush()
         await self._session.refresh(persistence)
         return await persistence.to_domain()

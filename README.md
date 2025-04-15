@@ -33,17 +33,38 @@ cp .env.example .env
 
 ### Starting the development server
 
-First you will need to start the database server:
+First you will need to start the auxiliary servers:
 
 ```sh
 docker compose up -d
 ```
+
+#### Database
 
 Once the database server is running, run the migrations to setup the database.
 
 ```sh
 poetry run alembic upgrade head
 ```
+
+#### MinIO
+
+You also may need the MinIO fileserver. This requires the MinIO Client. Install instructions for Mac:
+
+```sh
+brew install minio-mc
+```
+
+This can be accessed at localhost:9001 or automatically seeded using the below:
+
+```sh
+chmod +x ./.minio/seed_fileserver.sh
+./.minio/seed_fileserver.sh
+```
+
+Seeding also creates a configuration file at `.minio/presigned_urls.json` which can be used to pass to the application as storage URLs.
+
+#### Application
 
 Run the development server:
 
@@ -173,6 +194,14 @@ Tests are in the [tests](/tests) directory. They are run using `pytest`
 poetry run pytest
 ```
 
+End-to-end testing is run separately in a containerised context:
+
+```sh
+docker compose down -v \
+&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --force-recreate --remove-orphans \
+&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs -f --tail=0 e2e repository
+```
+
 ## Structure
 
 Simplified diagram of inheritance, object visibility and data flow for a domain router:
@@ -250,6 +279,7 @@ Contains a directory for each set of related structures. Each directory includes
 
 - **Service**
   - Performs business processing and logic.
+  - Note that some functions are decorated with UoWs, and others aren't. Careful decision needs to be made to where the UoW boundary is drawn. Don't worry, if you try to call a decorated function from within a decorated function the app will tell you!
 
 ### Persistence
 

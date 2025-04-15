@@ -5,7 +5,7 @@ import json
 import uuid
 from typing import Self
 
-from sqlalchemy import UUID, ForeignKey, String
+from sqlalchemy import UUID, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ENUM, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -45,10 +45,12 @@ class Reference(GenericSQLPersistence[DomainReference]):
     )
 
     identifiers: Mapped[list["ExternalIdentifier"]] = relationship(
-        "ExternalIdentifier", back_populates="reference"
+        "ExternalIdentifier",
+        back_populates="reference",
+        cascade="all, delete, delete-orphan",
     )
     enhancements: Mapped[list["Enhancement"]] = relationship(
-        "Enhancement", back_populates="reference"
+        "Enhancement", back_populates="reference", cascade="all, delete, delete-orphan"
     )
 
     @classmethod
@@ -57,6 +59,18 @@ class Reference(GenericSQLPersistence[DomainReference]):
         return cls(
             id=domain_obj.id,
             visibility=domain_obj.visibility,
+            identifiers=await asyncio.gather(
+                *(
+                    ExternalIdentifier.from_domain(identifier)
+                    for identifier in domain_obj.identifiers or []
+                )
+            ),
+            enhancements=await asyncio.gather(
+                *(
+                    Enhancement.from_domain(enhancement)
+                    for enhancement in domain_obj.enhancements or []
+                )
+            ),
         )
 
     async def to_domain(self, preload: list[str] | None = None) -> DomainReference:
@@ -106,6 +120,16 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
         "Reference", back_populates="identifiers"
     )
 
+    __table_args__ = (
+        UniqueConstraint(
+            "identifier_type",
+            "identifier",
+            "other_identifier_name",
+            name="uix_external_identifier",
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
+
     @classmethod
     async def from_domain(cls, domain_obj: DomainExternalIdentifier) -> Self:
         """Create a persistence model from a domain ExternalIdentifier object."""
@@ -114,6 +138,7 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
             reference_id=domain_obj.reference_id,
             identifier_type=domain_obj.identifier_type,
             identifier=str(domain_obj.identifier),
+            other_identifier_name=domain_obj.other_identifier_name,
         )
 
     async def to_domain(
@@ -166,6 +191,15 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
 
     reference: Mapped["Reference"] = relationship(
         "Reference", back_populates="enhancements"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "enhancement_type",
+            "reference_id",
+            "source",
+            name="uix_enhancement",
+        ),
     )
 
     @classmethod

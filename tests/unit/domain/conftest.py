@@ -1,0 +1,148 @@
+from uuid import UUID, uuid4
+
+import pytest
+
+from app.domain.base import DomainBaseModel, SQLAttributeMixin
+from app.domain.imports.models.models import (
+    ImportBatch,
+    ImportBatchStatus,
+    ImportRecord,
+    ImportResult,
+)
+
+
+class DummyDomainSQLModel(DomainBaseModel, SQLAttributeMixin): ...
+
+
+class FakeRepository:
+    def __init__(self, init_entries: list[DummyDomainSQLModel] | None = None):
+        self.repository: dict[UUID, DummyDomainSQLModel] = {
+            e.id: e for e in init_entries or []
+        }
+
+    async def add(self, record: DummyDomainSQLModel) -> DummyDomainSQLModel:
+        self.repository[record.id] = record
+        return record
+
+    async def get_by_pk(
+        self, pk: UUID, preload: list[str] | None = None
+    ) -> DummyDomainSQLModel | None:
+        # Currently just ignoring preloading in favour of creating
+        # models with the data needed.
+        return self.repository.get(pk)
+
+    async def update_by_pk(self, pk: UUID, **kwargs: object) -> DummyDomainSQLModel:
+        if pk not in self.repository:
+            raise RuntimeError
+        for key, value in kwargs.items():
+            setattr(self.repository[pk], key, value)
+        return self.repository[pk]
+
+    async def delete_by_pk(self, pk) -> None:
+        if pk not in self.repository:
+            raise RuntimeError
+        del self.repository[pk]
+
+    def iter_records(self):
+        """Create an iterator over the records in the repository
+        Returns:
+            iterator[DummyDomainSQLModel]: iterator over the records in the repository
+        """
+        return iter(self.repository.values())
+
+    def get_first_record(self) -> DummyDomainSQLModel:
+        """Get the first record from the repository
+
+        Returns:
+            DummyDomainSQLModel: The first record in the FakeRepository
+
+        Raises:
+            RuntimeError: if the repository contains no records
+        """
+        record = next(self.iter_records(), None)
+        if not record:
+            error = "No record found in FakeRepository"
+            raise RuntimeError(error)
+        return record
+
+
+class FakeUnitOfWork:
+    def __init__(
+        self,
+        batches=None,
+        imports=None,
+        results=None,
+        references=None,
+        external_identifiers=None,
+        enhancements=None,
+    ):
+        self.batches = batches
+        self.imports = imports
+        self.results = results
+        self.references = references
+        self.external_identifiers = external_identifiers
+        self.enhancements = enhancements
+        self.committed = False
+
+    async def __aenter__(self):
+        self._is_active = True
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        self._is_active = False
+
+    async def commit(self):
+        self.committed = True
+
+    async def rollback(self):
+        pass
+
+
+def __fake_import_record(id: UUID) -> ImportRecord:
+    return ImportRecord(
+        id=id,
+        search_string="search string",
+        searched_at="2025-02-02T13:29:30Z",
+        processor_name="Test Importer",
+        processor_version="0.0.1",
+        notes="test import",
+        expected_reference_count=100,
+        source_name="OpenAlex",
+    )
+
+
+@pytest.fixture
+def fake_import_record():
+    """Fixture to construct a fake ImportRecord with a given record_id"""
+    return __fake_import_record
+
+
+@pytest.fixture
+def fake_import_batch():
+    """Fixture to construct a fake BatchRecord with a given record_id"""
+
+    def _fake_import_batch(
+        id: UUID, status: ImportBatchStatus, import_results: list[ImportResult]
+    ) -> ImportBatch:
+        import_record_id = uuid4()
+
+        return ImportBatch(
+            id=id,
+            storage_url="https://www.totallyrealstorage.com",
+            status=status,
+            import_record_id=import_record_id,
+            import_record=__fake_import_record(import_record_id),
+            import_results=import_results,
+        )
+
+    return _fake_import_batch
+
+
+@pytest.fixture
+def fake_repository():
+    return FakeRepository
+
+
+@pytest.fixture
+def fake_uow():
+    return FakeUnitOfWork

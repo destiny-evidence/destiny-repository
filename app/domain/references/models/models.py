@@ -6,10 +6,18 @@ from abc import ABC
 from enum import Enum, StrEnum
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, Field, HttpUrl, PastDate, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    HttpUrl,
+    PastDate,
+    model_validator,
+)
 
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 from app.utils.regex import RE_DOI, RE_OPEN_ALEX_IDENTIFIER
+from app.utils.types import JSON
 
 
 class Visibility(StrEnum):
@@ -41,10 +49,10 @@ class ExternalIdentifierType(StrEnum):
     class.
     **Allowed values**:
     - `doi`: A DOI (Digital Object Identifier) which is a unique identifier for a
-        document.
+    document.
     - `pmid`: A PubMed ID which is a unique identifier for a document in PubMed.
     - `openalex`: An OpenAlex ID which is a unique identifier for a document in
-        OpenAlex.
+    OpenAlex.
     - `other`: Any other identifier not defined. This should be used sparingly.
     """
 
@@ -153,6 +161,22 @@ class ExternalIdentifierCreate(ExternalIdentifierBase):
     """Input for creating an external identifier."""
 
 
+class ExternalIdentifierSearch(ExternalIdentifierBase):
+    """Input for search on external identifiers."""
+
+
+class ExternalIdentifierParseResult(BaseModel):
+    """Result of an attempt to parse an external identifier."""
+
+    external_identifier: ExternalIdentifierCreate | None = Field(
+        None, description="The external identifier to create"
+    )
+    error: str | None = Field(
+        None,
+        description="Error encountered during the parsing process",
+    )
+
+
 class ReferenceBase(DomainBaseModel):
     """
     Base class for references.
@@ -178,6 +202,47 @@ class Reference(ReferenceBase, SQLAttributeMixin):
         None,
         description="A list of enhancements for the reference",
     )
+
+    @classmethod
+    def from_create(
+        cls, reference_create: "ReferenceCreate", reference_id: uuid.UUID | None = None
+    ) -> Self:
+        """Create a reference including id hydration."""
+        reference = cls(
+            visibility=reference_create.visibility,
+        )
+        if reference_id:
+            reference.id = reference_id
+        reference.identifiers = [
+            ExternalIdentifier(**identifier.model_dump(), reference_id=reference.id)
+            for identifier in reference_create.identifiers or []
+        ]
+        reference.enhancements = [
+            Enhancement(**enhancement.model_dump(), reference_id=reference.id)
+            for enhancement in reference_create.enhancements or []
+        ]
+        return reference
+
+
+class ReferenceCreate(ReferenceBase):
+    """Input for creating a reference."""
+
+    identifiers: list[ExternalIdentifierCreate] = Field(
+        description="A list of `ExternalIdentifiers` for the Reference"
+    )
+    enhancements: list["EnhancementCreate"] = Field(
+        default_factory=list,
+        description="A list of enhancements for the reference",
+    )
+
+
+class ReferenceCreateInputValidator(ReferenceBase):
+    """Validator for the top-level schema of a reference creation input."""
+
+    identifiers: list[JSON] = Field(min_length=1)
+    enhancements: list[JSON] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class EnhancementContentBase(BaseModel, ABC):
@@ -478,3 +543,45 @@ class Enhancement(EnhancementBase, SQLAttributeMixin):
 
 class EnhancementCreate(EnhancementBase):
     """Input for creating an enhancement."""
+
+
+class EnhancementParseResult(BaseModel):
+    """Result of an attempt to parse an enhancement."""
+
+    enhancement: EnhancementCreate | None = Field(
+        None,
+        description="The enhancement to create",
+    )
+    error: str | None = Field(
+        None,
+        description="Error encountered during the parsing process",
+    )
+
+
+class ReferenceCreateResult(BaseModel):
+    """
+    Result of an attempt to create a reference.
+
+    If reference is None, no reference was created and errors will be populated.
+    If reference exists and there are errors, the reference was created but there
+    were errors in the hydration.
+    If reference exists and there are no errors, the reference was created and all
+    enhancements/identifiers were hydrated successfully from the input.
+    """
+
+    reference: Reference | None = Field(
+        None,
+        description="""
+    The created reference.
+    If None, no reference was created.
+    """,
+    )
+    errors: list[str] = Field(
+        default_factory=list,
+        description="A list of errors encountered during the creation process",
+    )
+
+    @property
+    def error_str(self) -> str | None:
+        """Return a string of errors if they exist."""
+        return "\n\n".join(e.strip() for e in self.errors) if self.errors else None

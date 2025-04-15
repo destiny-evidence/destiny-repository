@@ -1,7 +1,9 @@
 """The unit of work manages the session transaction lifecycle."""
 
+import functools
+from collections.abc import Awaitable, Callable
 from types import TracebackType
-from typing import Self
+from typing import ParamSpec, Self, TypeVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +35,7 @@ class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
     def __init__(self, session: AsyncSession) -> None:
         """Initialize the unit of work with a session."""
         self.session = session
+        super().__init__()
 
     async def __aenter__(self) -> Self:
         """Set up the SQL repositories and open the session."""
@@ -62,3 +65,21 @@ class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
     async def commit(self) -> None:
         """Commit the session."""
         await self.session.commit()
+
+
+T = TypeVar("T")
+P = ParamSpec("P")
+
+
+def unit_of_work(fn: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
+    """Handle unit of work lifecycle with a decorator."""
+
+    @functools.wraps(fn)
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        sql_uow: AsyncSqlUnitOfWork = args[0].sql_uow  # type:ignore[arg-type, attr-defined]
+        async with sql_uow:
+            result: T = await fn(*args, **kwargs)
+            await sql_uow.commit()
+            return result
+
+    return wrapper

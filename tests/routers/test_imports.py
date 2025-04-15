@@ -2,6 +2,7 @@
 
 import datetime
 from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI, status
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.imports import routes as imports
 from app.domain.imports.models.models import (
+    CollisionStrategy,
     ImportBatchStatus,
     ImportRecordStatus,
     ImportResultStatus,
@@ -23,6 +25,7 @@ from app.domain.imports.models.sql import (
 from app.domain.imports.models.sql import (
     ImportResult as SQLImportResult,
 )
+from app.domain.imports.service import ImportService
 
 # Use the database session in all tests to set up the database manager.
 pytestmark = pytest.mark.usefixtures("session")
@@ -119,20 +122,29 @@ async def test_get_missing_import(client: AsyncClient) -> None:
 
 
 async def test_create_batch_for_import(
-    client: AsyncClient, session: AsyncSession, valid_import: SQLImportRecord
+    client: AsyncClient,
+    session: AsyncSession,
+    valid_import: SQLImportRecord,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test that we can create a batch for an import that exists."""
     session.add(valid_import)
     await session.commit()
 
+    # Mock the ImportService.process_batch call
+    mock_process = AsyncMock(return_value=None)
+    monkeypatch.setattr(ImportService, "process_batch", mock_process)
+
     batch_params = {"storage_url": "https://example.com/batch_data.json"}
     response = await client.post(
-        f"/imports/record/{valid_import.id}/batches/", json=batch_params
+        f"/imports/record/{valid_import.id}/batch/", json=batch_params
     )
     assert response.status_code == status.HTTP_202_ACCEPTED
     assert response.json()["import_record_id"] == str(valid_import.id)
     assert response.json()["status"] == ImportBatchStatus.CREATED
     assert response.json().items() >= batch_params.items()
+
+    mock_process.assert_awaited_once()
 
 
 async def test_get_batches(
@@ -143,19 +155,21 @@ async def test_get_batches(
     await session.commit()
     batch1 = SQLImportBatch(
         import_record_id=valid_import.id,
+        collision_strategy=CollisionStrategy.FAIL,
         status=ImportBatchStatus.CREATED,
         storage_url="https://some.url/file.json",
     )
     session.add(batch1)
     batch2 = SQLImportBatch(
         import_record_id=valid_import.id,
+        collision_strategy=CollisionStrategy.FAIL,
         status=ImportBatchStatus.CREATED,
         storage_url="https://files.storage/something.json",
     )
     session.add(batch2)
     await session.commit()
 
-    response = await client.get(f"/imports/record/{valid_import.id}/batches/")
+    response = await client.get(f"/imports/record/{valid_import.id}/batch/")
     assert response.status_code == status.HTTP_200_OK
     assert len(response.json()) == 2
 
@@ -168,6 +182,7 @@ async def test_get_import_batch_summary(
     await session.commit()
     batch = SQLImportBatch(
         import_record_id=valid_import.id,
+        collision_strategy=CollisionStrategy.FAIL,
         status=ImportBatchStatus.CREATED,
         storage_url="https://some.url/file.json",
     )
@@ -217,6 +232,7 @@ async def test_get_import_results(
     await session.commit()
     batch = SQLImportBatch(
         import_record_id=valid_import.id,
+        collision_strategy=CollisionStrategy.FAIL,
         status=ImportBatchStatus.CREATED,
         storage_url="https://some.url/file.json",
     )

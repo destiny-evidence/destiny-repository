@@ -6,17 +6,18 @@ import uuid
 from typing import Self
 
 from pydantic import HttpUrl
-from sqlalchemy import UUID, DateTime, ForeignKey, Integer, String
+from sqlalchemy import UUID, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.imports.models.models import (
-    ImportBatch as DomainImportBatch,
-)
-from app.domain.imports.models.models import (
+    CollisionStrategy,
     ImportBatchStatus,
     ImportRecordStatus,
     ImportResultStatus,
+)
+from app.domain.imports.models.models import (
+    ImportBatch as DomainImportBatch,
 )
 from app.domain.imports.models.models import (
     ImportRecord as DomainImportRecord,
@@ -47,7 +48,15 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
         ),
         nullable=False,
     )
+    collision_strategy: Mapped[CollisionStrategy] = mapped_column(
+        ENUM(
+            *[strategy.value for strategy in CollisionStrategy],
+            name="collision_strategy",
+        ),
+        nullable=False,
+    )
     storage_url: Mapped[str] = mapped_column(String, nullable=False)
+    callback_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
     import_record: Mapped["ImportRecord"] = relationship(
         "ImportRecord", back_populates="batches"
@@ -56,14 +65,26 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
         "ImportResult", back_populates="import_batch"
     )
 
+    __table_args__ = (
+        UniqueConstraint(
+            "import_record_id",
+            "storage_url",
+            name="uix_import_batch",
+        ),
+    )
+
     @classmethod
     async def from_domain(cls, domain_obj: DomainImportBatch) -> Self:
         """Create a persistence model from a domain ImportBatch object."""
         return cls(
             id=domain_obj.id,
             import_record_id=domain_obj.import_record_id,
+            collision_strategy=domain_obj.collision_strategy,
             status=domain_obj.status,
             storage_url=str(domain_obj.storage_url),
+            callback_url=str(domain_obj.callback_url)
+            if domain_obj.callback_url
+            else None,
         )
 
     async def to_domain(self, preload: list[str] | None = None) -> DomainImportBatch:
@@ -71,8 +92,10 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
         return DomainImportBatch(
             id=self.id,
             import_record_id=self.import_record_id,
+            collision_strategy=self.collision_strategy,
             status=self.status,
             storage_url=HttpUrl(self.storage_url),
+            callback_url=HttpUrl(self.callback_url) if self.callback_url else None,
             import_record=await self.import_record.to_domain()
             if "import_record" in (preload or [])
             else None,
