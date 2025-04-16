@@ -144,7 +144,7 @@ def queue_name() -> str:
 
 
 @pytest.fixture
-def connection_string() -> str:
+def connection_string() -> str | None:
     """
     Get custom Azure Service Bus connection string.
 
