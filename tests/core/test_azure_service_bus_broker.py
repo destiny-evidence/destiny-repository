@@ -7,13 +7,16 @@ including initialization, message sending, and delayed message delivery.
 
 import asyncio
 import uuid
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from azure.servicebus.aio import ServiceBusClient
 from azure.servicebus.amqp import AmqpAnnotatedMessage
 from taskiq import BrokerMessage
 from taskiq.utils import maybe_awaitable
 
 from app.core.azure_service_bus_broker import AzureServiceBusBroker
+from app.core.exceptions.message_broker_exception import MessageBrokerError
 
 
 async def get_first_task(broker: AzureServiceBusBroker):
@@ -27,8 +30,82 @@ async def get_first_task(broker: AzureServiceBusBroker):
         return message
 
 
+@pytest.mark.asyncio
+async def test_startup_with_connection_string():
+    """
+    Test broker startup with connection string.
+
+    This test verifies that the broker initializes correctly when
+    provided with a connection string.
+    """
+    broker = AzureServiceBusBroker(
+        connection_string="Endpoint=sb://test.servicebus.windows.net/"
+    )
+
+    with patch.object(
+        ServiceBusClient, "from_connection_string", return_value=MagicMock()
+    ) as mock_from_conn_str:
+        mock_client = mock_from_conn_str.return_value
+
+        await broker.startup()
+
+        mock_from_conn_str.assert_called_once_with(
+            "Endpoint=sb://test.servicebus.windows.net/"
+        )
+        assert broker.service_bus_client is mock_client
+
+
+@pytest.mark.asyncio
+async def test_startup_with_namespace():
+    """
+    Test broker startup with namespace.
+
+    This test verifies that the broker initializes correctly when
+    provided with a namespace and uses default credentials.
+    """
+    broker = AzureServiceBusBroker(namespace="test-namespace.servicebus.windows.net")
+
+    with (
+        patch(
+            "app.core.azure_service_bus_broker.DefaultAzureCredential",
+            return_value=AsyncMock(),
+        ) as mock_cred_class,
+        patch(
+            "app.core.azure_service_bus_broker.ServiceBusClient", autospec=True
+        ) as mock_sb_client_class,
+    ):
+        mock_credential = mock_cred_class.return_value
+        mock_sb_client = mock_sb_client_class.return_value
+
+        await broker.startup()
+
+        mock_sb_client_class.assert_called_once_with(
+            fully_qualified_namespace="test-namespace.servicebus.windows.net",
+            credential=mock_credential,
+        )
+        assert broker.credential is mock_credential
+        assert broker.service_bus_client is mock_sb_client
+
+
+@pytest.mark.asyncio
+async def test_startup_without_connection_string_or_namespace_raises():
+    """
+    Startup raises an error when neither connection string nor namespace is provided.
+
+    This test verifies that the broker raises a MessageBrokerError when neither
+    connection_string nor namespace parameters are provided.
+    """
+    broker = AzureServiceBusBroker()
+
+    with pytest.raises(
+        MessageBrokerError,
+        match="Either connection_string or namespace must be provided",
+    ):
+        await broker.startup()
+
+
 @pytest.mark.anyio
-async def test_startup(broker: AzureServiceBusBroker) -> None:
+async def test_happy_startup(broker: AzureServiceBusBroker) -> None:
     """
     Test that the broker initializes correctly.
 
@@ -68,7 +145,6 @@ async def test_kick_success(
 
     await broker.kick(sent)
 
-    # Allow time for the message to be processed
     message = await asyncio.wait_for(get_first_task(broker), timeout=1.0)
 
     assert message.data == sent.message
@@ -125,18 +201,15 @@ async def test_priority_handling(
     :param test_receiver: test receiver.
     """
     assert broker.sender is not None
-    # Use monkey patching to capture the message
     original_send_messages = broker.sender.send_messages
     sent_message = None
 
-    # Use monkeypatch to replace the send_messages method
     async def mock_send_messages(message: AmqpAnnotatedMessage) -> None:
         nonlocal sent_message
         sent_message = message
         await original_send_messages(message)
 
     monkeypatch.setattr(broker.sender, "send_messages", mock_send_messages)
-    # Send a message with priority
     await broker.kick(
         BrokerMessage(
             task_id="priority-task",
@@ -146,7 +219,6 @@ async def test_priority_handling(
         )
     )
 
-    # Check that the priority was set in the message headers
     assert isinstance(sent_message, AmqpAnnotatedMessage)
     assert sent_message.header is not None
     assert sent_message.header.priority == 5
