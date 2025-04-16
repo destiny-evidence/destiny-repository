@@ -45,12 +45,8 @@ locals {
       value = var.environment
     },
     {
-      name  = "MESSAGE_BROKER_URL"
-      secret_name = "servicebus-amqp-connection-string"
-    },
-    {
       name  = "MESSAGE_BROKER_NAMESPACE"
-      secret_name = "${azurerm_servicebus_namespace.this.name}.servicebus.windows.net"
+      value = "${azurerm_servicebus_namespace.this.name}.servicebus.windows.net"
     },
     {
       name  = "MESSAGE_BROKER_QUEUE_NAME"
@@ -64,7 +60,7 @@ locals {
       value = "postgresql+asyncpg://${var.admin_login}:${var.admin_password}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.this.name}"
     },
     {
-      name  = "servicebus-amqp-connection-string"
+      name  = "servicebus-connection-string"
       value = azurerm_servicebus_namespace_authorization_rule.this.primary_connection_string
     }
   ]
@@ -160,7 +156,7 @@ module "container_app_tasks" {
         queueLength = var.queue_length_scaling_threshold
       }
       authentication = {
-        secret_name = "servicebus-amqp-connection-string"
+        secret_name = "servicebus-connection-string"
         trigger_parameter = "connection"
       }
     }
