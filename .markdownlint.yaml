@@ -2,3 +2,4 @@
 # Markdown linting rules to ignore.
 MD013: false #  line-length
 MD036: false #  no-emphasis-as-heading
+MD033: false #  no-inline-html

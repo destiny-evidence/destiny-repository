@@ -84,7 +84,29 @@ Remove the `Cloud Application Administrator` role from `DESTINY Terraform Cloud`
 
 ### Deploy out the container app image
 
-Before you can use the deployment of destiny-repository, you will need to deploy out the correct image to the container app. You can use the github ac
+Before you can use the deployment of destiny-repository, you will need to deploy out the correct image to the container app. You can use the github action `deploy-to-development.yml` for this. You will need to update it so that the environment has the same name that you've used, push it up, and then run the workflow dispatch.
+
+This will build and deploy out the image from your branch into your container app.
+
+You should be good to go!
+
+### Cleaning up
+
+If you've made a temporary workspace, you'll want to clean it up when you're done.
+
+First, temporarily upgrade the `DESTINY Terraform Cloud` application's access on the JT_AD Tenant to `Cloud Application Administrator` this will allow it to remove the resources.
+
+Push a commit to your VCS branch (or make the changes locally and apply with CLI) removing the lifecycle protection block of your database in `main.tf`.
+
+Then, queue up a destroy
+
+```sh
+terraform apply --destroy
+```
+
+Once everything is destroyed remove the `Cloud Application Administrator` role from `DESTINY Terraform Cloud` as lower levels of access can read but not change the created resources!
+
+Delete your TFC workspace. You're all done!
 
 ### Generating Terraform Docs
 
