@@ -15,3 +15,4 @@ API Documentation can be found at ``<api host>/docs, /redoc or /openapi.json``.
    procedures/batch-importing
    models/imports
    models/references
+   codebase/codebase

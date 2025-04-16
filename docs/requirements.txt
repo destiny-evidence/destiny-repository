@@ -1,0 +1,3 @@
+autodoc_pydantic==2.2.0
+sphinx==8.2.3
+sphinxcontrib-mermaid==1.0.0
