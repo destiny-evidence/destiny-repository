@@ -161,7 +161,7 @@ module "container_app_tasks" {
 }
 
 resource "azurerm_storage_account" "this" {
-  name                     = "${replace(var.app_name, "-", "")}${substr(var.environment, 0, 4)}"
+  name                     = "sa${replace(var.app_name, "-", "")}${substr(var.environment, 0, 4)}"
   resource_group_name      = azurerm_resource_group.this.name
   location                 = azurerm_resource_group.this.location
   account_tier             = "Standard"

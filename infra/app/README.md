@@ -41,7 +41,7 @@ This guide should be followed if you're setting up a new deployment of destiny r
 You will need the following
 
 - Access to the `destiny-evidence` TFC organistion
-- A _unique_ environment name for your deployment
+- A _unique_ environment name for your deployment, this should be a single word
 - Access to the JT_AD Azure tenant
 
 ### Create your Terraform Cloud workspace
@@ -63,14 +63,6 @@ Configure your workspace as either a CLI workspace, or as a VCS workspace tied t
 ### The First Apply
 
 You will need to temporarily upgrade the `DESTINY Terraform Cloud` application's access on the JT_AD Tenant to `Cloud Application Administrator` this will allow it to create the resources it requires for setting up Github Actions deployments and Authentication.
-
-Additionally, one of the resources created is a init container for destiny repository that runs database migrations. Unfortunately it isn't possible to change the image tag on an init container, so you will need to pre-seed the container registry with an appropriately tagged image for the init container (deployments from github will handle updating the tag from here on our). From the _root_ directory of this repo, run
-
-```sh
-az acr login --name destinyevidenceregistry
-docker buildx build --platform linux/amd64 -t  destinyevidenceregistry.azurecr.io/destiny-repository:[YOUR ENVIRONMENT NAME] .
-docker push destinyevidenceregistry.azurecr.io/destiny-repository:[YOUR ENVIRONMENT NAME]
-```
 
 Once this is done, you should be able to run a
 
