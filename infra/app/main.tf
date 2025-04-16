@@ -147,7 +147,7 @@ module "container_app_tasks" {
   env_vars = local.env_vars
   secrets  = local.secrets
 
-  command = ["celery", "-A", "app.tasks", "worker", "--loglevel=INFO"]
+  command = ["taskiq", "worker", "app.tasks:broker", "--fs-discover"]
 
   # Unfortunately the Azure terraform provider doesn't support setting up managed identity auth for scaling rules.
   custom_scale_rules = [
