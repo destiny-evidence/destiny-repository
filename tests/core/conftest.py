@@ -71,7 +71,6 @@ class FakeServiceBusReceiver:
 
     async def receive_messages(
         self,
-        max_message_count: int | None = 1,  # noqa: ARG002
         max_wait_time: float | None = None,
     ) -> list:
         """
@@ -84,13 +83,10 @@ class FakeServiceBusReceiver:
         deadline = asyncio.get_event_loop().time() + (max_wait_time or 60)
 
         while True:
-            # Check if any tasks are done
-            ready = [t for t in pending_tasks if t.done()]
-            for task in ready:
-                pending_tasks.remove(task)
+            results = [t.result() for t in pending_tasks if t.done()]
 
-            if ready:
-                return [task.result() for task in ready]
+            if results:
+                return results
 
             # Timeout reached, return empty
             if asyncio.get_event_loop().time() > deadline:
@@ -101,6 +97,9 @@ class FakeServiceBusReceiver:
 
     async def complete_message(self, message: AmqpAnnotatedMessage) -> None:
         """Simulate completing a message."""
+        for task in pending_tasks:
+            if task.done() and task.result() == message:
+                pending_tasks.remove(task)
 
     async def close(self) -> None:
         """Simulate closing the receiver."""
