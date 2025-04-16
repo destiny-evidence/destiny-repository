@@ -9,13 +9,13 @@ values and handling messaging operations.
 import asyncio
 from collections.abc import AsyncGenerator, Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any, TypeVar
+from typing import TypeVar
 
 from azure.identity.aio import DefaultAzureCredential
 from azure.servicebus import ServiceBusReceivedMessage
 from azure.servicebus.aio import ServiceBusClient, ServiceBusReceiver, ServiceBusSender
 from azure.servicebus.amqp import AmqpAnnotatedMessage, AmqpMessageBodyType
-from taskiq import AckableMessage, AsyncBroker, AsyncResultBackend, BrokerMessage
+from taskiq import AckableMessage, AsyncBroker, BrokerMessage
 
 from app.core.config import get_settings
 from app.core.exceptions.message_broker_exception import MessageBrokerError
@@ -54,16 +54,11 @@ class AzureServiceBusBroker(AsyncBroker):
     See https://taskiq-python.github.io/extending-taskiq/broker.html
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         connection_string: str | None = None,
         namespace: str | None = None,
-        result_backend: AsyncResultBackend[_T] | None = None,
-        task_id_generator: Callable[[], str] | None = None,
         queue_name: str = "taskiq",
-        prefetch_count: int = 10,
-        max_wait_time: int = 30,
-        **connection_kwargs: Any,  # noqa: ANN401
     ) -> None:
         """
         Construct a new broker.
@@ -72,21 +67,14 @@ class AzureServiceBusBroker(AsyncBroker):
             If None, the namespace parameter must be provided.
         :param namespace: The fully qualified namespace of the Service Bus.
             Used with DefaultAzureCredential if connection_string is None.
-        :param result_backend: custom result backend.
-        :param task_id_generator: custom task_id generator.
         :param queue_name: queue that used to get incoming messages.
-        :param prefetch_count: number of messages that worker can prefetch.
-        :param max_wait_time: maximum time to wait for messages.
         :param connection_kwargs: additional keyword arguments.
         """
-        super().__init__(result_backend, task_id_generator)
+        super().__init__()
 
         self.connection_string = connection_string
         self.namespace = namespace
-        self._conn_kwargs = connection_kwargs
         self._queue_name = queue_name
-        self._prefetch_count = prefetch_count
-        self._max_wait_time = max_wait_time
 
         self.service_bus_client: ServiceBusClient | None = None
         self.sender: ServiceBusSender | None = None
@@ -100,14 +88,12 @@ class AzureServiceBusBroker(AsyncBroker):
         if self.connection_string is not None:
             self.service_bus_client = ServiceBusClient.from_connection_string(
                 self.connection_string,
-                **self._conn_kwargs,
             )
         elif self.namespace is not None:
             self.credential = DefaultAzureCredential()
             self.service_bus_client = ServiceBusClient(
                 fully_qualified_namespace=self.namespace,
                 credential=self.credential,
-                **self._conn_kwargs,
             )
         else:
             raise MessageBrokerError(
@@ -121,7 +107,6 @@ class AzureServiceBusBroker(AsyncBroker):
         if self.is_worker_process:
             self.receiver = self.service_bus_client.get_queue_receiver(
                 queue_name=self._queue_name,
-                prefetch_count=self._prefetch_count,
             )
 
     async def shutdown(self) -> None:
@@ -195,10 +180,7 @@ class AzureServiceBusBroker(AsyncBroker):
         while True:
             try:
                 # Receive a batch of messages
-                batch_messages = await self.receiver.receive_messages(
-                    max_message_count=self._prefetch_count,
-                    max_wait_time=self._max_wait_time,
-                )
+                batch_messages = await self.receiver.receive_messages()
 
                 # Process each message
                 for sb_message in batch_messages:

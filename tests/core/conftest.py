@@ -121,11 +121,7 @@ class FakeServiceBusClient:
         """Get ServiceBusSender for the specific queue."""
         return FakeServiceBusSender()
 
-    def get_queue_receiver(
-        self,
-        queue_name: str,  # noqa: ARG002
-        prefetch_count: int = 0,  # noqa: ARG002
-    ) -> FakeServiceBusReceiver:
+    def get_queue_receiver(self, queue_name: str) -> FakeServiceBusReceiver:  # noqa: ARG002
         """Get ServiceBusSender for the specific queue."""
         return FakeServiceBusReceiver()
 
@@ -176,8 +172,6 @@ async def broker(
     broker = AzureServiceBusBroker(
         connection_string=connection_string,
         queue_name=queue_name,
-        prefetch_count=10,
-        max_wait_time=5,
     )
     broker.is_worker_process = True
 
