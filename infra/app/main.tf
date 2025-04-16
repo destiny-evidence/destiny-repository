@@ -52,10 +52,6 @@ locals {
       name  = "MESSAGE_BROKER_QUEUE_NAME"
       value = azurerm_servicebus_queue.taskiq.name
     },
-    {
-      name        = "MESSAGE_BROKER_CONNECTION_STRING"
-      secret_name = "servicebus-connection-string"
-    },
   ]
 
   secrets = [
@@ -65,7 +61,7 @@ locals {
     },
     {
       name  = "servicebus-connection-string"
-      value = azurerm_servicebus_namespace_authorization_rule.this.primary_connection_string
+      value = azurerm_servicebus_namespace.this.default_primary_connection_string
     }
   ]
 }
@@ -219,13 +215,4 @@ resource "azurerm_servicebus_queue" "taskiq" {
   namespace_id = azurerm_servicebus_namespace.this.id
 
   partitioning_enabled = true
-}
-
-resource "azurerm_servicebus_namespace_authorization_rule" "this" {
-  name         = "${local.name}-sb-auth-rule"
-  namespace_id = azurerm_servicebus_namespace.this.id
-
-  listen = true
-  send   = true
-  manage = false
 }
