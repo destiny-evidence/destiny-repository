@@ -9,7 +9,7 @@ from app.persistence.sql.session import db_manager
 
 settings = get_settings()
 
-broker: AsyncBroker = AzureServiceBusBroker(settings.message_broker_url)
+broker: AsyncBroker = AzureServiceBusBroker(namespace=settings.message_broker_namespace)
 
 if settings.env == "dev":
     broker = AioPikaBroker(settings.message_broker_url)

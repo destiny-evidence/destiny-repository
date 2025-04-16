@@ -46,14 +46,20 @@ resource "azurerm_role_assignment" "gha-container-app-tasks-contributor" {
   principal_id         = azuread_service_principal.github-actions.object_id
 }
 
-resource "azurerm_role_assignment" "container-app-queue-contributor" {
-  role_definition_name = "Storage Queue Data Contributor"
-  scope                = azurerm_storage_account.this.id
+resource "azurerm_role_assignment" "service_bus_receiver" {
+  role_definition_name = "Azure Service Bus Data Receiver"
+  scope                = azurerm_servicebus_namespace.this.id
+  principal_id         = azurerm_user_assigned_identity.container_apps_tasks_identity.principal_id
+}
+
+resource "azurerm_role_assignment" "app_service_bus_sender" {
+  scope                = azurerm_servicebus_namespace.this.id
+  role_definition_name = "Azure Service Bus Data Sender"
   principal_id         = azurerm_user_assigned_identity.container_apps_identity.principal_id
 }
 
-resource "azurerm_role_assignment" "container-app-tasks-queue-contributor" {
-  role_definition_name = "Storage Queue Data Contributor"
-  scope                = azurerm_storage_account.this.id
+resource "azurerm_role_assignment" "tasks_service_bus_sender" {
+  role_definition_name = "Azure Service Bus Data Sender"
+  scope                = azurerm_servicebus_namespace.this.id
   principal_id         = azurerm_user_assigned_identity.container_apps_tasks_identity.principal_id
 }

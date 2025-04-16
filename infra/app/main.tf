@@ -45,13 +45,17 @@ locals {
       value = var.environment
     },
     {
-      name  = "CELERY_BROKER_URL"
-      value = "azurestoragequeues://DefaultAzureCredential@${azurerm_storage_account.this.primary_queue_endpoint}"
-    },
-    {
       name  = "MESSAGE_BROKER_URL"
       secret_name = "servicebus-amqp-connection-string"
     },
+    {
+      name  = "MESSAGE_BROKER_NAMESPACE"
+      secret_name = "${azurerm_servicebus_namespace.this.name}.servicebus.windows.net"
+    },
+    {
+      name  = "MESSAGE_BROKER_QUEUE_NAME"
+      value = azurerm_servicebus_queue.taskiq.name
+    }
   ]
 
   secrets = [
@@ -61,11 +65,7 @@ locals {
     },
     {
       name  = "servicebus-amqp-connection-string"
-      value = "amqps://${azurerm_servicebus_namespace_authorization_rule.this.name}:${urlencode(azurerm_servicebus_namespace_authorization_rule.this.primary_key)}@${azurerm_servicebus_namespace.this.name}.servicebus.windows.net:5671"
-    },
-    {
-      name  = "storage-account-connection-string"
-      value = azurerm_storage_account.this.primary_connection_string
+      value = azurerm_servicebus_namespace_authorization_rule.this.primary_connection_string
     }
   ]
 }
@@ -150,30 +150,21 @@ module "container_app_tasks" {
   command = ["celery", "-A", "app.tasks", "worker", "--loglevel=INFO"]
 
   # Unfortunately the Azure terraform provider doesn't support setting up managed identity auth for scaling rules.
-  # So we have to set the identity manually after this is applied, otherwise deployments will fail. See https://github.com/covidence/study-data-service/pull/72
   custom_scale_rules = [
     {
       name             = "queue-length-scale-rule"
       custom_rule_type = "azure-queue"
       metadata = {
-        accountName = azurerm_storage_account.this.name
-        queueName   = "celery"
+        namespace = azurerm_servicebus_namespace.this.name
+        queueName   = azurerm_servicebus_queue.taskiq.name
         queueLength = var.queue_length_scaling_threshold
       }
       authentication = {
-        secret_name = "storage-account-connection-string"
+        secret_name = "servicebus-amqp-connection-string"
         trigger_parameter = "connection"
       }
     }
   ]
-}
-
-resource "azurerm_storage_account" "this" {
-  name                     = "${replace(var.app_name, "-", "")}${substr(var.environment, 0, 4)}"
-  resource_group_name      = azurerm_resource_group.this.name
-  location                 = azurerm_resource_group.this.location
-  account_tier             = "Standard"
-  account_replication_type = "LRS"
 }
 
 resource "azurerm_postgresql_flexible_server" "this" {

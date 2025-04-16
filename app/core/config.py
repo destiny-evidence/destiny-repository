@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     azure_login_url: HttpUrl = HttpUrl("https://login.microsoftonline.com")
     azure_tenant_id: str
     message_broker_url: str
+    message_broker_namespace: str | None = None
+    message_broker_queue_name: str | None = "taskiq"
     cli_client_id: str | None = None
 
     env: str = Field("dev", description="The environment the app is running in.")
