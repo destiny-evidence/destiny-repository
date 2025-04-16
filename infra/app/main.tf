@@ -51,7 +51,11 @@ locals {
     {
       name  = "MESSAGE_BROKER_QUEUE_NAME"
       value = azurerm_servicebus_queue.taskiq.name
-    }
+    },
+    {
+      name        = "MESSAGE_BROKER_CONNECTION_STRING"
+      secret_name = "servicebus-connection-string"
+    },
   ]
 
   secrets = [
@@ -149,14 +153,14 @@ module "container_app_tasks" {
   custom_scale_rules = [
     {
       name             = "queue-length-scale-rule"
-      custom_rule_type = "azure-queue"
+      custom_rule_type = "azure-servicebus"
       metadata = {
-        namespace = azurerm_servicebus_namespace.this.name
+        namespace   = azurerm_servicebus_namespace.this.name
         queueName   = azurerm_servicebus_queue.taskiq.name
         queueLength = var.queue_length_scaling_threshold
       }
       authentication = {
-        secret_name = "servicebus-connection-string"
+        secret_name       = "servicebus-connection-string"
         trigger_parameter = "connection"
       }
     }
