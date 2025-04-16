@@ -153,7 +153,7 @@ module "container_app_tasks" {
         queueLength = var.queue_length_scaling_threshold
       }
       authentication = {
-        secret_name = "storage-account-connection-string"
+        secret_name       = "storage-account-connection-string"
         trigger_parameter = "connection"
       }
     }
