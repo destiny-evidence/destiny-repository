@@ -63,7 +63,7 @@ locals {
 }
 
 module "container_app" {
-  source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
+  source                          = "app.terraform.io/destiny-evidence/container-app/azure"
   version                         = "1.3.0"
   app_name                        = var.app_name
   environment                     = var.environment
@@ -118,7 +118,7 @@ module "container_app" {
 }
 
 module "container_app_tasks" {
-  source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
+  source                          = "app.terraform.io/destiny-evidence/container-app/azure"
   version                         = "1.3.0"
   app_name                        = "${var.app_name}-task"
   environment                     = var.environment
