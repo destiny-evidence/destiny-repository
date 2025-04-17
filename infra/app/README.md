@@ -46,7 +46,7 @@ You will need the following
 
 ### Create your Terraform Cloud workspace
 
-Create a new worksapce in the `destiny-evidence` organisation in TFC with the following name, project, and tag
+Create a new workspace in the `destiny-evidence` organisation in TFC with the following name, project, and tag
 
 - Name = "destiny-repository-[YOUR ENVIRONMENT NAME]
 - Project = "DESTINY"
