@@ -12,6 +12,9 @@ name: Deploy to development
 on:
   workflow_dispatch:
 
+permissions:
+  id-token: write
+  contents: read
 jobs:
   deploy-to-development:
     uses: ./.github/workflows/deploy.yml
