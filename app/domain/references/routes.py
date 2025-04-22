@@ -24,7 +24,7 @@ from app.domain.references.models.models import (
     ExternalIdentifierType,
     Reference,
 )
-from app.domain.references.service import ReferenceService
+from app.domain.references.reference_service import ReferenceService
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
