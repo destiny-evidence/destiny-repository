@@ -1,15 +1,15 @@
 import uuid
-from unittest.mock import AsyncMock
 
 import pytest
 
 from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
-    Enhancement,
+    AnnotationEnhancement,
     EnhancementCreate,
     EnhancementRequest,
     EnhancementRequestStatus,
     EnhancementType,
+    Reference,
 )
 
 ENHANCEMENT_DATA = {
@@ -28,6 +28,71 @@ ENHANCEMENT_DATA = {
         ],
     },
 }
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_happy_path(fake_repository, fake_uow):
+    dummy_id = uuid.uuid4()
+    dummy_reference = Reference(id=dummy_id)
+    repo_refs = fake_repository(init_entries=[dummy_reference])
+    repo_enh = fake_repository()
+    uow = fake_uow(references=repo_refs, enhancements=repo_enh)
+    service = EnhancementService(uow)
+    enhancement_data = {
+        "source": "test_source",
+        "visibility": "public",
+        "content_version": uuid.uuid4(),
+        "enhancement_type": "annotation",
+        "content": {
+            "enhancement_type": "annotation",
+            "annotations": [
+                {
+                    "annotation_type": "test_annotation",
+                    "label": "test_label",
+                    "data": {"foo": "bar"},
+                }
+            ],
+        },
+    }
+    fake_enhancement_create = EnhancementCreate(**enhancement_data)
+    returned_enhancement = await service.add_enhancement(
+        dummy_id, fake_enhancement_create
+    )
+    assert returned_enhancement.reference_id == dummy_id
+    for k, v in enhancement_data.items():
+        if k == "content":
+            assert returned_enhancement.content == AnnotationEnhancement(**v)
+        else:
+            assert getattr(returned_enhancement, k, None) == v
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_reference_not_found(fake_repository, fake_uow):
+    repo_refs = fake_repository()
+    repo_enh = fake_repository()
+    uow = fake_uow(references=repo_refs, enhancements=repo_enh)
+    service = EnhancementService(uow)
+    dummy_id = uuid.uuid4()
+    fake_enhancement_create = EnhancementCreate(
+        source="test_source",
+        visibility="public",
+        content_version=uuid.uuid4(),
+        enhancement_type="annotation",
+        content={
+            "enhancement_type": "annotation",
+            "annotations": [
+                {
+                    "annotation_type": "test_annotation",
+                    "label": "test_label",
+                    "data": {"foo": "bar"},
+                }
+            ],
+        },
+    )
+    with pytest.raises(RuntimeError, match=f"{dummy_id} does not exist"):
+        await service.add_enhancement(dummy_id, fake_enhancement_create)
+
+    assert True
 
 
 @pytest.mark.asyncio
@@ -110,20 +175,15 @@ async def test_create_reference_enhancement_happy_path(fake_repository, fake_uow
     fake_enhancement_requests = fake_repository([existing_enhancement_request])
     uow = fake_uow(
         enhancement_requests=fake_enhancement_requests,
-        references=fake_repository(),
+        references=fake_repository([Reference(id=reference_id)]),
         enhancements=fake_repository(),
     )
 
     service = EnhancementService(uow)
-    fake_reference_service = AsyncMock()
-    fake_reference_service.add_enhancement.return_value = Enhancement(
-        reference_id=reference_id, **ENHANCEMENT_DATA
-    )
 
     enhancement = await service.create_reference_enhancement(
         enhancement_request_id=enhancement_request_id,
         enhancement=EnhancementCreate(**ENHANCEMENT_DATA),
-        reference_service=fake_reference_service,
     )
 
     enhancement_request = await service.get_enhancement_request(enhancement_request_id)
@@ -147,21 +207,16 @@ async def test_create_reference_enhancement_types_dont_match(fake_repository, fa
     fake_enhancement_requests = fake_repository([existing_enhancement_request])
     uow = fake_uow(
         enhancement_requests=fake_enhancement_requests,
-        references=fake_repository(),
+        references=fake_repository([Reference(id=reference_id)]),
         enhancements=fake_repository(),
     )
 
     service = EnhancementService(uow)
-    fake_reference_service = AsyncMock()
-    fake_reference_service.add_enhancement.return_value = Enhancement(
-        reference_id=reference_id, **ENHANCEMENT_DATA
-    )
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match="enhancement type"):
         await service.create_reference_enhancement(
             enhancement_request_id=enhancement_request_id,
             enhancement=EnhancementCreate(**ENHANCEMENT_DATA),
-            reference_service=fake_reference_service,
         )
 
 

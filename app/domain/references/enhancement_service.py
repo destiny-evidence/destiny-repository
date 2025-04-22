@@ -9,7 +9,6 @@ from app.domain.references.models.models import (
     EnhancementRequestStatus,
     EnhancementType,
 )
-from app.domain.references.service import ReferenceService
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 
@@ -20,6 +19,23 @@ class EnhancementService(GenericService):
     def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(sql_uow)
+
+    @unit_of_work
+    async def add_enhancement(
+        self,
+        reference_id: UUID4,
+        enhancement: EnhancementCreate,
+    ) -> Enhancement:
+        """Add an enhancement to a reference."""
+        reference = await self.sql_uow.references.get_by_pk(reference_id)
+        if not reference:
+            msg = f"reference {reference_id} does not exist"
+            raise RuntimeError(msg)
+        db_enhancement = Enhancement(
+            reference_id=reference.id,
+            **enhancement.model_dump(),
+        )
+        return await self.sql_uow.enhancements.add(db_enhancement)
 
     @unit_of_work
     async def request_reference_enhancement(
@@ -55,7 +71,6 @@ class EnhancementService(GenericService):
         self,
         enhancement_request_id: UUID4,
         enhancement: EnhancementCreate,
-        reference_service: ReferenceService,
     ) -> Enhancement:
         """Finalise the creation of an enhancement against a reference."""
         enhancement_request = await self.get_enhancement_request(enhancement_request_id)
@@ -68,7 +83,7 @@ class EnhancementService(GenericService):
             msg = "Enhancement creation is for different enhancement type to request"
             raise RuntimeError(msg)
 
-        created_enhancement = await reference_service.add_enhancement(
+        created_enhancement = await self.add_enhancement(
             reference_id=enhancement_request.reference_id, enhancement=enhancement
         )
 
