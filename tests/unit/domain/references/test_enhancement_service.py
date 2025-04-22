@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementCreate,
@@ -10,7 +11,6 @@ from app.domain.references.models.models import (
     EnhancementRequestStatus,
     EnhancementType,
 )
-from app.domain.references.robot_service import RobotService
 
 ENHANCEMENT_DATA = {
     "source": "test_source",
@@ -37,7 +37,7 @@ async def test_trigger_reference_enhancement_request_happy_path(
     reference_id = uuid.uuid4()
     fake_enhancement_requests = fake_repository()
     uow = fake_uow(enhancement_requests=fake_enhancement_requests)
-    service = RobotService(uow)
+    service = EnhancementService(uow)
 
     enhancement_request = await service.request_reference_enhancement(
         reference_id=reference_id,
@@ -71,7 +71,7 @@ async def test_get_enhancement_request_happy_path(fake_repository, fake_uow):
 
     fake_enhancement_requests = fake_repository([existing_enhancement_request])
     uow = fake_uow(enhancement_requests=fake_enhancement_requests)
-    service = RobotService(uow)
+    service = EnhancementService(uow)
 
     returned_enhancement_request = await service.get_enhancement_request(
         enhancement_request_id
@@ -86,7 +86,7 @@ async def test_get_enhancement_request_doesnt_exist(fake_repository, fake_uow):
 
     fake_enhancement_requests = fake_repository()
     uow = fake_uow(enhancement_requests=fake_enhancement_requests)
-    service = RobotService(uow)
+    service = EnhancementService(uow)
 
     returned_enhancement_request = await service.get_enhancement_request(
         enhancement_request_id
@@ -114,7 +114,7 @@ async def test_create_reference_enhancement_happy_path(fake_repository, fake_uow
         enhancements=fake_repository(),
     )
 
-    service = RobotService(uow)
+    service = EnhancementService(uow)
     fake_reference_service = AsyncMock()
     fake_reference_service.add_enhancement.return_value = Enhancement(
         reference_id=reference_id, **ENHANCEMENT_DATA
@@ -151,7 +151,7 @@ async def test_create_reference_enhancement_types_dont_match(fake_repository, fa
         enhancements=fake_repository(),
     )
 
-    service = RobotService(uow)
+    service = EnhancementService(uow)
     fake_reference_service = AsyncMock()
     fake_reference_service.add_enhancement.return_value = Enhancement(
         reference_id=reference_id, **ENHANCEMENT_DATA
@@ -180,7 +180,7 @@ async def test_mark_enhancement_request_as_failed(fake_repository, fake_uow):
     uow = fake_uow(
         enhancement_requests=fake_enhancement_requests,
     )
-    service = RobotService(uow)
+    service = EnhancementService(uow)
 
     returned_enhancement_request = await service.mark_enhancement_request_failed(
         enhancement_request_id=enhancement_request_id, error="it broke"
@@ -201,7 +201,7 @@ async def test_mark_enhancement_request_as_failed_request_non_existent(
     uow = fake_uow(
         enhancement_requests=fake_repository(),
     )
-    service = RobotService(uow)
+    service = EnhancementService(uow)
 
     with pytest.raises(RuntimeError):
         await service.mark_enhancement_request_failed(

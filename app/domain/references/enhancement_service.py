@@ -14,7 +14,7 @@ from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 
 
-class RobotService(GenericService):
+class EnhancementService(GenericService):
     """The service which manages our requests to robots for reference enhancement."""
 
     def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:

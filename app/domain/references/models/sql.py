@@ -279,20 +279,14 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
     async def to_domain(
         self, preload: list[str] | None = None
     ) -> DomainEnhancementRequest:
-        """
-        Convert the persistence model into a Domain Enhancement object.
-
-        Just ignoring the preloads for now.
-        Doing horrible stuff to stop formatting shouting at me.
-
-        """
-        request = DomainEnhancementRequest(
+        """Convert the persistence model into a Domain Enhancement object."""
+        return DomainEnhancementRequest(
             id=self.id,
             reference_id=self.reference_id,
             enhancement_type=self.enhancement_type,
             request_status=self.request_status,
             error=self.error,
+            reference=await self.reference.to_domain()
+            if "reference" in (preload or [])
+            else None,
         )
-        if preload:
-            return request
-        return request
