@@ -45,9 +45,6 @@ def import_service(
     return ImportService(sql_uow=sql_uow)
 
 
-settings = get_settings()
-
-
 def choose_auth_strategy() -> AuthMethod:
     """Choose a strategy for our authorization."""
     if settings.env in ("dev", "test"):

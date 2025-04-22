@@ -274,66 +274,63 @@ async def test_get_import_results(
 
 @pytest.mark.usefixtures("stubbed_jwks_response")
 async def test_auth_failure(
-    client: AsyncClient,
-    fake_application_id: str,
-    fake_tenant_id: str,
-    monkeypatch: pytest.MonkeyPatch,
+    client: AsyncClient, fake_application_id: str, fake_tenant_id: str
 ):
     """Test that we reject invalid tokens."""
-    with monkeypatch.context():
-        monkeypatch.setenv("ENV", "production")
-        monkeypatch.setenv("AZURE_APPLICATION_ID", fake_application_id)
-        monkeypatch.setenv("AZURE_TENANT_ID", fake_tenant_id)
-        imports.import_auth.reset()
-        imports.settings.__init__()  # type: ignore[call-args, misc]
-        import_params = {
-            "search_string": "climate AND health",
-            "searched_at": "2025-02-02T13:29:30Z",
-            "processor_name": "Test Importer",
-            "processor_version": "0.0.1",
-            "notes": "This is not a real import, it is only a test run.",
-            "expected_reference_count": 100,
-            "source_name": "OpenAlex",
-        }
-
-        response = await client.post(
-            "/imports/record/",
-            json=import_params,
-            headers={"Authorization": "Bearer Nonsense-token"},
-        )
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    imports.settings.env = "production"
+    imports.settings.azure_application_id = fake_application_id
+    imports.settings.azure_tenant_id = fake_tenant_id
     imports.import_auth.reset()
+
+    import_params = {
+        "search_string": "climate AND health",
+        "searched_at": "2025-02-02T13:29:30Z",
+        "processor_name": "Test Importer",
+        "processor_version": "0.0.1",
+        "notes": "This is not a real import, it is only a test run.",
+        "expected_reference_count": 100,
+        "source_name": "OpenAlex",
+    }
+
+    response = await client.post(
+        "/imports/record/",
+        json=import_params,
+        headers={"Authorization": "Bearer Nonsense-token"},
+    )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
     imports.settings.__init__()  # type: ignore[call-args, misc]
+    imports.import_auth.reset()
 
 
 async def test_missing_auth(
     client: AsyncClient,
     fake_application_id: str,
     fake_tenant_id: str,
-    monkeypatch: pytest.MonkeyPatch,
 ):
     """Test that we reject missing tokens."""
-    with monkeypatch.context():
-        monkeypatch.setenv("ENV", "production")
-        monkeypatch.setenv("AZURE_APPLICATION_ID", fake_application_id)
-        monkeypatch.setenv("AZURE_TENANT_ID", fake_tenant_id)
-        imports.import_auth.reset()
-        imports.settings.__init__()  # type: ignore[call-args, misc]
-        import_params = {
-            "search_string": "climate AND health",
-            "searched_at": "2025-02-02T13:29:30Z",
-            "processor_name": "Test Importer",
-            "processor_version": "0.0.1",
-            "notes": "This is not a real import, it is only a test run.",
-            "expected_reference_count": 100,
-            "source_name": "OpenAlex",
-        }
+    imports.settings.env = "production"
+    imports.settings.azure_application_id = fake_application_id
+    imports.settings.azure_tenant_id = fake_tenant_id
+    imports.import_auth.reset()
 
-        response = await client.post(
-            "/imports/record/",
-            json=import_params,
-        )
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
-        assert response.text == '{"detail":"Authorization HTTPBearer header missing."}'
+    import_params = {
+        "search_string": "climate AND health",
+        "searched_at": "2025-02-02T13:29:30Z",
+        "processor_name": "Test Importer",
+        "processor_version": "0.0.1",
+        "notes": "This is not a real import, it is only a test run.",
+        "expected_reference_count": 100,
+        "source_name": "OpenAlex",
+    }
+
+    response = await client.post(
+        "/imports/record/",
+        json=import_params,
+    )
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.text == '{"detail":"Authorization HTTPBearer header missing."}'
+
     imports.import_auth.reset()
     imports.settings.__init__()  # type: ignore[call-args, misc]
