@@ -1,5 +1,7 @@
 resource "random_uuid" "importer_role" {}
 
+resource "random_uuid" "referencer_role" {}
+
 # App registration for destiny repository
 # App roles to allow various functions (i.e. imports) should be added as app role resources here
 resource "azuread_application_registration" "destiny_repository" {
@@ -15,6 +17,15 @@ resource "azuread_application_app_role" "importer" {
   display_name         = "Importers"
   role_id              = random_uuid.importer_role.result
   value                = "import"
+}
+
+resource "azuread_application_app_role" "referencer" {
+  application_id       = azuread_application_registration.destiny_repository.id
+  allowed_member_types = ["User", "Application"]
+  description          = "Can view, add, and request enhancement on references"
+  display_name         = "referencer"
+  role_id              = random_uuid.referencer_role.result
+  value                = "referencer"
 }
 
 resource "azuread_service_principal" "destiny_repository" {
@@ -36,6 +47,14 @@ resource "azuread_app_role_assignment" "developer_to_importer" {
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
 }
 
+# Assign developers group to referencer access
+# This group is managed by click-ops in Entra Id
+resource "azuread_app_role_assignment" "developer_to_referencer" {
+  app_role_id         = azuread_application_app_role.referencer.role_id
+  principal_object_id = var.developers_group_id
+  resource_object_id  = azuread_service_principal.destiny_repository.object_id
+}
+
 # Create an application that we can use to authenticate with the Destiny Repository
 resource "azuread_application_registration" "destiny_repository_auth" {
   display_name                   = "${local.name}-auth-client"
@@ -49,6 +68,7 @@ resource "azuread_application_api_access" "destiny_repository_auth" {
 
   role_ids = [
     azuread_application_app_role.importer.role_id,
+    azuread_application_app_role.referencer.role_id
   ]
 }
 

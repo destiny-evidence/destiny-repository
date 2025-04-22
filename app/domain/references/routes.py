@@ -65,7 +65,7 @@ reference_auth = CachingStrategyAuth(
 
 
 router = APIRouter(
-    prefix="/references", tags=["references"], dependencies=[Depends(reference_service)]
+    prefix="/references", tags=["references"], dependencies=[Depends(reference_auth)]
 )
 
 
