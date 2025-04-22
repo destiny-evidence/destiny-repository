@@ -30,7 +30,8 @@ class AuthScopes(Enum):
 
     READ_ALL = "read.all"
     IMPORT = "import"
-    REFERENCE = "reference"
+    REFERENCE_READER = "reference.reader"
+    REFERENCE_WRITER = "reference.writer"
 
 
 CACHE_TTL = 60 * 60 * 24  # 24 hours

@@ -44,10 +44,7 @@ def reference_service(
     return ReferenceService(sql_uow=sql_uow)
 
 
-settings = get_settings()
-
-
-def choose_auth_strategy() -> AuthMethod:
+def choose_auth_strategy(auth_scope: AuthScopes) -> AuthMethod:
     """Choose a strategy for our authorization."""
     if settings.env in ("dev", "test"):
         return SuccessAuth()
@@ -55,21 +52,33 @@ def choose_auth_strategy() -> AuthMethod:
     return AzureJwtAuth(
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
-        scope=AuthScopes.REFERENCE,
+        scope=auth_scope,
     )
 
 
-reference_auth = CachingStrategyAuth(
-    selector=choose_auth_strategy,
+def choose_auth_strategy_reader() -> AuthMethod:
+    """Choose reader scope auth strategy for our authorization."""
+    return choose_auth_strategy(AuthScopes.REFERENCE_READER)
+
+
+def choose_auth_strategy_writer() -> AuthMethod:
+    """Choose writer scope auth strategy for our authorization."""
+    return choose_auth_strategy(AuthScopes.REFERENCE_WRITER)
+
+
+reference_reader_auth = CachingStrategyAuth(
+    selector=choose_auth_strategy_reader,
+)
+
+reference_writer_auth = CachingStrategyAuth(
+    selector=choose_auth_strategy_writer,
 )
 
 
-router = APIRouter(
-    prefix="/references", tags=["references"], dependencies=[Depends(reference_service)]
-)
+router = APIRouter(prefix="/references", tags=["references"])
 
 
-@router.get("/{reference_id}/")
+@router.get("/{reference_id}/", dependencies=[Depends(reference_reader_auth)])
 async def get_reference(
     reference_id: Annotated[uuid.UUID, Path(description="The ID of the reference.")],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
@@ -84,7 +93,7 @@ async def get_reference(
     return reference
 
 
-@router.get("/")
+@router.get("/", dependencies=[Depends(reference_reader_auth)])
 async def get_reference_from_identifier(
     identifier: str,
     identifier_type: ExternalIdentifierType,
@@ -108,7 +117,11 @@ async def get_reference_from_identifier(
     return reference
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(reference_writer_auth)],
+)
 async def register_reference(
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
 ) -> Reference:
@@ -116,7 +129,11 @@ async def register_reference(
     return await reference_service.register_reference()
 
 
-@router.post("/{reference_id}/identifier/", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{reference_id}/identifier/",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(reference_writer_auth)],
+)
 async def add_identifier(
     reference_id: Annotated[uuid.UUID, Path(description="The ID of the reference.")],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
@@ -126,7 +143,11 @@ async def add_identifier(
     return await reference_service.add_identifier(reference_id, external_identifier)
 
 
-@router.post("/{reference_id}/enhancement/", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{reference_id}/enhancement/",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(reference_writer_auth)],
+)
 async def add_enhancement(
     reference_id: Annotated[uuid.UUID, Path(description="The ID of the reference.")],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],

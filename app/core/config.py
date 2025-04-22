@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     message_broker_queue_name: str = "taskiq"
     cli_client_id: str | None = None
 
-    env: str = Field("dev", description="The environment the app is running in.")
+    env: str = Field("production", description="The environment the app is running in.")
 
 
 @lru_cache(maxsize=1)
