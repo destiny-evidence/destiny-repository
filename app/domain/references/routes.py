@@ -62,8 +62,8 @@ def choose_auth_strategy_reader() -> AuthMethod:
 
 
 def choose_auth_strategy_writer() -> AuthMethod:
-    """Choose reader scope auth strategy for our authorization."""
-    return choose_auth_strategy(AuthScopes.REFERENCE_READER)
+    """Choose writer scope auth strategy for our authorization."""
+    return choose_auth_strategy(AuthScopes.REFERENCE_WRITER)
 
 
 reference_reader_auth = CachingStrategyAuth(
