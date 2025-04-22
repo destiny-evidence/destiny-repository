@@ -18,7 +18,9 @@ class Settings(BaseSettings):
     azure_application_id: str
     azure_login_url: HttpUrl = HttpUrl("https://login.microsoftonline.com")
     azure_tenant_id: str
-    celery_broker_url: str
+    message_broker_url: str | None = None
+    message_broker_namespace: str | None = None
+    message_broker_queue_name: str = "taskiq"
     cli_client_id: str | None = None
 
     env: str = Field("dev", description="The environment the app is running in.")

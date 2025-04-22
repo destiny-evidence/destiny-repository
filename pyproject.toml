@@ -17,23 +17,26 @@ package-mode = false
 readme = "README.md"
 
 [tool.poetry.dependencies]
+aiohttp = "^3.11.16"
 alembic = "^1.14.1"
 asyncpg = "^0.30.0"
 azure-identity = "^1.21.0"
-azure-storage-queue = "^12.12.0"
+azure-servicebus = "^7.14.2"
 cachetools = "^5.5.2"
-celery = "^5.5.0"
 fastapi = {extras = ["standard"], version = "^0.115.6"}
 greenlet = "^3.1.1"
 pydantic-settings = "^2.7.1"
+pytest-env = "^1.1.5"
 python = "^3.12"
 python-jose = "^3.4.0"
 sqlalchemy-utils = "^0.41.2"
 structlog = "^25.1.0"
+taskiq = {extras = ["reload"], version = "^0.11.16"}
+taskiq-aio-pika = "^0.4.1"
 uvloop = "^0.21.0"
 
 [tool.poetry.group.dev.dependencies]
-celery-types = "^0.23.0"
+autodoc_pydantic = "^2.2.0"
 msal = "^1.31.1"
 mypy = "^1.14.1"
 pre-commit = "^4.0.1"
@@ -41,14 +44,15 @@ psycopg = "^3.2.6"
 pytest = "^8.3.4"
 pytest-asyncio = "^0.25.3"
 pytest-httpx = "^0.35.0"
-redis = "^5.2.1"
 ruff = "^0.8.6"
 types-cachetools = "^5.5.0.20240820"
 types-python-jose = "^3.4.0.20250224"
-watchdog = "^6.0.0"
 
 [tool.pytest.ini_options]
 addopts = ["--color=yes", "--import-mode=importlib", "--verbose"]
+env = [
+    "ENV=test",
+]
 norecursedirs = ["tests/e2e"]
 pythonpath = "."
 testpaths = ["tests"]

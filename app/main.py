@@ -12,6 +12,7 @@ from app.core.logger import configure_logger, get_logger
 from app.domain.imports.routes import router as import_router
 from app.domain.references.routes import router as reference_router
 from app.persistence.sql.session import db_manager
+from app.tasks import broker
 from app.utils.healthcheck import router as healthcheck_router
 
 settings = get_settings()
@@ -22,7 +23,11 @@ logger = get_logger()
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Lifespan hook for FastAPI."""
     db_manager.init(str(settings.db_url))
+    await broker.startup()
+
     yield
+
+    await broker.shutdown()
     await db_manager.close()
 
 

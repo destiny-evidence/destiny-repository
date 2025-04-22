@@ -35,10 +35,21 @@ services:
     ports:
       - "5678:5678"
 
-  redis:
-    image: redis:latest
+  rabbitmq:
+    image: rabbitmq:3-management
     ports:
-      - "6379:6379"
+      - "5672:5672" # AMQP
+      - "15672:15672" # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   app:
     profiles:
@@ -53,9 +64,19 @@ services:
       - ./app:/app/app
     env_file:
       - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      fs:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - MESSAGE_BROKER_URL=amqp://guest:guest@rabbitmq:5672
+      - DB_URL=postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev
     entrypoint: fastapi dev app/main.py --host 0.0.0.0 --port 8000
 
-  celery:
+  worker:
     profiles:
       - optional
     build:
@@ -63,15 +84,20 @@ services:
       args:
         POETRY_INSTALL_DEV: "true"
     depends_on:
-      - redis
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     volumes:
       - ./app:/app/app
     env_file:
       - .env
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-    entrypoint: watchmedo auto-restart --directory=./ --pattern=*.py --recursive -- celery -A app.tasks worker --loglevel=INFO
+      - MESSAGE_BROKER_URL=amqp://guest:guest@rabbitmq:5672
+      - DB_URL=postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev
+    entrypoint: taskiq worker app.tasks:broker --fs-discover --reload
 
 volumes:
   db_data:
+  rabbitmq_data:
   fs_data:

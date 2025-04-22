@@ -45,8 +45,12 @@ locals {
       value = var.environment
     },
     {
-      name  = "CELERY_BROKER_URL"
-      value = "azurestoragequeues://DefaultAzureCredential@${azurerm_storage_account.this.primary_queue_endpoint}"
+      name  = "MESSAGE_BROKER_NAMESPACE"
+      value = "${azurerm_servicebus_namespace.this.name}.servicebus.windows.net"
+    },
+    {
+      name  = "MESSAGE_BROKER_QUEUE_NAME"
+      value = azurerm_servicebus_queue.taskiq.name
     },
   ]
 
@@ -56,8 +60,8 @@ locals {
       value = "postgresql+asyncpg://${var.admin_login}:${var.admin_password}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.this.name}"
     },
     {
-      name  = "storage-account-connection-string"
-      value = azurerm_storage_account.this.primary_connection_string
+      name  = "servicebus-connection-string"
+      value = azurerm_servicebus_namespace.this.default_primary_connection_string
     }
   ]
 }
@@ -139,35 +143,24 @@ module "container_app_tasks" {
   env_vars = local.env_vars
   secrets  = local.secrets
 
-  command = ["celery", "-A", "app.tasks", "worker", "--loglevel=INFO"]
+  command = ["taskiq", "worker", "app.tasks:broker", "--fs-discover"]
 
   # Unfortunately the Azure terraform provider doesn't support setting up managed identity auth for scaling rules.
-  # So we have to set the identity manually after this is applied, otherwise deployments will fail. See https://github.com/covidence/study-data-service/pull/72
   custom_scale_rules = [
     {
       name             = "queue-length-scale-rule"
-      custom_rule_type = "azure-queue"
+      custom_rule_type = "azure-servicebus"
       metadata = {
-        accountName = azurerm_storage_account.this.name
-        queueName   = "celery"
+        namespace   = azurerm_servicebus_namespace.this.name
+        queueName   = azurerm_servicebus_queue.taskiq.name
         queueLength = var.queue_length_scaling_threshold
       }
       authentication = {
-        secret_name       = "storage-account-connection-string"
+        secret_name       = "servicebus-connection-string"
         trigger_parameter = "connection"
       }
     }
   ]
-}
-
-resource "azurerm_storage_account" "this" {
-  # Storage account names must be globally unique
-  # They take 14 days to become available again after deletion
-  name                     = "sa${replace(var.app_name, "-", "")}${substr(var.environment, 0, 4)}"
-  resource_group_name      = azurerm_resource_group.this.name
-  location                 = azurerm_resource_group.this.location
-  account_tier             = "Standard"
-  account_replication_type = "LRS"
 }
 
 resource "azurerm_postgresql_flexible_server" "this" {
@@ -222,13 +215,4 @@ resource "azurerm_servicebus_queue" "taskiq" {
   namespace_id = azurerm_servicebus_namespace.this.id
 
   partitioning_enabled = true
-}
-
-resource "azurerm_servicebus_namespace_authorization_rule" "this" {
-  name         = "${local.name}-sb-auth-rule"
-  namespace_id = azurerm_servicebus_namespace.this.id
-
-  listen = true
-  send   = true
-  manage = false
 }

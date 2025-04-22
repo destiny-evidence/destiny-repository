@@ -24,6 +24,7 @@ from app.domain.imports.models.models import (
     ImportResultStatus,
 )
 from app.domain.imports.service import ImportService
+from app.domain.imports.tasks import process_import_batch
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
@@ -49,7 +50,7 @@ settings = get_settings()
 
 def choose_auth_strategy() -> AuthMethod:
     """Choose a strategy for our authorization."""
-    if settings.env == "dev":
+    if settings.env in ("dev", "test"):
         return SuccessAuth()
 
     return AzureJwtAuth(
@@ -125,9 +126,9 @@ async def enqueue_batch(
             detail=f"Import record with id {import_record_id} not found.",
         )
     import_batch = await import_service.register_batch(import_record_id, batch)
-    # TODO(Adam): Distribute task.
-    # https://github.com/destiny-evidence/destiny-repository/issues/36
-    await import_service.process_batch(import_batch)
+    await process_import_batch.kiq(
+        import_batch_id=import_batch.id,
+    )
     return import_batch
 
 
