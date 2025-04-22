@@ -11,6 +11,8 @@ from app.domain.references.models.models import (
     AnnotationEnhancement,
     BibliographicMetadataEnhancement,
     Enhancement,
+    EnhancementRequest,
+    EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifierBase,
     ExternalIdentifierType,
@@ -238,3 +240,13 @@ def test_invalid_other_identifier_provided_when_not_other():
             identifier="10.1000/xyz123",
             other_identifier_name="unexpected",
         )
+
+
+def test_enhancement_request_valid():
+    enhancement_request = EnhancementRequest(
+        reference_id=uuid.uuid4(),
+        enhancement_type=EnhancementType.ANNOTATION,
+        request_status=EnhancementRequestStatus.CREATED,
+    )
+
+    assert enhancement_request.request_status == EnhancementRequestStatus.CREATED

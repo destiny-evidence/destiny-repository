@@ -270,6 +270,11 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
         description="The ID of the reference this enhancement is associated with."
     )
 
+    reference: Reference | None = Field(
+        None,
+        description="The reference this enhancement is associated with.",
+    )
+
     enhancement_type: EnhancementType = Field(
         description="The type of enhancement requested on the reference"
     )

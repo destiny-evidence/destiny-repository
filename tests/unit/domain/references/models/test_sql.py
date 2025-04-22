@@ -220,13 +220,17 @@ async def test_enhancement_request_from_and_to_domain():
     assert sql_enh_req.request_status == dummy_enh_req.request_status
     assert sql_enh_req.error == dummy_enh_req.error
 
+    # For preload test, assign a dummy SQL Reference to the relationship
+    sql_enh_req.reference = Reference(id=reference_id, visibility=Visibility.HIDDEN)
+
     # # Convert back to domain with preload reference
-    domain_enh_req = await sql_enh_req.to_domain()
+    domain_enh_req = await sql_enh_req.to_domain(preload=["reference"])
     assert domain_enh_req.id == dummy_enh_req.id
     assert domain_enh_req.reference_id == dummy_enh_req.reference_id
     assert domain_enh_req.enhancement_type == dummy_enh_req.enhancement_type
     assert domain_enh_req.request_status == dummy_enh_req.request_status
     assert domain_enh_req.error == dummy_enh_req.error
+    assert domain_enh_req.reference.id == dummy_enh_req.reference_id
 
 
 @pytest.mark.asyncio

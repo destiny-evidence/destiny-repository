@@ -14,18 +14,16 @@ from app.core.auth import (
     SuccessAuth,
 )
 from app.core.config import get_settings
+from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
-    Enhancement,
     EnhancementRequest,
     EnhancementRequestCreate,
-    EnhancementRequestStatus,
     ExternalIdentifier,
     ExternalIdentifierCreate,
     ExternalIdentifierSearch,
     ExternalIdentifierType,
     Reference,
 )
-from app.domain.references.robot_service import RobotService
 from app.domain.references.service import ReferenceService
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -46,11 +44,12 @@ def reference_service(
     """Return the reference service using the provided unit of work dependencies."""
     return ReferenceService(sql_uow=sql_uow)
 
-def robot_service(
+
+def enhancement_service(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
-) -> RobotService:
-    """Return the robot service using the provided unit of work dependencies."""
-    return RobotService(sql_uow=sql_uow)
+) -> EnhancementService:
+    """Return the enhancement service using the provided unit of work dependencies."""
+    return EnhancementService(sql_uow=sql_uow)
 
 
 def choose_auth_strategy(auth_scope: AuthScopes) -> AuthMethod:
@@ -153,16 +152,16 @@ async def add_identifier(
 
 
 @router.post(
-    "/{reference_id}/request-enhancement/",
+    "/{reference_id}/request/enhancement",
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(reference_writer_auth)]
+    dependencies=[Depends(reference_writer_auth)],
 )
 async def request_enhancement(
     reference_id: Annotated[
         uuid.UUID, Path(description="The ID of the reference to enhance.")
     ],
     enhancement_request: EnhancementRequestCreate,
-    robot_service: Annotated[RobotService, Depends(robot_service)],
+    enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
 ) -> EnhancementRequest:
     """Request the creation of an enhancement against a provided reference id."""
@@ -174,66 +173,6 @@ async def request_enhancement(
             detail=f"Reference with id {reference_id} not found",
         )
 
-    return await robot_service.request_reference_enhancement(
+    return await enhancement_service.request_reference_enhancement(
         reference_id, enhancement_request.enhancement_type
     )
-
-
-# Thought - do we want these to have the references prefix on them?
-# Currently references/enhancement/request/{enhancement_request_id}
-# Thinking like /enhancement/request/{request_id} as total path might be nicer
-# I don't even think the /request/ is very nice, maybe references/enhance?
-@router.patch(
-    "/enhancement/request/{enhancement_request_id}/", status_code=status.HTTP_200_OK
-)
-async def update_enhancement_request(
-    enhancement_request_id: Annotated[
-        uuid.UUID, Path(description="The id of the enhancement request")
-    ],
-    enhancement_request_status: EnhancementRequestStatus,
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-) -> EnhancementRequest:
-    """Update the status of an enhancement request."""
-    # Allow an error to be passed in here
-    # And move the enhancement request into failed state?
-    # For example if we pass a malformed request to robot
-
-
-@router.get(
-    "/enhancement/request/{enhancement_request_id}/", status_code=status.HTTP_200_OK
-)
-async def check_enhancement_request_status(
-    enhancement_request_id: Annotated[
-        uuid.UUID, Path(description="The id of the enhancement request")
-    ],
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-) -> EnhancementRequest:
-    """Check the status of an enhancement request."""
-    # For nosy users who what to see what's goin' on
-
-
-@router.post("{reference_id}/enhancement/", status_code=status.HTTP_201_CREATED)
-async def create_enhancement(
-    reference_id: Annotated[uuid.UUID, Path(description="reference")],
-    # whatever we need to create the enhancement
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-) -> Enhancement:
-    """
-    Robots hit this to create an enhancement after processing an enhancement request.
-
-    Might want to extend this to create enhancements without associated request.
-    """
-    # add an extra request state for 'finalizing'? felt like extra complexity
-    # Create the enhancement
-    # Update the enhancement request to either completed or failed.
-    # Return enhancement
-
-
-@router.get("/enhancement/{enhancement_id}", status_code=status.HTTP_200_OK)
-async def get_enhancement(
-    enhancement_id: Annotated[uuid.UUID, Path(description="The ID of an enhancement")],
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-) -> Enhancement:
-    """Grab an existing enhancement by enhancement id."""
-    # Will likely want to allow grabbing by type for a reference
-    # Maybe 'references/{reference_id}/enhancement/{type}'

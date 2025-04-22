@@ -74,7 +74,7 @@ async def test_request_reference_enhancement(
     enhancement_params = {"enhancement_type": EnhancementType.ANNOTATION}
 
     response = await client.post(
-        f"/references/{reference.id}/request-enhancement/", json=enhancement_params
+        f"/references/{reference.id}/request/enhancement", json=enhancement_params
     )
 
     assert response.status_code == status.HTTP_202_ACCEPTED
@@ -92,7 +92,7 @@ async def test_request_reference_enhancement_nonexistent_referece(
     enhancement_params = {"enhancement_type": EnhancementType.ANNOTATION}
 
     response = await client.post(
-        f"/references/{fake_reference_id}/request-enhancement/", json=enhancement_params
+        f"/references/{fake_reference_id}/request/enhancement", json=enhancement_params
     )
 
     response.json()["detail"]
