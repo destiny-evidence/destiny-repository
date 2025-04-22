@@ -23,15 +23,11 @@ logger = get_logger()
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Lifespan hook for FastAPI."""
     db_manager.init(str(settings.db_url))
-
-    if not broker.is_worker_process:
-        await broker.startup()
+    await broker.startup()
 
     yield
 
-    if not broker.is_worker_process:
-        await broker.shutdown()
-
+    await broker.shutdown()
     await db_manager.close()
 
 
