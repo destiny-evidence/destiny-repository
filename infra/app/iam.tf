@@ -1,11 +1,15 @@
-# Assume that an application is already registered for GitHub OIDC
-# At some point we should probably create these per-environment to
-# limit potential blast radius
-data "azuread_application" "github-actions" {
-  display_name = "GitHub Actions"
+data "azuread_client_config" "current" {
 }
 
-data "azuread_client_config" "current" {
+resource "azuread_application_registration" "github_actions" {
+  display_name     = "github-actions-${local.name}"
+  sign_in_audience = "AzureADMyOrg"
+}
+
+resource "azuread_service_principal" "github_actions" {
+  client_id                    = azuread_application_registration.github_actions.client_id
+  app_role_assignment_required = true
+  owners                       = [data.azuread_client_config.current.object_id]
 }
 
 # This credential means that when GitHub requests a token with a
@@ -13,37 +17,44 @@ data "azuread_client_config" "current" {
 resource "azuread_application_federated_identity_credential" "github" {
   display_name = "gha-${var.app_name}-deploy-${var.environment}"
 
-  application_id = data.azuread_application.github-actions.id
+  application_id = azuread_application_registration.github_actions.id
   audiences      = ["api://AzureADTokenExchange"]
   issuer         = "https://token.actions.githubusercontent.com"
   subject        = "repo:${var.github_repo}:environment:${var.environment}"
 }
 
-resource "azuread_service_principal" "github-actions" {
-  client_id                    = data.azuread_application.github-actions.client_id
-  app_role_assignment_required = false
-  owners                       = [data.azuread_client_config.current.object_id]
-  use_existing                 = true
+# We want our Github actions to be able to push to the container registry
+resource "azurerm_role_assignment" "gha-container-push" {
+  role_definition_name = "AcrPush"
+  scope                = data.azurerm_container_registry.this.id
+  principal_id         = azuread_service_principal.github_actions.object_id
+}
+
+# We want our Github actions to be able to pull from the container registry
+resource "azurerm_role_assignment" "gha-container-pull" {
+  role_definition_name = "AcrPull"
+  scope                = data.azurerm_container_registry.this.id
+  principal_id         = azuread_service_principal.github_actions.object_id
 }
 
 # We want our GitHub Actions to be able to update the container apps
 resource "azurerm_role_assignment" "gha-container-app-env-contributor" {
   role_definition_name = "Contributor"
   scope                = module.container_app.container_app_env_id
-  principal_id         = azuread_service_principal.github-actions.object_id
+  principal_id         = azuread_service_principal.github_actions.object_id
 }
 
 # We should create a custom role which doesn't require such control
 resource "azurerm_role_assignment" "gha-container-app-contributor" {
   role_definition_name = "Contributor"
   scope                = module.container_app.container_app_id
-  principal_id         = azuread_service_principal.github-actions.object_id
+  principal_id         = azuread_service_principal.github_actions.object_id
 }
 
 resource "azurerm_role_assignment" "gha-container-app-tasks-contributor" {
   role_definition_name = "Contributor"
   scope                = module.container_app_tasks.container_app_id
-  principal_id         = azuread_service_principal.github-actions.object_id
+  principal_id         = azuread_service_principal.github_actions.object_id
 }
 
 resource "azurerm_role_assignment" "service_bus_receiver" {

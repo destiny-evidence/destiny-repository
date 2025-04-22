@@ -2,10 +2,10 @@ terraform {
   required_version = ">= 1.0"
 
   cloud {
-    organization = "future-evidence-foundation"
+    organization = "destiny-evidence"
 
     workspaces {
-      project = "destiny"
+      project = "DESTINY"
       tags    = ["destiny-repository"]
     }
   }

@@ -27,7 +27,7 @@ resource "github_actions_environment_variable" "azure_client_id" {
   environment   = github_repository_environment.environment.environment
   repository    = github_repository_environment.environment.repository
   variable_name = "AZURE_CLIENT_ID"
-  value         = data.azuread_application.github-actions.client_id
+  value         = azuread_application_registration.github_actions.client_id
 }
 
 resource "github_actions_environment_variable" "azure_subscription_id" {
