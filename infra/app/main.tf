@@ -63,7 +63,7 @@ locals {
 }
 
 module "container_app" {
-  source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
+  source                          = "app.terraform.io/destiny-evidence/container-app/azure"
   version                         = "1.3.0"
   app_name                        = var.app_name
   environment                     = var.environment
@@ -118,7 +118,7 @@ module "container_app" {
 }
 
 module "container_app_tasks" {
-  source                          = "app.terraform.io/future-evidence-foundation/container-app/azure"
+  source                          = "app.terraform.io/destiny-evidence/container-app/azure"
   version                         = "1.3.0"
   app_name                        = "${var.app_name}-task"
   environment                     = var.environment
@@ -153,7 +153,7 @@ module "container_app_tasks" {
         queueLength = var.queue_length_scaling_threshold
       }
       authentication = {
-        secret_name = "storage-account-connection-string"
+        secret_name       = "storage-account-connection-string"
         trigger_parameter = "connection"
       }
     }
@@ -161,7 +161,9 @@ module "container_app_tasks" {
 }
 
 resource "azurerm_storage_account" "this" {
-  name                     = "${replace(var.app_name, "-", "")}${substr(var.environment, 0, 4)}"
+  # Storage account names must be globally unique
+  # They take 14 days to become available again after deletion
+  name                     = "sa${replace(var.app_name, "-", "")}${substr(var.environment, 0, 4)}"
   resource_group_name      = azurerm_resource_group.this.name
   location                 = azurerm_resource_group.this.location
   account_tier             = "Standard"
