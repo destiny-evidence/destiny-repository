@@ -6,7 +6,7 @@ requires = ["poetry-core"]
 authors = ["Andrew Harvey <andrew@futureevidence.org>"]
 description = "A library to support the creation of robots which enhance data in the DESTINY repository"
 license = "Apache 2.0"
-name = "destiny-robots"
+name = "destiny_robots"
 readme = "README.md"
 version = "0.1.0"
 
