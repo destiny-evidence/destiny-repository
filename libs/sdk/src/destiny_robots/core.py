@@ -260,6 +260,50 @@ class EnhancementRead(EnhancementBase):
     updated_at: AwareDatetime
 
 
+class AnnotationEnhancementRequest(BaseModel):
+    """The model for requesting an annotation enhancement."""
+
+    enhancement_type: Literal["annotation"] = "annotation"
+    # probably other stuff goes here
+
+
+EnhancementRequestContent = Annotated[
+    AnnotationEnhancementRequest,
+    Field(discriminator="enhancement_type" ""),
+]
+
+
+class EnhancementRequestCreate(BaseModel):
+    """The model for requesting an enhancement on specific reference."""
+
+    reference_id: UUID4 = Field(
+        description="The ID of the reference to create the enhancement against"
+    )
+
+    request_content: EnhancementRequestContent = Field(
+        description="Infromation needed to create the enhancement. TBC."
+    )
+
+
+class EnhancementRequestRead(BaseModel):
+    """The model for an enhancement request."""
+
+    id: UUID4
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+    reference_id: UUID4 = Field(description="The ID of the reference to be enhanced")
+    enhancement_type: str = Field(
+        description="The type of enhancement requested on the reference"
+    )
+    request_status: str = Field(
+        description="The status of the request to create an enhancement",
+    )
+    error: str | None = Field(
+        None,
+        description="Error encountered during the enhancement process",
+    )
+
+
 class Reference(BaseModel):
     """
     The base model stored in the repository.

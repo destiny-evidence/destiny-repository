@@ -227,7 +227,6 @@ def test_enhancement_request_valid():
     enhancement_request = EnhancementRequest(
         reference_id=uuid.uuid4(),
         enhancement_type=EnhancementType.ANNOTATION,
-        request_status=EnhancementRequestStatus.RECEIVED,
     )
 
     assert enhancement_request.request_status == EnhancementRequestStatus.RECEIVED

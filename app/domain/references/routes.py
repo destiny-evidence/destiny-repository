@@ -17,7 +17,6 @@ from app.core.config import get_settings
 from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
     EnhancementRequest,
-    EnhancementRequestCreate,
     ExternalIdentifier,
     ExternalIdentifierCreate,
     ExternalIdentifierSearch,
@@ -27,6 +26,10 @@ from app.domain.references.models.models import (
 from app.domain.references.reference_service import ReferenceService
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
+from libs.sdk.src.destiny_robots.core import (
+    EnhancementRequestCreate,
+    EnhancementRequestRead,
+)
 
 settings = get_settings()
 
@@ -152,19 +155,17 @@ async def add_identifier(
 
 
 @router.post(
-    "/{reference_id}/request/enhancement",
+    "/enhancement/",
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(reference_writer_auth)],
 )
 async def request_enhancement(
-    reference_id: Annotated[
-        uuid.UUID, Path(description="The ID of the reference to enhance.")
-    ],
-    enhancement_request: EnhancementRequestCreate,
+    enhancement_request_create: EnhancementRequestCreate,
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
-) -> EnhancementRequest:
+) -> EnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""
+    reference_id = enhancement_request_create.reference_id
     reference = await reference_service.get_reference(reference_id)
 
     if not reference:
@@ -173,6 +174,11 @@ async def request_enhancement(
             detail=f"Reference with id {reference_id} not found",
         )
 
-    return await enhancement_service.request_reference_enhancement(
-        reference_id, enhancement_request.enhancement_type
+    enhancement_request = await enhancement_service.request_reference_enhancement(
+        EnhancementRequest(
+            reference_id=reference_id,
+            enhancement_type=enhancement_request_create.request_content.enhancement_type,
+        )
     )
+
+    return EnhancementRequestRead(**enhancement_request.model_dump())

@@ -15,7 +15,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.domain.base import DomainBaseModel, SQLAttributeMixin
+from app.domain.base import DomainBaseModel, SQLAttributeMixin, SQLTimestampMixin
 from app.utils.regex import RE_DOI, RE_OPEN_ALEX_IDENTIFIER
 from app.utils.types import JSON
 
@@ -265,7 +265,7 @@ class ReferenceCreateInputValidator(ReferenceBase):
     model_config = ConfigDict(extra="forbid")
 
 
-class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
+class EnhancementRequest(DomainBaseModel, SQLTimestampMixin):
     """Request to add an enhancement to a specific reference."""
 
     reference_id: uuid.UUID = Field(

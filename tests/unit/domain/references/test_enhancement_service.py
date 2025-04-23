@@ -104,9 +104,13 @@ async def test_trigger_reference_enhancement_request_happy_path(
     uow = fake_uow(enhancement_requests=fake_enhancement_requests)
     service = EnhancementService(uow)
 
-    enhancement_request = await service.request_reference_enhancement(
+    received_enhancement_request = EnhancementRequest(
         reference_id=reference_id,
         enhancement_type=EnhancementType.BIBLIOGRAPHIC,
+    )
+
+    enhancement_request = await service.request_reference_enhancement(
+        enhancement_request=received_enhancement_request
     )
 
     stored_request = fake_enhancement_requests.get_first_record()
@@ -119,8 +123,8 @@ async def test_trigger_reference_enhancement_request_happy_path(
 @pytest.mark.asyncio
 async def test_trigger_reference_enhancement_request_rejected():
     """
-    Add in a test for when a robot rejects a request to create an enhancement against a
-    reference.
+    TODO(Jack): Add in a test for when a robot rejects a request to create
+    an enhancement against areference.
     """
 
 
