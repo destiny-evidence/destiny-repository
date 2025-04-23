@@ -2,9 +2,8 @@
 
 from typing import Annotated
 
-from pydantic import UUID4, BaseModel, Field
-
 from destiny_sdk.core import EnhancementCreate, Reference
+from pydantic import UUID4, BaseModel, Field
 
 
 class RobotError(BaseModel):
