@@ -176,3 +176,27 @@ async def request_enhancement(
     return await enhancement_service.request_reference_enhancement(
         reference_id, enhancement_request.enhancement_type
     )
+
+
+@router.get(
+    "/request/enhancement/{enhancement_request_id}/",
+    dependencies=[Depends(reference_writer_auth)],
+)
+async def check_enhancement_request_status(
+    enhancement_request_id: Annotated[
+        uuid.UUID, Path(description="The id of the enhancement request.")
+    ],
+    enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
+) -> EnhancementRequest:
+    """Check the status of an enhancement request."""
+    enhancement_request = await enhancement_service.get_enhancement_request(
+        enhancement_request_id
+    )
+
+    if not enhancement_request:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Enhancement request with {enhancement_request_id} not found",
+        )
+
+    return enhancement_request
