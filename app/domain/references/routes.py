@@ -3,6 +3,10 @@
 import uuid
 from typing import Annotated
 
+from destiny_robots.core import (
+    EnhancementRequestCreate,
+    EnhancementRequestRead,
+)
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,10 +30,6 @@ from app.domain.references.models.models import (
 from app.domain.references.reference_service import ReferenceService
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
-from libs.sdk.src.destiny_robots.core import (
-    EnhancementRequestCreate,
-    EnhancementRequestRead,
-)
 
 settings = get_settings()
 
