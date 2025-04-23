@@ -7,7 +7,6 @@ from app.domain.references.models.models import (
     EnhancementCreate,
     EnhancementRequest,
     EnhancementRequestStatus,
-    EnhancementType,
 )
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
@@ -40,15 +39,11 @@ class EnhancementService(GenericService):
     @unit_of_work
     async def request_reference_enhancement(
         self,
-        reference_id: UUID4,
-        enhancement_type: EnhancementType,
+        enhancement_request: EnhancementRequest,
     ) -> EnhancementRequest:
         """Create an enhancement request and send it to robot."""
         enhancement_request = await self.sql_uow.enhancement_requests.add(
-            EnhancementRequest(
-                reference_id=reference_id,
-                enhancement_type=enhancement_type,
-            )
+            enhancement_request
         )
 
         # Send stuff off to the robot

@@ -63,7 +63,7 @@ async def test_register_reference(session: AsyncSession, client: AsyncClient) ->
     assert data is not None
 
 
-async def test_request_reference_enhancement(
+async def test_request_reference_enhancement_happy_path(
     session: AsyncSession, client: AsyncClient
 ) -> None:
     """Test requesting an existing reference be enhanced."""
@@ -71,16 +71,16 @@ async def test_request_reference_enhancement(
     session.add(reference)
     await session.commit()
 
-    enhancement_params = {"enhancement_type": EnhancementType.ANNOTATION}
+    enhancement_params = {
+        "reference_id": f"{reference.id}",
+        "request_content": {"enhancement_type": EnhancementType.ANNOTATION},
+    }
 
-    response = await client.post(
-        f"/references/{reference.id}/request/enhancement", json=enhancement_params
-    )
+    response = await client.post("/references/enhancement/", json=enhancement_params)
 
     assert response.status_code == status.HTTP_202_ACCEPTED
     data = await session.get(SQLEnhancementRequest, response.json()["id"])
     assert data.request_status == EnhancementRequestStatus.ACCEPTED
-    assert response.json().items() >= enhancement_params.items()
 
 
 async def test_request_reference_enhancement_nonexistent_referece(
@@ -89,10 +89,13 @@ async def test_request_reference_enhancement_nonexistent_referece(
     """Test requesting a nonexistent reference be enhanced."""
     fake_reference_id = uuid.uuid4()
 
-    enhancement_params = {"enhancement_type": EnhancementType.ANNOTATION}
+    enhancement_request_params = {
+        "reference_id": f"{fake_reference_id}",
+        "request_content": {"enhancement_type": EnhancementType.ANNOTATION},
+    }
 
     response = await client.post(
-        f"/references/{fake_reference_id}/request/enhancement", json=enhancement_params
+        "/references/enhancement/", json=enhancement_request_params
     )
 
     response.json()["detail"]
