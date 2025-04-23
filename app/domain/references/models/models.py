@@ -84,15 +84,17 @@ class EnhancementType(StrEnum):
 
 class EnhancementRequestStatus(StrEnum):
     """
-    Describes the status of creating an enhancement.
+    The status of an enhancement request.
 
-    - `created`: Received request to create enhancement.
-    - `started`: Enhancement is being created
-    - `failed`: Enhancement failed to create
+    **Allowed values**:
+    - `received`: Enhancement request has been received.
+    - `accepted`: Enhancement request has been accepted.
+    - `rejected`: Enhancement request has been rejected.
+    - `failed`: Enhancement failed to create.
     - `completed`: Enhancement has been created.
     """
 
-    CREATED = "created"
+    RECEIVED = "received"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
     FAILED = "failed"
@@ -280,7 +282,7 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
     )
 
     request_status: EnhancementRequestStatus = Field(
-        default=EnhancementRequestStatus.CREATED,
+        default=EnhancementRequestStatus.RECEIVED,
         description="The status of the request to create an enhancement",
     )
 
@@ -528,21 +530,11 @@ class LocationEnhancement(EnhancementContentBase):
     )
 
 
-class FullTextEnhancement(EnhancementContentBase):
-    """An enhancement for location to full text of reference."""
-
-    enhancement_type: Literal[EnhancementType.FULL_TEXT] = EnhancementType.FULL_TEXT
-    full_text_location: HttpUrl | None = Field(
-        None, description="Location of the full text of the reference"
-    )
-
-
 EnhancementContentType = (
     BibliographicMetadataEnhancement
     | AbstractContentEnhancement
     | AnnotationEnhancement
     | LocationEnhancement
-    | FullTextEnhancement
 )
 
 
