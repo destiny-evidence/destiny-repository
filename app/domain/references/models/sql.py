@@ -265,6 +265,8 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
     )
     error: Mapped[str] = mapped_column(String, nullable=True)
 
+    reference: Mapped["Reference"] = relationship("Reference")
+
     @classmethod
     async def from_domain(cls, domain_obj: DomainEnhancementRequest) -> Self:
         """Create a persistence model from a domain Enhancement object."""
