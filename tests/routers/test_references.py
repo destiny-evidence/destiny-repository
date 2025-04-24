@@ -6,6 +6,7 @@ from collections.abc import AsyncGenerator
 import pytest
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
+from pydantic import HttpUrl
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.references import routes as references
@@ -63,16 +64,24 @@ async def test_register_reference(session: AsyncSession, client: AsyncClient) ->
 
 
 async def test_request_reference_enhancement_happy_path(
-    session: AsyncSession, client: AsyncClient
+    session: AsyncSession,
+    client: AsyncClient,
 ) -> None:
     """Test requesting an existing reference be enhanced."""
+    # Add a known robot to settings
+    robot_id = uuid.uuid4()
+    references.settings.known_robots = {
+        robot_id: HttpUrl("https://theres-a-robot-here.com")
+    }
+
+    # Create a reference to request enhancement against
     reference = SQLReference(visibility=Visibility.RESTRICTED)
     session.add(reference)
     await session.commit()
 
     enhancement_request_create = {
         "reference_id": f"{reference.id}",
-        "robot_id": f"{uuid.uuid4()}",
+        "robot_id": f"{robot_id}",
         "enhancement_parameters": {"some": "parametrs"},
     }
 
@@ -83,6 +92,32 @@ async def test_request_reference_enhancement_happy_path(
     assert response.status_code == status.HTTP_202_ACCEPTED
     data = await session.get(SQLEnhancementRequest, response.json()["id"])
     assert data.request_status == EnhancementRequestStatus.ACCEPTED
+
+    references.settings.__init__()  # type: ignore[call-args, misc]
+
+
+async def test_request_reference_enhancement_unknown_robot(
+    session: AsyncSession, client: AsyncClient
+) -> None:
+    """Test requesting reference enhancement from an unknown robot."""
+    unknown_robot_id = uuid.uuid4()
+
+    reference = SQLReference(visibility=Visibility.RESTRICTED)
+    session.add(reference)
+    await session.commit()
+
+    enhancement_request_create = {
+        "reference_id": f"{reference.id}",
+        "robot_id": f"{unknown_robot_id}",
+        "enhancement_parameters": {"some": "parametrs"},
+    }
+
+    response = await client.post(
+        "/references/enhancement/", json=enhancement_request_create
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert "robot".casefold() in response.json()["detail"].casefold()
 
 
 async def test_request_reference_enhancement_nonexistent_referece(
@@ -101,6 +136,5 @@ async def test_request_reference_enhancement_nonexistent_referece(
         "/references/enhancement/", json=enhancement_request_create
     )
 
-    response.json()["detail"]
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert "reference".casefold() in response.json()["detail"].casefold()

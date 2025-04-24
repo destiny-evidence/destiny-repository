@@ -174,6 +174,12 @@ async def request_enhancement(
             detail=f"Reference with id {reference_id} not found",
         )
 
+    if enhancement_request_create.robot_id not in settings.known_robots:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Robot with id {enhancement_request_create.robot_id} not found.",
+        )
+
     enhancement_request = await enhancement_service.request_reference_enhancement(
         EnhancementRequest(**enhancement_request_create.model_dump())
     )
