@@ -198,6 +198,19 @@ async def test_create_reference_enhancement_happy_path(fake_repository, fake_uow
 
 
 @pytest.mark.asyncio
+async def test_create_reference_enhancement_missing_request(fake_repository, fake_uow):
+    fake_enhancement_request_id = uuid.uuid4()
+    uow = fake_uow(enhancement_requests=fake_repository())
+    service = EnhancementService(uow)
+
+    with pytest.raises(RuntimeError, match="Enhancement request does not exist"):
+        await service.create_reference_enhancement(
+            enhancement_request_id=fake_enhancement_request_id,
+            enhancement=EnhancementCreate(**ENHANCEMENT_DATA),
+        )
+
+
+@pytest.mark.asyncio
 async def test_mark_enhancement_request_as_failed(fake_repository, fake_uow):
     enhancement_request_id = uuid.uuid4()
 
