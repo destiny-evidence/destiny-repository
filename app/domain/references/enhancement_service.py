@@ -74,10 +74,6 @@ class EnhancementService(GenericService):
             msg = "Enhancement request does not exist. This should not happen"
             raise RuntimeError(msg)
 
-        if enhancement.enhancement_type != enhancement_request.enhancement_type:
-            msg = "Enhancement creation is for different enhancement type to request"
-            raise RuntimeError(msg)
-
         created_enhancement = await self.add_enhancement(
             reference_id=enhancement_request.reference_id, enhancement=enhancement
         )

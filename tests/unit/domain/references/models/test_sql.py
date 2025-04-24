@@ -82,11 +82,20 @@ class DummyDomainEnhancement:
 
 
 class DummyDomainEnhancementRequest:
-    def __init__(self, id, reference_id, enhancement_type, request_status, error=None):
+    def __init__(
+        self,
+        id,
+        reference_id,
+        robot_id,
+        request_status,
+        enhancement_parameters,
+        error=None,
+    ):
         self.id = id
         self.reference_id = reference_id
-        self.enhancement_type = enhancement_type
+        self.robot_id = robot_id
         self.request_status = request_status
+        self.enhancement_parameters = enhancement_parameters
         self.error = error
 
 
@@ -198,37 +207,38 @@ async def test_enhancement_from_and_to_domain():
 @pytest.mark.asyncio
 async def test_enhancement_request_from_and_to_domain():
     # Create dummy domain enhancement reqest
-    req_id = uuid.uuid4()
-    reference_id = uuid.uuid4()
-    enhancement_type = EnhancementType.ANNOTATION
-    request_status = EnhancementRequestStatus.FAILED
-    error = "Didn't work"
-
     dummy_enh_req = DummyDomainEnhancementRequest(
-        id=req_id,
-        reference_id=reference_id,
-        enhancement_type=enhancement_type,
-        request_status=request_status,
-        error=error,
+        id=uuid.uuid4(),
+        reference_id=uuid.uuid4(),
+        robot_id=uuid.uuid4(),
+        request_status=EnhancementRequestStatus.FAILED,
+        enhancement_parameters={"some": "parameter"},
+        error="Didn't work",
     )
 
     # # Convert from domain to SQL model
     sql_enh_req = await EnhancementRequest.from_domain(dummy_enh_req)
     assert sql_enh_req.id == dummy_enh_req.id
     assert sql_enh_req.reference_id == dummy_enh_req.reference_id
-    assert sql_enh_req.enhancement_type == dummy_enh_req.enhancement_type
+    assert sql_enh_req.robot_id == dummy_enh_req.robot_id
     assert sql_enh_req.request_status == dummy_enh_req.request_status
+    assert sql_enh_req.enhancement_parameters == json.dumps(
+        dummy_enh_req.enhancement_parameters
+    )
     assert sql_enh_req.error == dummy_enh_req.error
 
     # For preload test, assign a dummy SQL Reference to the relationship
-    sql_enh_req.reference = Reference(id=reference_id, visibility=Visibility.HIDDEN)
+    sql_enh_req.reference = Reference(
+        id=dummy_enh_req.reference_id, visibility=Visibility.HIDDEN
+    )
 
     # # Convert back to domain with preload reference
     domain_enh_req = await sql_enh_req.to_domain(preload=["reference"])
     assert domain_enh_req.id == dummy_enh_req.id
     assert domain_enh_req.reference_id == dummy_enh_req.reference_id
-    assert domain_enh_req.enhancement_type == dummy_enh_req.enhancement_type
+    assert domain_enh_req.robot_id == dummy_enh_req.robot_id
     assert domain_enh_req.request_status == dummy_enh_req.request_status
+    assert domain_enh_req.enhancement_parameters == dummy_enh_req.enhancement_parameters
     assert domain_enh_req.error == dummy_enh_req.error
     assert domain_enh_req.reference.id == dummy_enh_req.reference_id
 
