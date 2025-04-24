@@ -18,6 +18,8 @@ from app.domain.references.models.models import (
     ExternalIdentifierType,
     Location,
     LocationEnhancement,
+    Reference,
+    Visibility,
 )
 
 
@@ -227,7 +229,11 @@ def test_invalid_other_identifier_provided_when_not_other():
 def test_enhancement_request_valid():
     enhancement_request = EnhancementRequest(
         reference_id=uuid.uuid4(),
+        reference=Reference(visibility=Visibility.RESTRICTED),
+        robot_id=uuid.uuid4(),
         enhancement_type=EnhancementType.ANNOTATION,
+        enhancement_parameters={},
+        error=None,
     )
 
     assert enhancement_request.request_status == EnhancementRequestStatus.RECEIVED

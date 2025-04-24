@@ -175,10 +175,7 @@ async def request_enhancement(
         )
 
     enhancement_request = await enhancement_service.request_reference_enhancement(
-        EnhancementRequest(
-            reference_id=reference_id,
-            enhancement_type=enhancement_request_create.request_content.enhancement_type,
-        )
+        EnhancementRequest(**enhancement_request_create.model_dump())
     )
 
     return EnhancementRequestRead(**enhancement_request.model_dump())

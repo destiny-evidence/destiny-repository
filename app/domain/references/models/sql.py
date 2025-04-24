@@ -250,19 +250,18 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
     reference_id: Mapped[uuid.UUID] = mapped_column(
         UUID, ForeignKey("reference.id"), nullable=False
     )
-    enhancement_type: Mapped[EnhancementType] = mapped_column(
-        ENUM(
-            *[enhancement.value for enhancement in EnhancementType],
-            name="enhancement_type",
-        ),
-        nullable=False,
-    )
+
+    robot_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
+
     request_status: Mapped[EnhancementRequestStatus] = mapped_column(
         ENUM(
             *[status.value for status in EnhancementRequestStatus],
             name="request_status",
         )
     )
+
+    enhancement_parameters: Mapped[str] = mapped_column(JSONB, nullable=True)
+
     error: Mapped[str] = mapped_column(String, nullable=True)
 
     reference: Mapped["Reference"] = relationship("Reference")
@@ -273,8 +272,11 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
         return cls(
             id=domain_obj.id,
             reference_id=domain_obj.reference_id,
-            enhancement_type=domain_obj.enhancement_type,
+            robot_id=domain_obj.robot_id,
             request_status=domain_obj.request_status,
+            enhancement_parameters=json.dumps(domain_obj.enhancement_parameters)
+            if domain_obj.enhancement_parameters
+            else None,
             error=domain_obj.error,
         )
 
@@ -285,8 +287,11 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
         return DomainEnhancementRequest(
             id=self.id,
             reference_id=self.reference_id,
-            enhancement_type=self.enhancement_type,
+            robot_id=self.robot_id,
             request_status=self.request_status,
+            enhancement_parameters=json.loads(self.enhancement_parameters)
+            if self.enhancement_parameters
+            else None,
             error=self.error,
             reference=await self.reference.to_domain()
             if "reference" in (preload or [])

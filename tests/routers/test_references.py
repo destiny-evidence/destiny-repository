@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
     EnhancementRequestStatus,
-    EnhancementType,
     Visibility,
 )
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
@@ -71,12 +70,15 @@ async def test_request_reference_enhancement_happy_path(
     session.add(reference)
     await session.commit()
 
-    enhancement_params = {
+    enhancement_request_create = {
         "reference_id": f"{reference.id}",
-        "request_content": {"enhancement_type": EnhancementType.ANNOTATION},
+        "robot_id": f"{uuid.uuid4()}",
+        "enhancement_parameters": {"some": "parametrs"},
     }
 
-    response = await client.post("/references/enhancement/", json=enhancement_params)
+    response = await client.post(
+        "/references/enhancement/", json=enhancement_request_create
+    )
 
     assert response.status_code == status.HTTP_202_ACCEPTED
     data = await session.get(SQLEnhancementRequest, response.json()["id"])
@@ -89,13 +91,14 @@ async def test_request_reference_enhancement_nonexistent_referece(
     """Test requesting a nonexistent reference be enhanced."""
     fake_reference_id = uuid.uuid4()
 
-    enhancement_request_params = {
+    enhancement_request_create = {
         "reference_id": f"{fake_reference_id}",
-        "request_content": {"enhancement_type": EnhancementType.ANNOTATION},
+        "robot_id": f"{uuid.uuid4()}",
+        "enhancement_parameters": {"some": "parametrs"},
     }
 
     response = await client.post(
-        "/references/enhancement/", json=enhancement_request_params
+        "/references/enhancement/", json=enhancement_request_create
     )
 
     response.json()["detail"]

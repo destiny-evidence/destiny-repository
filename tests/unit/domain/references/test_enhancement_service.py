@@ -8,7 +8,6 @@ from app.domain.references.models.models import (
     EnhancementCreate,
     EnhancementRequest,
     EnhancementRequestStatus,
-    EnhancementType,
     Reference,
 )
 
@@ -106,7 +105,7 @@ async def test_trigger_reference_enhancement_request_happy_path(
 
     received_enhancement_request = EnhancementRequest(
         reference_id=reference_id,
-        enhancement_type=EnhancementType.BIBLIOGRAPHIC,
+        robot_id=uuid.uuid4(),
     )
 
     enhancement_request = await service.request_reference_enhancement(
@@ -134,8 +133,9 @@ async def test_get_enhancement_request_happy_path(fake_repository, fake_uow):
     existing_enhancement_request = EnhancementRequest(
         id=enhancement_request_id,
         reference_id=uuid.uuid4(),
-        enhancement_type=EnhancementType.ANNOTATION,
+        robot_id=uuid.uuid4(),
         request_status=EnhancementRequestStatus.ACCEPTED,
+        enhancement_parameters={"some": "parameters"},
     )
 
     fake_enhancement_requests = fake_repository([existing_enhancement_request])
@@ -168,11 +168,12 @@ async def test_get_enhancement_request_doesnt_exist(fake_repository, fake_uow):
 async def test_create_reference_enhancement_happy_path(fake_repository, fake_uow):
     enhancement_request_id = uuid.uuid4()
     reference_id = uuid.uuid4()
+    fake_enhancement_repo = fake_repository()
 
     existing_enhancement_request = EnhancementRequest(
         id=enhancement_request_id,
         reference_id=reference_id,
-        enhancement_type=EnhancementType.ANNOTATION,
+        robot_id=uuid.uuid4(),
         request_status=EnhancementRequestStatus.ACCEPTED,
     )
 
@@ -180,7 +181,7 @@ async def test_create_reference_enhancement_happy_path(fake_repository, fake_uow
     uow = fake_uow(
         enhancement_requests=fake_enhancement_requests,
         references=fake_repository([Reference(id=reference_id)]),
-        enhancements=fake_repository(),
+        enhancements=fake_enhancement_repo,
     )
 
     service = EnhancementService(uow)
@@ -192,36 +193,8 @@ async def test_create_reference_enhancement_happy_path(fake_repository, fake_uow
 
     enhancement_request = await service.get_enhancement_request(enhancement_request_id)
 
-    assert enhancement.enhancement_type == enhancement_request.enhancement_type
     assert enhancement_request.request_status == EnhancementRequestStatus.COMPLETED
-
-
-@pytest.mark.asyncio
-async def test_create_reference_enhancement_types_dont_match(fake_repository, fake_uow):
-    enhancement_request_id = uuid.uuid4()
-    reference_id = uuid.uuid4()
-
-    existing_enhancement_request = EnhancementRequest(
-        id=enhancement_request_id,
-        reference_id=reference_id,
-        enhancement_type=EnhancementType.BIBLIOGRAPHIC,
-        request_status=EnhancementRequestStatus.ACCEPTED,
-    )
-
-    fake_enhancement_requests = fake_repository([existing_enhancement_request])
-    uow = fake_uow(
-        enhancement_requests=fake_enhancement_requests,
-        references=fake_repository([Reference(id=reference_id)]),
-        enhancements=fake_repository(),
-    )
-
-    service = EnhancementService(uow)
-
-    with pytest.raises(RuntimeError, match="enhancement type"):
-        await service.create_reference_enhancement(
-            enhancement_request_id=enhancement_request_id,
-            enhancement=EnhancementCreate(**ENHANCEMENT_DATA),
-        )
+    assert enhancement == fake_enhancement_repo.get_first_record()
 
 
 @pytest.mark.asyncio
@@ -231,7 +204,7 @@ async def test_mark_enhancement_request_as_failed(fake_repository, fake_uow):
     existing_enhancement_request = EnhancementRequest(
         id=enhancement_request_id,
         reference_id=uuid.uuid4(),
-        enhancement_type=EnhancementType.BIBLIOGRAPHIC,
+        robot_id=uuid.uuid4(),
         request_status=EnhancementRequestStatus.ACCEPTED,
     )
 
