@@ -7,6 +7,7 @@ import pytest
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from pydantic import HttpUrl
+from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.references import routes as references
@@ -64,20 +65,23 @@ async def test_register_reference(session: AsyncSession, client: AsyncClient) ->
 
 
 async def test_request_reference_enhancement_happy_path(
-    session: AsyncSession,
-    client: AsyncClient,
+    session: AsyncSession, client: AsyncClient, httpx_mock: HTTPXMock
 ) -> None:
     """Test requesting an existing reference be enhanced."""
     # Add a known robot to settings
     robot_id = uuid.uuid4()
-    references.settings.known_robots = {
-        robot_id: HttpUrl("https://theres-a-robot-here.com")
-    }
+    robot_url = "http://www.theres-a-robot-here.com/"
+    references.settings.known_robots = {robot_id: HttpUrl(robot_url)}
 
     # Create a reference to request enhancement against
     reference = SQLReference(visibility=Visibility.RESTRICTED)
     session.add(reference)
     await session.commit()
+
+    # Mock the robot response
+    httpx_mock.add_response(
+        method="POST", url=robot_url, status_code=status.HTTP_202_ACCEPTED
+    )
 
     enhancement_request_create = {
         "reference_id": f"{reference.id}",
@@ -92,6 +96,45 @@ async def test_request_reference_enhancement_happy_path(
     assert response.status_code == status.HTTP_202_ACCEPTED
     data = await session.get(SQLEnhancementRequest, response.json()["id"])
     assert data.request_status == EnhancementRequestStatus.ACCEPTED
+
+    references.settings.__init__()  # type: ignore[call-args, misc]
+
+
+async def test_request_reference_enhancement_robot_rejects_request(
+    session: AsyncSession, client: AsyncClient, httpx_mock: HTTPXMock
+) -> None:
+    """Test requesting enhancement to a robot that rejects the request."""
+    # Add a known robot to settings
+    robot_id = uuid.uuid4()
+    robot_url = "http://www.theres-a-robot-here.com/"
+    references.settings.known_robots = {robot_id: HttpUrl(robot_url)}
+
+    # Create a reference to request enhancement against
+    reference = SQLReference(visibility=Visibility.RESTRICTED)
+    session.add(reference)
+    await session.commit()
+
+    # Mock the robot response
+    httpx_mock.add_response(
+        method="POST",
+        url=robot_url,
+        status_code=status.HTTP_418_IM_A_TEAPOT,
+        json={"message": "broken"},
+    )
+
+    enhancement_request_create = {
+        "reference_id": f"{reference.id}",
+        "robot_id": f"{robot_id}",
+        "enhancement_parameters": {"some": "parametrs"},
+    }
+
+    response = await client.post(
+        "/references/enhancement/", json=enhancement_request_create
+    )
+
+    data = await session.get(SQLEnhancementRequest, response.json()["id"])
+    assert data.request_status == EnhancementRequestStatus.REJECTED
+    assert data.error == "broken"
 
     references.settings.__init__()  # type: ignore[call-args, misc]
 
@@ -120,7 +163,7 @@ async def test_request_reference_enhancement_unknown_robot(
     assert "robot".casefold() in response.json()["detail"].casefold()
 
 
-async def test_request_reference_enhancement_nonexistent_referece(
+async def test_request_reference_enhancement_nonexistent_reference(
     client: AsyncClient,
 ) -> None:
     """Test requesting a nonexistent reference be enhanced."""

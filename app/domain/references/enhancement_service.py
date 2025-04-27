@@ -1,6 +1,10 @@
 """The service for interacting with and managing robot requests."""
 
-from pydantic import UUID4
+import httpx
+from destiny_robots.core import Reference as RobotReference
+from destiny_robots.robots import RobotRequest
+from fastapi import status
+from pydantic import UUID4, HttpUrl
 
 from app.domain.references.models.models import (
     Enhancement,
@@ -39,15 +43,32 @@ class EnhancementService(GenericService):
     @unit_of_work
     async def request_reference_enhancement(
         self,
+        robot_url: HttpUrl,
         enhancement_request: EnhancementRequest,
+        reference: RobotReference,
     ) -> EnhancementRequest:
         """Create an enhancement request and send it to robot."""
         enhancement_request = await self.sql_uow.enhancement_requests.add(
             enhancement_request
         )
 
-        # Send stuff off to the robot
-        # Either return accepted or rejected based on initial robot response
+        robot_request = RobotRequest(
+            id=enhancement_request.id,
+            reference=reference,
+            extra_fields=enhancement_request.enhancement_parameters,
+        )
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                str(robot_url), json=robot_request.model_dump_json()
+            )
+
+        if response.status_code != status.HTTP_202_ACCEPTED:
+            return await self.sql_uow.enhancement_requests.update_by_pk(
+                enhancement_request.id,
+                request_status=EnhancementRequestStatus.REJECTED,
+                error=response.json()["message"],
+            )
 
         return await self.sql_uow.enhancement_requests.update_by_pk(
             enhancement_request.id, request_status=EnhancementRequestStatus.ACCEPTED

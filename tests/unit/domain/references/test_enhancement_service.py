@@ -1,6 +1,8 @@
 import uuid
 
 import pytest
+from destiny_robots.core import Reference as RobotReference
+from fastapi import status
 
 from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
@@ -96,20 +98,33 @@ async def test_add_enhancement_reference_not_found(fake_repository, fake_uow):
 
 @pytest.mark.asyncio
 async def test_trigger_reference_enhancement_request_happy_path(
-    fake_repository, fake_uow
+    fake_repository, fake_uow, httpx_mock
 ):
+    # Mock the robot response
+    robot_url = "http://www.theres-a-robot-here.com/"
+    httpx_mock.add_response(
+        method="POST", url=robot_url, status_code=status.HTTP_202_ACCEPTED
+    )
+
     reference_id = uuid.uuid4()
     fake_enhancement_requests = fake_repository()
     uow = fake_uow(enhancement_requests=fake_enhancement_requests)
     service = EnhancementService(uow)
 
     received_enhancement_request = EnhancementRequest(
-        reference_id=reference_id,
-        robot_id=uuid.uuid4(),
+        reference_id=reference_id, robot_id=uuid.uuid4(), enhancement_parameters={}
     )
 
     enhancement_request = await service.request_reference_enhancement(
-        enhancement_request=received_enhancement_request
+        robot_url=robot_url,
+        enhancement_request=received_enhancement_request,
+        reference=RobotReference(
+            id=reference_id,
+            created_at="2025-02-02T13:29:30Z",
+            updated_at="2025-02-02T13:29:30Z",
+            identifiers=[],
+            enhancements=[],
+        ),
     )
 
     stored_request = fake_enhancement_requests.get_first_record()
@@ -120,11 +135,48 @@ async def test_trigger_reference_enhancement_request_happy_path(
 
 
 @pytest.mark.asyncio
-async def test_trigger_reference_enhancement_request_rejected():
+async def test_trigger_reference_enhancement_request_rejected(
+    fake_uow, fake_repository, httpx_mock
+):
     """
-    TODO(Jack): Add in a test for when a robot rejects a request to create
-    an enhancement against areference.
+    A robot rejects a request to create an enhancement against a reference.
     """
+    # Mock the robot response
+    robot_url = "http://www.theres-a-robot-here.com/"
+    httpx_mock.add_response(
+        method="POST",
+        url=robot_url,
+        status_code=status.HTTP_418_IM_A_TEAPOT,
+        json={"message": "broken"},
+    )
+
+    reference_id = uuid.uuid4()
+    fake_enhancement_requests = fake_repository()
+    uow = fake_uow(enhancement_requests=fake_enhancement_requests)
+    service = EnhancementService(uow)
+
+    received_enhancement_request = EnhancementRequest(
+        reference_id=reference_id, robot_id=uuid.uuid4(), enhancement_parameters={}
+    )
+
+    enhancement_request = await service.request_reference_enhancement(
+        robot_url=robot_url,
+        enhancement_request=received_enhancement_request,
+        reference=RobotReference(
+            id=reference_id,
+            created_at="2025-02-02T13:29:30Z",
+            updated_at="2025-02-02T13:29:30Z",
+            identifiers=[],
+            enhancements=[],
+        ),
+    )
+
+    stored_request = fake_enhancement_requests.get_first_record()
+
+    assert hasattr(enhancement_request, "id")
+    assert enhancement_request == stored_request
+    assert enhancement_request.request_status == EnhancementRequestStatus.REJECTED
+    assert enhancement_request.error == "broken"
 
 
 @pytest.mark.asyncio
