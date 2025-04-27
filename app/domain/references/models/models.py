@@ -211,7 +211,7 @@ class ReferenceBase(DomainBaseModel):
     )
 
 
-class Reference(ReferenceBase, SQLAttributeMixin):
+class Reference(ReferenceBase, SQLTimestampMixin):
     """Reference model with database attributes included."""
 
     identifiers: list[ExternalIdentifier] | None = Field(
@@ -286,8 +286,9 @@ class EnhancementRequest(DomainBaseModel, SQLTimestampMixin):
         description="The status of the request to create an enhancement.",
     )
 
-    enhancement_parameters: dict | None = Field(
-        None, description="Additional optional parameters to pass through to the robot."
+    enhancement_parameters: dict = Field(
+        default={},
+        description="Additional optional parameters to pass through to the robot.",
     )
 
     error: str | None = Field(
