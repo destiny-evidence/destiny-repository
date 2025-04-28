@@ -280,8 +280,6 @@ class EnhancementRequestRead(BaseModel):
     """The model for an enhancement request."""
 
     id: UUID4
-    created_at: AwareDatetime
-    updated_at: AwareDatetime
     reference_id: UUID4 = Field(description="The ID of the reference to be enhanced.")
     robot_id: UUID4 = Field(
         description="The robot to be used to create the enhancement."
@@ -307,7 +305,5 @@ class Reference(BaseModel):
     """
 
     id: UUID4
-    created_at: AwareDatetime
-    updated_at: AwareDatetime
     identifiers: list[ExternalIdentifierType]
     enhancements: list[EnhancementRead]
