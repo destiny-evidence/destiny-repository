@@ -17,9 +17,13 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import Reference as SQLReference
+from app.domain.robots.robots import Robots
 
 # Use the database session in all tests to set up the database manager.
 pytestmark = pytest.mark.usefixtures("session")
+
+ROBOT_ID = uuid.uuid4()
+ROBOT_URL = "http://www.test-robot-here.com/"
 
 
 @pytest.fixture
@@ -32,6 +36,9 @@ def app() -> FastAPI:
 
     """
     app = FastAPI()
+
+    # Override the robots with a test robot
+    references.robots = Robots({ROBOT_ID: HttpUrl(ROBOT_URL)})
     app.include_router(references.router)
     return app
 
@@ -68,11 +75,6 @@ async def test_request_reference_enhancement_happy_path(
     session: AsyncSession, client: AsyncClient, httpx_mock: HTTPXMock
 ) -> None:
     """Test requesting an existing reference be enhanced."""
-    # Add a known robot to settings
-    robot_id = uuid.uuid4()
-    robot_url = "http://www.theres-a-robot-here.com/"
-    references.settings.known_robots = {robot_id: HttpUrl(robot_url)}
-
     # Create a reference to request enhancement against
     reference = SQLReference(visibility=Visibility.RESTRICTED)
     session.add(reference)
@@ -80,12 +82,12 @@ async def test_request_reference_enhancement_happy_path(
 
     # Mock the robot response
     httpx_mock.add_response(
-        method="POST", url=robot_url, status_code=status.HTTP_202_ACCEPTED
+        method="POST", url=ROBOT_URL, status_code=status.HTTP_202_ACCEPTED
     )
 
     enhancement_request_create = {
         "reference_id": f"{reference.id}",
-        "robot_id": f"{robot_id}",
+        "robot_id": f"{ROBOT_ID}",
         "enhancement_parameters": {"some": "parametrs"},
     }
 
@@ -97,18 +99,11 @@ async def test_request_reference_enhancement_happy_path(
     data = await session.get(SQLEnhancementRequest, response.json()["id"])
     assert data.request_status == EnhancementRequestStatus.ACCEPTED
 
-    references.settings.__init__()  # type: ignore[call-args, misc]
-
 
 async def test_request_reference_enhancement_robot_rejects_request(
     session: AsyncSession, client: AsyncClient, httpx_mock: HTTPXMock
 ) -> None:
     """Test requesting enhancement to a robot that rejects the request."""
-    # Add a known robot to settings
-    robot_id = uuid.uuid4()
-    robot_url = "http://www.theres-a-robot-here.com/"
-    references.settings.known_robots = {robot_id: HttpUrl(robot_url)}
-
     # Create a reference to request enhancement against
     reference = SQLReference(visibility=Visibility.RESTRICTED)
     session.add(reference)
@@ -117,14 +112,14 @@ async def test_request_reference_enhancement_robot_rejects_request(
     # Mock the robot response
     httpx_mock.add_response(
         method="POST",
-        url=robot_url,
+        url=ROBOT_URL,
         status_code=status.HTTP_418_IM_A_TEAPOT,
         json={"message": "broken"},
     )
 
     enhancement_request_create = {
         "reference_id": f"{reference.id}",
-        "robot_id": f"{robot_id}",
+        "robot_id": f"{ROBOT_ID}",
         "enhancement_parameters": {"some": "parametrs"},
     }
 
@@ -135,8 +130,6 @@ async def test_request_reference_enhancement_robot_rejects_request(
     data = await session.get(SQLEnhancementRequest, response.json()["id"])
     assert data.request_status == EnhancementRequestStatus.REJECTED
     assert data.error == "broken"
-
-    references.settings.__init__()  # type: ignore[call-args, misc]
 
 
 async def test_request_reference_enhancement_unknown_robot(
