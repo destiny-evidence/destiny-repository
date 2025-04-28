@@ -29,6 +29,7 @@ from app.domain.references.models.models import (
     Reference,
 )
 from app.domain.references.reference_service import ReferenceService
+from app.domain.robots.robots import Robots
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
@@ -40,6 +41,9 @@ def unit_of_work(
 ) -> AsyncSqlUnitOfWork:
     """Return the unit of work for operating on references."""
     return AsyncSqlUnitOfWork(session=session)
+
+
+robots = Robots(known_robots=settings.known_robots)
 
 
 def reference_service(
@@ -87,7 +91,9 @@ reference_writer_auth = CachingStrategyAuth(
 )
 
 
-router = APIRouter(prefix="/references", tags=["references"])
+router = APIRouter(
+    prefix="/references", tags=["references"], dependencies=[Depends(robots)]
+)
 
 
 @router.get("/{reference_id}/", dependencies=[Depends(reference_reader_auth)])
@@ -175,7 +181,7 @@ async def request_enhancement(
             detail=f"Reference with id {reference_id} not found",
         )
 
-    robot_url = settings.known_robots.get(enhancement_request_create.robot_id)
+    robot_url = robots.get_robot_url(enhancement_request_create.robot_id)
 
     if not robot_url:
         raise HTTPException(
