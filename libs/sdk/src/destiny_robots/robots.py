@@ -24,8 +24,13 @@ class RobotResult(BaseModel):
     """The result of a robot request which is returned to the repo."""
 
     request_id: UUID4
-    error: RobotError
-    enhancements: list[EnhancementCreate]
+    error: RobotError | None = Field(
+        default=None,
+        description="Error the robot encountered while creating enhancement.",
+    )
+    enhancements: list[EnhancementCreate] = Field(
+        default=[], description="A list of enhancements to create."
+    )
 
 
 class RobotRequest(BaseModel):
