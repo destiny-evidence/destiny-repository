@@ -135,10 +135,14 @@ async def test_request_reference_enhancement_robot_rejects_request(
     assert data.error == "broken"
 
 
-async def test_request_reference_enhancement_unknown_robot(
+async def test_not_found_exception_handler_returns_response_with_404(
     session: AsyncSession, client: AsyncClient
 ) -> None:
-    """Test requesting reference enhancement from an unknown robot."""
+    """
+    Test requesting reference enhancement from an unknown robot.
+
+    Triggers the exception handler for NotFoundErrors.
+    """
     unknown_robot_id = uuid.uuid4()
 
     reference = SQLReference(visibility=Visibility.RESTRICTED)

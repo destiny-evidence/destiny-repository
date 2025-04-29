@@ -5,6 +5,7 @@ from fastapi import status
 from pydantic import HttpUrl
 
 from app.domain.references.enhancement_service import EnhancementService
+from app.domain.references.exceptions import ReferenceNotFoundError, RobotNotFoundError
 from app.domain.references.models.models import (
     AnnotationEnhancement,
     EnhancementCreate,
@@ -191,6 +192,69 @@ async def test_trigger_reference_enhancement_request_rejected(
     assert enhancement_request == stored_request
     assert enhancement_request.request_status == EnhancementRequestStatus.REJECTED
     assert enhancement_request.error == "broken"
+
+
+@pytest.mark.asyncio
+async def test_trigger_reference_enhancement_nonexistent_reference(
+    fake_uow, fake_repository
+):
+    """
+    Enhancement requested against nonexistent reference
+    """
+    robot_id = uuid.uuid4()
+    robot_url = "http://www.theres-a-robot-here.com/"
+
+    unknown_reference_id = uuid.uuid4()
+
+    uow = fake_uow(enhancement_requests=fake_repository(), references=fake_repository())
+
+    service = EnhancementService(
+        uow, robots=Robots(known_robots={robot_id: HttpUrl(robot_url)})
+    )
+
+    service = EnhancementService(uow, robots=Robots({}))
+
+    received_enhancement_request = EnhancementRequest(
+        reference_id=unknown_reference_id, robot_id=robot_id, enhancement_parameters={}
+    )
+
+    with pytest.raises(ReferenceNotFoundError):
+        await service.request_reference_enhancement(
+            enhancement_request=received_enhancement_request,
+        )
+
+
+@pytest.mark.asyncio
+async def test_trigger_reference_enhancement_nonexistent_robot(
+    fake_uow, fake_repository
+):
+    """
+    Enhancement requested against a robot that does not exist.
+    """
+    unknown_robot_id = uuid.uuid4()
+
+    reference_id = uuid.uuid4()
+    fake_references = fake_repository(
+        init_entries=[
+            Reference(id=reference_id, visibility=Visibility.PUBLIC, identifiers=[])
+        ]
+    )
+    fake_enhancement_requests = fake_repository()
+
+    uow = fake_uow(
+        enhancement_requests=fake_enhancement_requests, references=fake_references
+    )
+
+    service = EnhancementService(uow, robots=Robots({}))
+
+    received_enhancement_request = EnhancementRequest(
+        reference_id=reference_id, robot_id=unknown_robot_id, enhancement_parameters={}
+    )
+
+    with pytest.raises(RobotNotFoundError):
+        await service.request_reference_enhancement(
+            enhancement_request=received_enhancement_request,
+        )
 
 
 @pytest.mark.asyncio
