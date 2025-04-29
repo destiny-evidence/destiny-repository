@@ -2,11 +2,7 @@
 
 
 class NotFoundError(Exception):
-    """
-    Parent Exception for when we can't find something we expect to find.
-
-    Allows error handlers to be defined for multiple subclasses.
-    """
+    """Exception for when we can't find something we expect to find."""
 
     def __init__(self, detail: str, *args: object) -> None:
         """

@@ -4,8 +4,8 @@ import pytest
 from fastapi import status
 from pydantic import HttpUrl
 
+from app.core.exceptions.not_found_exception import NotFoundError
 from app.domain.references.enhancement_service import EnhancementService
-from app.domain.references.exceptions import ReferenceNotFoundError, RobotNotFoundError
 from app.domain.references.models.models import (
     AnnotationEnhancement,
     EnhancementCreate,
@@ -218,7 +218,7 @@ async def test_trigger_reference_enhancement_nonexistent_reference(
         reference_id=unknown_reference_id, robot_id=robot_id, enhancement_parameters={}
     )
 
-    with pytest.raises(ReferenceNotFoundError):
+    with pytest.raises(NotFoundError):
         await service.request_reference_enhancement(
             enhancement_request=received_enhancement_request,
         )
@@ -251,7 +251,7 @@ async def test_trigger_reference_enhancement_nonexistent_robot(
         reference_id=reference_id, robot_id=unknown_robot_id, enhancement_parameters={}
     )
 
-    with pytest.raises(RobotNotFoundError):
+    with pytest.raises(NotFoundError):
         await service.request_reference_enhancement(
             enhancement_request=received_enhancement_request,
         )
