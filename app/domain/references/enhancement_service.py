@@ -48,7 +48,6 @@ class EnhancementService(GenericService):
         self, enhancement_request: EnhancementRequest
     ) -> EnhancementRequest:
         """Create an enhancement request and send it to robot."""
-        # Do the reference check here, don't pass in the reference service.
         reference = await self.sql_uow.references.get_by_pk(
             enhancement_request.reference_id, preload=["identifiers", "enhancements"]
         )
