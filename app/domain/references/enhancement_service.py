@@ -6,7 +6,7 @@ from destiny_robots.robots import RobotRequest
 from fastapi import status
 from pydantic import UUID4
 
-from app.domain.references.exceptions import RobotNotFoundError
+from app.domain.references.exceptions import ReferenceNotFoundError, RobotNotFoundError
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementCreate,
@@ -45,12 +45,18 @@ class EnhancementService(GenericService):
 
     @unit_of_work
     async def request_reference_enhancement(
-        self,
-        enhancement_request: EnhancementRequest,
-        reference: RobotReference,
+        self, enhancement_request: EnhancementRequest
     ) -> EnhancementRequest:
         """Create an enhancement request and send it to robot."""
         # Do the reference check here, don't pass in the reference service.
+        reference = await self.sql_uow.references.get_by_pk(
+            enhancement_request.reference_id, preload=["identifiers", "enhancements"]
+        )
+
+        if not reference:
+            raise ReferenceNotFoundError(
+                detail=f"Reference with id {enhancement_request.reference_id} not found"
+            )
 
         robot_url = self.robots.get_robot_url(enhancement_request.robot_id)
 
@@ -65,7 +71,7 @@ class EnhancementService(GenericService):
 
         robot_request = RobotRequest(
             id=enhancement_request.id,
-            reference=reference,
+            reference=RobotReference(**reference.model_dump()),
             extra_fields=enhancement_request.enhancement_parameters,
         )
 

@@ -1,7 +1,6 @@
 import uuid
 
 import pytest
-from destiny_robots.core import Reference as RobotReference
 from fastapi import status
 from pydantic import HttpUrl
 
@@ -12,6 +11,7 @@ from app.domain.references.models.models import (
     EnhancementRequest,
     EnhancementRequestStatus,
     Reference,
+    Visibility,
 )
 from app.domain.robots.robots import Robots
 
@@ -110,8 +110,22 @@ async def test_trigger_reference_enhancement_request_happy_path(
     )
 
     reference_id = uuid.uuid4()
+    fake_references = fake_repository(
+        init_entries=[
+            Reference(
+                id=reference_id,
+                visibility=Visibility.PUBLIC,
+                identifiers=[],
+                enhancements=[],
+            )
+        ]
+    )
     fake_enhancement_requests = fake_repository()
-    uow = fake_uow(enhancement_requests=fake_enhancement_requests)
+
+    uow = fake_uow(
+        enhancement_requests=fake_enhancement_requests, references=fake_references
+    )
+
     service = EnhancementService(
         uow, robots=Robots(known_robots={robot_id: HttpUrl(robot_url)})
     )
@@ -121,14 +135,7 @@ async def test_trigger_reference_enhancement_request_happy_path(
     )
 
     enhancement_request = await service.request_reference_enhancement(
-        enhancement_request=received_enhancement_request,
-        reference=RobotReference(
-            id=reference_id,
-            created_at="2025-02-02T13:29:30Z",
-            updated_at="2025-02-02T13:29:30Z",
-            identifiers=[],
-            enhancements=[],
-        ),
+        enhancement_request=received_enhancement_request
     )
 
     stored_request = fake_enhancement_requests.get_first_record()
@@ -156,8 +163,22 @@ async def test_trigger_reference_enhancement_request_rejected(
     )
 
     reference_id = uuid.uuid4()
+    fake_references = fake_repository(
+        init_entries=[
+            Reference(
+                id=reference_id,
+                visibility=Visibility.PUBLIC,
+                identifiers=[],
+                enhancements=[],
+            )
+        ]
+    )
     fake_enhancement_requests = fake_repository()
-    uow = fake_uow(enhancement_requests=fake_enhancement_requests)
+
+    uow = fake_uow(
+        enhancement_requests=fake_enhancement_requests, references=fake_references
+    )
+
     service = EnhancementService(
         uow, robots=Robots(known_robots={robot_id: HttpUrl(robot_url)})
     )
@@ -168,13 +189,6 @@ async def test_trigger_reference_enhancement_request_rejected(
 
     enhancement_request = await service.request_reference_enhancement(
         enhancement_request=received_enhancement_request,
-        reference=RobotReference(
-            id=reference_id,
-            created_at="2025-02-02T13:29:30Z",
-            updated_at="2025-02-02T13:29:30Z",
-            identifiers=[],
-            enhancements=[],
-        ),
     )
 
     stored_request = fake_enhancement_requests.get_first_record()

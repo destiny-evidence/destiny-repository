@@ -7,7 +7,6 @@ from destiny_robots.core import (
     EnhancementRequestCreate,
     EnhancementRequestRead,
 )
-from destiny_robots.core import Reference as RobotReference
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -168,25 +167,12 @@ async def add_identifier(
 async def request_enhancement(
     enhancement_request_create: EnhancementRequestCreate,
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
 ) -> EnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""
-    reference_id = enhancement_request_create.reference_id
-    reference = await reference_service.get_reference(reference_id)
-
-    if not reference:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Reference with id {reference_id} not found",
-        )
-
     enhancement_request = await enhancement_service.request_reference_enhancement(
         enhancement_request=EnhancementRequest(
             **enhancement_request_create.model_dump()
-        ),
-        reference=RobotReference(**reference.model_dump()),
+        )
     )
-
-    # Can add an exception handler for the not found exceptions
 
     return EnhancementRequestRead(**enhancement_request.model_dump())
