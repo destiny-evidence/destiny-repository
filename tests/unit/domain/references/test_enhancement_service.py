@@ -116,7 +116,6 @@ async def test_trigger_reference_enhancement_request_happy_path(
                 id=reference_id,
                 visibility=Visibility.PUBLIC,
                 identifiers=[],
-                enhancements=[],
             )
         ]
     )
@@ -165,12 +164,7 @@ async def test_trigger_reference_enhancement_request_rejected(
     reference_id = uuid.uuid4()
     fake_references = fake_repository(
         init_entries=[
-            Reference(
-                id=reference_id,
-                visibility=Visibility.PUBLIC,
-                identifiers=[],
-                enhancements=[],
-            )
+            Reference(id=reference_id, visibility=Visibility.PUBLIC, identifiers=[])
         ]
     )
     fake_enhancement_requests = fake_repository()

@@ -306,4 +306,4 @@ class Reference(BaseModel):
 
     id: UUID4
     identifiers: list[ExternalIdentifierType]
-    enhancements: list[EnhancementRead]
+    enhancements: list[EnhancementRead] | None
