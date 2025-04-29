@@ -3,7 +3,7 @@
 import uuid
 from typing import Annotated
 
-from destiny_robots.core import (
+from destiny_sdk.core import (
     EnhancementRequestCreate,
     EnhancementRequestRead,
 )

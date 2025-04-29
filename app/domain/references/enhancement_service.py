@@ -1,8 +1,8 @@
 """The service for interacting with and managing robot requests."""
 
 import httpx
-from destiny_robots.core import Reference as RobotReference
-from destiny_robots.robots import RobotRequest
+from destiny_sdk.core import Reference as RobotReference
+from destiny_sdk.robots import RobotRequest
 from fastapi import status
 from pydantic import UUID4
 

@@ -4,7 +4,7 @@ from typing import Annotated
 
 from pydantic import UUID4, BaseModel, Field
 
-from destiny_robots.core import EnhancementCreate, Reference
+from destiny_sdk.core import EnhancementCreate, Reference
 
 
 class RobotError(BaseModel):
