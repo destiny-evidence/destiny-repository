@@ -3,6 +3,7 @@ import uuid
 import pytest
 from destiny_robots.core import Reference as RobotReference
 from fastapi import status
+from pydantic import HttpUrl
 
 from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
@@ -12,6 +13,7 @@ from app.domain.references.models.models import (
     EnhancementRequestStatus,
     Reference,
 )
+from app.domain.robots.robots import Robots
 
 ENHANCEMENT_DATA = {
     "source": "test_source",
@@ -38,7 +40,7 @@ async def test_add_enhancement_happy_path(fake_repository, fake_uow):
     repo_refs = fake_repository(init_entries=[dummy_reference])
     repo_enh = fake_repository()
     uow = fake_uow(references=repo_refs, enhancements=repo_enh)
-    service = EnhancementService(uow)
+    service = EnhancementService(uow, robots=Robots({}))
     enhancement_data = {
         "source": "test_source",
         "visibility": "public",
@@ -72,7 +74,7 @@ async def test_add_enhancement_reference_not_found(fake_repository, fake_uow):
     repo_refs = fake_repository()
     repo_enh = fake_repository()
     uow = fake_uow(references=repo_refs, enhancements=repo_enh)
-    service = EnhancementService(uow)
+    service = EnhancementService(uow, robots=Robots({}))
     dummy_id = uuid.uuid4()
     fake_enhancement_create = EnhancementCreate(
         source="test_source",
@@ -100,8 +102,9 @@ async def test_add_enhancement_reference_not_found(fake_repository, fake_uow):
 async def test_trigger_reference_enhancement_request_happy_path(
     fake_repository, fake_uow, httpx_mock
 ):
-    # Mock the robot response
+    # Mock the robot
     robot_url = "http://www.theres-a-robot-here.com/"
+    robot_id = uuid.uuid4()
     httpx_mock.add_response(
         method="POST", url=robot_url, status_code=status.HTTP_202_ACCEPTED
     )
@@ -109,14 +112,15 @@ async def test_trigger_reference_enhancement_request_happy_path(
     reference_id = uuid.uuid4()
     fake_enhancement_requests = fake_repository()
     uow = fake_uow(enhancement_requests=fake_enhancement_requests)
-    service = EnhancementService(uow)
+    service = EnhancementService(
+        uow, robots=Robots(known_robots={robot_id: HttpUrl(robot_url)})
+    )
 
     received_enhancement_request = EnhancementRequest(
-        reference_id=reference_id, robot_id=uuid.uuid4(), enhancement_parameters={}
+        reference_id=reference_id, robot_id=robot_id, enhancement_parameters={}
     )
 
     enhancement_request = await service.request_reference_enhancement(
-        robot_url=robot_url,
         enhancement_request=received_enhancement_request,
         reference=RobotReference(
             id=reference_id,
@@ -141,8 +145,9 @@ async def test_trigger_reference_enhancement_request_rejected(
     """
     A robot rejects a request to create an enhancement against a reference.
     """
-    # Mock the robot response
+    # Mock the robot
     robot_url = "http://www.theres-a-robot-here.com/"
+    robot_id = uuid.uuid4()
     httpx_mock.add_response(
         method="POST",
         url=robot_url,
@@ -153,14 +158,15 @@ async def test_trigger_reference_enhancement_request_rejected(
     reference_id = uuid.uuid4()
     fake_enhancement_requests = fake_repository()
     uow = fake_uow(enhancement_requests=fake_enhancement_requests)
-    service = EnhancementService(uow)
+    service = EnhancementService(
+        uow, robots=Robots(known_robots={robot_id: HttpUrl(robot_url)})
+    )
 
     received_enhancement_request = EnhancementRequest(
-        reference_id=reference_id, robot_id=uuid.uuid4(), enhancement_parameters={}
+        reference_id=reference_id, robot_id=robot_id, enhancement_parameters={}
     )
 
     enhancement_request = await service.request_reference_enhancement(
-        robot_url=robot_url,
         enhancement_request=received_enhancement_request,
         reference=RobotReference(
             id=reference_id,
@@ -192,7 +198,7 @@ async def test_get_enhancement_request_happy_path(fake_repository, fake_uow):
 
     fake_enhancement_requests = fake_repository([existing_enhancement_request])
     uow = fake_uow(enhancement_requests=fake_enhancement_requests)
-    service = EnhancementService(uow)
+    service = EnhancementService(uow, robots=Robots({}))
 
     returned_enhancement_request = await service.get_enhancement_request(
         enhancement_request_id
@@ -207,7 +213,7 @@ async def test_get_enhancement_request_doesnt_exist(fake_repository, fake_uow):
 
     fake_enhancement_requests = fake_repository()
     uow = fake_uow(enhancement_requests=fake_enhancement_requests)
-    service = EnhancementService(uow)
+    service = EnhancementService(uow, robots=Robots({}))
 
     returned_enhancement_request = await service.get_enhancement_request(
         enhancement_request_id
@@ -236,7 +242,7 @@ async def test_create_reference_enhancement_happy_path(fake_repository, fake_uow
         enhancements=fake_enhancement_repo,
     )
 
-    service = EnhancementService(uow)
+    service = EnhancementService(uow, robots=Robots({}))
 
     enhancement = await service.create_reference_enhancement(
         enhancement_request_id=enhancement_request_id,
@@ -253,7 +259,7 @@ async def test_create_reference_enhancement_happy_path(fake_repository, fake_uow
 async def test_create_reference_enhancement_missing_request(fake_repository, fake_uow):
     fake_enhancement_request_id = uuid.uuid4()
     uow = fake_uow(enhancement_requests=fake_repository())
-    service = EnhancementService(uow)
+    service = EnhancementService(uow, robots=Robots({}))
 
     with pytest.raises(RuntimeError, match="Enhancement request does not exist"):
         await service.create_reference_enhancement(
@@ -277,7 +283,7 @@ async def test_mark_enhancement_request_as_failed(fake_repository, fake_uow):
     uow = fake_uow(
         enhancement_requests=fake_enhancement_requests,
     )
-    service = EnhancementService(uow)
+    service = EnhancementService(uow, robots=Robots({}))
 
     returned_enhancement_request = await service.mark_enhancement_request_failed(
         enhancement_request_id=enhancement_request_id, error="it broke"
@@ -298,7 +304,7 @@ async def test_mark_enhancement_request_as_failed_request_non_existent(
     uow = fake_uow(
         enhancement_requests=fake_repository(),
     )
-    service = EnhancementService(uow)
+    service = EnhancementService(uow, robots=Robots({}))
 
     with pytest.raises(RuntimeError):
         await service.mark_enhancement_request_failed(
