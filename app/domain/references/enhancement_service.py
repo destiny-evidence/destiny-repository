@@ -4,14 +4,16 @@ import httpx
 from destiny_robots.core import Reference as RobotReference
 from destiny_robots.robots import RobotRequest
 from fastapi import status
-from pydantic import UUID4, HttpUrl
+from pydantic import UUID4
 
+from app.domain.references.exceptions import RobotNotFoundError
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementCreate,
     EnhancementRequest,
     EnhancementRequestStatus,
 )
+from app.domain.robots.robots import Robots
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 
@@ -19,9 +21,10 @@ from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 class EnhancementService(GenericService):
     """The service which manages our requests to robots for reference enhancement."""
 
-    def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:
+    def __init__(self, sql_uow: AsyncSqlUnitOfWork, robots: Robots) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(sql_uow)
+        self.robots = robots
 
     @unit_of_work
     async def add_enhancement(
@@ -43,11 +46,19 @@ class EnhancementService(GenericService):
     @unit_of_work
     async def request_reference_enhancement(
         self,
-        robot_url: HttpUrl,
         enhancement_request: EnhancementRequest,
         reference: RobotReference,
     ) -> EnhancementRequest:
         """Create an enhancement request and send it to robot."""
+        # Do the reference check here, don't pass in the reference service.
+
+        robot_url = self.robots.get_robot_url(enhancement_request.robot_id)
+
+        if not robot_url:
+            raise RobotNotFoundError(
+                detail=f"Robot with id {enhancement_request.robot_id} not found.",
+            )
+
         enhancement_request = await self.sql_uow.enhancement_requests.add(
             enhancement_request
         )

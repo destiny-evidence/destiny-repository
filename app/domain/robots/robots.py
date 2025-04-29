@@ -1,7 +1,7 @@
 """
 Class for managing robots used to request enhancements from.
 
-Intended to be replaced with database storage at a later date.
+Intended to be replaced with a peristence backed service at a later date.
 """
 
 from uuid import UUID

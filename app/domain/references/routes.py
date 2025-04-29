@@ -55,9 +55,10 @@ def reference_service(
 
 def enhancement_service(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
+    robots: Annotated[Robots, Depends(robots)],
 ) -> EnhancementService:
     """Return the enhancement service using the provided unit of work dependencies."""
-    return EnhancementService(sql_uow=sql_uow)
+    return EnhancementService(sql_uow=sql_uow, robots=robots)
 
 
 def choose_auth_strategy(auth_scope: AuthScopes) -> AuthMethod:
@@ -91,9 +92,7 @@ reference_writer_auth = CachingStrategyAuth(
 )
 
 
-router = APIRouter(
-    prefix="/references", tags=["references"], dependencies=[Depends(robots)]
-)
+router = APIRouter(prefix="/references", tags=["references"])
 
 
 @router.get("/{reference_id}/", dependencies=[Depends(reference_reader_auth)])
@@ -181,20 +180,13 @@ async def request_enhancement(
             detail=f"Reference with id {reference_id} not found",
         )
 
-    robot_url = robots.get_robot_url(enhancement_request_create.robot_id)
-
-    if not robot_url:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Robot with id {enhancement_request_create.robot_id} not found.",
-        )
-
     enhancement_request = await enhancement_service.request_reference_enhancement(
-        robot_url=robot_url,
         enhancement_request=EnhancementRequest(
             **enhancement_request_create.model_dump()
         ),
         reference=RobotReference(**reference.model_dump()),
     )
+
+    # Can add an exception handler for the not found exceptions
 
     return EnhancementRequestRead(**enhancement_request.model_dump())

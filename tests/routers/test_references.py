@@ -10,6 +10,7 @@ from pydantic import HttpUrl
 from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions.not_found_exception import NotFoundError
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
     EnhancementRequestStatus,
@@ -17,7 +18,9 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import Reference as SQLReference
+from app.domain.references.routes import robots
 from app.domain.robots.robots import Robots
+from app.main import not_found_exception_handler
 
 # Use the database session in all tests to set up the database manager.
 pytestmark = pytest.mark.usefixtures("session")
@@ -35,11 +38,11 @@ def app() -> FastAPI:
         FastAPI: FastAPI application instance.
 
     """
-    app = FastAPI()
+    app = FastAPI(exception_handlers={NotFoundError: not_found_exception_handler})
 
-    # Override the robots with a test robot
-    references.robots = Robots({ROBOT_ID: HttpUrl(ROBOT_URL)})
     app.include_router(references.router)
+    app.dependency_overrides[robots] = Robots({ROBOT_ID: HttpUrl(ROBOT_URL)})
+
     return app
 
 
