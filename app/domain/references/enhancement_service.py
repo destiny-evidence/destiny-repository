@@ -6,7 +6,7 @@ from destiny_sdk.robots import RobotRequest
 from fastapi import status
 from pydantic import UUID4
 
-from app.domain.references.exceptions import ReferenceNotFoundError, RobotNotFoundError
+from app.core.exceptions.not_found_exception import NotFoundError
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementCreate,
@@ -53,14 +53,14 @@ class EnhancementService(GenericService):
         )
 
         if not reference:
-            raise ReferenceNotFoundError(
+            raise NotFoundError(
                 detail=f"Reference with id {enhancement_request.reference_id} not found"
             )
 
         robot_url = self.robots.get_robot_url(enhancement_request.robot_id)
 
         if not robot_url:
-            raise RobotNotFoundError(
+            raise NotFoundError(
                 detail=f"Robot with id {enhancement_request.robot_id} not found.",
             )
 
