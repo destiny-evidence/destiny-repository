@@ -6,7 +6,7 @@ from destiny_sdk.robots import RobotRequest
 from fastapi import status
 from pydantic import UUID4
 
-from app.core.exceptions.not_found_exception import NotFoundError
+from app.core.exceptions import NotFoundError
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementCreate,

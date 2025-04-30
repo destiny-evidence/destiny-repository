@@ -10,7 +10,7 @@ from pydantic import HttpUrl
 from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions.not_found_exception import NotFoundError
+from app.core.exceptions import NotFoundError
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
     EnhancementRequestStatus,

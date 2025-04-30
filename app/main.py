@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
-from app.core.exceptions.not_found_exception import NotFoundError
+from app.core.exceptions import NotFoundError
 from app.core.logger import configure_logger, get_logger
 from app.domain.imports.routes import router as import_router
 from app.domain.references.routes import router as reference_router
