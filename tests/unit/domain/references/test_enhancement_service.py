@@ -4,7 +4,7 @@ import pytest
 from fastapi import status
 from pydantic import HttpUrl
 
-from app.core.exceptions.not_found_exception import NotFoundError
+from app.core.exceptions import NotFoundError
 from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
     AnnotationEnhancement,

@@ -16,7 +16,7 @@ from taskiq import BrokerMessage
 from taskiq.utils import maybe_awaitable
 
 from app.core.azure_service_bus_broker import AzureServiceBusBroker
-from app.core.exceptions.message_broker_exception import MessageBrokerError
+from app.core.exceptions import MessageBrokerError
 
 
 async def get_first_task(broker: AzureServiceBusBroker):
