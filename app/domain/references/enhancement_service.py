@@ -13,7 +13,7 @@ from app.domain.references.models.models import (
     EnhancementRequest,
     EnhancementRequestStatus,
 )
-from app.domain.robots.robots import Robots
+from app.domain.robots import Robots
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 

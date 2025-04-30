@@ -19,7 +19,7 @@ from app.domain.references.models.models import (
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.routes import robots
-from app.domain.robots.robots import Robots
+from app.domain.robots import Robots
 from app.main import not_found_exception_handler
 
 # Use the database session in all tests to set up the database manager.
