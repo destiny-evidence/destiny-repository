@@ -277,30 +277,23 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
         description="The reference this enhancement is associated with.",
     )
 
-    enhancement_type: EnhancementType = Field(
-        description="The type of enhancement requested on the reference"
+    robot_id: uuid.UUID = Field(
+        description="The robot to request the enhancement from."
     )
 
     request_status: EnhancementRequestStatus = Field(
         default=EnhancementRequestStatus.RECEIVED,
-        description="The status of the request to create an enhancement",
+        description="The status of the request to create an enhancement.",
+    )
+
+    enhancement_parameters: dict = Field(
+        default={},
+        description="Additional optional parameters to pass through to the robot.",
     )
 
     error: str | None = Field(
         None,
-        description="Error encountered during the enhancement process",
-    )
-
-
-class EnhancementRequestCreate(DomainBaseModel):
-    """
-    Request to add an enhancement to a specific reference.
-
-    Only here as a temporary meausre until we get the robot schemas from the sdk
-    """
-
-    enhancement_type: EnhancementType = Field(
-        description="The type of enhancement requested on the reference"
+        description="Error encountered during the enhancement process.",
     )
 
 

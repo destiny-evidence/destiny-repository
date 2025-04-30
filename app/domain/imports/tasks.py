@@ -3,7 +3,7 @@
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions.task_exception import TaskError
+from app.core.exceptions import TaskError
 from app.domain.imports.service import ImportService
 from app.persistence.sql.session import db_manager
 from app.persistence.sql.uow import AsyncSqlUnitOfWork

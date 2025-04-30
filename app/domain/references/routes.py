@@ -3,6 +3,10 @@
 import uuid
 from typing import Annotated
 
+from destiny_sdk.core import (
+    EnhancementRequestCreate,
+    EnhancementRequestRead,
+)
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +21,6 @@ from app.core.config import get_settings
 from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
     EnhancementRequest,
-    EnhancementRequestCreate,
     ExternalIdentifier,
     ExternalIdentifierCreate,
     ExternalIdentifierSearch,
@@ -25,6 +28,7 @@ from app.domain.references.models.models import (
     Reference,
 )
 from app.domain.references.reference_service import ReferenceService
+from app.domain.robots import Robots
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
@@ -38,6 +42,9 @@ def unit_of_work(
     return AsyncSqlUnitOfWork(session=session)
 
 
+robots = Robots(known_robots=settings.known_robots)
+
+
 def reference_service(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
 ) -> ReferenceService:
@@ -47,9 +54,10 @@ def reference_service(
 
 def enhancement_service(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
+    robots: Annotated[Robots, Depends(robots)],
 ) -> EnhancementService:
     """Return the enhancement service using the provided unit of work dependencies."""
-    return EnhancementService(sql_uow=sql_uow)
+    return EnhancementService(sql_uow=sql_uow, robots=robots)
 
 
 def choose_auth_strategy(auth_scope: AuthScopes) -> AuthMethod:
@@ -152,27 +160,19 @@ async def add_identifier(
 
 
 @router.post(
-    "/{reference_id}/request/enhancement",
+    "/enhancement/",
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(reference_writer_auth)],
 )
 async def request_enhancement(
-    reference_id: Annotated[
-        uuid.UUID, Path(description="The ID of the reference to enhance.")
-    ],
-    enhancement_request: EnhancementRequestCreate,
+    enhancement_request_create: EnhancementRequestCreate,
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-) -> EnhancementRequest:
+) -> EnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""
-    reference = await reference_service.get_reference(reference_id)
-
-    if not reference:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Reference with id {reference_id} not found",
+    enhancement_request = await enhancement_service.request_reference_enhancement(
+        enhancement_request=EnhancementRequest(
+            **enhancement_request_create.model_dump()
         )
-
-    return await enhancement_service.request_reference_enhancement(
-        reference_id, enhancement_request.enhancement_type
     )
+
+    return EnhancementRequestRead(**enhancement_request.model_dump())

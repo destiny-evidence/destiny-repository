@@ -1,14 +1,19 @@
 """The service for interacting with and managing robot requests."""
 
+import httpx
+from destiny_sdk.core import Reference as RobotReference
+from destiny_sdk.robots import RobotRequest
+from fastapi import status
 from pydantic import UUID4
 
+from app.core.exceptions import NotFoundError
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementCreate,
     EnhancementRequest,
     EnhancementRequestStatus,
-    EnhancementType,
 )
+from app.domain.robots import Robots
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 
@@ -16,9 +21,10 @@ from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 class EnhancementService(GenericService):
     """The service which manages our requests to robots for reference enhancement."""
 
-    def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:
+    def __init__(self, sql_uow: AsyncSqlUnitOfWork, robots: Robots) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(sql_uow)
+        self.robots = robots
 
     @unit_of_work
     async def add_enhancement(
@@ -39,20 +45,46 @@ class EnhancementService(GenericService):
 
     @unit_of_work
     async def request_reference_enhancement(
-        self,
-        reference_id: UUID4,
-        enhancement_type: EnhancementType,
+        self, enhancement_request: EnhancementRequest
     ) -> EnhancementRequest:
         """Create an enhancement request and send it to robot."""
-        enhancement_request = await self.sql_uow.enhancement_requests.add(
-            EnhancementRequest(
-                reference_id=reference_id,
-                enhancement_type=enhancement_type,
-            )
+        reference = await self.sql_uow.references.get_by_pk(
+            enhancement_request.reference_id, preload=["identifiers", "enhancements"]
         )
 
-        # Send stuff off to the robot
-        # Either return accepted or rejected based on initial robot response
+        if not reference:
+            raise NotFoundError(
+                detail=f"Reference with id {enhancement_request.reference_id} not found"
+            )
+
+        robot_url = self.robots.get_robot_url(enhancement_request.robot_id)
+
+        if not robot_url:
+            raise NotFoundError(
+                detail=f"Robot with id {enhancement_request.robot_id} not found.",
+            )
+
+        enhancement_request = await self.sql_uow.enhancement_requests.add(
+            enhancement_request
+        )
+
+        robot_request = RobotRequest(
+            id=enhancement_request.id,
+            reference=RobotReference(**reference.model_dump()),
+            extra_fields=enhancement_request.enhancement_parameters,
+        )
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                str(robot_url), json=robot_request.model_dump(mode="json")
+            )
+
+        if response.status_code != status.HTTP_202_ACCEPTED:
+            return await self.sql_uow.enhancement_requests.update_by_pk(
+                enhancement_request.id,
+                request_status=EnhancementRequestStatus.REJECTED,
+                error=response.json()["message"],
+            )
 
         return await self.sql_uow.enhancement_requests.update_by_pk(
             enhancement_request.id, request_status=EnhancementRequestStatus.ACCEPTED
@@ -77,10 +109,6 @@ class EnhancementService(GenericService):
 
         if not enhancement_request:
             msg = "Enhancement request does not exist. This should not happen"
-            raise RuntimeError(msg)
-
-        if enhancement.enhancement_type != enhancement_request.enhancement_type:
-            msg = "Enhancement creation is for different enhancement type to request"
             raise RuntimeError(msg)
 
         created_enhancement = await self.add_enhancement(
