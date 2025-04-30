@@ -5,6 +5,7 @@ FROM base AS builder
 
 RUN pip install poetry poetry-plugin-bundle
 COPY pyproject.toml poetry.lock README.md ./
+COPY libs/sdk ./libs/sdk
 
 ARG POETRY_INSTALL_DEV=false
 
