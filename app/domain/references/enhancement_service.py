@@ -76,7 +76,7 @@ class EnhancementService(GenericService):
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                str(robot_url), json=robot_request.model_dump_json()
+                str(robot_url), json=robot_request.model_dump(mode="json")
             )
 
         if response.status_code != status.HTTP_202_ACCEPTED:
