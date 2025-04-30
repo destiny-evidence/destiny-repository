@@ -14,7 +14,7 @@ from app.domain.references.models.models import (
     Reference,
     Visibility,
 )
-from app.domain.robots.robots import Robots
+from app.domain.robots import Robots
 
 ENHANCEMENT_DATA = {
     "source": "test_source",
