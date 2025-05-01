@@ -57,6 +57,20 @@ class AuthMethod(Protocol):
         raise NotImplementedError
 
 
+def choose_auth_strategy(
+    environment: str, tenant_id: str, application_id: str, auth_scope: AuthScopes
+) -> AuthMethod:
+    """Choose a strategy for our authorization."""
+    if environment in ("dev", "test"):
+        return SuccessAuth()
+
+    return AzureJwtAuth(
+        tenant_id=tenant_id,
+        application_id=application_id,
+        scope=auth_scope,
+    )
+
+
 class StrategyAuth(AuthMethod):
     """A meta-auth method which chooses the auth method at runtime."""
 

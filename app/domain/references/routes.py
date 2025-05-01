@@ -13,9 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import (
     AuthMethod,
     AuthScopes,
-    AzureJwtAuth,
     CachingStrategyAuth,
-    SuccessAuth,
+    choose_auth_strategy,
 )
 from app.core.config import get_settings
 from app.domain.references.enhancement_service import EnhancementService
@@ -60,26 +59,24 @@ def enhancement_service(
     return EnhancementService(sql_uow=sql_uow, robots=robots)
 
 
-def choose_auth_strategy(auth_scope: AuthScopes) -> AuthMethod:
-    """Choose a strategy for our authorization."""
-    if settings.env in ("dev", "test"):
-        return SuccessAuth()
-
-    return AzureJwtAuth(
-        tenant_id=settings.azure_tenant_id,
-        application_id=settings.azure_application_id,
-        scope=auth_scope,
-    )
-
-
 def choose_auth_strategy_reader() -> AuthMethod:
     """Choose reader scope auth strategy for our authorization."""
-    return choose_auth_strategy(AuthScopes.REFERENCE_READER)
+    return choose_auth_strategy(
+        environment=settings.env,
+        tenant_id=settings.azure_tenant_id,
+        application_id=settings.azure_application_id,
+        auth_scope=AuthScopes.REFERENCE_READER,
+    )
 
 
 def choose_auth_strategy_writer() -> AuthMethod:
     """Choose writer scope auth strategy for our authorization."""
-    return choose_auth_strategy(AuthScopes.REFERENCE_WRITER)
+    return choose_auth_strategy(
+        environment=settings.env,
+        tenant_id=settings.azure_tenant_id,
+        application_id=settings.azure_application_id,
+        auth_scope=AuthScopes.REFERENCE_WRITER,
+    )
 
 
 reference_reader_auth = CachingStrategyAuth(
