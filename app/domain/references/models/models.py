@@ -324,6 +324,7 @@ other works have cited this work
         None,
         description="The name of the entity which published the version of record.",
     )
+    title: str | None = Field(None, description="The title of the reference.")
 
 
 class AbstractProcessType(StrEnum):
