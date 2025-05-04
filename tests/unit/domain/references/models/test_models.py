@@ -29,6 +29,7 @@ def test_bibliographic_metadata_enhancement_valid():
         publication_date=date(2020, 1, 2),
         publication_year=2020,
         publisher="Test Publisher",
+        title="Test Title",
     )
     enhancement = Enhancement(
         source="test_source",
