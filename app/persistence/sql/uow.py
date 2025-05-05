@@ -13,6 +13,7 @@ from app.domain.imports.repository import (
     ImportResultSQLRepository,
 )
 from app.domain.references.repository import (
+    EnhancementRequestSQLRepository,
     EnhancementSQLRepository,
     ExternalIdentifierSQLRepository,
     ReferenceSQLRepository,
@@ -31,6 +32,7 @@ class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
     references: ReferenceSQLRepository
     external_identifiers: ExternalIdentifierSQLRepository
     enhancements: EnhancementSQLRepository
+    enhancement_requests: EnhancementRequestSQLRepository
 
     def __init__(self, session: AsyncSession) -> None:
         """Initialize the unit of work with a session."""
@@ -45,6 +47,7 @@ class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
         self.references = ReferenceSQLRepository(self.session)
         self.external_identifiers = ExternalIdentifierSQLRepository(self.session)
         self.enhancements = EnhancementSQLRepository(self.session)
+        self.enhancement_requests = EnhancementRequestSQLRepository(self.session)
 
         return await super().__aenter__()
 

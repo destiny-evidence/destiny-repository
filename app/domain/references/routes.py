@@ -3,6 +3,10 @@
 import uuid
 from typing import Annotated
 
+from destiny_sdk.core import (
+    EnhancementRequestCreate,
+    EnhancementRequestRead,
+)
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,16 +18,17 @@ from app.core.auth import (
     SuccessAuth,
 )
 from app.core.config import get_settings
+from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
-    Enhancement,
-    EnhancementCreate,
+    EnhancementRequest,
     ExternalIdentifier,
     ExternalIdentifierCreate,
     ExternalIdentifierSearch,
     ExternalIdentifierType,
     Reference,
 )
-from app.domain.references.service import ReferenceService
+from app.domain.references.reference_service import ReferenceService
+from app.domain.robots import Robots
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
@@ -37,11 +42,22 @@ def unit_of_work(
     return AsyncSqlUnitOfWork(session=session)
 
 
+robots = Robots(known_robots=settings.known_robots)
+
+
 def reference_service(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
 ) -> ReferenceService:
     """Return the reference service using the provided unit of work dependencies."""
     return ReferenceService(sql_uow=sql_uow)
+
+
+def enhancement_service(
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
+    robots: Annotated[Robots, Depends(robots)],
+) -> EnhancementService:
+    """Return the enhancement service using the provided unit of work dependencies."""
+    return EnhancementService(sql_uow=sql_uow, robots=robots)
 
 
 def choose_auth_strategy(auth_scope: AuthScopes) -> AuthMethod:
@@ -144,14 +160,19 @@ async def add_identifier(
 
 
 @router.post(
-    "/{reference_id}/enhancement/",
-    status_code=status.HTTP_201_CREATED,
+    "/enhancement/",
+    status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(reference_writer_auth)],
 )
-async def add_enhancement(
-    reference_id: Annotated[uuid.UUID, Path(description="The ID of the reference.")],
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    enhancement: EnhancementCreate,
-) -> Enhancement:
-    """Add an enhancemenet to a reference."""
-    return await reference_service.add_enhancement(reference_id, enhancement)
+async def request_enhancement(
+    enhancement_request_create: EnhancementRequestCreate,
+    enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
+) -> EnhancementRequestRead:
+    """Request the creation of an enhancement against a provided reference id."""
+    enhancement_request = await enhancement_service.request_reference_enhancement(
+        enhancement_request=EnhancementRequest(
+            **enhancement_request_create.model_dump()
+        )
+    )
+
+    return EnhancementRequestRead(**enhancement_request.model_dump())

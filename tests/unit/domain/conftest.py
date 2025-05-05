@@ -75,6 +75,7 @@ class FakeUnitOfWork:
         references=None,
         external_identifiers=None,
         enhancements=None,
+        enhancement_requests=None,
     ):
         self.batches = batches
         self.imports = imports
@@ -82,6 +83,7 @@ class FakeUnitOfWork:
         self.references = references
         self.external_identifiers = external_identifiers
         self.enhancements = enhancements
+        self.enhancement_requests = enhancement_requests
         self.committed = False
 
     async def __aenter__(self):

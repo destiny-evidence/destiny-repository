@@ -79,6 +79,26 @@ class EnhancementType(StrEnum):
     ABSTRACT = "abstract"
     ANNOTATION = "annotation"
     LOCATION = "location"
+    FULL_TEXT = "full text"
+
+
+class EnhancementRequestStatus(StrEnum):
+    """
+    The status of an enhancement request.
+
+    **Allowed values**:
+    - `received`: Enhancement request has been received.
+    - `accepted`: Enhancement request has been accepted.
+    - `rejected`: Enhancement request has been rejected.
+    - `failed`: Enhancement failed to create.
+    - `completed`: Enhancement has been created.
+    """
+
+    RECEIVED = "received"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    FAILED = "failed"
+    COMPLETED = "completed"
 
 
 class ExternalIdentifierBase(DomainBaseModel):
@@ -243,6 +263,38 @@ class ReferenceCreateInputValidator(ReferenceBase):
     enhancements: list[JSON] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
+
+
+class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
+    """Request to add an enhancement to a specific reference."""
+
+    reference_id: uuid.UUID = Field(
+        description="The ID of the reference this enhancement is associated with."
+    )
+
+    reference: Reference | None = Field(
+        None,
+        description="The reference this enhancement is associated with.",
+    )
+
+    robot_id: uuid.UUID = Field(
+        description="The robot to request the enhancement from."
+    )
+
+    request_status: EnhancementRequestStatus = Field(
+        default=EnhancementRequestStatus.RECEIVED,
+        description="The status of the request to create an enhancement.",
+    )
+
+    enhancement_parameters: dict = Field(
+        default_factory=dict,
+        description="Additional optional parameters to pass through to the robot.",
+    )
+
+    error: str | None = Field(
+        None,
+        description="Error encountered during the enhancement process.",
+    )
 
 
 class EnhancementContentBase(BaseModel, ABC):

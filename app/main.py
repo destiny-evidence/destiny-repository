@@ -6,8 +6,10 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, Request, Response, status
+from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
+from app.core.exceptions import NotFoundError
 from app.core.logger import configure_logger, get_logger
 from app.domain.imports.routes import router as import_router
 from app.domain.references.routes import router as reference_router
@@ -83,6 +85,17 @@ async def logger_middleware(
         raise
     else:
         return response
+
+
+@app.exception_handler(NotFoundError)
+async def not_found_exception_handler(
+    request: Request,  # noqa: ARG001 exception handlers required to take request as parameter
+    exc: NotFoundError,
+) -> JSONResponse:
+    """Exception handler to return 404 responses when NotFoundError thrown."""
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND, content={"detail": exc.detail}
+    )
 
 
 @app.get("/")

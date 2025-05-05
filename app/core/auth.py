@@ -10,7 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from httpx import AsyncClient
 from jose import exceptions, jwt
 
-from app.core.exceptions.auth_exception import AuthException
+from app.core.exceptions import AuthException
 
 # This module is based on the following references:
 # * https://learn.microsoft.com/en-us/entra/identity-platform/access-tokens#validate-tokens

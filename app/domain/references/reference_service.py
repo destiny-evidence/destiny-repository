@@ -1,4 +1,4 @@
-"""The service for interacting with and managing imports."""
+"""The service for interacting with and managing references."""
 
 import json
 
@@ -7,7 +7,6 @@ from pydantic import UUID4, ValidationError
 from app.core.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
-    Enhancement,
     EnhancementCreate,
     EnhancementParseResult,
     ExternalIdentifier,
@@ -27,7 +26,7 @@ logger = get_logger()
 
 
 class ReferenceService(GenericService):
-    """The service which manages our imports and their processing."""
+    """The service which manages our references."""
 
     def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:
         """Initialize the service with a unit of work."""
@@ -76,20 +75,6 @@ class ReferenceService(GenericService):
             **identifier.model_dump(),
         )
         return await self.sql_uow.external_identifiers.add(db_identifier)
-
-    @unit_of_work
-    async def add_enhancement(
-        self, reference_id: UUID4, enhancement: EnhancementCreate
-    ) -> Enhancement:
-        """Register an import, persisting it to the database."""
-        reference = await self.sql_uow.references.get_by_pk(reference_id)
-        if not reference:
-            raise RuntimeError
-        db_enhancement = Enhancement(
-            reference_id=reference.id,
-            **enhancement.model_dump(),
-        )
-        return await self.sql_uow.enhancements.add(db_enhancement)
 
     async def parse_external_identifier(
         self, raw_identifier: JSON, entry_ref: int

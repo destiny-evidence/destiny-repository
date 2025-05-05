@@ -13,6 +13,10 @@ from app.domain.references.models.models import (
     Enhancement as DomainEnhancement,
 )
 from app.domain.references.models.models import (
+    EnhancementRequest as DomainEnhancementRequest,
+)
+from app.domain.references.models.models import (
+    EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifierType,
     Visibility,
@@ -227,6 +231,68 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             processor_version=self.processor_version,
             content=json.loads(self.content),
             content_version=self.content_version,
+            reference=await self.reference.to_domain()
+            if "reference" in (preload or [])
+            else None,
+        )
+
+
+class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
+    """
+    SQL Persistence model for an EnhancementRequest.
+
+    This is used in the repository layer to pass data between the domain and the
+    database.
+    """
+
+    __tablename__ = "enhancement_request"
+
+    reference_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("reference.id"), nullable=False
+    )
+
+    robot_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
+
+    request_status: Mapped[EnhancementRequestStatus] = mapped_column(
+        ENUM(
+            *[status.value for status in EnhancementRequestStatus],
+            name="request_status",
+        )
+    )
+
+    enhancement_parameters: Mapped[str] = mapped_column(JSONB, nullable=True)
+
+    error: Mapped[str] = mapped_column(String, nullable=True)
+
+    reference: Mapped["Reference"] = relationship("Reference")
+
+    @classmethod
+    async def from_domain(cls, domain_obj: DomainEnhancementRequest) -> Self:
+        """Create a persistence model from a domain Enhancement object."""
+        return cls(
+            id=domain_obj.id,
+            reference_id=domain_obj.reference_id,
+            robot_id=domain_obj.robot_id,
+            request_status=domain_obj.request_status,
+            enhancement_parameters=json.dumps(domain_obj.enhancement_parameters)
+            if domain_obj.enhancement_parameters
+            else None,
+            error=domain_obj.error,
+        )
+
+    async def to_domain(
+        self, preload: list[str] | None = None
+    ) -> DomainEnhancementRequest:
+        """Convert the persistence model into a Domain Enhancement object."""
+        return DomainEnhancementRequest(
+            id=self.id,
+            reference_id=self.reference_id,
+            robot_id=self.robot_id,
+            request_status=self.request_status,
+            enhancement_parameters=json.loads(self.enhancement_parameters)
+            if self.enhancement_parameters
+            else None,
+            error=self.error,
             reference=await self.reference.to_domain()
             if "reference" in (preload or [])
             else None,

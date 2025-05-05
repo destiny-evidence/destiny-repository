@@ -11,11 +11,15 @@ from app.domain.references.models.models import (
     AnnotationEnhancement,
     BibliographicMetadataEnhancement,
     Enhancement,
+    EnhancementRequest,
+    EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifierBase,
     ExternalIdentifierType,
     Location,
     LocationEnhancement,
+    Reference,
+    Visibility,
 )
 
 
@@ -220,3 +224,15 @@ def test_invalid_other_identifier_provided_when_not_other():
             identifier="10.1000/xyz123",
             other_identifier_name="unexpected",
         )
+
+
+def test_enhancement_request_valid():
+    enhancement_request = EnhancementRequest(
+        reference_id=uuid.uuid4(),
+        reference=Reference(visibility=Visibility.RESTRICTED),
+        robot_id=uuid.uuid4(),
+    )
+
+    assert enhancement_request.request_status == EnhancementRequestStatus.RECEIVED
+    assert enhancement_request.enhancement_parameters == {}
+    assert enhancement_request.error is None
