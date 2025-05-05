@@ -251,6 +251,10 @@ class EnhancementBase(BaseModel):
 class EnhancementCreate(EnhancementBase):
     """The model for parameters required to create an enhancement."""
 
+    reference_id: UUID4 = Field(
+        description="The ID of the reference to create the enhancement against"
+    )
+
 
 class EnhancementRead(EnhancementBase):
     """The model for a created enhancement."""

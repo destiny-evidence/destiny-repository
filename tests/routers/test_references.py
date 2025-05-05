@@ -230,6 +230,7 @@ async def test_create_enhancement_happy_path(
     robot_result = {
         "request_id": f"{enhancement_request.id}",
         "enhancement": {
+            "reference_id": f"{reference.id}",
             "source": "robot",
             "visibility": Visibility.RESTRICTED,
             "processor_version": "0.0.1",
@@ -244,7 +245,7 @@ async def test_create_enhancement_happy_path(
                     }
                 ],
             },
-        }
+        },
     }
 
     response = await client.post("/robot/enhancement/", json=robot_result)

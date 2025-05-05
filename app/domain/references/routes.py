@@ -216,18 +216,13 @@ async def create_enhancement(
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
 ) -> EnhancementRequestStatusRead:
     """Create an enhancement against an existing enhancement request."""
-    enhancement_request = await enhancement_service.get_enhancement_request(
-        enhancement_create.request_id
-    )
-
     enhancement = Enhancement(
-            reference_id=enhancement_request.reference_id,
-            enhancement_type=enhancement_create.enhancement.content.enhancement_type,
-            **enhancement_create.enhancement.model_dump(),
+        enhancement_type=enhancement_create.enhancement.content.enhancement_type,
+        **enhancement_create.enhancement.model_dump(),
     )
 
     enhancement_request = await enhancement_service.create_reference_enhancement(
-        enhancement_request_id=enhancement_request.id, enhancement=enhancement
+        enhancement_request_id=enhancement_create.request_id, enhancement=enhancement
     )
 
     return EnhancementRequestStatusRead(**enhancement_request.model_dump())
