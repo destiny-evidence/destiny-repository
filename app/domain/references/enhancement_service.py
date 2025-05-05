@@ -9,7 +9,6 @@ from pydantic import UUID4
 from app.core.exceptions import NotFoundError
 from app.domain.references.models.models import (
     Enhancement,
-    EnhancementCreate,
     EnhancementRequest,
     EnhancementRequestStatus,
 )
@@ -26,22 +25,19 @@ class EnhancementService(GenericService):
         super().__init__(sql_uow)
         self.robots = robots
 
-    @unit_of_work
-    async def add_enhancement(
+    async def _add_enhancement(
         self,
-        reference_id: UUID4,
-        enhancement: EnhancementCreate,
+        enhancement: Enhancement,
     ) -> Enhancement:
         """Add an enhancement to a reference."""
-        reference = await self.sql_uow.references.get_by_pk(reference_id)
+        reference = await self.sql_uow.references.get_by_pk(enhancement.reference_id)
+
         if not reference:
-            msg = f"reference {reference_id} does not exist"
-            raise RuntimeError(msg)
-        db_enhancement = Enhancement(
-            reference_id=reference.id,
-            **enhancement.model_dump(),
-        )
-        return await self.sql_uow.enhancements.add(db_enhancement)
+            raise NotFoundError(
+                detail=f"Reference with id {enhancement.reference_id} not found"
+            )
+
+        return await self.sql_uow.enhancements.add(enhancement)
 
     @unit_of_work
     async def request_reference_enhancement(
@@ -92,16 +88,17 @@ class EnhancementService(GenericService):
 
     async def _get_enhancement_request(
         self,
-        request_id: UUID4,
+        enhancement_request_id: UUID4,
     ) -> EnhancementRequest:
         """Get an enhancement request by request id."""
         enhancement_request = await self.sql_uow.enhancement_requests.get_by_pk(
-            request_id
+            enhancement_request_id
         )
 
         if not enhancement_request:
+            detail = f"Enhancement request with id {enhancement_request_id} not found."
             raise NotFoundError(
-                detail=f"Enhancement request with id {request_id} not found.",
+                detail=detail,
             )
 
         return enhancement_request
@@ -109,32 +106,28 @@ class EnhancementService(GenericService):
     @unit_of_work
     async def get_enhancement_request(
         self,
-        request_id: UUID4,
+        enhancement_request_id: UUID4,
     ) -> EnhancementRequest:
         """Get an enhancement request by request id."""
-        return await self._get_enhancement_request(request_id)
+        return await self._get_enhancement_request(enhancement_request_id)
 
     @unit_of_work
     async def create_reference_enhancement(
         self,
         enhancement_request_id: UUID4,
-        enhancement: EnhancementCreate,
-    ) -> Enhancement:
+        enhancement: Enhancement,
+    ) -> EnhancementRequest:
         """Finalise the creation of an enhancement against a reference."""
         enhancement_request = await self._get_enhancement_request(
             enhancement_request_id
         )
 
-        created_enhancement = await self.add_enhancement(
-            reference_id=enhancement_request.reference_id, enhancement=enhancement
-        )
+        await self._add_enhancement(enhancement)
 
-        await self.sql_uow.enhancement_requests.update_by_pk(
+        return await self.sql_uow.enhancement_requests.update_by_pk(
             enhancement_request.id,
             request_status=EnhancementRequestStatus.COMPLETED,
         )
-
-        return created_enhancement
 
     @unit_of_work
     async def mark_enhancement_request_failed(

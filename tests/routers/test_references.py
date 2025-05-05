@@ -14,6 +14,7 @@ from app.core.exceptions import NotFoundError
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
     EnhancementRequestStatus,
+    EnhancementType,
     Visibility,
 )
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
@@ -41,6 +42,7 @@ def app() -> FastAPI:
     app = FastAPI(exception_handlers={NotFoundError: not_found_exception_handler})
 
     app.include_router(references.router)
+    app.include_router(references.robot_router)
     app.dependency_overrides[robots] = Robots({ROBOT_ID: HttpUrl(ROBOT_URL)})
 
     return app
@@ -205,4 +207,47 @@ async def test_check_enhancement_request_status_happy_path(
     )
 
     assert response.status_code == status.HTTP_200_OK
+    assert response.json()["request_status"] == EnhancementRequestStatus.COMPLETED
+
+
+async def test_create_enhancement_happy_path(
+    session: AsyncSession, client: AsyncClient
+) -> None:
+    """Test creating a reference from a robot."""
+    reference = SQLReference(visibility=Visibility.RESTRICTED)
+    session.add(reference)
+    await session.commit()
+
+    enhancement_request = SQLEnhancementRequest(
+        reference_id=reference.id,
+        robot_id=uuid.uuid4(),
+        request_status=EnhancementRequestStatus.ACCEPTED,
+        enhancement_parameters={},
+    )
+    session.add(enhancement_request)
+    await session.commit()
+
+    robot_result = {
+        "request_id": f"{enhancement_request.id}",
+        "enhancement": {
+            "source": "robot",
+            "visibility": Visibility.RESTRICTED,
+            "processor_version": "0.0.1",
+            "content_version": f"{uuid.uuid4()}",
+            "content": {
+                "enhancement_type": EnhancementType.ANNOTATION,
+                "annotations": [
+                    {
+                        "annotation_type": "example:toy",
+                        "label": "toy",
+                        "data": {"toy": "Cabbage Patch Kid"},
+                    }
+                ],
+            },
+        }
+    }
+
+    response = await client.post("/robot/enhancement/", json=robot_result)
+
+    assert response.status_code == status.HTTP_201_CREATED
     assert response.json()["request_status"] == EnhancementRequestStatus.COMPLETED

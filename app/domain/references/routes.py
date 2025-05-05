@@ -8,6 +8,7 @@ from destiny_sdk.core import (
     EnhancementRequestRead,
     EnhancementRequestStatusRead,
 )
+from destiny_sdk.robots import RobotResult
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +21,7 @@ from app.core.auth import (
 from app.core.config import get_settings
 from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
+    Enhancement,
     EnhancementRequest,
     ExternalIdentifier,
     ExternalIdentifierCreate,
@@ -203,6 +205,29 @@ async def check_enhancement_request_status(
     """Check the status of an enhancement request."""
     enhancement_request = await enhancement_service.get_enhancement_request(
         enhancement_request_id
+    )
+
+    return EnhancementRequestStatusRead(**enhancement_request.model_dump())
+
+
+@robot_router.post("/enhancement/", status_code=status.HTTP_201_CREATED)
+async def create_enhancement(
+    enhancement_create: RobotResult,
+    enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
+) -> EnhancementRequestStatusRead:
+    """Create an enhancement against an existing enhancement request."""
+    enhancement_request = await enhancement_service.get_enhancement_request(
+        enhancement_create.request_id
+    )
+
+    enhancement = Enhancement(
+            reference_id=enhancement_request.reference_id,
+            enhancement_type=enhancement_create.enhancement.content.enhancement_type,
+            **enhancement_create.enhancement.model_dump(),
+    )
+
+    enhancement_request = await enhancement_service.create_reference_enhancement(
+        enhancement_request_id=enhancement_request.id, enhancement=enhancement
     )
 
     return EnhancementRequestStatusRead(**enhancement_request.model_dump())
