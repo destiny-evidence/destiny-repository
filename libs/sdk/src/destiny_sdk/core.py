@@ -296,6 +296,19 @@ class EnhancementRequestRead(BaseModel):
     )
 
 
+class EnhancementRequestStatusRead(BaseModel):
+    """The model for the status of an enhancement request."""
+
+    id: UUID4
+    request_status: str = Field(
+        description="The status of the request to create an enhancement",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error encountered during the enhancement process",
+    )
+
+
 class Reference(BaseModel):
     """
     The base model stored in the repository.

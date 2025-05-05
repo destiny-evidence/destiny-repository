@@ -181,3 +181,28 @@ async def test_request_reference_enhancement_nonexistent_reference(
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert "reference".casefold() in response.json()["detail"].casefold()
+
+
+async def test_check_enhancement_request_status_happy_path(
+    session: AsyncSession, client: AsyncClient
+) -> None:
+    """Test checking the status of an enhancement request."""
+    reference = SQLReference(visibility=Visibility.RESTRICTED)
+    session.add(reference)
+    await session.commit()
+
+    enhancement_request = SQLEnhancementRequest(
+        reference_id=reference.id,
+        robot_id=uuid.uuid4(),
+        request_status=EnhancementRequestStatus.COMPLETED,
+        enhancement_parameters={},
+    )
+    session.add(enhancement_request)
+    await session.commit()
+
+    response = await client.get(
+        f"/references/enhancement/request/{enhancement_request.id}/"
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["request_status"] == EnhancementRequestStatus.COMPLETED

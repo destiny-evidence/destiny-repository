@@ -6,6 +6,7 @@ from typing import Annotated
 from destiny_sdk.core import (
     EnhancementRequestCreate,
     EnhancementRequestRead,
+    EnhancementRequestStatusRead,
 )
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -173,3 +174,21 @@ async def request_enhancement(
     )
 
     return EnhancementRequestRead(**enhancement_request.model_dump())
+
+
+@router.get(
+    "/enhancement/request/{enhancement_request_id}/",
+    dependencies=[Depends(reference_writer_auth)],
+)
+async def check_enhancement_request_status(
+    enhancement_request_id: Annotated[
+        uuid.UUID, Path(description="The ID of the enhancement request.")
+    ],
+    enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
+) -> EnhancementRequestStatusRead:
+    """Check the status of an enhancement request."""
+    enhancement_request = await enhancement_service.get_enhancement_request(
+        enhancement_request_id
+    )
+
+    return EnhancementRequestStatusRead(**enhancement_request.model_dump())

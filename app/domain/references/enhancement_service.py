@@ -92,18 +92,27 @@ class EnhancementService(GenericService):
 
     async def _get_enhancement_request(
         self,
-        enhancement_request_id: UUID4,
-    ) -> EnhancementRequest | None:
+        request_id: UUID4,
+    ) -> EnhancementRequest:
         """Get an enhancement request by request id."""
-        return await self.sql_uow.enhancement_requests.get_by_pk(enhancement_request_id)
+        enhancement_request = await self.sql_uow.enhancement_requests.get_by_pk(
+            request_id
+        )
+
+        if not enhancement_request:
+            raise NotFoundError(
+                detail=f"Enhancement request with id {request_id} not found.",
+            )
+
+        return enhancement_request
 
     @unit_of_work
     async def get_enhancement_request(
         self,
-        enhancement_request_id: UUID4,
-    ) -> EnhancementRequest | None:
+        request_id: UUID4,
+    ) -> EnhancementRequest:
         """Get an enhancement request by request id."""
-        return await self._get_enhancement_request(enhancement_request_id)
+        return await self._get_enhancement_request(request_id)
 
     @unit_of_work
     async def create_reference_enhancement(
@@ -115,11 +124,6 @@ class EnhancementService(GenericService):
         enhancement_request = await self._get_enhancement_request(
             enhancement_request_id
         )
-
-        if not enhancement_request:
-            raise NotFoundError(
-                detail=f"Enhancement request with id {enhancement_request_id} not found"
-            )
 
         created_enhancement = await self.add_enhancement(
             reference_id=enhancement_request.reference_id, enhancement=enhancement
@@ -137,6 +141,10 @@ class EnhancementService(GenericService):
         self, enhancement_request_id: UUID4, error: str
     ) -> EnhancementRequest:
         """Mark an enhancement request as failed and supply error message."""
+        # Verify that the enhancement request exists, unsure if best to do this way
+        # Or have the repository raise an "NotFoundError" when it can't find a pk
+        await self._get_enhancement_request(enhancement_request_id)
+
         return await self.sql_uow.enhancement_requests.update_by_pk(
             pk=enhancement_request_id,
             request_status=EnhancementRequestStatus.FAILED,

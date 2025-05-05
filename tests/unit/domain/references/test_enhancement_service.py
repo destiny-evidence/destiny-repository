@@ -287,11 +287,11 @@ async def test_get_enhancement_request_doesnt_exist(fake_repository, fake_uow):
     uow = fake_uow(enhancement_requests=fake_enhancement_requests)
     service = EnhancementService(uow, robots=Robots({}))
 
-    returned_enhancement_request = await service.get_enhancement_request(
-        enhancement_request_id
-    )
-
-    assert not returned_enhancement_request
+    with pytest.raises(
+        NotFoundError,
+        match=f"Enhancement request with id {enhancement_request_id} not found.",
+    ):
+        await service.get_enhancement_request(enhancement_request_id)
 
 
 @pytest.mark.asyncio
@@ -378,7 +378,7 @@ async def test_mark_enhancement_request_as_failed_request_non_existent(
     )
     service = EnhancementService(uow, robots=Robots({}))
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(NotFoundError):
         await service.mark_enhancement_request_failed(
             enhancement_request_id=missing_enhancement_request_id, error="it broke"
         )
