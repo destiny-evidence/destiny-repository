@@ -90,13 +90,20 @@ class EnhancementService(GenericService):
             enhancement_request.id, request_status=EnhancementRequestStatus.ACCEPTED
         )
 
+    async def _get_enhancement_request(
+        self,
+        enhancement_request_id: UUID4,
+    ) -> EnhancementRequest | None:
+        """Get an enhancement request by request id."""
+        return await self.sql_uow.enhancement_requests.get_by_pk(enhancement_request_id)
+
     @unit_of_work
     async def get_enhancement_request(
         self,
         enhancement_request_id: UUID4,
     ) -> EnhancementRequest | None:
         """Get an enhancement request by request id."""
-        return await self.sql_uow.enhancement_requests.get_by_pk(enhancement_request_id)
+        return await self._get_enhancement_request(enhancement_request_id)
 
     @unit_of_work
     async def create_reference_enhancement(
@@ -105,11 +112,14 @@ class EnhancementService(GenericService):
         enhancement: EnhancementCreate,
     ) -> Enhancement:
         """Finalise the creation of an enhancement against a reference."""
-        enhancement_request = await self.get_enhancement_request(enhancement_request_id)
+        enhancement_request = await self._get_enhancement_request(
+            enhancement_request_id
+        )
 
         if not enhancement_request:
-            msg = "Enhancement request does not exist. This should not happen"
-            raise RuntimeError(msg)
+            raise NotFoundError(
+                detail=f"Enhancement request with id {enhancement_request_id} not found"
+            )
 
         created_enhancement = await self.add_enhancement(
             reference_id=enhancement_request.reference_id, enhancement=enhancement
