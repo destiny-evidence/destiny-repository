@@ -287,7 +287,7 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
     )
 
     enhancement_parameters: dict = Field(
-        default={},
+        default_factory=dict,
         description="Additional optional parameters to pass through to the robot.",
     )
 

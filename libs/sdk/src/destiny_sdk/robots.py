@@ -29,7 +29,7 @@ class RobotResult(BaseModel):
         description="Error the robot encountered while creating enhancement.",
     )
     enhancements: list[EnhancementCreate] = Field(
-        default=[], description="A list of enhancements to create."
+        default_factory=list, description="A list of enhancements to create."
     )
 
 
