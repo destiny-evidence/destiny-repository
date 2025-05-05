@@ -42,14 +42,14 @@ def unit_of_work(
     return AsyncSqlUnitOfWork(session=session)
 
 
-robots = Robots(known_robots=settings.known_robots)
-
-
 def reference_service(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
 ) -> ReferenceService:
     """Return the reference service using the provided unit of work dependencies."""
     return ReferenceService(sql_uow=sql_uow)
+
+
+robots = Robots(known_robots=settings.known_robots)
 
 
 def enhancement_service(
@@ -80,6 +80,16 @@ def choose_auth_strategy_writer() -> AuthMethod:
     )
 
 
+def choose_auth_strategy_robot() -> AuthMethod:
+    """Choose robot scope auth strategy for our authorization."""
+    return choose_auth_strategy(
+        environment=settings.env,
+        tenant_id=settings.azure_tenant_id,
+        application_id=settings.azure_application_id,
+        auth_scope=AuthScopes.ROBOT,
+    )
+
+
 reference_reader_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_reader,
 )
@@ -88,8 +98,12 @@ reference_writer_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_writer,
 )
 
+robot_auth = CachingStrategyAuth(selector=choose_auth_strategy_robot)
 
 router = APIRouter(prefix="/references", tags=["references"])
+robot_router = APIRouter(
+    prefix="/robot", tags=["robots"], dependencies=[Depends(robot_auth)]
+)
 
 
 @router.get("/{reference_id}/", dependencies=[Depends(reference_reader_auth)])
