@@ -245,7 +245,7 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
     database.
     """
 
-    __tablename__ = "enhancementrequest"
+    __tablename__ = "enhancement_request"
 
     reference_id: Mapped[uuid.UUID] = mapped_column(
         UUID, ForeignKey("reference.id"), nullable=False
