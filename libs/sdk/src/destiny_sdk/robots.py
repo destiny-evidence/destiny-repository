@@ -28,8 +28,8 @@ class RobotResult(BaseModel):
         default=None,
         description="Error the robot encountered while creating enhancement.",
     )
-    enhancements: list[EnhancementCreate] = Field(
-        default_factory=list, description="A list of enhancements to create."
+    enhancement: EnhancementCreate | None = Field(
+        default=None, description="An enhancement to create"
     )
 
 
