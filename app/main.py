@@ -6,10 +6,11 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, Request, Response, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, SDKToDomainError
 from app.core.logger import configure_logger, get_logger
 from app.domain.imports.routes import router as import_router
 from app.domain.references.routes import robot_router
@@ -92,11 +93,24 @@ async def logger_middleware(
 @app.exception_handler(NotFoundError)
 async def not_found_exception_handler(
     request: Request,  # noqa: ARG001 exception handlers required to take request as parameter
-    exc: NotFoundError,
+    exception: NotFoundError,
 ) -> JSONResponse:
     """Exception handler to return 404 responses when NotFoundError thrown."""
     return JSONResponse(
-        status_code=status.HTTP_404_NOT_FOUND, content={"detail": exc.detail}
+        status_code=status.HTTP_404_NOT_FOUND, content={"detail": exception.detail}
+    )
+
+
+@app.exception_handler(SDKToDomainError)
+async def sdk_to_domain_exception_handler(
+    request: Request,  # noqa: ARG001 exception handlers required to take request as parameter
+    exception: SDKToDomainError,
+) -> JSONResponse:
+    """Return unprocessible responsers when sdk -> domain converstion fails."""
+    # Probably want to reduce the amount of information we're giving back here.
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=jsonable_encoder({"detail": exception.errors}),
     )
 
 

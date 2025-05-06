@@ -212,24 +212,20 @@ async def check_enhancement_request_status(
 
 @robot_router.post("/enhancement/", status_code=status.HTTP_200_OK)
 async def fulfill_enhancement_request(
-    enhancement_create: RobotResult,
+    robot_result: RobotResult,
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
 ) -> EnhancementRequestStatusRead:
     """Create an enhancement against an existing enhancement request."""
-    if enhancement_create.error:
+    if robot_result.error:
         enhancement_request = await enhancement_service.mark_enhancement_request_failed(
-            enhancement_request_id=enhancement_create.request_id,
-            error=enhancement_create.error.message,
+            enhancement_request_id=robot_result.request_id,
+            error=robot_result.error.message,
         )
         return EnhancementRequestStatusRead(**enhancement_request.model_dump())
 
-    enhancement = Enhancement(
-        enhancement_type=enhancement_create.enhancement.content.enhancement_type,
-        **enhancement_create.enhancement.model_dump(),
-    )
-
     enhancement_request = await enhancement_service.create_reference_enhancement(
-        enhancement_request_id=enhancement_create.request_id, enhancement=enhancement
+        enhancement_request_id=robot_result.request_id,
+        enhancement=Enhancement.from_sdk(robot_result.enhancement),
     )
 
     return EnhancementRequestStatusRead(**enhancement_request.model_dump())

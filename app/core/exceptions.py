@@ -1,5 +1,7 @@
 """Custom exceptions for the app."""
 
+from typing import Any
+
 from fastapi import HTTPException
 
 
@@ -55,3 +57,29 @@ class TaskError(Exception):
 
         """
         super().__init__(detail, *args)
+
+
+class SDKToDomainError(Exception):
+    """
+    An exeption for when we fail to convert an sdk model to a domain model.
+
+    Exists to that we can capture a subset of pydantic validation errors.
+    """
+
+    def __init__(self, errors: list[Any]) -> None:
+        """
+        Initialize the SDKToDomainError exception.
+
+        Args:
+            errors (str): A sequence of errors, likely copied from ValidationError
+
+        """
+        super().__init__()
+        self.errors = errors
+
+    def __str__(self) -> str:
+        """Convert exception errors to string."""
+        message = f"{len(self.errors)} errors:\n"
+        for error in self.errors:
+            message += f"  {error}\n"
+        return message

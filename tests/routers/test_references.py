@@ -10,7 +10,7 @@ from pydantic import HttpUrl
 from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, SDKToDomainError
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
     EnhancementRequestStatus,
@@ -21,7 +21,7 @@ from app.domain.references.models.sql import EnhancementRequest as SQLEnhancemen
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.routes import robots
 from app.domain.robots import Robots
-from app.main import not_found_exception_handler
+from app.main import not_found_exception_handler, sdk_to_domain_exception_handler
 
 # Use the database session in all tests to set up the database manager.
 pytestmark = pytest.mark.usefixtures("session")
@@ -39,7 +39,12 @@ def app() -> FastAPI:
         FastAPI: FastAPI application instance.
 
     """
-    app = FastAPI(exception_handlers={NotFoundError: not_found_exception_handler})
+    app = FastAPI(
+        exception_handlers={
+            NotFoundError: not_found_exception_handler,
+            SDKToDomainError: sdk_to_domain_exception_handler,
+        }
+    )
 
     app.include_router(references.router)
     app.include_router(references.robot_router)
@@ -254,7 +259,7 @@ async def test_fulfill_enhancement_request_happy_path(
     assert response.json()["request_status"] == EnhancementRequestStatus.COMPLETED
 
 
-async def test_fulfill_enhancement_request_enhancement_failed(
+async def test_fulfill_enhancement_request_robot_has_errors(
     session: AsyncSession, client: AsyncClient
 ) -> None:
     """Test handling a robot that fails to fulfill an enhancement request."""
@@ -280,3 +285,46 @@ async def test_fulfill_enhancement_request_enhancement_failed(
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["request_status"] == EnhancementRequestStatus.FAILED
+
+
+async def test_fulfill_enhancement_request_bad_enhancement(
+    session: AsyncSession, client: AsyncClient
+) -> None:
+    """Test error of the Root enhancement can't be converted to our domain."""
+    reference = SQLReference(visibility=Visibility.RESTRICTED)
+    session.add(reference)
+    await session.commit()
+
+    enhancement_request = SQLEnhancementRequest(
+        reference_id=reference.id,
+        robot_id=uuid.uuid4(),
+        request_status=EnhancementRequestStatus.ACCEPTED,
+        enhancement_parameters={},
+    )
+    session.add(enhancement_request)
+    await session.commit()
+
+    robot_result = {
+        "request_id": f"{enhancement_request.id}",
+        "enhancement": {
+            "reference_id": f"{reference.id}",
+            "source": "robot",
+            "visibility": "I'M GARBAGE",
+            "processor_version": "0.0.1",
+            "content_version": f"{uuid.uuid4()}",
+            "content": {
+                "enhancement_type": EnhancementType.ANNOTATION,
+                "annotations": [
+                    {
+                        "annotation_type": "example:toy",
+                        "label": "toy",
+                        "data": {"toy": "Cabbage Patch Kid"},
+                    }
+                ],
+            },
+        },
+    }
+
+    response = await client.post("/robot/enhancement/", json=robot_result)
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY

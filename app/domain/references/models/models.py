@@ -6,15 +6,18 @@ from abc import ABC
 from enum import Enum, StrEnum
 from typing import Annotated, Literal, Self
 
+from destiny_sdk.core import EnhancementCreate as SDKEnhancementCreate
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
     HttpUrl,
     PastDate,
+    ValidationError,
     model_validator,
 )
 
+from app.core.exceptions import SDKToDomainError
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 from app.utils.regex import RE_DOI, RE_OPEN_ALEX_IDENTIFIER
 from app.utils.types import JSON
@@ -592,6 +595,20 @@ class Enhancement(EnhancementBase, SQLAttributeMixin):
         None,
         description="The reference this enhancement is associated with.",
     )
+
+    @classmethod
+    def from_sdk(
+        cls,
+        enhancement_create: SDKEnhancementCreate,
+    ) -> Self:
+        """Create an enhancement from the SDK model."""
+        try:
+            return cls(
+                enhancement_type=enhancement_create.content.enhancement_type,
+                **enhancement_create.model_dump(),
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
 
 
 class EnhancementCreate(EnhancementBase):
