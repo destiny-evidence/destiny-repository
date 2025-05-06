@@ -7,6 +7,7 @@ from enum import Enum, StrEnum
 from typing import Annotated, Literal, Self
 
 from destiny_sdk.core import EnhancementCreate as SDKEnhancementCreate
+from destiny_sdk.core import EnhancementRequestRead as SDKEnhancementRequestRead
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -298,6 +299,10 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
         None,
         description="Error encountered during the enhancement process.",
     )
+
+    def to_sdk(self) -> SDKEnhancementRequestRead:
+        """Convert an enhancement request to sdk schema."""
+        return SDKEnhancementRequestRead(**self.model_dump())
 
 
 class EnhancementContentBase(BaseModel, ABC):
