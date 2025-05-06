@@ -2,7 +2,7 @@
 
 import json
 
-from pydantic import UUID4, TypeAdapter, ValidationError
+from pydantic import UUID4, ValidationError
 
 from app.core.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
@@ -10,6 +10,7 @@ from app.domain.references.models.models import (
     EnhancementIn,
     EnhancementParseResult,
     ExternalIdentifier,
+    ExternalIdentifierAdapter,
     ExternalIdentifierParseResult,
     ExternalIdentifierSearch,
     GenericExternalIdentifier,
@@ -82,9 +83,9 @@ class ReferenceService(GenericService):
     ) -> ExternalIdentifierParseResult:
         """Parse and ingest an external identifier into the database."""
         try:
-            identifier: ExternalIdentifier = TypeAdapter(
-                ExternalIdentifier
-            ).validate_python(raw_identifier)
+            identifier: ExternalIdentifier = ExternalIdentifierAdapter.validate_python(
+                raw_identifier
+            )
             return ExternalIdentifierParseResult(external_identifier=identifier)
         except (TypeError, ValueError) as error:
             return ExternalIdentifierParseResult(
@@ -262,7 +263,7 @@ Identifier(s) are already mapped on an existing reference:
             Get the key for an identifier.
 
             Args:
-                - identifier (LinkedExternalIdentifier): The identifier to get the key for.
+                - identifier (LinkedExternalIdentifier)
 
             Returns:
                 - tuple[str, str | None]: The key for the identifier.

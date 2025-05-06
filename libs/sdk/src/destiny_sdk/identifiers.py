@@ -1,9 +1,9 @@
 """Identifier classes for the Destiny SDK."""
 
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field
 
 
 class ExternalIdentifierType(StrEnum):
@@ -30,7 +30,10 @@ class ExternalIdentifierType(StrEnum):
 class DOIIdentifier(BaseModel):
     """An external identifier representing a DOI."""
 
-    identifier: HttpUrl = Field(description="The DOI of the reference.")
+    identifier: str = Field(
+        description="The DOI of the reference.",
+        pattern=r"^10\.\d{4,9}/[-._;()/:a-zA-Z0-9%<>\[\]+&]+$",
+    )
     identifier_type: Literal[ExternalIdentifierType.DOI] = Field(
         ExternalIdentifierType.DOI, description="The type of identifier used."
     )
@@ -68,9 +71,10 @@ class OtherIdentifier(BaseModel):
     )
 
 
-ExternalIdentifier = (
-    DOIIdentifier | PubMedIdentifier | OpenAlexIdentifier | OtherIdentifier
-)
+ExternalIdentifier = Annotated[
+    DOIIdentifier | PubMedIdentifier | OpenAlexIdentifier | OtherIdentifier,
+    Field(discriminator="identifier_type"),
+]
 
 
 class LinkedExternalIdentifier(BaseModel):

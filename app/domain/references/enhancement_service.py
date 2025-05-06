@@ -1,7 +1,7 @@
 """The service for interacting with and managing robot requests."""
 
-import httpx
 import destiny_sdk
+import httpx
 from fastapi import status
 from pydantic import UUID4
 
@@ -54,7 +54,9 @@ class EnhancementService(GenericService):
 
         if not reference:
             raise NotFoundError(
-                detail=f"Reference with id {enhancement_request_in.reference_id} not found"
+                detail=f"""
+Reference with id {enhancement_request_in.reference_id} not found
+""",
             )
 
         robot_url = self.robots.get_robot_url(enhancement_request_in.robot_id)

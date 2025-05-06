@@ -18,6 +18,7 @@ from app.domain.references.models.models import (
 from app.domain.references.models.models import (
     EnhancementRequestStatus,
     EnhancementType,
+    ExternalIdentifierAdapter,
     ExternalIdentifierType,
     Visibility,
 )
@@ -154,11 +155,13 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
         return DomainExternalIdentifier(
             id=self.id,
             reference_id=self.reference_id,
-            identifier={
-                "identifier": self.identifier,
-                "identifier_type": self.identifier_type,
-                "other_identifier_name": self.other_identifier_name,
-            },
+            identifier=ExternalIdentifierAdapter.validate_python(
+                {
+                    "identifier": self.identifier,
+                    "identifier_type": self.identifier_type,
+                    "other_identifier_name": self.other_identifier_name,
+                }
+            ),
             reference=await self.reference.to_domain()
             if "reference" in (preload or [])
             else None,

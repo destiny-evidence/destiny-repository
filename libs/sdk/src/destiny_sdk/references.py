@@ -1,6 +1,6 @@
 """Reference classes for the Destiny SDK."""
 
-from pydantic import BaseModel, Field
+from pydantic import UUID4, BaseModel, Field
 
 from .enhancements import Enhancement, EnhancementIn
 from .identifiers import ExternalIdentifier
@@ -22,8 +22,11 @@ class _ReferenceBase(BaseModel):
 
 
 class Reference(_ReferenceBase):
-    """Core refernce class."""
+    """Core reference class."""
 
+    id: UUID4 = Field(
+        description="The ID of the reference",
+    )
     identifiers: list[ExternalIdentifier] | None = Field(
         None,
         description="A list of `ExternalIdentifiers` for the Reference",

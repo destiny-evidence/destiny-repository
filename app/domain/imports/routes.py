@@ -14,6 +14,7 @@ from app.core.auth import (
     SuccessAuth,
 )
 from app.core.config import get_settings
+from app.core.logger import get_logger
 from app.domain.imports.models.models import (
     ImportBatch,
     ImportBatchCreate,
@@ -29,6 +30,7 @@ from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 settings = get_settings()
+logger = get_logger()
 
 
 def unit_of_work(
@@ -123,6 +125,7 @@ async def enqueue_batch(
             detail=f"Import record with id {import_record_id} not found.",
         )
     import_batch = await import_service.register_batch(import_record_id, batch)
+    logger.error("Enqueueing import batch", extra={"import_batch_id": import_batch.id})
     await process_import_batch.kiq(
         import_batch_id=import_batch.id,
     )

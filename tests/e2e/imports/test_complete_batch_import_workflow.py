@@ -216,7 +216,10 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
 
         response = client.get(
             "/references/",
-            params={"identifier_type": "doi", "identifier": "10.1234/sampledoi"},
+            params={
+                "identifier_type": "doi",
+                "identifier": "10.1234/sampledoi",
+            },
         )
         assert response.status_code == 200
         reference = response.json()
@@ -338,7 +341,10 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         # Check that the number of enhancements has reduced, and that the number of identifiers has increased
         response = client.get(
             "/references/",
-            params={"identifier_type": "doi", "identifier": "10.1234/sampledoi"},
+            params={
+                "identifier_type": "doi",
+                "identifier": "10.1234/sampledoi",
+            },
         )
         assert response.status_code == 200
         reference = response.json()

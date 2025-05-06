@@ -4,8 +4,8 @@ from typing import Annotated
 
 from pydantic import UUID4, BaseModel, Field
 
-from destiny_sdk.references import Reference
 from destiny_sdk.enhancements import EnhancementIn
+from destiny_sdk.references import Reference
 
 
 class RobotError(BaseModel):
@@ -58,7 +58,7 @@ class _EnhancementRequestBase(BaseModel):
     )
 
     enhancement_parameters: dict | None = Field(
-        default=None, description="Infromation needed to create the enhancement. TBC."
+        default=None, description="Information needed to create the enhancement. TBC."
     )
 
 

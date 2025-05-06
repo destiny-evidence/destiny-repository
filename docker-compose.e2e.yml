@@ -31,7 +31,7 @@ services:
       ENV: "dev"
       AZURE_APPLICATION_ID: "dummy"
       AZURE_TENANT_ID: "dummy"
-    entrypoint: /venv/bin/alembic upgrade head
+    entrypoint: alembic upgrade head
   repository:
     build:
       context: .
@@ -44,12 +44,15 @@ services:
         condition: service_completed_successfully
       http:
         condition: service_started
+      rabbitmq:
+        condition: service_healthy
     volumes:
       - ./app:/src/app
     env_file:
       - .env
     environment:
       # Overwrite with docker network hostname
+      MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
       DB_URL: "postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"
     healthcheck:
       test:
@@ -62,6 +65,26 @@ services:
       interval: 2s
       timeout: 2s
       retries: 5
+
+  e2e-task-worker:
+    build:
+      context: .
+      args:
+        POETRY_INSTALL_DEV: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+    env_file:
+      - .env
+    environment:
+      - MESSAGE_BROKER_URL=amqp://guest:guest@rabbitmq:5672
+      - DB_URL=postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev
+    entrypoint: taskiq worker app.tasks:broker --fs-discover --reload
+
   e2e:
     build:
       context: .
@@ -74,6 +97,8 @@ services:
     depends_on:
       repository:
         condition: service_healthy
+      e2e-task-worker:
+        condition: service_started
     environment:
       DB_URL: "postgresql+psycopg://localuser:localpass@db:5432/destiny_dev"
       REPO_URL: "http://repository:8000"

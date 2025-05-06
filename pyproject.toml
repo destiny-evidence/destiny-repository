@@ -35,10 +35,10 @@ structlog = "^25.1.0"
 taskiq = {extras = ["reload"], version = "^0.11.16"}
 taskiq-aio-pika = "^0.4.1"
 uvloop = "^0.21.0"
-destiny-sdk = {path = "libs/sdk", develop = true}
 
 [tool.poetry.group.dev.dependencies]
 autodoc_pydantic = "^2.2.0"
+destiny-sdk = {develop = true, path = "libs/sdk"}
 msal = "^1.31.1"
 mypy = "^1.14.1"
 pre-commit = "^4.0.1"

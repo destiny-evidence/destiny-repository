@@ -1,5 +1,6 @@
 import uuid
 
+import destiny_sdk
 import pytest
 from fastapi import status
 from pydantic import HttpUrl
@@ -7,8 +8,7 @@ from pydantic import HttpUrl
 from app.core.exceptions import NotFoundError
 from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
-    AnnotationEnhancement,
-    EnhancementCreate,
+    EnhancementIn,
     EnhancementRequest,
     EnhancementRequestStatus,
     Reference,
@@ -58,14 +58,17 @@ async def test_add_enhancement_happy_path(fake_repository, fake_uow):
             ],
         },
     }
-    fake_enhancement_create = EnhancementCreate(**enhancement_data)
+    fake_enhancement_create = EnhancementIn(**enhancement_data)
     returned_enhancement = await service.add_enhancement(
         dummy_id, fake_enhancement_create
     )
     assert returned_enhancement.reference_id == dummy_id
     for k, v in enhancement_data.items():
         if k == "content":
-            assert returned_enhancement.content == AnnotationEnhancement(**v)
+            assert (
+                returned_enhancement.content
+                == destiny_sdk.enhancements.AnnotationEnhancement(**v)
+            )
         else:
             assert getattr(returned_enhancement, k, None) == v
 
@@ -77,7 +80,7 @@ async def test_add_enhancement_reference_not_found(fake_repository, fake_uow):
     uow = fake_uow(references=repo_refs, enhancements=repo_enh)
     service = EnhancementService(uow, robots=Robots({}))
     dummy_id = uuid.uuid4()
-    fake_enhancement_create = EnhancementCreate(
+    fake_enhancement_create = EnhancementIn(
         source="test_source",
         visibility="public",
         content_version=uuid.uuid4(),
@@ -135,7 +138,7 @@ async def test_trigger_reference_enhancement_request_happy_path(
     )
 
     enhancement_request = await service.request_reference_enhancement(
-        enhancement_request=received_enhancement_request
+        enhancement_request_in=received_enhancement_request
     )
 
     stored_request = fake_enhancement_requests.get_first_record()
@@ -183,7 +186,7 @@ async def test_trigger_reference_enhancement_request_rejected(
     )
 
     enhancement_request = await service.request_reference_enhancement(
-        enhancement_request=received_enhancement_request,
+        enhancement_request_in=received_enhancement_request,
     )
 
     stored_request = fake_enhancement_requests.get_first_record()
@@ -220,7 +223,7 @@ async def test_trigger_reference_enhancement_nonexistent_reference(
 
     with pytest.raises(NotFoundError):
         await service.request_reference_enhancement(
-            enhancement_request=received_enhancement_request,
+            enhancement_request_in=received_enhancement_request,
         )
 
 
@@ -253,7 +256,7 @@ async def test_trigger_reference_enhancement_nonexistent_robot(
 
     with pytest.raises(NotFoundError):
         await service.request_reference_enhancement(
-            enhancement_request=received_enhancement_request,
+            enhancement_request_in=received_enhancement_request,
         )
 
 
@@ -318,7 +321,7 @@ async def test_create_reference_enhancement_happy_path(fake_repository, fake_uow
 
     enhancement = await service.create_reference_enhancement(
         enhancement_request_id=enhancement_request_id,
-        enhancement=EnhancementCreate(**ENHANCEMENT_DATA),
+        enhancement=EnhancementIn(**ENHANCEMENT_DATA),
     )
 
     enhancement_request = await service.get_enhancement_request(enhancement_request_id)
@@ -336,7 +339,7 @@ async def test_create_reference_enhancement_missing_request(fake_repository, fak
     with pytest.raises(NotFoundError):
         await service.create_reference_enhancement(
             enhancement_request_id=fake_enhancement_request_id,
-            enhancement=EnhancementCreate(**ENHANCEMENT_DATA),
+            enhancement=EnhancementIn(**ENHANCEMENT_DATA),
         )
 
 

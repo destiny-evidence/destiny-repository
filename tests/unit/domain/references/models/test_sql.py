@@ -1,10 +1,10 @@
 import json
 import uuid
 
+import destiny_sdk
 import pytest
 
 from app.domain.references.models.models import (
-    AnnotationEnhancement,
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifierType,
@@ -28,15 +28,24 @@ class DummyDomainReference:
         self.enhancements = enhancements
 
 
+class DummyExternalIdentifier:
+    def __init__(self, identifier_type, identifier, other_identifier_name=None):
+        self.identifier_type = identifier_type
+        self.identifier = identifier
+        self.other_identifier_name = other_identifier_name
+
+
 class DummyDomainExternalIdentifier:
     def __init__(
         self, id, reference_id, identifier_type, identifier, other_identifier_name=None
     ):
         self.id = id
         self.reference_id = reference_id
-        self.identifier_type = identifier_type
-        self.identifier = identifier
-        self.other_identifier_name = other_identifier_name
+        self.identifier = DummyExternalIdentifier(
+            identifier_type=identifier_type,
+            identifier=identifier,
+            other_identifier_name=other_identifier_name,
+        )
         # For preload test on ExternalIdentifier.to_domain
         self.reference = None
 
@@ -135,8 +144,8 @@ async def test_external_identifier_from_and_to_domain():
     sql_ext = await ExternalIdentifier.from_domain(dummy_ext)
     assert sql_ext.id == dummy_ext.id
     assert sql_ext.reference_id == dummy_ext.reference_id
-    assert sql_ext.identifier_type == dummy_ext.identifier_type
-    assert sql_ext.identifier == dummy_ext.identifier
+    assert sql_ext.identifier_type == dummy_ext.identifier.identifier_type
+    assert sql_ext.identifier == dummy_ext.identifier.identifier
 
     # For preload test, assign a dummy SQL Reference to the relationship
     dummy_sql_ref = Reference(id=ref_id, visibility=Visibility.RESTRICTED)
@@ -146,8 +155,8 @@ async def test_external_identifier_from_and_to_domain():
     domain_ext = await sql_ext.to_domain(preload=["reference"])
     assert domain_ext.id == dummy_ext.id
     assert domain_ext.reference_id == dummy_ext.reference_id
-    assert domain_ext.identifier_type == dummy_ext.identifier_type
-    assert domain_ext.identifier == dummy_ext.identifier
+    assert domain_ext.identifier.identifier_type == dummy_ext.identifier.identifier_type
+    assert domain_ext.identifier.identifier == dummy_ext.identifier.identifier
     # Verify that the preloaded reference has the same id and visibility
     assert domain_ext.reference.id == dummy_sql_ref.id
     assert domain_ext.reference.visibility == dummy_sql_ref.visibility
@@ -198,7 +207,9 @@ async def test_enhancement_from_and_to_domain():
     assert domain_enh.processor_version == dummy_enh.processor_version
     assert domain_enh.content_version == dummy_enh.content_version
     # Verify that content was loaded correctly
-    assert domain_enh.content == AnnotationEnhancement(**json.loads(sql_enh.content))
+    assert domain_enh.content == destiny_sdk.enhancements.AnnotationEnhancement(
+        **json.loads(sql_enh.content)
+    )
     # Verify that the preloaded reference was converted
     assert domain_enh.reference.id == dummy_sql_ref.id
     assert domain_enh.reference.visibility == dummy_sql_ref.visibility

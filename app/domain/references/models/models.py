@@ -5,6 +5,11 @@ from enum import StrEnum
 from typing import Self
 
 import destiny_sdk
+
+# Explicitly import these models for easy use in the rest of the codebase
+from destiny_sdk.enhancements import EnhancementType
+from destiny_sdk.identifiers import ExternalIdentifier, ExternalIdentifierType
+from destiny_sdk.visibility import Visibility
 from pydantic import (
     BaseModel,
     Field,
@@ -13,11 +18,9 @@ from pydantic import (
 
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 
-"""Alias the SDK models for easy use and to allow for easier refactoring."""
-EnhancementType = destiny_sdk.enhancements.EnhancementType
-ExternalIdentifierType = destiny_sdk.identifiers.ExternalIdentifierType
-ExternalIdentifier = destiny_sdk.identifiers.ExternalIdentifier
-Visibility = destiny_sdk.visibility.Visibility
+ExternalIdentifierAdapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
+    ExternalIdentifier,
+)
 
 
 class EnhancementRequestStatus(StrEnum):
@@ -47,11 +50,11 @@ class ReferenceIn(DomainBaseModel):
         description="The level of visibility of the reference",
     )
     identifiers: list[ExternalIdentifier] | None = Field(
-        None,
+        default=None,
         description="A list of `ExternalIdentifiers` for the Reference",
     )
-    enhancements: list["Enhancement"] | None = Field(
-        None,
+    enhancements: list["EnhancementIn"] | None = Field(
+        default=None,
         description="A list of enhancements for the reference",
     )
 
@@ -60,7 +63,7 @@ class Reference(DomainBaseModel, SQLAttributeMixin):
     """Core reference model with database attributes included."""
 
     visibility: Visibility = Field(
-        Visibility.PUBLIC,
+        default=Visibility.PUBLIC,
         description="The level of visibility of the reference",
     )
     identifiers: list["LinkedExternalIdentifier"] | None = Field(
@@ -72,20 +75,11 @@ class Reference(DomainBaseModel, SQLAttributeMixin):
         description="A list of enhancements for the reference",
     )
 
-    @classmethod
-    def from_sdk(
-        cls,
-        reference: destiny_sdk.references.Reference,
-    ) -> Self:
-        """Create a reference from the SDK model."""
-        return cls(
-            **reference.model_dump(),
-        )
-
     def to_sdk(self) -> destiny_sdk.references.Reference:
         """Convert the reference to the SDK model."""
         return destiny_sdk.references.Reference(
-            **self.model_dump(),
+            id=self.id,
+            visibility=self.visibility,
             identifiers=[
                 identifier.to_sdk().identifier for identifier in self.identifiers or []
             ],
@@ -185,12 +179,12 @@ class ExternalIdentifierParseResult(BaseModel):
     """Result of an attempt to parse an external identifier."""
 
     external_identifier: ExternalIdentifier | None = Field(
-        None,
+        default=None,
         description="The external identifier to create",
         discriminator="identifier_type",
     )
     error: str | None = Field(
-        None,
+        default=None,
         description="Error encountered during the parsing process",
     )
 
@@ -212,7 +206,7 @@ class EnhancementBase(DomainBaseModel):
     )
     enhancement_type: EnhancementType = Field(description="The type of enhancement.")
     processor_version: str | None = Field(
-        None,
+        default=None,
         description="The version of the processor that generated the content.",
     )
     content_version: uuid.UUID = Field(
@@ -324,12 +318,12 @@ class EnhancementRequest(EnhancementRequestBase, SQLAttributeMixin):
 class EnhancementParseResult(BaseModel):
     """Result of an attempt to parse an enhancement."""
 
-    enhancement: destiny_sdk.enhancements.EnhancementIn | None = Field(
-        None,
+    enhancement: EnhancementIn | None = Field(
+        default=None,
         description="The enhancement to create",
     )
     error: str | None = Field(
-        None,
+        default=None,
         description="Error encountered during the parsing process",
     )
 
@@ -346,7 +340,7 @@ class ReferenceCreateResult(BaseModel):
     """
 
     reference: Reference | None = Field(
-        None,
+        default=None,
         description="""
     The created reference.
     If None, no reference was created.
