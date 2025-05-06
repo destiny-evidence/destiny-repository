@@ -77,6 +77,40 @@ async def client(app: FastAPI) -> AsyncGenerator[AsyncClient]:
         yield client
 
 
+async def add_reference(session: AsyncSession) -> SQLReference:
+    """Add a reference to the database."""
+    reference = SQLReference(visibility=Visibility.RESTRICTED)
+    session.add(reference)
+    await session.commit()
+    return reference
+
+
+def robot_result_enhancement(
+    enhancement_request_id: uuid.UUID, reference_id: uuid.UUID
+) -> dict:
+    """Construct a RobotResult for creating ehancments."""
+    return {
+        "request_id": f"{enhancement_request_id}",
+        "enhancement": {
+            "reference_id": f"{reference_id}",
+            "source": "robot",
+            "visibility": Visibility.RESTRICTED,
+            "processor_version": "0.0.1",
+            "content_version": f"{uuid.uuid4()}",
+            "content": {
+                "enhancement_type": EnhancementType.ANNOTATION,
+                "annotations": [
+                    {
+                        "annotation_type": "example:toy",
+                        "label": "toy",
+                        "data": {"toy": "Cabbage Patch Kid"},
+                    }
+                ],
+            },
+        },
+    }
+
+
 async def test_register_reference(session: AsyncSession, client: AsyncClient) -> None:
     """Test registering a reference."""
     response = await client.post("/references/")
@@ -91,9 +125,7 @@ async def test_request_reference_enhancement_happy_path(
 ) -> None:
     """Test requesting an existing reference be enhanced."""
     # Create a reference to request enhancement against
-    reference = SQLReference(visibility=Visibility.RESTRICTED)
-    session.add(reference)
-    await session.commit()
+    reference = await add_reference(session)
 
     # Mock the robot response
     httpx_mock.add_response(
@@ -120,9 +152,7 @@ async def test_request_reference_enhancement_robot_rejects_request(
 ) -> None:
     """Test requesting enhancement to a robot that rejects the request."""
     # Create a reference to request enhancement against
-    reference = SQLReference(visibility=Visibility.RESTRICTED)
-    session.add(reference)
-    await session.commit()
+    reference = await add_reference(session)
 
     # Mock the robot response
     httpx_mock.add_response(
@@ -157,9 +187,7 @@ async def test_not_found_exception_handler_returns_response_with_404(
     """
     unknown_robot_id = uuid.uuid4()
 
-    reference = SQLReference(visibility=Visibility.RESTRICTED)
-    session.add(reference)
-    await session.commit()
+    reference = await add_reference(session)
 
     enhancement_request_create = {
         "reference_id": f"{reference.id}",
@@ -199,9 +227,7 @@ async def test_check_enhancement_request_status_happy_path(
     session: AsyncSession, client: AsyncClient
 ) -> None:
     """Test checking the status of an enhancement request."""
-    reference = SQLReference(visibility=Visibility.RESTRICTED)
-    session.add(reference)
-    await session.commit()
+    reference = await add_reference(session)
 
     enhancement_request = SQLEnhancementRequest(
         reference_id=reference.id,
@@ -221,12 +247,11 @@ async def test_check_enhancement_request_status_happy_path(
 
 
 async def test_fulfill_enhancement_request_happy_path(
-    session: AsyncSession, client: AsyncClient
+    session: AsyncSession,
+    client: AsyncClient,
 ) -> None:
     """Test creating a reference from a robot."""
-    reference = SQLReference(visibility=Visibility.RESTRICTED)
-    session.add(reference)
-    await session.commit()
+    reference = await add_reference(session)
 
     enhancement_request = SQLEnhancementRequest(
         reference_id=reference.id,
@@ -237,26 +262,7 @@ async def test_fulfill_enhancement_request_happy_path(
     session.add(enhancement_request)
     await session.commit()
 
-    robot_result = {
-        "request_id": f"{enhancement_request.id}",
-        "enhancement": {
-            "reference_id": f"{reference.id}",
-            "source": "robot",
-            "visibility": Visibility.RESTRICTED,
-            "processor_version": "0.0.1",
-            "content_version": f"{uuid.uuid4()}",
-            "content": {
-                "enhancement_type": EnhancementType.ANNOTATION,
-                "annotations": [
-                    {
-                        "annotation_type": "example:toy",
-                        "label": "toy",
-                        "data": {"toy": "Cabbage Patch Kid"},
-                    }
-                ],
-            },
-        },
-    }
+    robot_result = robot_result_enhancement(enhancement_request.id, reference.id)
 
     response = await client.post("/robot/enhancement/", json=robot_result)
 
@@ -268,9 +274,7 @@ async def test_fulfill_enhancement_request_robot_has_errors(
     session: AsyncSession, client: AsyncClient
 ) -> None:
     """Test handling a robot that fails to fulfill an enhancement request."""
-    reference = SQLReference(visibility=Visibility.RESTRICTED)
-    session.add(reference)
-    await session.commit()
+    reference = await add_reference(session)
 
     enhancement_request = SQLEnhancementRequest(
         reference_id=reference.id,
@@ -293,14 +297,12 @@ async def test_fulfill_enhancement_request_robot_has_errors(
 
 
 async def test_wrong_reference_exception_handler_returns_response_with_400(
-    session: AsyncSession, client: AsyncClient
+    session: AsyncSession,
+    client: AsyncClient,
 ) -> None:
     """Test handling a robot that fails to fulfill an enhancement request."""
-    reference = SQLReference(visibility=Visibility.RESTRICTED)
-    different_reference = SQLReference(visibility=Visibility.RESTRICTED)
-    session.add(reference)
-    session.add(different_reference)
-    await session.commit()
+    reference = await add_reference(session)
+    different_reference = await add_reference(session)
 
     enhancement_request = SQLEnhancementRequest(
         reference_id=reference.id,
@@ -311,26 +313,9 @@ async def test_wrong_reference_exception_handler_returns_response_with_400(
     session.add(enhancement_request)
     await session.commit()
 
-    robot_result = {
-        "request_id": f"{enhancement_request.id}",
-        "enhancement": {
-            "reference_id": f"{different_reference.id}",
-            "source": "robot",
-            "visibility": Visibility.RESTRICTED,
-            "processor_version": "0.0.1",
-            "content_version": f"{uuid.uuid4()}",
-            "content": {
-                "enhancement_type": EnhancementType.ANNOTATION,
-                "annotations": [
-                    {
-                        "annotation_type": "example:toy",
-                        "label": "toy",
-                        "data": {"toy": "Cabbage Patch Kid"},
-                    }
-                ],
-            },
-        },
-    }
+    robot_result = robot_result_enhancement(
+        enhancement_request.id, different_reference.id
+    )
 
     response = await client.post("/robot/enhancement/", json=robot_result)
 
