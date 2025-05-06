@@ -32,6 +32,7 @@ ENHANCEMENT_DATA = {
     },
 }
 
+
 @pytest.mark.asyncio
 async def test_trigger_reference_enhancement_request_happy_path(
     fake_repository, fake_uow, httpx_mock
@@ -259,6 +260,7 @@ async def test_create_reference_enhancement_happy_path(fake_repository, fake_uow
     assert enhancement_request.request_status == EnhancementRequestStatus.COMPLETED
     assert created_enhancement.source == ENHANCEMENT_DATA.get("source")
 
+
 @pytest.mark.asyncio
 async def test_create_reference_enhancement_reference_not_found(
     fake_repository, fake_uow
@@ -287,10 +289,10 @@ async def test_create_reference_enhancement_reference_not_found(
         await service.create_reference_enhancement(
             enhancement_request_id=existing_enhancement_request.id,
             enhancement=Enhancement(
-                reference_id=non_existent_reference_id,
-                **ENHANCEMENT_DATA
+                reference_id=non_existent_reference_id, **ENHANCEMENT_DATA
             ),
         )
+
 
 @pytest.mark.asyncio
 async def test_create_reference_enhancement_enhancement_request_not_found(
@@ -311,6 +313,7 @@ async def test_create_reference_enhancement_enhancement_request_not_found(
             enhancement_request_id=uuid.uuid4(),
             enhancement=Enhancement(reference_id=reference_id, **ENHANCEMENT_DATA),
         )
+
 
 @pytest.mark.asyncio
 async def test_mark_enhancement_request_as_failed(fake_repository, fake_uow):
