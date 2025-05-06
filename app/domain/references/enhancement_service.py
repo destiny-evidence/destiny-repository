@@ -1,8 +1,7 @@
 """The service for interacting with and managing robot requests."""
 
 import httpx
-from destiny_sdk.core import Reference as RobotReference
-from destiny_sdk.robots import RobotRequest
+import destiny_sdk
 from fastapi import status
 from pydantic import UUID4
 
@@ -11,6 +10,7 @@ from app.domain.references.models.models import (
     Enhancement,
     EnhancementIn,
     EnhancementRequest,
+    EnhancementRequestIn,
     EnhancementRequestStatus,
 )
 from app.domain.robots import Robots
@@ -45,32 +45,32 @@ class EnhancementService(GenericService):
 
     @unit_of_work
     async def request_reference_enhancement(
-        self, enhancement_request: EnhancementRequest
+        self, enhancement_request_in: EnhancementRequestIn
     ) -> EnhancementRequest:
         """Create an enhancement request and send it to robot."""
         reference = await self.sql_uow.references.get_by_pk(
-            enhancement_request.reference_id, preload=["identifiers", "enhancements"]
+            enhancement_request_in.reference_id, preload=["identifiers", "enhancements"]
         )
 
         if not reference:
             raise NotFoundError(
-                detail=f"Reference with id {enhancement_request.reference_id} not found"
+                detail=f"Reference with id {enhancement_request_in.reference_id} not found"
             )
 
-        robot_url = self.robots.get_robot_url(enhancement_request.robot_id)
+        robot_url = self.robots.get_robot_url(enhancement_request_in.robot_id)
 
         if not robot_url:
             raise NotFoundError(
-                detail=f"Robot with id {enhancement_request.robot_id} not found.",
+                detail=f"Robot with id {enhancement_request_in.robot_id} not found.",
             )
 
         enhancement_request = await self.sql_uow.enhancement_requests.add(
-            enhancement_request
+            EnhancementRequest(**enhancement_request_in.model_dump())
         )
 
-        robot_request = RobotRequest(
+        robot_request = destiny_sdk.robots.RobotRequest(
             id=enhancement_request.id,
-            reference=RobotReference(**reference.model_dump()),
+            reference=destiny_sdk.references.Reference(**reference.model_dump()),
             extra_fields=enhancement_request.enhancement_parameters,
         )
 
@@ -90,13 +90,20 @@ class EnhancementService(GenericService):
             enhancement_request.id, request_status=EnhancementRequestStatus.ACCEPTED
         )
 
+    async def _get_enhancement_request(
+        self,
+        enhancement_request_id: UUID4,
+    ) -> EnhancementRequest | None:
+        """Get an enhancement request by request id."""
+        return await self.sql_uow.enhancement_requests.get_by_pk(enhancement_request_id)
+
     @unit_of_work
     async def get_enhancement_request(
         self,
         enhancement_request_id: UUID4,
     ) -> EnhancementRequest | None:
         """Get an enhancement request by request id."""
-        return await self.sql_uow.enhancement_requests.get_by_pk(enhancement_request_id)
+        return await self._get_enhancement_request(enhancement_request_id)
 
     @unit_of_work
     async def create_reference_enhancement(
@@ -105,11 +112,14 @@ class EnhancementService(GenericService):
         enhancement: EnhancementIn,
     ) -> Enhancement:
         """Finalise the creation of an enhancement against a reference."""
-        enhancement_request = await self.get_enhancement_request(enhancement_request_id)
+        enhancement_request = await self._get_enhancement_request(
+            enhancement_request_id
+        )
 
         if not enhancement_request:
-            msg = "Enhancement request does not exist. This should not happen"
-            raise RuntimeError(msg)
+            raise NotFoundError(
+                detail=f"Enhancement request with id {enhancement_request_id} not found"
+            )
 
         created_enhancement = await self.add_enhancement(
             reference_id=enhancement_request.reference_id, enhancement=enhancement

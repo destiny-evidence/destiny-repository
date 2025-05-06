@@ -4,7 +4,8 @@ from typing import Annotated
 
 from pydantic import UUID4, BaseModel, Field
 
-from destiny_sdk.core import EnhancementCreate, Reference
+from destiny_sdk.references import Reference
+from destiny_sdk.enhancements import EnhancementIn
 
 
 class RobotError(BaseModel):
@@ -28,8 +29,8 @@ class RobotResult(BaseModel):
         default=None,
         description="Error the robot encountered while creating enhancement.",
     )
-    enhancements: list[EnhancementCreate] = Field(
-        default=[], description="A list of enhancements to create."
+    enhancement: EnhancementIn | None = Field(
+        default=None, description="An enhancement to create"
     )
 
 
@@ -38,7 +39,9 @@ class RobotRequest(BaseModel):
 
     id: UUID4
     reference: Reference  # Reference with selected enhancements
-    extra_fields: dict  # We need something to pass through the signed url for uploads
+    extra_fields: (
+        dict | None
+    )  # We need something to pass through the signed url for uploads
 
 
 class _EnhancementRequestBase(BaseModel):

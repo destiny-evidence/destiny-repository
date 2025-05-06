@@ -64,11 +64,11 @@ class Reference(DomainBaseModel, SQLAttributeMixin):
         description="The level of visibility of the reference",
     )
     identifiers: list["LinkedExternalIdentifier"] | None = Field(
-        None,
+        default=None,
         description="A list of `LinkedExternalIdentifiers` for the Reference",
     )
     enhancements: list["Enhancement"] | None = Field(
-        None,
+        default=None,
         description="A list of enhancements for the reference",
     )
 
@@ -86,7 +86,9 @@ class Reference(DomainBaseModel, SQLAttributeMixin):
         """Convert the reference to the SDK model."""
         return destiny_sdk.references.Reference(
             **self.model_dump(),
-            identifiers=[identifier.to_sdk() for identifier in self.identifiers or []],
+            identifiers=[
+                identifier.to_sdk().identifier for identifier in self.identifiers or []
+            ],
             enhancements=[
                 enhancement.to_sdk() for enhancement in self.enhancements or []
             ],
@@ -125,7 +127,7 @@ class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
         description="The ID of the reference this identifier identifies."
     )
     reference: Reference | None = Field(
-        None,
+        default=None,
         description="The reference this identifier identifies.",
     )
 
@@ -263,20 +265,43 @@ class Enhancement(EnhancementBase, SQLAttributeMixin):
         )
 
 
-class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
-    """Request to add an enhancement to a specific reference."""
+class EnhancementRequestBase(DomainBaseModel):
+    """Base enhancement request class."""
 
     reference_id: uuid.UUID = Field(
         description="The ID of the reference this enhancement is associated with."
     )
 
+    robot_id: uuid.UUID = Field(
+        description="The robot to request the enhancement from."
+    )
+
+    enhancement_parameters: dict | None = Field(
+        default=None,
+        description="Additional optional parameters to pass through to the robot.",
+    )
+
+
+class EnhancementRequestIn(EnhancementRequestBase):
+    """The model for requesting an enhancement on specific reference."""
+
+    @classmethod
+    def from_sdk(
+        cls,
+        enhancement_request: destiny_sdk.robots.EnhancementRequestIn,
+    ) -> Self:
+        """Create an enhancement request from the SDK model."""
+        return cls(
+            **enhancement_request.model_dump(),
+        )
+
+
+class EnhancementRequest(EnhancementRequestBase, SQLAttributeMixin):
+    """Request to add an enhancement to a specific reference."""
+
     reference: Reference | None = Field(
         None,
         description="The reference this enhancement is associated with.",
-    )
-
-    robot_id: uuid.UUID = Field(
-        description="The robot to request the enhancement from."
     )
 
     request_status: EnhancementRequestStatus = Field(
@@ -284,25 +309,10 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
         description="The status of the request to create an enhancement.",
     )
 
-    enhancement_parameters: dict = Field(
-        default={},
-        description="Additional optional parameters to pass through to the robot.",
-    )
-
     error: str | None = Field(
         None,
         description="Error encountered during the enhancement process.",
     )
-
-    @classmethod
-    def from_sdk(
-        cls,
-        enhancement_request: destiny_sdk.robots.EnhancementRequest,
-    ) -> Self:
-        """Create an enhancement request from the SDK model."""
-        return cls(
-            **enhancement_request.model_dump(),
-        )
 
     def to_sdk(self) -> destiny_sdk.robots.EnhancementRequest:
         """Convert the enhancement request to the SDK model."""
