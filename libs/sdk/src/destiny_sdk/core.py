@@ -13,6 +13,27 @@ from pydantic import (
 )
 
 
+class Visibility(StrEnum):
+    """
+    What visibility an enhancement should have.
+
+    This is used to manage whether information should be publicly available or
+    restricted (generally due to copyright constraints from publishers).
+
+    TODO: Implement data governance layer to manage this.
+
+    **Allowed values**:
+
+    - `public`: Visible to the general public without authentication.
+    - `restricted`: Requires authentication to be visible.
+    - `hidden`: Is not visible, but may be passed to data mining processes.
+    """
+
+    PUBLIC = "public"
+    RESTRICTED = "restricted"
+    HIDDEN = "hidden"
+
+
 class ExternalIdentifierBase(BaseModel):
     """The base class for external identifiers."""
 
@@ -242,7 +263,7 @@ class EnhancementBase(BaseModel):
     """The base model for Enhancements, excluding creation-time fields."""
 
     source: str
-    visibility: str
+    visibility: Visibility
     processor_version: str
     content_version: str
     content: EnhancementContent
