@@ -39,3 +39,38 @@ class RobotRequest(BaseModel):
     id: UUID4
     reference: Reference  # Reference with selected enhancements
     extra_fields: dict  # We need something to pass through the signed url for uploads
+
+
+class _EnhancementRequestBase(BaseModel):
+    """
+    Base enhancement request class.
+
+    An enhancement request is a request to create an enhancement on a reference.
+    It contains the reference and the robot to be used to create the enhancement.
+    """
+
+    reference_id: UUID4 = Field(description="The ID of the reference to be enhanced.")
+    robot_id: UUID4 = Field(
+        description="The robot to be used to create the enhancement."
+    )
+
+    enhancement_parameters: dict | None = Field(
+        default=None, description="Infromation needed to create the enhancement. TBC."
+    )
+
+
+class EnhancementRequestIn(_EnhancementRequestBase):
+    """The model for requesting an enhancement on specific reference."""
+
+
+class EnhancementRequest(_EnhancementRequestBase):
+    """Core enhancement request class."""
+
+    id: UUID4
+    request_status: str = Field(
+        description="The status of the request to create an enhancement",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error encountered during the enhancement process",
+    )

@@ -11,10 +11,10 @@ from app.domain.references.models.models import (
     EnhancementRequest as DomainEnhancementRequest,
 )
 from app.domain.references.models.models import (
-    ExternalIdentifier as DomainExternalIdentifier,
+    ExternalIdentifierType,
 )
 from app.domain.references.models.models import (
-    ExternalIdentifierType,
+    LinkedExternalIdentifier as DomainExternalIdentifier,
 )
 from app.domain.references.models.models import Reference as DomainReference
 from app.domain.references.models.sql import Enhancement as SQLEnhancement
@@ -135,10 +135,10 @@ class EnhancementRequestRepositoryBase(
 
 
 class EnhancementRequestSQLRepository(
-    GenericAsyncSqlRepository[DomainEnhancementRequest, SQLEnhancement],
+    GenericAsyncSqlRepository[DomainEnhancementRequest, SQLEnhancementRequest],
     EnhancementRequestRepositoryBase,
 ):
-    """Concrete implementation of a repository for identifiers using SQLAlchemy."""
+    """Concrete implementation of a repository for enhancement requests."""
 
     def __init__(self, session: AsyncSession) -> None:
         """Initialize the repository with the database session."""

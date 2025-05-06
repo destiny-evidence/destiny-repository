@@ -9,7 +9,7 @@ from pydantic import UUID4
 from app.core.exceptions import NotFoundError
 from app.domain.references.models.models import (
     Enhancement,
-    EnhancementCreate,
+    EnhancementIn,
     EnhancementRequest,
     EnhancementRequestStatus,
 )
@@ -30,7 +30,7 @@ class EnhancementService(GenericService):
     async def add_enhancement(
         self,
         reference_id: UUID4,
-        enhancement: EnhancementCreate,
+        enhancement: EnhancementIn,
     ) -> Enhancement:
         """Add an enhancement to a reference."""
         reference = await self.sql_uow.references.get_by_pk(reference_id)
@@ -102,7 +102,7 @@ class EnhancementService(GenericService):
     async def create_reference_enhancement(
         self,
         enhancement_request_id: UUID4,
-        enhancement: EnhancementCreate,
+        enhancement: EnhancementIn,
     ) -> Enhancement:
         """Finalise the creation of an enhancement against a reference."""
         enhancement_request = await self.get_enhancement_request(enhancement_request_id)

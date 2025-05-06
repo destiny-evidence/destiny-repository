@@ -2,22 +2,23 @@
 
 import json
 
-from pydantic import UUID4, ValidationError
+from pydantic import UUID4, TypeAdapter, ValidationError
 
 from app.core.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
-    EnhancementCreate,
+    EnhancementIn,
     EnhancementParseResult,
     ExternalIdentifier,
-    ExternalIdentifierCreate,
     ExternalIdentifierParseResult,
     ExternalIdentifierSearch,
+    GenericExternalIdentifier,
+    LinkedExternalIdentifier,
     Reference,
-    ReferenceCreate,
-    ReferenceCreateInputValidator,
     ReferenceCreateResult,
+    ReferenceIn,
 )
+from app.domain.references.models.validators import ReferenceFileInputValidator
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 from app.utils.types import JSON
@@ -64,15 +65,15 @@ class ReferenceService(GenericService):
 
     @unit_of_work
     async def add_identifier(
-        self, reference_id: UUID4, identifier: ExternalIdentifierCreate
-    ) -> ExternalIdentifier:
+        self, reference_id: UUID4, identifier: ExternalIdentifier
+    ) -> LinkedExternalIdentifier:
         """Register an import, persisting it to the database."""
         reference = await self.sql_uow.references.get_by_pk(reference_id)
         if not reference:
             raise RuntimeError
-        db_identifier = ExternalIdentifier(
+        db_identifier = LinkedExternalIdentifier(
             reference_id=reference.id,
-            **identifier.model_dump(),
+            identifier=identifier,
         )
         return await self.sql_uow.external_identifiers.add(db_identifier)
 
@@ -81,7 +82,9 @@ class ReferenceService(GenericService):
     ) -> ExternalIdentifierParseResult:
         """Parse and ingest an external identifier into the database."""
         try:
-            identifier = ExternalIdentifierCreate.model_validate(raw_identifier)
+            identifier: ExternalIdentifier = TypeAdapter(
+                ExternalIdentifier
+            ).validate_python(raw_identifier)
             return ExternalIdentifierParseResult(external_identifier=identifier)
         except (TypeError, ValueError) as error:
             return ExternalIdentifierParseResult(
@@ -114,7 +117,7 @@ Identifier {entry_ref}:
     ) -> EnhancementParseResult:
         """Parse and ingest an enhancement into the database."""
         try:
-            enhancement = EnhancementCreate.model_validate(raw_enhancement)
+            enhancement = EnhancementIn.model_validate(raw_enhancement)
             return EnhancementParseResult(enhancement=enhancement)
         except (TypeError, ValueError) as error:
             return EnhancementParseResult(
@@ -141,14 +144,14 @@ Enhancement {entry_ref}:
 
     async def detect_and_handle_collision(
         self,
-        reference: ReferenceCreate,
+        reference: ReferenceIn,
         collision_strategy: CollisionStrategy,
     ) -> Reference | str | None:
         """
         Detect and handle a collision with an existing reference.
 
         Args:
-            - reference (ReferenceCreate): The incoming reference.
+            - reference (Reference): The incoming reference.
             - collision_strategy (CollisionStrategy): The strategy to use for
                 handling collisions.
 
@@ -162,12 +165,15 @@ Enhancement {entry_ref}:
             raise RuntimeError(msg)
 
         collided_identifiers = await self._fetch_collided_identifiers(
-            reference.identifiers
+            [
+                GenericExternalIdentifier.from_specific(identifier)
+                for identifier in reference.identifiers
+            ]
         )
 
         if not collided_identifiers:
             # No collision detected
-            return Reference.from_create(reference)
+            return Reference.from_file_input(reference)
 
         if collision_strategy == CollisionStrategy.DISCARD:
             return None
@@ -189,7 +195,7 @@ Identifier(s) are already mapped on an existing reference:
             msg = "Existing reference not found in database. This should not happen."
             raise RuntimeError(msg)
 
-        incoming_reference = Reference.from_create(reference, existing_reference.id)
+        incoming_reference = Reference.from_file_input(reference, existing_reference.id)
 
         # Merge collision strategies
         logger.info(
@@ -204,16 +210,16 @@ Identifier(s) are already mapped on an existing reference:
         )
 
     async def _fetch_collided_identifiers(
-        self, identifiers: list[ExternalIdentifierCreate]
-    ) -> list[ExternalIdentifier]:
+        self, identifiers: list[GenericExternalIdentifier]
+    ) -> list[LinkedExternalIdentifier]:
         """
         Fetch identifiers that collide with existing identifiers in the database.
 
         Args:
-            - identifiers (list[ExternalIdentifierCreate]): The identifiers to check.
+            - identifiers (list[GenericExternalIdentifier]): The identifiers to check.
 
         Returns:
-            - list[ExternalIdentifier]: The collided identifiers.
+            - list[LinkedExternalIdentifier]: The collided identifiers.
 
         """
         collided = []
@@ -248,13 +254,33 @@ Identifier(s) are already mapped on an existing reference:
             - Reference: The final reference to be persisted.
 
         """
+
+        async def _get_identifier_key(
+            identifier: ExternalIdentifier,
+        ) -> tuple[str, str | None]:
+            """
+            Get the key for an identifier.
+
+            Args:
+                - identifier (LinkedExternalIdentifier): The identifier to get the key for.
+
+            Returns:
+                - tuple[str, str | None]: The key for the identifier.
+
+            """
+            return (
+                identifier.identifier_type,
+                identifier.other_identifier_name  # type: ignore[union-attr]
+                if identifier.identifier_type == "other"
+                else None,
+            )
+
         # Graft matching IDs from existing to incoming
         # This allows SQLAlchemy to handle the merge correctly
         for identifier in incoming_reference.identifiers or []:
             for existing_identifier in existing_reference.identifiers or []:
-                if (identifier.identifier_type, identifier.other_identifier_name) == (
-                    existing_identifier.identifier_type,
-                    existing_identifier.other_identifier_name,
+                if _get_identifier_key(identifier.identifier) == _get_identifier_key(
+                    existing_identifier.identifier
                 ):
                     identifier.id = existing_identifier.id
         for enhancement in incoming_reference.enhancements or []:
@@ -284,9 +310,9 @@ Identifier(s) are already mapped on an existing reference:
             [
                 identifier
                 for identifier in supplementary.identifiers
-                if (identifier.identifier_type, identifier.other_identifier_name)
+                if _get_identifier_key(identifier.identifier)
                 not in {
-                    (identifier.identifier_type, identifier.other_identifier_name)
+                    _get_identifier_key(identifier.identifier)
                     for identifier in target.identifiers
                 }
             ]
@@ -323,9 +349,7 @@ Identifier(s) are already mapped on an existing reference:
         try:
             raw_reference: dict = json.loads(record_str)
             # Validate top-level JSON schema using Pydantic
-            validated_input = ReferenceCreateInputValidator.model_validate(
-                raw_reference
-            )
+            validated_input = ReferenceFileInputValidator.model_validate(raw_reference)
         except (json.JSONDecodeError, ValidationError) as exc:
             return ReferenceCreateResult(errors=[f"Entry {entry_ref}:", str(exc)])
 
@@ -352,7 +376,7 @@ Identifier(s) are already mapped on an existing reference:
             for i, enhancement in enumerate(validated_input.enhancements, 1)
         ]
 
-        reference = ReferenceCreate(
+        reference = ReferenceIn(
             visibility=raw_reference.get(  # type: ignore[union-attr]
                 "visibility", Reference.model_fields["visibility"].get_default()
             ),

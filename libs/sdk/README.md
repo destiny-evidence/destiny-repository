@@ -1,6 +1,6 @@
-# Destiny Robot SDK
+# Destiny Repository SDK
 
-SDK for destiny robots
+SDK for destiny repository interfacing.
 
 ## Installing as an editable package for local sdk development
 

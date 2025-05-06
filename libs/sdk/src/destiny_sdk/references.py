@@ -1,0 +1,46 @@
+"""Reference classes for the Destiny SDK."""
+
+from pydantic import BaseModel, Field
+
+from .enhancements import Enhancement, EnhancementIn
+from .identifiers import ExternalIdentifier
+from .visibility import Visibility
+
+
+class _ReferenceBase(BaseModel):
+    """
+    Base reference class.
+
+    References do not carry data themselves but are used to tie together
+    identifiers and enhancements.
+    """
+
+    visibility: Visibility = Field(
+        Visibility.PUBLIC,
+        description="The level of visibility of the reference",
+    )
+
+
+class Reference(_ReferenceBase):
+    """Core refernce class."""
+
+    identifiers: list[ExternalIdentifier] | None = Field(
+        None,
+        description="A list of `ExternalIdentifiers` for the Reference",
+    )
+    enhancements: list[Enhancement] | None = Field(
+        None,
+        description="A list of enhancements for the reference",
+    )
+
+
+class ReferenceIn(_ReferenceBase):
+    """Input for creating a reference."""
+
+    identifiers: list[ExternalIdentifier] = Field(
+        description="A list of `ExternalIdentifiers` for the Reference"
+    )
+    enhancements: list[EnhancementIn] = Field(
+        default_factory=list,
+        description="A list of enhancements for the reference",
+    )
