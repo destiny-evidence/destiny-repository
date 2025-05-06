@@ -210,7 +210,7 @@ async def test_check_enhancement_request_status_happy_path(
     assert response.json()["request_status"] == EnhancementRequestStatus.COMPLETED
 
 
-async def test_create_enhancement_happy_path(
+async def test_fulfill_enhancement_request_happy_path(
     session: AsyncSession, client: AsyncClient
 ) -> None:
     """Test creating a reference from a robot."""
@@ -250,5 +250,33 @@ async def test_create_enhancement_happy_path(
 
     response = await client.post("/robot/enhancement/", json=robot_result)
 
-    assert response.status_code == status.HTTP_201_CREATED
+    assert response.status_code == status.HTTP_200_OK
     assert response.json()["request_status"] == EnhancementRequestStatus.COMPLETED
+
+
+async def test_fulfill_enhancement_request_enhancement_failed(
+    session: AsyncSession, client: AsyncClient
+) -> None:
+    """Test handling a robot that fails to fulfill an enhancement request."""
+    reference = SQLReference(visibility=Visibility.RESTRICTED)
+    session.add(reference)
+    await session.commit()
+
+    enhancement_request = SQLEnhancementRequest(
+        reference_id=reference.id,
+        robot_id=uuid.uuid4(),
+        request_status=EnhancementRequestStatus.ACCEPTED,
+        enhancement_parameters={},
+    )
+    session.add(enhancement_request)
+    await session.commit()
+
+    robot_result = {
+        "request_id": f"{enhancement_request.id}",
+        "error": {"message": "Could not fulfill this enhancement request."},
+    }
+
+    response = await client.post("/robot/enhancement/", json=robot_result)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["request_status"] == EnhancementRequestStatus.FAILED
