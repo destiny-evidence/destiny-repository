@@ -183,9 +183,7 @@ async def request_enhancement(
 ) -> EnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""
     enhancement_request = await enhancement_service.request_reference_enhancement(
-        enhancement_request=EnhancementRequest(
-            **enhancement_request_create.model_dump()
-        )
+        enhancement_request=EnhancementRequest.from_sdk(enhancement_request_create)
     )
 
     return enhancement_request.to_sdk()
