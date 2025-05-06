@@ -4,7 +4,7 @@ import pytest
 from fastapi import status
 from pydantic import HttpUrl
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, WrongReferenceError
 from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
     Enhancement,
@@ -312,6 +312,42 @@ async def test_create_reference_enhancement_enhancement_request_not_found(
         await service.create_reference_enhancement(
             enhancement_request_id=uuid.uuid4(),
             enhancement=Enhancement(reference_id=reference_id, **ENHANCEMENT_DATA),
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_reference_enhancement_enhancement_for_wrong_reference(
+    fake_repository, fake_uow
+):
+    enhancement_request_id = uuid.uuid4()
+    reference_id = uuid.uuid4()
+    different_reference_id = uuid.uuid4()
+    fake_enhancement_repo = fake_repository()
+
+    existing_enhancement_request = EnhancementRequest(
+        id=enhancement_request_id,
+        reference_id=reference_id,
+        robot_id=uuid.uuid4(),
+        request_status=EnhancementRequestStatus.ACCEPTED,
+    )
+
+    fake_enhancement_requests = fake_repository([existing_enhancement_request])
+    uow = fake_uow(
+        enhancement_requests=fake_enhancement_requests,
+        references=fake_repository(
+            [Reference(id=reference_id), Reference(id=different_reference_id)]
+        ),
+        enhancements=fake_enhancement_repo,
+    )
+
+    service = EnhancementService(uow, robots=Robots({}))
+
+    with pytest.raises(WrongReferenceError):
+        await service.create_reference_enhancement(
+            enhancement_request_id=existing_enhancement_request.id,
+            enhancement=Enhancement(
+                reference_id=different_reference_id, **ENHANCEMENT_DATA
+            ),
         )
 
 

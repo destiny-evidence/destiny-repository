@@ -10,7 +10,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
-from app.core.exceptions import NotFoundError, SDKToDomainError
+from app.core.exceptions import NotFoundError, SDKToDomainError, WrongReferenceError
 from app.core.logger import configure_logger, get_logger
 from app.domain.imports.routes import router as import_router
 from app.domain.references.routes import robot_router
@@ -111,6 +111,18 @@ async def sdk_to_domain_exception_handler(
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content=jsonable_encoder({"detail": exception.errors}),
+    )
+
+
+@app.exception_handler(WrongReferenceError)
+async def enhance_wrong_reference_exception_handler(
+    request: Request,  # noqa: ARG001 exception handlers required to take request as parameter
+    exception: WrongReferenceError,
+) -> JSONResponse:
+    """Return unprocessible responsers when sdk -> domain converstion fails."""
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=jsonable_encoder({"detail": exception.detail}),
     )
 
 

@@ -10,7 +10,7 @@ from pydantic import HttpUrl
 from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError, SDKToDomainError
+from app.core.exceptions import NotFoundError, SDKToDomainError, WrongReferenceError
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
     EnhancementRequestStatus,
@@ -21,7 +21,11 @@ from app.domain.references.models.sql import EnhancementRequest as SQLEnhancemen
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.routes import robots
 from app.domain.robots import Robots
-from app.main import not_found_exception_handler, sdk_to_domain_exception_handler
+from app.main import (
+    enhance_wrong_reference_exception_handler,
+    not_found_exception_handler,
+    sdk_to_domain_exception_handler,
+)
 
 # Use the database session in all tests to set up the database manager.
 pytestmark = pytest.mark.usefixtures("session")
@@ -43,6 +47,7 @@ def app() -> FastAPI:
         exception_handlers={
             NotFoundError: not_found_exception_handler,
             SDKToDomainError: sdk_to_domain_exception_handler,
+            WrongReferenceError: enhance_wrong_reference_exception_handler,
         }
     )
 
@@ -285,3 +290,48 @@ async def test_fulfill_enhancement_request_robot_has_errors(
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["request_status"] == EnhancementRequestStatus.FAILED
+
+
+async def test_wrong_reference_exception_handler_returns_response_with_400(
+    session: AsyncSession, client: AsyncClient
+) -> None:
+    """Test handling a robot that fails to fulfill an enhancement request."""
+    reference = SQLReference(visibility=Visibility.RESTRICTED)
+    different_reference = SQLReference(visibility=Visibility.RESTRICTED)
+    session.add(reference)
+    session.add(different_reference)
+    await session.commit()
+
+    enhancement_request = SQLEnhancementRequest(
+        reference_id=reference.id,
+        robot_id=uuid.uuid4(),
+        request_status=EnhancementRequestStatus.ACCEPTED,
+        enhancement_parameters={},
+    )
+    session.add(enhancement_request)
+    await session.commit()
+
+    robot_result = {
+        "request_id": f"{enhancement_request.id}",
+        "enhancement": {
+            "reference_id": f"{different_reference.id}",
+            "source": "robot",
+            "visibility": Visibility.RESTRICTED,
+            "processor_version": "0.0.1",
+            "content_version": f"{uuid.uuid4()}",
+            "content": {
+                "enhancement_type": EnhancementType.ANNOTATION,
+                "annotations": [
+                    {
+                        "annotation_type": "example:toy",
+                        "label": "toy",
+                        "data": {"toy": "Cabbage Patch Kid"},
+                    }
+                ],
+            },
+        },
+    }
+
+    response = await client.post("/robot/enhancement/", json=robot_result)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST

@@ -6,7 +6,7 @@ from destiny_sdk.robots import RobotRequest
 from fastapi import status
 from pydantic import UUID4
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, WrongReferenceError
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
@@ -121,6 +121,10 @@ class EnhancementService(GenericService):
         enhancement_request = await self._get_enhancement_request(
             enhancement_request_id
         )
+
+        if enhancement_request.reference_id != enhancement.reference_id:
+            detail = "enhancement is for a different reference than requested."
+            raise WrongReferenceError(detail)
 
         await self._add_enhancement(enhancement)
 
