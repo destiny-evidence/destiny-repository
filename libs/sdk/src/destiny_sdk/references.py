@@ -2,7 +2,7 @@
 
 from pydantic import UUID4, BaseModel, Field
 
-from .enhancements import Enhancement, EnhancementIn
+from .enhancements import Enhancement
 from .identifiers import ExternalIdentifier
 from .visibility import Visibility
 
@@ -33,17 +33,5 @@ class Reference(_ReferenceBase):
     )
     enhancements: list[Enhancement] | None = Field(
         None,
-        description="A list of enhancements for the reference",
-    )
-
-
-class ReferenceIn(_ReferenceBase):
-    """Input for creating a reference."""
-
-    identifiers: list[ExternalIdentifier] = Field(
-        description="A list of `ExternalIdentifiers` for the Reference"
-    )
-    enhancements: list[EnhancementIn] = Field(
-        default_factory=list,
         description="A list of enhancements for the reference",
     )

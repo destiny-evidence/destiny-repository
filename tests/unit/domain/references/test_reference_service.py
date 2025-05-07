@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 
+from app.core.exceptions import NotFoundError
 from app.domain.references.models.models import ExternalIdentifierAdapter, Reference
 from app.domain.references.reference_service import ReferenceService
 
@@ -25,8 +26,8 @@ async def test_get_reference_not_found(fake_repository, fake_uow):
     uow = fake_uow(references=repo)
     service = ReferenceService(uow)
     dummy_id = uuid.uuid4()
-    result = await service.get_reference(dummy_id)
-    assert result is None
+    with pytest.raises(NotFoundError):
+        await service.get_reference(dummy_id)
 
 
 @pytest.mark.asyncio
@@ -66,5 +67,5 @@ async def test_add_identifier_reference_not_found(fake_repository, fake_uow):
     fake_identifier_create = ExternalIdentifierAdapter.validate_python(
         {"identifier": "W1234", "identifier_type": "open_alex"}
     )
-    with pytest.raises(RuntimeError):
+    with pytest.raises(NotFoundError):
         await service.add_identifier(dummy_id, fake_identifier_create)

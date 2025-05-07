@@ -27,10 +27,12 @@ class FakeRepository:
 
     async def get_by_pk(
         self, pk: UUID, preload: list[str] | None = None
-    ) -> DummyDomainSQLModel | None:
+    ) -> DummyDomainSQLModel:
         # Currently just ignoring preloading in favour of creating
         # models with the data needed.
-        return self.repository.get(pk)
+        if pk not in self.repository:
+            raise NotFoundError(detail=f"{pk} not in repository")
+        return self.repository[pk]
 
     async def update_by_pk(self, pk: UUID, **kwargs: object) -> DummyDomainSQLModel:
         if pk not in self.repository:

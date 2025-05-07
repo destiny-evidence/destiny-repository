@@ -35,7 +35,7 @@ class ReferenceService(GenericService):
         super().__init__(sql_uow)
 
     @unit_of_work
-    async def get_reference(self, reference_id: UUID4) -> Reference | None:
+    async def get_reference(self, reference_id: UUID4) -> Reference:
         """Get a single reference by id."""
         return await self.sql_uow.references.get_by_pk(
             reference_id, preload=["identifiers", "enhancements"]
@@ -44,7 +44,7 @@ class ReferenceService(GenericService):
     @unit_of_work
     async def get_reference_from_identifier(
         self, identifier: ExternalIdentifierSearch
-    ) -> Reference | None:
+    ) -> Reference:
         """Get a single reference by identifier."""
         db_identifier = (
             await self.sql_uow.external_identifiers.get_by_type_and_identifier(
@@ -53,8 +53,6 @@ class ReferenceService(GenericService):
                 identifier.other_identifier_name,
             )
         )
-        if not db_identifier:
-            return None
         return await self.sql_uow.references.get_by_pk(
             db_identifier.reference_id, preload=["identifiers", "enhancements"]
         )
@@ -286,8 +284,8 @@ Identifier(s) are already mapped on an existing reference:
                     identifier.id = existing_identifier.id
         for enhancement in incoming_reference.enhancements or []:
             for existing_enhancement in existing_reference.enhancements or []:
-                if (enhancement.enhancement_type, enhancement.source) == (
-                    existing_enhancement.enhancement_type,
+                if (enhancement.content.enhancement_type, enhancement.source) == (
+                    existing_enhancement.content.enhancement_type,
                     existing_enhancement.source,
                 ):
                     enhancement.id = existing_enhancement.id
@@ -327,9 +325,9 @@ Identifier(s) are already mapped on an existing reference:
             [
                 enhancement
                 for enhancement in supplementary.enhancements
-                if (enhancement.enhancement_type, enhancement.source)
+                if (enhancement.content.enhancement_type, enhancement.source)
                 not in {
-                    (enhancement.enhancement_type, enhancement.source)
+                    (enhancement.content.enhancement_type, enhancement.source)
                     for enhancement in target.enhancements
                 }
             ]

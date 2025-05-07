@@ -51,6 +51,9 @@ class DummyDomainExternalIdentifier:
 
 
 class DummyContent:
+    def __init__(self):
+        self.enhancement_type = EnhancementType.ANNOTATION
+
     def model_dump_json(self):
         return json.dumps(
             {
@@ -71,7 +74,6 @@ class DummyDomainEnhancement:
         self,
         id,
         reference_id,
-        enhancement_type,
         source,
         visibility,
         processor_version,
@@ -80,7 +82,6 @@ class DummyDomainEnhancement:
     ):
         self.id = id
         self.reference_id = reference_id
-        self.enhancement_type = enhancement_type
         self.source = source
         self.visibility = visibility
         self.processor_version = processor_version
@@ -172,7 +173,6 @@ async def test_enhancement_from_and_to_domain():
     dummy_enh = DummyDomainEnhancement(
         id=enh_id,
         reference_id=ref_id,
-        enhancement_type=EnhancementType.ANNOTATION,
         source="test_source",
         visibility=Visibility.PUBLIC,
         processor_version="1.0.0",
@@ -184,7 +184,7 @@ async def test_enhancement_from_and_to_domain():
     sql_enh = await Enhancement.from_domain(dummy_enh)
     assert sql_enh.id == dummy_enh.id
     assert sql_enh.reference_id == dummy_enh.reference_id
-    assert sql_enh.enhancement_type == dummy_enh.enhancement_type
+    assert sql_enh.enhancement_type == dummy_enh.content.enhancement_type
     assert sql_enh.source == dummy_enh.source
     assert sql_enh.visibility == dummy_enh.visibility
     assert sql_enh.processor_version == dummy_enh.processor_version
@@ -201,7 +201,7 @@ async def test_enhancement_from_and_to_domain():
     domain_enh = await sql_enh.to_domain(preload=["reference"])
     assert domain_enh.id == dummy_enh.id
     assert domain_enh.reference_id == dummy_enh.reference_id
-    assert domain_enh.enhancement_type == dummy_enh.enhancement_type
+    assert domain_enh.content.enhancement_type == dummy_enh.content.enhancement_type
     assert domain_enh.source == dummy_enh.source
     assert domain_enh.visibility == dummy_enh.visibility
     assert domain_enh.processor_version == dummy_enh.processor_version
@@ -268,7 +268,6 @@ async def test_reference_with_relationships():
     dummy_enh = DummyDomainEnhancement(
         id=uuid.uuid4(),
         reference_id=ref_id,
-        enhancement_type=EnhancementType.ANNOTATION,
         source="annotation_source",
         visibility=Visibility.RESTRICTED,
         processor_version="2.0.0",

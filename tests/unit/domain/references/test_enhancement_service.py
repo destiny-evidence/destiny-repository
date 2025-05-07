@@ -223,7 +223,7 @@ async def test_get_enhancement_request_doesnt_exist(fake_repository, fake_uow):
 
     with pytest.raises(
         NotFoundError,
-        match=f"Enhancement request {enhancement_request_id} not found.",
+        match=f"{enhancement_request_id} not in repository",
     ):
         await service.get_enhancement_request(enhancement_request_id)
 

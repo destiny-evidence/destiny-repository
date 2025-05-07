@@ -29,13 +29,8 @@ class EnhancementService(GenericService):
         enhancement: Enhancement,
     ) -> Enhancement:
         """Add an enhancement to a reference."""
-        reference = await self.sql_uow.references.get_by_pk(enhancement.reference_id)
-
-        if not reference:
-            raise NotFoundError(
-                detail=f"Reference {enhancement.reference_id} not found"
-            )
-
+        # Errors if reference doesn't exist
+        await self.sql_uow.references.get_by_pk(enhancement.reference_id)
         return await self.sql_uow.enhancements.add(enhancement)
 
     @unit_of_work
@@ -46,11 +41,6 @@ class EnhancementService(GenericService):
         reference = await self.sql_uow.references.get_by_pk(
             enhancement_request.reference_id, preload=["identifiers", "enhancements"]
         )
-
-        if not reference:
-            raise NotFoundError(
-                detail=f"Reference {enhancement_request.reference_id} not found"
-            )
 
         robot_url = self.robots.get_robot_url(enhancement_request.robot_id)
 
@@ -90,17 +80,7 @@ class EnhancementService(GenericService):
         enhancement_request_id: UUID4,
     ) -> EnhancementRequest:
         """Get an enhancement request by request id."""
-        enhancement_request = await self.sql_uow.enhancement_requests.get_by_pk(
-            enhancement_request_id
-        )
-
-        if not enhancement_request:
-            detail = f"Enhancement request {enhancement_request_id} not found."
-            raise NotFoundError(
-                detail=detail,
-            )
-
-        return enhancement_request
+        return await self.sql_uow.enhancement_requests.get_by_pk(enhancement_request_id)
 
     @unit_of_work
     async def get_enhancement_request(

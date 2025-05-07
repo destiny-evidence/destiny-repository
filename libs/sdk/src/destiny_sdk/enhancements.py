@@ -253,15 +253,12 @@ EnhancementContent = Annotated[
 ]
 
 
-class _EnhancementBase(BaseModel):
-    """
-    Base enhancement class.
+class Enhancement(BaseModel):
+    """Core enhancement class."""
 
-    An enhancement is any data about a reference which is in addition to the
-    identifiers of that reference. Anything which is useful is generally an
-    enhancement. They will be flattened and composed for search and access.
-    """
-
+    reference_id: uuid.UUID = Field(
+        description="The ID of the reference this enhancement is associated with."
+    )
     source: str = Field(
         description="The enhancement source for tracking provenance.",
     )
@@ -279,7 +276,6 @@ class _EnhancementBase(BaseModel):
         """,
         default_factory=uuid.uuid4,
     )
-
     content: Annotated[
         EnhancementContent,
         Field(
@@ -287,15 +283,3 @@ class _EnhancementBase(BaseModel):
             description="The content of the enhancement.",
         ),
     ]
-
-
-class Enhancement(_EnhancementBase):
-    """Core enhancement class."""
-
-    reference_id: uuid.UUID = Field(
-        description="The ID of the reference this enhancement is associated with."
-    )
-
-
-class EnhancementIn(_EnhancementBase):
-    """Enhancement model used to attach to an existing reference in the repository."""

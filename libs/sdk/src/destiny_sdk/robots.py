@@ -4,7 +4,7 @@ from typing import Annotated, Self
 
 from pydantic import UUID4, BaseModel, Field, model_validator
 
-from destiny_sdk.enhancements import EnhancementIn
+from destiny_sdk.enhancements import Enhancement
 from destiny_sdk.references import Reference
 
 
@@ -29,7 +29,7 @@ class RobotResult(BaseModel):
         default=None,
         description="Error the robot encountered while creating enhancement.",
     )
-    enhancement: EnhancementIn | None = Field(
+    enhancement: Enhancement | None = Field(
         default=None, description="An enhancement to create"
     )
 

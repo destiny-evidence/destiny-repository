@@ -197,7 +197,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             },
         )
         assert response.status_code == 404
-        assert response.json()["detail"] == f"Import record with id {u} not found."
+        assert response.json()["detail"] == f"Unable to find ImportRecord with pk {u}"
         # 2.d: Correct batch creation
         import_batch_a = submit_happy_batch(
             import_record["id"],

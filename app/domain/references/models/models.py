@@ -267,7 +267,6 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     visibility: Visibility = Field(
         description="The level of visibility of the enhancement"
     )
-    enhancement_type: EnhancementType = Field(description="The type of enhancement.")
     processor_version: str | None = Field(
         default=None,
         description="The version of the processor that generated the content.",
@@ -295,13 +294,12 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     @classmethod
     def from_sdk(
         cls,
-        enhancement_create: destiny_sdk.enhancements.EnhancementIn,
+        enhancement: destiny_sdk.enhancements.Enhancement,
     ) -> Self:
         """Create an enhancement from the SDK model."""
         try:
             return cls(
-                enhancement_type=enhancement_create.content.enhancement_type,
-                **enhancement_create.model_dump(),
+                **enhancement.model_dump(),
             )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception

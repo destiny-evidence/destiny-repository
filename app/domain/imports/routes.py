@@ -3,7 +3,7 @@
 from typing import Annotated
 
 import destiny_sdk
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, Path, status
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -77,12 +77,6 @@ async def get_record(
 ) -> destiny_sdk.imports.ImportRecord:
     """Get an import from the database."""
     import_record = await import_service.get_import_record(import_record_id)
-    if not import_record:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Import record with id {import_record_id} not found.",
-        )
-
     return import_record.to_sdk()
 
 
@@ -94,12 +88,7 @@ async def finalise_record(
     import_service: Annotated[ImportService, Depends(import_service)],
 ) -> None:
     """Finalise an import record."""
-    import_record = await import_service.get_import_record(import_record_id)
-    if not import_record:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Import record with id {import_record_id} not found.",
-        )
+    # Raises error if the import record does not exist
     await import_service.finalise_record(import_record_id)
 
 
@@ -129,12 +118,6 @@ async def get_batches(
     import_record = await import_service.get_import_record_with_batches(
         import_record_id
     )
-
-    if not import_record:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Import record with id {import_record_id} not found.",
-        )
     return [batch.to_sdk() for batch in import_record.batches or []]
 
 
@@ -145,12 +128,6 @@ async def get_batch(
 ) -> destiny_sdk.imports.ImportBatch:
     """Get batches associated to an import."""
     import_batch = await import_service.get_import_batch(import_batch_id)
-
-    if not import_batch:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Import batch with id {import_batch_id} not found.",
-        )
     return import_batch.to_sdk()
 
 
@@ -161,11 +138,6 @@ async def get_import_batch_summary(
 ) -> destiny_sdk.imports.ImportBatchSummary:
     """Get a summary of an import batch's results."""
     import_batch = await import_service.get_import_batch_with_results(import_batch_id)
-    if not import_batch:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Import batch with id {import_batch_id} not found.",
-        )
     return import_batch.to_sdk_summary()
 
 
@@ -179,11 +151,6 @@ async def get_import_results(
     import_batch_results = await import_service.get_import_results(
         import_batch_id, result_status
     )
-    if not import_batch_results:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No results found for import batch with id {import_batch_id}.",
-        )
     return [
         import_batch_results.to_sdk() for import_batch_results in import_batch_results
     ]

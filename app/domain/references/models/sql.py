@@ -219,7 +219,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         return cls(
             id=domain_obj.id,
             reference_id=domain_obj.reference_id,
-            enhancement_type=domain_obj.enhancement_type,
+            enhancement_type=domain_obj.content.enhancement_type,
             source=domain_obj.source,
             visibility=domain_obj.visibility,
             processor_version=domain_obj.processor_version,
@@ -234,7 +234,6 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             source=self.source,
             visibility=self.visibility,
             reference_id=self.reference_id,
-            enhancement_type=self.enhancement_type,
             processor_version=self.processor_version,
             content=json.loads(self.content),
             content_version=self.content_version,

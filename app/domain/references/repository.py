@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.core.exceptions import NotFoundError
 from app.domain.references.models.models import Enhancement as DomainEnhancement
 from app.domain.references.models.models import (
     EnhancementRequest as DomainEnhancementRequest,
@@ -75,7 +76,7 @@ class ExternalIdentifierSQLRepository(
         identifier: str,
         other_identifier_name: str | None = None,
         preload: list[str] | None = None,
-    ) -> DomainExternalIdentifier | None:
+    ) -> DomainExternalIdentifier:
         """
         Get a single external identifier by type and identifier, if it exists.
 
@@ -102,7 +103,16 @@ class ExternalIdentifierSQLRepository(
                 query = query.options(joinedload(relationship))
         result = await self._session.execute(query)
         db_identifier = result.scalar_one_or_none()
-        return await db_identifier.to_domain(preload=preload) if db_identifier else None
+
+        if not db_identifier:
+            detail = (
+                f"Unable to find {self._persistence_cls.__name__} with type "
+                f"{identifier_type}, identifier {identifier}, and other "
+                f"identifier name {other_identifier_name}"
+            )
+            raise NotFoundError(detail=detail)
+
+        return await db_identifier.to_domain(preload=preload)
 
 
 class EnhancementRepositoryBase(

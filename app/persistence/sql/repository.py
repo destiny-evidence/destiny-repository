@@ -45,13 +45,16 @@ class GenericAsyncSqlRepository(
 
     async def get_by_pk(
         self, pk: UUID4, preload: list[str] | None = None
-    ) -> GenericDomainModelType | None:
+    ) -> GenericDomainModelType:
         """
         Get a record using its primary key.
 
         Args:
         - pk (UUID4): The primary key to use to look up the record.
         - preload (list[str]): A list of attributes to preload using a join.
+
+        Raises:
+        - NotFoundError: If the record is not found.
 
         """
         options = []
@@ -61,7 +64,9 @@ class GenericAsyncSqlRepository(
                 options.append(joinedload(relationship))
         result = await self._session.get(self._persistence_cls, pk, options=options)
         if not result:
-            return None
+            detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
+            raise NotFoundError(detail=detail)
+
         return await result.to_domain(preload=preload)
 
     async def update_by_pk(self, pk: UUID4, **kwargs: object) -> GenericDomainModelType:
@@ -71,6 +76,9 @@ class GenericAsyncSqlRepository(
         Args:
         - pk (UUID4): The primary key to use to look up the record.
         - kwargs (object): The attributes to update.
+
+        Raises:
+        - NotFoundError: If the record is not found.
 
         """
         persistence = await self._session.get(self._persistence_cls, pk)

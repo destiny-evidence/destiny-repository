@@ -4,7 +4,7 @@ import uuid
 from typing import Annotated
 
 import destiny_sdk
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import (
@@ -106,11 +106,6 @@ async def get_reference(
 ) -> destiny_sdk.references.Reference:
     """Get a reference by id."""
     reference = await reference_service.get_reference(reference_id)
-    if not reference:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Reference with id {reference_id} not found.",
-        )
     return reference.to_sdk()
 
 
@@ -130,11 +125,6 @@ async def get_reference_from_identifier(
     reference = await reference_service.get_reference_from_identifier(
         external_identifier
     )
-    if not reference:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Reference with identifier {external_identifier} not found.",
-        )
     return reference.to_sdk()
 
 
@@ -203,7 +193,7 @@ async def check_enhancement_request_status(
     return enhancement_request.to_sdk()
 
 
-@robot_router.post("/enhancement/", status_code=status.HTTP_200_OK)
+@robot_router.post("/enhancement/", status_code=status.HTTP_201_CREATED)
 async def fulfill_enhancement_request(
     robot_result: destiny_sdk.robots.RobotResult,
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
