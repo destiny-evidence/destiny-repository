@@ -137,9 +137,10 @@ class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
 
     def to_sdk(self) -> destiny_sdk.identifiers.LinkedExternalIdentifier:
         """Convert the external identifier to the SDK model."""
-        return TypeAdapter(
-            destiny_sdk.identifiers.LinkedExternalIdentifier,
-        ).validate_python(self.model_dump())
+        return destiny_sdk.identifiers.LinkedExternalIdentifier(
+            identifier=ExternalIdentifierAdapter.validate_python(self.identifier),
+            reference_id=self.reference_id,
+        )
 
 
 class GenericExternalIdentifier(BaseModel):
@@ -167,7 +168,11 @@ class GenericExternalIdentifier(BaseModel):
     ) -> Self:
         """Create a generic external identifier from a specific implementation."""
         return cls(
-            **external_identifier.model_dump(),
+            identifier=str(external_identifier.identifier),
+            identifier_type=external_identifier.identifier_type,
+            other_identifier_name=external_identifier.other_identifier_name
+            if hasattr(external_identifier, "other_identifier_name")
+            else None,
         )
 
 

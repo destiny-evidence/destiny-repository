@@ -380,7 +380,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         assert len(reference["enhancements"]) == 3
         assert len(reference["identifiers"]) == 2
         for enhancement in reference["enhancements"]:
-            if enhancement["enhancement_type"] == "bibliographic":
+            if enhancement["content"]["enhancement_type"] == "bibliographic":
                 assert enhancement["content"]["cited_by_count"] == 5
         # Check that the next reference did add a new enhancement
         response = client.get(
@@ -428,7 +428,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
                     identifier["identifier"] == "10.1235/sampledoitwoelectricboogaloo"
                 )
         for enhancement in reference["enhancements"]:
-            if enhancement["enhancement_type"] == "bibliographic":
+            if enhancement["content"]["enhancement_type"] == "bibliographic":
                 assert (
                     enhancement["content"]["authorship"][0]["display_name"] == "Wynstan"
                 )

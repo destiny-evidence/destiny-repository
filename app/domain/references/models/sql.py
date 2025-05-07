@@ -144,7 +144,7 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
             identifier_type=domain_obj.identifier.identifier_type,
             identifier=str(domain_obj.identifier.identifier),
             other_identifier_name=domain_obj.identifier.other_identifier_name  # type: ignore[union-attr]
-            if domain_obj.identifier.identifier_type.value == "other"
+            if hasattr(domain_obj.identifier, "other_identifier_name")
             else None,
         )
 

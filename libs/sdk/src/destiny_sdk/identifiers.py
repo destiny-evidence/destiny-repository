@@ -3,7 +3,7 @@
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import UUID4, BaseModel, Field
 
 
 class ExternalIdentifierType(StrEnum):
@@ -84,6 +84,6 @@ class LinkedExternalIdentifier(BaseModel):
         description="The identifier of the reference.",
         discriminator="identifier_type",
     )
-    reference_id: str = Field(
+    reference_id: UUID4 = Field(
         description="The ID of the reference this identifier identifies."
     )

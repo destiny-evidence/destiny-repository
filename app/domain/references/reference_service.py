@@ -271,8 +271,8 @@ Identifier(s) are already mapped on an existing reference:
             """
             return (
                 identifier.identifier_type,
-                identifier.other_identifier_name  # type: ignore[union-attr]
-                if identifier.identifier_type == "other"
+                identifier.other_identifier_name
+                if hasattr(identifier, "other_identifier_name")
                 else None,
             )
 
@@ -280,9 +280,9 @@ Identifier(s) are already mapped on an existing reference:
         # This allows SQLAlchemy to handle the merge correctly
         for identifier in incoming_reference.identifiers or []:
             for existing_identifier in existing_reference.identifiers or []:
-                if _get_identifier_key(identifier.identifier) == _get_identifier_key(
-                    existing_identifier.identifier
-                ):
+                if await _get_identifier_key(
+                    identifier.identifier
+                ) == await _get_identifier_key(existing_identifier.identifier):
                     identifier.id = existing_identifier.id
         for enhancement in incoming_reference.enhancements or []:
             for existing_enhancement in existing_reference.enhancements or []:
@@ -311,9 +311,9 @@ Identifier(s) are already mapped on an existing reference:
             [
                 identifier
                 for identifier in supplementary.identifiers
-                if _get_identifier_key(identifier.identifier)
+                if await _get_identifier_key(identifier.identifier)
                 not in {
-                    _get_identifier_key(identifier.identifier)
+                    await _get_identifier_key(identifier.identifier)
                     for identifier in target.identifiers
                 }
             ]
