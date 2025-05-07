@@ -34,7 +34,7 @@ class EnhancementService(GenericService):
 
         if not reference:
             raise NotFoundError(
-                detail=f"Reference with id {enhancement.reference_id} not found"
+                detail=f"Reference {enhancement.reference_id} not found"
             )
 
         return await self.sql_uow.enhancements.add(enhancement)
@@ -50,14 +50,14 @@ class EnhancementService(GenericService):
 
         if not reference:
             raise NotFoundError(
-                detail=f"Reference with id {enhancement_request.reference_id} not found"
+                detail=f"Reference {enhancement_request.reference_id} not found"
             )
 
         robot_url = self.robots.get_robot_url(enhancement_request.robot_id)
 
         if not robot_url:
             raise NotFoundError(
-                detail=f"Robot with id {enhancement_request.robot_id} not found.",
+                detail=f"Robot {enhancement_request.robot_id} not found.",
             )
 
         enhancement_request = await self.sql_uow.enhancement_requests.add(
@@ -96,7 +96,7 @@ class EnhancementService(GenericService):
         )
 
         if not enhancement_request:
-            detail = f"Enhancement request with id {enhancement_request_id} not found."
+            detail = f"Enhancement request {enhancement_request_id} not found."
             raise NotFoundError(
                 detail=detail,
             )
@@ -138,12 +138,13 @@ class EnhancementService(GenericService):
         self, enhancement_request_id: UUID4, error: str
     ) -> EnhancementRequest:
         """Mark an enhancement request as failed and supply error message."""
-        # Verify that the enhancement request exists, unsure if best to do this way
-        # Or have the repository raise an "NotFoundError" when it can't find a pk
-        await self._get_enhancement_request(enhancement_request_id)
-
-        return await self.sql_uow.enhancement_requests.update_by_pk(
-            pk=enhancement_request_id,
-            request_status=EnhancementRequestStatus.FAILED,
-            error=error,
-        )
+        try:
+            return await self.sql_uow.enhancement_requests.update_by_pk(
+                pk=enhancement_request_id,
+                request_status=EnhancementRequestStatus.FAILED,
+                error=error,
+            )
+        except NotFoundError as exception:
+            raise NotFoundError(
+                detail=f"Enhancement request {enhancement_request_id} not found."
+            ) from exception
