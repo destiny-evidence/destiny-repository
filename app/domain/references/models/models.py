@@ -9,7 +9,6 @@ import destiny_sdk
 # Explicitly import these models for easy use in the rest of the codebase
 from destiny_sdk.enhancements import EnhancementType
 from destiny_sdk.identifiers import ExternalIdentifier, ExternalIdentifierType
-from destiny_sdk.visibility import Visibility
 from pydantic import (
     BaseModel,
     Field,
@@ -40,6 +39,27 @@ class EnhancementRequestStatus(StrEnum):
     REJECTED = "rejected"
     FAILED = "failed"
     COMPLETED = "completed"
+
+
+class Visibility(StrEnum):
+    """
+    The visibility of a data element in the repository.
+
+    This is used to manage whether information should be publicly available or
+    restricted (generally due to copyright constraints from publishers).
+
+    TODO: Implement data governance layer to manage this.
+
+    **Allowed values**:
+
+    - `public`: Visible to the general public without authentication.
+    - `restricted`: Requires authentication to be visible.
+    - `hidden`: Is not visible, but may be passed to data mining processes.
+    """
+
+    PUBLIC = "public"
+    RESTRICTED = "restricted"
+    HIDDEN = "hidden"
 
 
 class ReferenceIn(DomainBaseModel):
@@ -264,28 +284,35 @@ class Enhancement(EnhancementBase, SQLAttributeMixin):
         )
 
 
-class EnhancementRequestBase(DomainBaseModel):
-    """Base enhancement request class."""
+class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
+    """Request to add an enhancement to a specific reference."""
 
     reference_id: uuid.UUID = Field(
         description="The ID of the reference this enhancement is associated with."
     )
-
     robot_id: uuid.UUID = Field(
         description="The robot to request the enhancement from."
     )
-
     enhancement_parameters: dict | None = Field(
         default=None,
         description="Additional optional parameters to pass through to the robot.",
     )
+    request_status: EnhancementRequestStatus = Field(
+        default=EnhancementRequestStatus.RECEIVED,
+        description="The status of the request to create an enhancement.",
+    )
+    error: str | None = Field(
+        None,
+        description="Error encountered during the enhancement process.",
+    )
 
-
-class EnhancementRequestIn(EnhancementRequestBase):
-    """The model for requesting an enhancement on specific reference."""
+    reference: Reference | None = Field(
+        None,
+        description="The reference this enhancement is associated with.",
+    )
 
     @classmethod
-    def from_sdk(
+    def from_sdk_in(
         cls,
         enhancement_request: destiny_sdk.robots.EnhancementRequestIn,
     ) -> Self:
@@ -293,25 +320,6 @@ class EnhancementRequestIn(EnhancementRequestBase):
         return cls(
             **enhancement_request.model_dump(),
         )
-
-
-class EnhancementRequest(EnhancementRequestBase, SQLAttributeMixin):
-    """Request to add an enhancement to a specific reference."""
-
-    reference: Reference | None = Field(
-        None,
-        description="The reference this enhancement is associated with.",
-    )
-
-    request_status: EnhancementRequestStatus = Field(
-        default=EnhancementRequestStatus.RECEIVED,
-        description="The status of the request to create an enhancement.",
-    )
-
-    error: str | None = Field(
-        None,
-        description="Error encountered during the enhancement process.",
-    )
 
     def to_sdk(self) -> destiny_sdk.robots.EnhancementRequest:
         """Convert the enhancement request to the SDK model."""

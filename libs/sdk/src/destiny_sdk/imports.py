@@ -1,18 +1,15 @@
-"""Models used by the `Import` domain."""
+"""Import process classes for the Destiny SDK."""
 
 import datetime
-import uuid
 from enum import StrEnum
-from typing import Self
 
-import destiny_sdk
 from pydantic import (
+    UUID4,
+    BaseModel,
     Field,
     HttpUrl,
     PastDatetime,
 )
-
-from app.domain.base import DomainBaseModel, SQLAttributeMixin
 
 
 class ImportRecordStatus(StrEnum):
@@ -94,11 +91,11 @@ class ImportResultStatus(StrEnum):
     FAILED = "failed"
 
 
-class ImportRecord(DomainBaseModel, SQLAttributeMixin):
-    """Core import record model with database and internal attributes included."""
+class _ImportRecordBase(BaseModel):
+    """Base import record class."""
 
     search_string: str | None = Field(
-        default=None,
+        None,
         description="The search string used to produce this import",
     )
     searched_at: PastDatetime = Field(
@@ -116,7 +113,7 @@ is assumed to be in UTC.
         description="The version of the processor that is importing the data."
     )
     notes: str | None = Field(
-        default=None,
+        None,
         description="""
 Any additional notes regarding the import (eg. reason for importing, known
 issues).
@@ -133,26 +130,29 @@ The number of references expected to be included in this import.
         description="The source of the reference being imported (eg. Open Alex)"
     )
 
+
+class ImportRecordIn(_ImportRecordBase):
+    """Input for creating an import record."""
+
+
+class ImportRecord(_ImportRecordBase):
+    """Core import record class."""
+
+    id: UUID4 = Field(
+        description="The ID of the import record",
+    )
     status: ImportRecordStatus = Field(
-        default=ImportRecordStatus.CREATED,
-        description="The status of the upload.",
+        ImportRecordStatus.CREATED,
+        description="The status of the import record",
     )
     batches: list["ImportBatch"] | None = Field(
-        default=None, description="The batches associated with this import."
+        None,
+        description="A list of batches for the import record",
     )
 
-    @classmethod
-    def from_sdk_in(cls, data: destiny_sdk.imports.ImportRecordIn) -> Self:
-        """Create an ImportRecord from the SDK input model."""
-        return cls(**data.model_dump())
 
-    def to_sdk(self) -> destiny_sdk.imports.ImportRecord:
-        """Convert the ImportRecord to the SDK model."""
-        return destiny_sdk.imports.ImportRecord(**self.model_dump())
-
-
-class ImportBatch(DomainBaseModel, SQLAttributeMixin):
-    """Core import batch model with database and internal attributes included."""
+class _ImportBatchBase(BaseModel):
+    """The base class for import batches."""
 
     collision_strategy: CollisionStrategy = Field(
         default=CollisionStrategy.FAIL,
@@ -167,79 +167,84 @@ The URL at which the set of references for this batch are stored.
     """,
     )
     callback_url: HttpUrl | None = Field(
-        default=None,
+        None,
         description="""
 The URL to which the processor should send a callback when the batch has been processed.
         """,
     )
+
+
+class ImportBatchIn(_ImportBatchBase):
+    """Input for creating an import batch."""
+
+
+class ImportBatch(_ImportBatchBase):
+    """Core import batch class."""
+
+    id: UUID4 = Field(
+        description="The ID of the import batch",
+    )
     status: ImportBatchStatus = Field(
         default=ImportBatchStatus.CREATED, description="The status of the batch."
     )
-    import_record_id: uuid.UUID = Field(
-        description="The ID of the parent import record."
+    import_record_id: UUID4 = Field(
+        description="The ID of the import record this batch is associated with"
     )
     import_record: ImportRecord | None = Field(
-        default=None, description="The parent import record."
+        None, description="The parent import record."
     )
     import_results: list["ImportResult"] | None = Field(
-        default=None, description="The results from processing the batch."
+        None, description="The results from processing the batch."
     )
 
-    @classmethod
-    def from_sdk_in(
-        cls, data: destiny_sdk.imports.ImportBatchIn, import_record_id: uuid.UUID
-    ) -> Self:
-        """Create an ImportBatch from the SDK input model."""
-        return cls(**data.model_dump(), import_record_id=import_record_id)
 
-    def to_sdk(self) -> destiny_sdk.imports.ImportBatch:
-        """Convert the ImportBatch to the SDK model."""
-        return destiny_sdk.imports.ImportBatch(**self.model_dump())
+class ImportBatchSummary(_ImportBatchBase):
+    """A view for an import batch that includes a summary of its results."""
 
-    def to_sdk_summary(self) -> destiny_sdk.imports.ImportBatchSummary:
-        """Convert the ImportBatch to the SDK summary model."""
-        result_summary: dict[ImportResultStatus, int] = dict.fromkeys(
-            ImportResultStatus, 0
-        )
-        failure_details: list[str] = []
-        for result in self.import_results or []:
-            result_summary[result.status] += 1
-            if (
-                result.status
-                in (
-                    ImportResultStatus.FAILED,
-                    ImportResultStatus.PARTIALLY_FAILED,
-                )
-                and result.failure_details
-            ):
-                failure_details.append(result.failure_details)
-        return destiny_sdk.imports.ImportBatchSummary(
-            **self.model_dump(),
-            import_batch_id=self.id,
-            import_batch_status=self.status,
-            results=result_summary,
-            failure_details=failure_details,
-        )
-
-
-class ImportResult(DomainBaseModel, SQLAttributeMixin):
-    """Core import result model with database attributes included."""
-
-    import_batch_id: uuid.UUID = Field(description="The ID of the parent import batch.")
-    status: ImportResultStatus = Field(
-        default=ImportResultStatus.CREATED, description="The status of the result."
+    id: UUID4 = Field(
+        description="""
+The identifier of the batch.
+""",
     )
-    import_batch: ImportBatch | None = Field(
-        default=None, description="The parent import batch."
+
+    created_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
+        description="The timestamp at which the batch was created.",
     )
-    reference_id: uuid.UUID | None = Field(
-        default=None, description="The ID of the created reference."
+    updated_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
+        description="The timestamp at which the batch's status was last updated.",
+    )
+
+    import_batch_id: UUID4 = Field(description="The ID of the batch being summarised")
+
+    import_batch_status: ImportBatchStatus = Field(
+        description="The status of the batch being summarised"
+    )
+
+    results: dict[ImportResultStatus, int] = Field(
+        description="A count of references by their current import status."
+    )
+    failure_details: list[str] | None = Field(
+        description="""
+        The details of the failures that occurred.
+        Each failure will start with `"Entry x"` where x is the line number of the
+        jsonl object attempted to be imported.
+        """,
+    )
+
+
+class ImportResult(BaseModel):
+    """Core import result class."""
+
+    id: UUID4 = Field(description="The ID of the import result.")
+    reference_id: UUID4 | None = Field(
+        None, description="The ID of the reference created by this import result."
     )
     failure_details: str | None = Field(
-        default=None,
-        description="Details of any failure that occurred during processing.",
+        None,
+        description="The details of the failure, if the import result failed.",
     )
-
-    def to_sdk(self) -> destiny_sdk.imports.ImportResult:
-        """Convert the ImportResult to the SDK model."""
-        return destiny_sdk.imports.ImportResult(**self.model_dump())
+    import_batch: ImportBatch | None = Field(
+        None, description="The parent import batch."
+    )

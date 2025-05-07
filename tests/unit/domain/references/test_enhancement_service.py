@@ -138,7 +138,7 @@ async def test_trigger_reference_enhancement_request_happy_path(
     )
 
     enhancement_request = await service.request_reference_enhancement(
-        enhancement_request_in=received_enhancement_request
+        enhancement_request=received_enhancement_request
     )
 
     stored_request = fake_enhancement_requests.get_first_record()
@@ -186,7 +186,7 @@ async def test_trigger_reference_enhancement_request_rejected(
     )
 
     enhancement_request = await service.request_reference_enhancement(
-        enhancement_request_in=received_enhancement_request,
+        enhancement_request=received_enhancement_request,
     )
 
     stored_request = fake_enhancement_requests.get_first_record()
@@ -223,7 +223,7 @@ async def test_trigger_reference_enhancement_nonexistent_reference(
 
     with pytest.raises(NotFoundError):
         await service.request_reference_enhancement(
-            enhancement_request_in=received_enhancement_request,
+            enhancement_request=received_enhancement_request,
         )
 
 
@@ -256,7 +256,7 @@ async def test_trigger_reference_enhancement_nonexistent_robot(
 
     with pytest.raises(NotFoundError):
         await service.request_reference_enhancement(
-            enhancement_request_in=received_enhancement_request,
+            enhancement_request=received_enhancement_request,
         )
 
 

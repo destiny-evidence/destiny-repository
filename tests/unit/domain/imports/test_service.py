@@ -7,12 +7,11 @@ import pytest
 
 from app.domain.imports.models.models import (
     CollisionStrategy,
-    ImportBatchCreate,
+    ImportBatch,
     ImportBatchStatus,
-    ImportRecordCreate,
+    ImportRecord,
     ImportRecordStatus,
     ImportResult,
-    ImportResultCreate,
     ImportResultStatus,
 )
 from app.domain.imports.service import ImportService
@@ -30,7 +29,7 @@ async def test_register_import(fake_repository, fake_uow):
     uow = fake_uow(imports=repo_imports)
     service = ImportService(uow)
 
-    import_to_register = ImportRecordCreate(
+    import_to_register = ImportRecord(
         search_string="climate AND health",
         searched_at="2025-02-02T13:29:30Z",
         processor_name="Test Importer",
@@ -55,13 +54,11 @@ async def test_register_batch(fake_repository, fake_uow, fake_import_record):
     uow = fake_uow(imports=repo_imports, batches=repo_batches)
     service = ImportService(uow)
 
-    batch_to_register = ImportBatchCreate(
-        storage_url="https://www.totallyrealstorage.com"
+    batch_to_register = ImportBatch(
+        import_record_id=RECORD_ID, storage_url="https://www.totallyrealstorage.com"
     )
 
-    await service.register_batch(
-        import_record_id=RECORD_ID, batch_create=batch_to_register
-    )
+    await service.register_batch(batch_to_register)
 
     import_batch = next(iter(repo_batches.repository.values()))
 
@@ -144,11 +141,11 @@ async def test_add_batch_result(fake_repository, fake_uow):
     uow = fake_uow(results=repo_results)
     service = ImportService(uow)
 
-    import_result_create = ImportResultCreate(
+    import_result_create = ImportResult(
         import_batch_id=BATCH_ID, status=ImportResultStatus.CREATED
     )
 
-    import_result = await service.add_batch_result(import_result=import_result_create)
+    import_result = await service.add_batch_result(import_result_create)
 
     assert import_result.import_batch_id == BATCH_ID
 
@@ -175,7 +172,8 @@ async def test_get_import_batch_summary_batch_completed_no_failures(
     uow = fake_uow(batches=repo_batches)
     service = ImportService(uow)
 
-    summary = await service.get_import_batch_summary(BATCH_ID)
+    batch = await service.get_import_batch_with_results(BATCH_ID)
+    summary = batch.to_sdk_summary()
 
     assert summary.results.get(ImportResultStatus.COMPLETED) == 1
     assert summary.results.get(ImportResultStatus.FAILED) == 0
@@ -213,7 +211,8 @@ async def test_get_import_batch_summary_batch_completed_with_failures(
     uow = fake_uow(batches=repo_batches)
     service = ImportService(uow)
 
-    summary = await service.get_import_batch_summary(BATCH_ID)
+    batch = await service.get_import_batch_with_results(BATCH_ID)
+    summary = batch.to_sdk_summary()
 
     assert summary.results.get(ImportResultStatus.FAILED) == 1
     assert summary.results.get(ImportResultStatus.PARTIALLY_FAILED) == 1
@@ -249,7 +248,8 @@ async def test_get_import_batch_summary_batch_in_progress(
     uow = fake_uow(batches=repo_batches)
     service = ImportService(uow)
 
-    summary = await service.get_import_batch_summary(BATCH_ID)
+    batch = await service.get_import_batch_with_results(BATCH_ID)
+    summary = batch.to_sdk_summary()
 
     assert summary.results.get(ImportResultStatus.COMPLETED) == 1
     assert summary.results.get(ImportResultStatus.STARTED) == 1

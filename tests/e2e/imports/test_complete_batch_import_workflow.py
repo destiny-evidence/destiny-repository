@@ -3,6 +3,8 @@ End-to-end test for complete import workflow.
 
 Consider reducing number of assertions, particularly string-sensitive, once
 unit and integration test coverage is sound.
+
+N.B. does NOT use the SDK in order to test serverside validation.
 """
 # ruff: noqa: T201 E501 ERA001
 

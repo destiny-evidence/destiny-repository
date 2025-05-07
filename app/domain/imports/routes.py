@@ -2,6 +2,7 @@
 
 from typing import Annotated
 
+import destiny_sdk
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,11 +18,7 @@ from app.core.config import get_settings
 from app.core.logger import get_logger
 from app.domain.imports.models.models import (
     ImportBatch,
-    ImportBatchCreate,
-    ImportBatchSummary,
     ImportRecord,
-    ImportRecordCreate,
-    ImportResult,
     ImportResultStatus,
 )
 from app.domain.imports.service import ImportService
@@ -71,18 +68,18 @@ router = APIRouter(
 
 @router.post("/record/", status_code=status.HTTP_201_CREATED)
 async def create_record(
-    import_record: ImportRecordCreate,
+    import_record: destiny_sdk.imports.ImportRecordIn,
     import_service: Annotated[ImportService, Depends(import_service)],
 ) -> ImportRecord:
     """Create a record for an import process."""
-    return await import_service.register_import(import_record)
+    return await import_service.register_import(ImportRecord.from_sdk_in(import_record))
 
 
 @router.get("/record/{import_record_id}/")
 async def get_record(
     import_record_id: UUID4,
     import_service: Annotated[ImportService, Depends(import_service)],
-) -> ImportRecord:
+) -> destiny_sdk.imports.ImportRecord:
     """Get an import from the database."""
     import_record = await import_service.get_import_record(import_record_id)
     if not import_record:
@@ -91,7 +88,7 @@ async def get_record(
             detail=f"Import record with id {import_record_id} not found.",
         )
 
-    return import_record
+    return import_record.to_sdk()
 
 
 @router.patch(
@@ -114,29 +111,25 @@ async def finalise_record(
 @router.post("/record/{import_record_id}/batch/", status_code=status.HTTP_202_ACCEPTED)
 async def enqueue_batch(
     import_record_id: Annotated[UUID4, Path(title="The id of the associated import")],
-    batch: ImportBatchCreate,
+    batch: destiny_sdk.imports.ImportBatchIn,
     import_service: Annotated[ImportService, Depends(import_service)],
-) -> ImportBatch:
+) -> destiny_sdk.imports.ImportBatch:
     """Register an import batch for a given import."""
-    import_record = await import_service.get_import_record(import_record_id)
-    if not import_record:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Import record with id {import_record_id} not found.",
-        )
-    import_batch = await import_service.register_batch(import_record_id, batch)
+    import_batch = await import_service.register_batch(
+        ImportBatch.from_sdk_in(batch, import_record_id)
+    )
     logger.info("Enqueueing import batch", extra={"import_batch_id": import_batch.id})
     await process_import_batch.kiq(
         import_batch_id=import_batch.id,
     )
-    return import_batch
+    return import_batch.to_sdk()
 
 
 @router.get("/record/{import_record_id}/batch/")
 async def get_batches(
     import_record_id: Annotated[UUID4, Path(title="The id of the associated import")],
     import_service: Annotated[ImportService, Depends(import_service)],
-) -> list[ImportBatch]:
+) -> list[destiny_sdk.imports.ImportBatch]:
     """Get batches associated to an import."""
     import_record = await import_service.get_import_record_with_batches(
         import_record_id
@@ -147,14 +140,14 @@ async def get_batches(
             status_code=404,
             detail=f"Import record with id {import_record_id} not found.",
         )
-    return import_record.batches or []
+    return [batch.to_sdk() for batch in import_record.batches or []]
 
 
 @router.get("/batch/{import_batch_id}/")
 async def get_batch(
     import_batch_id: Annotated[UUID4, Path(title="The id of the import batch")],
     import_service: Annotated[ImportService, Depends(import_service)],
-) -> ImportBatch:
+) -> destiny_sdk.imports.ImportBatch:
     """Get batches associated to an import."""
     import_batch = await import_service.get_import_batch(import_batch_id)
 
@@ -163,22 +156,22 @@ async def get_batch(
             status_code=404,
             detail=f"Import batch with id {import_batch_id} not found.",
         )
-    return import_batch
+    return import_batch.to_sdk()
 
 
 @router.get("/batch/{import_batch_id}/summary/")
 async def get_import_batch_summary(
     import_batch_id: UUID4,
     import_service: Annotated[ImportService, Depends(import_service)],
-) -> ImportBatchSummary:
+) -> destiny_sdk.imports.ImportBatchSummary:
     """Get a summary of an import batch's results."""
-    import_batch_result = await import_service.get_import_batch_summary(import_batch_id)
-    if not import_batch_result:
+    import_batch = await import_service.get_import_batch_with_results(import_batch_id)
+    if not import_batch:
         raise HTTPException(
             status_code=404,
             detail=f"Import batch with id {import_batch_id} not found.",
         )
-    return import_batch_result
+    return import_batch.to_sdk_summary()
 
 
 @router.get("/batch/{import_batch_id}/results/")
@@ -186,7 +179,7 @@ async def get_import_results(
     import_batch_id: UUID4,
     import_service: Annotated[ImportService, Depends(import_service)],
     result_status: ImportResultStatus | None = None,
-) -> list[ImportResult]:
+) -> list[destiny_sdk.imports.ImportResult]:
     """Get a list of results for an import batch."""
     import_batch_results = await import_service.get_import_results(
         import_batch_id, result_status
@@ -196,4 +189,6 @@ async def get_import_results(
             status_code=404,
             detail=f"No results found for import batch with id {import_batch_id}.",
         )
-    return import_batch_results
+    return [
+        import_batch_results.to_sdk() for import_batch_results in import_batch_results
+    ]

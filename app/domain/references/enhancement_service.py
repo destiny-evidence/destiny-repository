@@ -10,7 +10,6 @@ from app.domain.references.models.models import (
     Enhancement,
     EnhancementIn,
     EnhancementRequest,
-    EnhancementRequestIn,
     EnhancementRequestStatus,
 )
 from app.domain.robots import Robots
@@ -45,29 +44,29 @@ class EnhancementService(GenericService):
 
     @unit_of_work
     async def request_reference_enhancement(
-        self, enhancement_request_in: EnhancementRequestIn
+        self, enhancement_request: EnhancementRequest
     ) -> EnhancementRequest:
         """Create an enhancement request and send it to robot."""
         reference = await self.sql_uow.references.get_by_pk(
-            enhancement_request_in.reference_id, preload=["identifiers", "enhancements"]
+            enhancement_request.reference_id, preload=["identifiers", "enhancements"]
         )
 
         if not reference:
             raise NotFoundError(
                 detail=f"""
-Reference with id {enhancement_request_in.reference_id} not found
+Reference with id {enhancement_request.reference_id} not found
 """,
             )
 
-        robot_url = self.robots.get_robot_url(enhancement_request_in.robot_id)
+        robot_url = self.robots.get_robot_url(enhancement_request.robot_id)
 
         if not robot_url:
             raise NotFoundError(
-                detail=f"Robot with id {enhancement_request_in.robot_id} not found.",
+                detail=f"Robot with id {enhancement_request.robot_id} not found.",
             )
 
         enhancement_request = await self.sql_uow.enhancement_requests.add(
-            EnhancementRequest(**enhancement_request_in.model_dump())
+            EnhancementRequest(**enhancement_request.model_dump())
         )
 
         robot_request = destiny_sdk.robots.RobotRequest(

@@ -17,7 +17,7 @@ from app.core.auth import (
 from app.core.config import get_settings
 from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
-    EnhancementRequestIn,
+    EnhancementRequest,
     ExternalIdentifierSearch,
 )
 from app.domain.references.reference_service import ReferenceService
@@ -162,12 +162,12 @@ async def add_identifier(
     dependencies=[Depends(reference_writer_auth)],
 )
 async def request_enhancement(
-    enhancement_request_in: destiny_sdk.robots.EnhancementRequestIn,
+    enhancement_request: destiny_sdk.robots.EnhancementRequestIn,
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
 ) -> destiny_sdk.robots.EnhancementRequest:
     """Request the creation of an enhancement against a provided reference id."""
     request = await enhancement_service.request_reference_enhancement(
-        enhancement_request_in=EnhancementRequestIn.from_sdk(enhancement_request_in)
+        enhancement_request=EnhancementRequest.from_sdk_in(enhancement_request)
     )
 
     return request.to_sdk()
