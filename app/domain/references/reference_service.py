@@ -4,6 +4,7 @@ import json
 
 from pydantic import UUID4, ValidationError
 
+from app.core.exceptions import NotFoundError
 from app.core.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
@@ -223,14 +224,17 @@ Identifier(s) are already mapped on an existing reference:
         """
         collided = []
         for identifier in identifiers:
-            existing_identifier = (
-                await self.sql_uow.external_identifiers.get_by_type_and_identifier(
-                    identifier.identifier_type,
-                    identifier.identifier,
-                    identifier.other_identifier_name,
+            try:
+                existing_identifier = (
+                    await self.sql_uow.external_identifiers.get_by_type_and_identifier(
+                        identifier.identifier_type,
+                        identifier.identifier,
+                        identifier.other_identifier_name,
+                    )
                 )
-            )
-            if existing_identifier:
+            except NotFoundError:
+                pass
+            else:
                 collided.append(existing_identifier)
         return collided
 

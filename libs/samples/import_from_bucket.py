@@ -55,7 +55,9 @@ if __name__ == "__main__":
             ),
         )
         response.raise_for_status()
-        import_record = destiny_sdk.imports.ImportRecord.model_validate(response.json())
+        import_record = destiny_sdk.imports.ImportRecordRead.model_validate(
+            response.json()
+        )
 
         # 2: For each file in the bucket, register an import batch
         blob_service_client = BlobServiceClient(
@@ -90,7 +92,7 @@ if __name__ == "__main__":
                 ),
             )
             response.raise_for_status()
-            import_batch = destiny_sdk.imports.ImportBatch.model_validate(
+            import_batch = destiny_sdk.imports.ImportBatchRead.model_validate(
                 response.json()
             )
             print(f"Import batch {import_batch.id} registered for blob {blob.name}")
@@ -114,7 +116,7 @@ if __name__ == "__main__":
                     f"/imports/batch/{import_batch_id}/",
                 )
                 response.raise_for_status()
-                import_batch = destiny_sdk.imports.ImportBatch.model_validate(
+                import_batch = destiny_sdk.imports.ImportBatchRead.model_validate(
                     response.json()
                 )
                 print(import_batch)
