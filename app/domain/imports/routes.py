@@ -152,5 +152,5 @@ async def get_import_results(
         import_batch_id, result_status
     )
     return [
-        import_batch_results.to_sdk() for import_batch_results in import_batch_results
+        import_batch_result.to_sdk() for import_batch_result in import_batch_results
     ]
