@@ -16,7 +16,7 @@ class _ReferenceBase(BaseModel):
     """
 
     visibility: Visibility = Field(
-        Visibility.PUBLIC,
+        default=Visibility.PUBLIC,
         description="The level of visibility of the reference",
     )
 
@@ -28,10 +28,10 @@ class Reference(_ReferenceBase):
         description="The ID of the reference",
     )
     identifiers: list[ExternalIdentifier] | None = Field(
-        None,
+        default=None,
         description="A list of `ExternalIdentifiers` for the Reference",
     )
     enhancements: list[Enhancement] | None = Field(
-        None,
+        default=None,
         description="A list of enhancements for the reference",
     )

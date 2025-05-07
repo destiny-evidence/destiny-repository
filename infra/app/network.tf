@@ -2,7 +2,7 @@ resource "azurerm_virtual_network" "this" {
   name                = "vnet-${local.name}"
   location            = azurerm_resource_group.this.location
   resource_group_name = azurerm_resource_group.this.name
-  address_space       = ["https://10.0.0.0/16"]
+  address_space       = ["10.0.0.0/16"]
 
   tags = local.minimum_resource_tags
 }
@@ -19,7 +19,7 @@ resource "azurerm_subnet" "db" {
   name                 = "sn-${local.name}-db"
   resource_group_name  = azurerm_resource_group.this.name
   virtual_network_name = azurerm_virtual_network.this.name
-  address_prefixes     = ["https://10.0.2.0/24"]
+  address_prefixes     = ["10.0.2.0/24"]
 
   delegation {
     name = "fs"
@@ -54,12 +54,12 @@ resource "azurerm_subnet" "app" {
   name                 = "sn-${local.name}-app"
   resource_group_name  = azurerm_resource_group.this.name
   virtual_network_name = azurerm_virtual_network.this.name
-  address_prefixes     = ["https://10.0.4.0/23"]
+  address_prefixes     = ["10.0.4.0/23"]
 }
 
 resource "azurerm_subnet" "tasks" {
   name                 = "sn-${local.name}-tasks"
   resource_group_name  = azurerm_resource_group.this.name
   virtual_network_name = azurerm_virtual_network.this.name
-  address_prefixes     = ["https://10.0.6.0/23"]
+  address_prefixes     = ["10.0.6.0/23"]
 }

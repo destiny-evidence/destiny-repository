@@ -95,7 +95,7 @@ class _ImportRecordBase(BaseModel):
     """Base import record class."""
 
     search_string: str | None = Field(
-        None,
+        default=None,
         description="The search string used to produce this import",
     )
     searched_at: PastDatetime = Field(
@@ -113,7 +113,7 @@ is assumed to be in UTC.
         description="The version of the processor that is importing the data."
     )
     notes: str | None = Field(
-        None,
+        default=None,
         description="""
 Any additional notes regarding the import (eg. reason for importing, known
 issues).
@@ -146,7 +146,7 @@ class ImportRecord(_ImportRecordBase):
         description="The status of the import record",
     )
     batches: list["ImportBatch"] | None = Field(
-        None,
+        default=None,
         description="A list of batches for the import record",
     )
 
@@ -167,7 +167,7 @@ The URL at which the set of references for this batch are stored.
     """,
     )
     callback_url: HttpUrl | None = Field(
-        None,
+        default=None,
         description="""
 The URL to which the processor should send a callback when the batch has been processed.
         """,
@@ -191,10 +191,10 @@ class ImportBatch(_ImportBatchBase):
         description="The ID of the import record this batch is associated with"
     )
     import_record: ImportRecord | None = Field(
-        None, description="The parent import record."
+        default=None, description="The parent import record."
     )
     import_results: list["ImportResult"] | None = Field(
-        None, description="The results from processing the batch."
+        default=None, description="The results from processing the batch."
     )
 
 
@@ -239,12 +239,13 @@ class ImportResult(BaseModel):
 
     id: UUID4 = Field(description="The ID of the import result.")
     reference_id: UUID4 | None = Field(
-        None, description="The ID of the reference created by this import result."
+        default=None,
+        description="The ID of the reference created by this import result.",
     )
     failure_details: str | None = Field(
-        None,
+        default=None,
         description="The details of the failure, if the import result failed.",
     )
     import_batch: ImportBatch | None = Field(
-        None, description="The parent import batch."
+        default=None, description="The parent import batch."
     )

@@ -165,7 +165,7 @@ class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
         )
 
 
-class GenericExternalIdentifier(BaseModel):
+class GenericExternalIdentifier(DomainBaseModel):
     """
     Generic external identifier model for all subtypes.
 

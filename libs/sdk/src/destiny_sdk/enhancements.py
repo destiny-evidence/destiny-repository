@@ -75,29 +75,31 @@ class BibliographicMetadataEnhancement(BaseModel):
         EnhancementType.BIBLIOGRAPHIC
     )
     authorship: list[Authorship] | None = Field(
-        None,
+        default=None,
         description="A list of `Authorships` belonging to this reference.",
     )
     cited_by_count: int | None = Field(
-        None,
+        default=None,
         description="""
 (From OpenAlex) The number of citations to this work. These are the times that
 other works have cited this work
 """,
     )
     created_date: PastDate | None = Field(
-        None, description="The ISO8601 date this metadata record was created"
+        default=None, description="The ISO8601 date this metadata record was created"
     )
     publication_date: PastDate | None = Field(
-        None, description="The date which the version of record was published."
+        default=None, description="The date which the version of record was published."
     )
     publication_year: int | None = Field(
-        None, description="The year in which the version of record was published."
+        default=None,
+        description="The year in which the version of record was published.",
     )
     publisher: str | None = Field(
-        None,
+        default=None,
         description="The name of the entity which published the version of record.",
     )
+    title: str | None = Field(default=None, description="The title of the reference.")
 
 
 class AbstractProcessType(StrEnum):
@@ -196,7 +198,7 @@ class Location(BaseModel):
     """
 
     is_oa: bool | None = Field(
-        None,
+        default=None,
         description="""
 (From OpenAlex): True if an Open Access (OA) version of this work is available
 at this location. May be left as null if this is unknown (and thus)
@@ -204,22 +206,23 @@ treated effectively as `false`.
 """,
     )
     version: DriverVersion | None = Field(
-        None,
+        default=None,
         description="""
 The version (according to the DRIVER versioning scheme) of this location.
 """,
     )
     landing_page_url: HttpUrl | None = Field(
-        None, description="(From OpenAlex): The landing page URL for this location."
+        default=None,
+        description="(From OpenAlex): The landing page URL for this location.",
     )
     pdf_url: HttpUrl | None = Field(
-        None,
+        default=None,
         description="""
 (From OpenAlex): A URL where you can find this location as a PDF.
 """,
     )
     license: str | None = Field(
-        None,
+        default=None,
         description="""
 (From OpenAlex): The location's publishing license. This can be a Creative
 Commons license such as cc0 or cc-by, a publisher-specific license, or null
@@ -227,7 +230,7 @@ which means we are not able to determine a license for this location.
 """,
     )
     extra: dict | None = Field(
-        None, description="Any extra metadata about this location"
+        default=None, description="Any extra metadata about this location"
     )
 
 
@@ -266,7 +269,7 @@ class Enhancement(BaseModel):
         description="The level of visibility of the enhancement"
     )
     processor_version: str | None = Field(
-        None,
+        default=None,
         description="The version of the processor that generated the content.",
     )
     content_version: uuid.UUID = Field(
