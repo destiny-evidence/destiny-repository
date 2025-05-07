@@ -244,12 +244,13 @@ class LocationEnhancement(BaseModel):
     )
 
 
-EnhancementContent = (
+EnhancementContent = Annotated[
     BibliographicMetadataEnhancement
     | AbstractContentEnhancement
     | AnnotationEnhancement
-    | LocationEnhancement
-)
+    | LocationEnhancement,
+    Field(discriminator="enhancement_type"),
+]
 
 
 class _EnhancementBase(BaseModel):

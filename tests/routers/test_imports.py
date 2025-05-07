@@ -119,8 +119,9 @@ async def test_get_import(
 
 async def test_get_missing_import(client: AsyncClient) -> None:
     """Test that we return a 404 when we can't find an import record."""
-    response = await client.get("/imports/2526e938-b27c-44c2-887e-3bbe1c8e898a/")
+    response = await client.get("/imports/record/2526e938-b27c-44c2-887e-3bbe1c8e898a/")
     assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert "import record".casefold() in response.json()["detail"].casefold()
 
 
 async def test_create_batch_for_import(

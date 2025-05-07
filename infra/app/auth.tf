@@ -4,6 +4,8 @@ resource "random_uuid" "reference_reader_role" {}
 
 resource "random_uuid" "reference_writer_role" {}
 
+resource "random_uuid" "robot_role" {}
+
 # App registration for destiny repository
 # App roles to allow various functions (i.e. imports) should be added as app role resources here
 resource "azuread_application_registration" "destiny_repository" {
@@ -39,6 +41,15 @@ resource "azuread_application_app_role" "reference_writer" {
   value                = "reference.writer"
 }
 
+resource "azuread_application_app_role" "robot" {
+  application_id       = azuread_application_registration.destiny_repository.id
+  allowed_member_types = ["User", "Application"]
+  description          = "Can perform robot actions such as creating enhancements"
+  display_name         = "Robot"
+  role_id              = random_uuid.robot_role.result
+  value                = "robot"
+}
+
 resource "azuread_service_principal" "destiny_repository" {
   client_id                    = azuread_application_registration.destiny_repository.client_id
   app_role_assignment_required = true
@@ -66,6 +77,12 @@ resource "azuread_app_role_assignment" "developer_to_reference_reader" {
 
 resource "azuread_app_role_assignment" "developer_to_reference_writer" {
   app_role_id         = azuread_application_app_role.reference_writer.role_id
+  principal_object_id = var.developers_group_id
+  resource_object_id  = azuread_service_principal.destiny_repository.object_id
+}
+
+resource "azuread_app_role_assignment" "developer_to_robot" {
+  app_role_id         = azuread_application_app_role.robot.role_id
   principal_object_id = var.developers_group_id
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
 }

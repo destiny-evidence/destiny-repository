@@ -23,7 +23,7 @@ asyncpg = "^0.30.0"
 azure-identity = "^1.21.0"
 azure-servicebus = "^7.14.2"
 cachetools = "^5.5.2"
-destiny-sdk = {path = "libs/sdk"}
+destiny-sdk = {develop = true, path = "libs/sdk"}
 fastapi = {extras = ["standard"], version = "^0.115.6"}
 greenlet = "^3.1.1"
 pydantic-settings = "^2.7.1"

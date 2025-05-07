@@ -6,12 +6,14 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, Request, Response, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, SDKToDomainError, WrongReferenceError
 from app.core.logger import configure_logger, get_logger
 from app.domain.imports.routes import router as import_router
+from app.domain.references.routes import robot_router
 from app.domain.references.routes import router as reference_router
 from app.persistence.sql.session import db_manager
 from app.tasks import broker
@@ -37,6 +39,7 @@ app = FastAPI(title="DESTINY Climate and Health Repository", lifespan=lifespan)
 
 app.include_router(import_router)
 app.include_router(reference_router)
+app.include_router(robot_router)
 app.include_router(healthcheck_router)
 
 configure_logger()
@@ -90,11 +93,36 @@ async def logger_middleware(
 @app.exception_handler(NotFoundError)
 async def not_found_exception_handler(
     request: Request,  # noqa: ARG001 exception handlers required to take request as parameter
-    exc: NotFoundError,
+    exception: NotFoundError,
 ) -> JSONResponse:
     """Exception handler to return 404 responses when NotFoundError thrown."""
     return JSONResponse(
-        status_code=status.HTTP_404_NOT_FOUND, content={"detail": exc.detail}
+        status_code=status.HTTP_404_NOT_FOUND, content={"detail": exception.detail}
+    )
+
+
+@app.exception_handler(SDKToDomainError)
+async def sdk_to_domain_exception_handler(
+    request: Request,  # noqa: ARG001 exception handlers required to take request as parameter
+    exception: SDKToDomainError,
+) -> JSONResponse:
+    """Return unprocessible responsers when sdk -> domain converstion fails."""
+    # Probably want to reduce the amount of information we're giving back here.
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=jsonable_encoder({"detail": exception.errors}),
+    )
+
+
+@app.exception_handler(WrongReferenceError)
+async def enhance_wrong_reference_exception_handler(
+    request: Request,  # noqa: ARG001 exception handlers required to take request as parameter
+    exception: WrongReferenceError,
+) -> JSONResponse:
+    """Return unprocessible responsers when sdk -> domain converstion fails."""
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=jsonable_encoder({"detail": exception.detail}),
     )
 
 

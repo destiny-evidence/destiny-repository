@@ -10,13 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import (
     AuthMethod,
     AuthScopes,
-    AzureJwtAuth,
     CachingStrategyAuth,
-    SuccessAuth,
+    choose_auth_strategy,
 )
 from app.core.config import get_settings
 from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
+    Enhancement,
     EnhancementRequest,
     ExternalIdentifierSearch,
 )
@@ -35,14 +35,14 @@ def unit_of_work(
     return AsyncSqlUnitOfWork(session=session)
 
 
-robots = Robots(known_robots=settings.known_robots)
-
-
 def reference_service(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
 ) -> ReferenceService:
     """Return the reference service using the provided unit of work dependencies."""
     return ReferenceService(sql_uow=sql_uow)
+
+
+robots = Robots(known_robots=settings.known_robots)
 
 
 def enhancement_service(
@@ -53,26 +53,34 @@ def enhancement_service(
     return EnhancementService(sql_uow=sql_uow, robots=robots)
 
 
-def choose_auth_strategy(auth_scope: AuthScopes) -> AuthMethod:
-    """Choose a strategy for our authorization."""
-    if settings.env in ("dev", "test"):
-        return SuccessAuth()
-
-    return AzureJwtAuth(
-        tenant_id=settings.azure_tenant_id,
-        application_id=settings.azure_application_id,
-        scope=auth_scope,
-    )
-
-
 def choose_auth_strategy_reader() -> AuthMethod:
     """Choose reader scope auth strategy for our authorization."""
-    return choose_auth_strategy(AuthScopes.REFERENCE_READER)
+    return choose_auth_strategy(
+        environment=settings.env,
+        tenant_id=settings.azure_tenant_id,
+        application_id=settings.azure_application_id,
+        auth_scope=AuthScopes.REFERENCE_READER,
+    )
 
 
 def choose_auth_strategy_writer() -> AuthMethod:
     """Choose writer scope auth strategy for our authorization."""
-    return choose_auth_strategy(AuthScopes.REFERENCE_WRITER)
+    return choose_auth_strategy(
+        environment=settings.env,
+        tenant_id=settings.azure_tenant_id,
+        application_id=settings.azure_application_id,
+        auth_scope=AuthScopes.REFERENCE_WRITER,
+    )
+
+
+def choose_auth_strategy_robot() -> AuthMethod:
+    """Choose robot scope auth strategy for our authorization."""
+    return choose_auth_strategy(
+        environment=settings.env,
+        tenant_id=settings.azure_tenant_id,
+        application_id=settings.azure_application_id,
+        auth_scope=AuthScopes.ROBOT,
+    )
 
 
 reference_reader_auth = CachingStrategyAuth(
@@ -83,8 +91,12 @@ reference_writer_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_writer,
 )
 
+robot_auth = CachingStrategyAuth(selector=choose_auth_strategy_robot)
 
 router = APIRouter(prefix="/references", tags=["references"])
+robot_router = APIRouter(
+    prefix="/robot", tags=["robots"], dependencies=[Depends(robot_auth)]
+)
 
 
 @router.get("/{reference_id}/", dependencies=[Depends(reference_reader_auth)])
@@ -162,12 +174,57 @@ async def add_identifier(
     dependencies=[Depends(reference_writer_auth)],
 )
 async def request_enhancement(
-    enhancement_request: destiny_sdk.robots.EnhancementRequestIn,
+    enhancement_request_in: destiny_sdk.robots.EnhancementRequestIn,
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
 ) -> destiny_sdk.robots.EnhancementRequest:
     """Request the creation of an enhancement against a provided reference id."""
-    request = await enhancement_service.request_reference_enhancement(
-        enhancement_request=EnhancementRequest.from_sdk_in(enhancement_request)
+    enhancement_request = await enhancement_service.request_reference_enhancement(
+        enhancement_request=EnhancementRequest.from_sdk(enhancement_request_in)
     )
 
-    return request.to_sdk()
+    return enhancement_request.to_sdk()
+
+
+@router.get(
+    "/enhancement/request/{enhancement_request_id}/",
+    dependencies=[Depends(reference_writer_auth)],
+)
+async def check_enhancement_request_status(
+    enhancement_request_id: Annotated[
+        uuid.UUID, Path(description="The ID of the enhancement request.")
+    ],
+    enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
+) -> destiny_sdk.robots.EnhancementRequest:
+    """Check the status of an enhancement request."""
+    enhancement_request = await enhancement_service.get_enhancement_request(
+        enhancement_request_id
+    )
+
+    return enhancement_request.to_sdk()
+
+
+@robot_router.post("/enhancement/", status_code=status.HTTP_200_OK)
+async def fulfill_enhancement_request(
+    robot_result: destiny_sdk.robots.RobotResult,
+    enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
+) -> destiny_sdk.robots.EnhancementRequest:
+    """Create an enhancement against an existing enhancement request."""
+    if robot_result.error:
+        enhancement_request = await enhancement_service.mark_enhancement_request_failed(
+            enhancement_request_id=robot_result.request_id,
+            error=robot_result.error.message,
+        )
+        return enhancement_request.to_sdk()
+    if not robot_result.enhancement:
+        enhancement_request = await enhancement_service.mark_enhancement_request_failed(
+            enhancement_request_id=robot_result.request_id,
+            error="No enhancement received.",
+        )
+        return enhancement_request.to_sdk()
+
+    enhancement_request = await enhancement_service.create_reference_enhancement(
+        enhancement_request_id=robot_result.request_id,
+        enhancement=Enhancement.from_sdk(robot_result.enhancement),
+    )
+
+    return enhancement_request.to_sdk()

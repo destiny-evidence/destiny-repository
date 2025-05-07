@@ -10,9 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import (
     AuthMethod,
     AuthScopes,
-    AzureJwtAuth,
     CachingStrategyAuth,
-    SuccessAuth,
+    choose_auth_strategy,
 )
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -44,21 +43,17 @@ def import_service(
     return ImportService(sql_uow=sql_uow)
 
 
-def choose_auth_strategy() -> AuthMethod:
-    """Choose a strategy for our authorization."""
-    if settings.env in ("dev", "test"):
-        return SuccessAuth()
-
-    return AzureJwtAuth(
+def choose_auth_strategy_imports() -> AuthMethod:
+    """Choose import scope auth strategy for our imports authorization."""
+    return choose_auth_strategy(
+        environment=settings.env,
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
-        scope=AuthScopes.IMPORT,
+        auth_scope=AuthScopes.IMPORT,
     )
 
 
-import_auth = CachingStrategyAuth(
-    selector=choose_auth_strategy,
-)
+import_auth = CachingStrategyAuth(selector=choose_auth_strategy_imports)
 
 
 router = APIRouter(
@@ -72,7 +67,7 @@ async def create_record(
     import_service: Annotated[ImportService, Depends(import_service)],
 ) -> ImportRecord:
     """Create a record for an import process."""
-    return await import_service.register_import(ImportRecord.from_sdk_in(import_record))
+    return await import_service.register_import(ImportRecord.from_sdk(import_record))
 
 
 @router.get("/record/{import_record_id}/")
@@ -116,7 +111,7 @@ async def enqueue_batch(
 ) -> destiny_sdk.imports.ImportBatch:
     """Register an import batch for a given import."""
     import_batch = await import_service.register_batch(
-        ImportBatch.from_sdk_in(batch, import_record_id)
+        ImportBatch.from_sdk(batch, import_record_id)
     )
     logger.info("Enqueueing import batch", extra={"import_batch_id": import_batch.id})
     await process_import_batch.kiq(

@@ -7,6 +7,7 @@ from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.core.exceptions import NotFoundError
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
 from app.persistence.sql.generics import GenericSQLPersistenceType
@@ -74,8 +75,8 @@ class GenericAsyncSqlRepository(
         """
         persistence = await self._session.get(self._persistence_cls, pk)
         if not persistence:
-            msg = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
-            raise RuntimeError(msg)
+            detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
+            raise NotFoundError(detail=detail)
 
         # Check if key is in the persistence model.
         for key, value in kwargs.items():
@@ -95,8 +96,8 @@ class GenericAsyncSqlRepository(
         """
         persistence = await self._session.get(self._persistence_cls, pk)
         if not persistence:
-            msg = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
-            raise RuntimeError(msg)
+            detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
+            raise NotFoundError(detail=detail)
 
         await self._session.delete(persistence)
         await self._session.flush()

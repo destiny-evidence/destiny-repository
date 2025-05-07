@@ -298,7 +298,7 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             request_status=self.request_status,
             enhancement_parameters=json.loads(self.enhancement_parameters)
             if self.enhancement_parameters
-            else None,
+            else {},
             error=self.error,
             reference=await self.reference.to_domain()
             if "reference" in (preload or [])

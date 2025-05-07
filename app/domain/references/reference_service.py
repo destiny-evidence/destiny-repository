@@ -7,7 +7,7 @@ from pydantic import UUID4, ValidationError
 from app.core.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
-    EnhancementIn,
+    EnhancementFileInput,
     EnhancementParseResult,
     ExternalIdentifier,
     ExternalIdentifierAdapter,
@@ -17,7 +17,7 @@ from app.domain.references.models.models import (
     LinkedExternalIdentifier,
     Reference,
     ReferenceCreateResult,
-    ReferenceIn,
+    ReferenceFileInput,
 )
 from app.domain.references.models.validators import ReferenceFileInputValidator
 from app.domain.service import GenericService
@@ -118,7 +118,7 @@ Identifier {entry_ref}:
     ) -> EnhancementParseResult:
         """Parse and ingest an enhancement into the database."""
         try:
-            enhancement = EnhancementIn.model_validate(raw_enhancement)
+            enhancement = EnhancementFileInput.model_validate(raw_enhancement)
             return EnhancementParseResult(enhancement=enhancement)
         except (TypeError, ValueError) as error:
             return EnhancementParseResult(
@@ -145,7 +145,7 @@ Enhancement {entry_ref}:
 
     async def detect_and_handle_collision(
         self,
-        reference: ReferenceIn,
+        reference: ReferenceFileInput,
         collision_strategy: CollisionStrategy,
     ) -> Reference | str | None:
         """
@@ -377,9 +377,10 @@ Identifier(s) are already mapped on an existing reference:
             for i, enhancement in enumerate(validated_input.enhancements, 1)
         ]
 
-        reference = ReferenceIn(
+        reference = ReferenceFileInput(
             visibility=raw_reference.get(  # type: ignore[union-attr]
-                "visibility", Reference.model_fields["visibility"].get_default()
+                "visibility",
+                ReferenceFileInput.model_fields["visibility"].get_default(),
             ),
             identifiers=[
                 result.external_identifier

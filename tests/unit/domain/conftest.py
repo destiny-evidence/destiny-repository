@@ -2,6 +2,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from app.core.exceptions import NotFoundError
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 from app.domain.imports.models.models import (
     ImportBatch,
@@ -33,14 +34,14 @@ class FakeRepository:
 
     async def update_by_pk(self, pk: UUID, **kwargs: object) -> DummyDomainSQLModel:
         if pk not in self.repository:
-            raise RuntimeError
+            raise NotFoundError(detail=f"{pk} not in repository")
         for key, value in kwargs.items():
             setattr(self.repository[pk], key, value)
         return self.repository[pk]
 
     async def delete_by_pk(self, pk) -> None:
         if pk not in self.repository:
-            raise RuntimeError
+            raise NotFoundError(detail=f"{pk} not in repository")
         del self.repository[pk]
 
     def iter_records(self):

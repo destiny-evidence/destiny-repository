@@ -142,7 +142,7 @@ The number of references expected to be included in this import.
     )
 
     @classmethod
-    def from_sdk_in(cls, data: destiny_sdk.imports.ImportRecordIn) -> Self:
+    def from_sdk(cls, data: destiny_sdk.imports.ImportRecordIn) -> Self:
         """Create an ImportRecord from the SDK input model."""
         return cls(**data.model_dump())
 
@@ -186,7 +186,7 @@ The URL to which the processor should send a callback when the batch has been pr
     )
 
     @classmethod
-    def from_sdk_in(
+    def from_sdk(
         cls, data: destiny_sdk.imports.ImportBatchIn, import_record_id: uuid.UUID
     ) -> Self:
         """Create an ImportBatch from the SDK input model."""
