@@ -69,8 +69,6 @@ class ReferenceService(GenericService):
     ) -> LinkedExternalIdentifier:
         """Register an import, persisting it to the database."""
         reference = await self.sql_uow.references.get_by_pk(reference_id)
-        if not reference:
-            raise RuntimeError
         db_identifier = LinkedExternalIdentifier(
             reference_id=reference.id,
             identifier=identifier,

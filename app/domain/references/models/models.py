@@ -99,16 +99,20 @@ class Reference(DomainBaseModel, SQLAttributeMixin):
 
     def to_sdk(self) -> destiny_sdk.references.Reference:
         """Convert the reference to the SDK model."""
-        return destiny_sdk.references.Reference(
-            id=self.id,
-            visibility=self.visibility,
-            identifiers=[
-                identifier.to_sdk().identifier for identifier in self.identifiers or []
-            ],
-            enhancements=[
-                enhancement.to_sdk() for enhancement in self.enhancements or []
-            ],
-        )
+        try:
+            return destiny_sdk.references.Reference(
+                id=self.id,
+                visibility=self.visibility,
+                identifiers=[
+                    identifier.to_sdk().identifier
+                    for identifier in self.identifiers or []
+                ],
+                enhancements=[
+                    enhancement.to_sdk() for enhancement in self.enhancements or []
+                ],
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
 
     @classmethod
     def from_file_input(
@@ -117,20 +121,26 @@ class Reference(DomainBaseModel, SQLAttributeMixin):
         reference_id: uuid.UUID | None = None,
     ) -> Self:
         """Create a reference including id hydration."""
-        reference = cls(
-            visibility=reference_in.visibility,
-        )
-        if reference_id:
-            reference.id = reference_id
-        reference.identifiers = [
-            LinkedExternalIdentifier(reference_id=reference.id, identifier=identifier)
-            for identifier in reference_in.identifiers or []
-        ]
-        reference.enhancements = [
-            Enhancement(**enhancement.model_dump(), reference_id=reference.id)
-            for enhancement in reference_in.enhancements or []
-        ]
-        return reference
+        try:
+            reference = cls(
+                visibility=reference_in.visibility,
+            )
+            if reference_id:
+                reference.id = reference_id
+            reference.identifiers = [
+                LinkedExternalIdentifier(
+                    reference_id=reference.id, identifier=identifier
+                )
+                for identifier in reference_in.identifiers or []
+            ]
+            reference.enhancements = [
+                Enhancement(**enhancement.model_dump(), reference_id=reference.id)
+                for enhancement in reference_in.enhancements or []
+            ]
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
+        else:
+            return reference
 
 
 class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
@@ -153,16 +163,22 @@ class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
         external_identifier: destiny_sdk.identifiers.LinkedExternalIdentifier,
     ) -> Self:
         """Create an external identifier from the SDK model."""
-        return cls(
-            **external_identifier.model_dump(),
-        )
+        try:
+            return cls(
+                **external_identifier.model_dump(),
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
 
     def to_sdk(self) -> destiny_sdk.identifiers.LinkedExternalIdentifier:
         """Convert the external identifier to the SDK model."""
-        return destiny_sdk.identifiers.LinkedExternalIdentifier(
-            identifier=ExternalIdentifierAdapter.validate_python(self.identifier),
-            reference_id=self.reference_id,
-        )
+        try:
+            return destiny_sdk.identifiers.LinkedExternalIdentifier(
+                identifier=ExternalIdentifierAdapter.validate_python(self.identifier),
+                reference_id=self.reference_id,
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
 
 
 class GenericExternalIdentifier(DomainBaseModel):
@@ -291,9 +307,12 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
 
     def to_sdk(self) -> destiny_sdk.enhancements.Enhancement:
         """Convert the enhancement to the SDK model."""
-        return destiny_sdk.enhancements.Enhancement(
-            **self.model_dump(),
-        )
+        try:
+            return destiny_sdk.enhancements.Enhancement(
+                **self.model_dump(),
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
 
 
 class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
@@ -329,15 +348,21 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
         enhancement_request: destiny_sdk.robots.EnhancementRequestIn,
     ) -> Self:
         """Create an enhancement request from the SDK model."""
-        return cls(
-            **enhancement_request.model_dump(),
-        )
+        try:
+            return cls(
+                **enhancement_request.model_dump(),
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
 
     def to_sdk(self) -> destiny_sdk.robots.EnhancementRequestRead:
         """Convert the enhancement request to the SDK model."""
-        return destiny_sdk.robots.EnhancementRequestRead(
-            **self.model_dump(),
-        )
+        try:
+            return destiny_sdk.robots.EnhancementRequestRead(
+                **self.model_dump(),
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
 
 
 class EnhancementParseResult(BaseModel):

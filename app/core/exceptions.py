@@ -99,3 +99,18 @@ class SDKToDomainError(Exception):
         for error in self.errors:
             message += f"  {error}\n"
         return message
+
+
+class UOWError(Exception):
+    """An exception thrown by improper use of a unit of work."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the UOWError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
