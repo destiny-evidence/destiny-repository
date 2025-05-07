@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator
 import pytest
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
-from pydantic import HttpUrl
+from pydantic import UUID4, HttpUrl
 from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -86,7 +86,7 @@ async def add_reference(session: AsyncSession) -> SQLReference:
 
 
 def robot_result_enhancement(
-    enhancement_request_id: uuid.UUID, reference_id: uuid.UUID
+    enhancement_request_id: UUID4, reference_id: UUID4
 ) -> dict:
     """Construct a RobotResult for creating ehancments."""
     return {
