@@ -1,8 +1,8 @@
 """Schemas that define inputs/outputs for robots."""
 
-from typing import Annotated
+from typing import Annotated, Self
 
-from pydantic import UUID4, BaseModel, Field
+from pydantic import UUID4, BaseModel, Field, model_validator
 
 from destiny_sdk.core import EnhancementCreate, Reference
 
@@ -31,6 +31,16 @@ class RobotResult(BaseModel):
     enhancement: EnhancementCreate | None = Field(
         default=None, description="An enhancement to create"
     )
+
+    @model_validator(mode="after")
+    def validate_error_or_enhancement_set(self) -> Self:
+        """Validate that a robot result has either an error or an enhancement set."""
+        if not self.error and not self.enhancement:
+            msg = """
+            either 'error' or 'enhancements' must be provided
+            """
+            raise ValueError(msg)
+        return self
 
 
 class RobotRequest(BaseModel):

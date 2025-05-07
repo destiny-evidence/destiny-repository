@@ -9,9 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import (
     AuthMethod,
     AuthScopes,
-    AzureJwtAuth,
     CachingStrategyAuth,
-    SuccessAuth,
+    choose_auth_strategy,
 )
 from app.core.config import get_settings
 from app.domain.imports.models.models import (
@@ -45,21 +44,17 @@ def import_service(
     return ImportService(sql_uow=sql_uow)
 
 
-def choose_auth_strategy() -> AuthMethod:
-    """Choose a strategy for our authorization."""
-    if settings.env in ("dev", "test"):
-        return SuccessAuth()
-
-    return AzureJwtAuth(
+def choose_auth_strategy_imports() -> AuthMethod:
+    """Choose import scope auth strategy for our imports authorization."""
+    return choose_auth_strategy(
+        environment=settings.env,
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
-        scope=AuthScopes.IMPORT,
+        auth_scope=AuthScopes.IMPORT,
     )
 
 
-import_auth = CachingStrategyAuth(
-    selector=choose_auth_strategy,
-)
+import_auth = CachingStrategyAuth(selector=choose_auth_strategy_imports)
 
 
 router = APIRouter(

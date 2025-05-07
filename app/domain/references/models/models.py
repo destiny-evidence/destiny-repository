@@ -6,15 +6,20 @@ from abc import ABC
 from enum import Enum, StrEnum
 from typing import Annotated, Literal, Self
 
+from destiny_sdk.core import EnhancementCreate as SDKEnhancementCreate
+from destiny_sdk.core import EnhancementRequestCreate as SDKEnhancementRequestCreate
+from destiny_sdk.core import EnhancementRequestRead as SDKEnhancementRequestRead
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
     HttpUrl,
     PastDate,
+    ValidationError,
     model_validator,
 )
 
+from app.core.exceptions import SDKToDomainError
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 from app.utils.regex import RE_DOI, RE_OPEN_ALEX_IDENTIFIER
 from app.utils.types import JSON
@@ -295,6 +300,21 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
         None,
         description="Error encountered during the enhancement process.",
     )
+
+    def to_sdk(self) -> SDKEnhancementRequestRead:
+        """Convert an enhancement request to sdk schema."""
+        return SDKEnhancementRequestRead(**self.model_dump())
+
+    @classmethod
+    def from_sdk(
+        cls,
+        enhancement_request_create: SDKEnhancementRequestCreate,
+    ) -> Self:
+        """Create an enhancement request from the SDK model."""
+        try:
+            return cls(**enhancement_request_create.model_dump())
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
 
 
 class EnhancementContentBase(BaseModel, ABC):
@@ -592,6 +612,20 @@ class Enhancement(EnhancementBase, SQLAttributeMixin):
         None,
         description="The reference this enhancement is associated with.",
     )
+
+    @classmethod
+    def from_sdk(
+        cls,
+        enhancement_create: SDKEnhancementCreate,
+    ) -> Self:
+        """Create an enhancement from the SDK model."""
+        try:
+            return cls(
+                enhancement_type=enhancement_create.content.enhancement_type,
+                **enhancement_create.model_dump(),
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
 
 
 class EnhancementCreate(EnhancementBase):

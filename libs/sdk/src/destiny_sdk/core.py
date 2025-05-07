@@ -13,6 +13,27 @@ from pydantic import (
 )
 
 
+class Visibility(StrEnum):
+    """
+    What visibility an enhancement should have.
+
+    This is used to manage whether information should be publicly available or
+    restricted (generally due to copyright constraints from publishers).
+
+    TODO: Implement data governance layer to manage this.
+
+    **Allowed values**:
+
+    - `public`: Visible to the general public without authentication.
+    - `restricted`: Requires authentication to be visible.
+    - `hidden`: Is not visible, but may be passed to data mining processes.
+    """
+
+    PUBLIC = "public"
+    RESTRICTED = "restricted"
+    HIDDEN = "hidden"
+
+
 class ExternalIdentifierBase(BaseModel):
     """The base class for external identifiers."""
 
@@ -242,7 +263,7 @@ class EnhancementBase(BaseModel):
     """The base model for Enhancements, excluding creation-time fields."""
 
     source: str
-    visibility: str
+    visibility: Visibility
     processor_version: str
     content_version: str
     content: EnhancementContent
@@ -250,6 +271,10 @@ class EnhancementBase(BaseModel):
 
 class EnhancementCreate(EnhancementBase):
     """The model for parameters required to create an enhancement."""
+
+    reference_id: UUID4 = Field(
+        description="The ID of the reference to create the enhancement against"
+    )
 
 
 class EnhancementRead(EnhancementBase):
@@ -289,6 +314,19 @@ class EnhancementRequestRead(BaseModel):
     )
     enhancement_parameters: dict | None = Field(
         default=None, description="Additional parameters to pass through to the robot"
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error encountered during the enhancement process",
+    )
+
+
+class EnhancementRequestStatusRead(BaseModel):
+    """The model for the status of an enhancement request."""
+
+    id: UUID4
+    request_status: str = Field(
+        description="The status of the request to create an enhancement",
     )
     error: str | None = Field(
         default=None,
