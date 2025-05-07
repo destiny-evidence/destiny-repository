@@ -146,9 +146,9 @@ The number of references expected to be included in this import.
         """Create an ImportRecord from the SDK input model."""
         return cls(**data.model_dump())
 
-    def to_sdk(self) -> destiny_sdk.imports.ImportRecord:
+    def to_sdk(self) -> destiny_sdk.imports.ImportRecordRead:
         """Convert the ImportRecord to the SDK model."""
-        return destiny_sdk.imports.ImportRecord(**self.model_dump())
+        return destiny_sdk.imports.ImportRecordRead(**self.model_dump())
 
 
 class ImportBatch(DomainBaseModel, SQLAttributeMixin):
@@ -192,9 +192,9 @@ The URL to which the processor should send a callback when the batch has been pr
         """Create an ImportBatch from the SDK input model."""
         return cls(**data.model_dump(), import_record_id=import_record_id)
 
-    def to_sdk(self) -> destiny_sdk.imports.ImportBatch:
+    def to_sdk(self) -> destiny_sdk.imports.ImportBatchRead:
         """Convert the ImportBatch to the SDK model."""
-        return destiny_sdk.imports.ImportBatch(**self.model_dump())
+        return destiny_sdk.imports.ImportBatchRead(**self.model_dump())
 
     def to_sdk_summary(self) -> destiny_sdk.imports.ImportBatchSummary:
         """Convert the ImportBatch to the SDK summary model."""
@@ -240,6 +240,6 @@ class ImportResult(DomainBaseModel, SQLAttributeMixin):
         description="Details of any failure that occurred during processing.",
     )
 
-    def to_sdk(self) -> destiny_sdk.imports.ImportResult:
+    def to_sdk(self) -> destiny_sdk.imports.ImportResultRead:
         """Convert the ImportResult to the SDK model."""
-        return destiny_sdk.imports.ImportResult(**self.model_dump())
+        return destiny_sdk.imports.ImportResultRead(**self.model_dump())

@@ -166,7 +166,7 @@ async def add_identifier(
 async def request_enhancement(
     enhancement_request_in: destiny_sdk.robots.EnhancementRequestIn,
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
-) -> destiny_sdk.robots.EnhancementRequest:
+) -> destiny_sdk.robots.EnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""
     enhancement_request = await enhancement_service.request_reference_enhancement(
         enhancement_request=EnhancementRequest.from_sdk(enhancement_request_in)
@@ -184,7 +184,7 @@ async def check_enhancement_request_status(
         uuid.UUID, Path(description="The ID of the enhancement request.")
     ],
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
-) -> destiny_sdk.robots.EnhancementRequest:
+) -> destiny_sdk.robots.EnhancementRequestRead:
     """Check the status of an enhancement request."""
     enhancement_request = await enhancement_service.get_enhancement_request(
         enhancement_request_id
@@ -197,7 +197,7 @@ async def check_enhancement_request_status(
 async def fulfill_enhancement_request(
     robot_result: destiny_sdk.robots.RobotResult,
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
-) -> destiny_sdk.robots.EnhancementRequest:
+) -> destiny_sdk.robots.EnhancementRequestRead:
     """Create an enhancement against an existing enhancement request."""
     if robot_result.error:
         enhancement_request = await enhancement_service.mark_enhancement_request_failed(

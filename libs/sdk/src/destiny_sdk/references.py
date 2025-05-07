@@ -7,23 +7,13 @@ from .identifiers import ExternalIdentifier
 from .visibility import Visibility
 
 
-class _ReferenceBase(BaseModel):
-    """
-    Base reference class.
-
-    References do not carry data themselves but are used to tie together
-    identifiers and enhancements.
-    """
+class Reference(BaseModel):
+    """Core reference class."""
 
     visibility: Visibility = Field(
         default=Visibility.PUBLIC,
         description="The level of visibility of the reference",
     )
-
-
-class Reference(_ReferenceBase):
-    """Core reference class."""
-
     id: UUID4 = Field(
         description="The ID of the reference",
     )

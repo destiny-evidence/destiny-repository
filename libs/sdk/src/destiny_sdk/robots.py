@@ -76,7 +76,7 @@ class EnhancementRequestIn(_EnhancementRequestBase):
     """The model for requesting an enhancement on specific reference."""
 
 
-class EnhancementRequest(_EnhancementRequestBase):
+class EnhancementRequestRead(_EnhancementRequestBase):
     """Core enhancement request class."""
 
     id: UUID4

@@ -722,7 +722,7 @@ test = ["certifi (>=2024)", "cryptography-vectors (==44.0.3)", "pretend (>=0.7)"
 test-randomorder = ["pytest-randomly"]
 
 [[package]]
-description = "A library to support the creation of robots which enhance data in the DESTINY repository"
+description = "A library to support interaction with the DESTINY repository"
 develop = true
 files = []
 groups = ["dev", "main"]

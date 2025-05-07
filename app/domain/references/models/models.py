@@ -215,21 +215,6 @@ class ExternalIdentifierParseResult(BaseModel):
         description="Error encountered during the parsing process",
     )
 
-    def to_sdk(self) -> destiny_sdk.robots.EnhancementRequest:
-        """Convert an enhancement request to sdk schema."""
-        return destiny_sdk.robots.EnhancementRequest(**self.model_dump())
-
-    @classmethod
-    def from_sdk(
-        cls,
-        enhancement_request_in: destiny_sdk.robots.EnhancementRequestIn,
-    ) -> Self:
-        """Create an enhancement request from the SDK model."""
-        try:
-            return cls(**enhancement_request_in.model_dump())
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-
 
 class EnhancementFileInput(DomainBaseModel):
     """Enhancement model used to parse from a file input."""
@@ -348,9 +333,9 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
             **enhancement_request.model_dump(),
         )
 
-    def to_sdk(self) -> destiny_sdk.robots.EnhancementRequest:
+    def to_sdk(self) -> destiny_sdk.robots.EnhancementRequestRead:
         """Convert the enhancement request to the SDK model."""
-        return destiny_sdk.robots.EnhancementRequest(
+        return destiny_sdk.robots.EnhancementRequestRead(
             **self.model_dump(),
         )
 

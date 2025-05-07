@@ -74,7 +74,7 @@ async def create_record(
 async def get_record(
     import_record_id: UUID4,
     import_service: Annotated[ImportService, Depends(import_service)],
-) -> destiny_sdk.imports.ImportRecord:
+) -> destiny_sdk.imports.ImportRecordRead:
     """Get an import from the database."""
     import_record = await import_service.get_import_record(import_record_id)
     return import_record.to_sdk()
@@ -97,7 +97,7 @@ async def enqueue_batch(
     import_record_id: Annotated[UUID4, Path(title="The id of the associated import")],
     batch: destiny_sdk.imports.ImportBatchIn,
     import_service: Annotated[ImportService, Depends(import_service)],
-) -> destiny_sdk.imports.ImportBatch:
+) -> destiny_sdk.imports.ImportBatchRead:
     """Register an import batch for a given import."""
     import_batch = await import_service.register_batch(
         ImportBatch.from_sdk(batch, import_record_id)
@@ -113,7 +113,7 @@ async def enqueue_batch(
 async def get_batches(
     import_record_id: Annotated[UUID4, Path(title="The id of the associated import")],
     import_service: Annotated[ImportService, Depends(import_service)],
-) -> list[destiny_sdk.imports.ImportBatch]:
+) -> list[destiny_sdk.imports.ImportBatchRead]:
     """Get batches associated to an import."""
     import_record = await import_service.get_import_record_with_batches(
         import_record_id
@@ -125,7 +125,7 @@ async def get_batches(
 async def get_batch(
     import_batch_id: Annotated[UUID4, Path(title="The id of the import batch")],
     import_service: Annotated[ImportService, Depends(import_service)],
-) -> destiny_sdk.imports.ImportBatch:
+) -> destiny_sdk.imports.ImportBatchRead:
     """Get batches associated to an import."""
     import_batch = await import_service.get_import_batch(import_batch_id)
     return import_batch.to_sdk()
@@ -146,7 +146,7 @@ async def get_import_results(
     import_batch_id: UUID4,
     import_service: Annotated[ImportService, Depends(import_service)],
     result_status: ImportResultStatus | None = None,
-) -> list[destiny_sdk.imports.ImportResult]:
+) -> list[destiny_sdk.imports.ImportResultRead]:
     """Get a list of results for an import batch."""
     import_batch_results = await import_service.get_import_results(
         import_batch_id, result_status

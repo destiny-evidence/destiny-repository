@@ -135,7 +135,7 @@ class ImportRecordIn(_ImportRecordBase):
     """Input for creating an import record."""
 
 
-class ImportRecord(_ImportRecordBase):
+class ImportRecordRead(_ImportRecordBase):
     """Core import record class."""
 
     id: UUID4 = Field(
@@ -145,7 +145,7 @@ class ImportRecord(_ImportRecordBase):
         ImportRecordStatus.CREATED,
         description="The status of the import record",
     )
-    batches: list["ImportBatch"] | None = Field(
+    batches: list["ImportBatchRead"] | None = Field(
         default=None,
         description="A list of batches for the import record",
     )
@@ -178,7 +178,7 @@ class ImportBatchIn(_ImportBatchBase):
     """Input for creating an import batch."""
 
 
-class ImportBatch(_ImportBatchBase):
+class ImportBatchRead(_ImportBatchBase):
     """Core import batch class."""
 
     id: UUID4 = Field(
@@ -190,10 +190,10 @@ class ImportBatch(_ImportBatchBase):
     import_record_id: UUID4 = Field(
         description="The ID of the import record this batch is associated with"
     )
-    import_record: ImportRecord | None = Field(
+    import_record: ImportRecordRead | None = Field(
         default=None, description="The parent import record."
     )
-    import_results: list["ImportResult"] | None = Field(
+    import_results: list["ImportResultRead"] | None = Field(
         default=None, description="The results from processing the batch."
     )
 
@@ -234,7 +234,7 @@ The identifier of the batch.
     )
 
 
-class ImportResult(BaseModel):
+class ImportResultRead(BaseModel):
     """Core import result class."""
 
     id: UUID4 = Field(description="The ID of the import result.")
@@ -246,6 +246,6 @@ class ImportResult(BaseModel):
         default=None,
         description="The details of the failure, if the import result failed.",
     )
-    import_batch: ImportBatch | None = Field(
+    import_batch: ImportBatchRead | None = Field(
         default=None, description="The parent import batch."
     )

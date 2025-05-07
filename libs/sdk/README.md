@@ -1,6 +1,6 @@
-# Destiny Robot SDK
+# DESTINY SDK
 
-SDK for destiny robots
+SDK for interaction with the DESTINY repository
 
 ## Installing as an editable package for local sdk development
 
@@ -11,5 +11,5 @@ poetry add --editable ./PATH/TO/sdk/
 or replace the dependency in `pyproject.toml` with
 
 ```toml
-destiny-robots = {path = "./PATH/TO/sdk/", develop = true}
+destiny-sdk = {path = "./PATH/TO/sdk/", develop = true}
 ```
