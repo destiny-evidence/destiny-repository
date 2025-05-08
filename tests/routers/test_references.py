@@ -135,7 +135,7 @@ async def test_request_reference_enhancement_happy_path(
     enhancement_request_create = {
         "reference_id": f"{reference.id}",
         "robot_id": f"{ROBOT_ID}",
-        "enhancement_parameters": {"some": "parametrs"},
+        "enhancement_parameters": {"some": "parameters"},
     }
 
     response = await client.post(

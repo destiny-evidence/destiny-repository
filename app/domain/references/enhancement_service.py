@@ -10,6 +10,7 @@ from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
+    Reference,
 )
 from app.domain.robots import Robots
 from app.domain.service import GenericService
@@ -33,6 +34,33 @@ class EnhancementService(GenericService):
         await self.sql_uow.references.get_by_pk(enhancement.reference_id)
         return await self.sql_uow.enhancements.add(enhancement)
 
+    # This guy should move out to his own service I reckon.
+    async def request_enhancement_from_robot(
+        self,
+        robot_id: UUID4,
+        enhancement_request_id: UUID4,
+        reference: Reference,
+        enhancement_parameters: dict | None,
+    ) -> httpx.Response:
+        """Request an enhancement from a robot."""
+        robot_url = self.robots.get_robot_url(robot_id)
+
+        if not robot_url:
+            raise NotFoundError(
+                detail=f"Robot {robot_id} not found.",
+            )
+
+        robot_request = destiny_sdk.robots.RobotRequest(
+            id=enhancement_request_id,
+            reference=destiny_sdk.references.Reference(**reference.model_dump()),
+            extra_fields=enhancement_parameters,
+        )
+
+        async with httpx.AsyncClient() as client:
+            return await client.post(
+                str(robot_url), json=robot_request.model_dump(mode="json")
+            )
+
     @unit_of_work
     async def request_reference_enhancement(
         self, enhancement_request: EnhancementRequest
@@ -42,27 +70,16 @@ class EnhancementService(GenericService):
             enhancement_request.reference_id, preload=["identifiers", "enhancements"]
         )
 
-        robot_url = self.robots.get_robot_url(enhancement_request.robot_id)
-
-        if not robot_url:
-            raise NotFoundError(
-                detail=f"Robot {enhancement_request.robot_id} not found.",
-            )
-
         enhancement_request = await self.sql_uow.enhancement_requests.add(
-            EnhancementRequest(**enhancement_request.model_dump())
+            enhancement_request
         )
 
-        robot_request = destiny_sdk.robots.RobotRequest(
-            id=enhancement_request.id,
-            reference=destiny_sdk.references.Reference(**reference.model_dump()),
-            extra_fields=enhancement_request.enhancement_parameters,
+        response = await self.request_enhancement_from_robot(
+            robot_id=enhancement_request.robot_id,
+            enhancement_request_id=enhancement_request.id,
+            reference=reference,
+            enhancement_parameters=enhancement_request.enhancement_parameters,
         )
-
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                str(robot_url), json=robot_request.model_dump(mode="json")
-            )
 
         if response.status_code != status.HTTP_202_ACCEPTED:
             return await self.sql_uow.enhancement_requests.update_by_pk(
