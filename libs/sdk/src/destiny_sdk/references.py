@@ -2,7 +2,7 @@
 
 from pydantic import UUID4, BaseModel, Field
 
-from .enhancements import Enhancement
+from .enhancements import Enhancement, EnhancementFileInput
 from .identifiers import ExternalIdentifier
 from .visibility import Visibility
 
@@ -25,3 +25,24 @@ class Reference(BaseModel):
         default=None,
         description="A list of enhancements for the reference",
     )
+
+
+class ReferenceFileInput(BaseModel):
+    """Enhancement model used to marshall a file input."""
+
+    visibility: Visibility = Field(
+        default=Visibility.PUBLIC,
+        description="The level of visibility of the reference",
+    )
+    identifiers: list[ExternalIdentifier] | None = Field(
+        default=None,
+        description="A list of `ExternalIdentifiers` for the Reference",
+    )
+    enhancements: list[EnhancementFileInput] | None = Field(
+        default=None,
+        description="A list of enhancements for the reference",
+    )
+
+    def to_jsonl(self) -> str:
+        """Convert the model to a JSONL string."""
+        return self.model_dump_json(exclude_none=True)

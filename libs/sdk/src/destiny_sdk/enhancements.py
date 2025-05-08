@@ -286,3 +286,30 @@ class Enhancement(BaseModel):
             description="The content of the enhancement.",
         ),
     ]
+
+
+class EnhancementFileInput(BaseModel):
+    """Enhancement model used to marshall a file input."""
+
+    source: str = Field(
+        description="The enhancement source for tracking provenance.",
+    )
+    visibility: Visibility = Field(
+        description="The level of visibility of the enhancement"
+    )
+    enhancement_type: EnhancementType = Field(description="The type of enhancement.")
+    processor_version: str | None = Field(
+        default=None,
+        description="The version of the processor that generated the content.",
+    )
+    content_version: uuid.UUID = Field(
+        description="""
+        UUID regenerated when the content changes.
+        Can be used to identify when content has changed.
+        """,
+        default_factory=uuid.uuid4,
+    )
+    content: EnhancementContent = Field(
+        discriminator="enhancement_type",
+        description="The content of the enhancement.",
+    )

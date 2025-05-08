@@ -142,14 +142,16 @@ The number of references expected to be included in this import.
     def from_sdk(cls, data: destiny_sdk.imports.ImportRecordIn) -> Self:
         """Create an ImportRecord from the SDK input model."""
         try:
-            return cls(**data.model_dump())
+            return cls.model_validate(data.model_dump())
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
     def to_sdk(self) -> destiny_sdk.imports.ImportRecordRead:
         """Convert the ImportRecord to the SDK model."""
         try:
-            return destiny_sdk.imports.ImportRecordRead(**self.model_dump())
+            return destiny_sdk.imports.ImportRecordRead.model_validate(
+                self.model_dump()
+            )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
@@ -194,14 +196,16 @@ The URL to which the processor should send a callback when the batch has been pr
     ) -> Self:
         """Create an ImportBatch from the SDK input model."""
         try:
-            return cls(**data.model_dump(), import_record_id=import_record_id)
+            return cls.model_validate(
+                data.model_dump() | {"import_record_id": import_record_id}
+            )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
     def to_sdk(self) -> destiny_sdk.imports.ImportBatchRead:
         """Convert the ImportBatch to the SDK model."""
         try:
-            return destiny_sdk.imports.ImportBatchRead(**self.model_dump())
+            return destiny_sdk.imports.ImportBatchRead.model_validate(self.model_dump())
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
@@ -223,12 +227,14 @@ The URL to which the processor should send a callback when the batch has been pr
                     and result.failure_details
                 ):
                     failure_details.append(result.failure_details)
-            return destiny_sdk.imports.ImportBatchSummary(
-                **self.model_dump(),
-                import_batch_id=self.id,
-                import_batch_status=self.status,
-                results=result_summary,
-                failure_details=failure_details,
+            return destiny_sdk.imports.ImportBatchSummary.model_validate(
+                self.model_dump()
+                | {
+                    "import_batch_id": self.id,
+                    "import_batch_status": self.status,
+                    "results": result_summary,
+                    "failure_details": failure_details,
+                }
             )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
@@ -255,6 +261,8 @@ class ImportResult(DomainBaseModel, SQLAttributeMixin):
     def to_sdk(self) -> destiny_sdk.imports.ImportResultRead:
         """Convert the ImportResult to the SDK model."""
         try:
-            return destiny_sdk.imports.ImportResultRead(**self.model_dump())
+            return destiny_sdk.imports.ImportResultRead.model_validate(
+                self.model_dump()
+            )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception

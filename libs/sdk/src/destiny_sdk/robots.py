@@ -1,5 +1,6 @@
 """Schemas that define inputs/outputs for robots."""
 
+from enum import StrEnum
 from typing import Annotated, Self
 
 from pydantic import UUID4, BaseModel, Field, model_validator
@@ -54,6 +55,25 @@ class RobotRequest(BaseModel):
     )  # We need something to pass through the signed url for uploads
 
 
+class EnhancementRequestStatus(StrEnum):
+    """
+    The status of an enhancement request.
+
+    **Allowed values**:
+    - `received`: Enhancement request has been received.
+    - `accepted`: Enhancement request has been accepted.
+    - `rejected`: Enhancement request has been rejected.
+    - `failed`: Enhancement failed to create.
+    - `completed`: Enhancement has been created.
+    """
+
+    RECEIVED = "received"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    FAILED = "failed"
+    COMPLETED = "completed"
+
+
 class _EnhancementRequestBase(BaseModel):
     """
     Base enhancement request class.
@@ -80,7 +100,7 @@ class EnhancementRequestRead(_EnhancementRequestBase):
     """Core enhancement request class."""
 
     id: UUID4
-    request_status: str = Field(
+    request_status: EnhancementRequestStatus = Field(
         description="The status of the request to create an enhancement",
     )
     error: str | None = Field(

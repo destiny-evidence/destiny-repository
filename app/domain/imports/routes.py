@@ -65,9 +65,10 @@ router = APIRouter(
 async def create_record(
     import_record: destiny_sdk.imports.ImportRecordIn,
     import_service: Annotated[ImportService, Depends(import_service)],
-) -> ImportRecord:
+) -> destiny_sdk.imports.ImportRecordRead:
     """Create a record for an import process."""
-    return await import_service.register_import(ImportRecord.from_sdk(import_record))
+    record = await import_service.register_import(ImportRecord.from_sdk(import_record))
+    return record.to_sdk()
 
 
 @router.get("/record/{import_record_id}/")

@@ -7,7 +7,7 @@ from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import SQLNotFoundError
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
 from app.persistence.sql.generics import GenericSQLPersistenceType
@@ -65,7 +65,12 @@ class GenericAsyncSqlRepository(
         result = await self._session.get(self._persistence_cls, pk, options=options)
         if not result:
             detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
-            raise NotFoundError(detail=detail)
+            raise SQLNotFoundError(
+                detail=detail,
+                lookup_model=self._persistence_cls.__name__,
+                lookup_type="id",
+                lookup_value=pk,
+            )
 
         return await result.to_domain(preload=preload)
 
@@ -84,7 +89,12 @@ class GenericAsyncSqlRepository(
         persistence = await self._session.get(self._persistence_cls, pk)
         if not persistence:
             detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
-            raise NotFoundError(detail=detail)
+            raise SQLNotFoundError(
+                detail=detail,
+                lookup_model=self._persistence_cls.__name__,
+                lookup_type="id",
+                lookup_value=pk,
+            )
 
         # Check if key is in the persistence model.
         for key, value in kwargs.items():
@@ -105,7 +115,12 @@ class GenericAsyncSqlRepository(
         persistence = await self._session.get(self._persistence_cls, pk)
         if not persistence:
             detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
-            raise NotFoundError(detail=detail)
+            raise SQLNotFoundError(
+                detail=detail,
+                lookup_model=self._persistence_cls.__name__,
+                lookup_type="id",
+                lookup_value=pk,
+            )
 
         await self._session.delete(persistence)
         await self._session.flush()

@@ -7,7 +7,7 @@ from typing import Self
 import destiny_sdk
 
 # Explicitly import these models for easy use in the rest of the codebase
-from destiny_sdk.enhancements import EnhancementContent, EnhancementType
+from destiny_sdk.enhancements import EnhancementContent, EnhancementType  # noqa: F401
 from destiny_sdk.identifiers import ExternalIdentifier, ExternalIdentifierType
 from pydantic import (
     BaseModel,
@@ -64,23 +64,6 @@ class Visibility(StrEnum):
     HIDDEN = "hidden"
 
 
-class ReferenceFileInput(DomainBaseModel):
-    """Input for creating a reference."""
-
-    visibility: Visibility = Field(
-        Visibility.PUBLIC,
-        description="The level of visibility of the reference",
-    )
-    identifiers: list[ExternalIdentifier] | None = Field(
-        default=None,
-        description="A list of `ExternalIdentifiers` for the Reference",
-    )
-    enhancements: list["EnhancementFileInput"] | None = Field(
-        default=None,
-        description="A list of enhancements for the reference",
-    )
-
-
 class Reference(DomainBaseModel, SQLAttributeMixin):
     """Core reference model with database attributes included."""
 
@@ -117,7 +100,7 @@ class Reference(DomainBaseModel, SQLAttributeMixin):
     @classmethod
     def from_file_input(
         cls,
-        reference_in: ReferenceFileInput,
+        reference_in: destiny_sdk.references.ReferenceFileInput,
         reference_id: uuid.UUID | None = None,
     ) -> Self:
         """Create a reference including id hydration."""
@@ -134,7 +117,9 @@ class Reference(DomainBaseModel, SQLAttributeMixin):
                 for identifier in reference_in.identifiers or []
             ]
             reference.enhancements = [
-                Enhancement(**enhancement.model_dump(), reference_id=reference.id)
+                Enhancement.model_validate(
+                    enhancement.model_dump() | {"reference_id": reference.id}
+                )
                 for enhancement in reference_in.enhancements or []
             ]
         except ValidationError as exception:
@@ -164,8 +149,8 @@ class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
     ) -> Self:
         """Create an external identifier from the SDK model."""
         try:
-            return cls(
-                **external_identifier.model_dump(),
+            return cls.model_validate(
+                external_identifier.model_dump(),
             )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
@@ -232,33 +217,6 @@ class ExternalIdentifierParseResult(BaseModel):
     )
 
 
-class EnhancementFileInput(DomainBaseModel):
-    """Enhancement model used to parse from a file input."""
-
-    source: str = Field(
-        description="The enhancement source for tracking provenance.",
-    )
-    visibility: Visibility = Field(
-        description="The level of visibility of the enhancement"
-    )
-    enhancement_type: EnhancementType = Field(description="The type of enhancement.")
-    processor_version: str | None = Field(
-        default=None,
-        description="The version of the processor that generated the content.",
-    )
-    content_version: uuid.UUID = Field(
-        description="""
-        UUID regenerated when the content changes.
-        Can be used to identify when content has changed.
-        """,
-        default_factory=uuid.uuid4,
-    )
-    content: EnhancementContent = Field(
-        discriminator="enhancement_type",
-        description="The content of the enhancement.",
-    )
-
-
 class Enhancement(DomainBaseModel, SQLAttributeMixin):
     """Core enhancement model with database attributes included."""
 
@@ -299,8 +257,8 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     ) -> Self:
         """Create an enhancement from the SDK model."""
         try:
-            return cls(
-                **enhancement.model_dump(),
+            return cls.model_validate(
+                enhancement.model_dump(),
             )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
@@ -308,8 +266,8 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     def to_sdk(self) -> destiny_sdk.enhancements.Enhancement:
         """Convert the enhancement to the SDK model."""
         try:
-            return destiny_sdk.enhancements.Enhancement(
-                **self.model_dump(),
+            return destiny_sdk.enhancements.Enhancement.model_validate(
+                self.model_dump(),
             )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
@@ -349,8 +307,8 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
     ) -> Self:
         """Create an enhancement request from the SDK model."""
         try:
-            return cls(
-                **enhancement_request.model_dump(),
+            return cls.model_validate(
+                enhancement_request.model_dump(),
             )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
@@ -358,8 +316,8 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
     def to_sdk(self) -> destiny_sdk.robots.EnhancementRequestRead:
         """Convert the enhancement request to the SDK model."""
         try:
-            return destiny_sdk.robots.EnhancementRequestRead(
-                **self.model_dump(),
+            return destiny_sdk.robots.EnhancementRequestRead.model_validate(
+                self.model_dump(),
             )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
@@ -368,7 +326,7 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
 class EnhancementParseResult(BaseModel):
     """Result of an attempt to parse an enhancement."""
 
-    enhancement: EnhancementFileInput | None = Field(
+    enhancement: destiny_sdk.enhancements.EnhancementFileInput | None = Field(
         default=None,
         description="The enhancement to create",
     )

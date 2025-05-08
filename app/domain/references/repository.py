@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import SQLNotFoundError
 from app.domain.references.models.models import Enhancement as DomainEnhancement
 from app.domain.references.models.models import (
     EnhancementRequest as DomainEnhancementRequest,
@@ -110,7 +110,12 @@ class ExternalIdentifierSQLRepository(
                 f"{identifier_type}, identifier {identifier}, and other "
                 f"identifier name {other_identifier_name}"
             )
-            raise NotFoundError(detail=detail)
+            raise SQLNotFoundError(
+                detail=detail,
+                lookup_model="ExternalIdentifier",
+                lookup_type="external_identifier",
+                lookup_value=(identifier_type, identifier, other_identifier_name),
+            )
 
         return await db_identifier.to_domain(preload=preload)
 
