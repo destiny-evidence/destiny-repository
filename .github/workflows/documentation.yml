@@ -20,7 +20,7 @@ jobs:
       - name: Install Graphviz
         run: |
           sudo apt-get update
-          sudo apt-get install -y graphviz
+          sudo apt-get install -y libgraphviz-dev
       - name: Install and configure Poetry
         uses: snok/install-poetry@v1
         with:
