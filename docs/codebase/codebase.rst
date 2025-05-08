@@ -1,2 +1,12 @@
-Codebase Documentation
-==================================
+Codebase
+========
+
+This section documents the repository codebase itself.
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Contents:
+
+   structure
+   models/imports
+   models/references

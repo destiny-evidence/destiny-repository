@@ -1,6 +1,6 @@
 # DESTINY SDK
 
-SDK for interaction with the DESTINY repository
+SDK for interaction with the DESTINY repository. For now this just contains data models for validation and structuring, but will be built out to include convenience functions etc.
 
 ## Installing as an editable package for local sdk development
 

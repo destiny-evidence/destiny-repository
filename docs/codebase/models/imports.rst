@@ -1,10 +1,14 @@
-Import Models Documentation
-=============================
+Import Models
+=============
 
 This documentation auto-generates details about the Pydantic models defined in
 ``app/domain/imports/models/models.py``.
 
+.. contents:: Table of Contents
+    :depth: 2
+    :local:
+
 .. automodule:: app.domain.imports.models.models
     :members:
     :undoc-members:
-    :show-inheritance:
+    :inherited-members: BaseModel, str
