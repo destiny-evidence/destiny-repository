@@ -30,7 +30,7 @@ jobs:
           installer-parallel: true
       - name: Install dependencies
         run: |
-          poetry install --with docs
+          poetry install --only=docs
       - name: Sphinx build
         run: |
           sphinx-build -b html docs docs/html
