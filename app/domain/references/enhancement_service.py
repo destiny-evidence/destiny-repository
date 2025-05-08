@@ -3,10 +3,11 @@
 import destiny_sdk
 import httpx
 from fastapi import status
-from pydantic import UUID4
+from pydantic import UUID4, HttpUrl
 
 from app.core.exceptions import (
     NotFoundError,
+    RobotUnreachableError,
     WrongReferenceError,
 )
 from app.domain.references.models.models import (
@@ -37,26 +38,17 @@ class EnhancementService(GenericService):
         await self.sql_uow.references.get_by_pk(enhancement.reference_id)
         return await self.sql_uow.enhancements.add(enhancement)
 
-    # This guy should move out to his own service I reckon.
     async def request_enhancement_from_robot(
         self,
-        robot_id: UUID4,
-        enhancement_request_id: UUID4,
+        robot_url: HttpUrl,
+        enhancement_request: EnhancementRequest,
         reference: Reference,
-        enhancement_parameters: dict | None,
-    ) -> tuple[EnhancementRequestStatus, str | None]:
+    ) -> EnhancementRequest:
         """Request an enhancement from a robot."""
-        robot_url = self.robots.get_robot_url(robot_id)
-
-        if not robot_url:
-            raise NotFoundError(
-                detail=f"Robot {robot_id} not found.",
-            )
-
         robot_request = destiny_sdk.robots.RobotRequest(
-            id=enhancement_request_id,
+            id=enhancement_request.id,
             reference=destiny_sdk.references.Reference(**reference.model_dump()),
-            extra_fields=enhancement_parameters,
+            extra_fields=enhancement_request.enhancement_parameters,
         )
 
         try:
@@ -64,14 +56,28 @@ class EnhancementService(GenericService):
                 response = await client.post(
                     str(robot_url), json=robot_request.model_dump(mode="json")
                 )
-        except httpx.RequestError:
-            message = f"Unable to send request to Robot {robot_id} at {robot_url}"
-            return (EnhancementRequestStatus.FAILED, message)
+        except httpx.RequestError as exception:
+            error = (
+                f"Cannot request enhancement from Robot {enhancement_request.robot_id}."
+            )
+            await self.sql_uow.enhancement_requests.update_by_pk(
+                enhancement_request.id,
+                request_status=EnhancementRequestStatus.FAILED,
+                error=error,
+            )
+            raise RobotUnreachableError(error) from exception
 
         if response.status_code != status.HTTP_202_ACCEPTED:
-            return (EnhancementRequestStatus.REJECTED, response.json()["message"])
+            # This needs actual error handling for 4xx and 5xx
+            return await self.sql_uow.enhancement_requests.update_by_pk(
+                enhancement_request.id,
+                request_status=EnhancementRequestStatus.REJECTED,
+                error=response.json()["message"],
+            )
 
-        return (EnhancementRequestStatus.ACCEPTED, None)
+        return await self.sql_uow.enhancement_requests.update_by_pk(
+            enhancement_request.id, request_status=EnhancementRequestStatus.ACCEPTED
+        )
 
     @unit_of_work
     async def request_reference_enhancement(
@@ -86,15 +92,23 @@ class EnhancementService(GenericService):
             enhancement_request
         )
 
-        request_status, error = await self.request_enhancement_from_robot(
-            robot_id=enhancement_request.robot_id,
-            enhancement_request_id=enhancement_request.id,
-            reference=reference,
-            enhancement_parameters=enhancement_request.enhancement_parameters,
-        )
+        robot_url = self.robots.get_robot_url(enhancement_request.robot_id)
 
-        return await self.sql_uow.enhancement_requests.update_by_pk(
-            enhancement_request.id, request_status=request_status, error=error
+        if not robot_url:
+            error = f"Robot {enhancement_request.robot_id} not found."
+            await self.sql_uow.enhancement_requests.update_by_pk(
+                enhancement_request.id,
+                request_status=EnhancementRequestStatus.FAILED,
+                error=error,
+            )
+            raise NotFoundError(
+                detail=error,
+            )
+
+        return await self.request_enhancement_from_robot(
+            robot_url=robot_url,
+            enhancement_request=enhancement_request,
+            reference=reference,
         )
 
     async def _get_enhancement_request(

@@ -5,7 +5,12 @@ import pytest
 from fastapi import status
 from pydantic import HttpUrl
 
-from app.core.exceptions import NotFoundError, SQLNotFoundError, WrongReferenceError
+from app.core.exceptions import (
+    NotFoundError,
+    RobotUnreachableError,
+    SQLNotFoundError,
+    WrongReferenceError,
+)
 from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
     Enhancement,
@@ -35,7 +40,9 @@ ENHANCEMENT_DATA = {
 
 
 @pytest.mark.asyncio
-async def test_request_enhancement_from_robot_request_error(fake_uow, httpx_mock):
+async def test_request_enhancement_from_robot_request_error(
+    fake_uow, fake_repository, httpx_mock
+):
     # Mock a connection error
     httpx_mock.add_exception(httpx.ConnectError(message="All connections refused"))
 
@@ -43,21 +50,26 @@ async def test_request_enhancement_from_robot_request_error(fake_uow, httpx_mock
     robot_id = uuid.uuid4()
 
     reference = Reference(id=uuid.uuid4(), visibility=Visibility.RESTRICTED)
-    enhancement_request_id = uuid.uuid4()
-
-    service = EnhancementService(
-        fake_uow(), robots=Robots(known_robots={robot_id: HttpUrl(robot_url)})
-    )
-
-    request_status, error = await service.request_enhancement_from_robot(
+    enhancement_request = EnhancementRequest(
+        id=uuid.uuid4(),
+        reference_id=reference.id,
         robot_id=robot_id,
-        enhancement_request_id=enhancement_request_id,
-        reference=reference,
         enhancement_parameters={},
     )
 
-    assert request_status == EnhancementRequestStatus.FAILED
-    assert str(robot_id) in error
+    fake_enhancement_requests = fake_repository(init_entries=[enhancement_request])
+
+    service = EnhancementService(
+        fake_uow(enhancement_requests=fake_enhancement_requests),
+        robots=Robots(known_robots={robot_id: HttpUrl(robot_url)}),
+    )
+
+    with pytest.raises(RobotUnreachableError):
+        await service.request_enhancement_from_robot(
+            robot_url=robot_url,
+            enhancement_request=enhancement_request,
+            reference=reference,
+        )
 
 
 @pytest.mark.asyncio

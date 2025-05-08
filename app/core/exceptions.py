@@ -129,6 +129,21 @@ class SDKToDomainError(Exception):
         return message
 
 
+class RobotUnreachableError(Exception):
+    """An exception thrown by improper use of a unit of work."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the RobotUnreachableError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
 class UOWError(Exception):
     """An exception thrown by improper use of a unit of work."""
 
