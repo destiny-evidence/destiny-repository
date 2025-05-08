@@ -95,7 +95,7 @@ def robot_result_enhancement(
             "reference_id": f"{reference_id}",
             "source": "robot",
             "visibility": Visibility.RESTRICTED,
-            "processor_version": "0.0.1",
+            "robot_version": "0.0.1",
             "content_version": f"{uuid.uuid4()}",
             "content": {
                 "enhancement_type": EnhancementType.ANNOTATION,

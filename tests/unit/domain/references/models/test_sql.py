@@ -76,7 +76,7 @@ class DummyDomainEnhancement:
         reference_id,
         source,
         visibility,
-        processor_version,
+        robot_version,
         content_version,
         content,
     ):
@@ -84,7 +84,7 @@ class DummyDomainEnhancement:
         self.reference_id = reference_id
         self.source = source
         self.visibility = visibility
-        self.processor_version = processor_version
+        self.robot_version = robot_version
         self.content_version = content_version
         self.content = content
         # For preload test on Enhancement.to_domain
@@ -175,7 +175,7 @@ async def test_enhancement_from_and_to_domain():
         reference_id=ref_id,
         source="test_source",
         visibility=Visibility.PUBLIC,
-        processor_version="1.0.0",
+        robot_version="1.0.0",
         content_version=content_version,
         content=dummy_content,
     )
@@ -187,7 +187,7 @@ async def test_enhancement_from_and_to_domain():
     assert sql_enh.enhancement_type == dummy_enh.content.enhancement_type
     assert sql_enh.source == dummy_enh.source
     assert sql_enh.visibility == dummy_enh.visibility
-    assert sql_enh.processor_version == dummy_enh.processor_version
+    assert sql_enh.robot_version == dummy_enh.robot_version
     assert sql_enh.content_version == dummy_enh.content_version
     # Verify that content was dumped to JSON string correctly
     dumped = dummy_content.model_dump_json()
@@ -204,7 +204,7 @@ async def test_enhancement_from_and_to_domain():
     assert domain_enh.content.enhancement_type == dummy_enh.content.enhancement_type
     assert domain_enh.source == dummy_enh.source
     assert domain_enh.visibility == dummy_enh.visibility
-    assert domain_enh.processor_version == dummy_enh.processor_version
+    assert domain_enh.robot_version == dummy_enh.robot_version
     assert domain_enh.content_version == dummy_enh.content_version
     # Verify that content was loaded correctly
     assert domain_enh.content == destiny_sdk.enhancements.AnnotationEnhancement(
@@ -270,7 +270,7 @@ async def test_reference_with_relationships():
         reference_id=ref_id,
         source="annotation_source",
         visibility=Visibility.RESTRICTED,
-        processor_version="2.0.0",
+        robot_version="2.0.0",
         content_version=uuid.uuid4(),
         content=dummy_content,
     )

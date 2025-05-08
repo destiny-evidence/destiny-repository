@@ -226,9 +226,9 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     visibility: Visibility = Field(
         description="The level of visibility of the enhancement"
     )
-    processor_version: str | None = Field(
+    robot_version: str | None = Field(
         default=None,
-        description="The version of the processor that generated the content.",
+        description="The version of the robot that generated the content.",
     )
     content_version: uuid.UUID = Field(
         description="""

@@ -117,7 +117,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         response = client.post(
             "/imports/record/",
             json={
-                "processor_name": "test_processor",
+                "processor_name": "test_robot",
                 "processor_version": "0.0.1",
             },
         )
@@ -126,7 +126,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         response = client.post(
             "/imports/record/",
             json={
-                "processor_name": "test_processor",
+                "processor_name": "test_robot",
                 "processor_version": "0.0.1",
                 "expected_reference_count": "over nine thousand",
                 "source_name": "test_source",
@@ -137,7 +137,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         response = client.post(
             "/imports/record/",
             json={
-                "processor_name": "test_processor",
+                "processor_name": "test_robot",
                 "processor_version": "0.0.1",
                 "source_name": "test_source",
                 "expected_reference_count": -1,
@@ -147,7 +147,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         import_record = response.json()
         assert import_record["id"] is not None
         assert import_record["status"] == "created"
-        assert import_record["processor_name"] == "test_processor"
+        assert import_record["processor_name"] == "test_robot"
         assert import_record["processor_version"] == "0.0.1"
         assert import_record["source_name"] == "test_source"
         assert import_record["expected_reference_count"] == -1
@@ -197,7 +197,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             },
         )
         assert response.status_code == 404
-        assert response.json()["detail"] == f"Unable to find ImportRecord with pk {u}"
+        assert response.json()["detail"] == f"ImportRecord with id {u} does not exist."
         # 2.d: Correct batch creation
         import_batch_a = submit_happy_batch(
             import_record["id"],

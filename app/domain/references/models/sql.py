@@ -196,7 +196,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         ),
         nullable=False,
     )
-    processor_version: Mapped[str] = mapped_column(String, nullable=True)
+    robot_version: Mapped[str] = mapped_column(String, nullable=True)
     content: Mapped[str] = mapped_column(JSONB, nullable=False)
     content_version: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
 
@@ -222,7 +222,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             enhancement_type=domain_obj.content.enhancement_type,
             source=domain_obj.source,
             visibility=domain_obj.visibility,
-            processor_version=domain_obj.processor_version,
+            robot_version=domain_obj.robot_version,
             content_version=domain_obj.content_version,
             content=domain_obj.content.model_dump_json(),
         )
@@ -234,7 +234,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             source=self.source,
             visibility=self.visibility,
             reference_id=self.reference_id,
-            processor_version=self.processor_version,
+            robot_version=self.robot_version,
             content=json.loads(self.content),
             content_version=self.content_version,
             reference=await self.reference.to_domain()

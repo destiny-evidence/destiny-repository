@@ -268,9 +268,12 @@ class Enhancement(BaseModel):
     visibility: Visibility = Field(
         description="The level of visibility of the enhancement"
     )
-    processor_version: str | None = Field(
+    robot_version: str | None = Field(
         default=None,
-        description="The version of the processor that generated the content.",
+        description="The version of the robot that generated the content.",
+        # (Adam) Temporary alias for backwards compatibility for already prepared files
+        # Next person who sees this can remove it :)
+        alias="processor_version",
     )
     content_version: uuid.UUID = Field(
         description="""
@@ -298,9 +301,9 @@ class EnhancementFileInput(BaseModel):
         description="The level of visibility of the enhancement"
     )
     enhancement_type: EnhancementType = Field(description="The type of enhancement.")
-    processor_version: str | None = Field(
+    robot_version: str | None = Field(
         default=None,
-        description="The version of the processor that generated the content.",
+        description="The version of the robot that generated the content.",
     )
     content_version: uuid.UUID = Field(
         description="""

@@ -19,7 +19,7 @@ def test_bibliographic_metadata_enhancement_valid():
     enhancement = destiny_sdk.enhancements.Enhancement(
         source="test_source",
         visibility="public",
-        processor_version="1.0",
+        robot_version="1.0",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.BIBLIOGRAPHIC,
         content=bibliographic,
         reference_id=uuid.uuid4(),
@@ -40,7 +40,7 @@ def test_abstract_content_enhancement_valid():
     enhancement = destiny_sdk.enhancements.Enhancement(
         source="test_source",
         visibility="public",
-        processor_version="2.0",
+        robot_version="2.0",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.ABSTRACT,
         content=abstract_content,
         reference_id=uuid.uuid4(),
@@ -62,7 +62,7 @@ def test_annotation_enhancement_valid():
     enhancement = destiny_sdk.enhancements.Enhancement(
         source="test_source",
         visibility="public",
-        processor_version="1.5",
+        robot_version="1.5",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.ANNOTATION,
         content=annotations_content,
         reference_id=uuid.uuid4(),
@@ -87,7 +87,7 @@ def test_location_enhancement_valid():
     enhancement = destiny_sdk.enhancements.Enhancement(
         source="test_source",
         visibility="public",
-        processor_version="1.2",
+        robot_version="1.2",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.LOCATION,
         content=location_content,
         reference_id=uuid.uuid4(),
