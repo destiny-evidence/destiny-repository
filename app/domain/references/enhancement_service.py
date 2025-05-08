@@ -117,13 +117,8 @@ class EnhancementService(GenericService):
         self, enhancement_request_id: UUID4, error: str
     ) -> EnhancementRequest:
         """Mark an enhancement request as failed and supply error message."""
-        try:
-            return await self.sql_uow.enhancement_requests.update_by_pk(
-                pk=enhancement_request_id,
-                request_status=EnhancementRequestStatus.FAILED,
-                error=error,
-            )
-        except NotFoundError as exception:
-            raise NotFoundError(
-                detail=f"Enhancement request {enhancement_request_id} not found."
-            ) from exception
+        return await self.sql_uow.enhancement_requests.update_by_pk(
+            pk=enhancement_request_id,
+            request_status=EnhancementRequestStatus.FAILED,
+            error=error,
+        )
