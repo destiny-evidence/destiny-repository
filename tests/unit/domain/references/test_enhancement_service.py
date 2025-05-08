@@ -1,5 +1,6 @@
 import uuid
 
+import httpx
 import pytest
 from fastapi import status
 from pydantic import HttpUrl
@@ -31,6 +32,32 @@ ENHANCEMENT_DATA = {
         ],
     },
 }
+
+
+@pytest.mark.asyncio
+async def test_request_enhancement_from_robot_request_error(fake_uow, httpx_mock):
+    # Mock a connection error
+    httpx_mock.add_exception(httpx.ConnectError(message="All connections refused"))
+
+    robot_url = "http://www.theres-a-robot-here.com/"
+    robot_id = uuid.uuid4()
+
+    reference = Reference(id=uuid.uuid4(), visibility=Visibility.RESTRICTED)
+    enhancement_request_id = uuid.uuid4()
+
+    service = EnhancementService(
+        fake_uow(), robots=Robots(known_robots={robot_id: HttpUrl(robot_url)})
+    )
+
+    request_status, error = await service.request_enhancement_from_robot(
+        robot_id=robot_id,
+        enhancement_request_id=enhancement_request_id,
+        reference=reference,
+        enhancement_parameters={},
+    )
+
+    assert request_status == EnhancementRequestStatus.FAILED
+    assert str(robot_id) in error
 
 
 @pytest.mark.asyncio

@@ -5,7 +5,10 @@ import httpx
 from fastapi import status
 from pydantic import UUID4
 
-from app.core.exceptions import NotFoundError, WrongReferenceError
+from app.core.exceptions import (
+    NotFoundError,
+    WrongReferenceError,
+)
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
@@ -41,7 +44,7 @@ class EnhancementService(GenericService):
         enhancement_request_id: UUID4,
         reference: Reference,
         enhancement_parameters: dict | None,
-    ) -> httpx.Response:
+    ) -> tuple[EnhancementRequestStatus, str | None]:
         """Request an enhancement from a robot."""
         robot_url = self.robots.get_robot_url(robot_id)
 
@@ -56,10 +59,19 @@ class EnhancementService(GenericService):
             extra_fields=enhancement_parameters,
         )
 
-        async with httpx.AsyncClient() as client:
-            return await client.post(
-                str(robot_url), json=robot_request.model_dump(mode="json")
-            )
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    str(robot_url), json=robot_request.model_dump(mode="json")
+                )
+        except httpx.RequestError:
+            message = f"Unable to send request to Robot {robot_id} at {robot_url}"
+            return (EnhancementRequestStatus.FAILED, message)
+
+        if response.status_code != status.HTTP_202_ACCEPTED:
+            return (EnhancementRequestStatus.REJECTED, response.json()["message"])
+
+        return (EnhancementRequestStatus.ACCEPTED, None)
 
     @unit_of_work
     async def request_reference_enhancement(
@@ -74,22 +86,15 @@ class EnhancementService(GenericService):
             enhancement_request
         )
 
-        response = await self.request_enhancement_from_robot(
+        request_status, error = await self.request_enhancement_from_robot(
             robot_id=enhancement_request.robot_id,
             enhancement_request_id=enhancement_request.id,
             reference=reference,
             enhancement_parameters=enhancement_request.enhancement_parameters,
         )
 
-        if response.status_code != status.HTTP_202_ACCEPTED:
-            return await self.sql_uow.enhancement_requests.update_by_pk(
-                enhancement_request.id,
-                request_status=EnhancementRequestStatus.REJECTED,
-                error=response.json()["message"],
-            )
-
         return await self.sql_uow.enhancement_requests.update_by_pk(
-            enhancement_request.id, request_status=EnhancementRequestStatus.ACCEPTED
+            enhancement_request.id, request_status=request_status, error=error
         )
 
     async def _get_enhancement_request(
