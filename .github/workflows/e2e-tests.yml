@@ -38,9 +38,8 @@ jobs:
 
       - name: Set up Docker Compose and stream logs
         run: |
-          docker compose down -v
           docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d
-          docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs -f e2e repository e2e-task-worker
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs -f
 
       - name: Wait for e2e container to finish
         run: |
