@@ -103,4 +103,11 @@ Identifier collisions are identified on the combination of ``identifier_type`` a
 
 Enhancement updates are performed on the combination of ``enhancement_type`` and ``source``.
 
+Sample
+------
+
+A complete working sample demonstrating the import process is also available:
+
+  `import_from_bucket.py <https://github.com/destiny-evidence/destiny-repository/blob/main/libs/samples/import_from_bucket.py>`_
+
 .. _jsonl: https://jsonlines.org
