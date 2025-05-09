@@ -56,6 +56,7 @@ jobs:
       - name: Check e2e container exit code
         run: |
           EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' e2e)
+          docker logs e2e
           if [ "$EXIT_CODE" -ne 0 ]; then
             echo "E2E tests failed with exit code $EXIT_CODE"
             exit 1
