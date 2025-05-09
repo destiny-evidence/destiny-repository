@@ -36,7 +36,6 @@ engine = create_engine(db_url)
 
 
 def test_complete_batch_import_workflow():  # noqa: PLR0915
-    assert False
     """Test the complete batch import workflow."""
     #############################
     # Start the callback server #
