@@ -21,7 +21,7 @@ release = 'v0.1'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ['sphinxcontrib.autodoc_pydantic', 'sphinx.ext.autodoc', 'sphinxcontrib.mermaid', 'sphinx.ext.graphviz']
+extensions = ['sphinxcontrib.autodoc_pydantic', 'sphinx.ext.autodoc', 'sphinxcontrib.mermaid', 'sphinx.ext.graphviz', 'sphinx.ext.linkcode']
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
@@ -39,3 +39,12 @@ html_show_sourcelink = False
 html_theme_options = {
   "show_toc_level": 2 # can increase, e.g., if there are nested classes
 }
+
+
+def linkcode_resolve(domain, info):
+    if domain != 'py':
+        return None
+    if not info['module']:
+        return None
+    filename = info['module'].replace('.', '/')
+    return "https://github.com/destiny-evidence/destiny-repository/blob/main/%s.py" % filename

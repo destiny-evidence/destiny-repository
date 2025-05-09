@@ -3,8 +3,10 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-DESTINY Repository
-================================
+DESTINY Climate and Health Repository
+=====================================
+
+
 
 .. toctree::
    :maxdepth: 1

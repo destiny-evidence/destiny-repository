@@ -2,7 +2,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import SQLNotFoundError
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 from app.domain.imports.models.models import (
     ImportBatch,
@@ -31,19 +31,34 @@ class FakeRepository:
         # Currently just ignoring preloading in favour of creating
         # models with the data needed.
         if pk not in self.repository:
-            raise NotFoundError(detail=f"{pk} not in repository")
+            raise SQLNotFoundError(
+                detail=f"{pk} not in repository",
+                lookup_value=pk,
+                lookup_type="id",
+                lookup_model="dummy-sql-model",
+            )
         return self.repository[pk]
 
     async def update_by_pk(self, pk: UUID, **kwargs: object) -> DummyDomainSQLModel:
         if pk not in self.repository:
-            raise NotFoundError(detail=f"{pk} not in repository")
+            raise SQLNotFoundError(
+                detail=f"{pk} not in repository",
+                lookup_value=pk,
+                lookup_type="id",
+                lookup_model="dummy-sql-model",
+            )
         for key, value in kwargs.items():
             setattr(self.repository[pk], key, value)
         return self.repository[pk]
 
     async def delete_by_pk(self, pk) -> None:
         if pk not in self.repository:
-            raise NotFoundError(detail=f"{pk} not in repository")
+            raise SQLNotFoundError(
+                detail=f"{pk} not in repository",
+                lookup_value=pk,
+                lookup_type="id",
+                lookup_model="dummy-sql-model",
+            )
         del self.repository[pk]
 
     def iter_records(self):
