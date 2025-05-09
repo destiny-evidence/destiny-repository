@@ -1,0 +1,48 @@
+name: E2E Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "**.rst"
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+
+      - name: Set up Docker Compose and stream logs
+        run: |
+          docker compose down -v
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs -f e2e repository e2e-task-worker
+
+      - name: Wait for e2e container to finish
+        run: |
+          while [ "$(docker inspect -f '{{.State.Status}}' e2e)" = "running" ]; do
+            sleep 5
+          done
+
+      - name: Check e2e container exit code
+        run: |
+          EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' e2e)
+          if [ "$EXIT_CODE" -ne 0 ]; then
+            echo "E2E tests failed with exit code $EXIT_CODE"
+            exit 1
+          fi
+          echo "E2E tests passed"
+
+      - name: Clean up Docker Compose
+        if: always()
+        run: docker compose down -v
