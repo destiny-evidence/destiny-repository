@@ -1,7 +1,10 @@
 services:
   db:
+    # Override the volume to use ephemeral storage for e2e tests
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - /var/lib/postgresql/data
+    # Emphasize clean state for tests
+    command: postgres -c fsync=off
   fs:
     volumes:
       - /data
@@ -109,7 +112,6 @@ services:
       MINIO_PRESIGNED_URL_FILEPATH: /shared-minio/presigned_urls.json
     entrypoint: poetry run pytest /e2e
 
-# Use fresh volumes for tests
+# Use ephemeral volumes for tests
 volumes:
   shared-minio:
-  db_data:
