@@ -36,10 +36,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y docker-compose
 
-      - name: Set up Docker Compose and stream logs
+      - name: Remove database volume
         run: |
           # Had a weird issue with the DB persisting data between runs, sporadically
-          docker compose down -v
+          docker volume rm db_data || true
+
+      - name: Set up Docker Compose and stream logs
+        run: |
           docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d
           docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs -f &
 
