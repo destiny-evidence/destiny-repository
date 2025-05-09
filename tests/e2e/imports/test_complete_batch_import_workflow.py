@@ -3,6 +3,8 @@ End-to-end test for complete import workflow.
 
 Consider reducing number of assertions, particularly string-sensitive, once
 unit and integration test coverage is sound.
+
+N.B. does NOT use the SDK in order to test serverside validation.
 """
 # ruff: noqa: T201 E501 ERA001
 
@@ -115,7 +117,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         response = client.post(
             "/imports/record/",
             json={
-                "processor_name": "test_processor",
+                "processor_name": "test_robot",
                 "processor_version": "0.0.1",
             },
         )
@@ -124,7 +126,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         response = client.post(
             "/imports/record/",
             json={
-                "processor_name": "test_processor",
+                "processor_name": "test_robot",
                 "processor_version": "0.0.1",
                 "expected_reference_count": "over nine thousand",
                 "source_name": "test_source",
@@ -135,7 +137,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         response = client.post(
             "/imports/record/",
             json={
-                "processor_name": "test_processor",
+                "processor_name": "test_robot",
                 "processor_version": "0.0.1",
                 "source_name": "test_source",
                 "expected_reference_count": -1,
@@ -145,7 +147,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         import_record = response.json()
         assert import_record["id"] is not None
         assert import_record["status"] == "created"
-        assert import_record["processor_name"] == "test_processor"
+        assert import_record["processor_name"] == "test_robot"
         assert import_record["processor_version"] == "0.0.1"
         assert import_record["source_name"] == "test_source"
         assert import_record["expected_reference_count"] == -1
@@ -195,7 +197,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             },
         )
         assert response.status_code == 404
-        assert response.json()["detail"] == f"Import record with id {u} not found."
+        assert response.json()["detail"] == f"ImportRecord with id {u} does not exist."
         # 2.d: Correct batch creation
         import_batch_a = submit_happy_batch(
             import_record["id"],
@@ -216,7 +218,10 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
 
         response = client.get(
             "/references/",
-            params={"identifier_type": "doi", "identifier": "10.1234/sampledoi"},
+            params={
+                "identifier_type": "doi",
+                "identifier": "10.1234/sampledoi",
+            },
         )
         assert response.status_code == 200
         reference = response.json()
@@ -338,7 +343,10 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         # Check that the number of enhancements has reduced, and that the number of identifiers has increased
         response = client.get(
             "/references/",
-            params={"identifier_type": "doi", "identifier": "10.1234/sampledoi"},
+            params={
+                "identifier_type": "doi",
+                "identifier": "10.1234/sampledoi",
+            },
         )
         assert response.status_code == 200
         reference = response.json()
@@ -374,7 +382,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         assert len(reference["enhancements"]) == 3
         assert len(reference["identifiers"]) == 2
         for enhancement in reference["enhancements"]:
-            if enhancement["enhancement_type"] == "bibliographic":
+            if enhancement["content"]["enhancement_type"] == "bibliographic":
                 assert enhancement["content"]["cited_by_count"] == 5
         # Check that the next reference did add a new enhancement
         response = client.get(
@@ -422,7 +430,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
                     identifier["identifier"] == "10.1235/sampledoitwoelectricboogaloo"
                 )
         for enhancement in reference["enhancements"]:
-            if enhancement["enhancement_type"] == "bibliographic":
+            if enhancement["content"]["enhancement_type"] == "bibliographic":
                 assert (
                     enhancement["content"]["authorship"][0]["display_name"] == "Wynstan"
                 )

@@ -30,6 +30,7 @@ import datetime
 import os
 import time
 
+import destiny_sdk
 import httpx
 from azure.storage.blob import BlobSasPermissions, BlobServiceClient, generate_blob_sas
 
@@ -46,15 +47,17 @@ if __name__ == "__main__":
         # 1: Register a new import
         response = client.post(
             "/imports/record/",
-            json={
-                "processor_name": "Sample bulk importer",
-                "processor_version": "0.0.1",
-                "source_name": "OpenAlex",
-                "expected_reference_count": 6,
-            },
+            json=destiny_sdk.imports.ImportRecordIn(
+                processor_name="Sample bulk importer",
+                processor_version="0.0.1",
+                source_name="OpenAlex",
+                expected_reference_count=6,
+            ),
         )
         response.raise_for_status()
-        import_record = response.json()
+        import_record = destiny_sdk.imports.ImportRecordRead.model_validate(
+            response.json()
+        )
 
         # 2: For each file in the bucket, register an import batch
         blob_service_client = BlobServiceClient(
@@ -82,22 +85,24 @@ if __name__ == "__main__":
 
             print("Registering import batch for blob:", blob.name)
             response = client.post(
-                f"/imports/record/{import_record['id']}/batch/",
-                json={
-                    "storage_url": sas_url,
-                    "collision_strategy": "fail",
-                },
+                f"/imports/record/{import_record.id}/batch/",
+                json=destiny_sdk.imports.ImportBatchIn(
+                    storage_url=sas_url,
+                    callback_url=None,
+                ),
             )
             response.raise_for_status()
-            import_batch = response.json()
-            print(f"Import batch {import_batch["id"]} registered for blob {blob.name}")
+            import_batch = destiny_sdk.imports.ImportBatchRead.model_validate(
+                response.json()
+            )
+            print(f"Import batch {import_batch.id} registered for blob {blob.name}")
 
-            import_batch_ids.append(import_batch["id"])
+            import_batch_ids.append(import_batch.id)
 
         # 3: Finalise the import record
         print("Finalising import record")
         response = client.patch(
-            f"/imports/record/{import_record['id']}/finalise/",
+            f"/imports/record/{import_record.id}/finalise/",
         )
         response.raise_for_status()
 
@@ -111,9 +116,11 @@ if __name__ == "__main__":
                     f"/imports/batch/{import_batch_id}/",
                 )
                 response.raise_for_status()
-                import_batch = response.json()
+                import_batch = destiny_sdk.imports.ImportBatchRead.model_validate(
+                    response.json()
+                )
                 print(import_batch)
-                if import_batch["status"] == "completed":
+                if import_batch.status == "completed":
                     break
                 i += 1
                 print("Import batch not complete, sleeping for 5 seconds")
@@ -123,7 +130,9 @@ if __name__ == "__main__":
                 f"/imports/batch/{import_batch_id}/summary/",
             )
             response.raise_for_status()
-            import_batch_summary = response.json()
+            import_batch_summary = (
+                destiny_sdk.imports.ImportBatchSummary.model_validate(response.json())
+            )
             print(f"Import batch {import_batch_id} summary:")
             print(import_batch_summary)
 

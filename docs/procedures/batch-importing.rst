@@ -2,8 +2,8 @@ Importing References with Batches
 ==================================
 
 .. contents:: Table of Contents
-   :depth: 2
-   :local:
+    :depth: 2
+    :local:
 
 The Import Process
 ------------------
@@ -83,21 +83,21 @@ Entities
 File Format
 -----------
 
-The references file provided to each batch must be in the `jsonl`_ format. Each line is a JSON object in the :class:`ReferenceCreate <app.domain.references.models.models.ReferenceCreate>` format.
+The references file provided to each batch must be in the `jsonl`_ format. Each line is a JSON object in the :class:`ReferenceFileInput <libs.sdk.src.destiny_sdk.references.ReferenceFileInput>` format.
 
 Sample files can be found in the ``.minio/data`` directory.
 
 Callbacks
 ---------
 
-An optional callback parameter can be provided where the importer can receive a POST request with the batch summary (:class:`ImportBatchSummary <app.domain.imports.models.models.ImportBatchSummary>`) once the batch has finished processing.
+An optional callback parameter can be provided where the importer can receive a POST request with the batch summary (:class:`ImportBatchSummary <libs.sdk.src.destiny_sdk.imports.ImportBatchSummary>`) once the batch has finished processing.
 
 Collision Handling
 ------------------
 
-If an imported reference has the same identifier as an existing reference, the collision will be handled according to the :class:`CollisionStrategy <app.domain.imports.models.models.CollisionStrategy>`.
+If an imported reference has the same identifier as an existing reference, the collision will be handled according to the :class:`CollisionStrategy <libs.sdk.src.destiny_sdk.enhancements.CollisionStrategy>`.
 
-The default strategy is to do nothing and notify the importer in the batch's :attr:`failure_details <app.domain.imports.models.models.ImportBatchSummary.failure_details>`. This allows the importer to "follow up" these records with an alternate strategy if desired.
+The default strategy is to do nothing and notify the importer in the batch's :attr:`failure_details <libs.sdk.src.destiny_sdk.imports.ImportBatchSummary.failure_details>`. This allows the importer to "follow up" these records with an alternate strategy if desired.
 
 Identifier collisions are identified on the combination of ``identifier_type`` and ``identifier``, with ``other_identifier_name`` also used if ``identifier_type`` is ``"other"``.
 

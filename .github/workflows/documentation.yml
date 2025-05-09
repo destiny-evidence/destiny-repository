@@ -17,12 +17,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
+      - name: Install Graphviz
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgraphviz-dev
+      - name: Install and configure Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+          virtualenvs-path: .venv
+          installer-parallel: true
       - name: Install dependencies
         run: |
-          pip install -r docs/requirements.txt
+          poetry install --only=docs
       - name: Sphinx build
         run: |
-          sphinx-build -b html docs docs/html
+          poetry run sphinx-build -b html docs docs/html
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}

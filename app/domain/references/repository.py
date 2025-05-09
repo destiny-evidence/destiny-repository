@@ -6,15 +6,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.core.exceptions import SQLNotFoundError
 from app.domain.references.models.models import Enhancement as DomainEnhancement
 from app.domain.references.models.models import (
     EnhancementRequest as DomainEnhancementRequest,
 )
 from app.domain.references.models.models import (
-    ExternalIdentifier as DomainExternalIdentifier,
+    ExternalIdentifierType,
 )
 from app.domain.references.models.models import (
-    ExternalIdentifierType,
+    LinkedExternalIdentifier as DomainExternalIdentifier,
 )
 from app.domain.references.models.models import Reference as DomainReference
 from app.domain.references.models.sql import Enhancement as SQLEnhancement
@@ -75,7 +76,7 @@ class ExternalIdentifierSQLRepository(
         identifier: str,
         other_identifier_name: str | None = None,
         preload: list[str] | None = None,
-    ) -> DomainExternalIdentifier | None:
+    ) -> DomainExternalIdentifier:
         """
         Get a single external identifier by type and identifier, if it exists.
 
@@ -102,7 +103,21 @@ class ExternalIdentifierSQLRepository(
                 query = query.options(joinedload(relationship))
         result = await self._session.execute(query)
         db_identifier = result.scalar_one_or_none()
-        return await db_identifier.to_domain(preload=preload) if db_identifier else None
+
+        if not db_identifier:
+            detail = (
+                f"Unable to find {self._persistence_cls.__name__} with type "
+                f"{identifier_type}, identifier {identifier}, and other "
+                f"identifier name {other_identifier_name}"
+            )
+            raise SQLNotFoundError(
+                detail=detail,
+                lookup_model="ExternalIdentifier",
+                lookup_type="external_identifier",
+                lookup_value=(identifier_type, identifier, other_identifier_name),
+            )
+
+        return await db_identifier.to_domain(preload=preload)
 
 
 class EnhancementRepositoryBase(
@@ -135,10 +150,10 @@ class EnhancementRequestRepositoryBase(
 
 
 class EnhancementRequestSQLRepository(
-    GenericAsyncSqlRepository[DomainEnhancementRequest, SQLEnhancement],
+    GenericAsyncSqlRepository[DomainEnhancementRequest, SQLEnhancementRequest],
     EnhancementRequestRepositoryBase,
 ):
-    """Concrete implementation of a repository for identifiers using SQLAlchemy."""
+    """Concrete implementation of a repository for enhancement requests."""
 
     def __init__(self, session: AsyncSession) -> None:
         """Initialize the repository with the database session."""

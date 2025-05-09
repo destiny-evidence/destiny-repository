@@ -10,7 +10,12 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
-from app.core.exceptions import NotFoundError, SDKToDomainError, WrongReferenceError
+from app.core.exceptions import (
+    NotFoundError,
+    SDKToDomainError,
+    SQLNotFoundError,
+    WrongReferenceError,
+)
 from app.core.logger import configure_logger, get_logger
 from app.domain.imports.routes import router as import_router
 from app.domain.references.routes import robot_router
@@ -95,9 +100,20 @@ async def not_found_exception_handler(
     request: Request,  # noqa: ARG001 exception handlers required to take request as parameter
     exception: NotFoundError,
 ) -> JSONResponse:
-    """Exception handler to return 404 responses when NotFoundError thrown."""
+    """Exception handler to return 404 responses when NotFoundError is thrown."""
+    if isinstance(exception, SQLNotFoundError):
+        content = {
+            "detail": (
+                f"{exception.lookup_model} with "
+                f"{exception.lookup_type} {exception.lookup_value} does not exist."
+            )
+        }
+    else:
+        content = {"detail": exception.detail}
+
     return JSONResponse(
-        status_code=status.HTTP_404_NOT_FOUND, content={"detail": exception.detail}
+        status_code=status.HTTP_404_NOT_FOUND,
+        content=content,
     )
 
 

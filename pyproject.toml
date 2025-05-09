@@ -37,7 +37,7 @@ taskiq-aio-pika = "^0.4.1"
 uvloop = "^0.21.0"
 
 [tool.poetry.group.dev.dependencies]
-autodoc_pydantic = "^2.2.0"
+destiny-sdk = {develop = true, path = "libs/sdk"}
 msal = "^1.31.1"
 mypy = "^1.14.1"
 pre-commit = "^4.0.1"
@@ -48,6 +48,12 @@ pytest-httpx = "^0.35.0"
 ruff = "^0.8.6"
 types-cachetools = "^5.5.0.20240820"
 types-python-jose = "^3.4.0.20250224"
+
+[tool.poetry.group.docs.dependencies]
+autodoc_pydantic = {extras = ["erdantic"], version = "^2.2.0"}
+pydata-sphinx-theme = "^0.16.1"
+sphinx = "^8.2.3"
+sphinxcontrib-mermaid = "^1.0.0"
 
 [tool.pytest.ini_options]
 addopts = ["--color=yes", "--import-mode=importlib", "--verbose"]

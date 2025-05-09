@@ -3,12 +3,8 @@
 import uuid
 from typing import Annotated
 
-from destiny_sdk.core import (
-    EnhancementRequestCreate,
-    EnhancementRequestRead,
-)
-from destiny_sdk.robots import RobotResult
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+import destiny_sdk
+from fastapi import APIRouter, Depends, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import (
@@ -22,11 +18,7 @@ from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
-    ExternalIdentifier,
-    ExternalIdentifierCreate,
     ExternalIdentifierSearch,
-    ExternalIdentifierType,
-    Reference,
 )
 from app.domain.references.reference_service import ReferenceService
 from app.domain.robots import Robots
@@ -111,24 +103,19 @@ robot_router = APIRouter(
 async def get_reference(
     reference_id: Annotated[uuid.UUID, Path(description="The ID of the reference.")],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
-) -> Reference:
+) -> destiny_sdk.references.Reference:
     """Get a reference by id."""
     reference = await reference_service.get_reference(reference_id)
-    if not reference:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Reference with id {reference_id} not found.",
-        )
-    return reference
+    return reference.to_sdk()
 
 
 @router.get("/", dependencies=[Depends(reference_reader_auth)])
 async def get_reference_from_identifier(
     identifier: str,
-    identifier_type: ExternalIdentifierType,
+    identifier_type: destiny_sdk.identifiers.ExternalIdentifierType,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     other_identifier_name: str | None = None,
-) -> Reference:
+) -> destiny_sdk.references.Reference:
     """Get a reference given an external identifier."""
     external_identifier = ExternalIdentifierSearch(
         identifier=identifier,
@@ -138,12 +125,7 @@ async def get_reference_from_identifier(
     reference = await reference_service.get_reference_from_identifier(
         external_identifier
     )
-    if not reference:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Reference with identifier {external_identifier} not found.",
-        )
-    return reference
+    return reference.to_sdk()
 
 
 @router.post(
@@ -153,9 +135,10 @@ async def get_reference_from_identifier(
 )
 async def register_reference(
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
-) -> Reference:
+) -> destiny_sdk.references.Reference:
     """Create a reference."""
-    return await reference_service.register_reference()
+    reference = await reference_service.register_reference()
+    return reference.to_sdk()
 
 
 @router.post(
@@ -166,10 +149,13 @@ async def register_reference(
 async def add_identifier(
     reference_id: Annotated[uuid.UUID, Path(description="The ID of the reference.")],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    external_identifier: ExternalIdentifierCreate,
-) -> ExternalIdentifier:
+    external_identifier: destiny_sdk.identifiers.ExternalIdentifier,
+) -> destiny_sdk.identifiers.LinkedExternalIdentifier:
     """Add an identifier to a reference."""
-    return await reference_service.add_identifier(reference_id, external_identifier)
+    identifier = await reference_service.add_identifier(
+        reference_id, external_identifier
+    )
+    return identifier.to_sdk()
 
 
 @router.post(
@@ -178,12 +164,12 @@ async def add_identifier(
     dependencies=[Depends(reference_writer_auth)],
 )
 async def request_enhancement(
-    enhancement_request_create: EnhancementRequestCreate,
+    enhancement_request_in: destiny_sdk.robots.EnhancementRequestIn,
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
-) -> EnhancementRequestRead:
+) -> destiny_sdk.robots.EnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""
     enhancement_request = await enhancement_service.request_reference_enhancement(
-        enhancement_request=EnhancementRequest.from_sdk(enhancement_request_create)
+        enhancement_request=EnhancementRequest.from_sdk(enhancement_request_in)
     )
 
     return enhancement_request.to_sdk()
@@ -198,7 +184,7 @@ async def check_enhancement_request_status(
         uuid.UUID, Path(description="The ID of the enhancement request.")
     ],
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
-) -> EnhancementRequestRead:
+) -> destiny_sdk.robots.EnhancementRequestRead:
     """Check the status of an enhancement request."""
     enhancement_request = await enhancement_service.get_enhancement_request(
         enhancement_request_id
@@ -207,16 +193,22 @@ async def check_enhancement_request_status(
     return enhancement_request.to_sdk()
 
 
-@robot_router.post("/enhancement/", status_code=status.HTTP_200_OK)
+@robot_router.post("/enhancement/", status_code=status.HTTP_201_CREATED)
 async def fulfill_enhancement_request(
-    robot_result: RobotResult,
+    robot_result: destiny_sdk.robots.RobotResult,
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
-) -> EnhancementRequestRead:
+) -> destiny_sdk.robots.EnhancementRequestRead:
     """Create an enhancement against an existing enhancement request."""
     if robot_result.error:
         enhancement_request = await enhancement_service.mark_enhancement_request_failed(
             enhancement_request_id=robot_result.request_id,
             error=robot_result.error.message,
+        )
+        return enhancement_request.to_sdk()
+    if not robot_result.enhancement:
+        enhancement_request = await enhancement_service.mark_enhancement_request_failed(
+            enhancement_request_id=robot_result.request_id,
+            error="No enhancement received.",
         )
         return enhancement_request.to_sdk()
 

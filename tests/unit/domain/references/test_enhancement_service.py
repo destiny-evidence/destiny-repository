@@ -4,7 +4,7 @@ import pytest
 from fastapi import status
 from pydantic import HttpUrl
 
-from app.core.exceptions import NotFoundError, WrongReferenceError
+from app.core.exceptions import NotFoundError, SQLNotFoundError, WrongReferenceError
 from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
     Enhancement,
@@ -152,7 +152,7 @@ async def test_trigger_reference_enhancement_nonexistent_reference(
         reference_id=unknown_reference_id, robot_id=robot_id, enhancement_parameters={}
     )
 
-    with pytest.raises(NotFoundError):
+    with pytest.raises(SQLNotFoundError):
         await service.request_reference_enhancement(
             enhancement_request=received_enhancement_request,
         )
@@ -222,8 +222,8 @@ async def test_get_enhancement_request_doesnt_exist(fake_repository, fake_uow):
     service = EnhancementService(uow, robots=Robots({}))
 
     with pytest.raises(
-        NotFoundError,
-        match=f"Enhancement request {enhancement_request_id} not found.",
+        SQLNotFoundError,
+        match=f"{enhancement_request_id} not in repository",
     ):
         await service.get_enhancement_request(enhancement_request_id)
 
@@ -285,7 +285,7 @@ async def test_create_reference_enhancement_reference_not_found(
 
     service = EnhancementService(uow, robots=Robots({}))
 
-    with pytest.raises(NotFoundError):
+    with pytest.raises(SQLNotFoundError):
         await service.create_reference_enhancement(
             enhancement_request_id=existing_enhancement_request.id,
             enhancement=Enhancement(
@@ -308,7 +308,7 @@ async def test_create_reference_enhancement_enhancement_request_not_found(
 
     service = EnhancementService(uow, robots=Robots({}))
 
-    with pytest.raises(NotFoundError):
+    with pytest.raises(SQLNotFoundError):
         await service.create_reference_enhancement(
             enhancement_request_id=uuid.uuid4(),
             enhancement=Enhancement(reference_id=reference_id, **ENHANCEMENT_DATA),
@@ -389,7 +389,7 @@ async def test_mark_enhancement_request_as_failed_request_non_existent(
     )
     service = EnhancementService(uow, robots=Robots({}))
 
-    with pytest.raises(NotFoundError):
+    with pytest.raises(SQLNotFoundError):
         await service.mark_enhancement_request_failed(
             enhancement_request_id=missing_enhancement_request_id, error="it broke"
         )

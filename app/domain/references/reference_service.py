@@ -2,22 +2,24 @@
 
 import json
 
+import destiny_sdk
 from pydantic import UUID4, ValidationError
 
+from app.core.exceptions import NotFoundError
 from app.core.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
-    EnhancementCreate,
     EnhancementParseResult,
     ExternalIdentifier,
-    ExternalIdentifierCreate,
+    ExternalIdentifierAdapter,
     ExternalIdentifierParseResult,
     ExternalIdentifierSearch,
+    GenericExternalIdentifier,
+    LinkedExternalIdentifier,
     Reference,
-    ReferenceCreate,
-    ReferenceCreateInputValidator,
     ReferenceCreateResult,
 )
+from app.domain.references.models.validators import ReferenceFileInputValidator
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 from app.utils.types import JSON
@@ -33,7 +35,7 @@ class ReferenceService(GenericService):
         super().__init__(sql_uow)
 
     @unit_of_work
-    async def get_reference(self, reference_id: UUID4) -> Reference | None:
+    async def get_reference(self, reference_id: UUID4) -> Reference:
         """Get a single reference by id."""
         return await self.sql_uow.references.get_by_pk(
             reference_id, preload=["identifiers", "enhancements"]
@@ -42,7 +44,7 @@ class ReferenceService(GenericService):
     @unit_of_work
     async def get_reference_from_identifier(
         self, identifier: ExternalIdentifierSearch
-    ) -> Reference | None:
+    ) -> Reference:
         """Get a single reference by identifier."""
         db_identifier = (
             await self.sql_uow.external_identifiers.get_by_type_and_identifier(
@@ -51,8 +53,6 @@ class ReferenceService(GenericService):
                 identifier.other_identifier_name,
             )
         )
-        if not db_identifier:
-            return None
         return await self.sql_uow.references.get_by_pk(
             db_identifier.reference_id, preload=["identifiers", "enhancements"]
         )
@@ -64,15 +64,13 @@ class ReferenceService(GenericService):
 
     @unit_of_work
     async def add_identifier(
-        self, reference_id: UUID4, identifier: ExternalIdentifierCreate
-    ) -> ExternalIdentifier:
+        self, reference_id: UUID4, identifier: ExternalIdentifier
+    ) -> LinkedExternalIdentifier:
         """Register an import, persisting it to the database."""
         reference = await self.sql_uow.references.get_by_pk(reference_id)
-        if not reference:
-            raise RuntimeError
-        db_identifier = ExternalIdentifier(
+        db_identifier = LinkedExternalIdentifier(
             reference_id=reference.id,
-            **identifier.model_dump(),
+            identifier=identifier,
         )
         return await self.sql_uow.external_identifiers.add(db_identifier)
 
@@ -81,7 +79,9 @@ class ReferenceService(GenericService):
     ) -> ExternalIdentifierParseResult:
         """Parse and ingest an external identifier into the database."""
         try:
-            identifier = ExternalIdentifierCreate.model_validate(raw_identifier)
+            identifier: ExternalIdentifier = ExternalIdentifierAdapter.validate_python(
+                raw_identifier
+            )
             return ExternalIdentifierParseResult(external_identifier=identifier)
         except (TypeError, ValueError) as error:
             return ExternalIdentifierParseResult(
@@ -114,7 +114,9 @@ Identifier {entry_ref}:
     ) -> EnhancementParseResult:
         """Parse and ingest an enhancement into the database."""
         try:
-            enhancement = EnhancementCreate.model_validate(raw_enhancement)
+            enhancement = destiny_sdk.enhancements.EnhancementFileInput.model_validate(
+                raw_enhancement
+            )
             return EnhancementParseResult(enhancement=enhancement)
         except (TypeError, ValueError) as error:
             return EnhancementParseResult(
@@ -141,14 +143,14 @@ Enhancement {entry_ref}:
 
     async def detect_and_handle_collision(
         self,
-        reference: ReferenceCreate,
+        reference: destiny_sdk.references.ReferenceFileInput,
         collision_strategy: CollisionStrategy,
     ) -> Reference | str | None:
         """
         Detect and handle a collision with an existing reference.
 
         Args:
-            - reference (ReferenceCreate): The incoming reference.
+            - reference (Reference): The incoming reference.
             - collision_strategy (CollisionStrategy): The strategy to use for
                 handling collisions.
 
@@ -162,12 +164,15 @@ Enhancement {entry_ref}:
             raise RuntimeError(msg)
 
         collided_identifiers = await self._fetch_collided_identifiers(
-            reference.identifiers
+            [
+                GenericExternalIdentifier.from_specific(identifier)
+                for identifier in reference.identifiers
+            ]
         )
 
         if not collided_identifiers:
             # No collision detected
-            return Reference.from_create(reference)
+            return Reference.from_file_input(reference)
 
         if collision_strategy == CollisionStrategy.DISCARD:
             return None
@@ -189,7 +194,7 @@ Identifier(s) are already mapped on an existing reference:
             msg = "Existing reference not found in database. This should not happen."
             raise RuntimeError(msg)
 
-        incoming_reference = Reference.from_create(reference, existing_reference.id)
+        incoming_reference = Reference.from_file_input(reference, existing_reference.id)
 
         # Merge collision strategies
         logger.info(
@@ -204,28 +209,31 @@ Identifier(s) are already mapped on an existing reference:
         )
 
     async def _fetch_collided_identifiers(
-        self, identifiers: list[ExternalIdentifierCreate]
-    ) -> list[ExternalIdentifier]:
+        self, identifiers: list[GenericExternalIdentifier]
+    ) -> list[LinkedExternalIdentifier]:
         """
         Fetch identifiers that collide with existing identifiers in the database.
 
         Args:
-            - identifiers (list[ExternalIdentifierCreate]): The identifiers to check.
+            - identifiers (list[GenericExternalIdentifier]): The identifiers to check.
 
         Returns:
-            - list[ExternalIdentifier]: The collided identifiers.
+            - list[LinkedExternalIdentifier]: The collided identifiers.
 
         """
         collided = []
         for identifier in identifiers:
-            existing_identifier = (
-                await self.sql_uow.external_identifiers.get_by_type_and_identifier(
-                    identifier.identifier_type,
-                    identifier.identifier,
-                    identifier.other_identifier_name,
+            try:
+                existing_identifier = (
+                    await self.sql_uow.external_identifiers.get_by_type_and_identifier(
+                        identifier.identifier_type,
+                        identifier.identifier,
+                        identifier.other_identifier_name,
+                    )
                 )
-            )
-            if existing_identifier:
+            except NotFoundError:
+                pass
+            else:
                 collided.append(existing_identifier)
         return collided
 
@@ -248,19 +256,39 @@ Identifier(s) are already mapped on an existing reference:
             - Reference: The final reference to be persisted.
 
         """
+
+        async def _get_identifier_key(
+            identifier: ExternalIdentifier,
+        ) -> tuple[str, str | None]:
+            """
+            Get the key for an identifier.
+
+            Args:
+                - identifier (LinkedExternalIdentifier)
+
+            Returns:
+                - tuple[str, str | None]: The key for the identifier.
+
+            """
+            return (
+                identifier.identifier_type,
+                identifier.other_identifier_name
+                if hasattr(identifier, "other_identifier_name")
+                else None,
+            )
+
         # Graft matching IDs from existing to incoming
         # This allows SQLAlchemy to handle the merge correctly
         for identifier in incoming_reference.identifiers or []:
             for existing_identifier in existing_reference.identifiers or []:
-                if (identifier.identifier_type, identifier.other_identifier_name) == (
-                    existing_identifier.identifier_type,
-                    existing_identifier.other_identifier_name,
-                ):
+                if await _get_identifier_key(
+                    identifier.identifier
+                ) == await _get_identifier_key(existing_identifier.identifier):
                     identifier.id = existing_identifier.id
         for enhancement in incoming_reference.enhancements or []:
             for existing_enhancement in existing_reference.enhancements or []:
-                if (enhancement.enhancement_type, enhancement.source) == (
-                    existing_enhancement.enhancement_type,
+                if (enhancement.content.enhancement_type, enhancement.source) == (
+                    existing_enhancement.content.enhancement_type,
                     existing_enhancement.source,
                 ):
                     enhancement.id = existing_enhancement.id
@@ -284,9 +312,9 @@ Identifier(s) are already mapped on an existing reference:
             [
                 identifier
                 for identifier in supplementary.identifiers
-                if (identifier.identifier_type, identifier.other_identifier_name)
+                if await _get_identifier_key(identifier.identifier)
                 not in {
-                    (identifier.identifier_type, identifier.other_identifier_name)
+                    await _get_identifier_key(identifier.identifier)
                     for identifier in target.identifiers
                 }
             ]
@@ -300,9 +328,9 @@ Identifier(s) are already mapped on an existing reference:
             [
                 enhancement
                 for enhancement in supplementary.enhancements
-                if (enhancement.enhancement_type, enhancement.source)
+                if (enhancement.content.enhancement_type, enhancement.source)
                 not in {
-                    (enhancement.enhancement_type, enhancement.source)
+                    (enhancement.content.enhancement_type, enhancement.source)
                     for enhancement in target.enhancements
                 }
             ]
@@ -323,9 +351,7 @@ Identifier(s) are already mapped on an existing reference:
         try:
             raw_reference: dict = json.loads(record_str)
             # Validate top-level JSON schema using Pydantic
-            validated_input = ReferenceCreateInputValidator.model_validate(
-                raw_reference
-            )
+            validated_input = ReferenceFileInputValidator.model_validate(raw_reference)
         except (json.JSONDecodeError, ValidationError) as exc:
             return ReferenceCreateResult(errors=[f"Entry {entry_ref}:", str(exc)])
 
@@ -352,9 +378,12 @@ Identifier(s) are already mapped on an existing reference:
             for i, enhancement in enumerate(validated_input.enhancements, 1)
         ]
 
-        reference = ReferenceCreate(
+        reference = destiny_sdk.references.ReferenceFileInput(
             visibility=raw_reference.get(  # type: ignore[union-attr]
-                "visibility", Reference.model_fields["visibility"].get_default()
+                "visibility",
+                destiny_sdk.references.ReferenceFileInput.model_fields[
+                    "visibility"
+                ].get_default(),
             ),
             identifiers=[
                 result.external_identifier

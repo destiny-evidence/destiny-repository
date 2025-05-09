@@ -4,10 +4,8 @@ import uuid
 
 import pytest
 
-from app.domain.references.models.models import (
-    ExternalIdentifierCreate,
-    Reference,
-)
+from app.core.exceptions import SQLNotFoundError
+from app.domain.references.models.models import ExternalIdentifierAdapter, Reference
 from app.domain.references.reference_service import ReferenceService
 
 
@@ -28,8 +26,8 @@ async def test_get_reference_not_found(fake_repository, fake_uow):
     uow = fake_uow(references=repo)
     service = ReferenceService(uow)
     dummy_id = uuid.uuid4()
-    result = await service.get_reference(dummy_id)
-    assert result is None
+    with pytest.raises(SQLNotFoundError):
+        await service.get_reference(dummy_id)
 
 
 @pytest.mark.asyncio
@@ -52,11 +50,11 @@ async def test_add_identifier_happy_path(fake_repository, fake_uow):
     uow = fake_uow(references=repo_refs, external_identifiers=repo_ids)
     service = ReferenceService(uow)
     identifier_data = {"identifier": "W1234", "identifier_type": "open_alex"}
-    fake_identifier_create = ExternalIdentifierCreate(**identifier_data)
+    fake_identifier_create = ExternalIdentifierAdapter.validate_python(identifier_data)
     returned_identifier = await service.add_identifier(dummy_id, fake_identifier_create)
     assert getattr(returned_identifier, "reference_id", None) == dummy_id
     for k, v in identifier_data.items():
-        assert getattr(returned_identifier, k, None) == v
+        assert getattr(returned_identifier.identifier, k, None) == v
 
 
 @pytest.mark.asyncio
@@ -66,8 +64,8 @@ async def test_add_identifier_reference_not_found(fake_repository, fake_uow):
     uow = fake_uow(references=repo_refs, external_identifiers=repo_ids)
     service = ReferenceService(uow)
     dummy_id = uuid.uuid4()
-    fake_identifier_create = ExternalIdentifierCreate(
-        identifier="W1234", identifier_type="open_alex"
+    fake_identifier_create = ExternalIdentifierAdapter.validate_python(
+        {"identifier": "W1234", "identifier_type": "open_alex"}
     )
-    with pytest.raises(RuntimeError):
+    with pytest.raises(SQLNotFoundError):
         await service.add_identifier(dummy_id, fake_identifier_create)

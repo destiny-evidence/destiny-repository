@@ -4,7 +4,7 @@ requires = ["poetry-core"]
 
 [tool.poetry]
 authors = ["Andrew Harvey <andrew@futureevidence.org>"]
-description = "A library to support the creation of robots which enhance data in the DESTINY repository"
+description = "A library to support interaction with the DESTINY repository"
 license = "Apache 2.0"
 name = "destiny_sdk"
 readme = "README.md"

@@ -4,10 +4,13 @@ from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import TaskError
+from app.core.logger import get_logger
 from app.domain.imports.service import ImportService
 from app.persistence.sql.session import db_manager
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.tasks import broker
+
+logger = get_logger()
 
 
 async def get_unit_of_work(
@@ -33,6 +36,7 @@ async def get_import_service(
 @broker.task
 async def process_import_batch(import_batch_id: UUID4) -> None:
     """Async logic for processing an import batch."""
+    logger.info("Processing import batch", extra={"import_batch_id": import_batch_id})
     import_service = await get_import_service()
 
     import_batch = await import_service.get_import_batch(import_batch_id)

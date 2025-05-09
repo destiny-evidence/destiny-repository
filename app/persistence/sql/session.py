@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from app.core.exceptions import UOWError
+
 
 class AsyncDatabaseSessionManager:
     """Manages database sessions."""
@@ -50,7 +52,7 @@ class AsyncDatabaseSessionManager:
         """Yield a database session."""
         if self._sessionmaker is None:
             msg = "AsyncDatabaseSessionManager is not initialized"
-            raise RuntimeError(msg)
+            raise UOWError(msg)
         async with self._sessionmaker() as session:
             try:
                 yield session
@@ -63,7 +65,7 @@ class AsyncDatabaseSessionManager:
         """Yield a database connection."""
         if self._engine is None:
             msg = "AsyncDatabaseSessionManager is not initialized"
-            raise RuntimeError(msg)
+            raise UOWError(msg)
         async with self._engine.begin() as connection:
             try:
                 yield connection

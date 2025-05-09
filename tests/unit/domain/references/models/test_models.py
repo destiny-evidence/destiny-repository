@@ -1,238 +1,77 @@
-import uuid
-from datetime import date
+"""Unit tests for the models in the references module."""
 
-import pytest
-from pydantic import ValidationError
+import uuid
+
+import destiny_sdk
 
 from app.domain.references.models.models import (
-    AbstractContentEnhancement,
-    AbstractProcessType,
-    Annotation,
-    AnnotationEnhancement,
-    BibliographicMetadataEnhancement,
-    Enhancement,
     EnhancementRequest,
-    EnhancementRequestStatus,
-    EnhancementType,
-    ExternalIdentifierBase,
-    ExternalIdentifierType,
-    Location,
-    LocationEnhancement,
-    Reference,
-    Visibility,
+    GenericExternalIdentifier,
+    LinkedExternalIdentifier,
+    ReferenceCreateResult,
 )
 
 
-def test_bibliographic_metadata_enhancement_valid():
-    # Create valid bibliographic content
-    bibliographic = BibliographicMetadataEnhancement(
-        enhancement_type=EnhancementType.BIBLIOGRAPHIC,
-        authorship=[],
-        cited_by_count=10,
-        created_date=date(2020, 1, 1),
-        publication_date=date(2020, 1, 2),
-        publication_year=2020,
-        publisher="Test Publisher",
-        title="Test Title",
+def test_generic_external_identifier_from_specific_without_other():
+    doi = destiny_sdk.identifiers.DOIIdentifier(
+        identifier="10.1000/abc123", identifier_type="doi"
     )
-    enhancement = Enhancement(
-        source="test_source",
-        visibility="public",
-        processor_version="1.0",
-        enhancement_type=EnhancementType.BIBLIOGRAPHIC,
-        content=bibliographic,
-        reference_id=uuid.uuid4(),
+    gen = GenericExternalIdentifier.from_specific(doi)
+    assert gen.identifier == "10.1000/abc123"
+    assert gen.identifier_type == "doi"
+    assert gen.other_identifier_name is None
+
+
+def test_generic_external_identifier_from_specific_with_other():
+    other = destiny_sdk.identifiers.OtherIdentifier(
+        identifier="123", identifier_type="other", other_identifier_name="isbn"
     )
-    assert enhancement.content.enhancement_type == EnhancementType.BIBLIOGRAPHIC
+    gen = GenericExternalIdentifier.from_specific(other)
+    assert gen.identifier == "123"
+    assert gen.identifier_type == "other"
+    assert gen.other_identifier_name == "isbn"
 
 
-def test_abstract_content_enhancement_valid():
-    # Create valid abstract content
-    abstract_content = AbstractContentEnhancement(
-        enhancement_type=EnhancementType.ABSTRACT,
-        process=AbstractProcessType.UNINVERTED,
-        abstract="This is a test abstract.",
+def test_reference_create_result_error_str_none():
+    result = ReferenceCreateResult()
+    assert result.error_str is None
+
+
+def test_reference_create_result_error_str_multiple():
+    result = ReferenceCreateResult(errors=["first error", " second error "])
+    # strips and joins with blank line
+    assert result.error_str == "first error\n\nsecond error"
+
+
+def test_linked_external_identifier_roundtrip():
+    sdk_id = destiny_sdk.identifiers.PubMedIdentifier(
+        identifier=1234, identifier_type="pm_id"
     )
-    enhancement = Enhancement(
-        source="test_source",
-        visibility="public",
-        processor_version="2.0",
-        enhancement_type=EnhancementType.ABSTRACT,
-        content=abstract_content,
-        reference_id=uuid.uuid4(),
+    sdk_linked = destiny_sdk.identifiers.LinkedExternalIdentifier(
+        identifier=sdk_id, reference_id=(u := uuid.uuid4())
     )
-    assert enhancement.content.abstract == "This is a test abstract."
+    domain = LinkedExternalIdentifier.from_sdk(sdk_linked)
+    assert domain.identifier == sdk_id
+    assert domain.reference_id == u
+
+    back = domain.to_sdk()
+    assert isinstance(back, destiny_sdk.identifiers.LinkedExternalIdentifier)
+    assert back.reference_id == sdk_linked.reference_id
+    assert back.identifier == sdk_id
 
 
-def test_annotation_enhancement_valid():
-    # Create valid annotation content
-    annotation1 = Annotation(
-        annotation_type="openalex:topic",
-        label="Machine Learning",
-        data={"confidence": 0.95},
+def test_enhancement_request_roundtrip():
+    rid = uuid.uuid4()
+    req_in = destiny_sdk.robots.EnhancementRequestIn(
+        reference_id=rid, robot_id=rid, enhancement_parameters={"param": 42}
     )
-    annotations_content = AnnotationEnhancement(
-        enhancement_type=EnhancementType.ANNOTATION, annotations=[annotation1]
-    )
-    enhancement = Enhancement(
-        source="test_source",
-        visibility="public",
-        processor_version="1.5",
-        enhancement_type=EnhancementType.ANNOTATION,
-        content=annotations_content,
-        reference_id=uuid.uuid4(),
-    )
-    assert enhancement.content.annotations[0].label == "Machine Learning"
+    domain = EnhancementRequest.from_sdk(req_in)
+    assert domain.reference_id == rid
+    assert domain.robot_id == rid
+    assert domain.enhancement_parameters == {"param": 42}
 
-
-def test_location_enhancement_valid():
-    # Create valid location content
-    location = Location(
-        is_oa=True,
-        version="publishedVersion",
-        landing_page_url="https://example.com",
-        pdf_url="https://example.com/doc.pdf",
-        license="cc-by",
-        extra={"note": "Accessible"},
-    )
-    location_content = LocationEnhancement(
-        enhancement_type=EnhancementType.LOCATION, locations=[location]
-    )
-    enhancement = Enhancement(
-        source="test_source",
-        visibility="public",
-        processor_version="1.2",
-        enhancement_type=EnhancementType.LOCATION,
-        content=location_content,
-        reference_id=uuid.uuid4(),
-    )
-    assert enhancement.content.locations[0].license == "cc-by"
-
-
-def test_mismatched_enhancement_type():
-    # Intentionally create mismatch between parent enhancement_type and
-    # content.enhancement_type
-    bibliographic = BibliographicMetadataEnhancement(
-        enhancement_type=EnhancementType.BIBLIOGRAPHIC,
-        authorship=[],
-        cited_by_count=5,
-        created_date=date(2020, 5, 1),
-        publication_date=date(2020, 5, 2),
-        publication_year=2020,
-        publisher="Mismatch Publisher",
-    )
-    with pytest.raises(ValidationError) as excinfo:
-        Enhancement(
-            source="test_source",
-            visibility="public",
-            processor_version="1.0",
-            # expecting ABSTRACT but passed bibliographic content
-            enhancement_type=EnhancementType.ABSTRACT,
-            content=bibliographic,
-            reference_id=uuid.uuid4(),
-        )
-    assert "content enhancement_type must match parent enhancement_type" in str(
-        excinfo.value
-    )
-
-
-def test_valid_doi():
-    obj = ExternalIdentifierBase(
-        identifier_type=ExternalIdentifierType.DOI,
-        identifier="10.1000/xyz123",
-        other_identifier_name=None,
-    )
-    assert obj.identifier == "10.1000/xyz123"
-
-
-def test_invalid_doi():
-    with pytest.raises(ValueError, match="The provided DOI is not in a valid format."):
-        ExternalIdentifierBase(
-            identifier_type=ExternalIdentifierType.DOI,
-            identifier="invalid_doi",
-            other_identifier_name=None,
-        )
-
-
-def test_valid_pmid():
-    obj = ExternalIdentifierBase(
-        identifier_type=ExternalIdentifierType.PM_ID,
-        identifier="123456",
-        other_identifier_name=None,
-    )
-    assert obj.identifier == "123456"
-
-
-def test_invalid_pmid():
-    with pytest.raises(ValueError, match="PM ID must be an integer."):
-        ExternalIdentifierBase(
-            identifier_type=ExternalIdentifierType.PM_ID,
-            identifier="abc123",
-            other_identifier_name=None,
-        )
-
-
-def test_valid_open_alex():
-    valid_openalex = "W123456789"
-    obj = ExternalIdentifierBase(
-        identifier_type=ExternalIdentifierType.OPEN_ALEX,
-        identifier=valid_openalex,
-        other_identifier_name=None,
-    )
-    assert obj.identifier == valid_openalex
-
-
-def test_invalid_open_alex():
-    with pytest.raises(
-        ValueError, match="The provided OpenAlex ID is not in a valid format."
-    ):
-        ExternalIdentifierBase(
-            identifier_type=ExternalIdentifierType.OPEN_ALEX,
-            identifier="invalid-openalex",
-            other_identifier_name=None,
-        )
-
-
-def test_valid_other_identifier():
-    obj = ExternalIdentifierBase(
-        identifier_type=ExternalIdentifierType.OTHER,
-        identifier="custom_identifier",
-        other_identifier_name="custom_type",
-    )
-    assert obj.other_identifier_name == "custom_type"
-
-
-def test_invalid_other_identifier_missing_name():
-    with pytest.raises(
-        ValueError,
-        match="other_identifier_name must be provided when identifier_type is 'other'",
-    ):
-        ExternalIdentifierBase(
-            identifier_type=ExternalIdentifierType.OTHER,
-            identifier="custom_identifier",
-            other_identifier_name=None,
-        )
-
-
-def test_invalid_other_identifier_provided_when_not_other():
-    with pytest.raises(
-        ValueError,
-        match="other_identifier_name must be empty when identifier_type is not 'other'",
-    ):
-        ExternalIdentifierBase(
-            identifier_type=ExternalIdentifierType.DOI,
-            identifier="10.1000/xyz123",
-            other_identifier_name="unexpected",
-        )
-
-
-def test_enhancement_request_valid():
-    enhancement_request = EnhancementRequest(
-        reference_id=uuid.uuid4(),
-        reference=Reference(visibility=Visibility.RESTRICTED),
-        robot_id=uuid.uuid4(),
-    )
-
-    assert enhancement_request.request_status == EnhancementRequestStatus.RECEIVED
-    assert enhancement_request.enhancement_parameters == {}
-    assert enhancement_request.error is None
+    sdk_read = domain.to_sdk()
+    assert isinstance(sdk_read, destiny_sdk.robots.EnhancementRequestRead)
+    assert sdk_read.reference_id == rid
+    assert sdk_read.robot_id == rid
+    assert sdk_read.enhancement_parameters == {"param": 42}

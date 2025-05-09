@@ -3,13 +3,12 @@
 import datetime
 import uuid
 from enum import StrEnum
+from typing import Self
 
-from pydantic import (
-    Field,
-    HttpUrl,
-    PastDatetime,
-)
+import destiny_sdk
+from pydantic import Field, HttpUrl, PastDatetime, ValidationError
 
+from app.core.exceptions import SDKToDomainError
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 
 
@@ -92,19 +91,11 @@ class ImportResultStatus(StrEnum):
     FAILED = "failed"
 
 
-class ImportRecordBase(DomainBaseModel):
-    """
-    The base model for Import Records.
-
-    An Import Record is essentially an accounting record for imports into the
-    data repo. It allows us to understand the provenance of records and keep track
-    of the processing of imports as well as the resulting creation or update of
-    references within the repo.
-
-    """
+class ImportRecord(DomainBaseModel, SQLAttributeMixin):
+    """Core import record model with database and internal attributes included."""
 
     search_string: str | None = Field(
-        None,
+        default=None,
         description="The search string used to produce this import",
     )
     searched_at: PastDatetime = Field(
@@ -122,7 +113,7 @@ is assumed to be in UTC.
         description="The version of the processor that is importing the data."
     )
     notes: str | None = Field(
-        None,
+        default=None,
         description="""
 Any additional notes regarding the import (eg. reason for importing, known
 issues).
@@ -139,31 +130,34 @@ The number of references expected to be included in this import.
         description="The source of the reference being imported (eg. Open Alex)"
     )
 
-
-class ImportRecord(ImportRecordBase, SQLAttributeMixin):
-    """Core import record model with database and internal attributes included."""
-
     status: ImportRecordStatus = Field(
         default=ImportRecordStatus.CREATED,
         description="The status of the upload.",
     )
     batches: list["ImportBatch"] | None = Field(
-        None, description="The batches associated with this import."
+        default=None, description="The batches associated with this import."
     )
 
+    @classmethod
+    def from_sdk(cls, data: destiny_sdk.imports.ImportRecordIn) -> Self:
+        """Create an ImportRecord from the SDK input model."""
+        try:
+            return cls.model_validate(data.model_dump())
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
 
-class ImportRecordCreate(ImportRecordBase):
-    """Input for creating an import record."""
+    def to_sdk(self) -> destiny_sdk.imports.ImportRecordRead:
+        """Convert the ImportRecord to the SDK model."""
+        try:
+            return destiny_sdk.imports.ImportRecordRead.model_validate(
+                self.model_dump()
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
 
 
-class ImportBatchBase(DomainBaseModel):
-    """
-    The base class for import batches.
-
-    An import batch is a set of references imported together as part of a larger
-    import. They wrap a storage URL and track the status of the importing of the
-    file at that storage url.
-    """
+class ImportBatch(DomainBaseModel, SQLAttributeMixin):
+    """Core import batch model with database and internal attributes included."""
 
     collision_strategy: CollisionStrategy = Field(
         default=CollisionStrategy.FAIL,
@@ -178,16 +172,11 @@ The URL at which the set of references for this batch are stored.
     """,
     )
     callback_url: HttpUrl | None = Field(
-        None,
+        default=None,
         description="""
 The URL to which the processor should send a callback when the batch has been processed.
         """,
     )
-
-
-class ImportBatch(ImportBatchBase, SQLAttributeMixin):
-    """Core import batch model with database and internal attributes included."""
-
     status: ImportBatchStatus = Field(
         default=ImportBatchStatus.CREATED, description="The status of the batch."
     )
@@ -195,83 +184,85 @@ class ImportBatch(ImportBatchBase, SQLAttributeMixin):
         description="The ID of the parent import record."
     )
     import_record: ImportRecord | None = Field(
-        None, description="The parent import record."
+        default=None, description="The parent import record."
     )
     import_results: list["ImportResult"] | None = Field(
-        None, description="The results from processing the batch."
+        default=None, description="The results from processing the batch."
     )
 
+    @classmethod
+    def from_sdk(
+        cls, data: destiny_sdk.imports.ImportBatchIn, import_record_id: uuid.UUID
+    ) -> Self:
+        """Create an ImportBatch from the SDK input model."""
+        try:
+            return cls.model_validate(
+                data.model_dump() | {"import_record_id": import_record_id}
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
 
-class ImportBatchCreate(ImportBatchBase):
-    """Input for creating an import batch."""
+    def to_sdk(self) -> destiny_sdk.imports.ImportBatchRead:
+        """Convert the ImportBatch to the SDK model."""
+        try:
+            return destiny_sdk.imports.ImportBatchRead.model_validate(self.model_dump())
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
+
+    def to_sdk_summary(self) -> destiny_sdk.imports.ImportBatchSummary:
+        """Convert the ImportBatch to the SDK summary model."""
+        try:
+            result_summary: dict[ImportResultStatus, int] = dict.fromkeys(
+                ImportResultStatus, 0
+            )
+            failure_details: list[str] = []
+            for result in self.import_results or []:
+                result_summary[result.status] += 1
+                if (
+                    result.status
+                    in (
+                        ImportResultStatus.FAILED,
+                        ImportResultStatus.PARTIALLY_FAILED,
+                    )
+                    and result.failure_details
+                ):
+                    failure_details.append(result.failure_details)
+            return destiny_sdk.imports.ImportBatchSummary.model_validate(
+                self.model_dump()
+                | {
+                    "import_batch_id": self.id,
+                    "import_batch_status": self.status,
+                    "results": result_summary,
+                    "failure_details": failure_details,
+                }
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
 
 
-class ImportResultBase(DomainBaseModel):
-    """
-    The base class for import results.
-
-    An import result is a record of the outcome of a single imported reference.
-    It is essentially a "Reference attempt".
-    These are created during the processing of an ImportBatch file.
-    """
+class ImportResult(DomainBaseModel, SQLAttributeMixin):
+    """Core import result model with database attributes included."""
 
     import_batch_id: uuid.UUID = Field(description="The ID of the parent import batch.")
     status: ImportResultStatus = Field(
         default=ImportResultStatus.CREATED, description="The status of the result."
     )
-
-
-class ImportResult(ImportResultBase, SQLAttributeMixin):
-    """Core import result model with database attributes included."""
-
     import_batch: ImportBatch | None = Field(
-        None, description="The parent import batch."
+        default=None, description="The parent import batch."
     )
     reference_id: uuid.UUID | None = Field(
-        None, description="The ID of the created reference."
+        default=None, description="The ID of the created reference."
     )
     failure_details: str | None = Field(
-        None, description="Details of any failure that occurred during processing."
+        default=None,
+        description="Details of any failure that occurred during processing.",
     )
 
-
-class ImportResultCreate(ImportResultBase):
-    """Input for creating an import result."""
-
-
-class ImportBatchSummary(ImportBatchBase):
-    """A view for an import batch that includes a summary of its results."""
-
-    id: uuid.UUID = Field(
-        description="""
-The identifier of the batch.
-""",
-    )
-
-    created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
-        description="The timestamp at which the batch was created.",
-    )
-    updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
-        description="The timestamp at which the batch's status was last updated.",
-    )
-
-    import_batch_id: uuid.UUID = Field(
-        description="The ID of the batch being summarised"
-    )
-
-    import_batch_status: ImportBatchStatus = Field(
-        description="The status of the batch being summarised"
-    )
-
-    results: dict[ImportResultStatus, int] = Field(
-        description="A count of references by their current import status."
-    )
-    failure_details: list[str] | None = Field(
-        description="""
-        The details of the failures that occurred.
-        Each failure will start with `"Entry x"` where x is the line number of the
-        jsonl object attempted to be imported.
-        """,
-    )
+    def to_sdk(self) -> destiny_sdk.imports.ImportResultRead:
+        """Convert the ImportResult to the SDK model."""
+        try:
+            return destiny_sdk.imports.ImportResultRead.model_validate(
+                self.model_dump()
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception

@@ -7,7 +7,7 @@ from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import SQLNotFoundError
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
 from app.persistence.sql.generics import GenericSQLPersistenceType
@@ -45,13 +45,16 @@ class GenericAsyncSqlRepository(
 
     async def get_by_pk(
         self, pk: UUID4, preload: list[str] | None = None
-    ) -> GenericDomainModelType | None:
+    ) -> GenericDomainModelType:
         """
         Get a record using its primary key.
 
         Args:
         - pk (UUID4): The primary key to use to look up the record.
         - preload (list[str]): A list of attributes to preload using a join.
+
+        Raises:
+        - NotFoundError: If the record is not found.
 
         """
         options = []
@@ -61,7 +64,14 @@ class GenericAsyncSqlRepository(
                 options.append(joinedload(relationship))
         result = await self._session.get(self._persistence_cls, pk, options=options)
         if not result:
-            return None
+            detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
+            raise SQLNotFoundError(
+                detail=detail,
+                lookup_model=self._persistence_cls.__name__,
+                lookup_type="id",
+                lookup_value=pk,
+            )
+
         return await result.to_domain(preload=preload)
 
     async def update_by_pk(self, pk: UUID4, **kwargs: object) -> GenericDomainModelType:
@@ -72,11 +82,19 @@ class GenericAsyncSqlRepository(
         - pk (UUID4): The primary key to use to look up the record.
         - kwargs (object): The attributes to update.
 
+        Raises:
+        - NotFoundError: If the record is not found.
+
         """
         persistence = await self._session.get(self._persistence_cls, pk)
         if not persistence:
             detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
-            raise NotFoundError(detail=detail)
+            raise SQLNotFoundError(
+                detail=detail,
+                lookup_model=self._persistence_cls.__name__,
+                lookup_type="id",
+                lookup_value=pk,
+            )
 
         # Check if key is in the persistence model.
         for key, value in kwargs.items():
@@ -97,7 +115,12 @@ class GenericAsyncSqlRepository(
         persistence = await self._session.get(self._persistence_cls, pk)
         if not persistence:
             detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
-            raise NotFoundError(detail=detail)
+            raise SQLNotFoundError(
+                detail=detail,
+                lookup_model=self._persistence_cls.__name__,
+                lookup_type="id",
+                lookup_value=pk,
+            )
 
         await self._session.delete(persistence)
         await self._session.flush()

@@ -18,11 +18,12 @@ from app.domain.references.models.models import (
 from app.domain.references.models.models import (
     EnhancementRequestStatus,
     EnhancementType,
+    ExternalIdentifierAdapter,
     ExternalIdentifierType,
     Visibility,
 )
 from app.domain.references.models.models import (
-    ExternalIdentifier as DomainExternalIdentifier,
+    LinkedExternalIdentifier as DomainExternalIdentifier,
 )
 from app.domain.references.models.models import (
     Reference as DomainReference,
@@ -140,9 +141,11 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
         return cls(
             id=domain_obj.id,
             reference_id=domain_obj.reference_id,
-            identifier_type=domain_obj.identifier_type,
-            identifier=str(domain_obj.identifier),
-            other_identifier_name=domain_obj.other_identifier_name,
+            identifier_type=domain_obj.identifier.identifier_type,
+            identifier=str(domain_obj.identifier.identifier),
+            other_identifier_name=domain_obj.identifier.other_identifier_name  # type: ignore[union-attr]
+            if hasattr(domain_obj.identifier, "other_identifier_name")
+            else None,
         )
 
     async def to_domain(
@@ -152,9 +155,13 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
         return DomainExternalIdentifier(
             id=self.id,
             reference_id=self.reference_id,
-            identifier_type=self.identifier_type,
-            identifier=self.identifier,
-            other_identifier_name=self.other_identifier_name,
+            identifier=ExternalIdentifierAdapter.validate_python(
+                {
+                    "identifier": self.identifier,
+                    "identifier_type": self.identifier_type,
+                    "other_identifier_name": self.other_identifier_name,
+                }
+            ),
             reference=await self.reference.to_domain()
             if "reference" in (preload or [])
             else None,
@@ -189,7 +196,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         ),
         nullable=False,
     )
-    processor_version: Mapped[str] = mapped_column(String, nullable=True)
+    robot_version: Mapped[str] = mapped_column(String, nullable=True)
     content: Mapped[str] = mapped_column(JSONB, nullable=False)
     content_version: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
 
@@ -212,10 +219,10 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         return cls(
             id=domain_obj.id,
             reference_id=domain_obj.reference_id,
-            enhancement_type=domain_obj.enhancement_type,
+            enhancement_type=domain_obj.content.enhancement_type,
             source=domain_obj.source,
             visibility=domain_obj.visibility,
-            processor_version=domain_obj.processor_version,
+            robot_version=domain_obj.robot_version,
             content_version=domain_obj.content_version,
             content=domain_obj.content.model_dump_json(),
         )
@@ -227,8 +234,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             source=self.source,
             visibility=self.visibility,
             reference_id=self.reference_id,
-            enhancement_type=self.enhancement_type,
-            processor_version=self.processor_version,
+            robot_version=self.robot_version,
             content=json.loads(self.content),
             content_version=self.content_version,
             reference=await self.reference.to_domain()

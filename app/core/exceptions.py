@@ -44,6 +44,34 @@ class NotFoundError(Exception):
         super().__init__(detail, *args)
 
 
+class SQLNotFoundError(NotFoundError):
+    """Exception for when we can't find something in the database."""
+
+    def __init__(
+        self,
+        detail: str,
+        lookup_model: str,
+        lookup_type: str,
+        lookup_value: object,
+        *args: object,
+    ) -> None:
+        """
+        Initialize the SQLNotFoundError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            lookup_model (str): The name of the model attempted to be accessed.
+            lookup_type (str): The type of lookup performed (e.g., "id", "name").
+            lookup_value (Any): The value(s) used in the lookup.
+            *args: Additional arguments for the exception.
+
+        """
+        self.lookup_model = lookup_model
+        self.lookup_type = lookup_type
+        self.lookup_value = lookup_value
+        super().__init__(detail, *args)
+
+
 class WrongReferenceError(Exception):
     """Exception for when enhancement is for a different reference than requested."""
 
@@ -99,3 +127,18 @@ class SDKToDomainError(Exception):
         for error in self.errors:
             message += f"  {error}\n"
         return message
+
+
+class UOWError(Exception):
+    """An exception thrown by improper use of a unit of work."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the UOWError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)

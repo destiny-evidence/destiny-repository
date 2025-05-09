@@ -1,0 +1,318 @@
+"""Enhancement classes for the Destiny Repository."""
+
+import uuid
+from enum import StrEnum
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, Field, HttpUrl, PastDate
+
+from .visibility import Visibility
+
+
+class EnhancementType(StrEnum):
+    """
+    The type of enhancement.
+
+    This is used to identify the type of enhancement in the `Enhancement` class.
+
+    **Allowed values**:
+    - `bibliographic`: Bibliographic metadata.
+    - `abstract`: The abstract of a reference.
+    - `annotation`: A free-form enhancement for tagging with labels.
+    - `locations`: Locations where the reference can be found.
+    - `full text`: The full text of the reference. (To be implemeted)
+    """
+
+    BIBLIOGRAPHIC = "bibliographic"
+    ABSTRACT = "abstract"
+    ANNOTATION = "annotation"
+    LOCATION = "location"
+    FULL_TEXT = "full text"
+
+
+class AuthorPosition(StrEnum):
+    """
+    The position of an author in a list of authorships.
+
+    Maps to the data from OpenAlex.
+
+    **Allowed values**:
+    - `first`: The first author.
+    - `middle`: Any middle author
+    - `last`: The last author
+    """
+
+    FIRST = "first"
+    MIDDLE = "middle"
+    LAST = "last"
+
+
+class Authorship(BaseModel):
+    """
+    Represents a single author and their association with a reference.
+
+    This is a simplification of the OpenAlex [Authorship
+    object](https://docs.openalex.org/api-entities/works/work-object/authorship-object)
+    for our purposes.
+    """
+
+    display_name: str = Field(description="The display name of the author.")
+    orcid: str = Field(description="The ORCid of the author.")
+    position: AuthorPosition = Field(
+        description="The position of the author within the list of authors."
+    )
+
+
+class BibliographicMetadataEnhancement(BaseModel):
+    """
+    An enhancement which is made up of bibliographic metadata.
+
+    Generally this will be sourced from a database such as OpenAlex or similar.
+    For directly contributed references, these may not be complete.
+    """
+
+    enhancement_type: Literal[EnhancementType.BIBLIOGRAPHIC] = (
+        EnhancementType.BIBLIOGRAPHIC
+    )
+    authorship: list[Authorship] | None = Field(
+        default=None,
+        description="A list of `Authorships` belonging to this reference.",
+    )
+    cited_by_count: int | None = Field(
+        default=None,
+        description="""
+(From OpenAlex) The number of citations to this work. These are the times that
+other works have cited this work
+""",
+    )
+    created_date: PastDate | None = Field(
+        default=None, description="The ISO8601 date this metadata record was created"
+    )
+    publication_date: PastDate | None = Field(
+        default=None, description="The date which the version of record was published."
+    )
+    publication_year: int | None = Field(
+        default=None,
+        description="The year in which the version of record was published.",
+    )
+    publisher: str | None = Field(
+        default=None,
+        description="The name of the entity which published the version of record.",
+    )
+    title: str | None = Field(default=None, description="The title of the reference.")
+
+
+class AbstractProcessType(StrEnum):
+    """
+    The process used to acquyire the abstract.
+
+    **Allowed values**:
+    - `uninverted`
+    - `closed_api`
+    - `other`
+    """
+
+    UNINVERTED = "uninverted"
+    CLOSED_API = "closed_api"
+    OTHER = "other"
+
+
+class AbstractContentEnhancement(BaseModel):
+    """
+    An enhancement which is specific to the abstract of a reference.
+
+    This is separate from the `BibliographicMetadata` for two reasons:
+
+    1. Abstracts are increasingly missing from sources like OpenAlex, and may be
+    backfilled from other sources, without the bibliographic metadata.
+    2. They are also subject to copyright limitations in ways which metadata are
+    not, and thus need separate visibility controls.
+    """
+
+    enhancement_type: Literal[EnhancementType.ABSTRACT] = EnhancementType.ABSTRACT
+    process: AbstractProcessType = Field(
+        description="The process used to acquire the abstract."
+    )
+    abstract: str = Field(description="The abstract of the reference.")
+
+
+class Annotation(BaseModel):
+    """
+    An annotation is a way of tagging the content with a label of some kind.
+
+    This class will probably be broken up in the future, but covers most of our
+    initial cases.
+    """
+
+    annotation_type: str = Field(
+        description="An identifier for the type of annotation",
+        examples=["openalex:topic", "pubmed:mesh"],
+    )
+    label: str = Field(
+        description="A high level label for this annotation like the name of the topic",
+    )
+    data: dict = Field(
+        description="""
+An object representation of the annotation including any confidence scores or
+descriptions.
+""",
+    )
+
+
+class AnnotationEnhancement(BaseModel):
+    """An enhancement which is composed of a list of Annotations."""
+
+    enhancement_type: Literal[EnhancementType.ANNOTATION] = EnhancementType.ANNOTATION
+    annotations: list[Annotation]
+
+
+class DriverVersion(StrEnum):
+    """
+    The version based on the DRIVER guidelines versioning scheme.
+
+    (Borrowed from OpenAlex)
+
+    Allowed values:
+    - `publishedVersion`: The document's version of record. This is the most
+    authoritative version.
+    - `acceptedVersion`: The document after having completed peer review and being
+    officially accepted for publication. It will lack publisher formatting, but the
+    content should be interchangeable with the that of the publishedVersion.
+    - `submittedVersion`: the document as submitted to the publisher by the authors, but
+    before peer-review. Its content may differ significantly from that of the accepted
+    article.
+    """
+
+    PUBLISHED_VERSION = "publishedVersion"
+    ACCEPTED_VERSION = "acceptedVersion"
+    SUBMITTED_VERSION = "submittedVersion"
+    OTHER = "other"
+
+
+class Location(BaseModel):
+    """
+    A location where a reference can be found.
+
+    This maps almost completely to the OpenAlex
+    [Location object](https://docs.openalex.org/api-entities/works/work-object/location-object)
+    """
+
+    is_oa: bool | None = Field(
+        default=None,
+        description="""
+(From OpenAlex): True if an Open Access (OA) version of this work is available
+at this location. May be left as null if this is unknown (and thus)
+treated effectively as `false`.
+""",
+    )
+    version: DriverVersion | None = Field(
+        default=None,
+        description="""
+The version (according to the DRIVER versioning scheme) of this location.
+""",
+    )
+    landing_page_url: HttpUrl | None = Field(
+        default=None,
+        description="(From OpenAlex): The landing page URL for this location.",
+    )
+    pdf_url: HttpUrl | None = Field(
+        default=None,
+        description="""
+(From OpenAlex): A URL where you can find this location as a PDF.
+""",
+    )
+    license: str | None = Field(
+        default=None,
+        description="""
+(From OpenAlex): The location's publishing license. This can be a Creative
+Commons license such as cc0 or cc-by, a publisher-specific license, or null
+which means we are not able to determine a license for this location.
+""",
+    )
+    extra: dict | None = Field(
+        default=None, description="Any extra metadata about this location"
+    )
+
+
+class LocationEnhancement(BaseModel):
+    """
+    An enhancement which describes locations where this reference can be found.
+
+    This maps closely (almost exactly) to OpenAlex's locations.
+    """
+
+    enhancement_type: Literal[EnhancementType.LOCATION] = EnhancementType.LOCATION
+    locations: list[Location] = Field(
+        description="A list of locations where this reference can be found."
+    )
+
+
+EnhancementContent = Annotated[
+    BibliographicMetadataEnhancement
+    | AbstractContentEnhancement
+    | AnnotationEnhancement
+    | LocationEnhancement,
+    Field(discriminator="enhancement_type"),
+]
+
+
+class Enhancement(BaseModel):
+    """Core enhancement class."""
+
+    reference_id: uuid.UUID = Field(
+        description="The ID of the reference this enhancement is associated with."
+    )
+    source: str = Field(
+        description="The enhancement source for tracking provenance.",
+    )
+    visibility: Visibility = Field(
+        description="The level of visibility of the enhancement"
+    )
+    robot_version: str | None = Field(
+        default=None,
+        description="The version of the robot that generated the content.",
+        # (Adam) Temporary alias for backwards compatibility for already prepared files
+        # Next person who sees this can remove it :)
+        alias="processor_version",
+    )
+    content_version: uuid.UUID = Field(
+        description="""
+        UUID regenerated when the content changes.
+        Can be used to identify when content has changed.
+        """,
+        default_factory=uuid.uuid4,
+    )
+    content: Annotated[
+        EnhancementContent,
+        Field(
+            discriminator="enhancement_type",
+            description="The content of the enhancement.",
+        ),
+    ]
+
+
+class EnhancementFileInput(BaseModel):
+    """Enhancement model used to marshall a file input."""
+
+    source: str = Field(
+        description="The enhancement source for tracking provenance.",
+    )
+    visibility: Visibility = Field(
+        description="The level of visibility of the enhancement"
+    )
+    enhancement_type: EnhancementType = Field(description="The type of enhancement.")
+    robot_version: str | None = Field(
+        default=None,
+        description="The version of the robot that generated the content.",
+    )
+    content_version: uuid.UUID = Field(
+        description="""
+        UUID regenerated when the content changes.
+        Can be used to identify when content has changed.
+        """,
+        default_factory=uuid.uuid4,
+    )
+    content: EnhancementContent = Field(
+        discriminator="enhancement_type",
+        description="The content of the enhancement.",
+    )

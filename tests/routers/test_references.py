@@ -95,7 +95,7 @@ def robot_result_enhancement(
             "reference_id": f"{reference_id}",
             "source": "robot",
             "visibility": Visibility.RESTRICTED,
-            "processor_version": "0.0.1",
+            "robot_version": "0.0.1",
             "content_version": f"{uuid.uuid4()}",
             "content": {
                 "enhancement_type": EnhancementType.ANNOTATION,
@@ -266,7 +266,7 @@ async def test_fulfill_enhancement_request_happy_path(
 
     response = await client.post("/robot/enhancement/", json=robot_result)
 
-    assert response.status_code == status.HTTP_200_OK
+    assert response.status_code == status.HTTP_201_CREATED
     assert response.json()["request_status"] == EnhancementRequestStatus.COMPLETED
 
 
@@ -292,7 +292,7 @@ async def test_fulfill_enhancement_request_robot_has_errors(
 
     response = await client.post("/robot/enhancement/", json=robot_result)
 
-    assert response.status_code == status.HTTP_200_OK
+    assert response.status_code == status.HTTP_201_CREATED
     assert response.json()["request_status"] == EnhancementRequestStatus.FAILED
 
 
