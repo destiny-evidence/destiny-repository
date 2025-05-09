@@ -271,9 +271,6 @@ class Enhancement(BaseModel):
     robot_version: str | None = Field(
         default=None,
         description="The version of the robot that generated the content.",
-        # (Adam) Temporary alias for backwards compatibility for already prepared files
-        # Next person who sees this can remove it :)
-        alias="processor_version",
     )
     content_version: uuid.UUID = Field(
         description="""
@@ -304,6 +301,9 @@ class EnhancementFileInput(BaseModel):
     robot_version: str | None = Field(
         default=None,
         description="The version of the robot that generated the content.",
+        # (Adam) Temporary alias for backwards compatibility for already prepared files
+        # Next person who sees this can remove it :)
+        alias="processor_version",
     )
     content_version: uuid.UUID = Field(
         description="""

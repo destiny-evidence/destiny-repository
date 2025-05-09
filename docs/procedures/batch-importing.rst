@@ -31,7 +31,7 @@ References are bulk imported using batches per the following process:
             R ->> SP: Download References File (file url)
             SP -->> R: Enriched References
             R ->> R: Persist Enriched References
-            R ->>- I: POST <callback url>: ImportBatchSummary
+            R ->>- I: POST <callback url> : ImportBatchSummary
             I ->> S: Delete Enhancement Batch (file url)
         end
         I ->> R: POST /imports/<record_id>/finalise/ Finalise Import
