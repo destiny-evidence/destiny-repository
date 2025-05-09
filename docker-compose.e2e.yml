@@ -1,7 +1,7 @@
 services:
   db:
     volumes:
-      - /var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
   fs:
     volumes:
       - /data
@@ -112,3 +112,4 @@ services:
 # Use fresh volumes for tests
 volumes:
   shared-minio:
+  db_data:

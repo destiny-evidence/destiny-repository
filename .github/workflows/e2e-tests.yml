@@ -39,6 +39,7 @@ jobs:
       - name: Remove database volume
         run: |
           # Had a weird issue with the DB persisting data between runs, sporadically
+          docker compose down -v
           docker volume rm destiny-repository_db_data || true
 
       - name: Set up Docker Compose and stream logs
