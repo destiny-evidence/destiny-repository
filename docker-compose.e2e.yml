@@ -85,6 +85,7 @@ services:
     entrypoint: taskiq worker app.tasks:broker --fs-discover --reload
 
   e2e:
+    container_name: e2e
     build:
       context: .
       dockerfile: Dockerfile.e2e
