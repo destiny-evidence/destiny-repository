@@ -2,7 +2,7 @@ services:
   db:
     # Override the volume to use ephemeral storage for e2e tests
     volumes:
-      - /var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
     # Emphasize clean state for tests
     command: postgres -c fsync=off
   fs:
@@ -115,3 +115,4 @@ services:
 # Use ephemeral volumes for tests
 volumes:
   shared-minio:
+  db_data:
