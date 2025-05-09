@@ -266,7 +266,7 @@ async def test_fulfill_enhancement_request_happy_path(
 
     response = await client.post("/robot/enhancement/", json=robot_result)
 
-    assert response.status_code == status.HTTP_201_CREATED
+    assert response.status_code == status.HTTP_200_OK
     assert response.json()["request_status"] == EnhancementRequestStatus.COMPLETED
 
 
@@ -292,7 +292,7 @@ async def test_fulfill_enhancement_request_robot_has_errors(
 
     response = await client.post("/robot/enhancement/", json=robot_result)
 
-    assert response.status_code == status.HTTP_201_CREATED
+    assert response.status_code == status.HTTP_200_OK
     assert response.json()["request_status"] == EnhancementRequestStatus.FAILED
 
 

@@ -193,7 +193,7 @@ async def check_enhancement_request_status(
     return enhancement_request.to_sdk()
 
 
-@robot_router.post("/enhancement/", status_code=status.HTTP_201_CREATED)
+@robot_router.post("/enhancement/", status_code=status.HTTP_200_OK)
 async def fulfill_enhancement_request(
     robot_result: destiny_sdk.robots.RobotResult,
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
