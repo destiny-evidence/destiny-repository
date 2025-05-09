@@ -9,4 +9,3 @@ COPY libs/sdk ./libs/sdk
 RUN poetry bundle venv --without docs /src/.venv
 
 COPY tests/e2e /e2e
-COPY /.minio/presigned_urls.json /presigned_urls.json
