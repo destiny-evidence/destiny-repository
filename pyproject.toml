@@ -51,6 +51,7 @@ types-python-jose = "^3.4.0.20250224"
 
 [tool.poetry.group.docs.dependencies]
 autodoc_pydantic = {extras = ["erdantic"], version = "^2.2.0"}
+destiny-sdk = {path = "libs/sdk"}
 pydata-sphinx-theme = "^0.16.1"
 sphinx = "^8.2.3"
 sphinxcontrib-mermaid = "^1.0.0"
