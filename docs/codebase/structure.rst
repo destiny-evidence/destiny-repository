@@ -70,7 +70,6 @@ Contains a directory for each set of related structures. Each directory includes
 - **Models**
 
   - **Models:** Domain models used throughout the domain.
-    - **SDK Models:** Models provided by the SDK that are used for interfacing with the API.
   - **Persistence (e.g. SQL):** Models used for persisting to data stores, including translation methods to/from domain models.
 
 - **Repository**
@@ -91,3 +90,8 @@ Persistence
 
 - **Base Classes:** For each persistence implementation to inherit.
   - **Persistence implementation (SQL):** Base classes designed for each domain module to inherit, and the interface to the data store itself (e.g., a SQL session generator).
+
+
+SDK
+---
+- **Models:** The SDK defines shared models for the API interface.
