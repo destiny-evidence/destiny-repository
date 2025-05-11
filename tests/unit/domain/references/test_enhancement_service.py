@@ -7,6 +7,7 @@ from pydantic import HttpUrl
 
 from app.core.exceptions import (
     NotFoundError,
+    RobotEnhancementError,
     RobotUnreachableError,
     SQLNotFoundError,
     WrongReferenceError,
@@ -65,6 +66,74 @@ async def test_request_enhancement_from_robot_request_error(
     )
 
     with pytest.raises(RobotUnreachableError):
+        await service.request_enhancement_from_robot(
+            robot_url=robot_url,
+            enhancement_request=enhancement_request,
+            reference=reference,
+        )
+
+
+@pytest.mark.asyncio
+async def test_request_enhancement_from_robot_503_response(
+    fake_uow, fake_repository, httpx_mock
+):
+    # Mock a robot that is unavailable
+    httpx_mock.add_response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    robot_url = "http://www.theres-a-robot-here.com/"
+    robot_id = uuid.uuid4()
+
+    reference = Reference(id=uuid.uuid4(), visibility=Visibility.RESTRICTED)
+    enhancement_request = EnhancementRequest(
+        id=uuid.uuid4(),
+        reference_id=reference.id,
+        robot_id=robot_id,
+        enhancement_parameters={},
+    )
+
+    fake_enhancement_requests = fake_repository(init_entries=[enhancement_request])
+
+    service = EnhancementService(
+        fake_uow(enhancement_requests=fake_enhancement_requests),
+        robots=Robots(known_robots={robot_id: HttpUrl(robot_url)}),
+    )
+
+    with pytest.raises(RobotUnreachableError):
+        await service.request_enhancement_from_robot(
+            robot_url=robot_url,
+            enhancement_request=enhancement_request,
+            reference=reference,
+        )
+
+
+@pytest.mark.asyncio
+async def test_request_enhancement_from_robot_400_response(
+    fake_uow, fake_repository, httpx_mock
+):
+    # Mock a robot that is unavailable
+    httpx_mock.add_response(
+        status_code=status.HTTP_400_BAD_REQUEST, json={"message": "bad request"}
+    )
+
+    robot_url = "http://www.theres-a-robot-here.com/"
+    robot_id = uuid.uuid4()
+
+    reference = Reference(id=uuid.uuid4(), visibility=Visibility.RESTRICTED)
+    enhancement_request = EnhancementRequest(
+        id=uuid.uuid4(),
+        reference_id=reference.id,
+        robot_id=robot_id,
+        enhancement_parameters={},
+    )
+
+    fake_enhancement_requests = fake_repository(init_entries=[enhancement_request])
+
+    service = EnhancementService(
+        fake_uow(enhancement_requests=fake_enhancement_requests),
+        robots=Robots(known_robots={robot_id: HttpUrl(robot_url)}),
+    )
+
+    with pytest.raises(RobotEnhancementError):
         await service.request_enhancement_from_robot(
             robot_url=robot_url,
             enhancement_request=enhancement_request,

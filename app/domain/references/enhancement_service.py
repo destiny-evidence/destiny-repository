@@ -38,8 +38,13 @@ class EnhancementService(GenericService):
         await self.sql_uow.references.get_by_pk(enhancement.reference_id)
         return await self.sql_uow.enhancements.add(enhancement)
 
-    # Probably want this to go into it's own service, so pass everything it needs
-    # To construct the robot request
+    async def _get_enhancement_request(
+        self,
+        enhancement_request_id: UUID4,
+    ) -> EnhancementRequest:
+        """Get an enhancement request by request id."""
+        return await self.sql_uow.enhancement_requests.get_by_pk(enhancement_request_id)
+
     async def request_enhancement_from_robot(
         self,
         robot_url: HttpUrl,
@@ -65,11 +70,10 @@ class EnhancementService(GenericService):
             raise RobotUnreachableError(error) from exception
 
         if response.status_code != status.HTTP_202_ACCEPTED:
-            if str(response.status_code).startswith("5"):  # Help this is ugly!
+            if str(response.status_code).startswith("5"):
                 error = f"Cannot request enhancement from Robot {enhancement_request.robot_id}."  # noqa: E501
                 raise RobotUnreachableError(error)
-            # Pass through the other error?
-            # How specific do we want to be here?
+            # Expect this is a 4xx
             raise RobotEnhancementError(detail=response.text)
 
         return response
@@ -112,13 +116,6 @@ class EnhancementService(GenericService):
             enhancement_request.id,
             request_status=EnhancementRequestStatus.ACCEPTED,
         )
-
-    async def _get_enhancement_request(
-        self,
-        enhancement_request_id: UUID4,
-    ) -> EnhancementRequest:
-        """Get an enhancement request by request id."""
-        return await self.sql_uow.enhancement_requests.get_by_pk(enhancement_request_id)
 
     @unit_of_work
     async def get_enhancement_request(
