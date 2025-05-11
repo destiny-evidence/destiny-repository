@@ -130,7 +130,7 @@ class SDKToDomainError(Exception):
 
 
 class RobotUnreachableError(Exception):
-    """An exception thrown by improper use of a unit of work."""
+    """An exception thrown if we cannot communicate with a robot."""
 
     def __init__(self, detail: str, *args: object) -> None:
         """
@@ -141,6 +141,23 @@ class RobotUnreachableError(Exception):
             *args: Additional arguments for the exception.
 
         """
+        self.detail = detail
+        super().__init__(detail, *args)
+
+
+class RobotEnhancementError(Exception):
+    """An exception thrown if an enhancment request cannot be processed by a robot."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the RobotEnhancementError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        self.detail = detail
         super().__init__(detail, *args)
 
 

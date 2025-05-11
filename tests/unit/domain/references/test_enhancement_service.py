@@ -164,7 +164,7 @@ async def test_trigger_reference_enhancement_request_rejected(
     assert hasattr(enhancement_request, "id")
     assert enhancement_request == stored_request
     assert enhancement_request.request_status == EnhancementRequestStatus.REJECTED
-    assert enhancement_request.error == "broken"
+    assert enhancement_request.error == '{"message":"broken"}'
 
 
 @pytest.mark.asyncio

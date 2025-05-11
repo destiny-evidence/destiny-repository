@@ -6,7 +6,7 @@ from fastapi import status
 from pydantic import UUID4, HttpUrl
 
 from app.core.exceptions import (
-    NotFoundError,
+    RobotEnhancementError,
     RobotUnreachableError,
     WrongReferenceError,
 )
@@ -38,6 +38,8 @@ class EnhancementService(GenericService):
         await self.sql_uow.references.get_by_pk(enhancement.reference_id)
         return await self.sql_uow.enhancements.add(enhancement)
 
+    # Probably want this to go into it's own service, so pass everything it needs
+    # To construct the robot request
     async def request_enhancement_from_robot(
         self,
         robot_url: HttpUrl,
@@ -60,24 +62,17 @@ class EnhancementService(GenericService):
             error = (
                 f"Cannot request enhancement from Robot {enhancement_request.robot_id}."
             )
-            await self.sql_uow.enhancement_requests.update_by_pk(
-                enhancement_request.id,
-                request_status=EnhancementRequestStatus.FAILED,
-                error=error,
-            )
             raise RobotUnreachableError(error) from exception
 
         if response.status_code != status.HTTP_202_ACCEPTED:
-            # This needs actual error handling for 4xx and 5xx
-            return await self.sql_uow.enhancement_requests.update_by_pk(
-                enhancement_request.id,
-                request_status=EnhancementRequestStatus.REJECTED,
-                error=response.json()["message"],
-            )
+            if str(response.status_code).startswith("5"):  # Help this is ugly!
+                error = f"Cannot request enhancement from Robot {enhancement_request.robot_id}."  # noqa: E501
+                raise RobotUnreachableError(error)
+            # Pass through the other error?
+            # How specific do we want to be here?
+            raise RobotEnhancementError(detail=response.text)
 
-        return await self.sql_uow.enhancement_requests.update_by_pk(
-            enhancement_request.id, request_status=EnhancementRequestStatus.ACCEPTED
-        )
+        return response
 
     @unit_of_work
     async def request_reference_enhancement(
@@ -88,27 +83,34 @@ class EnhancementService(GenericService):
             enhancement_request.reference_id, preload=["identifiers", "enhancements"]
         )
 
+        robot_url = self.robots.get_robot_url(enhancement_request.robot_id)
+
         enhancement_request = await self.sql_uow.enhancement_requests.add(
             enhancement_request
         )
 
-        robot_url = self.robots.get_robot_url(enhancement_request.robot_id)
-
-        if not robot_url:
-            error = f"Robot {enhancement_request.robot_id} not found."
-            await self.sql_uow.enhancement_requests.update_by_pk(
+        try:
+            await self.request_enhancement_from_robot(
+                robot_url=robot_url,
+                enhancement_request=enhancement_request,
+                reference=reference,
+            )
+        except RobotUnreachableError as exception:
+            return await self.sql_uow.enhancement_requests.update_by_pk(
                 enhancement_request.id,
                 request_status=EnhancementRequestStatus.FAILED,
-                error=error,
+                error=exception.detail,
             )
-            raise NotFoundError(
-                detail=error,
+        except RobotEnhancementError as exception:
+            return await self.sql_uow.enhancement_requests.update_by_pk(
+                enhancement_request.id,
+                request_status=EnhancementRequestStatus.REJECTED,
+                error=exception.detail,
             )
 
-        return await self.request_enhancement_from_robot(
-            robot_url=robot_url,
-            enhancement_request=enhancement_request,
-            reference=reference,
+        return await self.sql_uow.enhancement_requests.update_by_pk(
+            enhancement_request.id,
+            request_status=EnhancementRequestStatus.ACCEPTED,
         )
 
     async def _get_enhancement_request(

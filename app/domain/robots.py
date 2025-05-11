@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import HttpUrl
 
+from app.core.exceptions import NotFoundError
+
 
 class Robots:
     """Class for keeping track of robots."""
@@ -22,6 +24,12 @@ class Robots:
         """Allow us to use this class as a dependency."""
         return self
 
-    def get_robot_url(self, robot_id: UUID) -> HttpUrl | None:
+    def get_robot_url(self, robot_id: UUID) -> HttpUrl:
         """Return the url for a given robot."""
-        return self.known_robots.get(robot_id, None)
+        robot_url = self.known_robots.get(robot_id, None)
+
+        if not robot_url:
+            error = f"Robot {robot_id} does not exist."
+            raise NotFoundError(detail=error)
+
+        return robot_url

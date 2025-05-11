@@ -10,7 +10,11 @@ from pydantic import UUID4, HttpUrl
 from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError, SDKToDomainError, WrongReferenceError
+from app.core.exceptions import (
+    NotFoundError,
+    SDKToDomainError,
+    WrongReferenceError,
+)
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
     EnhancementRequestStatus,
@@ -174,7 +178,7 @@ async def test_request_reference_enhancement_robot_rejects_request(
 
     data = await session.get(SQLEnhancementRequest, response.json()["id"])
     assert data.request_status == EnhancementRequestStatus.REJECTED
-    assert data.error == "broken"
+    assert data.error == '{"message":"broken"}'
 
 
 async def test_not_found_exception_handler_returns_response_with_404(
