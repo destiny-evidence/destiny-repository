@@ -128,8 +128,8 @@ async def duplicate_exception_handler(
     if isinstance(exception, SQLDuplicateError):
         content = {
             "detail": (
-                f"{exception.lookup_model} with "
-                f"{exception.lookup_type} {exception.lookup_value} does not exist."
+                f"Duplicate {exception.lookup_model} could not be added."
+                f"{exception.collision}"
             )
         }
     else:

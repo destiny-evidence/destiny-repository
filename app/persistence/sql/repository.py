@@ -152,36 +152,28 @@ class GenericAsyncSqlRepository(
             detail = f"""
 Unable to add {self._persistence_cls.__name__}: duplicate.
 """
-            lookup_type = "id"
-            lookup_value = str(persistence.id)
+            collision = f"ID {persistence.id} already exists."
 
             # Try extract details from the exception message.
             # (There's no nice way to check for duplicate unique keys before handling
             # the exception.)
 
+            err_str = str(e)
             try:
-                err_str = str(e)
-
-                # Extract constraint name using regex
-                constraint_match = re.search(r'constraint\s+"([^"]+)"', err_str)
-                if constraint_match:
-                    lookup_type = constraint_match.group(1)
-
                 # Extract detail information using regex
                 detail_match = re.search(r"DETAIL:\s+(.+?)(?:\n|$)", err_str)
                 if detail_match:
                     detail = f"Duplicate entry: {detail_match.group(1).strip()}"
-                    lookup_value = detail_match.group(1).strip()
+                    collision = detail_match.group(1).strip()
 
             except Exception:  # noqa: BLE001
-                lookup_type, lookup_value = "unknown", "unknown"
+                collision = err_str
 
             finally:
                 raise SQLDuplicateError(
                     detail=detail,
                     lookup_model=self._persistence_cls.__name__,
-                    lookup_type=lookup_type,
-                    lookup_value=lookup_value,
+                    collision=collision,
                 ) from e
 
         await self._session.refresh(persistence)

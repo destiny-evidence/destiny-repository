@@ -237,6 +237,10 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             },
         )
         assert response.status_code in (409, 500)
+        assert response.json()["detail"] == (
+            "Duplicate ImportBatch could not be added."
+            f"Key (import_record_id, storage_url)=({import_record['id']}, {url}) already exists."
+        )
 
         # 3: An import file with invalid records
         url = PRESIGNED_URLS[f"{BKT}2_file_with_some_failures.jsonl"]
