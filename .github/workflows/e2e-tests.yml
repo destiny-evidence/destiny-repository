@@ -57,7 +57,7 @@ jobs:
         run: |
           sleep 5
           # Save full logs from all services
-          docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs --no-truncate > all_services_logs.txt
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs > all_services_logs.txt
           # Save specific application logs
           docker logs repository e2e-task-worker e2e --details --timestamps > e2e_application_logs.txt
 
