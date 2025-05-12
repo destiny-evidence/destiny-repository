@@ -59,6 +59,13 @@ jobs:
           # Save full logs from all services
           docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs > logs.txt
 
+      - name: Save logs to artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: logs.txt
+
       - name: Check e2e container exit code
         run: |
           EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' e2e)
