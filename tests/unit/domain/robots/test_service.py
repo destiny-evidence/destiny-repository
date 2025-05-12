@@ -13,6 +13,39 @@ from app.domain.robots.service import RobotService
 
 
 @pytest.mark.asyncio
+async def test_request_enhancement_from_robot_happy_path(fake_uow, httpx_mock):
+    robot_id = uuid.uuid4()
+    robot_url = HttpUrl("http://www.theres-a-robot-here.com/")
+
+    reference = Reference(id=uuid.uuid4(), visibility=Visibility.RESTRICTED)
+    enhancement_request = EnhancementRequest(
+        id=uuid.uuid4(),
+        reference_id=reference.id,
+        robot_id=uuid.uuid4(),
+        enhancement_parameters={},
+    )
+
+    service = RobotService(
+        fake_uow(enhancement_requests=enhancement_request),
+        robots=Robots(known_robots={robot_id: robot_url}),
+    )
+
+    httpx_mock.add_response(
+        method="POST",
+        url=str(robot_url),
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+
+    await service.request_enhancement_from_robot(
+        robot_url=robot_url,
+        enhancement_request=enhancement_request,
+        reference=reference,
+    )
+
+    assert len(httpx_mock.get_requests()) == 1
+
+
+@pytest.mark.asyncio
 async def test_request_enhancement_from_robot_request_error(
     fake_uow, fake_repository, httpx_mock
 ):

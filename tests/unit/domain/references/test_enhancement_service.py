@@ -1,11 +1,13 @@
 import uuid
+from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 from fastapi import status
-from pydantic import HttpUrl
 
 from app.core.exceptions import (
     NotFoundError,
+    RobotEnhancementError,
     SQLNotFoundError,
     WrongReferenceError,
 )
@@ -40,13 +42,12 @@ ENHANCEMENT_DATA = {
 
 @pytest.mark.asyncio
 async def test_trigger_reference_enhancement_request_happy_path(
-    fake_repository, fake_uow, httpx_mock
+    fake_repository, fake_uow
 ):
-    # Mock the robot
-    robot_url = "http://www.theres-a-robot-here.com/"
-    robot_id = uuid.uuid4()
-    httpx_mock.add_response(
-        method="POST", url=robot_url, status_code=status.HTTP_202_ACCEPTED
+    # Mock the robot service
+    fake_robot_service = AsyncMock()
+    fake_robot_service.request_enhancement_from_robot.return_value = httpx.Response(
+        status_code=status.HTTP_202_ACCEPTED
     )
 
     reference_id = uuid.uuid4()
@@ -68,12 +69,12 @@ async def test_trigger_reference_enhancement_request_happy_path(
     service = EnhancementService(uow)
 
     received_enhancement_request = EnhancementRequest(
-        reference_id=reference_id, robot_id=robot_id, enhancement_parameters={}
+        reference_id=reference_id, robot_id=uuid.uuid4(), enhancement_parameters={}
     )
 
     enhancement_request = await service.request_reference_enhancement(
         enhancement_request=received_enhancement_request,
-        robot_service=RobotService(uow, Robots({robot_id: HttpUrl(robot_url)})),
+        robot_service=fake_robot_service,
     )
 
     stored_request = fake_enhancement_requests.get_first_record()
@@ -85,19 +86,14 @@ async def test_trigger_reference_enhancement_request_happy_path(
 
 @pytest.mark.asyncio
 async def test_trigger_reference_enhancement_request_rejected(
-    fake_uow, fake_repository, httpx_mock
+    fake_uow, fake_repository
 ):
     """
     A robot rejects a request to create an enhancement against a reference.
     """
-    # Mock the robot
-    robot_url = "http://www.theres-a-robot-here.com/"
-    robot_id = uuid.uuid4()
-    httpx_mock.add_response(
-        method="POST",
-        url=robot_url,
-        status_code=status.HTTP_418_IM_A_TEAPOT,
-        json={"message": "broken"},
+    fake_robot_service = AsyncMock()
+    fake_robot_service.request_enhancement_from_robot.side_effect = (
+        RobotEnhancementError('{"message":"broken"}')
     )
 
     reference_id = uuid.uuid4()
@@ -115,12 +111,12 @@ async def test_trigger_reference_enhancement_request_rejected(
     service = EnhancementService(uow)
 
     received_enhancement_request = EnhancementRequest(
-        reference_id=reference_id, robot_id=robot_id, enhancement_parameters={}
+        reference_id=reference_id, robot_id=uuid.uuid4(), enhancement_parameters={}
     )
 
     enhancement_request = await service.request_reference_enhancement(
         enhancement_request=received_enhancement_request,
-        robot_service=RobotService(uow, Robots({robot_id: HttpUrl(robot_url)})),
+        robot_service=fake_robot_service,
     )
 
     stored_request = fake_enhancement_requests.get_first_record()
@@ -138,25 +134,22 @@ async def test_trigger_reference_enhancement_nonexistent_reference(
     """
     Enhancement requested against nonexistent reference
     """
-    robot_id = uuid.uuid4()
-    robot_url = "http://www.theres-a-robot-here.com/"
-
     unknown_reference_id = uuid.uuid4()
 
     uow = fake_uow(enhancement_requests=fake_repository(), references=fake_repository())
 
     service = EnhancementService(uow)
 
-    service = EnhancementService(uow)
-
     received_enhancement_request = EnhancementRequest(
-        reference_id=unknown_reference_id, robot_id=robot_id, enhancement_parameters={}
+        reference_id=unknown_reference_id,
+        robot_id=uuid.uuid4(),
+        enhancement_parameters={},
     )
 
     with pytest.raises(SQLNotFoundError):
         await service.request_reference_enhancement(
             enhancement_request=received_enhancement_request,
-            robot_service=RobotService(uow, Robots({robot_id: HttpUrl(robot_url)})),
+            robot_service=RobotService(uow, Robots({})),
         )
 
 
@@ -167,8 +160,7 @@ async def test_trigger_reference_enhancement_nonexistent_robot(
     """
     Enhancement requested against a robot that does not exist.
     """
-    unknown_robot_id = uuid.uuid4()
-
+    # Mock the robot service
     reference_id = uuid.uuid4()
     fake_references = fake_repository(
         init_entries=[
@@ -184,7 +176,7 @@ async def test_trigger_reference_enhancement_nonexistent_robot(
     service = EnhancementService(uow)
 
     received_enhancement_request = EnhancementRequest(
-        reference_id=reference_id, robot_id=unknown_robot_id, enhancement_parameters={}
+        reference_id=reference_id, robot_id=uuid.uuid4(), enhancement_parameters={}
     )
 
     with pytest.raises(NotFoundError):

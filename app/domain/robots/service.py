@@ -29,7 +29,7 @@ class RobotService(GenericService):
         robot_url: HttpUrl,
         enhancement_request: EnhancementRequest,
         reference: Reference,
-    ) -> EnhancementRequest:
+    ) -> httpx.Response:
         """Request an enhancement from a robot."""
         robot_request = destiny_sdk.robots.RobotRequest(
             id=enhancement_request.id,
