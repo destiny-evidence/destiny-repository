@@ -4,7 +4,7 @@
    contain the root `toctree` directive.
 
 DESTINY Climate and Health Repository
-======================================
+=====================================
 
 
 
