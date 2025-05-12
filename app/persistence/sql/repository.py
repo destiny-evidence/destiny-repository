@@ -1,13 +1,15 @@
 """Generic repositories define expected functionality."""
 
+import re
 from abc import ABC
 from typing import Generic
 
 from pydantic import UUID4
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.core.exceptions import SQLNotFoundError
+from app.core.exceptions import SQLDuplicateError, SQLNotFoundError
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
 from app.persistence.sql.generics import GenericSQLPersistenceType
@@ -143,8 +145,45 @@ class GenericAsyncSqlRepository(
 
         """
         persistence = await self._persistence_cls.from_domain(record)
-        self._session.add(persistence)
-        await self._session.flush()
+        try:
+            self._session.add(persistence)
+            await self._session.flush()
+        except IntegrityError as e:
+            detail = f"""
+Unable to add {self._persistence_cls.__name__}: duplicate.
+"""
+            lookup_type = "id"
+            lookup_value = str(persistence.id)
+
+            # Try extract details from the exception message.
+            # (There's no nice way to check for duplicate unique keys before handling
+            # the exception.)
+
+            try:
+                err_str = str(e)
+
+                # Extract constraint name using regex
+                constraint_match = re.search(r'constraint\s+"([^"]+)"', err_str)
+                if constraint_match:
+                    lookup_type = constraint_match.group(1)
+
+                # Extract detail information using regex
+                detail_match = re.search(r"DETAIL:\s+(.+?)(?:\n|$)", err_str)
+                if detail_match:
+                    detail = f"Duplicate entry: {detail_match.group(1).strip()}"
+                    lookup_value = detail_match.group(1).strip()
+
+            except Exception:  # noqa: BLE001
+                lookup_type, lookup_value = "unknown", "unknown"
+
+            finally:
+                raise SQLDuplicateError(
+                    detail=detail,
+                    lookup_model=self._persistence_cls.__name__,
+                    lookup_type=lookup_type,
+                    lookup_value=lookup_value,
+                ) from e
+
         await self._session.refresh(persistence)
         return await persistence.to_domain()
 

@@ -72,6 +72,50 @@ class SQLNotFoundError(NotFoundError):
         super().__init__(detail, *args)
 
 
+class DuplicateError(Exception):
+    """Exception for when we try to add something we expect to be unique."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the DuplicateError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        self.detail = detail
+        super().__init__(detail, *args)
+
+
+class SQLDuplicateError(DuplicateError):
+    """Exception for when we try to add something we expect to be unique to the DB."""
+
+    def __init__(
+        self,
+        detail: str,
+        lookup_model: str,
+        lookup_type: str,
+        lookup_value: object,
+        *args: object,
+    ) -> None:
+        """
+        Initialize the SQLDuplicateError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            lookup_model (str): The name of the model attempted to be accessed.
+            lookup_type (str): The type of lookup performed (e.g., "id", "name").
+            lookup_value (Any): The value(s) used in the lookup.
+            *args: Additional arguments for the exception.
+
+        """
+        self.lookup_model = lookup_model
+        self.lookup_type = lookup_type
+        self.lookup_value = lookup_value
+        super().__init__(detail, *args)
+
+
 class WrongReferenceError(Exception):
     """Exception for when enhancement is for a different reference than requested."""
 
