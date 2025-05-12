@@ -10,7 +10,11 @@ from pydantic import UUID4, HttpUrl
 from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError, SDKToDomainError, WrongReferenceError
+from app.core.exceptions import (
+    NotFoundError,
+    SDKToDomainError,
+    WrongReferenceError,
+)
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
     EnhancementRequestStatus,
@@ -20,7 +24,7 @@ from app.domain.references.models.models import (
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.routes import robots
-from app.domain.robots import Robots
+from app.domain.robots.models import Robots
 from app.main import (
     enhance_wrong_reference_exception_handler,
     not_found_exception_handler,
@@ -135,7 +139,7 @@ async def test_request_reference_enhancement_happy_path(
     enhancement_request_create = {
         "reference_id": f"{reference.id}",
         "robot_id": f"{ROBOT_ID}",
-        "enhancement_parameters": {"some": "parametrs"},
+        "enhancement_parameters": {"some": "parameters"},
     }
 
     response = await client.post(
@@ -174,7 +178,7 @@ async def test_request_reference_enhancement_robot_rejects_request(
 
     data = await session.get(SQLEnhancementRequest, response.json()["id"])
     assert data.request_status == EnhancementRequestStatus.REJECTED
-    assert data.error == "broken"
+    assert data.error == '{"message":"broken"}'
 
 
 async def test_not_found_exception_handler_returns_response_with_404(
