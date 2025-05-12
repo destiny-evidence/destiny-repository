@@ -42,10 +42,9 @@ jobs:
           docker compose down -v
           docker volume rm destiny-repository_db_data || true
 
-      - name: Set up Docker Compose and stream logs
+      - name: Set up Docker Compose
         run: |
           docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d
-          docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs -f &
 
       - name: Wait for e2e container to finish
         run: |
@@ -53,10 +52,24 @@ jobs:
             sleep 5
           done
 
+      - name: Collect all logs
+        if: always()
+        run: |
+          sleep 5
+          # Save full logs from all services
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs > logs.txt
+
+      - name: Save logs to artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: logs.txt
+
       - name: Check e2e container exit code
         run: |
           EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' e2e)
-          docker logs e2e
+          grep -E "e2e|repository|e2e-task-worker" logs.txt
           if [ "$EXIT_CODE" -ne 0 ]; then
             echo "E2E tests failed with exit code $EXIT_CODE"
             exit 1

@@ -11,8 +11,10 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.core.exceptions import (
+    DuplicateError,
     NotFoundError,
     SDKToDomainError,
+    SQLDuplicateError,
     SQLNotFoundError,
     WrongReferenceError,
 )
@@ -113,6 +115,28 @@ async def not_found_exception_handler(
 
     return JSONResponse(
         status_code=status.HTTP_404_NOT_FOUND,
+        content=content,
+    )
+
+
+@app.exception_handler(DuplicateError)
+async def duplicate_exception_handler(
+    request: Request,  # noqa: ARG001 exception handlers required to take request as parameter
+    exception: DuplicateError,
+) -> JSONResponse:
+    """Exception handler to return 409 responses when DuplicateError is thrown."""
+    if isinstance(exception, SQLDuplicateError):
+        content = {
+            "detail": (
+                f"Duplicate {exception.lookup_model} could not be added."
+                f"{exception.collision}"
+            )
+        }
+    else:
+        content = {"detail": exception.detail}
+
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
         content=content,
     )
 
