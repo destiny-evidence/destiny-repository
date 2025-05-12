@@ -201,3 +201,5 @@ docker compose down -v \
 && docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --force-recreate --remove-orphans \
 && docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs -f --tail=0 e2e repository e2e-task-worker
 ```
+
+Note if you get unexpected `destiny_sdk` errors, you may need to add the `--build` flag to the `up` command above.

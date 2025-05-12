@@ -12,18 +12,16 @@ Requesting Enhancements
     sequenceDiagram
         participant SR Tool
         participant Data Repository
-        participant Processor
+        participant Robot
         participant LLM/Model
-        SR Tool->>+Data Repository: Process Document(id, parameters)
-        Data Repository->>+Processor: Process Document(document, parameters, task id)
-        Processor-->>Data Repository: Enqueued
-        Data Repository-->>-SR Tool: Task Details
-        Processor->>+LLM/Model: Submit Prompt/Model Request
-        LLM/Model-->>-Processor: Prompt/Model Response
+        SR Tool->>+Data Repository: POST /references/enhancement/ : (id, parameters)
+        Data Repository->>+Robot: POST <robot_url> : Process Document (id, parameters)
+        Data Repository-->>-SR Tool: POST <callback_url> : Task Details
+        Robot->>+LLM/Model: Submit Prompt/Model Request
+        LLM/Model-->>-Robot: Prompt/Model Response
         alt Success
-            Processor->>Data Repository: Create Enhancement(task id, enhancement data)
+            Robot->>Data Repository: POST /robot/enhancement/ : Create Enhancement(id, enhancement data)
         else Failure
-            Processor->>-Data Repository: Task Failure(task id, failure details)
+            Robot->>-Data Repository: POST /robot/enhancement/ : (id, failure details)
         end
-        SR Tool->>+Data Repository: Request Document with Enhancements(id)
-        Data Repository-->>-SR Tool: Document with enhancements
+        Data Repository-->>-SR Tool: POST <callback_url> : Task Details

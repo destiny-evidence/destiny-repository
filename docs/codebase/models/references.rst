@@ -6,7 +6,7 @@ This documentation auto-generates details about the Pydantic models defined in
 
 
 .. contents:: Table of Contents
-    :depth: 4
+    :depth: 1
     :local:
 
 .. automodule:: app.domain.references.models.models

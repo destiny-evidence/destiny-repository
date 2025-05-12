@@ -1,7 +1,10 @@
 services:
   db:
+    # Override the volume to use ephemeral storage for e2e tests
     volumes:
-      - /var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
+    # Emphasize clean state for tests
+    command: postgres -c fsync=off
   fs:
     volumes:
       - /data
@@ -11,13 +14,14 @@ services:
       fs:
         condition: service_healthy
     volumes:
-      - .minio:/.minio
+      - ./.minio:/.minio
+      - shared-minio:/shared-minio
     environment:
       MINIO_URL: "http://fs:9000"
       MINIO_ROOT_USER: localuser
       MINIO_ROOT_PASSWORD: localpass
       MINIO_SEED_DATA_DIR: .minio/data
-      MINIO_PRESIGNED_URL_FILEPATH: .minio/presigned_urls.json
+      MINIO_PRESIGNED_URL_FILEPATH: /shared-minio/presigned_urls.json
     entrypoint: ./.minio/seed_fileserver.sh
   db-seed:
     build:
@@ -69,8 +73,6 @@ services:
   e2e-task-worker:
     build:
       context: .
-      args:
-        POETRY_INSTALL_DEV: "true"
     depends_on:
       db:
         condition: service_healthy
@@ -86,12 +88,13 @@ services:
     entrypoint: taskiq worker app.tasks:broker --fs-discover --reload
 
   e2e:
+    container_name: e2e
     build:
       context: .
       dockerfile: Dockerfile.e2e
     volumes:
       - ./tests/e2e:/e2e
-      - ./.minio/presigned_urls.json:/.minio/presigned_urls.json
+      - shared-minio:/shared-minio
     ports:
       - 8001:8001
     depends_on:
@@ -106,8 +109,10 @@ services:
       MINIO_URL: "http://fs:9000"
       CALLBACK_URL: "http://e2e:8001"
       ENV: "dev"
-      MINIO_PRESIGNED_URL_FILEPATH: /.minio/presigned_urls.json
-    entrypoint: /venv/bin/pytest /e2e
+      MINIO_PRESIGNED_URL_FILEPATH: /shared-minio/presigned_urls.json
+    entrypoint: poetry run pytest /e2e
 
-# Use fresh volumes for tests
-volumes: {}
+# Use ephemeral volumes for tests
+volumes:
+  shared-minio:
+  db_data:

@@ -23,7 +23,7 @@ asyncpg = "^0.30.0"
 azure-identity = "^1.21.0"
 azure-servicebus = "^7.14.2"
 cachetools = "^5.5.2"
-destiny-sdk = {develop = true, path = "libs/sdk"}
+destiny-sdk = {path = "libs/sdk"}
 fastapi = {extras = ["standard"], version = "^0.115.6"}
 greenlet = "^3.1.1"
 pydantic-settings = "^2.7.1"
@@ -51,9 +51,16 @@ types-python-jose = "^3.4.0.20250224"
 
 [tool.poetry.group.docs.dependencies]
 autodoc_pydantic = {extras = ["erdantic"], version = "^2.2.0"}
+destiny-sdk = {path = "libs/sdk"}
 pydata-sphinx-theme = "^0.16.1"
 sphinx = "^8.2.3"
 sphinxcontrib-mermaid = "^1.0.0"
+
+[tool.poetry.group.e2e.dependencies]
+destiny-sdk = {path = "libs/sdk"}
+httpx = "^0.28.1"
+psycopg = "^3.2.6"
+pytest = "^8.3.4"
 
 [tool.pytest.ini_options]
 addopts = ["--color=yes", "--import-mode=importlib", "--verbose"]

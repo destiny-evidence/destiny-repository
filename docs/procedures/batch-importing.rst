@@ -31,7 +31,7 @@ References are bulk imported using batches per the following process:
             R ->> SP: Download References File (file url)
             SP -->> R: Enriched References
             R ->> R: Persist Enriched References
-            R ->>- I: POST <callback url>: ImportBatchSummary
+            R ->>- I: POST <callback url> : ImportBatchSummary
             I ->> S: Delete Enhancement Batch (file url)
         end
         I ->> R: POST /imports/<record_id>/finalise/ Finalise Import
@@ -102,5 +102,12 @@ The default strategy is to do nothing and notify the importer in the batch's :at
 Identifier collisions are identified on the combination of ``identifier_type`` and ``identifier``, with ``other_identifier_name`` also used if ``identifier_type`` is ``"other"``.
 
 Enhancement updates are performed on the combination of ``enhancement_type`` and ``source``.
+
+Sample
+------
+
+A complete working sample demonstrating the import process is also available:
+
+  `import_from_bucket.py <https://github.com/destiny-evidence/destiny-repository/blob/main/libs/samples/import_from_bucket.py>`_
 
 .. _jsonl: https://jsonlines.org
