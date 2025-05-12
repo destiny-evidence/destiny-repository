@@ -1,4 +1,4 @@
-"""The service for interacting with and managing robot requests."""
+"""The service for managing our enhancments and enhancement requests."""
 
 import destiny_sdk
 import httpx
@@ -16,13 +16,13 @@ from app.domain.references.models.models import (
     EnhancementRequestStatus,
     Reference,
 )
-from app.domain.robots import Robots
+from app.domain.robots.models import Robots
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 
 
 class EnhancementService(GenericService):
-    """The service which manages our requests to robots for reference enhancement."""
+    """The service which manages our enhancements and enhancement requests."""
 
     def __init__(self, sql_uow: AsyncSqlUnitOfWork, robots: Robots) -> None:
         """Initialize the service with a unit of work."""

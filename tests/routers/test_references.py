@@ -24,7 +24,7 @@ from app.domain.references.models.models import (
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.routes import robots
-from app.domain.robots import Robots
+from app.domain.robots.models import Robots
 from app.main import (
     enhance_wrong_reference_exception_handler,
     not_found_exception_handler,

@@ -21,7 +21,7 @@ from app.domain.references.models.models import (
     ExternalIdentifierSearch,
 )
 from app.domain.references.reference_service import ReferenceService
-from app.domain.robots import Robots
+from app.domain.robots.models import Robots
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
