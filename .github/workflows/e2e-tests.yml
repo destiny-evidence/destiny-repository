@@ -57,24 +57,12 @@ jobs:
         run: |
           sleep 5
           # Save full logs from all services
-          docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs > all_services_logs.txt
-          # Save specific application logs
-          docker logs repository e2e-task-worker e2e --details --timestamps > e2e_application_logs.txt
-
-      - name: Upload logs as artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-test-logs
-          path: |
-            all_services_logs.txt
-            e2e_application_logs.txt
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs > logs.txt
 
       - name: Check e2e container exit code
         run: |
           EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' e2e)
-          echo "E2E container logs (showing last 50 lines):"
-          tail -n 50 e2e_application_logs.txt
+          grep -E "e2e|repository|e2e-task-worker" logs.txt
           if [ "$EXIT_CODE" -ne 0 ]; then
             echo "E2E tests failed with exit code $EXIT_CODE"
             exit 1
