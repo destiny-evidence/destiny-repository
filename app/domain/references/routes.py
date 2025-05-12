@@ -22,6 +22,7 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.reference_service import ReferenceService
 from app.domain.robots.models import Robots
+from app.domain.robots.service import RobotService
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
@@ -45,12 +46,19 @@ def reference_service(
 robots = Robots(known_robots=settings.known_robots)
 
 
-def enhancement_service(
+def robot_service(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
     robots: Annotated[Robots, Depends(robots)],
+) -> RobotService:
+    """Return the robot service using the provided unit of work dependencies."""
+    return RobotService(sql_uow=sql_uow, robots=robots)
+
+
+def enhancement_service(
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
 ) -> EnhancementService:
     """Return the enhancement service using the provided unit of work dependencies."""
-    return EnhancementService(sql_uow=sql_uow, robots=robots)
+    return EnhancementService(sql_uow=sql_uow)
 
 
 def choose_auth_strategy_reader() -> AuthMethod:
@@ -166,10 +174,12 @@ async def add_identifier(
 async def request_enhancement(
     enhancement_request_in: destiny_sdk.robots.EnhancementRequestIn,
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
+    robot_service: Annotated[RobotService, Depends(robot_service)],
 ) -> destiny_sdk.robots.EnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""
     enhancement_request = await enhancement_service.request_reference_enhancement(
-        enhancement_request=EnhancementRequest.from_sdk(enhancement_request_in)
+        enhancement_request=EnhancementRequest.from_sdk(enhancement_request_in),
+        robot_service=robot_service,
     )
 
     return enhancement_request.to_sdk()
