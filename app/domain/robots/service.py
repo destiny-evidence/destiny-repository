@@ -11,6 +11,8 @@ from app.domain.robots.models import Robots
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
+MIN_FOR_5XX_STATUS_CODES = 500
+
 
 class RobotService(GenericService):
     """The service which manages interacting with robots."""
@@ -49,7 +51,7 @@ class RobotService(GenericService):
             raise RobotUnreachableError(error) from exception
 
         if response.status_code != status.HTTP_202_ACCEPTED:
-            if str(response.status_code).startswith("5"):
+            if response.status_code >= MIN_FOR_5XX_STATUS_CODES:
                 error = f"Cannot request enhancement from Robot {enhancement_request.robot_id}."  # noqa: E501
                 raise RobotUnreachableError(error)
             # Expect this is a 4xx
