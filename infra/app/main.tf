@@ -204,7 +204,7 @@ resource "azurerm_postgresql_flexible_server_database" "this" {
 
 resource "azurerm_user_assigned_identity" "pgadmin" {
   location            = azurerm_resource_group.this.location
-  name                = "${local.name}-db-pgadmin"
+  name                = "${local.name}-pgadmin"
   resource_group_name = azurerm_resource_group.this.name
   tags                = local.minimum_resource_tags
 }
