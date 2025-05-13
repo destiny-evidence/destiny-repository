@@ -103,10 +103,15 @@ module "container_app" {
   init_container = {
     name    = "${local.name}-database-init"
     image   = "${data.azurerm_container_registry.this.login_server}/destiny-repository:${var.environment}"
-    command = ["alembic", "upgrade", "head"]
+    command = ["sh", "-c", "run-init-container.sh"]
     cpu     = 0.5
     memory  = "1Gi"
     env     = local.env_vars
+    identity = {
+      id           = azurerm_user_assigned_identity.pgadmin.id
+      principal_id = azurerm_user_assigned_identity.pgadmin.principal_id
+      client_id    = azurerm_user_assigned_identity.pgadmin.client_id
+    }
   }
 
   custom_scale_rules = [
@@ -164,10 +169,10 @@ module "container_app_tasks" {
 }
 
 resource "azurerm_postgresql_flexible_server" "this" {
-  name                          = "${local.name}-psqlflexibleserver"
-  resource_group_name           = azurerm_resource_group.this.name
-  location                      = azurerm_resource_group.this.location
-  version                       = "16"
+  name                = "${local.name}-psqlflexibleserver"
+  resource_group_name = azurerm_resource_group.this.name
+  location            = azurerm_resource_group.this.location
+  version             = "16"
   # delegated_subnet_id           = azurerm_subnet.db.id
   # private_dns_zone_id           = azurerm_private_dns_zone.db.id
   public_network_access_enabled = true # temporary for testing
@@ -187,7 +192,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
   }
 
   # depends_on = [azurerm_private_dns_zone_virtual_network_link.db]
-  tags       = local.minimum_resource_tags
+  tags = local.minimum_resource_tags
 }
 
 resource "azurerm_postgresql_flexible_server_database" "this" {
@@ -213,10 +218,9 @@ resource "azurerm_postgresql_flexible_server_active_directory_administrator" "ad
   server_name         = azurerm_postgresql_flexible_server.this.name
   resource_group_name = azurerm_resource_group.this.name
   tenant_id           = var.azure_tenant_id
-  # TEMP user details
-  object_id           = "4b09b83a-f139-4d6d-a026-7beaa623d40d"
-  principal_name      = "adam_futureevidence.org#EXT#@jamesmichaelthomasgmail.onmicrosoft.com"
-  principal_type      = "User"
+  object_id           = azurerm_user_assigned_identity.pgadmin.principal_id
+  principal_name      = azurerm_user_assigned_identity.pgadmin.name
+  principal_type      = "ServicePrincipal"
 }
 
 resource "azurerm_servicebus_namespace" "this" {
