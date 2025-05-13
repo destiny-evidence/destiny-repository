@@ -171,8 +171,8 @@ resource "azurerm_postgresql_flexible_server" "this" {
   # delegated_subnet_id           = azurerm_subnet.db.id
   # private_dns_zone_id           = azurerm_private_dns_zone.db.id
   public_network_access_enabled = true # temporary for testing
-  administrator_login           = var.admin_login
-  administrator_password        = var.admin_password
+  # administrator_login           = var.admin_login
+  # administrator_password        = var.admin_password
   zone                          = "1"
 
   storage_mb   = 32768
@@ -212,7 +212,7 @@ resource "azurerm_user_assigned_identity" "pgadmin" {
 resource "azurerm_postgresql_flexible_server_active_directory_administrator" "admin" {
   server_name         = azurerm_postgresql_flexible_server.this.name
   resource_group_name = azurerm_resource_group.this.name
-  tenant_id           = var.azure_tenant_id
+  tenant_id           = data.azurerm_client_config.current.tenant_id
   object_id           = azurerm_user_assigned_identity.pgadmin.principal_id
   principal_name      = azurerm_user_assigned_identity.pgadmin.name
   principal_type      = "ServicePrincipal"
