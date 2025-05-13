@@ -212,7 +212,7 @@ resource "azurerm_user_assigned_identity" "pgadmin" {
 resource "azurerm_postgresql_flexible_server_active_directory_administrator" "admin" {
   server_name         = azurerm_postgresql_flexible_server.this.name
   resource_group_name = azurerm_resource_group.this.name
-  tenant_id           = data.azurerm_client_config.current.tenant_id
+  tenant_id           = var.azure_tenant_id
   object_id           = azurerm_user_assigned_identity.pgadmin.principal_id
   principal_name      = azurerm_user_assigned_identity.pgadmin.name
   principal_type      = "ServicePrincipal"
