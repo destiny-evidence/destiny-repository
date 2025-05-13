@@ -171,8 +171,8 @@ resource "azurerm_postgresql_flexible_server" "this" {
   # delegated_subnet_id           = azurerm_subnet.db.id
   # private_dns_zone_id           = azurerm_private_dns_zone.db.id
   public_network_access_enabled = true # temporary for testing
-  # administrator_login           = var.admin_login
-  # administrator_password        = var.admin_password
+  administrator_login           = var.admin_login
+  administrator_password        = var.admin_password
   zone                          = "1"
 
   storage_mb   = 32768
@@ -181,7 +181,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
   sku_name = "GP_Standard_D2ds_v4"
 
   authentication {
-    password_auth_enabled         = false # temporary for testing
+    password_auth_enabled         = true # temporary for testing
     active_directory_auth_enabled = true
     tenant_id                     = var.azure_tenant_id
   }
