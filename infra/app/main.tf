@@ -170,7 +170,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
   version                       = "16"
   delegated_subnet_id           = azurerm_subnet.db.id
   private_dns_zone_id           = azurerm_private_dns_zone.db.id
-  public_network_access_enabled = false
+  public_network_access_enabled = true # temporary for testing
   administrator_login           = var.admin_login
   administrator_password        = var.admin_password
   zone                          = "1"
