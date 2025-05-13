@@ -19,7 +19,7 @@ destiny-sdk = {path = "./PATH/TO/sdk/", develop = true}
 This will eventually live on PyPI - for now:
 
 ```sh
-poetry add git+ssh://git@github.com:destiny-evidence/destiny-repository.git
+poetry add git+ssh://git@github.com:destiny-evidence/destiny-repository.git#subdirectory=libs/sdk
 ```
 
 or replace the dependency in `pyproject.toml` with

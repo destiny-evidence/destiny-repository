@@ -9,7 +9,7 @@ It is not yet on PyPI, but you can install it from the GitHub repository:
 
 .. code-block:: bash
 
-   poetry add git+ssh://git@github.com:destiny-evidence/destiny-repository.git
+   poetry add git+ssh://git@github.com:destiny-evidence/destiny-repository.git#subdirectory=libs/sdk
 
 
 .. toctree::
