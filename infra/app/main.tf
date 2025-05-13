@@ -181,8 +181,9 @@ resource "azurerm_postgresql_flexible_server" "this" {
   sku_name = "GP_Standard_D2ds_v4"
 
   authentication {
-    # We'll want to update this to use Entra ID & managed identities for access
-    password_auth_enabled = true
+    password_auth_enabled         = true # temporary for testing
+    active_directory_auth_enabled = true
+    tenant_id                     = var.azure_tenant_id
   }
 
   # depends_on = [azurerm_private_dns_zone_virtual_network_link.db]
@@ -199,6 +200,22 @@ resource "azurerm_postgresql_flexible_server_database" "this" {
   # lifecycle {
   #   prevent_destroy = true
   # }
+}
+
+resource "azurerm_user_assigned_identity" "pgadmin" {
+  location            = azurerm_resource_group.this.location
+  name                = "${local.name}-db-pgadmin"
+  resource_group_name = azurerm_resource_group.this.name
+  tags                = local.minimum_resource_tags
+}
+
+resource "azurerm_postgresql_flexible_server_active_directory_administrator" "admin" {
+  server_name         = azurerm_postgresql_flexible_server.this.name
+  resource_group_name = azurerm_resource_group.this.name
+  tenant_id           = var.azure_tenant_id
+  object_id           = azurerm_user_assigned_identity.pgadmin.principal_id
+  principal_name      = azurerm_user_assigned_identity.pgadmin.name
+  principal_type      = "ServicePrincipal"
 }
 
 resource "azurerm_servicebus_namespace" "this" {
