@@ -181,7 +181,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
   sku_name = "GP_Standard_D2ds_v4"
 
   authentication {
-    password_auth_enabled         = true # temporary for testing
+    password_auth_enabled         = false # temporary for testing
     active_directory_auth_enabled = true
     tenant_id                     = var.azure_tenant_id
   }
