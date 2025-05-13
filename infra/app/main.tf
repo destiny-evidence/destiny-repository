@@ -196,9 +196,9 @@ resource "azurerm_postgresql_flexible_server_database" "this" {
   charset   = "UTF8"
 
   # Avoid accidental database deletion
-  lifecycle {
-    prevent_destroy = true
-  }
+  # lifecycle {
+  #   prevent_destroy = true
+  # }
 }
 
 resource "azurerm_servicebus_namespace" "this" {
