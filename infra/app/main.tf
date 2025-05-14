@@ -133,10 +133,15 @@ module "container_app" {
     name  = "${local.name}-database-init"
     image = "${data.azurerm_container_registry.this.login_server}/destiny-repository:${var.environment}"
     command = ["sh", "-c", <<EOT
-      apt-get -qq update -y && apt-get -qq install -y azure-cli postgresql-client
+      # MOVE TO DOCKERFILE
+      apt-get -qq update -y && apt-get -qq install -y curl jq postgresql-client
       alembic upgrade head
       # sleep infinity
-      export PGPASSWORD=$(az account get-access-token --resource-type oss-rdbms --query accessToken -o tsv)
+      # Using az doesn't work here... https://github.com/microsoft/azure-container-apps/issues/502
+      # Solution suggested by https://rootknecht.net/blog/azure-pgsql-tf/
+      export PGPASSWORD=$(curl -sH "X-IDENTITY-HEADER: $IDENTITY_HEADER" \
+                          "http://localhost:42356/msi/token?api-version=2019-08-01&resource=https%3A%2F%2Fossrdbms-aad.database.windows.net&client_id=$AZURE_CLIENT_ID" | \
+                          jq -r .access_token)
       echo 'Provisioning roles and permissions...'
       echo '$(templatefile("${path.module}/grant_roles.psql", {
         db_readonly_group_id = var.db_readonly_group_id,
