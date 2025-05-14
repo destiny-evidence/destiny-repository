@@ -47,11 +47,6 @@ locals {
       value = var.azure_tenant_id
     },
     {
-      # TO BE REMOVED
-      name        = "DB_URL"
-      secret_name = "db-url"
-    },
-    {
       name  = "DB_FQDN",
       value = azurerm_postgresql_flexible_server.this.fqdn
     },
@@ -74,11 +69,6 @@ locals {
   ]
 
   secrets = [
-    {
-      # TO BE REMOVED
-      name  = "db-url"
-      value = "postgresql+asyncpg://${var.admin_login}:${var.admin_password}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.this.name}"
-    },
     {
       name  = "servicebus-connection-string"
       value = azurerm_servicebus_namespace.this.default_primary_connection_string
@@ -136,41 +126,34 @@ module "container_app" {
       # MOVE TO DOCKERFILE
       apt-get -qq update -y && apt-get -qq install -y curl jq postgresql-client
       alembic upgrade head
-      # Using az doesn't work here... https://github.com/microsoft/azure-container-apps/issues/502
-      # Solution suggested by https://rootknecht.net/blog/azure-pgsql-tf/
-      export PGPASSWORD=$(curl -sH "X-IDENTITY-HEADER: $IDENTITY_HEADER" \
-                          "http://localhost:42356/msi/token?api-version=2019-08-01&resource=https%3A%2F%2Fossrdbms-aad.database.windows.net&client_id=$AZURE_CLIENT_ID" | \
-                          jq -r .access_token)
-      echo "Curl output: $(curl -sH "X-IDENTITY-HEADER: $IDENTITY_HEADER" \
-                          "http://localhost:42356/msi/token?api-version=2019-08-01&resource=https%3A%2F%2Fossrdbms-aad.database.windows.net&client_id=$AZURE_CLIENT_ID")"
-      echo $PGPASSWORD
       echo 'Provisioning roles and permissions...'
       echo '$(templatefile("${path.module}/grant_roles.psql", {
         db_readonly_group_id = var.db_readonly_group_id,
         db_crud_group_id     = var.db_crud_group_id,
         db_admin_group_id    = var.db_admin_group_id,
         database_name        = azurerm_postgresql_flexible_server_database.this.name
-      }))' | psql -h $DB_FQDN --user $DB_USER $DB_NAME
+      }))' | psql ${DB_URL}
       echo 'Roles and permissions provisioned.'
       EOT
     ]
     cpu    = 0.5
     memory = "1Gi"
+
+    # Init containers don't support managed identities so this is our last bastion
+    # of passworded auth.
+    # https://github.com/microsoft/azure-container-apps/issues/807
     env = concat(local.env_vars, [
       {
-        name  = "AZURE_CLIENT_ID"
-        value = azurerm_user_assigned_identity.pgadmin.client_id
+        name        = "DB_URL"
+        secret_name = "db-url"
       },
-      {
-        name  = "DB_USER",
-        value = azurerm_user_assigned_identity.pgadmin.name
-      }
     ])
-    identity = {
-      id           = azurerm_user_assigned_identity.pgadmin.id
-      principal_id = azurerm_user_assigned_identity.pgadmin.principal_id
-      client_id    = azurerm_user_assigned_identity.pgadmin.client_id
-    }
+    secrets = concat(local.secrets, [
+      {
+        name  = "db-url"
+        value = "postgresql+asyncpg://${var.admin_login}:${var.admin_password}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.this.name}"
+      },
+    ])
   }
 
   custom_scale_rules = [
@@ -286,9 +269,12 @@ resource "azurerm_postgresql_flexible_server_active_directory_administrator" "ad
   server_name         = azurerm_postgresql_flexible_server.this.name
   resource_group_name = azurerm_resource_group.this.name
   tenant_id           = var.azure_tenant_id
-  object_id           = azurerm_user_assigned_identity.pgadmin.principal_id
-  principal_name      = azurerm_user_assigned_identity.pgadmin.name
-  principal_type      = "ServicePrincipal"
+  object_id           = "4b09b83a-f139-4d6d-a026-7beaa623d40d"
+  principal_name      = "adam_futureevidence.org#EXT#@jamesmichaelthomasgmail.onmicrosoft.com"
+  principal_type      = "User"
+  # object_id           = azurerm_user_assigned_identity.pgadmin.principal_id
+  # principal_name      = azurerm_user_assigned_identity.pgadmin.name
+  # principal_type      = "ServicePrincipal"
 }
 
 resource "azurerm_servicebus_namespace" "this" {
