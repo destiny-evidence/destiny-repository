@@ -22,6 +22,16 @@ resource "azurerm_user_assigned_identity" "container_apps_tasks_identity" {
   resource_group_name = azurerm_resource_group.this.name
 }
 
+resource "azuread_group_member" "container_apps_identity_group_member" {
+  group_object_id  = var.db_crud_group_id
+  member_object_id = azurerm_user_assigned_identity.container_apps_identity.principal_id
+}
+
+resource "azuread_group_member" "container_apps_tasks_identity_group_member" {
+  group_object_id  = var.db_crud_group_id
+  member_object_id = azurerm_user_assigned_identity.container_apps_tasks_identity.principal_id
+}
+
 locals {
   env_vars = [
     {
@@ -101,12 +111,22 @@ module "container_app" {
   }
 
   init_container = {
-    name    = "${local.name}-database-init"
-    image   = "${data.azurerm_container_registry.this.login_server}/destiny-repository:${var.environment}"
-    command = ["sh", "-c", "run-init-container.sh"]
-    cpu     = 0.5
-    memory  = "1Gi"
-    env     = local.env_vars
+    name  = "${local.name}-database-init"
+    image = "${data.azurerm_container_registry.this.login_server}/destiny-repository:${var.environment}"
+    command = ["sh", "-c", <<EOT
+      alembic upgrade head
+      export PGPASSWORD=$(az account get-access-token --resource-type oss-rdbms --query accessToken -o tsv)
+      echo '$(templatefile("${path.module}/grant_roles.psql", {
+        db_readonly_group_id = var.db_readonly_group_id,
+        db_crud_group_id     = var.db_crud_group_id,
+        db_admin_group_id    = var.db_admin_group_id,
+        database_name        = azurerm_postgresql_flexible_server_database.this.name
+      }))' | psql -h ${azurerm_postgresql_flexible_server.this.fqdn} -U ${var.admin_login} -d ${azurerm_postgresql_flexible_server_database.this.name}
+      EOT
+    ]
+    cpu    = 0.5
+    memory = "1Gi"
+    env    = local.env_vars
     identity = {
       id           = azurerm_user_assigned_identity.pgadmin.id
       principal_id = azurerm_user_assigned_identity.pgadmin.principal_id
