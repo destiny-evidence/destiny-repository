@@ -1,29 +1,17 @@
-DO $$
-BEGIN
-  -- Grant read-only access
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${db_readonly_group_name}') THEN
-    SELECT * FROM pgaadauth_create_principal('${db_readonly_group_name}', false, true);
-  END IF;
-  GRANT CONNECT ON DATABASE "${database_name}" TO "${db_readonly_group_name}";
-  GRANT USAGE ON SCHEMA public TO "${db_readonly_group_name}";
-  GRANT SELECT ON ALL TABLES IN SCHEMA public TO "${db_readonly_group_name}";
-  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO "${db_readonly_group_name}";
+-- Run manually by a database administrator on database provisioning.
+-- Can be adapted to create new roles.
+-- Must be run from `postgres` database.
 
-  -- Grant CRUD access
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${db_crud_group_name}') THEN
-    SELECT * FROM pgaadauth_create_principal('${db_crud_group_name}', false, true);
-  END IF;
-  GRANT CONNECT ON DATABASE "${database_name}" TO "${db_crud_group_name}";
-  GRANT USAGE ON SCHEMA public TO "${db_crud_group_name}";
-  GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "${db_crud_group_name}";
-  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${db_crud_group_name}";
+-- Grant read-only access
+SELECT * FROM pgaadauth_create_principal('destiny-repository-development-db-readonly', false, true);
+GRANT CONNECT ON DATABASE "destiny-repository-development-db" TO "destiny-repository-development-db-readonly";
+GRANT USAGE ON SCHEMA public TO "destiny-repository-development-db-readonly";
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO "destiny-repository-development-db-readonly";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO "destiny-repository-development-db-readonly";
 
-  -- Grant admin access
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${db_admin_group_name}') THEN
-    SELECT * FROM pgaadauth_create_principal('${db_crud_group_name}', true, true);
-  END IF;
-  GRANT ALL PRIVILEGES ON DATABASE "${database_name}" TO "${db_admin_group_name}";
-  GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "${db_admin_group_name}";
-  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO "${db_admin_group_name}";
-END
-$$;
+-- Grant CRUD access
+SELECT * FROM pgaadauth_create_principal('destiny-repository-development-db-crud', false, true);
+GRANT CONNECT ON DATABASE "destiny-repository-development-db" TO "destiny-repository-development-db-crud";
+GRANT USAGE ON SCHEMA public TO "destiny-repository-development-db-crud";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "destiny-repository-development-db-crud";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "destiny-repository-development-db-crud";

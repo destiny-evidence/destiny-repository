@@ -259,12 +259,9 @@ resource "azurerm_postgresql_flexible_server_active_directory_administrator" "ad
   server_name         = azurerm_postgresql_flexible_server.this.name
   resource_group_name = azurerm_resource_group.this.name
   tenant_id           = var.azure_tenant_id
-  # object_id           = "4b09b83a-f139-4d6d-a026-7beaa623d40d"
-  # principal_name      = "adam_futureevidence.org#EXT#@jamesmichaelthomasgmail.onmicrosoft.com"
-  # principal_type      = "User"
-  object_id      = var.db_admin_group_id
-  principal_name = var.db_admin_group_name
-  principal_type = "Group"
+  object_id           = var.db_admin_group_id
+  principal_name      = var.db_admin_group_name
+  principal_type      = "Group"
 }
 
 resource "azurerm_servicebus_namespace" "this" {
