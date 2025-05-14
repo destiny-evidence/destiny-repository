@@ -114,6 +114,7 @@ module "container_app" {
     name  = "${local.name}-database-init"
     image = "${data.azurerm_container_registry.this.login_server}/destiny-repository:${var.environment}"
     command = ["sh", "-c", <<EOT
+      apt-get update -y && apt-get install -y azure-cli postgresql-client
       alembic upgrade head
       export PGPASSWORD=$(az account get-access-token --resource-type oss-rdbms --query accessToken -o tsv)
       echo '$(templatefile("${path.module}/grant_roles.psql", {
