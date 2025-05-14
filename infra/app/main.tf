@@ -47,8 +47,17 @@ locals {
       value = var.azure_tenant_id
     },
     {
+      # TO BE REMOVED
       name        = "DB_URL"
       secret_name = "db-url"
+    },
+    {
+      name  = "DB_FQDN",
+      value = azurerm_postgresql_flexible_server.this.fqdn
+    },
+    {
+      name  = "DB_NAME"
+      value = azurerm_postgresql_flexible_server_database.this.name
     },
     {
       name  = "ENV"
@@ -66,6 +75,7 @@ locals {
 
   secrets = [
     {
+      # TO BE REMOVED
       name  = "db-url"
       value = "postgresql+asyncpg://${var.admin_login}:${var.admin_password}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.this.name}"
     },
@@ -95,8 +105,17 @@ module "container_app" {
     client_id    = azurerm_user_assigned_identity.container_apps_identity.client_id
   }
 
-  env_vars = local.env_vars
-  secrets  = local.secrets
+  env_vars = concat(local.env_vars, [
+    {
+      name  = "AZURE_CLIENT_ID"
+      value = azurerm_user_assigned_identity.container_apps_identity.client_id
+    },
+    {
+      name  = "DB_USER",
+      value = azurerm_user_assigned_identity.container_apps_identity.name
+    }
+  ])
+  secrets = local.secrets
 
   # NOTE: ingress changes will be ignored to avoid messing up manual custom domain config. See https://github.com/hashicorp/terraform-provider-azurerm/issues/21866#issuecomment-1755381572.
   ingress = {
@@ -114,7 +133,7 @@ module "container_app" {
     name  = "${local.name}-database-init"
     image = "${data.azurerm_container_registry.this.login_server}/destiny-repository:${var.environment}"
     command = ["sh", "-c", <<EOT
-      apt-get update -y && apt-get install -y azure-cli postgresql-client
+      apt-get -qq update -y && apt-get -qq install -y azure-cli postgresql-client
       alembic upgrade head
       # sleep infinity
       export PGPASSWORD=$(az account get-access-token --resource-type oss-rdbms --query accessToken -o tsv)
@@ -124,13 +143,22 @@ module "container_app" {
         db_crud_group_id     = var.db_crud_group_id,
         db_admin_group_id    = var.db_admin_group_id,
         database_name        = azurerm_postgresql_flexible_server_database.this.name
-      }))' | psql -h ${azurerm_postgresql_flexible_server.this.fqdn} -U ${azurerm_user_assigned_identity.pgadmin.name} -d ${azurerm_postgresql_flexible_server_database.this.name}
+      }))' | psql -h $DB_FQDN --user $DB_USER $DB_NAME
       echo 'Roles and permissions provisioned.'
       EOT
     ]
     cpu    = 0.5
     memory = "1Gi"
-    env    = local.env_vars
+    env = concat(local.env_vars, [
+      {
+        name  = "AZURE_CLIENT_ID"
+        value = azurerm_user_assigned_identity.pgadmin.client_id
+      },
+      {
+        name  = "DB_USER",
+        value = azurerm_user_assigned_identity.pgadmin.name
+      }
+    ])
     identity = {
       id           = azurerm_user_assigned_identity.pgadmin.id
       principal_id = azurerm_user_assigned_identity.pgadmin.principal_id
@@ -169,8 +197,17 @@ module "container_app_tasks" {
     client_id    = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
   }
 
-  env_vars = local.env_vars
-  secrets  = local.secrets
+  env_vars = concat(local.env_vars, [
+    {
+      name  = "AZURE_CLIENT_ID"
+      value = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
+    },
+    {
+      name  = "DB_USER",
+      value = azurerm_user_assigned_identity.container_apps_tasks_identity.name
+    }
+  ])
+  secrets = local.secrets
 
   command = ["taskiq", "worker", "app.tasks:broker", "--fs-discover"]
 
