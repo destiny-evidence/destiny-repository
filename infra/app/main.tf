@@ -132,7 +132,7 @@ module "container_app" {
         db_crud_group_id     = var.db_crud_group_id,
         db_admin_group_id    = var.db_admin_group_id,
         database_name        = azurerm_postgresql_flexible_server_database.this.name
-      }))' | psql ${DB_URL}
+      }))' | psql $DB_URL
       echo 'Roles and permissions provisioned.'
       EOT
     ]
