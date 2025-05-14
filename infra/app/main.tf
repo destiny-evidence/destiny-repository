@@ -141,6 +141,8 @@ module "container_app" {
       export PGPASSWORD=$(curl -sH "X-IDENTITY-HEADER: $IDENTITY_HEADER" \
                           "http://localhost:42356/msi/token?api-version=2019-08-01&resource=https%3A%2F%2Fossrdbms-aad.database.windows.net&client_id=$AZURE_CLIENT_ID" | \
                           jq -r .access_token)
+      echo curl -sH "X-IDENTITY-HEADER: $IDENTITY_HEADER" "http://localhost:42356/msi/token?api-version=2019-08-01&resource=https%3A%2F%2Fossrdbms-aad.database.windows.net&client_id=$AZURE_CLIENT_ID"
+      echo $PGPASSWORD
       echo 'Provisioning roles and permissions...'
       echo '$(templatefile("${path.module}/grant_roles.psql", {
         db_readonly_group_id = var.db_readonly_group_id,
@@ -149,7 +151,6 @@ module "container_app" {
         database_name        = azurerm_postgresql_flexible_server_database.this.name
       }))' | psql -h $DB_FQDN --user $DB_USER $DB_NAME
       echo 'Roles and permissions provisioned.'
-      sleep infinity
       EOT
     ]
     cpu    = 0.5
