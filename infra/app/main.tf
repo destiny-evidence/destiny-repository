@@ -124,7 +124,7 @@ module "container_app" {
         db_crud_group_id     = var.db_crud_group_id,
         db_admin_group_id    = var.db_admin_group_id,
         database_name        = azurerm_postgresql_flexible_server_database.this.name
-      }))' | psql -h ${azurerm_postgresql_flexible_server.this.fqdn} -U ${azurerm_postgresql_flexible_server_admin} -d ${azurerm_postgresql_flexible_server_database.this.name}
+      }))' | psql -h ${azurerm_postgresql_flexible_server.this.fqdn} -U ${azurerm_user_assigned_identity.pgadmin.name} -d ${azurerm_postgresql_flexible_server_database.this.name}
       echo 'Roles and permissions provisioned.'
       EOT
     ]
