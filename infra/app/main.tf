@@ -136,7 +136,6 @@ module "container_app" {
       # MOVE TO DOCKERFILE
       apt-get -qq update -y && apt-get -qq install -y curl jq postgresql-client
       alembic upgrade head
-      # sleep infinity
       # Using az doesn't work here... https://github.com/microsoft/azure-container-apps/issues/502
       # Solution suggested by https://rootknecht.net/blog/azure-pgsql-tf/
       export PGPASSWORD=$(curl -sH "X-IDENTITY-HEADER: $IDENTITY_HEADER" \
@@ -150,6 +149,7 @@ module "container_app" {
         database_name        = azurerm_postgresql_flexible_server_database.this.name
       }))' | psql -h $DB_FQDN --user $DB_USER $DB_NAME
       echo 'Roles and permissions provisioned.'
+      sleep infinity
       EOT
     ]
     cpu    = 0.5
