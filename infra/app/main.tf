@@ -116,13 +116,16 @@ module "container_app" {
     command = ["sh", "-c", <<EOT
       apt-get update -y && apt-get install -y azure-cli postgresql-client
       alembic upgrade head
+      sleep infinity
       export PGPASSWORD=$(az account get-access-token --resource-type oss-rdbms --query accessToken -o tsv)
+      echo 'Provisioning roles and permissions...'
       echo '$(templatefile("${path.module}/grant_roles.psql", {
         db_readonly_group_id = var.db_readonly_group_id,
         db_crud_group_id     = var.db_crud_group_id,
         db_admin_group_id    = var.db_admin_group_id,
         database_name        = azurerm_postgresql_flexible_server_database.this.name
       }))' | psql -h ${azurerm_postgresql_flexible_server.this.fqdn} -U ${var.admin_login} -d ${azurerm_postgresql_flexible_server_database.this.name}
+      echo 'Roles and permissions provisioned.'
       EOT
     ]
     cpu    = 0.5
