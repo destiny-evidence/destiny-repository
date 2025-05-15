@@ -31,7 +31,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DB_CONFIG: "postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"
+      DB_CONFIG: '{"DB_URL": "postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
       ENV: "dev"
       AZURE_APPLICATION_ID: "dummy"
       AZURE_TENANT_ID: "dummy"
@@ -83,8 +83,8 @@ services:
     env_file:
       - .env
     environment:
-      - MESSAGE_BROKER_URL=amqp://guest:guest@rabbitmq:5672
-      - DB_CONFIG='{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
+      MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
+      DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
     entrypoint: taskiq worker app.tasks:broker --fs-discover
 
   e2e:

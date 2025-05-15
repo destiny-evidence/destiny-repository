@@ -80,7 +80,7 @@ variable "db_crud_group_name" {
 }
 
 variable "db_admin_group_id" {
-  # Delete me after the hack is removed
+  # delete-me after the hack is removed
   type        = string
   description = "Id of a group to assign DB admin access to. Not exclusive to other DB groups."
 }

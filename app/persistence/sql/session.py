@@ -22,8 +22,6 @@ from app.core.exceptions import UOWError
 from app.core.logger import get_logger
 
 logger = get_logger()
-SQL_COPT_SS_ACCESS_TOKEN = 1256  # from msodbcsql.h
-TOKEN_CACHE_TTL = 60 * 60  # 1 hour
 
 
 class AsyncDatabaseSessionManager:

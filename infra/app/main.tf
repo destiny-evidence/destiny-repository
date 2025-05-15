@@ -218,6 +218,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
   resource_group_name = azurerm_resource_group.this.name
   location            = azurerm_resource_group.this.location
   version             = "16"
+  # revert-me this is for ease of testing only
   # delegated_subnet_id           = azurerm_subnet.db.id
   # private_dns_zone_id           = azurerm_private_dns_zone.db.id
   public_network_access_enabled = true # temporary for testing
@@ -236,6 +237,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
     tenant_id                     = var.azure_tenant_id
   }
 
+  # revert-me this is for ease of testing only
   # depends_on = [azurerm_private_dns_zone_virtual_network_link.db]
   tags = local.minimum_resource_tags
 }
