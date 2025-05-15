@@ -99,7 +99,7 @@ async def logger_middleware(
 
 @app.exception_handler(NotFoundError)
 async def not_found_exception_handler(
-    request: Request,  # noqa: ARG001 exception handlers required to take request as parameter
+    _request: Request,
     exception: NotFoundError,
 ) -> JSONResponse:
     """Exception handler to return 404 responses when NotFoundError is thrown."""
@@ -121,7 +121,7 @@ async def not_found_exception_handler(
 
 @app.exception_handler(DuplicateError)
 async def duplicate_exception_handler(
-    request: Request,  # noqa: ARG001 exception handlers required to take request as parameter
+    _request: Request,
     exception: DuplicateError,
 ) -> JSONResponse:
     """Exception handler to return 409 responses when DuplicateError is thrown."""
@@ -143,7 +143,7 @@ async def duplicate_exception_handler(
 
 @app.exception_handler(SDKToDomainError)
 async def sdk_to_domain_exception_handler(
-    request: Request,  # noqa: ARG001 exception handlers required to take request as parameter
+    _request: Request,
     exception: SDKToDomainError,
 ) -> JSONResponse:
     """Return unprocessible responsers when sdk -> domain converstion fails."""
@@ -156,7 +156,7 @@ async def sdk_to_domain_exception_handler(
 
 @app.exception_handler(WrongReferenceError)
 async def enhance_wrong_reference_exception_handler(
-    request: Request,  # noqa: ARG001 exception handlers required to take request as parameter
+    _request: Request,
     exception: WrongReferenceError,
 ) -> JSONResponse:
     """Return unprocessible responsers when sdk -> domain converstion fails."""

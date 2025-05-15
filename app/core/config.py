@@ -21,6 +21,7 @@ class DatabaseConfig(BaseModel):
     db_name: str | None = None
     azure_db_resource_url: HttpUrl | None = None
     db_url: PostgresDsn | None = None
+    ssl_mode: str = "prefer"
 
     @property
     def passwordless(self) -> bool:
@@ -31,14 +32,18 @@ class DatabaseConfig(BaseModel):
     def connection_string(self) -> str:
         """Return the connection string for the database."""
         if self.db_url:
-            return str(self.db_url)
-        if self.passwordless:
-            return f"postgresql+asyncpg://{self.db_user}@{self.db_fqdn}/{self.db_name}"
-        return f"postgresql+asyncpg://{self.db_user}:{self.db_pass}@{self.db_fqdn}/{self.db_name}"
+            url = str(self.db_url)
+        elif self.passwordless:
+            url = f"postgresql+asyncpg://{self.db_user}@{self.db_fqdn}/{self.db_name}"
+        else:
+            url = f"postgresql+asyncpg://{self.db_user}:{self.db_pass}@{self.db_fqdn}/{self.db_name}"
+
+        # ssl prefer allows us to connect locally without SSL, overwritable if needed
+        return f"{url}?ssl={self.ssl_mode}"
 
     @model_validator(mode="after")
     def validate_parameters(self) -> Self:
-        """Validate the given paramters."""
+        """Validate the given parameters."""
         if self.db_url:
             # DB URL provided
             if any(
@@ -76,9 +81,9 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    db_config: DatabaseConfig
-
     project_root: Path = Path(__file__).joinpath("../../..").resolve()
+
+    db_config: DatabaseConfig
 
     azure_application_id: str
     azure_login_url: HttpUrl = HttpUrl("https://login.microsoftonline.com")

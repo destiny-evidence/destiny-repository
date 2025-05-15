@@ -37,7 +37,7 @@ def upgrade() -> None:
     op.create_table('import_batch',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('import_record_id', sa.UUID(), nullable=False),
-    sa.Column('status', postgresql.ENUM('created', 'started', 'failed', 'completed', 'cancelled', name='import_batch_status'), nullable=False),
+    sa.Column('status', postgresql.ENUM('created', 'started', 'completed', 'cancelled', name='import_batch_status'), nullable=False),
     sa.Column('storage_url', sa.String(), nullable=False),
     sa.ForeignKeyConstraint(['import_record_id'], ['import_record.id'], ),
     sa.PrimaryKeyConstraint('id')

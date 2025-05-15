@@ -2,12 +2,10 @@
 
 import contextlib
 import datetime
-import struct
 from collections.abc import AsyncIterator
 from typing import Any
 
 from azure.identity import DefaultAzureCredential
-from cachetools.func import ttl_cache
 from sqlalchemy import event
 from sqlalchemy.engine import Dialect
 from sqlalchemy.ext.asyncio import (
@@ -47,41 +45,35 @@ class AsyncDatabaseSessionManager:
         )
 
         if db_config.passwordless:
-            # This is as recommended in SQLAlchemy docs
+            # This is (more or less) as recommended in SQLAlchemy docs
             # https://docs.sqlalchemy.org/en/20/core/engines.html#generating-dynamic-authentication-tokens
             # https://docs.sqlalchemy.org/en/20/dialects/mssql.html#mssql-pyodbc-access-tokens
             @event.listens_for(self._engine.sync_engine, "do_connect")
             def provide_token(
                 _dialect: Dialect,
                 _conn_rec: ConnectionPoolEntry,
-                cargs: list[Any],
+                _cargs: list[Any],
                 cparams: dict[str, Any],
             ) -> None:
-                # Remove the "Trusted_Connection" parameter that SQLAlchemy adds
-                cargs[0] = cargs[0].replace(";Trusted_Connection=Yes", "")
-
-                # Caching added by me (Adam) - if any funny business, start looking here
-                @ttl_cache(maxsize=1, ttl=TOKEN_CACHE_TTL)
-                def get_token() -> bytes:
+                # We can consider a TTL cache here but from experimentation it seems
+                # Azure does some caching of its own
+                def get_token() -> str:
                     logger.info("Retrieving DB access token from Azure")
                     token = self._azure_credentials.get_token(
-                        db_config.azure_db_resource_url  # type: ignore[arg-type]
+                        str(db_config.azure_db_resource_url)
                     )
                     logger.info(
                         "DB access token retrieved from Azure",
                         extra={
-                            "expires_in": datetime.datetime.fromtimestamp(
+                            "expires_at": datetime.datetime.fromtimestamp(
                                 token.expires_on, tz=datetime.UTC
-                            )
+                            ).isoformat(),
                         },
                     )
-                    raw_token = token.token.encode("utf-16-le")
-                    return struct.pack(
-                        f"<I{len(raw_token)}s", len(raw_token), raw_token
-                    )
+                    return token.token
 
                 # Apply it to keyword arguments
-                cparams["attrs_before"] = {SQL_COPT_SS_ACCESS_TOKEN: get_token()}
+                cparams["password"] = get_token()
 
         self._sessionmaker = async_sessionmaker(
             bind=self._engine,

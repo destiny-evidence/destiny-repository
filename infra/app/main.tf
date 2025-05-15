@@ -52,12 +52,12 @@ locals {
       value = var.azure_tenant_id
     },
     {
-      name  = "DB_FQDN",
-      value = azurerm_postgresql_flexible_server.this.fqdn
-    },
-    {
-      name  = "DB_NAME"
-      value = azurerm_postgresql_flexible_server_database.this.name
+      name = "DB_CONFIG",
+      value = jsonencode({
+        DB_FQDN = azurerm_postgresql_flexible_server.this.fqdn
+        DB_NAME = azurerm_postgresql_flexible_server_database.this.name
+        DB_USER = var.db_crud_group_name
+      })
     },
     {
       name  = "ENV"
@@ -108,10 +108,6 @@ module "container_app" {
     {
       name  = "AZURE_CLIENT_ID"
       value = azurerm_user_assigned_identity.container_apps_identity.client_id
-    },
-    {
-      name  = "DB_USER",
-      value = azurerm_user_assigned_identity.container_apps_identity.name
     }
   ])
   secrets = local.secrets
@@ -140,9 +136,21 @@ module "container_app" {
     # https://github.com/microsoft/azure-container-apps/issues/807
     env = concat(local.env_vars, [
       {
-        name        = "DB_URL"
-        secret_name = "db-url"
-      },
+        name        = "DB_CONFIG",
+        secret_name = "db-config"
+      }
+    ])
+
+    secrets = concat(local.secrets, [
+      {
+        name = "db-config",
+        value = jsonencode({
+          DB_FQDN = azurerm_postgresql_flexible_server.this.fqdn
+          DB_NAME = azurerm_postgresql_flexible_server_database.this.name
+          DB_USER = var.admin_login
+          DB_PASS = var.admin_password
+        })
+      }
     ])
   }
 
@@ -181,10 +189,6 @@ module "container_app_tasks" {
     {
       name  = "AZURE_CLIENT_ID"
       value = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
-    },
-    {
-      name  = "DB_USER",
-      value = azurerm_user_assigned_identity.container_apps_tasks_identity.name
     }
   ])
   secrets = local.secrets
