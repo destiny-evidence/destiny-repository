@@ -13,9 +13,12 @@ from jose import jwt
 from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
+from app.core.config import DatabaseConfig, get_settings
 from app.persistence.sql.persistence import Base
-from app.persistence.sql.session import AsyncDatabaseSessionManager, db_manager
+from app.persistence.sql.session import (
+    AsyncDatabaseSessionManager,
+    db_manager,
+)
 from tests.db_utils import alembic_config_from_url, tmp_database
 
 settings = get_settings()
@@ -55,7 +58,7 @@ async def sessionmanager_for_tests(
     migrated_postgres_template: str,
 ) -> AsyncGenerator[AsyncDatabaseSessionManager]:
     """Build shared session manager for tests."""
-    db_manager.init(db_url=migrated_postgres_template)
+    db_manager.init(DatabaseConfig(db_url=migrated_postgres_template))
     # can add another init (redis, etc...)
     yield db_manager
     await db_manager.close()

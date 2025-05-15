@@ -24,7 +24,7 @@ settings = get_settings()
 
 
 if "PYTEST_CURRENT_TEST" not in os.environ:
-    config.set_main_option("sqlalchemy.url", str(settings.db_url))
+    config.set_main_option("sqlalchemy.url", str(settings.db_config.connection_string))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

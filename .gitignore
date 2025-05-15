@@ -186,3 +186,6 @@ cython_debug/
 
 # MinIO presigned URLs
 .minio/presigned_urls.json
+
+tmp-scripts.sh
+infra/app/*.py

@@ -16,7 +16,8 @@ settings = get_settings()
 
 def admin_db_url() -> str:
     """Return a URL to the administrative databse."""
-    base_url = get_settings().db_url
+    base_url = get_settings().db_config.db_url
+    assert base_url, "Database URL is not set"
     db_name = base_url.path
     if db_name:
         return str(base_url).replace(db_name, "/postgres")
@@ -46,8 +47,9 @@ async def tmp_database(
     """Context manager for creating new database and deleting it on exit."""
     tmp_db_name = f"{uuid.uuid4().hex}.tests_base.{suffix}"
     await create_database_async(tmp_db_name, encoding, template)
-    base_db_name = settings.db_url.path or ""
-    tmp_db_url = str(settings.db_url).replace(base_db_name, "/" + tmp_db_name)
+    assert settings.db_config.db_url, "Database URL is not set"
+    base_db_name = settings.db_config.db_url.path or ""
+    tmp_db_url = str(settings.db_config.db_url).replace(base_db_name, "/" + tmp_db_name)
     try:
         yield tmp_db_url
     finally:
