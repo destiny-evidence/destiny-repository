@@ -126,3 +126,9 @@ resource "azurerm_virtual_network_gateway" "vpn_gateway" {
 
   depends_on = [azurerm_public_ip.vpn_gateway, azurerm_subnet.gateway]
 }
+
+resource "azurerm_role_assignment" "vpn_gateway_developers_access" {
+  scope                = azurerm_virtual_network_gateway.vpn_gateway.id
+  role_definition_name = "VPN Users"
+  principal_id         = var.developers_group_id
+}
