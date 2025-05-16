@@ -214,14 +214,13 @@ module "container_app_tasks" {
 }
 
 resource "azurerm_postgresql_flexible_server" "this" {
-  name                = "${local.name}-psqlflexibleserver"
-  resource_group_name = azurerm_resource_group.this.name
-  location            = azurerm_resource_group.this.location
-  version             = "16"
-  # revert-me this is for ease of testing only
-  # delegated_subnet_id           = azurerm_subnet.db.id
-  # private_dns_zone_id           = azurerm_private_dns_zone.db.id
-  public_network_access_enabled = true # temporary for testing
+  name                          = "${local.name}-psqlflexibleserver"
+  resource_group_name           = azurerm_resource_group.this.name
+  location                      = azurerm_resource_group.this.location
+  version                       = "16"
+  delegated_subnet_id           = azurerm_subnet.db.id
+  private_dns_zone_id           = azurerm_private_dns_zone.db.id
+  public_network_access_enabled = false
   administrator_login           = var.admin_login
   administrator_password        = var.admin_password
   zone                          = "1"
@@ -232,14 +231,13 @@ resource "azurerm_postgresql_flexible_server" "this" {
   sku_name = "GP_Standard_D2ds_v4"
 
   authentication {
-    password_auth_enabled         = true # temporary for testing
+    password_auth_enabled         = true # Keeping true for init container, see https://covidence.atlassian.net/wiki/spaces/Platforms/pages/624033793/DESTINY+DB+Authentication
     active_directory_auth_enabled = true
     tenant_id                     = var.azure_tenant_id
   }
 
-  # revert-me this is for ease of testing only
-  # depends_on = [azurerm_private_dns_zone_virtual_network_link.db]
-  tags = local.minimum_resource_tags
+  depends_on = [azurerm_private_dns_zone_virtual_network_link.db]
+  tags       = local.minimum_resource_tags
 }
 
 resource "azurerm_postgresql_flexible_server_database" "this" {
