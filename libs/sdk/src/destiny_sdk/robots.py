@@ -52,11 +52,14 @@ class BatchRobotResult(BaseModel):
     # interface - if it prefers to send results back one-by-one, that's
     # probably still okay? Allows them to distribute the load without
     # worrying about reaggregation.
+    # We'll need to think more about how to handle partial failures, below
+    # I just use a union type.
     request_id: UUID4
-    results: dict[UUID4, RobotResult | RobotError] = Field(
+    storage_url: HttpUrl = Field(
         description="""
-A dictionary of reference IDs to their resulting enhancement or error.
-""",
+The URL at which the set of enhancements are stored. The file is a jsonl
+formatted according to `enhancements/LinkedEnhancementFileInput|RobotError`.
+"""
     )
 
 

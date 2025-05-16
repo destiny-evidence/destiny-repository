@@ -289,7 +289,7 @@ class Enhancement(BaseModel):
 
 
 class EnhancementFileInput(BaseModel):
-    """Enhancement model used to marshall a file input."""
+    """Enhancement model used to marshall a file input to new references."""
 
     source: str = Field(
         description="The enhancement source for tracking provenance.",
@@ -315,4 +315,12 @@ class EnhancementFileInput(BaseModel):
     content: EnhancementContent = Field(
         discriminator="enhancement_type",
         description="The content of the enhancement.",
+    )
+
+
+class LinkedEnhancementFileInput(EnhancementFileInput):
+    """Enhancement model used to marshall a file input to existing references."""
+
+    reference_id: uuid.UUID = Field(
+        description="The ID of the reference this enhancement is associated with."
     )
