@@ -75,8 +75,13 @@ locals {
 
   secrets = [
     {
-      name  = "db-url"
-      value = "postgresql+asyncpg://${var.admin_login}:${var.admin_password}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.this.name}"
+      name = "db-config-init"
+      value = jsonencode({
+        DB_FQDN = azurerm_postgresql_flexible_server.this.fqdn
+        DB_NAME = azurerm_postgresql_flexible_server_database.this.name
+        DB_USER = var.admin_login
+        DB_PASS = var.admin_password
+      })
     },
     {
       name  = "servicebus-connection-string"
@@ -137,19 +142,7 @@ module "container_app" {
     env = concat(local.env_vars, [
       {
         name        = "DB_CONFIG",
-        secret_name = "db-config"
-      }
-    ])
-
-    secrets = concat(local.secrets, [
-      {
-        name = "db-config",
-        value = jsonencode({
-          DB_FQDN = azurerm_postgresql_flexible_server.this.fqdn
-          DB_NAME = azurerm_postgresql_flexible_server_database.this.name
-          DB_USER = var.admin_login
-          DB_PASS = var.admin_password
-        })
+        secret_name = "db-config-init"
       }
     ])
   }
