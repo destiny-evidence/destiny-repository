@@ -35,6 +35,7 @@ services:
       ENV: "dev"
       AZURE_APPLICATION_ID: "dummy"
       AZURE_TENANT_ID: "dummy"
+      APP_NAME: "dummy"
     entrypoint: alembic upgrade head
   repository:
     build:
