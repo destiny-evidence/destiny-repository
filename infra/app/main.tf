@@ -32,10 +32,6 @@ resource "azuread_group_member" "container_apps_tasks_identity_group_member" {
   member_object_id = azurerm_user_assigned_identity.container_apps_tasks_identity.principal_id
 }
 
-resource "azuread_group_member" "delete_me_hack_admin_group_member" {
-  group_object_id  = var.db_admin_group_id
-  member_object_id = "4b09b83a-f139-4d6d-a026-7beaa623d40d"
-}
 
 locals {
   env_vars = [
@@ -75,8 +71,13 @@ locals {
 
   secrets = [
     {
-      name  = "db-url"
-      value = "postgresql+asyncpg://${var.admin_login}:${var.admin_password}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.this.name}"
+      name = "db-config-init-container",
+      value = jsonencode({
+        DB_FQDN = azurerm_postgresql_flexible_server.this.fqdn
+        DB_NAME = azurerm_postgresql_flexible_server_database.this.name
+        DB_USER = var.admin_login
+        DB_PASS = var.admin_password
+      })
     },
     {
       name  = "servicebus-connection-string"
@@ -104,13 +105,8 @@ module "container_app" {
     client_id    = azurerm_user_assigned_identity.container_apps_identity.client_id
   }
 
-  env_vars = concat(local.env_vars, [
-    {
-      name  = "AZURE_CLIENT_ID"
-      value = azurerm_user_assigned_identity.container_apps_identity.client_id
-    }
-  ])
-  secrets = local.secrets
+  env_vars = local.env_vars
+  secrets  = local.secrets
 
   # NOTE: ingress changes will be ignored to avoid messing up manual custom domain config. See https://github.com/hashicorp/terraform-provider-azurerm/issues/21866#issuecomment-1755381572.
   ingress = {
@@ -137,19 +133,7 @@ module "container_app" {
     env = concat(local.env_vars, [
       {
         name        = "DB_CONFIG",
-        secret_name = "db-config"
-      }
-    ])
-
-    secrets = concat(local.secrets, [
-      {
-        name = "db-config",
-        value = jsonencode({
-          DB_FQDN = azurerm_postgresql_flexible_server.this.fqdn
-          DB_NAME = azurerm_postgresql_flexible_server_database.this.name
-          DB_USER = var.admin_login
-          DB_PASS = var.admin_password
-        })
+        secret_name = "db-config-init-container"
       }
     ])
   }
@@ -185,13 +169,8 @@ module "container_app_tasks" {
     client_id    = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
   }
 
-  env_vars = concat(local.env_vars, [
-    {
-      name  = "AZURE_CLIENT_ID"
-      value = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
-    }
-  ])
-  secrets = local.secrets
+  env_vars = local.env_vars
+  secrets  = local.secrets
 
   command = ["taskiq", "worker", "app.tasks:broker", "--fs-discover"]
 
@@ -214,14 +193,13 @@ module "container_app_tasks" {
 }
 
 resource "azurerm_postgresql_flexible_server" "this" {
-  name                = "${local.name}-psqlflexibleserver"
-  resource_group_name = azurerm_resource_group.this.name
-  location            = azurerm_resource_group.this.location
-  version             = "16"
-  # revert-me this is for ease of testing only
-  # delegated_subnet_id           = azurerm_subnet.db.id
-  # private_dns_zone_id           = azurerm_private_dns_zone.db.id
-  public_network_access_enabled = true # temporary for testing
+  name                          = "${local.name}-psqlflexibleserver"
+  resource_group_name           = azurerm_resource_group.this.name
+  location                      = azurerm_resource_group.this.location
+  version                       = "16"
+  delegated_subnet_id           = azurerm_subnet.db.id
+  private_dns_zone_id           = azurerm_private_dns_zone.db.id
+  public_network_access_enabled = false
   administrator_login           = var.admin_login
   administrator_password        = var.admin_password
   zone                          = "1"
@@ -232,14 +210,13 @@ resource "azurerm_postgresql_flexible_server" "this" {
   sku_name = "GP_Standard_D2ds_v4"
 
   authentication {
-    password_auth_enabled         = true # temporary for testing
+    password_auth_enabled         = true # required for init container, see https://covidence.atlassian.net/wiki/spaces/Platforms/pages/624033793/DESTINY+DB+Authentication
     active_directory_auth_enabled = true
     tenant_id                     = var.azure_tenant_id
   }
 
-  # revert-me this is for ease of testing only
-  # depends_on = [azurerm_private_dns_zone_virtual_network_link.db]
-  tags = local.minimum_resource_tags
+  depends_on = [azurerm_private_dns_zone_virtual_network_link.db]
+  tags       = local.minimum_resource_tags
 }
 
 resource "azurerm_postgresql_flexible_server_database" "this" {
@@ -249,9 +226,9 @@ resource "azurerm_postgresql_flexible_server_database" "this" {
   charset   = "UTF8"
 
   # Avoid accidental database deletion
-  # lifecycle {
-  #   prevent_destroy = true
-  # }
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_user_assigned_identity" "pgadmin" {
