@@ -69,4 +69,5 @@ jobs:
           AZURE_APPLICATION_ID: ${{ vars.azure_application_id }}
           AZURE_TENANT_ID: ${{ vars.azure_tenant_id }}
           MESSAGE_BROKER_URL: amqp://guest:guest@localhost:5672
+          APP_NAME: destiny-repository-tests
         run: poetry run pytest
