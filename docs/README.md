@@ -13,7 +13,7 @@ To build the docs:
 ```sh
 poetry install --with docs
 cd docs
-sphinx-build -b html . html
+poetry run sphinx-build -b html . html
 ```
 
 Note: [graphviz](https://www.graphviz.org) is a requirement on the building machine. On my mac I had to do the below before `poetry install --with docs`:
