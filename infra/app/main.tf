@@ -22,12 +22,12 @@ resource "azurerm_user_assigned_identity" "container_apps_tasks_identity" {
   resource_group_name = azurerm_resource_group.this.name
 }
 
-resource "azuread_group_member" "container_apps_identity_group_member" {
+resource "azuread_group_member" "container_app_to_crud" {
   group_object_id  = var.db_crud_group_id
   member_object_id = azurerm_user_assigned_identity.container_apps_identity.principal_id
 }
 
-resource "azuread_group_member" "container_apps_tasks_identity_group_member" {
+resource "azuread_group_member" "container_app_tasks_to_crud" {
   group_object_id  = var.db_crud_group_id
   member_object_id = azurerm_user_assigned_identity.container_apps_tasks_identity.principal_id
 }
