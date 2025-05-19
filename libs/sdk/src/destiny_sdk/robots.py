@@ -48,12 +48,6 @@ class RobotResult(BaseModel):
 class BatchRobotResult(BaseModel):
     """The result of a batch robot request which is returned to the repo."""
 
-    # N.B. I don't know if a robot should be _required_ to use this
-    # interface - if it prefers to send results back one-by-one, that's
-    # probably still okay? Allows them to distribute the load without
-    # worrying about reaggregation.
-    # We'll need to think more about how to handle partial failures, below
-    # I just use a union type.
     request_id: UUID4
     storage_url: HttpUrl = Field(
         description="""
@@ -76,15 +70,19 @@ class RobotRequest(BaseModel):
 class BatchRobotRequest(BaseModel):
     """A batch enhancement request from the repo to a robot."""
 
-    # My focus here is on removing complexity from the robot - the repo
-    # should be able to distill the flexible/generalised request into a
-    # set of specific requests for the robot(s) to handle.
-    # Asking robots to implement endpoints for both single and batch requests
-    # feels overwhelming - maybe references should always be a list and
-    # robots should just handle the batch request?
     id: UUID4
-    references: list[Reference]
-    extra_fields: dict | None
+    storage_url: HttpUrl = Field(
+        description="""
+The URL at which the set of references are stored. The file is a jsonl
+formatted according to `references/Reference`, one reference per line.
+Each reference may have identifiers or enhancements attached, as
+required by the robot.
+"""
+    )
+    extra_fields: dict | None = Field(
+        default=None,
+        description="Extra fields to pass to the robot. TBC.",
+    )
 
 
 class EnhancementRequestStatus(StrEnum):
@@ -141,22 +139,6 @@ class EnhancementRequestRead(_EnhancementRequestBase):
     )
 
 
-class EnhancementRequestFileInput(BaseModel):
-    """Enhancement model used to marshall a file input."""
-
-    reference_id: UUID4 = Field(description="The ID of the reference to be enhanced.")
-    robot_id: UUID4 = Field(
-        description="The robot to be used to create the enhancement."
-    )
-    enhancement_parameters: dict | None = Field(
-        default=None, description="Information needed to create the enhancement. TBC."
-    )
-
-    def to_jsonl(self) -> str:
-        """Convert the model to a JSONL string."""
-        return self.model_dump_json(exclude_none=True)
-
-
 class BatchEnhancementRequestStatus(StrEnum):
     """
     The status of an enhancement request.
@@ -185,28 +167,14 @@ class _BatchEnhancementRequestBase(BaseModel):
     A batch enhancement request is a request to create multiple enhancements.
     """
 
-    # My focus here is on making the request flexible
-    # We can consider putting optional robot_id, reference_id, enhancement_parameters
-    # here that would act as defaults on the file to remove duplication on each line
-    # I've omitted them for now to keep the process generalisable (eg see the two
-    # examples below - an EnhancementRequest doesn't necessarily map to a single
-    # robot)
-
-    # We can also consider allowing a list of EnhancementRequestIn, instead of a
-    # storage_url? (I.e. one or the other).
-    # Requiring a file for _everything_ feels unwieldy. For instance,
-    # a common use case to me might be:
-    #  - create a reference
-    #  - request x enhancements on that reference
-    # Which is an order of magnitude smaller than a use case such as:
-    #  - create a robot
-    #  - request an enhancement on x references
-
-    storage_url: HttpUrl = Field(
-        description="""
-The URL at which the set of enhancement requests are stored. The file is a jsonl
-formatted according to `robots/EnhancementRequestFileInput`.
-"""
+    robot_id: UUID4 = Field(
+        description="The robot to be used to create the enhancements."
+    )
+    reference_ids: list[UUID4] = Field(
+        description="The IDs of the references to be enhanced."
+    )
+    enhancement_parameters: dict | None = Field(
+        default=None, description="Information needed to create the enhancement. TBC."
     )
 
 

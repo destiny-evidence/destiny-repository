@@ -1,5 +1,7 @@
 """Reference classes for the Destiny SDK."""
 
+from typing import Self
+
 from pydantic import UUID4, BaseModel, Field
 
 from .enhancements import Enhancement, EnhancementFileInput
@@ -25,6 +27,15 @@ class Reference(BaseModel):
         default=None,
         description="A list of enhancements for the reference",
     )
+
+    def to_jsonl(self) -> str:
+        """Convert the model to a JSONL string."""
+        return self.model_dump_json(exclude_none=True)
+
+    @classmethod
+    def from_jsonl(cls, jsonl: str) -> Self:
+        """Create a Reference object from a JSONL string."""
+        return cls.model_validate_json(jsonl)
 
 
 class ReferenceFileInput(BaseModel):
