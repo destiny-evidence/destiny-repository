@@ -33,7 +33,7 @@ logger = get_logger()
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Lifespan hook for FastAPI."""
-    db_manager.init(settings.db_config)
+    db_manager.init(settings.db_config, settings.app_name)
     await broker.startup()
 
     yield

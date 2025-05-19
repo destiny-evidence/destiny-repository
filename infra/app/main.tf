@@ -61,7 +61,7 @@ locals {
       value = jsonencode({
         DB_FQDN = azurerm_postgresql_flexible_server.this.fqdn
         DB_NAME = azurerm_postgresql_flexible_server_database.this.name
-        DB_USER = azure_ad_group.db_crud_group.display_name
+        DB_USER = data.azure_ad_group.db_crud_group.display_name
       })
     },
     {
@@ -242,7 +242,7 @@ resource "azurerm_postgresql_flexible_server_database" "this" {
 
 resource "azurerm_user_assigned_identity" "pgadmin" {
   location            = azurerm_resource_group.this.location
-  name                = azuread_group.db_admin_group.display_name
+  name                = data.azuread_group.db_admin_group.display_name
   resource_group_name = azurerm_resource_group.this.name
   tags                = local.minimum_resource_tags
 }
@@ -252,7 +252,7 @@ resource "azurerm_postgresql_flexible_server_active_directory_administrator" "ad
   resource_group_name = azurerm_resource_group.this.name
   tenant_id           = var.azure_tenant_id
   object_id           = var.db_admin_group_id
-  principal_name      = azuread_group.db_admin_group.display_name
+  principal_name      = data.azuread_group.db_admin_group.display_name
   principal_type      = "Group"
 }
 

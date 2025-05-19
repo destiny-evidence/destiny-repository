@@ -92,6 +92,7 @@ class Settings(BaseSettings):
     message_broker_namespace: str | None = None
     message_broker_queue_name: str = "taskiq"
     cli_client_id: str | None = None
+    app_name: str
 
     # Temporary robot configuration, replace with db table later.
     known_robots: dict[UUID4, HttpUrl] = Field(

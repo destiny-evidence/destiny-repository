@@ -33,9 +33,13 @@ class AsyncDatabaseSessionManager:
         self._sessionmaker: async_sessionmaker[AsyncSession] | None = None
         self._azure_credentials = DefaultAzureCredential()
 
-    def init(self, db_config: DatabaseConfig) -> None:
+    def init(self, db_config: DatabaseConfig, app_name: str) -> None:
         """Initialize the database manager."""
-        connect_args: dict[str, Any] = {}
+        connect_args: dict[str, Any] = {
+            "server_settings": {
+                "application_name": app_name,
+            },
+        }
         self._engine = create_async_engine(
             url=db_config.connection_string,
             pool_pre_ping=True,

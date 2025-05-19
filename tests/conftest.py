@@ -58,7 +58,7 @@ async def sessionmanager_for_tests(
     migrated_postgres_template: str,
 ) -> AsyncGenerator[AsyncDatabaseSessionManager]:
     """Build shared session manager for tests."""
-    db_manager.init(DatabaseConfig(db_url=migrated_postgres_template))
+    db_manager.init(DatabaseConfig(db_url=migrated_postgres_template), "test")
     # can add another init (redis, etc...)
     yield db_manager
     await db_manager.close()
