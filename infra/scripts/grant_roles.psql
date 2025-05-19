@@ -1,0 +1,17 @@
+-- Run manually by a database administrator on database provisioning.
+-- Can be adapted to create new roles.
+-- Must be run from `postgres` database.
+
+-- Grant read-only access
+SELECT * FROM pgaadauth_create_principal('destiny-repository-development-db-readonly', false, true);
+GRANT CONNECT ON DATABASE "destiny-repository-development-db" TO "destiny-repository-development-db-readonly";
+GRANT USAGE ON SCHEMA public TO "destiny-repository-development-db-readonly";
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO "destiny-repository-development-db-readonly";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO "destiny-repository-development-db-readonly";
+
+-- Grant CRUD access
+SELECT * FROM pgaadauth_create_principal('destiny-repository-development-db-crud', false, true);
+GRANT CONNECT ON DATABASE "destiny-repository-development-db" TO "destiny-repository-development-db-crud";
+GRANT USAGE ON SCHEMA public TO "destiny-repository-development-db-crud";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "destiny-repository-development-db-crud";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "destiny-repository-development-db-crud";

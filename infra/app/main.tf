@@ -22,6 +22,26 @@ resource "azurerm_user_assigned_identity" "container_apps_tasks_identity" {
   resource_group_name = azurerm_resource_group.this.name
 }
 
+
+data "azuread_group" "db_crud_group" {
+  object_id = var.db_crud_group_id
+}
+
+data "azuread_group" "db_admin_group" {
+  object_id = var.db_admin_group_id
+}
+
+resource "azuread_group_member" "container_app_to_crud" {
+  group_object_id  = var.db_crud_group_id
+  member_object_id = azurerm_user_assigned_identity.container_apps_identity.principal_id
+}
+
+resource "azuread_group_member" "container_app_tasks_to_crud" {
+  group_object_id  = var.db_crud_group_id
+  member_object_id = azurerm_user_assigned_identity.container_apps_tasks_identity.principal_id
+}
+
+
 locals {
   env_vars = [
     {
@@ -37,8 +57,12 @@ locals {
       value = var.azure_tenant_id
     },
     {
-      name        = "DB_URL"
-      secret_name = "db-url"
+      name = "DB_CONFIG",
+      value = jsonencode({
+        DB_FQDN = azurerm_postgresql_flexible_server.this.fqdn
+        DB_NAME = azurerm_postgresql_flexible_server_database.this.name
+        DB_USER = data.azuread_group.db_crud_group.display_name
+      })
     },
     {
       name  = "ENV"
@@ -56,13 +80,18 @@ locals {
 
   secrets = [
     {
-      name  = "db-url"
-      value = "postgresql+asyncpg://${var.admin_login}:${var.admin_password}@${azurerm_postgresql_flexible_server.this.fqdn}:5432/${azurerm_postgresql_flexible_server_database.this.name}"
+      name = "db-config-init-container",
+      value = jsonencode({
+        DB_FQDN = azurerm_postgresql_flexible_server.this.fqdn
+        DB_NAME = azurerm_postgresql_flexible_server_database.this.name
+        DB_USER = var.admin_login
+        DB_PASS = var.admin_password
+      })
     },
     {
       name  = "servicebus-connection-string"
       value = azurerm_servicebus_namespace.this.default_primary_connection_string
-    }
+    },
   ]
 }
 
@@ -106,7 +135,16 @@ module "container_app" {
     command = ["alembic", "upgrade", "head"]
     cpu     = 0.5
     memory  = "1Gi"
-    env     = local.env_vars
+
+    # Init containers don't support managed identities so this is our last bastion
+    # of passworded auth.
+    # https://github.com/microsoft/azure-container-apps/issues/807
+    env = concat(local.env_vars, [
+      {
+        name        = "DB_CONFIG",
+        secret_name = "db-config-init-container"
+      }
+    ])
   }
 
   custom_scale_rules = [
@@ -140,8 +178,13 @@ module "container_app_tasks" {
     client_id    = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
   }
 
-  env_vars = local.env_vars
-  secrets  = local.secrets
+  env_vars = concat(local.env_vars, [
+    {
+      name  = "APP_NAME"
+      value = "${var.app_name}-task"
+    },
+  ])
+  secrets = local.secrets
 
   command = ["taskiq", "worker", "app.tasks:broker", "--fs-discover"]
 
@@ -181,8 +224,9 @@ resource "azurerm_postgresql_flexible_server" "this" {
   sku_name = "GP_Standard_D2ds_v4"
 
   authentication {
-    # We'll want to update this to use Entra ID & managed identities for access
-    password_auth_enabled = true
+    password_auth_enabled         = true # required for init container, see https://covidence.atlassian.net/wiki/spaces/Platforms/pages/624033793/DESTINY+DB+Authentication
+    active_directory_auth_enabled = true
+    tenant_id                     = var.azure_tenant_id
   }
 
   depends_on = [azurerm_private_dns_zone_virtual_network_link.db]
@@ -199,6 +243,22 @@ resource "azurerm_postgresql_flexible_server_database" "this" {
   lifecycle {
     prevent_destroy = true
   }
+}
+
+resource "azurerm_user_assigned_identity" "pgadmin" {
+  location            = azurerm_resource_group.this.location
+  name                = data.azuread_group.db_admin_group.display_name
+  resource_group_name = azurerm_resource_group.this.name
+  tags                = local.minimum_resource_tags
+}
+
+resource "azurerm_postgresql_flexible_server_active_directory_administrator" "admin" {
+  server_name         = azurerm_postgresql_flexible_server.this.name
+  resource_group_name = azurerm_resource_group.this.name
+  tenant_id           = var.azure_tenant_id
+  object_id           = var.db_admin_group_id
+  principal_name      = data.azuread_group.db_admin_group.display_name
+  principal_type      = "Group"
 }
 
 resource "azurerm_servicebus_namespace" "this" {

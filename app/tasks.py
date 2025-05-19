@@ -23,7 +23,7 @@ elif settings.env == "test":
 @broker.on_event(TaskiqEvents.WORKER_STARTUP)
 async def startup(_state: TaskiqState) -> None:
     """Initialize the database when the worker is ready."""
-    db_manager.init(str(settings.db_url))
+    db_manager.init(settings.db_config, settings.app_name)
 
 
 @broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)

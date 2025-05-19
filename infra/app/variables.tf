@@ -69,6 +69,16 @@ variable "developers_group_id" {
   description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs"
 }
 
+variable "db_crud_group_id" {
+  type        = string
+  description = "Id of a group to assign DB crud access to. Not exclusive to other DB groups."
+}
+
+variable "db_admin_group_id" {
+  type        = string
+  description = "Id of a group to assign DB admin access to. Not exclusive to other DB groups."
+}
+
 variable "environment" {
   description = "The name of the environment this stack is being deployed to"
   type        = string
