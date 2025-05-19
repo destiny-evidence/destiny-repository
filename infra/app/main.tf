@@ -178,8 +178,13 @@ module "container_app_tasks" {
     client_id    = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
   }
 
-  env_vars = local.env_vars
-  secrets  = local.secrets
+  env_vars = concat(local.env_vars, [
+    {
+      name  = "APP_NAME"
+      value = "${var.app_name}-task"
+    },
+  ])
+  secrets = local.secrets
 
   command = ["taskiq", "worker", "app.tasks:broker", "--fs-discover"]
 
