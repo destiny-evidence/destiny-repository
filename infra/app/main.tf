@@ -22,6 +22,15 @@ resource "azurerm_user_assigned_identity" "container_apps_tasks_identity" {
   resource_group_name = azurerm_resource_group.this.name
 }
 
+
+data "azuread_group" "db_crud_group" {
+  object_id = var.db_crud_group_id
+}
+
+data "azuread_group" "db_admin_group" {
+  object_id = var.db_admin_group_id
+}
+
 resource "azuread_group_member" "container_app_to_crud" {
   group_object_id  = var.db_crud_group_id
   member_object_id = azurerm_user_assigned_identity.container_apps_identity.principal_id
@@ -52,7 +61,7 @@ locals {
       value = jsonencode({
         DB_FQDN = azurerm_postgresql_flexible_server.this.fqdn
         DB_NAME = azurerm_postgresql_flexible_server_database.this.name
-        DB_USER = var.db_crud_group_name
+        DB_USER = azure_ad_group.db_crud_group.display_name
       })
     },
     {
@@ -233,7 +242,7 @@ resource "azurerm_postgresql_flexible_server_database" "this" {
 
 resource "azurerm_user_assigned_identity" "pgadmin" {
   location            = azurerm_resource_group.this.location
-  name                = var.db_admin_group_name
+  name                = azuread_group.db_admin_group.display_name
   resource_group_name = azurerm_resource_group.this.name
   tags                = local.minimum_resource_tags
 }
@@ -243,7 +252,7 @@ resource "azurerm_postgresql_flexible_server_active_directory_administrator" "ad
   resource_group_name = azurerm_resource_group.this.name
   tenant_id           = var.azure_tenant_id
   object_id           = var.db_admin_group_id
-  principal_name      = var.db_admin_group_name
+  principal_name      = azuread_group.db_admin_group.display_name
   principal_type      = "Group"
 }
 

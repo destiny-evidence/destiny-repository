@@ -74,21 +74,10 @@ variable "db_crud_group_id" {
   description = "Id of a group to assign DB crud access to. Not exclusive to other DB groups."
 }
 
-variable "db_crud_group_name" {
-  type        = string
-  description = "Name of a group to assign DB admin access to. Not exclusive to other DB groups."
-}
-
 variable "db_admin_group_id" {
   type        = string
   description = "Id of a group to assign DB admin access to. Not exclusive to other DB groups."
 }
-
-variable "db_admin_group_name" {
-  type        = string
-  description = "Name of a group to assign DB admin access to. Not exclusive to other DB groups."
-}
-
 
 variable "environment" {
   description = "The name of the environment this stack is being deployed to"
