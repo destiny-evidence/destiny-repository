@@ -61,7 +61,7 @@ locals {
       value = jsonencode({
         DB_FQDN = azurerm_postgresql_flexible_server.this.fqdn
         DB_NAME = azurerm_postgresql_flexible_server_database.this.name
-        DB_USER = data.azure_ad_group.db_crud_group.display_name
+        DB_USER = data.azuread_group.db_crud_group.display_name
       })
     },
     {
