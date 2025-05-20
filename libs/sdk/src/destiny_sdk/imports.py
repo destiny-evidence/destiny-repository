@@ -164,7 +164,8 @@ Default is `fail`, which allows the importing process to "follow up" on the coll
     storage_url: HttpUrl = Field(
         description="""
 The URL at which the set of references for this batch are stored. The file is a jsonl
-formatted according to `references/ReferenceFileInput`.
+with each line formatted according to
+:class:`ReferenceFileInput <libs.sdk.src.destiny_sdk.references.ReferenceFileInput>`.
     """,
     )
     callback_url: HttpUrl | None = Field(

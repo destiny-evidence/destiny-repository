@@ -5,12 +5,22 @@ from typing import Annotated, Self
 
 from pydantic import UUID4, BaseModel, Field, HttpUrl, model_validator
 
+from destiny_sdk.core import _JsonlFileInputMixIn
 from destiny_sdk.enhancements import Enhancement
 from destiny_sdk.references import Reference
 
 
 class RobotError(BaseModel):
     """A record of something going wrong with the robot."""
+
+
+class LinkedRobotError(_JsonlFileInputMixIn, BaseModel):
+    """
+    A record of something going wrong when processing an individual reference.
+
+    Used in results for batch requests - in single requests, the reference
+    id is derived from the request id.
+    """
 
     message: Annotated[
         str,
@@ -20,6 +30,10 @@ Message which describes the error encountered during processing
 """
         ),
     ]
+
+    reference_id: UUID4 = Field(
+        description="The ID of the reference which caused the error."
+    )
 
 
 class RobotResult(BaseModel):
@@ -46,14 +60,18 @@ class RobotResult(BaseModel):
 
 
 class BatchRobotResult(BaseModel):
-    """The result of a batch robot request which is returned to the repo."""
+    """Used to indicate to the repository that the robot has finished processing."""
 
     request_id: UUID4
     storage_url: HttpUrl = Field(
         description="""
-The URL at which the set of enhancements are stored. The file is a jsonl
-formatted according to `enhancements/LinkedEnhancementFileInput|RobotError`.
-"""
+The URL at which the set of enhancements are stored. The file is to be a jsonl
+with each line formatted according to
+:class:`Enhancement <libs.sdk.src.destiny_sdk.enhancements.Enhancement>` or
+:class:`LinkedRobotError <libs.sdk.src.destiny_sdk.robots.LinkedRobotError>`.
+This should match the corresponding
+:attr:`BatchRobotRequest.result_storage_url <libs.sdk.src.destiny_sdk.robots.BatchRobotRequest.result_storage_url>`.
+"""  # noqa: E501
     )
 
 
@@ -71,12 +89,22 @@ class BatchRobotRequest(BaseModel):
     """A batch enhancement request from the repo to a robot."""
 
     id: UUID4
-    storage_url: HttpUrl = Field(
+    reference_storage_url: HttpUrl = Field(
         description="""
 The URL at which the set of references are stored. The file is a jsonl
-formatted according to `references/Reference`, one reference per line.
+with each line formatted according to
+:class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>`.
+, one reference per line.
 Each reference may have identifiers or enhancements attached, as
 required by the robot.
+"""
+    )
+    result_storage_url: HttpUrl = Field(
+        description="""
+The URL at which the set of enhancements are to be stored. The file is to be a jsonl
+with each line formatted according to
+:class:`Enhancement <libs.sdk.src.destiny_sdk.enhancements.Enhancement>` or
+:class:`LinkedRobotError <libs.sdk.src.destiny_sdk.robots.LinkedRobotError>`.
 """
     )
     extra_fields: dict | None = Field(
@@ -172,9 +200,6 @@ class _BatchEnhancementRequestBase(BaseModel):
     )
     reference_ids: list[UUID4] = Field(
         description="The IDs of the references to be enhanced."
-    )
-    enhancement_parameters: dict | None = Field(
-        default=None, description="Information needed to create the enhancement. TBC."
     )
 
 

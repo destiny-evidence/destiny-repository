@@ -6,7 +6,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, HttpUrl, PastDate
 
-from .visibility import Visibility
+from destiny_sdk.core import _JsonlFileInputMixIn
+from destiny_sdk.visibility import Visibility
 
 
 class EnhancementType(StrEnum):
@@ -256,7 +257,7 @@ EnhancementContent = Annotated[
 ]
 
 
-class Enhancement(BaseModel):
+class Enhancement(_JsonlFileInputMixIn, BaseModel):
     """Core enhancement class."""
 
     reference_id: uuid.UUID = Field(
@@ -315,12 +316,4 @@ class EnhancementFileInput(BaseModel):
     content: EnhancementContent = Field(
         discriminator="enhancement_type",
         description="The content of the enhancement.",
-    )
-
-
-class LinkedEnhancementFileInput(EnhancementFileInput):
-    """Enhancement model used to marshall a file input to existing references."""
-
-    reference_id: uuid.UUID = Field(
-        description="The ID of the reference this enhancement is associated with."
     )
