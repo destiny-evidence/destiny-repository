@@ -27,14 +27,44 @@ security = HTTPBearer(auto_error=False)
 
 
 class AuthException(HTTPException):
-    """An exception related to HTTP authentication."""
+    """
+    An exception related to HTTP authentication.
+
+    Raised by implementations of the AuthMethod protocol.
+
+    ## Example
+
+    ```python
+    raise AuthException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to parse authentication token.",
+            )
+    ```
+    """
 
 
 class AuthMethod(Protocol):
-    """Protocol for auth methods."""
+    """
 
-    # This allows FastAPI to call instances of this class as dependencies in
-    # FastAPI routes.  See https://fastapi.tiangolo.com/advanced/advanced-dependencies
+    Protocol for auth methods, enforcing the implmentation of __call__().
+
+    Inherit from this class when adding an auth implementation.
+
+    This allows FastAPI to call class instances as depenedencies in FastAPI routes,
+    see https://fastapi.tiangolo.com/advanced/advanced-dependencies
+
+    ## Example
+
+    ```python
+
+    auth = AuthMethod()
+
+    router = APIRouter(
+        prefix="/imports", tags=["imports"], dependencies=[Depends(auth)]
+    )
+    ```
+    """
+
     async def __call__(
         self,
         credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
@@ -51,7 +81,29 @@ class AuthMethod(Protocol):
 
 
 class StrategyAuth(AuthMethod):
-    """A meta-auth method which chooses the auth method at runtime."""
+    """
+    A meta-auth method which chooses the auth method at runtime.
+
+    Calls the auth strategy selector every time the dependency is invoked.
+
+    ## Example
+
+    ```python
+
+    def auth_strategy():
+        return AzureJwtAuth(
+            tenant_id=settings.tenant_id,
+            application_id=settings.application_id,
+            scope=AuthScopes.READ,
+        )
+
+    strategy_auth = StrategyAuth(selector=auth_strategy)
+
+    router = APIRouter(
+        prefix="/imports", tags=["imports"], dependencies=[Depends(strategy_auth)]
+    )
+    ```
+    """
 
     _selector: Callable[[], AuthMethod]
 
@@ -81,7 +133,28 @@ class StrategyAuth(AuthMethod):
 
 
 class CachingStrategyAuth(StrategyAuth):
-    """A subclass of StrategyAuth which caches the selected strategy across calls."""
+    """
+    A subclass of StrategyAuth which caches the selected strategy across calls.
+
+    ## Example
+
+    ```python
+
+    def auth_strategy():
+        return AzureJwtAuth(
+            tenant_id=settings.tenant_id,
+            application_id=settings.application_id,
+            scope=AuthScopes.READ,
+        )
+
+    caching_auth = CachingStrategyAuth(selector=auth_strategy)
+
+    router = APIRouter(
+        prefix="/imports", tags=["imports"], dependencies=[Depends(caching_auth)]
+    )
+    ```
+
+    """
 
     _cached_strategy: AuthMethod | None
 
@@ -104,12 +177,44 @@ class CachingStrategyAuth(StrategyAuth):
         return self._cached_strategy
 
     def reset(self) -> None:
-        """Reset the cached strategy so it is fetch at next call."""
+        """Reset the cached strategy so it is fetched at next call."""
         self._cached_strategy = None
 
 
 class AzureJwtAuth(AuthMethod):
-    """Dependency for authorizing requests using the JWT provided by Azure."""
+    """
+    AuthMethod for authorizing requests using the JWT provided by Azure.
+
+    When using AzureJwtAuth implement your auth scopes as a StrEnum
+
+    To use AzureJwtAuth you will need to have an Entra Id application registration
+    with app roles configured for your auth scopes.
+
+    Any client communicating with your robot requires assignment to the app role
+    that matches the auth scope it wishes to use. Azure will provide these scopes
+    back in the JWT.
+
+    ## Example
+
+    ```python
+
+    class AuthScopes(StrEnum):
+        READ = "read"
+
+    def auth_strategy():
+        return AzureJwtAuth(
+            tenant_id=settings.tenant_id,
+            application_id=settings.application_id,
+            scope=AuthScopes.READ,
+        )
+
+    caching_auth = CachingStrategyAuth(selector=auth_strategy)
+
+    router = APIRouter(
+        prefix="/imports", tags=["imports"], dependencies=[Depends(caching_auth)]
+    )
+    ```
+    """
 
     def __init__(
         self,
@@ -238,7 +343,13 @@ class AzureJwtAuth(AuthMethod):
 
 
 class SuccessAuth(AuthMethod):
-    """A fake auth class that will always respond successfully."""
+    """
+    A fake auth class that will always respond successfully.
+
+    Intended for use in local environments and for testing.
+
+    Not for production use!
+    """
 
     _succeed: bool
 
