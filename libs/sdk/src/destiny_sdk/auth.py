@@ -1,7 +1,7 @@
 """Authentication assistance methods."""
 
 from collections.abc import Callable
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated, Any, Protocol
 
 from cachetools import TTLCache
@@ -20,16 +20,6 @@ security = HTTPBearer(auto_error=False)
 
 class AuthException(HTTPException):
     """An exception related to HTTP authentication."""
-
-
-class AuthScopes(Enum):
-    """Enum describing the available auth scopes that we understand."""
-
-    READ_ALL = "read.all"
-    IMPORT = "import"
-    REFERENCE_READER = "reference.reader"
-    REFERENCE_WRITER = "reference.writer"
-    ROBOT = "robot"
 
 
 class AuthMethod(Protocol):
@@ -117,7 +107,7 @@ class AzureJwtAuth(AuthMethod):
         self,
         tenant_id: str,
         application_id: str,
-        scope: AuthScopes,
+        scope: StrEnum,
         cache_ttl: int = 60 * 60 * 24,
     ) -> None:
         """
@@ -126,7 +116,7 @@ class AzureJwtAuth(AuthMethod):
         Args:
         tenant_id (str): The Azure AD tenant ID
         application_id (str): The Azure AD application ID
-        scope (AuthScopes): The authorization scope for the API
+        scope (StrEnum): The authorization scope for the API
         cache_ttl (int): Time to live for cache entries, defaults to 24 hours.
 
         """
@@ -209,7 +199,7 @@ class AzureJwtAuth(AuthMethod):
             return response.json()
 
     def _require_scope(
-        self, required_scope: AuthScopes, verified_claims: dict[str, Any]
+        self, required_scope: StrEnum, verified_claims: dict[str, Any]
     ) -> bool:
         if verified_claims.get("roles"):
             for scope in verified_claims["roles"]:

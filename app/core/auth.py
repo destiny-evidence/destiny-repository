@@ -1,8 +1,9 @@
 """Tools for authorising requests."""
 
+from enum import StrEnum
 from typing import Annotated
 
-from destiny_sdk.auth import AuthMethod, AuthScopes, AzureJwtAuth
+from destiny_sdk.auth import AuthMethod, AzureJwtAuth
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -19,6 +20,16 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 security = HTTPBearer(auto_error=False)
 
 CACHE_TTL = 60 * 60 * 24  # 24 hours
+
+
+class AuthScopes(StrEnum):
+    """Enum describing the available auth scopes that we understand."""
+
+    READ_ALL = "read.all"
+    IMPORT = "import"
+    REFERENCE_READER = "reference.reader"
+    REFERENCE_WRITER = "reference.writer"
+    ROBOT = "robot"
 
 
 def choose_auth_strategy(
