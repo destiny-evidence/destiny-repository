@@ -11,8 +11,10 @@ readme = "README.md"
 version = "0.1.0"
 
 [tool.poetry.dependencies]
+fastapi = "^0.115.12"
 pydantic = "^2.11.3"
 python = "^3.12"
+python-jose = "^3.4.0"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.15.0"

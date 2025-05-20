@@ -9,10 +9,6 @@ class CustomHTTPException(HTTPException):
     """An HTTPException which is defined in our App."""
 
 
-class AuthException(CustomHTTPException):
-    """An exception related to HTTP authentication."""
-
-
 class MessageBrokerError(Exception):
     """An exception thrown in a message broker."""
 

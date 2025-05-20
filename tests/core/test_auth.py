@@ -5,17 +5,12 @@ from collections.abc import Callable
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from destiny_sdk.auth import AuthMethod, AuthScopes, AzureJwtAuth, StrategyAuth
 from fastapi import HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
 from pytest_httpx import HTTPXMock
 
-from app.core.auth import (
-    AuthMethod,
-    AuthScopes,
-    AzureJwtAuth,
-    StrategyAuth,
-    SuccessAuth,
-)
+from app.core.auth import SuccessAuth
 
 
 @pytest.fixture
