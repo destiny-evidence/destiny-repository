@@ -1,4 +1,12 @@
-"""Authentication assistance methods."""
+"""
+Authentication assistance methods.
+
+This module is based on the following references:
+* https://learn.microsoft.com/en-us/entra/identity-platform/access-tokens#validate-tokens
+* https://learn.microsoft.com/en-us/entra/identity-platform/claims-validation
+* https://github.com/Azure-Samples/ms-identity-python-webapi-azurefunctions/blob/master/Function/secureFlaskApp/__init__.py
+* https://github.com/425show/fastapi_microsoft_identity/blob/main/fastapi_microsoft_identity/auth_service.py
+"""
 
 from collections.abc import Callable
 from enum import StrEnum
@@ -227,3 +235,22 @@ class AzureJwtAuth(AuthMethod):
             )
         verified_claims = await self.verify_token(credentials.credentials)
         return self._require_scope(self.scope, verified_claims)
+
+
+class SuccessAuth(AuthMethod):
+    """A fake auth class that will always respond successfully."""
+
+    _succeed: bool
+
+    def __init__(self) -> None:
+        """Initialize the fake auth callable."""
+
+    async def __call__(
+        self,
+        credentials: Annotated[  # noqa: ARG002
+            HTTPAuthorizationCredentials | None,
+            Depends(security),
+        ],
+    ) -> bool:
+        """Return true."""
+        return True
