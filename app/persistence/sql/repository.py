@@ -5,6 +5,7 @@ from abc import ABC
 from typing import Generic
 
 from pydantic import UUID4
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -75,6 +76,34 @@ class GenericAsyncSqlRepository(
             )
 
         return await result.to_domain(preload=preload)
+
+    async def verify_pk_existence(self, pks: list[UUID4]) -> None:
+        """
+        Check if every pk exists in the database.
+
+        Args:
+            pks (list[UUID4]): List of primary keys to check.
+
+        Raises:
+            SQLNotFoundError: If any of the references do not exist.
+
+        """
+        query = select(self._persistence_cls).where(self._persistence_cls.id.in_(pks))
+        result = await self._session.execute(query)
+        db_references = result.scalars().all()
+
+        if len(db_references) != len(pks):
+            missing_pks = set(pks) - {ref.id for ref in db_references}
+            detail = (
+                f"Unable to find {self._persistence_cls.__name__}"
+                f" with pks {missing_pks}"
+            )
+            raise SQLNotFoundError(
+                detail=detail,
+                lookup_model=self._persistence_cls.__name__,
+                lookup_type="id",
+                lookup_value=missing_pks,
+            )
 
     async def update_by_pk(self, pk: UUID4, **kwargs: object) -> GenericDomainModelType:
         """

@@ -13,15 +13,6 @@ from destiny_sdk.references import Reference
 class RobotError(BaseModel):
     """A record of something going wrong with the robot."""
 
-
-class LinkedRobotError(_JsonlFileInputMixIn, BaseModel):
-    """
-    A record of something going wrong when processing an individual reference.
-
-    Used in results for batch requests - in single requests, the reference
-    id is derived from the request id.
-    """
-
     message: Annotated[
         str,
         Field(
@@ -30,6 +21,15 @@ Message which describes the error encountered during processing
 """
         ),
     ]
+
+
+class LinkedRobotError(_JsonlFileInputMixIn, RobotError):
+    """
+    A record of something going wrong when processing an individual reference.
+
+    Used in results for batch requests - in single requests, the reference
+    id is derived from the request id.
+    """
 
     reference_id: UUID4 = Field(
         description="The ID of the reference which caused the error."

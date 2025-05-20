@@ -11,7 +11,9 @@ from app.domain.imports.repository import (
     ImportResultRepositoryBase,
 )
 from app.domain.references.repository import (
+    BatchEnhancementRequestRepositoryBase,
     EnhancementRepositoryBase,
+    EnhancementRequestRepositoryBase,
     ExternalIdentifierRepositoryBase,
     ReferenceRepositoryBase,
 )
@@ -27,6 +29,8 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
     references: ReferenceRepositoryBase
     external_identifiers: ExternalIdentifierRepositoryBase
     enhancements: EnhancementRepositoryBase
+    enhancement_requests: EnhancementRequestRepositoryBase
+    batch_enhancement_requests: BatchEnhancementRequestRepositoryBase
 
     _protected_attrs: Final[set[str]] = {
         "imports",

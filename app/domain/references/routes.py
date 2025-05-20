@@ -14,19 +14,25 @@ from app.core.auth import (
     choose_auth_strategy,
 )
 from app.core.config import get_settings
+from app.core.logger import get_logger
 from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
+    BatchEnhancementRequest,
     Enhancement,
     EnhancementRequest,
     ExternalIdentifierSearch,
 )
 from app.domain.references.reference_service import ReferenceService
+from app.domain.references.tasks import (
+    collect_and_dispatch_references_for_batch_enhancement,
+)
 from app.domain.robots.models import Robots
 from app.domain.robots.service import RobotService
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 settings = get_settings()
+logger = get_logger()
 
 
 def unit_of_work(
@@ -167,7 +173,7 @@ async def add_identifier(
 
 
 @router.post(
-    "/enhancement/",
+    "/enhancement/single/",
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(reference_writer_auth)],
 )
@@ -185,8 +191,37 @@ async def request_enhancement(
     return enhancement_request.to_sdk()
 
 
+@router.post(
+    "/enhancement/batch/",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(reference_writer_auth)],
+)
+async def request_batch_enhancement(
+    enhancement_request_in: destiny_sdk.robots.BatchEnhancementRequestIn,
+    enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
+) -> destiny_sdk.robots.BatchEnhancementRequestRead:
+    """Request the creation of an enhancement against a provided reference id."""
+    enhancement_request = (
+        await enhancement_service.register_batch_reference_enhancement_request(
+            enhancement_request=BatchEnhancementRequest.from_sdk(
+                enhancement_request_in
+            ),
+        )
+    )
+
+    logger.info(
+        "Enqueueing enhancement batch",
+        extra={"batch_enhancement_request_id": enhancement_request.id},
+    )
+    await collect_and_dispatch_references_for_batch_enhancement.kiq(
+        batch_enhancement_request_id=enhancement_request.id,
+    )
+
+    return enhancement_request.to_sdk()
+
+
 @router.get(
-    "/enhancement/request/{enhancement_request_id}/",
+    "/enhancement/single/request/{enhancement_request_id}/",
     dependencies=[Depends(reference_writer_auth)],
 )
 async def check_enhancement_request_status(
@@ -203,7 +238,7 @@ async def check_enhancement_request_status(
     return enhancement_request.to_sdk()
 
 
-@robot_router.post("/enhancement/", status_code=status.HTTP_200_OK)
+@robot_router.post("/enhancement/single/", status_code=status.HTTP_200_OK)
 async def fulfill_enhancement_request(
     robot_result: destiny_sdk.robots.RobotResult,
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],

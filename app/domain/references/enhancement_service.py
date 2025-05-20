@@ -8,6 +8,7 @@ from app.core.exceptions import (
     WrongReferenceError,
 )
 from app.domain.references.models.models import (
+    BatchEnhancementRequest,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
@@ -80,12 +81,36 @@ class EnhancementService(GenericService):
         )
 
     @unit_of_work
+    async def register_batch_reference_enhancement_request(
+        self,
+        enhancement_request: BatchEnhancementRequest,
+    ) -> BatchEnhancementRequest:
+        """Create a batch enhancement request."""
+        await self.sql_uow.references.verify_pk_existence(
+            enhancement_request.reference_ids
+        )
+
+        # Add any extra parameters here!
+
+        return await self.sql_uow.batch_enhancement_requests.add(enhancement_request)
+
+    @unit_of_work
     async def get_enhancement_request(
         self,
         enhancement_request_id: UUID4,
     ) -> EnhancementRequest:
         """Get an enhancement request by request id."""
         return await self._get_enhancement_request(enhancement_request_id)
+
+    @unit_of_work
+    async def get_batch_enhancement_request(
+        self,
+        batch_enhancement_request_id: UUID4,
+    ) -> BatchEnhancementRequest:
+        """Get a batch enhancement request by request id."""
+        return await self.sql_uow.batch_enhancement_requests.get_by_pk(
+            batch_enhancement_request_id
+        )
 
     @unit_of_work
     async def create_reference_enhancement(

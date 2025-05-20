@@ -10,10 +10,12 @@ from app.core.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
     EnhancementParseResult,
+    EnhancementType,
     ExternalIdentifier,
     ExternalIdentifierAdapter,
     ExternalIdentifierParseResult,
     ExternalIdentifierSearch,
+    ExternalIdentifierType,
     GenericExternalIdentifier,
     LinkedExternalIdentifier,
     Reference,
@@ -39,6 +41,29 @@ class ReferenceService(GenericService):
         """Get a single reference by id."""
         return await self.sql_uow.references.get_by_pk(
             reference_id, preload=["identifiers", "enhancements"]
+        )
+
+    @unit_of_work
+    async def get_hydrated_references(
+        self,
+        reference_ids: list[UUID4],
+        enhancement_types: list[EnhancementType] | None = None,
+        external_identifier_types: list[ExternalIdentifierType] | None = None,
+    ) -> list[Reference]:
+        """Get a list of references with enhancements and identifiers by id."""
+        return await self.sql_uow.references.get_hydrated(
+            reference_ids,
+            enhancement_types=[
+                enhancement_type.value for enhancement_type in enhancement_types
+            ]
+            if enhancement_types
+            else None,
+            external_identifier_types=[
+                external_identifier_type.value
+                for external_identifier_type in external_identifier_types
+            ]
+            if external_identifier_types
+            else None,
         )
 
     @unit_of_work

@@ -16,6 +16,7 @@ from pydantic import (
     ValidationError,
 )
 
+from app.core.azure_blob_storage import AzureBlobStorageFile
 from app.core.exceptions import SDKToDomainError
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 
@@ -39,6 +40,27 @@ class EnhancementRequestStatus(StrEnum):
     RECEIVED = "received"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
+    FAILED = "failed"
+    COMPLETED = "completed"
+
+
+class BatchEnhancementRequestStatus(StrEnum):
+    """
+    The status of an enhancement request.
+
+    **Allowed values**:
+    - `received`: Enhancement request has been received.
+    - `accepted`: Enhancement request has been accepted.
+    - `rejected`: Enhancement request has been rejected.
+    - `partial_failed`: Some enhancements failed to create.
+    - `failed`: All enhancements failed to create.
+    - `completed`: All enhancements have been created.
+    """
+
+    RECEIVED = "received"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    PARTIAL_FAILED = "partial_failed"
     FAILED = "failed"
     COMPLETED = "completed"
 
@@ -317,6 +339,63 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
         """Convert the enhancement request to the SDK model."""
         try:
             return destiny_sdk.robots.EnhancementRequestRead.model_validate(
+                self.model_dump(),
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
+
+
+class BatchEnhancementRequest(DomainBaseModel, SQLAttributeMixin):
+    """Request to add enhancements to a list of references."""
+
+    reference_ids: list[uuid.UUID] = Field(
+        description="The IDs of the references these enhancements are associated with."
+    )
+    robot_id: uuid.UUID = Field(
+        description="The robot to request the enhancement from."
+    )
+    request_status: BatchEnhancementRequestStatus = Field(
+        default=BatchEnhancementRequestStatus.RECEIVED,
+        description="The status of the request to create an enhancement.",
+    )
+    enhancement_parameters: dict | None = Field(
+        default=None,
+        description="Additional optional parameters to pass through to the robot.",
+    )
+    error: str | None = Field(
+        default=None,
+        description="""
+Procedural error affecting all references encountered during the enhancement process.
+Errors for individual references are provided <TBC>.
+""",
+    )
+    reference_data_file: AzureBlobStorageFile | None = Field(
+        default=None,
+        description="The file containing the reference data for the robot.",
+    )
+
+    @property
+    def n_references(self) -> int:
+        """The number of references in the request."""
+        return len(self.reference_ids)
+
+    @classmethod
+    def from_sdk(
+        cls,
+        enhancement_request: destiny_sdk.robots.BatchEnhancementRequestIn,
+    ) -> Self:
+        """Create an enhancement request from the SDK model."""
+        try:
+            return cls.model_validate(
+                enhancement_request.model_dump(),
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
+
+    def to_sdk(self) -> destiny_sdk.robots.BatchEnhancementRequestRead:
+        """Convert the enhancement request to the SDK model."""
+        try:
+            return destiny_sdk.robots.BatchEnhancementRequestRead.model_validate(
                 self.model_dump(),
             )
         except ValidationError as exception:

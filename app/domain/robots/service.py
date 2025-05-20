@@ -5,9 +5,19 @@ import httpx
 from fastapi import status
 from pydantic import UUID4, HttpUrl
 
+from app.core.azure_blob_storage import (
+    upload_file_to_azure_blob_storage,
+    AzureBlobSignedUrlType,
+    AzureBlobStorageFile,
+)
 from app.core.exceptions import RobotEnhancementError, RobotUnreachableError
-from app.domain.references.models.models import EnhancementRequest, Reference
-from app.domain.robots.models import Robots
+from app.domain.references.models.models import (
+    BatchEnhancementRequest,
+    EnhancementRequest,
+    Reference,
+)
+from app.domain.references.reference_service import ReferenceService
+from app.domain.robots.models import RobotConfig, Robots
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
@@ -26,23 +36,22 @@ class RobotService(GenericService):
         """Get the url for a given robot id."""
         return self.robots.get_robot_url(robot_id)
 
-    async def request_enhancement_from_robot(
-        self,
-        robot_url: HttpUrl,
-        enhancement_request: EnhancementRequest,
-        reference: Reference,
-    ) -> httpx.Response:
-        """Request an enhancement from a robot."""
-        robot_request = destiny_sdk.robots.RobotRequest(
-            id=enhancement_request.id,
-            reference=destiny_sdk.references.Reference(**reference.model_dump()),
-            extra_fields=enhancement_request.enhancement_parameters,
-        )
+    def get_robot_config(self, robot_id: UUID4) -> RobotConfig:
+        """Get the config for a given robot id."""
+        return self.robots.get_robot_config(robot_id)
 
+    async def send_enhancement_request_to_robot(
+        self,
+        robot_url: str,
+        enhancement_request: EnhancementRequest | BatchEnhancementRequest,
+        robot_request: destiny_sdk.robots.RobotRequest
+        | destiny_sdk.robots.BatchRobotRequest,
+    ) -> httpx.Response:
+        """Send a request to a robot, handling error cases."""
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    str(robot_url), json=robot_request.model_dump(mode="json")
+                    robot_url, json=robot_request.model_dump(mode="json")
                 )
         except httpx.RequestError as exception:
             error = (
@@ -58,3 +67,77 @@ class RobotService(GenericService):
             raise RobotEnhancementError(detail=response.text)
 
         return response
+
+    async def request_enhancement_from_robot(
+        self,
+        robot_url: HttpUrl,
+        enhancement_request: EnhancementRequest,
+        reference: Reference,
+    ) -> httpx.Response:
+        """Request an enhancement from a robot."""
+        robot_request = destiny_sdk.robots.RobotRequest(
+            id=enhancement_request.id,
+            reference=destiny_sdk.references.Reference(**reference.model_dump()),
+            extra_fields=enhancement_request.enhancement_parameters,
+        )
+
+        return await self.send_enhancement_request_to_robot(
+            robot_url=str(robot_url),
+            enhancement_request=enhancement_request,
+            robot_request=robot_request,
+        )
+
+    async def collect_and_dispatch_references_for_batch_enhancement(
+        self,
+        batch_enhancement_request: BatchEnhancementRequest,
+        reference_service: ReferenceService,
+    ) -> None:
+        """Collect and dispatch references for batch enhancement."""
+        robot = self.get_robot_config(batch_enhancement_request.robot_id)
+        references = await reference_service.get_hydrated_references(
+            batch_enhancement_request.reference_ids,
+            enhancement_types=robot.dependent_enhancements,
+            external_identifier_types=robot.dependent_identifiers,
+        )
+        # Build jsonl file data using SDK model
+        jsonl_data = "\n".join(
+            reference.to_sdk().to_jsonl() for reference in references
+        ).encode("utf-8")
+        file = await upload_file_to_azure_blob_storage(
+            file=jsonl_data,
+            path="batch_enhancement_request_reference_data",
+            filename=f"{batch_enhancement_request.id}.jsonl",
+        )
+
+        robot_request = destiny_sdk.robots.BatchRobotRequest(
+            id=batch_enhancement_request.id,
+            reference_storage_url=file.to_signed_url(AzureBlobSignedUrlType.DOWNLOAD),
+            result_storage_url=AzureBlobStorageFile(
+                path="batch_enhancement_result",
+                filename=f"{batch_enhancement_request.id}.jsonl",
+            ).to_signed_url(AzureBlobSignedUrlType.UPLOAD),
+            extra_fields=batch_enhancement_request.enhancement_parameters,
+        )
+        try:
+            await self.send_enhancement_request_to_robot(
+                robot_url=str(robot.robot_url),
+                enhancement_request=batch_enhancement_request,
+                robot_request=robot_request,
+            )
+        except RobotUnreachableError as exception:
+            await self.sql_uow.batch_enhancement_requests.update_by_pk(
+                batch_enhancement_request.id,
+                request_status=destiny_sdk.robots.EnhancementRequestStatus.FAILED,
+                error=exception.detail,
+            )
+        except RobotEnhancementError as exception:
+            await self.sql_uow.batch_enhancement_requests.update_by_pk(
+                batch_enhancement_request.id,
+                request_status=destiny_sdk.robots.EnhancementRequestStatus.REJECTED,
+                error=exception.detail,
+            )
+        else:
+            await self.sql_uow.batch_enhancement_requests.update_by_pk(
+                batch_enhancement_request.id,
+                request_status=destiny_sdk.robots.EnhancementRequestStatus.ACCEPTED,
+            )
