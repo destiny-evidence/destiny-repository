@@ -25,7 +25,6 @@ CACHE_TTL = 60 * 60 * 24  # 24 hours
 class AuthScopes(StrEnum):
     """Enum describing the available auth scopes that we understand."""
 
-    READ_ALL = "read.all"
     IMPORT = "import"
     REFERENCE_READER = "reference.reader"
     REFERENCE_WRITER = "reference.writer"
