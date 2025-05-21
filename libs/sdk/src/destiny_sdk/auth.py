@@ -1,11 +1,12 @@
 """
 Authentication assistance methods.
 
-This module is based on the following references:
-* https://learn.microsoft.com/en-us/entra/identity-platform/access-tokens#validate-tokens
-* https://learn.microsoft.com/en-us/entra/identity-platform/claims-validation
-* https://github.com/Azure-Samples/ms-identity-python-webapi-azurefunctions/blob/master/Function/secureFlaskApp/__init__.py
-* https://github.com/425show/fastapi_microsoft_identity/blob/main/fastapi_microsoft_identity/auth_service.py
+This module is based on the following references :
+
+- https://learn.microsoft.com/en-us/entra/identity-platform/access-tokens#validate-tokens
+- https://learn.microsoft.com/en-us/entra/identity-platform/claims-validation
+- https://github.com/Azure-Samples/ms-identity-python-webapi-azurefunctions/blob/master/Function/secureFlaskApp/__init__.py
+- https://github.com/425show/fastapi_microsoft_identity/blob/main/fastapi_microsoft_identity/auth_service.py
 """
 
 from collections.abc import Callable
@@ -32,14 +33,13 @@ class AuthException(HTTPException):
 
     Raised by implementations of the AuthMethod protocol.
 
-    ## Example
+    .. code-block:: python
 
-    ```python
-    raise AuthException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Unable to parse authentication token.",
-            )
-    ```
+        raise AuthException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unable to parse authentication token.",
+        )
+
     """
 
 
@@ -53,16 +53,14 @@ class AuthMethod(Protocol):
     This allows FastAPI to call class instances as depenedencies in FastAPI routes,
     see https://fastapi.tiangolo.com/advanced/advanced-dependencies
 
-    ## Example
+        .. code-block:: python
 
-    ```python
+            auth = AuthMethod()
 
-    auth = AuthMethod()
+            router = APIRouter(
+                prefix="/imports", tags=["imports"], dependencies=[Depends(auth)]
+            )
 
-    router = APIRouter(
-        prefix="/imports", tags=["imports"], dependencies=[Depends(auth)]
-    )
-    ```
     """
 
     async def __call__(
@@ -72,10 +70,11 @@ class AuthMethod(Protocol):
         """
         Callable interface to allow use as a dependency.
 
-        Args:
-        credentials (HTTPAuthorizationCredentials): The bearer token provided in the
-                                                    request (as a dependency)
-
+        :param credentials: The bearer token provided in the request (as a dependency)
+        :type credentials: Annotated[HTTPAuthorizationCredentials  |  None]
+        :raises NotImplementedError: __call__() method has not been implemented.
+        :return: True if authorization is successful.
+        :rtype: bool
         """
         raise NotImplementedError
 
@@ -86,23 +85,23 @@ class StrategyAuth(AuthMethod):
 
     Calls the auth strategy selector every time the dependency is invoked.
 
-    ## Example
+        .. code-block:: python
 
-    ```python
+            def auth_strategy():
+                return AzureJwtAuth(
+                    tenant_id=settings.tenant_id,
+                    application_id=settings.application_id,
+                    scope=AuthScopes.READ,
+                )
 
-    def auth_strategy():
-        return AzureJwtAuth(
-            tenant_id=settings.tenant_id,
-            application_id=settings.application_id,
-            scope=AuthScopes.READ,
-        )
+            strategy_auth = StrategyAuth(selector=auth_strategy)
 
-    strategy_auth = StrategyAuth(selector=auth_strategy)
+            router = APIRouter(
+                prefix="/imports",
+                tags=["imports"],
+                dependencies=[Depends(strategy_auth)]
+            )
 
-    router = APIRouter(
-        prefix="/imports", tags=["imports"], dependencies=[Depends(strategy_auth)]
-    )
-    ```
     """
 
     _selector: Callable[[], AuthMethod]
@@ -114,9 +113,8 @@ class StrategyAuth(AuthMethod):
         """
         Initialise strategy.
 
-        Args:
-        - selector (Callable[[], str]): A callable which returns a string which
-        will be used to choose the correct function.
+        :param selector: A callable which returns the AuthMethod to be used.
+        :type selector: Callable[[], AuthMethod]
 
         """
         self._selector = selector
@@ -136,23 +134,22 @@ class CachingStrategyAuth(StrategyAuth):
     """
     A subclass of StrategyAuth which caches the selected strategy across calls.
 
-    ## Example
+    .. code-block:: python
 
-    ```python
+            def auth_strategy():
+                return AzureJwtAuth(
+                    tenant_id=settings.tenant_id,
+                    application_id=settings.application_id,
+                    scope=AuthScopes.READ,
+                )
 
-    def auth_strategy():
-        return AzureJwtAuth(
-            tenant_id=settings.tenant_id,
-            application_id=settings.application_id,
-            scope=AuthScopes.READ,
-        )
+            caching_auth = CachingStrategyAuth(selector=auth_strategy)
 
-    caching_auth = CachingStrategyAuth(selector=auth_strategy)
-
-    router = APIRouter(
-        prefix="/imports", tags=["imports"], dependencies=[Depends(caching_auth)]
-    )
-    ```
+            router = APIRouter(
+                prefix="/imports",
+                tags=["imports"],
+                dependencies=[Depends(caching_auth)]
+            )
 
     """
 
@@ -162,9 +159,8 @@ class CachingStrategyAuth(StrategyAuth):
         """
         Initialise strategy.
 
-        Args:
-        - selector (Callable[[], AuthMethod]): A callable which returns the AuthMethod
-        to be used.
+        :param selector: A callable which returns the AuthMethod to be used.
+        :type selector: Callable[[], AuthMethod]
 
         """
         super().__init__(selector)
@@ -194,26 +190,26 @@ class AzureJwtAuth(AuthMethod):
     that matches the auth scope it wishes to use. Azure will provide these scopes
     back in the JWT.
 
-    ## Example
+        .. code-block:: python
 
-    ```python
+            class AuthScopes(StrEnum):
+                READ = "read"
 
-    class AuthScopes(StrEnum):
-        READ = "read"
+            def auth_strategy():
+                return AzureJwtAuth(
+                    tenant_id=settings.tenant_id,
+                    application_id=settings.application_id,
+                    scope=AuthScopes.READ,
+                )
 
-    def auth_strategy():
-        return AzureJwtAuth(
-            tenant_id=settings.tenant_id,
-            application_id=settings.application_id,
-            scope=AuthScopes.READ,
-        )
+            caching_auth = CachingStrategyAuth(selector=auth_strategy)
 
-    caching_auth = CachingStrategyAuth(selector=auth_strategy)
+            router = APIRouter(
+                prefix="/imports",
+                tags=["imports"],
+                dependencies=[Depends(caching_auth)]
+            )
 
-    router = APIRouter(
-        prefix="/imports", tags=["imports"], dependencies=[Depends(caching_auth)]
-    )
-    ```
     """
 
     def __init__(
