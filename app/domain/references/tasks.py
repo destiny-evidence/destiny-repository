@@ -60,7 +60,7 @@ async def get_robot_service(
 async def collect_and_dispatch_references_for_batch_enhancement(
     batch_enhancement_request_id: UUID4,
 ) -> None:
-    """Async logic for processing an import batch."""
+    """Async logic for dispatching a batch enhancement request."""
     logger.info(
         "Processing batch enhancement request",
         extra={"batch_enhancement_request_id": batch_enhancement_request_id},
@@ -83,3 +83,10 @@ async def collect_and_dispatch_references_for_batch_enhancement(
         batch_enhancement_request,
         reference_service,
     )
+
+
+@broker.task
+async def validate_and_import_batch_enhancement_result(
+    batch_enhancement_request_id: UUID4,
+) -> None:
+    """Async logic for validating and importing a batch enhancement result."""

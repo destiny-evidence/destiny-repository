@@ -19,6 +19,7 @@ from app.core.exceptions import (
 )
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
+    BatchEnhancementRequestStatus,
     EnhancementRequestStatus,
     EnhancementType,
     Visibility,
@@ -366,7 +367,7 @@ async def test_request_batch_enhancement_happy_path(
     assert response.status_code == status.HTTP_202_ACCEPTED
     response_data = response.json()
     assert "id" in response_data
-    assert response_data["request_status"] == EnhancementRequestStatus.RECEIVED
+    assert response_data["request_status"] == BatchEnhancementRequestStatus.RECEIVED
     assert response_data["reference_ids"] == [str(reference_1.id), str(reference_2.id)]
 
     assert isinstance(broker, InMemoryBroker)

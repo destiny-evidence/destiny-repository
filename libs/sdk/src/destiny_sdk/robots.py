@@ -63,15 +63,17 @@ class BatchRobotResult(BaseModel):
     """Used to indicate to the repository that the robot has finished processing."""
 
     request_id: UUID4
+    # Note we don't actually use this field in the repo as we have direct access to the
+    # file. It's here to both give a robot a way of indicating the file generation was
+    # successful and to prompt it to have uploaded the file to the correct location.
     storage_url: HttpUrl | None = Field(
         default=None,
         description="""
-The URL at which the set of enhancements are stored. The file is to be a jsonl
-with each line formatted according to
+The URL at which the set of enhancements are stored. This should match the corresponding
+:attr:`BatchRobotRequest.result_storage_url <libs.sdk.src.destiny_sdk.robots.BatchRobotRequest.result_storage_url>`.
+The file is to be a jsonl with each line formatted according to
 :class:`Enhancement <libs.sdk.src.destiny_sdk.enhancements.Enhancement>` or
 :class:`LinkedRobotError <libs.sdk.src.destiny_sdk.robots.LinkedRobotError>`.
-This should match the corresponding
-:attr:`BatchRobotRequest.result_storage_url <libs.sdk.src.destiny_sdk.robots.BatchRobotRequest.result_storage_url>`.
 """,  # noqa: E501
     )
     error: RobotError | None = Field(
@@ -113,10 +115,11 @@ class BatchRobotRequest(BaseModel):
         description="""
 The URL at which the set of references are stored. The file is a jsonl
 with each line formatted according to
-:class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>`.
-, one reference per line.
+:class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>`, one
+reference per line.
 Each reference may have identifiers or enhancements attached, as
 required by the robot.
+If the URL expires, a new one can be generated using the <TBC>.
 """
     )
     result_storage_url: HttpUrl = Field(
@@ -125,6 +128,7 @@ The URL at which the set of enhancements are to be stored. The file is to be a j
 with each line formatted according to
 :class:`Enhancement <libs.sdk.src.destiny_sdk.enhancements.Enhancement>` or
 :class:`LinkedRobotError <libs.sdk.src.destiny_sdk.robots.LinkedRobotError>`.
+If the URL expires, a new one can be generated using the <TBC>.
 """
     )
     extra_fields: dict | None = Field(
