@@ -4,10 +4,11 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Self
 
-from pydantic import UUID4, BaseModel, Field, HttpUrl, PostgresDsn, model_validator
+from pydantic import BaseModel, Field, HttpUrl, PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.logger import get_logger
+from app.domain.robots.models import RobotConfig
 
 logger = get_logger()
 
@@ -95,8 +96,8 @@ class Settings(BaseSettings):
     app_name: str
 
     # Temporary robot configuration, replace with db table later.
-    known_robots: dict[UUID4, HttpUrl] = Field(
-        default={}, description="mapping of known robot ids to urls."
+    known_robots: list[RobotConfig] = Field(
+        default_factory=list, description="semi-hardcoded robot configuration"
     )
 
     env: str = Field("production", description="The environment the app is running in.")
