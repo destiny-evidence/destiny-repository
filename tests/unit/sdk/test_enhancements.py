@@ -50,9 +50,12 @@ def test_abstract_content_enhancement_valid():
 
 def test_annotation_enhancement_valid():
     # Create valid annotation content
-    annotation1 = destiny_sdk.enhancements.Annotation(
-        annotation_type="openalex:topic",
+    annotation1 = destiny_sdk.enhancements.BooleanAnnotation(
+        annotation_type=destiny_sdk.enhancements.AnnotationType.BOOLEAN,
+        scheme="openalex:topic",
+        value=True,
         label="Machine Learning",
+        score=None,
         data={"confidence": 0.95},
     )
     annotations_content = destiny_sdk.enhancements.AnnotationEnhancement(

@@ -114,7 +114,9 @@ def robot_result_enhancement(
                 "enhancement_type": EnhancementType.ANNOTATION,
                 "annotations": [
                     {
-                        "annotation_type": "example:toy",
+                        "scheme": "example:toy",
+                        "annotation_type": "boolean",
+                        "value": True,
                         "label": "toy",
                         "data": {"toy": "Cabbage Patch Kid"},
                     }

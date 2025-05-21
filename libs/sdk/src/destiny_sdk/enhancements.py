@@ -1,7 +1,7 @@
 """Enhancement classes for the Destiny Repository."""
 
 import uuid
-from enum import StrEnum
+from enum import StrEnum, auto
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, HttpUrl, PastDate
@@ -136,7 +136,47 @@ class AbstractContentEnhancement(BaseModel):
     abstract: str = Field(description="The abstract of the reference.")
 
 
-class Annotation(BaseModel):
+class AnnotationType(StrEnum):
+    """
+    The type of annotation.
+
+    This is used to identify the type of annotation in the `Annotation` class.
+
+    **Allowed values**:
+    - `boolean`: An annotation which is the boolean application of a label across a
+      reference.
+    """
+
+    BOOLEAN = auto()
+    SCORE = auto()
+
+
+class ScoreAnnotation(BaseModel):
+    """
+    An annotation which represents the score for a label.
+
+    This is similar to a BooleanAnnotation, but lacks a boolean determination
+    as to the application of the label.
+    """
+
+    annotation_type: Literal[AnnotationType.SCORE]
+    scheme: str = Field(
+        description="An identifier for the scheme of annotation",
+        examples=["openalex:topic", "pubmed:mesh"],
+    )
+    label: str = Field(
+        description="A high level label for this annotation like the name of the topic",
+    )
+    value: float = Field(description="""Score for this annotation""")
+    data: dict = Field(
+        description="""
+        An object representation of the annotation including any confidence scores or
+descriptions.
+""",
+    )
+
+
+class BooleanAnnotation(BaseModel):
     """
     An annotation is a way of tagging the content with a label of some kind.
 
@@ -144,12 +184,17 @@ class Annotation(BaseModel):
     initial cases.
     """
 
-    annotation_type: str = Field(
-        description="An identifier for the type of annotation",
+    annotation_type: Literal[AnnotationType.BOOLEAN]
+    scheme: str = Field(
+        description="An identifier for the scheme of the annotation",
         examples=["openalex:topic", "pubmed:mesh"],
     )
     label: str = Field(
         description="A high level label for this annotation like the name of the topic",
+    )
+    value: bool = Field(description="""Boolean flag for this annotation""")
+    score: float | None = Field(
+        None, description="A confidence score for this annotation"
     )
     data: dict = Field(
         description="""
@@ -157,6 +202,11 @@ An object representation of the annotation including any confidence scores or
 descriptions.
 """,
     )
+
+
+Annotation = Annotated[
+    BooleanAnnotation | ScoreAnnotation, Field(discriminator="annotation_type")
+]
 
 
 class AnnotationEnhancement(BaseModel):
