@@ -2,26 +2,24 @@
 
 import datetime
 from collections.abc import Callable
+from enum import StrEnum
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from destiny_sdk.auth import AuthMethod, AzureJwtAuth, StrategyAuth, SuccessAuth
 from fastapi import HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
 from pytest_httpx import HTTPXMock
 
-from app.core.auth import (
-    AuthMethod,
-    AuthScopes,
-    AzureJwtAuth,
-    StrategyAuth,
-    SuccessAuth,
-)
+
+class FakeAuthScopes(StrEnum):
+    READ_ALL = "read.all"
 
 
 @pytest.fixture
 def auth(fake_tenant_id: str, fake_application_id: str) -> AzureJwtAuth:
     """Create fixure AzureJwtAuth instance for testing."""
-    return AzureJwtAuth(fake_tenant_id, fake_application_id, AuthScopes.READ_ALL)
+    return AzureJwtAuth(fake_tenant_id, fake_application_id, FakeAuthScopes.READ_ALL)
 
 
 async def test_verify_token_success(
@@ -180,7 +178,7 @@ async def test_requires_read_all_success(
     """Test that we successfully validate a token with the requested scope."""
     httpx_mock.add_response(json={"keys": [fake_public_key]})
 
-    token = generate_fake_token(scope=AuthScopes.READ_ALL.value)
+    token = generate_fake_token(scope=FakeAuthScopes.READ_ALL.value)
     credentials = Mock()
     credentials.credentials = token
     assert await auth(credentials) is True
@@ -228,15 +226,6 @@ async def test_requires_read_all_scope_not_present(
     )
 
 
-async def test_fake_auth_success(generate_fake_token: Callable[..., str]):
-    """Test that our fake auth method succeeds on demand, with and without tokens."""
-    auth = SuccessAuth()
-    creds = Mock(credentials=generate_fake_token())
-
-    assert await auth(creds)
-    assert await auth(None)
-
-
 async def test_strategy_auth_selection():
     """Test that we can use a strategy."""
     mock_auth_method = AsyncMock(AuthMethod)
@@ -246,3 +235,12 @@ async def test_strategy_auth_selection():
         HTTPAuthorizationCredentials(scheme="Bearer", credentials="foo")
     )
     assert mock_auth_method.called
+
+
+async def test_fake_auth_success(generate_fake_token: Callable[..., str]):
+    """Test that our fake auth method succeeds on demand, with and without tokens."""
+    auth = SuccessAuth()
+    creds = Mock(credentials=generate_fake_token())
+
+    assert await auth(creds)
+    assert await auth(None)

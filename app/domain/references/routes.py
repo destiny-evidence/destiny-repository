@@ -4,13 +4,13 @@ import uuid
 from typing import Annotated
 
 import destiny_sdk
+from destiny_sdk.auth import CachingStrategyAuth
 from fastapi import APIRouter, Depends, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import (
     AuthMethod,
     AuthScopes,
-    CachingStrategyAuth,
     choose_auth_strategy,
 )
 from app.core.config import get_settings
