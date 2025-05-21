@@ -18,6 +18,7 @@ from app.core.logger import get_logger
 from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
+    BatchEnhancementRequestStatus,
     Enhancement,
     EnhancementRequest,
     ExternalIdentifierSearch,
@@ -30,6 +31,7 @@ from app.domain.robots.models import Robots
 from app.domain.robots.service import RobotService
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
+from app.utils.files import check_signed_url
 
 settings = get_settings()
 logger = get_logger()
@@ -262,3 +264,46 @@ async def fulfill_enhancement_request(
     )
 
     return enhancement_request.to_sdk()
+
+
+@robot_router.post(
+    "/enhancement/batch/",
+    status_code=status.HTTP_200_OK,
+)
+async def fulfill_batch_enhancement_request(
+    robot_result: destiny_sdk.robots.BatchRobotResult,
+    enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
+) -> destiny_sdk.robots.BatchEnhancementRequestRead:
+    """Receive the robot result and kick off importing the enhancements."""
+    if robot_result.error:
+        batch_enhancement_request = (
+            await enhancement_service.mark_batch_enhancement_request_failed(
+                batch_enhancement_request_id=robot_result.request_id,
+                error=robot_result.error.message,
+            )
+        )
+        return batch_enhancement_request.to_sdk()
+
+    batch_enhancement_request = await enhancement_service.get_batch_enhancement_request(
+        batch_enhancement_request_id=robot_result.request_id
+    )
+
+    # Do simple validation on the storage url for fast feedback to the robot
+    if signed_url_error := check_signed_url(robot_result.storage_url):  # type: ignore[arg-type]
+        batch_enhancement_request = (
+            await enhancement_service.mark_batch_enhancement_request_failed(
+                batch_enhancement_request_id=robot_result.request_id,
+                error=f"Error requesting signed url: {signed_url_error}",
+            )
+        )
+        return batch_enhancement_request.to_sdk()
+
+    # Distribute detailed validation, parsing and importing of the enhancements
+    batch_enhancement_request = (
+        await enhancement_service.update_batch_enhancement_request_status(
+            batch_enhancement_request_id=robot_result.request_id,
+            status=BatchEnhancementRequestStatus.PROCESSED,
+        )
+    )
+
+    return batch_enhancement_request.to_sdk()

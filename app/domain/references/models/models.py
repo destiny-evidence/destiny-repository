@@ -49,11 +49,12 @@ class BatchEnhancementRequestStatus(StrEnum):
     The status of an enhancement request.
 
     **Allowed values**:
-    - `received`: Enhancement request has been received.
-    - `accepted`: Enhancement request has been accepted.
-    - `rejected`: Enhancement request has been rejected.
+    - `received`: Enhancement request has been received by the robot.
+    - `accepted`: Enhancement request has been accepted by the robot.
+    - `rejected`: Enhancement request has been rejected by the robot.
     - `partial_failed`: Some enhancements failed to create.
     - `failed`: All enhancements failed to create.
+    - `processed`: Enhancements have been received by the repo and are being validated.
     - `completed`: All enhancements have been created.
     """
 
@@ -62,6 +63,7 @@ class BatchEnhancementRequestStatus(StrEnum):
     REJECTED = "rejected"
     PARTIAL_FAILED = "partial_failed"
     FAILED = "failed"
+    PROCESSED = "processed"
     COMPLETED = "completed"
 
 

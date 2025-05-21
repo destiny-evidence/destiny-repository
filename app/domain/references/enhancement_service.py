@@ -9,6 +9,7 @@ from app.core.exceptions import (
 )
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
+    BatchEnhancementRequestStatus,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
@@ -143,4 +144,26 @@ class EnhancementService(GenericService):
             pk=enhancement_request_id,
             request_status=EnhancementRequestStatus.FAILED,
             error=error,
+        )
+
+    @unit_of_work
+    async def mark_batch_enhancement_request_failed(
+        self, batch_enhancement_request_id: UUID4, error: str
+    ) -> BatchEnhancementRequest:
+        """Mark a batch enhancement request as failed and supply error message."""
+        return await self.sql_uow.batch_enhancement_requests.update_by_pk(
+            pk=batch_enhancement_request_id,
+            request_status=BatchEnhancementRequestStatus.FAILED,
+            error=error,
+        )
+
+    @unit_of_work
+    async def update_batch_enhancement_request_status(
+        self,
+        batch_enhancement_request_id: UUID4,
+        status: BatchEnhancementRequestStatus,
+    ) -> BatchEnhancementRequest:
+        """Update a batch enhancement request."""
+        return await self.sql_uow.batch_enhancement_requests.update_by_pk(
+            pk=batch_enhancement_request_id, request_status=status
         )

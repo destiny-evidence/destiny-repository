@@ -51,9 +51,9 @@ class RobotResult(BaseModel):
     @model_validator(mode="after")
     def validate_error_or_enhancement_set(self) -> Self:
         """Validate that a robot result has either an error or an enhancement set."""
-        if not self.error and not self.enhancement:
+        if (self.error is None) == (self.enhancement is None):
             msg = """
-            either 'error' or 'enhancements' must be provided
+            exactly one of 'error' or 'enhancement' must be provided
             """
             raise ValueError(msg)
         return self
@@ -63,7 +63,8 @@ class BatchRobotResult(BaseModel):
     """Used to indicate to the repository that the robot has finished processing."""
 
     request_id: UUID4
-    storage_url: HttpUrl = Field(
+    storage_url: HttpUrl | None = Field(
+        default=None,
         description="""
 The URL at which the set of enhancements are stored. The file is to be a jsonl
 with each line formatted according to
@@ -71,8 +72,27 @@ with each line formatted according to
 :class:`LinkedRobotError <libs.sdk.src.destiny_sdk.robots.LinkedRobotError>`.
 This should match the corresponding
 :attr:`BatchRobotRequest.result_storage_url <libs.sdk.src.destiny_sdk.robots.BatchRobotRequest.result_storage_url>`.
-"""  # noqa: E501
+""",  # noqa: E501
     )
+    error: RobotError | None = Field(
+        default=None,
+        description="""
+Error the robot encountered while creating enhancements. This field should
+be used if there was an error with the entire batch or the request, rather than an
+individual reference. If there was an error with processing an individual reference, it
+should be passed in the result file.
+""",
+    )
+
+    @model_validator(mode="after")
+    def validate_error_or_storage_url_set(self) -> Self:
+        """Validate that the model has either an error or a storage url set."""
+        if (self.error is None) == (self.storage_url is None):
+            msg = """
+            exactly one of 'error' or 'storage_url' must be provided
+            """
+            raise ValueError(msg)
+        return self
 
 
 class RobotRequest(BaseModel):
@@ -172,11 +192,12 @@ class BatchEnhancementRequestStatus(StrEnum):
     The status of an enhancement request.
 
     **Allowed values**:
-    - `received`: Enhancement request has been received.
-    - `accepted`: Enhancement request has been accepted.
-    - `rejected`: Enhancement request has been rejected.
+    - `received`: Enhancement request has been received by the robot.
+    - `accepted`: Enhancement request has been accepted by the robot.
+    - `rejected`: Enhancement request has been rejected by the robot.
     - `partial_failed`: Some enhancements failed to create.
     - `failed`: All enhancements failed to create.
+    - `processed`: Enhancements have been received by the repo and are being validated.
     - `completed`: All enhancements have been created.
     """
 
@@ -185,6 +206,7 @@ class BatchEnhancementRequestStatus(StrEnum):
     REJECTED = "rejected"
     PARTIAL_FAILED = "partial_failed"
     FAILED = "failed"
+    PROCESSED = "processed"
     COMPLETED = "completed"
 
 
