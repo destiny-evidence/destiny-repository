@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator
 import pytest
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
-from pydantic import UUID4, HttpUrl
+from pydantic import UUID4
 from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +24,7 @@ from app.domain.references.models.models import (
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.routes import robots
-from app.domain.robots.models import Robots
+from app.domain.robots.models import RobotConfig, Robots
 from app.main import (
     enhance_wrong_reference_exception_handler,
     not_found_exception_handler,
@@ -57,7 +57,16 @@ def app() -> FastAPI:
 
     app.include_router(references.router)
     app.include_router(references.robot_router)
-    app.dependency_overrides[robots] = Robots({ROBOT_ID: HttpUrl(ROBOT_URL)})
+    app.dependency_overrides[robots] = Robots(
+        [
+            RobotConfig(
+                robot_id=ROBOT_ID,
+                robot_url=ROBOT_URL,
+                dependent_enhancements=[],
+                dependent_identifiers=[],
+            )
+        ]
+    )
 
     return app
 

@@ -8,15 +8,24 @@ from pydantic import HttpUrl
 
 from app.core.exceptions import RobotEnhancementError, RobotUnreachableError
 from app.domain.references.models.models import EnhancementRequest, Reference
-from app.domain.robots.models import Robots
+from app.domain.robots.models import RobotConfig, Robots
 from app.domain.robots.service import RobotService
+
+ROBOT_ID = uuid.uuid4()
+ROBOT_URL = HttpUrl("http://www.theres-a-robot-here.com/")
+
+KNOWN_ROBOTS = [
+    RobotConfig(
+        robot_id=ROBOT_ID,
+        robot_url=ROBOT_URL,
+        dependent_enhancements=[],
+        dependent_identifiers=[],
+    ),
+]
 
 
 @pytest.mark.asyncio
 async def test_request_enhancement_from_robot_happy_path(fake_uow, httpx_mock):
-    robot_id = uuid.uuid4()
-    robot_url = HttpUrl("http://www.theres-a-robot-here.com/")
-
     reference = Reference(id=uuid.uuid4(), visibility=Visibility.RESTRICTED)
     enhancement_request = EnhancementRequest(
         id=uuid.uuid4(),
@@ -27,17 +36,17 @@ async def test_request_enhancement_from_robot_happy_path(fake_uow, httpx_mock):
 
     service = RobotService(
         fake_uow(enhancement_requests=enhancement_request),
-        robots=Robots(known_robots={robot_id: robot_url}),
+        robots=Robots(known_robots=KNOWN_ROBOTS),
     )
 
     httpx_mock.add_response(
         method="POST",
-        url=str(robot_url),
+        url=str(ROBOT_URL),
         status_code=status.HTTP_202_ACCEPTED,
     )
 
     await service.request_enhancement_from_robot(
-        robot_url=robot_url,
+        robot_url=ROBOT_URL,
         enhancement_request=enhancement_request,
         reference=reference,
     )
@@ -52,14 +61,11 @@ async def test_request_enhancement_from_robot_request_error(
     # Mock a connection error
     httpx_mock.add_exception(httpx.ConnectError(message="All connections refused"))
 
-    robot_url = "http://www.theres-a-robot-here.com/"
-    robot_id = uuid.uuid4()
-
     reference = Reference(id=uuid.uuid4(), visibility=Visibility.RESTRICTED)
     enhancement_request = EnhancementRequest(
         id=uuid.uuid4(),
         reference_id=reference.id,
-        robot_id=robot_id,
+        robot_id=ROBOT_ID,
         enhancement_parameters={},
     )
 
@@ -67,12 +73,12 @@ async def test_request_enhancement_from_robot_request_error(
 
     service = RobotService(
         fake_uow(enhancement_requests=fake_enhancement_requests),
-        robots=Robots(known_robots={robot_id: HttpUrl(robot_url)}),
+        robots=Robots(known_robots=KNOWN_ROBOTS),
     )
 
     with pytest.raises(RobotUnreachableError):
         await service.request_enhancement_from_robot(
-            robot_url=robot_url,
+            robot_url=ROBOT_URL,
             enhancement_request=enhancement_request,
             reference=reference,
         )
@@ -85,14 +91,11 @@ async def test_request_enhancement_from_robot_503_response(
     # Mock a robot that is unavailable
     httpx_mock.add_response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-    robot_url = "http://www.theres-a-robot-here.com/"
-    robot_id = uuid.uuid4()
-
     reference = Reference(id=uuid.uuid4(), visibility=Visibility.RESTRICTED)
     enhancement_request = EnhancementRequest(
         id=uuid.uuid4(),
         reference_id=reference.id,
-        robot_id=robot_id,
+        robot_id=ROBOT_ID,
         enhancement_parameters={},
     )
 
@@ -100,12 +103,12 @@ async def test_request_enhancement_from_robot_503_response(
 
     service = RobotService(
         fake_uow(enhancement_requests=fake_enhancement_requests),
-        robots=Robots(known_robots={robot_id: HttpUrl(robot_url)}),
+        robots=Robots(known_robots=KNOWN_ROBOTS),
     )
 
     with pytest.raises(RobotUnreachableError):
         await service.request_enhancement_from_robot(
-            robot_url=robot_url,
+            robot_url=ROBOT_URL,
             enhancement_request=enhancement_request,
             reference=reference,
         )
@@ -120,14 +123,11 @@ async def test_request_enhancement_from_robot_400_response(
         status_code=status.HTTP_400_BAD_REQUEST, json={"message": "bad request"}
     )
 
-    robot_url = "http://www.theres-a-robot-here.com/"
-    robot_id = uuid.uuid4()
-
     reference = Reference(id=uuid.uuid4(), visibility=Visibility.RESTRICTED)
     enhancement_request = EnhancementRequest(
         id=uuid.uuid4(),
         reference_id=reference.id,
-        robot_id=robot_id,
+        robot_id=ROBOT_ID,
         enhancement_parameters={},
     )
 
@@ -135,12 +135,12 @@ async def test_request_enhancement_from_robot_400_response(
 
     service = RobotService(
         fake_uow(enhancement_requests=fake_enhancement_requests),
-        robots=Robots(known_robots={robot_id: HttpUrl(robot_url)}),
+        robots=Robots(known_robots=KNOWN_ROBOTS),
     )
 
     with pytest.raises(RobotEnhancementError):
         await service.request_enhancement_from_robot(
-            robot_url=robot_url,
+            robot_url=ROBOT_URL,
             enhancement_request=enhancement_request,
             reference=reference,
         )
