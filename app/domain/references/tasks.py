@@ -68,7 +68,6 @@ async def collect_and_dispatch_references_for_batch_enhancement(
     enhancement_service = await get_enhancement_service()
     reference_service = await get_reference_service()
     robot_service = await get_robot_service()
-
     batch_enhancement_request = await enhancement_service.get_batch_enhancement_request(
         batch_enhancement_request_id
     )

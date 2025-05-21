@@ -386,9 +386,7 @@ Errors for individual references are provided <TBC>.
     ) -> Self:
         """Create an enhancement request from the SDK model."""
         try:
-            return cls.model_validate(
-                enhancement_request.model_dump(),
-            )
+            return cls.model_validate(enhancement_request.model_dump())
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
@@ -396,7 +394,7 @@ Errors for individual references are provided <TBC>.
         """Convert the enhancement request to the SDK model."""
         try:
             return destiny_sdk.robots.BatchEnhancementRequestRead.model_validate(
-                self.model_dump(),
+                self.model_dump() | {"reference_data_url": self.reference_data_file},
             )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception

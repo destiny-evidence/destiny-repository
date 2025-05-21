@@ -211,8 +211,20 @@ class BatchEnhancementRequestRead(_BatchEnhancementRequestBase):
     """Core batch enhancement request class."""
 
     id: UUID4
-    status: EnhancementRequestStatus = Field(
+    request_status: EnhancementRequestStatus = Field(
         description="The status of the request to create enhancements",
+    )
+    reference_data_url: str | None = Field(
+        default=None,
+        description="""
+        The URL at which the set of references are stored. The file is a jsonl
+        with each line formatted according to
+        :class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>`.
+        , one reference per line.
+        Each reference may have identifiers or enhancements attached, as
+        required by the robot.
+        TODO: make type HttpUrl once URL signing implemented.
+        """,
     )
     # Should this be a list of errors? Or even a dict of `reference_id: error`?
     error: str | None = Field(

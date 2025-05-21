@@ -9,6 +9,7 @@ from sqlalchemy import UUID, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.azure_blob_storage import AzureBlobStorageFile
 from app.domain.references.models.models import (
     BatchEnhancementRequest as DomainBatchEnhancementRequest,
 )
@@ -332,6 +333,8 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
 
     enhancement_parameters: Mapped[str | None] = mapped_column(JSONB, nullable=True)
 
+    reference_data_file: Mapped[str | None] = mapped_column(String, nullable=True)
+
     error: Mapped[str | None] = mapped_column(String, nullable=True)
 
     @classmethod
@@ -346,10 +349,14 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             if domain_obj.enhancement_parameters
             else None,
             error=domain_obj.error,
+            reference_data_file=domain_obj.reference_data_file.to_sql()
+            if domain_obj.reference_data_file
+            else None,
         )
 
     async def to_domain(
-        self, _preload: list[str] | None = None
+        self,
+        preload: list[str] | None = None,  # noqa: ARG002
     ) -> DomainBatchEnhancementRequest:
         """Convert the persistence model into a Domain Enhancement object."""
         return DomainBatchEnhancementRequest(
@@ -361,4 +368,7 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             if self.enhancement_parameters
             else {},
             error=self.error,
+            reference_data_file=AzureBlobStorageFile.from_sql(self.reference_data_file)
+            if self.reference_data_file
+            else None,
         )

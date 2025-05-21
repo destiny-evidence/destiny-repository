@@ -5,6 +5,8 @@ from typing import Self
 
 from pydantic import BaseModel, Field
 
+from app.core.exceptions import AzureBlobStorageError
+
 
 class AzureBlobSignedUrlType(StrEnum):
     """Azure Blob Storage interaction types."""
@@ -40,8 +42,8 @@ class AzureBlobStorageFile(BaseModel):
         """Populate the model from a SQL representation."""
         parts = sql.split("/")
         if len(parts) < 3:  # noqa: PLR2004
-            msg = "Invalid SQL representation"
-            raise ValueError(msg)
+            msg = f"Invalid SQL representation {sql} for AzureBlobStorageFile."
+            raise AzureBlobStorageError(msg)
         return cls(
             container=parts[0],
             path="/".join(parts[1:-1]),
@@ -50,7 +52,7 @@ class AzureBlobStorageFile(BaseModel):
 
 
 async def upload_file_to_azure_blob_storage(
-    file: bytes,
+    file: bytes,  # noqa: ARG001
     path: str,
     filename: str,
 ) -> AzureBlobStorageFile:

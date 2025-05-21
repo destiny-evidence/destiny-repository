@@ -74,7 +74,6 @@ class GenericAsyncSqlRepository(
                 lookup_type="id",
                 lookup_value=pk,
             )
-
         return await result.to_domain(preload=preload)
 
     async def verify_pk_existence(self, pks: list[UUID4]) -> None:

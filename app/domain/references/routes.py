@@ -216,7 +216,6 @@ async def request_batch_enhancement(
     await collect_and_dispatch_references_for_batch_enhancement.kiq(
         batch_enhancement_request_id=enhancement_request.id,
     )
-
     return enhancement_request.to_sdk()
 
 

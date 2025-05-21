@@ -6,20 +6,21 @@ from fastapi import status
 from pydantic import UUID4, HttpUrl
 
 from app.core.azure_blob_storage import (
-    upload_file_to_azure_blob_storage,
     AzureBlobSignedUrlType,
     AzureBlobStorageFile,
+    upload_file_to_azure_blob_storage,
 )
 from app.core.exceptions import RobotEnhancementError, RobotUnreachableError
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
+    BatchEnhancementRequestStatus,
     EnhancementRequest,
     Reference,
 )
 from app.domain.references.reference_service import ReferenceService
 from app.domain.robots.models import RobotConfig, Robots
 from app.domain.service import GenericService
-from app.persistence.sql.uow import AsyncSqlUnitOfWork
+from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 
 MIN_FOR_5XX_STATUS_CODES = 500
 
@@ -43,7 +44,7 @@ class RobotService(GenericService):
     async def send_enhancement_request_to_robot(
         self,
         robot_url: str,
-        enhancement_request: EnhancementRequest | BatchEnhancementRequest,
+        robot_id: UUID4,
         robot_request: destiny_sdk.robots.RobotRequest
         | destiny_sdk.robots.BatchRobotRequest,
     ) -> httpx.Response:
@@ -54,14 +55,12 @@ class RobotService(GenericService):
                     robot_url, json=robot_request.model_dump(mode="json")
                 )
         except httpx.RequestError as exception:
-            error = (
-                f"Cannot request enhancement from Robot {enhancement_request.robot_id}."
-            )
+            error = f"Cannot request enhancement from Robot {robot_id}."
             raise RobotUnreachableError(error) from exception
 
         if response.status_code != status.HTTP_202_ACCEPTED:
             if response.status_code >= MIN_FOR_5XX_STATUS_CODES:
-                error = f"Cannot request enhancement from Robot {enhancement_request.robot_id}."  # noqa: E501
+                error = f"Cannot request enhancement from Robot {robot_id}."
                 raise RobotUnreachableError(error)
             # Expect this is a 4xx
             raise RobotEnhancementError(detail=response.text)
@@ -83,10 +82,11 @@ class RobotService(GenericService):
 
         return await self.send_enhancement_request_to_robot(
             robot_url=str(robot_url),
-            enhancement_request=enhancement_request,
+            robot_id=enhancement_request.robot_id,
             robot_request=robot_request,
         )
 
+    @unit_of_work
     async def collect_and_dispatch_references_for_batch_enhancement(
         self,
         batch_enhancement_request: BatchEnhancementRequest,
@@ -109,6 +109,11 @@ class RobotService(GenericService):
             filename=f"{batch_enhancement_request.id}.jsonl",
         )
 
+        await self.sql_uow.batch_enhancement_requests.update_by_pk(
+            batch_enhancement_request.id,
+            reference_data_file=file.to_sql(),
+        )
+
         robot_request = destiny_sdk.robots.BatchRobotRequest(
             id=batch_enhancement_request.id,
             reference_storage_url=file.to_signed_url(AzureBlobSignedUrlType.DOWNLOAD),
@@ -121,23 +126,23 @@ class RobotService(GenericService):
         try:
             await self.send_enhancement_request_to_robot(
                 robot_url=str(robot.robot_url),
-                enhancement_request=batch_enhancement_request,
+                robot_id=batch_enhancement_request.robot_id,
                 robot_request=robot_request,
             )
         except RobotUnreachableError as exception:
             await self.sql_uow.batch_enhancement_requests.update_by_pk(
                 batch_enhancement_request.id,
-                request_status=destiny_sdk.robots.EnhancementRequestStatus.FAILED,
+                request_status=BatchEnhancementRequestStatus.FAILED,
                 error=exception.detail,
             )
         except RobotEnhancementError as exception:
             await self.sql_uow.batch_enhancement_requests.update_by_pk(
                 batch_enhancement_request.id,
-                request_status=destiny_sdk.robots.EnhancementRequestStatus.REJECTED,
+                request_status=BatchEnhancementRequestStatus.REJECTED,
                 error=exception.detail,
             )
         else:
             await self.sql_uow.batch_enhancement_requests.update_by_pk(
                 batch_enhancement_request.id,
-                request_status=destiny_sdk.robots.EnhancementRequestStatus.ACCEPTED,
+                request_status=BatchEnhancementRequestStatus.ACCEPTED,
             )
