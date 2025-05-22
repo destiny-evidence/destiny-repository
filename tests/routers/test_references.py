@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
-from pydantic import UUID4, HttpUrl
+from pydantic import UUID4
 from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
@@ -65,8 +65,8 @@ def app() -> FastAPI:
     app.dependency_overrides[robots] = Robots(
         [
             RobotConfig(
-                robot_url=HttpUrl(ROBOT_URL),
                 robot_id=ROBOT_ID,
+                robot_url=ROBOT_URL,
                 dependent_enhancements=[],
                 dependent_identifiers=[],
             )

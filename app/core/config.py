@@ -106,7 +106,7 @@ class Settings(BaseSettings):
 
     # Temporary robot configuration, replace with db table later.
     known_robots: list[RobotConfig] = Field(
-        default_factory=list, description="mapping of known robot ids to urls."
+        default_factory=list, description="semi-hardcoded robot configuration"
     )
 
     env: Environment = Field(

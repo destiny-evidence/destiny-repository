@@ -17,3 +17,4 @@ It is not yet on PyPI, but you can install it from the GitHub repository:
    :caption: Contents:
 
    models
+   auth

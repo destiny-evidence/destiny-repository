@@ -135,7 +135,7 @@ def generate_fake_token(
     fake_application_id: str,
     fake_tenant_id: str,
 ) -> Callable[[dict | None, str | None], str]:
-    """Create a function that will return a fake token usint the supplied params."""
+    """Create a function that will return a fake token using the supplied params."""
 
     def __generate_token(
         user_payload: dict | None = None, scope: str | None = None

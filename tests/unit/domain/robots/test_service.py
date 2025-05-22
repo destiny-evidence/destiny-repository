@@ -18,14 +18,15 @@ from app.domain.robots.models import RobotConfig, Robots
 from app.domain.robots.service import RobotService
 
 ROBOT_ID = uuid.uuid4()
-ROBOT_URL = "http://www.theres-a-robot-here.com/"
+ROBOT_URL = HttpUrl("http://www.theres-a-robot-here.com/")
+
 KNOWN_ROBOTS = [
     RobotConfig(
-        robot_url=HttpUrl(ROBOT_URL),
         robot_id=ROBOT_ID,
+        robot_url=ROBOT_URL,
         dependent_enhancements=[],
         dependent_identifiers=[],
-    )
+    ),
 ]
 
 
