@@ -334,6 +334,8 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
     enhancement_parameters: Mapped[str | None] = mapped_column(JSONB, nullable=True)
 
     reference_data_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    result_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    validation_result_file: Mapped[str | None] = mapped_column(String, nullable=True)
 
     error: Mapped[str | None] = mapped_column(String, nullable=True)
 
@@ -351,6 +353,12 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             error=domain_obj.error,
             reference_data_file=domain_obj.reference_data_file.to_sql()
             if domain_obj.reference_data_file
+            else None,
+            result_file=domain_obj.result_file.to_sql()
+            if domain_obj.result_file
+            else None,
+            validation_result_file=domain_obj.validation_result_file.to_sql()
+            if domain_obj.validation_result_file
             else None,
         )
 
@@ -370,5 +378,11 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             error=self.error,
             reference_data_file=BlobStorageFile.from_sql(self.reference_data_file)
             if self.reference_data_file
+            else None,
+            result_file=BlobStorageFile.from_sql(self.result_file)
+            if self.result_file
+            else None,
+            validation_result_file=BlobStorageFile.from_sql(self.validation_result_file)
+            if self.validation_result_file
             else None,
         )

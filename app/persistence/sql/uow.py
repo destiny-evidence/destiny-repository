@@ -1,7 +1,7 @@
 """The unit of work manages the session transaction lifecycle."""
 
 import functools
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from types import TracebackType
 from typing import ParamSpec, Self, TypeVar
 
@@ -89,5 +89,21 @@ def unit_of_work(fn: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
             result: T = await fn(*args, **kwargs)
             await sql_uow.commit()
             return result
+
+    return wrapper
+
+
+def generator_unit_of_work(
+    fn: Callable[P, AsyncGenerator[T, None]],
+) -> Callable[P, AsyncGenerator[T, None]]:
+    """Handle unit of work lifecycle with a decorator for AsyncGenerator."""
+
+    @functools.wraps(fn)
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> AsyncGenerator[T, None]:
+        sql_uow: AsyncSqlUnitOfWork = args[0].sql_uow  # type:ignore[arg-type, attr-defined]
+        async with sql_uow:
+            async for item in fn(*args, **kwargs):
+                yield item
+            await sql_uow.commit()
 
     return wrapper

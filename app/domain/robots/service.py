@@ -1,15 +1,23 @@
 """The service for managing and interacting with robots."""
 
+from io import BytesIO
+
 import destiny_sdk
 import httpx
 from fastapi import status
-from pydantic import UUID4, HttpUrl
+from pydantic import UUID4, HttpUrl, TypeAdapter, ValidationError
 
-from app.core.exceptions import RobotEnhancementError, RobotUnreachableError
+from app.core.exceptions import (
+    RobotEnhancementError,
+    RobotUnreachableError,
+    SQLDuplicateError,
+    SQLNotFoundError,
+)
 from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
     BatchEnhancementRequestStatus,
+    Enhancement,
     EnhancementRequest,
     Reference,
 )
@@ -20,7 +28,10 @@ from app.persistence.blob.models import (
     BlobSignedUrlType,
     BlobStorageFile,
 )
-from app.persistence.blob.service import upload_file_to_blob_storage
+from app.persistence.blob.service import (
+    get_file_from_blob_storage,
+    upload_file_to_blob_storage,
+)
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 
 MIN_FOR_5XX_STATUS_CODES = 500
@@ -105,14 +116,9 @@ class RobotService(GenericService):
             reference.to_sdk().to_jsonl() for reference in references
         ).encode("utf-8")
         file = await upload_file_to_blob_storage(
-            file=jsonl_data,
+            content=BytesIO(jsonl_data),
             path="batch_enhancement_request_reference_data",
             filename=f"{batch_enhancement_request.id}.jsonl",
-        )
-
-        await self.sql_uow.batch_enhancement_requests.update_by_pk(
-            batch_enhancement_request.id,
-            reference_data_file=file.to_sql(),
         )
 
         robot_request = destiny_sdk.robots.BatchRobotRequest(
@@ -124,6 +130,13 @@ class RobotService(GenericService):
             ).to_signed_url(BlobSignedUrlType.UPLOAD),
             extra_fields=batch_enhancement_request.enhancement_parameters,
         )
+
+        await self.sql_uow.batch_enhancement_requests.update_by_pk(
+            batch_enhancement_request.id,
+            reference_data_file=file.to_sql(),
+            result_file=file.to_sql(),
+        )
+
         try:
             await self.send_enhancement_request_to_robot(
                 robot_url=str(robot.robot_url),
@@ -148,9 +161,127 @@ class RobotService(GenericService):
                 request_status=BatchEnhancementRequestStatus.ACCEPTED,
             )
 
+    async def handle_import_batch_enhancement_result_entry(
+        self,
+        file_entry: destiny_sdk.robots.BatchEnhancementResultEntry,
+        enhancement_service: EnhancementService,
+    ) -> tuple[bool, str]:
+        """Handle the import of a single batch enhancement result entry."""
+        if isinstance(file_entry, destiny_sdk.robots.LinkedRobotError):
+            return (
+                False,
+                f"""
+Reference {file_entry.reference_id}: {file_entry.message}
+""",
+            )
+
+        try:
+            await enhancement_service.add_enhancement(Enhancement.from_sdk(file_entry))
+        except SQLNotFoundError:
+            return (
+                False,
+                f"""
+Reference {file_entry.reference_id}: Reference doesn't exist.
+""",
+            )
+        except SQLDuplicateError:
+            return (
+                False,
+                f"""
+Reference {file_entry.reference_id}: Enhancement already exists.
+""",
+            )
+
+        return (
+            True,
+            f"""
+Reference {file_entry.reference_id}: Enhancement added.
+""",
+        )
+
     async def validate_and_import_batch_enhancement_result(
         self,
         batch_enhancement_request: BatchEnhancementRequest,
         enhancement_service: EnhancementService,
     ) -> None:
         """Validate and import the result of a batch enhancement request."""
+        if not batch_enhancement_request.result_file:
+            msg = """
+Batch enhancement request has no result file location. This should not happen.
+"""
+            raise RuntimeError(msg)
+        content = await get_file_from_blob_storage(
+            batch_enhancement_request.result_file
+        )
+        json_content = content.decode("utf-8").split("\n")
+
+        file_entry_validator: TypeAdapter[
+            destiny_sdk.robots.BatchEnhancementResultEntry
+        ] = TypeAdapter(destiny_sdk.robots.BatchEnhancementResultEntry)
+        successes: list[str] = []
+        failures: list[str] = []
+        reference_ids: set[UUID4] = set()
+
+        for entry_ref, entry in enumerate(json_content):
+            try:
+                file_entry = file_entry_validator.validate_json(entry)
+            except ValidationError as exception:
+                failures.append(f"""
+Entry {entry_ref} could not be parsed: {exception}.
+    """)
+                continue
+
+            if file_entry.reference_id not in batch_enhancement_request.reference_ids:
+                failures.append(f"""
+Reference {file_entry.reference_id}: not in batch enhancement request.
+""")
+                continue
+
+            reference_ids.add(file_entry.reference_id)
+
+            success, msg = await self.handle_import_batch_enhancement_result_entry(
+                file_entry, enhancement_service
+            )
+            if success:
+                successes.append(msg)
+            else:
+                failures.append(msg)
+
+        if missing_references := (
+            set(batch_enhancement_request.reference_ids) - reference_ids
+        ):
+            failures.extend(
+                f"""
+Reference {missing_reference}: not in batch enhancement result from robot.
+"""
+                for missing_reference in missing_references
+            )
+
+        if not failures:
+            enhancement_service.update_batch_enhancement_request_status(
+                batch_enhancement_request.id,
+                BatchEnhancementRequestStatus.PARTIAL_FAILED,
+            )
+        elif not successes:
+            enhancement_service.mark_batch_enhancement_request_failed(
+                batch_enhancement_request.id,
+                "Result received but every enhancement failed.",
+            )
+        else:
+            enhancement_service.update_batch_enhancement_request_status(
+                batch_enhancement_request.id,
+                BatchEnhancementRequestStatus.COMPLETED,
+            )
+
+        validation_result_file_content = "\n".join([*successes, *failures]).encode(
+            "utf-8"
+        )
+        validation_result_file = await upload_file_to_blob_storage(
+            content=BytesIO(validation_result_file_content),
+            path="batch_enhancement_result_result",
+            filename=f"{batch_enhancement_request.id}.txt",
+        )
+        await self.sql_uow.batch_enhancement_requests.update_by_pk(
+            batch_enhancement_request.id,
+            result_data_file=validation_result_file.to_sql(),
+        )

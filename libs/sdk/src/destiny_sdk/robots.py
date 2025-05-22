@@ -107,6 +107,17 @@ class RobotRequest(BaseModel):
     )  # We need something to pass through the signed url for uploads
 
 
+BatchEnhancementResultEntry = Annotated[
+    Enhancement | LinkedRobotError,
+    Field(
+        description="""
+The result for a single reference when processed by a batch enhancement request.
+This is a single entry in the result file.
+"""
+    ),
+]
+
+
 class BatchRobotRequest(BaseModel):
     """A batch enhancement request from the repo to a robot."""
 
@@ -126,10 +137,9 @@ If the URL expires, a new one can be generated using the <TBC>.
         description="""
 The URL at which the set of enhancements are to be stored. The file is to be a jsonl
 with each line formatted according to
-:class:`Enhancement <libs.sdk.src.destiny_sdk.enhancements.Enhancement>` or
-:class:`LinkedRobotError <libs.sdk.src.destiny_sdk.robots.LinkedRobotError>`.
+:class:`BatchEnhancementResultEntry <libs.sdk.src.destiny_sdk.robots.BatchEnhancementResultEntry>`.
 If the URL expires, a new one can be generated using the <TBC>.
-"""
+"""  # noqa: E501
     )
     extra_fields: dict | None = Field(
         default=None,
@@ -250,6 +260,23 @@ class BatchEnhancementRequestRead(_BatchEnhancementRequestBase):
         Each reference may have identifiers or enhancements attached, as
         required by the robot.
         TODO: make type HttpUrl once URL signing implemented.
+        """,
+    )
+    result_storage_url: str | None = Field(
+        default=None,
+        description="""
+        The URL at which the set of enhancements are stored. The file is to be a jsonl
+        with each line formatted according to
+        :class:`BatchEnhancementResultEntry <libs.sdk.src.destiny_sdk.robots.BatchEnhancementResultEntry>`.
+        This field is only relevant to robots.
+        """,  # noqa: E501
+    )
+    validation_result_url: str | None = Field(
+        default=None,
+        description="""
+        The URL at which the result of the batch enhancement request is stored.
+        This file is a txt file, one line per reference, with either an error
+        or a success message.
         """,
     )
     # Should this be a list of errors? Or even a dict of `reference_id: error`?

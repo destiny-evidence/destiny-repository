@@ -35,6 +35,14 @@ class EnhancementService(GenericService):
         await self.sql_uow.references.get_by_pk(enhancement.reference_id)
         return await self.sql_uow.enhancements.add(enhancement)
 
+    @unit_of_work
+    async def add_enhancement(
+        self,
+        enhancement: Enhancement,
+    ) -> Enhancement:
+        """Add an enhancement to a reference."""
+        return await self._add_enhancement(enhancement)
+
     async def _get_enhancement_request(
         self,
         enhancement_request_id: UUID4,

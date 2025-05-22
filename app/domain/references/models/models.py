@@ -18,7 +18,7 @@ from pydantic import (
 
 from app.core.exceptions import SDKToDomainError
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
-from app.persistence.blob.models import BlobStorageFile
+from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 
 ExternalIdentifierAdapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
     ExternalIdentifier,
@@ -375,6 +375,14 @@ Errors for individual references are provided <TBC>.
         default=None,
         description="The file containing the reference data for the robot.",
     )
+    result_file: BlobStorageFile | None = Field(
+        default=None,
+        description="The file containing the result data from the robot.",
+    )
+    validation_result_file: BlobStorageFile | None = Field(
+        default=None,
+        description="The file containing the validation result data from the robot.",
+    )
 
     @property
     def n_references(self) -> int:
@@ -396,7 +404,24 @@ Errors for individual references are provided <TBC>.
         """Convert the enhancement request to the SDK model."""
         try:
             return destiny_sdk.robots.BatchEnhancementRequestRead.model_validate(
-                self.model_dump() | {"reference_data_url": self.reference_data_file},
+                self.model_dump()
+                | {
+                    "reference_data_url": self.reference_data_file.to_signed_url(
+                        BlobSignedUrlType.DOWNLOAD
+                    )
+                    if self.reference_data_file
+                    else None,
+                    "result_storage_url": self.result_file.to_signed_url(
+                        BlobSignedUrlType.UPLOAD
+                    )
+                    if self.result_file
+                    else None,
+                    "validation_result_url": self.validation_result_file.to_signed_url(
+                        BlobSignedUrlType.DOWNLOAD
+                    )
+                    if self.validation_result_file
+                    else None,
+                },
             )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception

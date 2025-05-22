@@ -238,6 +238,24 @@ async def check_enhancement_request_status(
     return enhancement_request.to_sdk()
 
 
+@router.get(
+    "/enhancement/batch/request/{batch_enhancement_request_id}/",
+    dependencies=[Depends(reference_writer_auth)],
+)
+async def check_batch_enhancement_request_status(
+    batch_enhancement_request_id: Annotated[
+        uuid.UUID, Path(description="The ID of the batch enhancement request.")
+    ],
+    enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
+) -> destiny_sdk.robots.BatchEnhancementRequestRead:
+    """Check the status of a batch enhancement request."""
+    batch_enhancement_request = await enhancement_service.get_batch_enhancement_request(
+        batch_enhancement_request_id
+    )
+
+    return batch_enhancement_request.to_sdk()
+
+
 @robot_router.post("/enhancement/single/", status_code=status.HTTP_200_OK)
 async def fulfill_enhancement_request(
     robot_result: destiny_sdk.robots.RobotResult,

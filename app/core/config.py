@@ -78,6 +78,15 @@ If db_pass is provided, azure_db_resource_url must not be provided."""
         return self
 
 
+class MinioConfig(BaseModel):
+    """Minio configuration."""
+
+    host: str
+    access_key: str
+    secret_key: str
+    bucket: str = "destiny-repository"
+
+
 class Environment(StrEnum):
     """Environment enum."""
 
@@ -94,6 +103,7 @@ class Settings(BaseSettings):
     project_root: Path = Path(__file__).joinpath("../../..").resolve()
 
     db_config: DatabaseConfig
+    minio_config: MinioConfig | None = None
 
     azure_application_id: str
     azure_login_url: HttpUrl = HttpUrl("https://login.microsoftonline.com")
@@ -114,8 +124,13 @@ class Settings(BaseSettings):
         description="The environment the app is running in.",
     )
 
+    @property
+    def running_locally(self) -> bool:
+        """Return True if the app is running locally."""
+        return self.env == Environment.LOCAL
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Get a cached settings object."""
-    return Settings()  # type: ignore[call-arg]
+    return Settings()
