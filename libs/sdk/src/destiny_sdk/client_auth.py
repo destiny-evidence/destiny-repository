@@ -23,7 +23,22 @@ class AuthenticationType(StrEnum):
     MANAGED_IDENTITY = "managed_identity"
 
 
-class ManagedIdentityAuthentication(BaseModel):
+class _AuthenticationMethod(BaseModel):
+    """Force the implementation of a get_token method on Authentication subclasses."""
+
+    def get_token(self) -> str:
+        """
+        Return an access token.
+
+        :raises NotImplementedError: raises error if this function is not implemneted.
+        :return: a JWT.
+        :rtype: str
+        """
+        msg = "Authentication methods must implement get_token()."
+        raise NotImplementedError(msg)
+
+
+class ManagedIdentityAuthentication(_AuthenticationMethod):
     """Model for managed identiy authentication."""
 
     azure_application_url: str = Field(pattern="api//*")
@@ -48,7 +63,7 @@ class ManagedIdentityAuthentication(BaseModel):
         return result["access_token"]
 
 
-class AccessTokenAuthentication(BaseModel):
+class AccessTokenAuthentication(_AuthenticationMethod):
     """Model for access token authentication."""
 
     access_token: str
