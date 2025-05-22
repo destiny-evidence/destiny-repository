@@ -10,18 +10,19 @@ Requesting Enhancements
 .. mermaid::
 
     sequenceDiagram
-        participant SR Tool
+        actor User
         participant Data Repository
         participant Robot
-        participant LLM/Model
-        SR Tool->>+Data Repository: POST /references/enhancement/ : (id, parameters)
-        Data Repository->>+Robot: POST <robot_url> : Process Document (id, parameters)
-        Data Repository-->>-SR Tool: POST <callback_url> : Task Details
-        Robot->>+LLM/Model: Submit Prompt/Model Request
-        LLM/Model-->>-Robot: Prompt/Model Response
+        User->>+Data Repository: POST /references/enhancement/ : (id, parameters)
+        Data Repository->>Data Repository : Register Request
+        Data Repository->>+Robot: POST <robot_url> : Request Enhancement (id, parameters)
+        Data Repository-->>-User: Enhancement request details
+        Robot->>Robot : Create Enhancement
         alt Success
             Robot->>Data Repository: POST /robot/enhancement/ : Create Enhancement(id, enhancement data)
         else Failure
             Robot->>-Data Repository: POST /robot/enhancement/ : (id, failure details)
         end
-        Data Repository-->>-SR Tool: POST <callback_url> : Task Details
+        Data Repository->>Data Repository : Update Request State
+        User->>+Data Repository: GET references/enhancement/request/{enhancement_request_id}
+        Data Repository-->>-User: Enhancement request details
