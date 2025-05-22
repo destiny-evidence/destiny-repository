@@ -278,8 +278,10 @@ class BatchEnhancementRequestRead(_BatchEnhancementRequestBase):
         or a success message.
         """,
     )
-    # Should this be a list of errors? Or even a dict of `reference_id: error`?
     error: str | None = Field(
         default=None,
-        description="Error encountered during the enhancement process",
+        description="Error encountered during the enhancement process. This"
+        "is only used if the entire batch enhancement request failed, rather than an"
+        "individual reference. If there was an error with processing an individual"
+        "reference, it is passed in the validation result file.",
     )
