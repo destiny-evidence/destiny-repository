@@ -29,6 +29,7 @@ from app.domain.references.tasks import (
 )
 from app.domain.robots.models import Robots
 from app.domain.robots.service import RobotService
+from app.persistence.blob.service import get_signed_url
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
@@ -71,7 +72,7 @@ def enhancement_service(
 def choose_auth_strategy_reader() -> AuthMethod:
     """Choose reader scope auth strategy for our authorization."""
     return choose_auth_strategy(
-        environment=settings.env,
+        environment=settings.env.value,
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScopes.REFERENCE_READER,
@@ -81,7 +82,7 @@ def choose_auth_strategy_reader() -> AuthMethod:
 def choose_auth_strategy_writer() -> AuthMethod:
     """Choose writer scope auth strategy for our authorization."""
     return choose_auth_strategy(
-        environment=settings.env,
+        environment=settings.env.value,
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScopes.REFERENCE_WRITER,
@@ -91,7 +92,7 @@ def choose_auth_strategy_writer() -> AuthMethod:
 def choose_auth_strategy_robot() -> AuthMethod:
     """Choose robot scope auth strategy for our authorization."""
     return choose_auth_strategy(
-        environment=settings.env,
+        environment=settings.env.value,
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScopes.ROBOT,
@@ -217,7 +218,7 @@ async def request_batch_enhancement(
     await collect_and_dispatch_references_for_batch_enhancement.kiq(
         batch_enhancement_request_id=enhancement_request.id,
     )
-    return enhancement_request.to_sdk()
+    return enhancement_request.to_sdk(get_signed_url)
 
 
 @router.get(
@@ -253,7 +254,7 @@ async def check_batch_enhancement_request_status(
         batch_enhancement_request_id
     )
 
-    return batch_enhancement_request.to_sdk()
+    return batch_enhancement_request.to_sdk(get_signed_url)
 
 
 @robot_router.post("/enhancement/single/", status_code=status.HTTP_200_OK)
@@ -299,7 +300,7 @@ async def fulfill_batch_enhancement_request(
                 error=robot_result.error.message,
             )
         )
-        return batch_enhancement_request.to_sdk()
+        return batch_enhancement_request.to_sdk(get_signed_url)
 
     batch_enhancement_request = (
         await enhancement_service.update_batch_enhancement_request_status(
@@ -308,4 +309,4 @@ async def fulfill_batch_enhancement_request(
         )
     )
 
-    return batch_enhancement_request.to_sdk()
+    return batch_enhancement_request.to_sdk(get_signed_url)

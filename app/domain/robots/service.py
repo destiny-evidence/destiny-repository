@@ -1,19 +1,20 @@
 """The service for managing and interacting with robots."""
 
 from io import BytesIO
+from typing import TYPE_CHECKING
 
 import destiny_sdk
 import httpx
 from fastapi import status
 from pydantic import UUID4, HttpUrl, TypeAdapter, ValidationError
 
+from app.core.config import get_settings
 from app.core.exceptions import (
     RobotEnhancementError,
     RobotUnreachableError,
     SQLDuplicateError,
     SQLNotFoundError,
 )
-from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
     BatchEnhancementRequestStatus,
@@ -21,20 +22,26 @@ from app.domain.references.models.models import (
     EnhancementRequest,
     Reference,
 )
-from app.domain.references.reference_service import ReferenceService
 from app.domain.robots.models import RobotConfig, Robots
 from app.domain.service import GenericService
 from app.persistence.blob.models import (
-    BlobSignedUrlType,
     BlobStorageFile,
 )
 from app.persistence.blob.service import (
     get_file_from_blob_storage,
+    get_signed_url,
     upload_file_to_blob_storage,
 )
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 
+if TYPE_CHECKING:
+    from app.domain.references.enhancement_service import EnhancementService
+    from app.domain.references.reference_service import ReferenceService
+
+
 MIN_FOR_5XX_STATUS_CODES = 500
+
+settings = get_settings()
 
 
 class RobotService(GenericService):
@@ -102,7 +109,7 @@ class RobotService(GenericService):
     async def collect_and_dispatch_references_for_batch_enhancement(
         self,
         batch_enhancement_request: BatchEnhancementRequest,
-        reference_service: ReferenceService,
+        reference_service: "ReferenceService",
     ) -> None:
         """Collect and dispatch references for batch enhancement."""
         robot = self.get_robot_config(batch_enhancement_request.robot_id)
@@ -121,20 +128,22 @@ class RobotService(GenericService):
             filename=f"{batch_enhancement_request.id}.jsonl",
         )
 
-        robot_request = destiny_sdk.robots.BatchRobotRequest(
-            id=batch_enhancement_request.id,
-            reference_storage_url=file.to_signed_url(BlobSignedUrlType.DOWNLOAD),
-            result_storage_url=BlobStorageFile(
-                path="batch_enhancement_result",
-                filename=f"{batch_enhancement_request.id}.jsonl",
-            ).to_signed_url(BlobSignedUrlType.UPLOAD),
-            extra_fields=batch_enhancement_request.enhancement_parameters,
+        batch_enhancement_request.reference_data_file = file
+        batch_enhancement_request.result_file = BlobStorageFile(
+            location=settings.default_blob_location,
+            container=settings.default_blob_container,
+            path="batch_enhancement_result",
+            filename=f"{batch_enhancement_request.id}.jsonl",
+        )
+
+        robot_request = batch_enhancement_request.to_batch_robot_request_sdk(
+            get_signed_url
         )
 
         await self.sql_uow.batch_enhancement_requests.update_by_pk(
             batch_enhancement_request.id,
-            reference_data_file=file.to_sql(),
-            result_file=file.to_sql(),
+            reference_data_file=batch_enhancement_request.reference_data_file.to_sql(),
+            result_file=batch_enhancement_request.result_file.to_sql(),
         )
 
         try:
@@ -164,7 +173,7 @@ class RobotService(GenericService):
     async def handle_import_batch_enhancement_result_entry(
         self,
         file_entry: destiny_sdk.robots.BatchEnhancementResultEntry,
-        enhancement_service: EnhancementService,
+        enhancement_service: "EnhancementService",
     ) -> tuple[bool, str]:
         """Handle the import of a single batch enhancement result entry."""
         if isinstance(file_entry, destiny_sdk.robots.LinkedRobotError):
@@ -202,7 +211,7 @@ Reference {file_entry.reference_id}: Enhancement added.
     async def validate_and_import_batch_enhancement_result(
         self,
         batch_enhancement_request: BatchEnhancementRequest,
-        enhancement_service: EnhancementService,
+        enhancement_service: "EnhancementService",
     ) -> None:
         """Validate and import the result of a batch enhancement request."""
         if not batch_enhancement_request.result_file:

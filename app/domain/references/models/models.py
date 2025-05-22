@@ -1,6 +1,7 @@
 """Models associated with references."""
 
 import uuid
+from collections.abc import Callable
 from enum import StrEnum
 from typing import Self
 
@@ -12,6 +13,7 @@ from destiny_sdk.identifiers import ExternalIdentifier, ExternalIdentifierType
 from pydantic import (
     BaseModel,
     Field,
+    HttpUrl,
     TypeAdapter,
     ValidationError,
 )
@@ -400,28 +402,47 @@ Errors for individual references are provided <TBC>.
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
-    def to_sdk(self) -> destiny_sdk.robots.BatchEnhancementRequestRead:
+    def to_sdk(
+        self,
+        to_signed_url: Callable[
+            [BlobStorageFile | None, BlobSignedUrlType], HttpUrl | None
+        ],
+    ) -> destiny_sdk.robots.BatchEnhancementRequestRead:
         """Convert the enhancement request to the SDK model."""
         try:
             return destiny_sdk.robots.BatchEnhancementRequestRead.model_validate(
                 self.model_dump()
                 | {
-                    "reference_data_url": self.reference_data_file.to_signed_url(
-                        BlobSignedUrlType.DOWNLOAD
-                    )
-                    if self.reference_data_file
-                    else None,
-                    "result_storage_url": self.result_file.to_signed_url(
-                        BlobSignedUrlType.UPLOAD
-                    )
-                    if self.result_file
-                    else None,
-                    "validation_result_url": self.validation_result_file.to_signed_url(
-                        BlobSignedUrlType.DOWNLOAD
-                    )
-                    if self.validation_result_file
-                    else None,
+                    "reference_data_url": to_signed_url(
+                        self.reference_data_file, BlobSignedUrlType.DOWNLOAD
+                    ),
+                    "result_storage_url": to_signed_url(
+                        self.result_file, BlobSignedUrlType.UPLOAD
+                    ),
+                    "validation_result_url": to_signed_url(
+                        self.validation_result_file, BlobSignedUrlType.DOWNLOAD
+                    ),
                 },
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
+
+    def to_batch_robot_request_sdk(
+        self,
+        to_signed_url: Callable[
+            [BlobStorageFile | None, BlobSignedUrlType], HttpUrl | None
+        ],
+    ) -> destiny_sdk.robots.BatchRobotRequest:
+        """Convert the enhancement request to the SDK robot request model."""
+        try:
+            return destiny_sdk.robots.BatchRobotRequest(
+                id=self.id,
+                reference_storage_url=to_signed_url(
+                    self.reference_data_file, BlobSignedUrlType.DOWNLOAD
+                ),
+                result_storage_url=to_signed_url(
+                    self.result_file, BlobSignedUrlType.UPLOAD
+                ),
             )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception

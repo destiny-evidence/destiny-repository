@@ -62,6 +62,7 @@ services:
       - "8000:8000"
     volumes:
       - ./app:/app/app
+      - ./lib/sdk:/app/lib/sdk
     env_file:
       - .env
     depends_on:
@@ -74,6 +75,7 @@ services:
     environment:
       MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
+      MINIO_CONFIG: '{"HOST":"fs:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass"}'
     entrypoint: fastapi dev app/main.py --host 0.0.0.0 --port 8000
 
   worker:
@@ -90,11 +92,13 @@ services:
         condition: service_healthy
     volumes:
       - ./app:/app/app
+      - ./lib/sdk:/app/lib/sdk
     env_file:
       - .env
     environment:
       MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
+      MINIO_CONFIG: '{"HOST":"fs:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass"}'
     entrypoint: taskiq worker app.tasks:broker --fs-discover --reload
 
 volumes:

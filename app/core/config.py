@@ -129,6 +129,18 @@ class Settings(BaseSettings):
         """Return True if the app is running locally."""
         return self.env == Environment.LOCAL
 
+    @property
+    def default_blob_location(self) -> str:
+        """Return the default blob location."""
+        return "minio" if self.running_locally else "azure"
+
+    @property
+    def default_blob_container(self) -> str:
+        """Return the default blob container."""
+        if self.running_locally and self.minio_config:
+            return self.minio_config.bucket
+        return "destiny-repository"
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

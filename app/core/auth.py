@@ -20,7 +20,7 @@ def choose_auth_strategy(
     environment: str, tenant_id: str, application_id: str, auth_scope: AuthScopes
 ) -> AuthMethod:
     """Choose a strategy for our authorization."""
-    if environment in ("dev", "test"):
+    if environment in ("dev", "test", "local"):
         return SuccessAuth()
 
     return AzureJwtAuth(

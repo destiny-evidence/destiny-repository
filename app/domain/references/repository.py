@@ -63,7 +63,7 @@ class ReferenceSQLRepository(
     ) -> list[DomainReference]:
         """Get a list of references with enhancements and identifiers by id."""
         query = select(SQLReference).where(SQLReference.id.in_(reference_ids))
-
+        preload: list[str] = []
         if enhancement_types:
             query = query.options(
                 joinedload(
@@ -72,6 +72,7 @@ class ReferenceSQLRepository(
                     )
                 )
             )
+            preload.append("enhancements")
         if external_identifier_types:
             query = query.options(
                 joinedload(
@@ -82,10 +83,11 @@ class ReferenceSQLRepository(
                     )
                 )
             )
+            preload.append("identifiers")
         result = await self._session.execute(query)
         db_references = result.scalars().all()
         return [
-            await db_reference.to_domain(preload=["identifiers", "enhancements"])
+            await db_reference.to_domain(preload=preload)
             for db_reference in db_references
         ]
 

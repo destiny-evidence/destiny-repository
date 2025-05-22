@@ -14,7 +14,7 @@ broker: AsyncBroker = AzureServiceBusBroker(
     queue_name=settings.message_broker_queue_name,
 )
 
-if settings.env == "dev":
+if settings.env == "local":
     broker = AioPikaBroker(settings.message_broker_url)
 elif settings.env == "test":
     broker = InMemoryBroker()

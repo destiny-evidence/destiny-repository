@@ -250,7 +250,7 @@ class BatchEnhancementRequestRead(_BatchEnhancementRequestBase):
     request_status: EnhancementRequestStatus = Field(
         description="The status of the request to create enhancements",
     )
-    reference_data_url: str | None = Field(
+    reference_data_url: HttpUrl | None = Field(
         default=None,
         description="""
         The URL at which the set of references are stored. The file is a jsonl
@@ -259,10 +259,9 @@ class BatchEnhancementRequestRead(_BatchEnhancementRequestBase):
         , one reference per line.
         Each reference may have identifiers or enhancements attached, as
         required by the robot.
-        TODO: make type HttpUrl once URL signing implemented.
         """,
     )
-    result_storage_url: str | None = Field(
+    result_storage_url: HttpUrl | None = Field(
         default=None,
         description="""
         The URL at which the set of enhancements are stored. The file is to be a jsonl
@@ -271,7 +270,7 @@ class BatchEnhancementRequestRead(_BatchEnhancementRequestBase):
         This field is only relevant to robots.
         """,  # noqa: E501
     )
-    validation_result_url: str | None = Field(
+    validation_result_url: HttpUrl | None = Field(
         default=None,
         description="""
         The URL at which the result of the batch enhancement request is stored.

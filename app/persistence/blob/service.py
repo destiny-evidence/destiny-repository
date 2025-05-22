@@ -8,9 +8,11 @@ from io import BytesIO
 
 from minio import Minio
 from minio.error import S3Error
+from pydantic import HttpUrl
 
 from app.core.config import get_settings
 from app.core.exceptions import BlobStorageError, MinioBlobStorageError
+from app.core.logger import get_logger
 from app.persistence.blob.models import (
     BlobSignedUrlType,
     BlobStorageFile,
@@ -18,6 +20,7 @@ from app.persistence.blob.models import (
 )
 
 settings = get_settings()
+logger = get_logger()
 
 
 async def upload_file_to_minio(
@@ -40,7 +43,7 @@ async def upload_file_to_minio(
             bucket_name=file.container,
             object_name=f"{file.path}/{file.filename}",
             data=content,
-            length=-1,
+            length=content.getbuffer().nbytes,
             content_type="application/octet-stream",
         )
     except S3Error as e:
@@ -73,7 +76,7 @@ async def get_file_from_minio(
         raise BlobStorageError(msg) from e
 
 
-async def get_signed_url_from_minio(
+def get_signed_url_from_minio(
     file: BlobStorageFile,
     interaction_type: BlobSignedUrlType,
 ) -> str:
@@ -113,6 +116,8 @@ async def upload_file_to_blob_storage(
 ) -> BlobStorageFile:
     """Upload a file to Blob Storage."""
     file = BlobStorageFile(
+        location=settings.default_blob_location,
+        container=settings.default_blob_container,
         path=path,
         filename=filename,
     )
@@ -137,14 +142,16 @@ async def get_file_from_blob_storage(
     raise NotImplementedError
 
 
-async def get_signed_url(
-    file: BlobStorageFile,
+def get_signed_url(
+    file: BlobStorageFile | None,
     interaction_type: BlobSignedUrlType,
-) -> str:
+) -> HttpUrl | None:
     """Get a signed URL for a file in Blob Storage."""
+    if not file:
+        return None
     if file.location == BlobStorageLocation.AZURE:
         raise NotImplementedError
     if file.location == BlobStorageLocation.MINIO:
-        return await get_signed_url_from_minio(file, interaction_type)
-
+        url = get_signed_url_from_minio(file, interaction_type)
+        return HttpUrl(url)
     raise NotImplementedError
