@@ -145,6 +145,8 @@ class AnnotationType(StrEnum):
     **Allowed values**:
     - `boolean`: An annotation which is the boolean application of a label across a
       reference.
+    - `score`: An annotation which is a score for a label across a reference,
+      without a boolean value.
     """
 
     BOOLEAN = auto()
@@ -167,7 +169,7 @@ class ScoreAnnotation(BaseModel):
     label: str = Field(
         description="A high level label for this annotation like the name of the topic",
     )
-    value: float = Field(description="""Score for this annotation""")
+    score: float = Field(description="""Score for this annotation""")
     data: dict = Field(
         description="""
         An object representation of the annotation including any confidence scores or
