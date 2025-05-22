@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, FileUrl, model_validator
 from app.core.config import get_settings
 from app.core.exceptions import BlobStorageError
 
-settings = get_settings()  # type: ignore[has-type]
+settings = get_settings()
 
 
 class BlobSignedUrlType(StrEnum):
