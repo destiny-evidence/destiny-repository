@@ -32,7 +32,7 @@ services:
         condition: service_healthy
     environment:
       DB_CONFIG: '{"DB_URL": "postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
-      ENV: "dev"
+      ENV: "test"
       AZURE_APPLICATION_ID: "dummy"
       AZURE_TENANT_ID: "dummy"
       APP_NAME: "dummy"
@@ -109,7 +109,7 @@ services:
       HTTP_CLIENT_URL: "http://http:5678"
       MINIO_URL: "http://fs:9000"
       CALLBACK_URL: "http://e2e:8001"
-      ENV: "dev"
+      ENV: "test"
       MINIO_PRESIGNED_URL_FILEPATH: /shared-minio/presigned_urls.json
     entrypoint: poetry run pytest /e2e
 

@@ -93,6 +93,7 @@ class Environment(StrEnum):
     PRODUCTION = "production"
     DEVELOPMENT = "development"
     LOCAL = "local"
+    TEST = "test"
 
 
 class Settings(BaseSettings):
@@ -127,7 +128,7 @@ class Settings(BaseSettings):
     @property
     def running_locally(self) -> bool:
         """Return True if the app is running locally."""
-        return self.env == Environment.LOCAL
+        return self.env in (Environment.LOCAL, Environment.TEST)
 
     @property
     def default_blob_location(self) -> str:

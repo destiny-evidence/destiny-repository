@@ -1,4 +1,5 @@
 import uuid
+from io import BytesIO
 from unittest.mock import AsyncMock, Mock
 
 import httpx
@@ -156,25 +157,36 @@ async def test_request_enhancement_from_robot_400_response(
 def azure_file_mocks(monkeypatch):
     mock_file = Mock()
     mock_file.to_sql.return_value = "mock_sql_value"
-    mock_file.to_signed_url.return_value = "https://example.com/signed-url"
 
     # List to track calls
     upload_calls = []
     file_calls = []
 
-    async def mock_upload(file, path, filename):
-        upload_calls.append({"file": file, "path": path, "filename": filename})
+    async def mock_upload(content, path, filename):
+        upload_calls.append({"file": content, "path": path, "filename": filename})
         return mock_file
 
-    def mock_file_creation(path, filename):
-        file_calls.append({"path": path, "filename": filename})
+    def mock_file_creation(location, container, path, filename):
+        file_calls.append(
+            {
+                "location": location,
+                "container": container,
+                "path": path,
+                "filename": filename,
+            }
+        )
         return mock_file
+
+    def mock_get_signed_url(_file, _interaction_type):
+        return "https://mock-signed-url.com"
 
     monkeypatch.setattr(
-        "app.domain.robots.service.upload_file_to_azure_blob_storage", mock_upload
+        "app.domain.robots.service.upload_file_to_blob_storage", mock_upload
     )
+    monkeypatch.setattr("app.domain.robots.service.BlobStorageFile", mock_file_creation)
     monkeypatch.setattr(
-        "app.persistence.blob.models.BlobStorageFile", mock_file_creation
+        "app.domain.robots.service.get_signed_url",
+        mock_get_signed_url,
     )
 
     return {
@@ -258,7 +270,7 @@ async def test_collect_and_dispatch_references_for_batch_enhancement_happy_path(
     assert len(upload_calls) == 1
     assert upload_calls[0]["path"] == "batch_enhancement_request_reference_data"
     assert upload_calls[0]["filename"] == f"{batch_enhancement_request_id}.jsonl"
-    assert isinstance(upload_calls[0]["file"], bytes)
+    assert isinstance(upload_calls[0]["file"], BytesIO)
 
     assert len(file_calls) == 1
     assert file_calls[0]["path"] == "batch_enhancement_result"

@@ -25,7 +25,7 @@ jobs:
           AZURE_APPLICATION_ID=00000000-0000-0000-0000-000000000000
           AZURE_LOGIN_URL=https://login.microsoftonline.com
           AZURE_TENANT_ID=00000000-0000-0000-0000-000000000000
-          ENV=dev
+          ENV=test
           CLI_CLIENT_ID=00000000-0000-0000-0000-000000000000
           MESSAGE_BROKER_URL=overwritten-in-docker-compose-e2e
           MESSAGE_BROKER_NAMESPACE=destiny-repository-staging.servicebus.windows.net
