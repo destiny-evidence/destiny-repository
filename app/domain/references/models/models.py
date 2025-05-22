@@ -16,9 +16,9 @@ from pydantic import (
     ValidationError,
 )
 
-from app.core.azure_blob_storage import AzureBlobStorageFile
 from app.core.exceptions import SDKToDomainError
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
+from app.persistence.blob.models import BlobStorageFile
 
 ExternalIdentifierAdapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
     ExternalIdentifier,
@@ -371,7 +371,7 @@ Procedural error affecting all references encountered during the enhancement pro
 Errors for individual references are provided <TBC>.
 """,
     )
-    reference_data_file: AzureBlobStorageFile | None = Field(
+    reference_data_file: BlobStorageFile | None = Field(
         default=None,
         description="The file containing the reference data for the robot.",
     )

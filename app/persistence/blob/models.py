@@ -1,23 +1,34 @@
-"""File handling utilities for Azure Blob Storage."""
+"""Models for handling files in blob storage."""
 
 from enum import StrEnum
 from typing import Self
 
 from pydantic import BaseModel, Field
 
-from app.core.exceptions import AzureBlobStorageError
+from app.core.exceptions import BlobStorageError
 
 
-class AzureBlobSignedUrlType(StrEnum):
-    """Azure Blob Storage interaction types."""
+class BlobSignedUrlType(StrEnum):
+    """Blob Storage interaction types."""
 
     DOWNLOAD = "download"
     UPLOAD = "upload"
 
 
-class AzureBlobStorageFile(BaseModel):
-    """Model to represent Azure Blob Storage files."""
+class BlobStorageLocation(StrEnum):
+    """Blob Storage locations."""
 
+    AZURE = "azure"
+    MINIO = "minio"
+
+
+class BlobStorageFile(BaseModel):
+    """Model to represent Blob Storage files."""
+
+    location: BlobStorageLocation = Field(
+        default=BlobStorageLocation.AZURE,
+        description="The location of the blob storage.",
+    )
     container: str = Field(
         default="TODO",
         description="The name of the container in Azure Blob Storage.",
@@ -29,7 +40,7 @@ class AzureBlobStorageFile(BaseModel):
         description="The name of the file in Azure Blob Storage.",
     )
 
-    def to_signed_url(self, _interaction_type: AzureBlobSignedUrlType) -> str:
+    def to_signed_url(self, _interaction_type: BlobSignedUrlType) -> str:
         """Return a freshly generated signed URL."""
         return "TODO"
 
@@ -42,22 +53,10 @@ class AzureBlobStorageFile(BaseModel):
         """Populate the model from a SQL representation."""
         parts = sql.split("/")
         if len(parts) < 3:  # noqa: PLR2004
-            msg = f"Invalid SQL representation {sql} for AzureBlobStorageFile."
-            raise AzureBlobStorageError(msg)
+            msg = f"Invalid SQL representation {sql} for BlobStorageFile."
+            raise BlobStorageError(msg)
         return cls(
             container=parts[0],
             path="/".join(parts[1:-1]),
             filename=parts[-1],
         )
-
-
-async def upload_file_to_azure_blob_storage(
-    file: bytes,  # noqa: ARG001
-    path: str,
-    filename: str,
-) -> AzureBlobStorageFile:
-    """Upload a file to Azure Blob Storage."""
-    return AzureBlobStorageFile(
-        path=path,
-        filename=filename,
-    )

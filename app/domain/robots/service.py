@@ -5,12 +5,8 @@ import httpx
 from fastapi import status
 from pydantic import UUID4, HttpUrl
 
-from app.core.azure_blob_storage import (
-    AzureBlobSignedUrlType,
-    AzureBlobStorageFile,
-    upload_file_to_azure_blob_storage,
-)
 from app.core.exceptions import RobotEnhancementError, RobotUnreachableError
+from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
     BatchEnhancementRequestStatus,
@@ -20,6 +16,11 @@ from app.domain.references.models.models import (
 from app.domain.references.reference_service import ReferenceService
 from app.domain.robots.models import RobotConfig, Robots
 from app.domain.service import GenericService
+from app.persistence.blob.models import (
+    BlobSignedUrlType,
+    BlobStorageFile,
+)
+from app.persistence.blob.service import upload_file_to_blob_storage
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 
 MIN_FOR_5XX_STATUS_CODES = 500
@@ -103,7 +104,7 @@ class RobotService(GenericService):
         jsonl_data = "\n".join(
             reference.to_sdk().to_jsonl() for reference in references
         ).encode("utf-8")
-        file = await upload_file_to_azure_blob_storage(
+        file = await upload_file_to_blob_storage(
             file=jsonl_data,
             path="batch_enhancement_request_reference_data",
             filename=f"{batch_enhancement_request.id}.jsonl",
@@ -116,11 +117,11 @@ class RobotService(GenericService):
 
         robot_request = destiny_sdk.robots.BatchRobotRequest(
             id=batch_enhancement_request.id,
-            reference_storage_url=file.to_signed_url(AzureBlobSignedUrlType.DOWNLOAD),
-            result_storage_url=AzureBlobStorageFile(
+            reference_storage_url=file.to_signed_url(BlobSignedUrlType.DOWNLOAD),
+            result_storage_url=BlobStorageFile(
                 path="batch_enhancement_result",
                 filename=f"{batch_enhancement_request.id}.jsonl",
-            ).to_signed_url(AzureBlobSignedUrlType.UPLOAD),
+            ).to_signed_url(BlobSignedUrlType.UPLOAD),
             extra_fields=batch_enhancement_request.enhancement_parameters,
         )
         try:
@@ -146,3 +147,10 @@ class RobotService(GenericService):
                 batch_enhancement_request.id,
                 request_status=BatchEnhancementRequestStatus.ACCEPTED,
             )
+
+    async def validate_and_import_batch_enhancement_result(
+        self,
+        batch_enhancement_request: BatchEnhancementRequest,
+        enhancement_service: EnhancementService,
+    ) -> None:
+        """Validate and import the result of a batch enhancement request."""

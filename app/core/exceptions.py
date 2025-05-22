@@ -217,8 +217,38 @@ class UOWError(Exception):
         super().__init__(detail, *args)
 
 
-class AzureBlobStorageError(Exception):
-    """Base class for Azure Blob Storage exceptions."""
+class BlobStorageError(Exception):
+    """Base class for Blob Storage exceptions."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the BlobStorageError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class AzureError(Exception):
+    """Base class for Azure exceptions."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the AzureError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class AzureBlobStorageError(BlobStorageError, AzureError):
+    """Exception for Azure Blob Storage errors."""
 
     def __init__(self, detail: str, *args: object) -> None:
         """

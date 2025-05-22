@@ -1,5 +1,6 @@
 """API config parsing and model."""
 
+from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 from typing import Self
@@ -77,6 +78,14 @@ If db_pass is provided, azure_db_resource_url must not be provided."""
         return self
 
 
+class Environment(StrEnum):
+    """Environment enum."""
+
+    PRODUCTION = "production"
+    DEVELOPMENT = "development"
+    LOCAL = "local"
+
+
 class Settings(BaseSettings):
     """Settings model for API."""
 
@@ -100,7 +109,10 @@ class Settings(BaseSettings):
         default_factory=list, description="mapping of known robot ids to urls."
     )
 
-    env: str = Field("production", description="The environment the app is running in.")
+    env: Environment = Field(
+        default=Environment.PRODUCTION,
+        description="The environment the app is running in.",
+    )
 
 
 @lru_cache(maxsize=1)

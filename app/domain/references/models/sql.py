@@ -9,7 +9,6 @@ from sqlalchemy import UUID, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.azure_blob_storage import AzureBlobStorageFile
 from app.domain.references.models.models import (
     BatchEnhancementRequest as DomainBatchEnhancementRequest,
 )
@@ -33,6 +32,7 @@ from app.domain.references.models.models import (
 from app.domain.references.models.models import (
     Reference as DomainReference,
 )
+from app.persistence.blob.models import BlobStorageFile
 from app.persistence.sql.persistence import GenericSQLPersistence
 
 
@@ -368,7 +368,7 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             if self.enhancement_parameters
             else {},
             error=self.error,
-            reference_data_file=AzureBlobStorageFile.from_sql(self.reference_data_file)
+            reference_data_file=BlobStorageFile.from_sql(self.reference_data_file)
             if self.reference_data_file
             else None,
         )

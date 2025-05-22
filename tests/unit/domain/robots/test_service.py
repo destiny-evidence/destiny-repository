@@ -173,7 +173,7 @@ def azure_file_mocks(monkeypatch):
         "app.domain.robots.service.upload_file_to_azure_blob_storage", mock_upload
     )
     monkeypatch.setattr(
-        "app.domain.robots.service.AzureBlobStorageFile", mock_file_creation
+        "app.persistence.blob.models.BlobStorageFile", mock_file_creation
     )
 
     return {

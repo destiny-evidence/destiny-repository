@@ -90,3 +90,24 @@ async def validate_and_import_batch_enhancement_result(
     batch_enhancement_request_id: UUID4,
 ) -> None:
     """Async logic for validating and importing a batch enhancement result."""
+    logger.info(
+        "Processing batch enhancement result",
+        extra={"batch_enhancement_request_id": batch_enhancement_request_id},
+    )
+    enhancement_service = await get_enhancement_service()
+    robot_service = await get_robot_service()
+    batch_enhancement_request = await enhancement_service.get_batch_enhancement_request(
+        batch_enhancement_request_id
+    )
+    if not batch_enhancement_request:
+        raise TaskError(
+            detail=(
+                f"Batch enhancement request with ID {batch_enhancement_request_id} "
+                "not found."
+            )
+        )
+
+    await robot_service.validate_and_import_batch_enhancement_result(
+        batch_enhancement_request,
+        enhancement_service,
+    )
