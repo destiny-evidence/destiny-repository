@@ -1,11 +1,11 @@
-"""Helper methods for sending authenticated requets †o destiny repository."""
+"""Send authenticated requests to Destiny Repository."""
 
 from enum import StrEnum
 from typing import Annotated, Literal
 
 import httpx
 import msal
-from pydantic import UUID4, BaseModel, Field
+from pydantic import UUID4, BaseModel, Field, HttpUrl
 
 from .robots import RobotResult
 
@@ -23,7 +23,7 @@ class AuthenticationType(StrEnum):
     MANAGED_IDENTITY = "managed_identity"
 
 
-class _AuthenticationMethod(BaseModel):
+class _ClientAuthenticationMethod(BaseModel):
     """Force the implementation of a get_token method on Authentication subclasses."""
 
     def get_token(self) -> str:
@@ -38,7 +38,7 @@ class _AuthenticationMethod(BaseModel):
         raise NotImplementedError(msg)
 
 
-class ManagedIdentityAuthentication(_AuthenticationMethod):
+class ManagedIdentityAuthentication(_ClientAuthenticationMethod):
     """Model for managed identiy authentication."""
 
     azure_application_url: str = Field(pattern="api//*")
@@ -48,7 +48,12 @@ class ManagedIdentityAuthentication(_AuthenticationMethod):
     )
 
     def get_token(self) -> str:
-        """Get an access token."""
+        """
+        Get an access token using a the managed identity.
+
+        :return: a JWT.
+        :rtype: str
+        """
         auth_client = msal.ManagedIdentityClient(
             managed_identity=msal.UserAssignedManagedIdentity(
                 client_id=self.azure_client_id
@@ -63,7 +68,7 @@ class ManagedIdentityAuthentication(_AuthenticationMethod):
         return result["access_token"]
 
 
-class AccessTokenAuthentication(_AuthenticationMethod):
+class AccessTokenAuthentication(_ClientAuthenticationMethod):
     """Model for access token authentication."""
 
     access_token: str
@@ -72,20 +77,37 @@ class AccessTokenAuthentication(_AuthenticationMethod):
     )
 
     def get_token(self) -> str:
-        """Get an access token."""
+        """
+        Get an access token.
+
+        :return: a JWT.
+        :rtype: str
+        """
         return self.access_token
 
 
-AuthenticationMethod = Annotated[
+ClientAuthenticationMethod = Annotated[
     ManagedIdentityAuthentication | AccessTokenAuthentication,
     Field(discriminator="authentication_type"),
 ]
 
 
 def send_robot_result(
-    url: str, auth_method: AuthenticationMethod, robot_result: RobotResult
+    url: HttpUrl, auth_method: ClientAuthenticationMethod, robot_result: RobotResult
 ) -> None:
-    """Send a RobotResult to destiny repository with access token authenticaiton."""
+    """
+    Send a RobotResult to destiny repository.
+
+    Generates an JWT using the provided ClientAuthenticationMethod.
+
+
+    :param url: The url to send the robot result to.
+    :type url: HttpUrl
+    :param auth_method: The authentication method to generate a token with.
+    :type auth_method: ClientAuthenticationMethod
+    :param robot_result: The Robot Result to send
+    :type robot_result: RobotResult
+    """
     token = auth_method.get_token()
     with httpx.Client() as client:
         client.post(
