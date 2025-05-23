@@ -4,7 +4,6 @@ from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.exceptions import TaskError
 from app.core.logger import get_logger
 from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.reference_service import ReferenceService
@@ -71,21 +70,15 @@ async def collect_and_dispatch_references_for_batch_enhancement(
     batch_enhancement_request = await enhancement_service.get_batch_enhancement_request(
         batch_enhancement_request_id
     )
-    if not batch_enhancement_request:
-        raise TaskError(
-            detail=(
-                f"Batch enhancement request with ID {batch_enhancement_request_id} "
-                "not found."
-            )
-        )
 
     try:
         await robot_service.collect_and_dispatch_references_for_batch_enhancement(
             batch_enhancement_request,
             reference_service,
         )
-    except Exception as e:  # noqa: BLE001
-        enhancement_service.mark_batch_enhancement_request_failed(
+    except Exception as e:
+        logger.exception("Error occurred while creating batch enhancement request")
+        await enhancement_service.mark_batch_enhancement_request_failed(
             batch_enhancement_request_id,
             str(e),
         )
@@ -105,21 +98,17 @@ async def validate_and_import_batch_enhancement_result(
     batch_enhancement_request = await enhancement_service.get_batch_enhancement_request(
         batch_enhancement_request_id
     )
-    if not batch_enhancement_request:
-        raise TaskError(
-            detail=(
-                f"Batch enhancement request with ID {batch_enhancement_request_id} "
-                "not found."
-            )
-        )
 
     try:
         await robot_service.validate_and_import_batch_enhancement_result(
             batch_enhancement_request,
             enhancement_service,
         )
-    except Exception as e:  # noqa: BLE001
-        enhancement_service.mark_batch_enhancement_request_failed(
+    except Exception as e:
+        logger.exception(
+            "Error occurred while validating and importing batch enhancement result"
+        )
+        await enhancement_service.mark_batch_enhancement_request_failed(
             batch_enhancement_request_id,
             str(e),
         )

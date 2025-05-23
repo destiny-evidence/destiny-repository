@@ -26,6 +26,7 @@ from app.domain.references.models.models import (
 from app.domain.references.reference_service import ReferenceService
 from app.domain.references.tasks import (
     collect_and_dispatch_references_for_batch_enhancement,
+    validate_and_import_batch_enhancement_result,
 )
 from app.domain.robots.models import Robots
 from app.domain.robots.service import RobotService
@@ -311,6 +312,10 @@ async def fulfill_batch_enhancement_request(
             batch_enhancement_request_id=robot_result.request_id,
             status=BatchEnhancementRequestStatus.PROCESSED,
         )
+    )
+
+    await validate_and_import_batch_enhancement_result.kiq(
+        batch_enhancement_request_id=robot_result.request_id,
     )
 
     return batch_enhancement_request.to_sdk(get_signed_url)

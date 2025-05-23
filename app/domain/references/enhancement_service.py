@@ -16,6 +16,7 @@ from app.domain.references.models.models import (
 )
 from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
+from app.persistence.blob.models import BlobStorageFile
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 
 
@@ -174,4 +175,16 @@ class EnhancementService(GenericService):
         """Update a batch enhancement request."""
         return await self.sql_uow.batch_enhancement_requests.update_by_pk(
             pk=batch_enhancement_request_id, request_status=status
+        )
+
+    @unit_of_work
+    async def add_validation_result_file_to_batch_enhancement_request(
+        self,
+        batch_enhancement_request_id: UUID4,
+        validation_result_file: BlobStorageFile,
+    ) -> BatchEnhancementRequest:
+        """Add a validation result file to a batch enhancement request."""
+        return await self.sql_uow.batch_enhancement_requests.update_by_pk(
+            pk=batch_enhancement_request_id,
+            validation_result_file=validation_result_file.to_sql(),
         )

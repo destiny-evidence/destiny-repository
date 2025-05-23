@@ -11,7 +11,7 @@ import time
 import destiny_sdk
 import httpx
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 toy_robot_id = os.environ["TOY_ROBOT_ID"]
 
@@ -28,8 +28,6 @@ def test_complete_batch_enhancement_workflow():
     with (
         httpx.Client(base_url=repo_url) as repo_client,
     ):
-        # 1: Create a batch enhancement request against the repo
-        # 1a: get a list of references
         # This will eventually be a search function on the repo :)
         reference_ids = []
         for identifier, identifier_type in (
@@ -47,6 +45,7 @@ def test_complete_batch_enhancement_workflow():
             assert response.status_code == 200
             reference_ids.append(response.json()["id"])
         assert len(reference_ids) == 3
+
         response = repo_client.post(
             "/references/enhancement/batch/",
             json=destiny_sdk.robots.BatchEnhancementRequestIn(
@@ -73,3 +72,45 @@ def test_complete_batch_enhancement_workflow():
                 break
 
         assert request["request_status"] == "completed"
+        result = destiny_sdk.robots.BatchEnhancementRequestRead.model_validate(request)
+        validation_file = httpx.get(str(result.validation_result_url))
+        for reference_id in reference_ids:
+            assert (
+                f"Reference {reference_id}: Enhancement added." in validation_file.text
+            )
+        reference_data_file = httpx.get(str(result.reference_data_url))
+        for line in reference_data_file.text.splitlines():
+            reference = destiny_sdk.references.Reference.model_validate_json(line)
+            assert str(reference.id) in reference_ids
+            # Check we only got enhancements we're dependent on
+            dependent_enhancements = {"abstract", "annotation"}
+            dependent_identifiers = {"doi", "pm_id"}
+            assert not (
+                {e.content.enhancement_type for e in reference.enhancements}
+                - dependent_enhancements
+            )
+            assert not (
+                {i.identifier_type for i in reference.identifiers}
+                - dependent_identifiers
+            )
+
+    # Finally check we got some toys themselves
+    with engine.connect() as conn:
+        result = conn.execute(
+            text(
+                f"""
+            SELECT * FROM reference r
+            LEFT JOIN enhancement e ON r.id = e.reference_id
+            WHERE reference_id IN {tuple(reference_ids)}
+            """  # noqa: S608
+            ),
+        )
+        toy_found = dict.fromkeys(reference_ids, False)
+        for row in result:
+            assert str(row.reference_id) in reference_ids
+            if row.enhancement_type == "annotation" and row.source == "Toy Robot":
+                toy_found[str(row.reference_id)] = True
+
+        if not all(toy_found.values()):
+            msg = "Expected toy robot enhancement not found in reference."
+            raise AssertionError(msg)

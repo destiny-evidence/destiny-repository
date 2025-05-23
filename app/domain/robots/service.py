@@ -179,9 +179,7 @@ class RobotService(GenericService):
         if isinstance(file_entry, destiny_sdk.robots.LinkedRobotError):
             return (
                 False,
-                f"""
-Reference {file_entry.reference_id}: {file_entry.message}
-""",
+                f"Reference {file_entry.reference_id}: {file_entry.message}",
             )
 
         try:
@@ -189,23 +187,17 @@ Reference {file_entry.reference_id}: {file_entry.message}
         except SQLNotFoundError:
             return (
                 False,
-                f"""
-Reference {file_entry.reference_id}: Reference doesn't exist.
-""",
+                f"Reference {file_entry.reference_id}: Reference doesn't exist.",
             )
         except SQLDuplicateError:
             return (
                 False,
-                f"""
-Reference {file_entry.reference_id}: Enhancement already exists.
-""",
+                f"Reference {file_entry.reference_id}: Enhancement already exists.",
             )
 
         return (
             True,
-            f"""
-Reference {file_entry.reference_id}: Enhancement added.
-""",
+            f"Reference {file_entry.reference_id}: Enhancement added.",
         )
 
     async def validate_and_import_batch_enhancement_result(
@@ -232,18 +224,19 @@ Batch enhancement request has no result file location. This should not happen.
         reference_ids: set[UUID4] = set()
 
         for entry_ref, entry in enumerate(json_content):
+            if not entry:
+                continue
             try:
                 file_entry = file_entry_validator.validate_json(entry)
             except ValidationError as exception:
-                failures.append(f"""
-Entry {entry_ref} could not be parsed: {exception}.
-    """)
+                failures.append(f"Entry {entry_ref} could not be parsed: {exception}.")
                 continue
 
             if file_entry.reference_id not in batch_enhancement_request.reference_ids:
-                failures.append(f"""
-Reference {file_entry.reference_id}: not in batch enhancement request.
-""")
+                failures.append(
+                    f"Reference {file_entry.reference_id}: not in batch enhancement "
+                    "request."
+                )
                 continue
 
             reference_ids.add(file_entry.reference_id)
@@ -260,24 +253,23 @@ Reference {file_entry.reference_id}: not in batch enhancement request.
             set(batch_enhancement_request.reference_ids) - reference_ids
         ):
             failures.extend(
-                f"""
-Reference {missing_reference}: not in batch enhancement result from robot.
-"""
+                f"Reference {missing_reference}: not in batch enhancement result from "
+                "robot."
                 for missing_reference in missing_references
             )
 
-        if not failures:
-            enhancement_service.update_batch_enhancement_request_status(
+        if failures and successes:
+            await enhancement_service.update_batch_enhancement_request_status(
                 batch_enhancement_request.id,
                 BatchEnhancementRequestStatus.PARTIAL_FAILED,
             )
         elif not successes:
-            enhancement_service.mark_batch_enhancement_request_failed(
+            await enhancement_service.mark_batch_enhancement_request_failed(
                 batch_enhancement_request.id,
                 "Result received but every enhancement failed.",
             )
         else:
-            enhancement_service.update_batch_enhancement_request_status(
+            await enhancement_service.update_batch_enhancement_request_status(
                 batch_enhancement_request.id,
                 BatchEnhancementRequestStatus.COMPLETED,
             )
@@ -287,10 +279,12 @@ Reference {missing_reference}: not in batch enhancement result from robot.
         )
         validation_result_file = await upload_file_to_blob_storage(
             content=BytesIO(validation_result_file_content),
-            path="batch_enhancement_result_result",
+            path="batch_enhancement_result",
             filename=f"{batch_enhancement_request.id}.txt",
         )
-        await self.sql_uow.batch_enhancement_requests.update_by_pk(
-            batch_enhancement_request.id,
-            result_data_file=validation_result_file.to_sql(),
+        await (
+            enhancement_service.add_validation_result_file_to_batch_enhancement_request(
+                batch_enhancement_request.id,
+                validation_result_file=validation_result_file,
+            )
         )
