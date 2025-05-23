@@ -48,7 +48,7 @@ async def test_request_enhancement_from_robot_happy_path(fake_uow, httpx_mock):
 
     httpx_mock.add_response(
         method="POST",
-        url=str(ROBOT_URL),
+        url=str(ROBOT_URL) + "single/",
         status_code=status.HTTP_202_ACCEPTED,
     )
 
@@ -240,7 +240,7 @@ async def test_collect_and_dispatch_references_for_batch_enhancement_happy_path(
 
     httpx_mock.add_response(
         method="POST",
-        url=str(ROBOT_URL),
+        url=str(ROBOT_URL) + "batch/",
         status_code=status.HTTP_202_ACCEPTED,
     )
 
@@ -382,7 +382,7 @@ async def test_collect_and_dispatch_references_for_batch_enhancement_robot_rejec
     # Simulate robot rejection with a 400 response
     httpx_mock.add_response(
         method="POST",
-        url=str(ROBOT_URL),
+        url=str(ROBOT_URL) + "batch/",
         status_code=status.HTTP_400_BAD_REQUEST,
         json={"message": "Invalid request"},
     )

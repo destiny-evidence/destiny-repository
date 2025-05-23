@@ -149,7 +149,7 @@ async def test_request_reference_enhancement_happy_path(
 
     # Mock the robot response
     httpx_mock.add_response(
-        method="POST", url=ROBOT_URL, status_code=status.HTTP_202_ACCEPTED
+        method="POST", url=ROBOT_URL + "single/", status_code=status.HTTP_202_ACCEPTED
     )
 
     enhancement_request_create = {
@@ -177,7 +177,7 @@ async def test_request_reference_enhancement_robot_rejects_request(
     # Mock the robot response
     httpx_mock.add_response(
         method="POST",
-        url=ROBOT_URL,
+        url=ROBOT_URL + "single/",
         status_code=status.HTTP_418_IM_A_TEAPOT,
         json={"message": "broken"},
     )
