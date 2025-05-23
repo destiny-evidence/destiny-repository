@@ -89,13 +89,7 @@ services:
       KNOWN_ROBOTS: '[{"robot_id": "1ee5aa1f-3248-4d21-9fee-718d4ff0ba5f", "robot_url": "http://toy-robot:8000", "dependent_enhancements":["annotation","abstract"], "dependent_identifiers":["doi","pm_id"]}]'
     entrypoint: taskiq worker app.tasks:broker --fs-discover
   toy-robot:
-    build:
-      context: ../toy-robot
-      dockerfile: Dockerfile
-      ssh:
-        - default
-    volumes:
-      - ../toy-robot/app:/app/app
+    image: toy-robot
     env_file:
       - .env
     environment:

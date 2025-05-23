@@ -5,9 +5,7 @@ from typing import Annotated, Literal
 
 import httpx
 import msal
-from pydantic import UUID4, BaseModel, Field, HttpUrl
-
-from .robots import RobotResult
+from pydantic import UUID4, BaseModel, Field
 
 
 class AuthenticationType(StrEnum):
@@ -90,28 +88,3 @@ ClientAuthenticationMethod = Annotated[
     ManagedIdentityAuthentication | AccessTokenAuthentication,
     Field(discriminator="authentication_type"),
 ]
-
-
-def send_robot_result(
-    url: HttpUrl, auth_method: ClientAuthenticationMethod, robot_result: RobotResult
-) -> None:
-    """
-    Send a RobotResult to destiny repository.
-
-    Generates an JWT using the provided ClientAuthenticationMethod.
-
-
-    :param url: The url to send the robot result to.
-    :type url: HttpUrl
-    :param auth_method: The authentication method to generate a token with.
-    :type auth_method: ClientAuthenticationMethod
-    :param robot_result: The Robot Result to send
-    :type robot_result: RobotResult
-    """
-    token = auth_method.get_token()
-    with httpx.Client() as client:
-        client.post(
-            str(url),
-            headers={"Authorization": f"Bearer {token}"},
-            json=robot_result.model_dump(mode="json"),
-        )
