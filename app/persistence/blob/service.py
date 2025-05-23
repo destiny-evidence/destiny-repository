@@ -6,8 +6,6 @@ TODO: implement streaming on gets and puts instead of in-memory.
 
 from io import BytesIO
 
-from minio import Minio
-from minio.error import S3Error
 from pydantic import HttpUrl
 
 from app.core.config import get_settings
@@ -21,6 +19,10 @@ from app.persistence.blob.models import (
 
 settings = get_settings()
 logger = get_logger()
+
+if settings.minio_config:
+    from minio import Minio
+    from minio.error import S3Error
 
 
 async def upload_file_to_minio(

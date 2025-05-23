@@ -18,6 +18,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import httpx
+import pytest
 import uvicorn
 from fastapi import FastAPI
 from sqlalchemy import create_engine, text
@@ -35,6 +36,8 @@ db_url = os.environ["DB_URL"]
 engine = create_engine(db_url)
 
 
+# e2e tests are ordered for easier seeding of downstream tests
+@pytest.mark.order(1)
 def test_complete_batch_import_workflow():  # noqa: PLR0915
     """Test the complete batch import workflow."""
     #############################
@@ -191,7 +194,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         assert response.status_code == 422
         # 2.c: Wrong import record
         response = client.post(
-            f"/imports/record/{(u:=uuid.uuid4())}/batch/",
+            f"/imports/record/{(u := uuid.uuid4())}/batch/",
             json={
                 "storage_url": url,
             },

@@ -59,6 +59,7 @@ services:
       # Overwrite with docker network hostname
       MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
+      KNOWN_ROBOTS: '[{"robot_id": "1ee5aa1f-3248-4d21-9fee-718d4ff0ba5f", "robot_url": "http://toy-robot:8000", "dependent_enhancements":["annotation","abstract"], "dependent_identifiers":["doi","pm_id"]}]'
     healthcheck:
       test:
         [
@@ -70,7 +71,6 @@ services:
       interval: 2s
       timeout: 2s
       retries: 5
-
   e2e-task-worker:
     build:
       context: .
@@ -86,8 +86,34 @@ services:
     environment:
       MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
+      KNOWN_ROBOTS: '[{"robot_id": "1ee5aa1f-3248-4d21-9fee-718d4ff0ba5f", "robot_url": "http://toy-robot:8000", "dependent_enhancements":["annotation","abstract"], "dependent_identifiers":["doi","pm_id"]}]'
     entrypoint: taskiq worker app.tasks:broker --fs-discover
-
+  toy-robot:
+    build:
+      context: ../toy-robot
+      dockerfile: Dockerfile
+      ssh:
+        - default
+    volumes:
+      - ../toy-robot/app:/app/app
+    env_file:
+      - .env
+    environment:
+      DESTINY_REPOSITORY_URL: "http://repository:8000"
+      ENV: "test"
+      AZURE_APPLICATION_ID: "dummy"
+      AZURE_TENANT_ID: "dummy"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import socket; sock = socket.create_connection(('localhost',8001), 2); sock.close()",
+        ]
+      interval: 2s
+      timeout: 2s
+      retries: 5
   e2e:
     container_name: e2e
     build:
@@ -103,12 +129,15 @@ services:
         condition: service_healthy
       e2e-task-worker:
         condition: service_started
+      toy-robot:
+        condition: service_healthy
     environment:
       DB_URL: "postgresql+psycopg://localuser:localpass@db:5432/destiny_dev"
       REPO_URL: "http://repository:8000"
       HTTP_CLIENT_URL: "http://http:5678"
       MINIO_URL: "http://fs:9000"
       CALLBACK_URL: "http://e2e:8001"
+      TOY_ROBOT_ID: "1ee5aa1f-3248-4d21-9fee-718d4ff0ba5f"
       ENV: "test"
       MINIO_PRESIGNED_URL_FILEPATH: /shared-minio/presigned_urls.json
     entrypoint: poetry run pytest /e2e

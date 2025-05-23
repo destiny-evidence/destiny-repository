@@ -1,8 +1,19 @@
 """The DESTINY SDK provides files for interacting with DESTINY repository."""
 
-from . import enhancements, identifiers, imports, references, robots, visibility
+from . import (
+    auth,
+    client_auth,
+    enhancements,
+    identifiers,
+    imports,
+    references,
+    robots,
+    visibility,
+)
 
 __all__ = [
+    "auth",
+    "client_auth",
     "enhancements",
     "identifiers",
     "imports",
