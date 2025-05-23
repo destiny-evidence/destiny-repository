@@ -60,7 +60,9 @@ class DummyContent:
                 "enhancement_type": "annotation",
                 "annotations": [
                     {
-                        "annotation_type": "test_annotation",
+                        "annotation_type": "boolean",
+                        "scheme": "openalex:topic",
+                        "value": True,
                         "label": "test_label",
                         "data": {"foo": "bar"},
                     }
