@@ -85,7 +85,7 @@ class ReferenceSQLRepository(
             )
             preload.append("identifiers")
         result = await self._session.execute(query)
-        db_references = result.scalars().all()
+        db_references = result.unique().scalars().all()
         return [
             await db_reference.to_domain(preload=preload)
             for db_reference in db_references

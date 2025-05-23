@@ -6,6 +6,7 @@ unit and integration test coverage is sound.
 """
 
 import os
+import time
 
 import destiny_sdk
 import httpx
@@ -47,27 +48,28 @@ def test_complete_batch_enhancement_workflow():
             reference_ids.append(response.json()["id"])
         assert len(reference_ids) == 3
         response = repo_client.post(
-            "/enhancements/batch/",
+            "/references/enhancement/batch/",
             json=destiny_sdk.robots.BatchEnhancementRequestIn(
                 robot_id=toy_robot_id, reference_ids=reference_ids
-            ).model_dump_json(),
+            ).model_dump(mode="json"),
         )
-        assert response.status_code == 201
+        assert response.status_code == 202
         batch = response.json()
         batch_id = batch["id"]
-        assert batch["status"] == "received"
+        assert batch["request_status"] == "received"
 
         while True:
+            time.sleep(1)
             # Wait for completion
             response = repo_client.get(
-                f"/enhancements/batch/{batch_id}/",
+                f"/references/enhancement/batch/request/{batch_id}/",
             )
             assert response.status_code == 200
-            if (request := response.json())["status"] not in (
+            if (request := response.json())["request_status"] not in (
                 "received",
                 "accepted",
                 "processed",
             ):
                 break
 
-        assert request["status"] == "completed"
+        assert request["request_status"] == "completed"

@@ -79,10 +79,16 @@ async def collect_and_dispatch_references_for_batch_enhancement(
             )
         )
 
-    await robot_service.collect_and_dispatch_references_for_batch_enhancement(
-        batch_enhancement_request,
-        reference_service,
-    )
+    try:
+        await robot_service.collect_and_dispatch_references_for_batch_enhancement(
+            batch_enhancement_request,
+            reference_service,
+        )
+    except Exception as e:  # noqa: BLE001
+        enhancement_service.mark_batch_enhancement_request_failed(
+            batch_enhancement_request_id,
+            str(e),
+        )
 
 
 @broker.task
@@ -107,7 +113,13 @@ async def validate_and_import_batch_enhancement_result(
             )
         )
 
-    await robot_service.validate_and_import_batch_enhancement_result(
-        batch_enhancement_request,
-        enhancement_service,
-    )
+    try:
+        await robot_service.validate_and_import_batch_enhancement_result(
+            batch_enhancement_request,
+            enhancement_service,
+        )
+    except Exception as e:  # noqa: BLE001
+        enhancement_service.mark_batch_enhancement_request_failed(
+            batch_enhancement_request_id,
+            str(e),
+        )

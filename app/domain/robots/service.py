@@ -100,7 +100,7 @@ class RobotService(GenericService):
         )
 
         return await self.send_enhancement_request_to_robot(
-            robot_url=str(robot_url).rstrip("/") + "single/",
+            robot_url=str(robot_url).rstrip("/") + "/single/",
             robot_id=enhancement_request.robot_id,
             robot_request=robot_request,
         )
@@ -148,7 +148,7 @@ class RobotService(GenericService):
 
         try:
             await self.send_enhancement_request_to_robot(
-                robot_url=str(robot.robot_url).rstrip("/") + "batch/",
+                robot_url=str(robot.robot_url).rstrip("/") + "/batch/",
                 robot_id=batch_enhancement_request.robot_id,
                 robot_request=robot_request,
             )

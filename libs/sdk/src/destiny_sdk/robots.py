@@ -247,7 +247,7 @@ class BatchEnhancementRequestRead(_BatchEnhancementRequestBase):
     """Core batch enhancement request class."""
 
     id: UUID4
-    request_status: EnhancementRequestStatus = Field(
+    request_status: BatchEnhancementRequestStatus = Field(
         description="The status of the request to create enhancements",
     )
     reference_data_url: HttpUrl | None = Field(

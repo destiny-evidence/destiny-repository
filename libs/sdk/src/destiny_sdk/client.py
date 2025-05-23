@@ -4,7 +4,6 @@ from collections.abc import Generator
 
 import httpx
 from httpx import codes
-from pydantic import HttpUrl
 
 from destiny_sdk.client_auth import ClientAuthenticationMethod
 from destiny_sdk.robots import (
@@ -54,9 +53,7 @@ class Client:
     Current implementation only supports robot results.
     """
 
-    def __init__(
-        self, base_url: HttpUrl, auth_method: ClientAuthenticationMethod
-    ) -> None:
+    def __init__(self, base_url: str, auth_method: ClientAuthenticationMethod) -> None:
         """
         Initialize the client.
 
@@ -65,8 +62,6 @@ class Client:
         :param auth_method: The authentication method to use for the API.
         :type auth_method: ClientAuthenticationMethod
         """
-        self.base_url = base_url
-        self.auth_method = auth_method
         self.session = httpx.Client(
             base_url=base_url,
             headers={"Content-Type": "application/json"},

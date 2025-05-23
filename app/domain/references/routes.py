@@ -293,6 +293,10 @@ async def fulfill_batch_enhancement_request(
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
 ) -> destiny_sdk.robots.BatchEnhancementRequestRead:
     """Receive the robot result and kick off importing the enhancements."""
+    logger.warning(
+        "Received batch enhancement result",
+        extra={"batch_enhancement_request_id": robot_result.request_id},
+    )
     if robot_result.error:
         batch_enhancement_request = (
             await enhancement_service.mark_batch_enhancement_request_failed(
