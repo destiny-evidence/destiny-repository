@@ -7,9 +7,16 @@ This documentation auto-generates details about the Authentication and Authoriza
     :depth: 2
     :local:
 
-Auth
--------
+Service Auth
+------------
 .. automodule:: libs.sdk.src.destiny_sdk.auth
     :members:
     :undoc-members:
     :inherited-members:
+
+Client Auth
+-----------
+.. automodule:: libs.sdk.src.destiny_sdk.client_auth
+    :members:
+    :undoc-members:
+    :inherited-members: BaseModel

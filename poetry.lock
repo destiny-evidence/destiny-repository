@@ -463,7 +463,7 @@ files = [
     {file = "cachetools-5.5.2-py3-none-any.whl", hash = "sha256:d26a22bcc62eb95c3beabd9f1ee5e820d3d2704fe2967cbe350e20c8ffcd3f0a"},
     {file = "cachetools-5.5.2.tar.gz", hash = "sha256:1a661caa9175d26759571b2e19580f9d6393969e5dfca11fdb1f947a23e640d4"},
 ]
-groups = ["docs", "main"]
+groups = ["dev", "docs", "e2e", "main"]
 name = "cachetools"
 optional = false
 python-versions = ">=3.7"
@@ -552,7 +552,7 @@ files = [
     {file = "cffi-1.17.1-cp39-cp39-win_amd64.whl", hash = "sha256:d016c76bdd850f3c626af19b0542c9677ba156e4ee4fccfdd7848803533ef662"},
     {file = "cffi-1.17.1.tar.gz", hash = "sha256:1c39c6016c32bc48dd54561950ebd6836e1670f2ae46128f67cf49e789c52824"},
 ]
-groups = ["dev", "main"]
+groups = ["dev", "docs", "e2e", "main"]
 markers = "platform_python_implementation != \"PyPy\""
 name = "cffi"
 optional = false
@@ -670,7 +670,7 @@ files = [
     {file = "charset_normalizer-3.4.2-py3-none-any.whl", hash = "sha256:7f56930ab0abd1c45cd15be65cc741c28b1c9a34876ce8c17a2fa107810c0af0"},
     {file = "charset_normalizer-3.4.2.tar.gz", hash = "sha256:5baececa9ecba31eff645232d59845c07aa030f0c81ee70184a90d35099a0e63"},
 ]
-groups = ["dev", "docs", "main"]
+groups = ["dev", "docs", "e2e", "main"]
 name = "charset-normalizer"
 optional = false
 python-versions = ">=3.7"
@@ -745,7 +745,7 @@ files = [
     {file = "cryptography-44.0.3-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:5d20cc348cca3a8aa7312f42ab953a56e15323800ca3ab0706b8cd452a3a056c"},
     {file = "cryptography-44.0.3.tar.gz", hash = "sha256:fe19d8bc5536a91a24a8133328880a41831b6c5df54599a8417b62fe015d3053"},
 ]
-groups = ["dev", "main"]
+groups = ["dev", "docs", "e2e", "main"]
 name = "cryptography"
 optional = false
 python-versions = "!=3.9.0,!=3.9.1,>=3.7"
@@ -775,7 +775,10 @@ python-versions = "^3.12"
 version = "0.1.0"
 
 [package.dependencies]
+cachetools = "^5.5.2"
 fastapi = "^0.115.12"
+httpx = "^0.28.1"
+msal = "^1.32.3"
 pydantic = "^2.11.3"
 python-jose = "^3.4.0"
 
@@ -1532,7 +1535,7 @@ files = [
     {file = "msal-1.32.3-py3-none-any.whl", hash = "sha256:b2798db57760b1961b142f027ffb7c8169536bf77316e99a0df5c4aaebb11569"},
     {file = "msal-1.32.3.tar.gz", hash = "sha256:5eea038689c78a5a70ca8ecbe1245458b55a857bd096efb6989c69ba15985d35"},
 ]
-groups = ["dev", "main"]
+groups = ["dev", "docs", "e2e", "main"]
 name = "msal"
 optional = false
 python-versions = ">=3.7"
@@ -1985,7 +1988,7 @@ files = [
     {file = "pycparser-2.22-py3-none-any.whl", hash = "sha256:c3702b6d3dd8c7abc1afa565d7e63d53a1d0bd86cdc24edd75470f4de499cfcc"},
     {file = "pycparser-2.22.tar.gz", hash = "sha256:491c8be9c040f5390f5bf44a5b07752bd07f56edf992381b05c701439eec10f6"},
 ]
-groups = ["dev", "main"]
+groups = ["dev", "docs", "e2e", "main"]
 markers = "platform_python_implementation != \"PyPy\""
 name = "pycparser"
 optional = false
@@ -2222,7 +2225,7 @@ files = [
     {file = "PyJWT-2.10.1-py3-none-any.whl", hash = "sha256:dcdd193e30abefd5debf142f9adfcdd2b58004e644f25406ffaebd50bd98dacb"},
     {file = "pyjwt-2.10.1.tar.gz", hash = "sha256:3cc5772eb20009233caf06e9d8a0577824723b44e6648ee0a2aedb6cf9381953"},
 ]
-groups = ["dev", "main"]
+groups = ["dev", "docs", "e2e", "main"]
 name = "pyjwt"
 optional = false
 python-versions = ">=3.9"
@@ -2445,7 +2448,7 @@ files = [
     {file = "requests-2.32.3-py3-none-any.whl", hash = "sha256:70761cfe03c773ceb22aa2f671b4757976145175cdfca038c02654d061d6dcc6"},
     {file = "requests-2.32.3.tar.gz", hash = "sha256:55365417734eb18255590a9ff9eb97e9e1da868d4ccd6402399eaf68af20a760"},
 ]
-groups = ["dev", "docs", "main"]
+groups = ["dev", "docs", "e2e", "main"]
 name = "requests"
 optional = false
 python-versions = ">=3.8"
@@ -3144,7 +3147,7 @@ files = [
     {file = "urllib3-2.4.0-py3-none-any.whl", hash = "sha256:4e16665048960a0900c702d4a66415956a584919c03361cac9f1df5c5dd7e813"},
     {file = "urllib3-2.4.0.tar.gz", hash = "sha256:414bc6535b787febd7567804cc015fee39daab8ad86268f1310a9250697de466"},
 ]
-groups = ["dev", "docs", "main"]
+groups = ["dev", "docs", "e2e", "main"]
 name = "urllib3"
 optional = false
 python-versions = ">=3.9"
