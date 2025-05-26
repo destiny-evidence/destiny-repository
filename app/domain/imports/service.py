@@ -13,7 +13,7 @@ from app.domain.imports.models.models import (
     ImportResult,
     ImportResultStatus,
 )
-from app.domain.references.reference_service import ReferenceService
+from app.domain.references.service import ReferenceService
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 

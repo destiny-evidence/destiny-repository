@@ -6,7 +6,7 @@ import pytest
 
 from app.core.exceptions import SQLNotFoundError
 from app.domain.references.models.models import ExternalIdentifierAdapter, Reference
-from app.domain.references.reference_service import ReferenceService
+from app.domain.references.service import ReferenceService
 
 
 @pytest.mark.asyncio

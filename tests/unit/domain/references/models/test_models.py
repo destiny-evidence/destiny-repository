@@ -8,8 +8,8 @@ from app.domain.references.models.models import (
     EnhancementRequest,
     GenericExternalIdentifier,
     LinkedExternalIdentifier,
-    ReferenceCreateResult,
 )
+from app.domain.references.models.validators import ReferenceCreateResult
 
 
 def test_generic_external_identifier_from_specific_without_other():

@@ -11,7 +11,6 @@ import destiny_sdk
 from destiny_sdk.enhancements import EnhancementContent, EnhancementType  # noqa: F401
 from destiny_sdk.identifiers import ExternalIdentifier, ExternalIdentifierType
 from pydantic import (
-    BaseModel,
     Field,
     HttpUrl,
     TypeAdapter,
@@ -19,8 +18,12 @@ from pydantic import (
 )
 
 from app.core.exceptions import SDKToDomainError
+from app.core.logger import get_logger
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
+from app.domain.imports.models.models import CollisionStrategy
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
+
+logger = get_logger()
 
 ExternalIdentifierAdapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
     ExternalIdentifier,
@@ -153,6 +156,100 @@ class Reference(DomainBaseModel, SQLAttributeMixin):
         else:
             return reference
 
+    def merge(
+        self,
+        incoming_reference: Self,
+        collision_strategy: CollisionStrategy,
+    ) -> None:
+        """
+        Merge an incoming reference into this one.
+
+        Args:
+            - existing_reference (Reference): The existing reference.
+            - incoming_reference (Reference): The incoming reference.
+            - collision_strategy (CollisionStrategy): The strategy to use for
+                handling collisions.
+
+        Returns:
+            - Reference: The final reference to be persisted.
+
+        """
+
+        def _get_identifier_key(
+            identifier: ExternalIdentifier,
+        ) -> tuple[str, str | None]:
+            """
+            Get the key for an identifier.
+
+            Args:
+                - identifier (LinkedExternalIdentifier)
+
+            Returns:
+                - tuple[str, str | None]: The key for the identifier.
+
+            """
+            return (
+                identifier.identifier_type,
+                identifier.other_identifier_name
+                if hasattr(identifier, "other_identifier_name")
+                else None,
+            )
+
+        # Graft matching IDs from self to incoming
+        for identifier in incoming_reference.identifiers or []:
+            for existing_identifier in self.identifiers or []:
+                if _get_identifier_key(identifier.identifier) == _get_identifier_key(
+                    existing_identifier.identifier
+                ):
+                    identifier.id = existing_identifier.id
+        for enhancement in incoming_reference.enhancements or []:
+            for existing_enhancement in self.enhancements or []:
+                if (enhancement.content.enhancement_type, enhancement.source) == (
+                    existing_enhancement.content.enhancement_type,
+                    existing_enhancement.source,
+                ):
+                    enhancement.id = existing_enhancement.id
+
+        if not self.identifiers or not incoming_reference.identifiers:
+            msg = "No identifiers found in merge. This should not happen."
+            raise RuntimeError(msg)
+
+        self.enhancements = self.enhancements or []
+        incoming_reference.enhancements = incoming_reference.enhancements or []
+
+        # Merge identifiers
+        self.identifiers.extend(
+            [
+                identifier
+                for identifier in incoming_reference.identifiers
+                if _get_identifier_key(identifier.identifier)
+                not in {
+                    _get_identifier_key(identifier.identifier)
+                    for identifier in self.identifiers
+                }
+            ]
+        )
+
+        # On an overwrite, we don't preserve the existing enhancements, only identifiers
+        if collision_strategy == CollisionStrategy.OVERWRITE:
+            self.enhancements = incoming_reference.enhancements.copy()
+            return
+
+        # Otherwise, merge enhancements
+        self.enhancements.extend(
+            [
+                enhancement
+                for enhancement in incoming_reference.enhancements
+                if (enhancement.content.enhancement_type, enhancement.source)
+                not in {
+                    (enhancement.content.enhancement_type, enhancement.source)
+                    for enhancement in self.enhancements
+                }
+            ]
+        )
+
+        return
+
 
 class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
     """External identifier model with database attributes included."""
@@ -229,20 +326,6 @@ class ExternalIdentifierSearch(GenericExternalIdentifier):
     """Model to search for an external identifier."""
 
 
-class ExternalIdentifierParseResult(BaseModel):
-    """Result of an attempt to parse an external identifier."""
-
-    external_identifier: ExternalIdentifier | None = Field(
-        default=None,
-        description="The external identifier to create",
-        discriminator="identifier_type",
-    )
-    error: str | None = Field(
-        default=None,
-        description="Error encountered during the parsing process",
-    )
-
-
 class Enhancement(DomainBaseModel, SQLAttributeMixin):
     """Core enhancement model with database attributes included."""
 
@@ -280,11 +363,13 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     def from_sdk(
         cls,
         enhancement: destiny_sdk.enhancements.Enhancement,
+        reference_id: uuid.UUID | None = None,
     ) -> Self:
         """Create an enhancement from the SDK model."""
         try:
             return cls.model_validate(
-                enhancement.model_dump(),
+                enhancement.model_dump()
+                | ({"reference_id": reference_id} if reference_id else {})
             )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
@@ -446,45 +531,3 @@ Errors for individual references are provided <TBC>.
             )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
-
-
-class EnhancementParseResult(BaseModel):
-    """Result of an attempt to parse an enhancement."""
-
-    enhancement: destiny_sdk.enhancements.EnhancementFileInput | None = Field(
-        default=None,
-        description="The enhancement to create",
-    )
-    error: str | None = Field(
-        default=None,
-        description="Error encountered during the parsing process",
-    )
-
-
-class ReferenceCreateResult(BaseModel):
-    """
-    Result of an attempt to create a reference.
-
-    If reference is None, no reference was created and errors will be populated.
-    If reference exists and there are errors, the reference was created but there
-    were errors in the hydration.
-    If reference exists and there are no errors, the reference was created and all
-    enhancements/identifiers were hydrated successfully from the input.
-    """
-
-    reference: Reference | None = Field(
-        default=None,
-        description="""
-    The created reference.
-    If None, no reference was created.
-    """,
-    )
-    errors: list[str] = Field(
-        default_factory=list,
-        description="A list of errors encountered during the creation process",
-    )
-
-    @property
-    def error_str(self) -> str | None:
-        """Return a string of errors if they exist."""
-        return "\n\n".join(e.strip() for e in self.errors) if self.errors else None

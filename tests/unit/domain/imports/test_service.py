@@ -15,7 +15,8 @@ from app.domain.imports.models.models import (
     ImportResultStatus,
 )
 from app.domain.imports.service import ImportService
-from app.domain.references.models.models import Reference, ReferenceCreateResult
+from app.domain.references.models.models import Reference
+from app.domain.references.models.validators import ReferenceCreateResult
 
 RECORD_ID = uuid.uuid4()
 REF_ID = uuid.uuid4()
