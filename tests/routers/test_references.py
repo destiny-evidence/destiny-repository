@@ -3,6 +3,7 @@
 import uuid
 from collections.abc import AsyncGenerator
 
+import destiny_sdk
 import pytest
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
@@ -64,6 +65,9 @@ def app() -> FastAPI:
                 robot_url=ROBOT_URL,
                 dependent_enhancements=[],
                 dependent_identifiers=[],
+                auth_method=destiny_sdk.client_auth.AccessTokenAuthentication(
+                    access_token="dummy"  # noqa: S106
+                ),
             )
         ]
     )

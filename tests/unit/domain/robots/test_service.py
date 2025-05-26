@@ -2,6 +2,7 @@ import uuid
 
 import httpx
 import pytest
+from destiny_sdk.client_auth import AccessTokenAuthentication
 from destiny_sdk.visibility import Visibility
 from fastapi import status
 from pydantic import HttpUrl
@@ -20,6 +21,7 @@ KNOWN_ROBOTS = [
         robot_url=ROBOT_URL,
         dependent_enhancements=[],
         dependent_identifiers=[],
+        auth_method=AccessTokenAuthentication(access_token="dummy"),  # noqa: S106
     ),
 ]
 
