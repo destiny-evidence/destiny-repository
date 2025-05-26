@@ -37,6 +37,7 @@ pytestmark = pytest.mark.usefixtures("session")
 
 ROBOT_ID = uuid.uuid4()
 ROBOT_URL = "http://www.test-robot-here.com/"
+FAKE_ROBOT_TOKEN = "access_token"  # noqa: S105
 
 
 @pytest.fixture
@@ -66,7 +67,7 @@ def app() -> FastAPI:
                 dependent_enhancements=[],
                 dependent_identifiers=[],
                 auth_method=destiny_sdk.client_auth.AccessTokenAuthentication(
-                    access_token="dummy"  # noqa: S106
+                    access_token=FAKE_ROBOT_TOKEN
                 ),
             )
         ]
