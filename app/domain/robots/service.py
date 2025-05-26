@@ -44,11 +44,10 @@ class RobotService(GenericService):
         )
 
         try:
-            async with httpx.AsyncClient() as client:
-                token = robot_config.auth_method.get_token()
+            auth = destiny_sdk.client_auth.DestinyAuth(robot_config.auth_method)
+            async with httpx.AsyncClient(auth=auth) as client:
                 response = await client.post(
                     str(robot_config.robot_url),
-                    headers={"Authorization": f"Bearer {token}"},
                     json=robot_request.model_dump(mode="json"),
                 )
         except httpx.RequestError as exception:
