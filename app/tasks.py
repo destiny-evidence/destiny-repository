@@ -4,7 +4,7 @@ from taskiq import AsyncBroker, InMemoryBroker, TaskiqEvents, TaskiqState
 from taskiq_aio_pika import AioPikaBroker
 
 from app.core.azure_service_bus_broker import AzureServiceBusBroker
-from app.core.config import get_settings
+from app.core.config import Environment, get_settings
 from app.persistence.sql.session import db_manager
 
 settings = get_settings()
@@ -14,7 +14,7 @@ broker: AsyncBroker = AzureServiceBusBroker(
     queue_name=settings.message_broker_queue_name,
 )
 
-if settings.env == "local":
+if settings.env == Environment.LOCAL:
     broker = AioPikaBroker(settings.message_broker_url)
 elif settings.env == "test":
     broker = InMemoryBroker()

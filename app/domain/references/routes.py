@@ -73,7 +73,7 @@ def enhancement_service(
 def choose_auth_strategy_reader() -> AuthMethod:
     """Choose reader scope auth strategy for our authorization."""
     return choose_auth_strategy(
-        environment=settings.env.value,
+        environment=settings.env,
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScopes.REFERENCE_READER,
@@ -83,7 +83,7 @@ def choose_auth_strategy_reader() -> AuthMethod:
 def choose_auth_strategy_writer() -> AuthMethod:
     """Choose writer scope auth strategy for our authorization."""
     return choose_auth_strategy(
-        environment=settings.env.value,
+        environment=settings.env,
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScopes.REFERENCE_WRITER,
@@ -93,7 +93,7 @@ def choose_auth_strategy_writer() -> AuthMethod:
 def choose_auth_strategy_robot() -> AuthMethod:
     """Choose robot scope auth strategy for our authorization."""
     return choose_auth_strategy(
-        environment=settings.env.value,
+        environment=settings.env,
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScopes.ROBOT,
@@ -294,7 +294,7 @@ async def fulfill_batch_enhancement_request(
     enhancement_service: Annotated[EnhancementService, Depends(enhancement_service)],
 ) -> destiny_sdk.robots.BatchEnhancementRequestRead:
     """Receive the robot result and kick off importing the enhancements."""
-    logger.warning(
+    logger.info(
         "Received batch enhancement result",
         extra={"batch_enhancement_request_id": robot_result.request_id},
     )

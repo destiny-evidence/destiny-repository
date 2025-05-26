@@ -91,6 +91,7 @@ class Environment(StrEnum):
     """Environment enum."""
 
     PRODUCTION = "production"
+    STAGING = "staging"
     DEVELOPMENT = "development"
     LOCAL = "local"
     TEST = "test"
