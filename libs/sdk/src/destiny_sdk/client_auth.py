@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 import httpx
 import msal
-from pydantic import UUID4, BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl
 
 from .robots import RobotResult
 
@@ -43,7 +43,7 @@ class ManagedIdentityAuthentication(_ClientAuthenticationMethod):
     """Model for managed identiy authentication."""
 
     azure_application_url: str = Field(pattern="api://*")
-    azure_client_id: UUID4
+    azure_client_id: str
     authentication_type: Literal[AuthenticationType.MANAGED_IDENTITY] = (
         AuthenticationType.MANAGED_IDENTITY
     )
