@@ -43,9 +43,17 @@ jobs:
           docker compose down -v
           docker volume rm destiny-repository_db_data || true
 
-      - name: Set up Docker Compose
+      - name: Set up SSH agent
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.YOUR_PRIVATE_KEY }}
+
+      - name: Set up Docker BuildKit
+        run: echo "DOCKER_BUILDKIT=1" >> $GITHUB_ENV
+
+      - name: Build with SSH agent forwarding
         run: |
-          docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml build --ssh default
 
       - name: Wait for e2e container to finish
         run: |
