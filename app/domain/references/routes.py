@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import (
     AuthMethod,
     AuthScopes,
-    HMACAuth,
     choose_auth_strategy,
+    choose_hmac_auth_strategy,
 )
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -82,16 +82,6 @@ def choose_auth_strategy_writer() -> AuthMethod:
     )
 
 
-def choose_auth_strategy_robot() -> AuthMethod:
-    """Choose robot scope auth strategy for our authorization."""
-    return choose_auth_strategy(
-        environment=settings.env,
-        tenant_id=settings.azure_tenant_id,
-        application_id=settings.azure_application_id,
-        auth_scope=AuthScopes.ROBOT,
-    )
-
-
 reference_reader_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_reader,
 )
@@ -100,7 +90,7 @@ reference_writer_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_writer,
 )
 
-robot_auth = HMACAuth()
+robot_auth = choose_hmac_auth_strategy()
 router = APIRouter(prefix="/references", tags=["references"])
 robot_router = APIRouter(
     prefix="/robot", tags=["robots"], dependencies=[Depends(robot_auth)]

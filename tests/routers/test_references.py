@@ -13,7 +13,6 @@ from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
-from app.core.auth import create_signature
 from app.core.exceptions import (
     NotFoundError,
     SDKToDomainError,
@@ -290,11 +289,7 @@ async def test_fulfill_enhancement_request_happy_path(
 
     robot_result = robot_result_enhancement(enhancement_request.id, reference.id)
 
-    response = await client.post(
-        "/robot/enhancement/single/",
-        json=robot_result,
-        headers={"Authorization": create_signature()},
-    )
+    response = await client.post("/robot/enhancement/single/", json=robot_result)
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["request_status"] == EnhancementRequestStatus.COMPLETED
@@ -320,11 +315,7 @@ async def test_fulfill_enhancement_request_robot_has_errors(
         "error": {"message": "Could not fulfill this enhancement request."},
     }
 
-    response = await client.post(
-        "/robot/enhancement/single/",
-        json=robot_result,
-        headers={"Authorization": create_signature()},
-    )
+    response = await client.post("/robot/enhancement/single/", json=robot_result)
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["request_status"] == EnhancementRequestStatus.FAILED
@@ -351,11 +342,7 @@ async def test_wrong_reference_exception_handler_returns_response_with_400(
         enhancement_request.id, different_reference.id
     )
 
-    response = await client.post(
-        "/robot/enhancement/single/",
-        json=robot_result,
-        headers={"Authorization": create_signature()},
-    )
+    response = await client.post("/robot/enhancement/single/", json=robot_result)
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -375,8 +362,7 @@ async def test_request_batch_enhancement_happy_path(
 
     response = await client.post(
         "/references/enhancement/batch/",
-        json=batch_request_create,
-        headers={"Authorization": create_signature()}
+        json=batch_request_create
     )
 
     mock_process = AsyncMock(return_value=None)
