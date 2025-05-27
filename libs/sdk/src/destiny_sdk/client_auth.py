@@ -41,7 +41,7 @@ class _ClientAuthenticationMethod(BaseModel):
 class ManagedIdentityAuthentication(_ClientAuthenticationMethod):
     """Model for managed identiy authentication."""
 
-    azure_application_url: str = Field(pattern="api//*")
+    azure_application_url: str = Field(pattern="api://*")
     azure_client_id: UUID4
     authentication_type: Literal[AuthenticationType.MANAGED_IDENTITY] = (
         AuthenticationType.MANAGED_IDENTITY
