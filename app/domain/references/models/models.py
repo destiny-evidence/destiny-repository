@@ -19,7 +19,7 @@ from pydantic import (
 
 from app.core.exceptions import SDKToDomainError
 from app.core.logger import get_logger
-from app.domain.base import DomainBaseModel, SQLAttributeMixin
+from app.domain.base import DomainBaseModel, SDKJsonlMixin, SQLAttributeMixin
 from app.domain.imports.models.models import CollisionStrategy
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 
@@ -93,7 +93,7 @@ class Visibility(StrEnum):
     HIDDEN = "hidden"
 
 
-class Reference(DomainBaseModel, SQLAttributeMixin):
+class Reference(DomainBaseModel, SQLAttributeMixin, SDKJsonlMixin):
     """Core reference model with database attributes included."""
 
     visibility: Visibility = Field(
