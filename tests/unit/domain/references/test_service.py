@@ -1,3 +1,5 @@
+"""Unit tests for the ReferenceService class."""
+
 import uuid
 from unittest.mock import AsyncMock
 
@@ -11,17 +13,81 @@ from app.core.exceptions import (
     SQLNotFoundError,
     WrongReferenceError,
 )
-from app.domain.references.enhancement_service import EnhancementService
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
+    ExternalIdentifierAdapter,
     Reference,
     Visibility,
 )
+from app.domain.references.service import ReferenceService
 from app.domain.robots.models import Robots
 from app.domain.robots.service import RobotService
+
+
+@pytest.mark.asyncio
+async def test_get_reference_happy_path(fake_repository, fake_uow):
+    dummy_id = uuid.uuid4()
+    dummy_reference = Reference(id=dummy_id)
+    repo = fake_repository(init_entries=[dummy_reference])
+    uow = fake_uow(references=repo)
+    service = ReferenceService(uow)
+    result = await service.get_reference(dummy_id)
+    assert result.id == dummy_reference.id
+
+
+@pytest.mark.asyncio
+async def test_get_reference_not_found(fake_repository, fake_uow):
+    repo = fake_repository()
+    uow = fake_uow(references=repo)
+    service = ReferenceService(uow)
+    dummy_id = uuid.uuid4()
+    with pytest.raises(SQLNotFoundError):
+        await service.get_reference(dummy_id)
+
+
+@pytest.mark.asyncio
+async def test_register_reference_happy_path(fake_repository, fake_uow):
+    repo = fake_repository()
+    uow = fake_uow(references=repo)
+    service = ReferenceService(uow)
+    created = await service.register_reference()
+    # Verify that an id was assigned during registration.
+    assert hasattr(created, "id")
+    assert isinstance(created.id, uuid.UUID)
+
+
+@pytest.mark.asyncio
+async def test_add_identifier_happy_path(fake_repository, fake_uow):
+    dummy_id = uuid.uuid4()
+    dummy_reference = Reference(id=dummy_id)
+    repo_refs = fake_repository(init_entries=[dummy_reference])
+    repo_ids = fake_repository()
+    uow = fake_uow(references=repo_refs, external_identifiers=repo_ids)
+    service = ReferenceService(uow)
+    identifier_data = {"identifier": "W1234", "identifier_type": "open_alex"}
+    fake_identifier_create = ExternalIdentifierAdapter.validate_python(identifier_data)
+    returned_identifier = await service.add_identifier(dummy_id, fake_identifier_create)
+    assert getattr(returned_identifier, "reference_id", None) == dummy_id
+    for k, v in identifier_data.items():
+        assert getattr(returned_identifier.identifier, k, None) == v
+
+
+@pytest.mark.asyncio
+async def test_add_identifier_reference_not_found(fake_repository, fake_uow):
+    repo_refs = fake_repository()
+    repo_ids = fake_repository()
+    uow = fake_uow(references=repo_refs, external_identifiers=repo_ids)
+    service = ReferenceService(uow)
+    dummy_id = uuid.uuid4()
+    fake_identifier_create = ExternalIdentifierAdapter.validate_python(
+        {"identifier": "W1234", "identifier_type": "open_alex"}
+    )
+    with pytest.raises(SQLNotFoundError):
+        await service.add_identifier(dummy_id, fake_identifier_create)
+
 
 ENHANCEMENT_DATA = {
     "source": "test_source",
@@ -69,7 +135,7 @@ async def test_trigger_reference_enhancement_request_happy_path(
         enhancement_requests=fake_enhancement_requests, references=fake_references
     )
 
-    service = EnhancementService(uow)
+    service = ReferenceService(uow)
 
     received_enhancement_request = EnhancementRequest(
         reference_id=reference_id, robot_id=uuid.uuid4(), enhancement_parameters={}
@@ -111,7 +177,7 @@ async def test_trigger_reference_enhancement_request_rejected(
         enhancement_requests=fake_enhancement_requests, references=fake_references
     )
 
-    service = EnhancementService(uow)
+    service = ReferenceService(uow)
 
     received_enhancement_request = EnhancementRequest(
         reference_id=reference_id, robot_id=uuid.uuid4(), enhancement_parameters={}
@@ -141,7 +207,7 @@ async def test_trigger_reference_enhancement_nonexistent_reference(
 
     uow = fake_uow(enhancement_requests=fake_repository(), references=fake_repository())
 
-    service = EnhancementService(uow)
+    service = ReferenceService(uow)
 
     received_enhancement_request = EnhancementRequest(
         reference_id=unknown_reference_id,
@@ -152,7 +218,7 @@ async def test_trigger_reference_enhancement_nonexistent_reference(
     with pytest.raises(SQLNotFoundError):
         await service.request_reference_enhancement(
             enhancement_request=received_enhancement_request,
-            robot_service=RobotService(uow, Robots({})),
+            robot_service=RobotService(Robots({})),
         )
 
 
@@ -176,7 +242,7 @@ async def test_trigger_reference_enhancement_nonexistent_robot(
         enhancement_requests=fake_enhancement_requests, references=fake_references
     )
 
-    service = EnhancementService(uow)
+    service = ReferenceService(uow)
 
     received_enhancement_request = EnhancementRequest(
         reference_id=reference_id, robot_id=uuid.uuid4(), enhancement_parameters={}
@@ -185,7 +251,7 @@ async def test_trigger_reference_enhancement_nonexistent_robot(
     with pytest.raises(NotFoundError):
         await service.request_reference_enhancement(
             enhancement_request=received_enhancement_request,
-            robot_service=RobotService(uow, Robots({})),
+            robot_service=RobotService(Robots({})),
         )
 
 
@@ -202,7 +268,7 @@ async def test_get_enhancement_request_happy_path(fake_repository, fake_uow):
 
     fake_enhancement_requests = fake_repository([existing_enhancement_request])
     uow = fake_uow(enhancement_requests=fake_enhancement_requests)
-    service = EnhancementService(uow)
+    service = ReferenceService(uow)
 
     returned_enhancement_request = await service.get_enhancement_request(
         enhancement_request_id
@@ -217,7 +283,7 @@ async def test_get_enhancement_request_doesnt_exist(fake_repository, fake_uow):
 
     fake_enhancement_requests = fake_repository()
     uow = fake_uow(enhancement_requests=fake_enhancement_requests)
-    service = EnhancementService(uow)
+    service = ReferenceService(uow)
 
     with pytest.raises(
         SQLNotFoundError,
@@ -232,7 +298,7 @@ async def test_create_reference_enhancement_from_request_happy_path(
 ):
     enhancement_request_id = uuid.uuid4()
     reference_id = uuid.uuid4()
-    fake_enhancement_repo = fake_repository()
+    fake_reference_repo = fake_repository([Reference(id=reference_id)])
 
     existing_enhancement_request = EnhancementRequest(
         id=enhancement_request_id,
@@ -244,21 +310,19 @@ async def test_create_reference_enhancement_from_request_happy_path(
     fake_enhancement_requests = fake_repository([existing_enhancement_request])
     uow = fake_uow(
         enhancement_requests=fake_enhancement_requests,
-        references=fake_repository([Reference(id=reference_id)]),
-        enhancements=fake_enhancement_repo,
+        references=fake_reference_repo,
     )
 
-    service = EnhancementService(uow)
-
+    service = ReferenceService(uow)
     enhancement_request = await service.create_reference_enhancement_from_request(
         enhancement_request_id=existing_enhancement_request.id,
         enhancement=Enhancement(reference_id=reference_id, **ENHANCEMENT_DATA),
     )
 
-    created_enhancement = fake_enhancement_repo.get_first_record()
+    reference = fake_reference_repo.get_first_record()
 
     assert enhancement_request.request_status == EnhancementRequestStatus.COMPLETED
-    assert created_enhancement.source == ENHANCEMENT_DATA.get("source")
+    assert reference.enhancements[0]["source"] == ENHANCEMENT_DATA.get("source")
 
 
 @pytest.mark.asyncio
@@ -283,7 +347,7 @@ async def test_create_reference_enhancement_from_request_reference_not_found(
         enhancements=fake_enhancement_repo,
     )
 
-    service = EnhancementService(uow)
+    service = ReferenceService(uow)
 
     with pytest.raises(SQLNotFoundError):
         await service.create_reference_enhancement_from_request(
@@ -306,7 +370,7 @@ async def test_create_reference_enhancement_from_request_enhancement_request_not
         enhancements=fake_repository(),
     )
 
-    service = EnhancementService(uow)
+    service = ReferenceService(uow)
 
     with pytest.raises(SQLNotFoundError):
         await service.create_reference_enhancement_from_request(
@@ -340,7 +404,7 @@ async def test_create_reference_enhancement_from_request_enhancement_for_wrong_r
         enhancements=fake_enhancement_repo,
     )
 
-    service = EnhancementService(uow)
+    service = ReferenceService(uow)
 
     with pytest.raises(WrongReferenceError):
         await service.create_reference_enhancement_from_request(
@@ -366,7 +430,7 @@ async def test_mark_enhancement_request_as_failed(fake_repository, fake_uow):
     uow = fake_uow(
         enhancement_requests=fake_enhancement_requests,
     )
-    service = EnhancementService(uow)
+    service = ReferenceService(uow)
 
     returned_enhancement_request = await service.mark_enhancement_request_failed(
         enhancement_request_id=enhancement_request_id, error="it broke"
@@ -387,7 +451,7 @@ async def test_mark_enhancement_request_as_failed_request_non_existent(
     uow = fake_uow(
         enhancement_requests=fake_repository(),
     )
-    service = EnhancementService(uow)
+    service = ReferenceService(uow)
 
     with pytest.raises(SQLNotFoundError):
         await service.mark_enhancement_request_failed(
@@ -419,7 +483,7 @@ async def test_register_batch_reference_enhancement_request(fake_repository, fak
         batch_enhancement_requests=fake_batch_requests,
         references=fake_references,
     )
-    service = EnhancementService(uow)
+    service = ReferenceService(uow)
 
     created_request = await service.register_batch_reference_enhancement_request(
         enhancement_request=batch_enhancement_request
@@ -459,7 +523,7 @@ async def test_register_batch_reference_enhancement_request_missing_pk(
         batch_enhancement_requests=fake_batch_requests,
         references=fake_references,
     )
-    service = EnhancementService(uow)
+    service = ReferenceService(uow)
 
     with pytest.raises(
         SQLNotFoundError, match=f"{{'{missing_reference_id}'}} not in repository"

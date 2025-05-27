@@ -269,18 +269,18 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         assert "identifiers\n  Input should be a valid list" in cp["failure_details"][2]
         assert "All identifiers failed to parse." in cp["failure_details"][3]
         assert (
-            "Enhancement 1:\n    Invalid enhancement. Check the format and content of the enhancement."
+            "Enhancement 1:\nInvalid enhancement. Check the format and content of the enhancement."
             in cp["failure_details"][4]
         )
         assert "All identifiers failed to parse." in cp["failure_details"][5]
-        assert "Identifier 1:\n    Invalid identifier." in cp["failure_details"][5]
-        assert "Identifier 2:\n    Invalid identifier." in cp["failure_details"][5]
+        assert "Identifier 1:\nInvalid identifier." in cp["failure_details"][5]
+        assert "Identifier 2:\nInvalid identifier." in cp["failure_details"][5]
         assert (
-            "Entry 8:\n\nEnhancement 2:\n    Invalid enhancement. Check the format and content of the enhancement."
+            "Entry 8:\n\nEnhancement 2:\nInvalid enhancement. Check the format and content of the enhancement."
             in cp["failure_details"][6]
         )
         assert (
-            "Enhancement 1:\n    Invalid enhancement. Check the format and content of the enhancement."
+            "Enhancement 1:\nInvalid enhancement. Check the format and content of the enhancement."
             in cp["failure_details"][7]
         )
 

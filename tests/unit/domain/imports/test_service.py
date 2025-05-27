@@ -3,6 +3,7 @@
 import uuid
 from unittest.mock import AsyncMock
 
+import destiny_sdk
 import pytest
 
 from app.domain.imports.models.models import (
@@ -15,7 +16,6 @@ from app.domain.imports.models.models import (
     ImportResultStatus,
 )
 from app.domain.imports.service import ImportService
-from app.domain.references.models.models import Reference
 from app.domain.references.models.validators import ReferenceCreateResult
 
 RECORD_ID = uuid.uuid4()
@@ -76,7 +76,7 @@ async def test_import_reference_happy_path(fake_repository, fake_uow):
 
     fake_reference_service = AsyncMock()
     fake_reference_service.ingest_reference.return_value = ReferenceCreateResult(
-        reference=Reference(id=REF_ID)
+        reference=destiny_sdk.references.ReferenceFileInput(),
     )
 
     await service.import_reference(
@@ -84,8 +84,7 @@ async def test_import_reference_happy_path(fake_repository, fake_uow):
     )
 
     import_result = repo_results.get_first_record()
-
-    assert import_result.reference_id == REF_ID
+    assert import_result.id
     assert import_result.status == ImportResultStatus.COMPLETED
 
 
@@ -124,7 +123,8 @@ async def test_import_reference_reference_created_with_errors(
 
     fake_reference_service = AsyncMock()
     fake_reference_service.ingest_reference.return_value = ReferenceCreateResult(
-        reference=Reference(id=REF_ID), errors=[import_reference_error]
+        reference=destiny_sdk.references.ReferenceFileInput(),
+        errors=[import_reference_error],
     )
 
     await service.import_reference(

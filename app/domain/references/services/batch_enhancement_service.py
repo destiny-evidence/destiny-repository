@@ -108,7 +108,7 @@ class BatchEnhancementService(GenericService):
 
         failures = (
             batch_enhancement_result.parse_failures
-            + batch_enhancement_result.robot_errors
+            + [error.message for error in batch_enhancement_result.robot_errors]
             + import_failures
         )
 

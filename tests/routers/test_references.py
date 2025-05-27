@@ -27,8 +27,8 @@ from app.domain.references.models.models import (
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.routes import robots
+from app.domain.references.service import ReferenceService
 from app.domain.robots.models import RobotConfig, Robots
-from app.domain.robots.service import RobotService
 from app.main import (
     enhance_wrong_reference_exception_handler,
     not_found_exception_handler,
@@ -361,7 +361,7 @@ async def test_request_batch_enhancement_happy_path(
 
     mock_process = AsyncMock(return_value=None)
     monkeypatch.setattr(
-        RobotService,
+        ReferenceService,
         "collect_and_dispatch_references_for_batch_enhancement",
         mock_process,
     )

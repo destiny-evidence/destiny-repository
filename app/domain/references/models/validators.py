@@ -144,6 +144,10 @@ class ReferenceCreateResult(BaseModel):
         default_factory=list,
         description="A list of errors encountered during the creation process",
     )
+    reference_id: UUID4 | None = Field(
+        default=None,
+        description="The ID of the created reference, if created",
+    )
 
     @property
     def error_str(self) -> str | None:
@@ -205,9 +209,9 @@ class ReferenceCreateResult(BaseModel):
                     for result in enhancement_results
                     if result.enhancement
                 ],
-                errors=[result.error for result in identifier_results if result.error]
-                + [result.error for result in enhancement_results if result.error],
-            )
+            ),
+            errors=[result.error for result in identifier_results if result.error]
+            + [result.error for result in enhancement_results if result.error],
         )
 
 

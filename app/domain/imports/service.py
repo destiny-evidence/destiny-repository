@@ -114,14 +114,14 @@ This should not happen.
             await self.sql_uow.results.update_by_pk(
                 import_result.id,
                 status=ImportResultStatus.PARTIALLY_FAILED,
-                reference_id=reference_result.reference.id,
+                reference_id=reference_result.reference_id,
                 failure_details=reference_result.error_str,
             )
         else:
             await self.sql_uow.results.update_by_pk(
                 import_result.id,
                 status=ImportResultStatus.COMPLETED,
-                reference_id=reference_result.reference.id,
+                reference_id=reference_result.reference_id,
             )
 
     async def process_batch(self, import_batch: ImportBatch) -> None:

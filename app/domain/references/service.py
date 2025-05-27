@@ -60,25 +60,30 @@ class ReferenceService(GenericService):
             reference_id, preload=["identifiers", "enhancements"]
         )
 
-    @unit_of_work
-    async def add_enhancement(
+    async def _add_enhancement(
         self, reference_id: UUID4, enhancement: Enhancement
     ) -> Reference:
         """Add an enhancement to a reference."""
+        # This method is used internally and does not use the unit of work.
         if enhancement.reference_id != reference_id:
             detail = "Enhancement is for a different reference than requested."
             raise WrongReferenceError(detail)
         reference = await self.sql_uow.references.get_by_pk(
             reference_id, preload=["enhancements", "identifiers"]
         )
-        # Note: no duplicate/dependency checking here yet.
-        # More refined handling should go here (by eg adding an add_enhancement
-        # method to the Reference model).
+        # This uses SQLAlchemy to treat References as an aggregate of enhancements.
+        # All considered this is a naive implementation, but it works for now.
         reference.enhancements = [*(reference.enhancements or []), *[enhancement]]
         return await self.sql_uow.references.merge(reference)
 
     @unit_of_work
-    async def get_hydrated_references(
+    async def add_enhancement(
+        self, reference_id: UUID4, enhancement: Enhancement
+    ) -> Reference:
+        """Add an enhancement to a reference."""
+        return await self._add_enhancement(reference_id, enhancement)
+
+    async def _get_hydrated_references(
         self,
         reference_ids: list[UUID4],
         enhancement_types: list[EnhancementType] | None = None,
@@ -230,11 +235,7 @@ class ReferenceService(GenericService):
             enhancement_request_id
         )
 
-        if enhancement_request.reference_id != enhancement.reference_id:
-            detail = "enhancement is for a different reference than requested."
-            raise WrongReferenceError(detail)
-
-        await self.add_enhancement(enhancement_request.reference_id, enhancement)
+        await self._add_enhancement(enhancement_request.reference_id, enhancement)
 
         return await self.sql_uow.enhancement_requests.update_by_pk(
             enhancement_request.id,
@@ -335,7 +336,7 @@ class ReferenceService(GenericService):
     ) -> None:
         """Collect and dispatch references for batch enhancement."""
         robot = robot_service.get_robot_config(batch_enhancement_request.robot_id)
-        references = await self.get_hydrated_references(
+        references = await self._get_hydrated_references(
             batch_enhancement_request.reference_ids,
             enhancement_types=robot.dependent_enhancements,
             external_identifier_types=robot.dependent_identifiers,
