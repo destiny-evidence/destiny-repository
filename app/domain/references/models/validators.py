@@ -218,11 +218,11 @@ class ReferenceCreateResult(BaseModel):
 class BatchEnhancementResultValidator(BaseModel):
     """Result of a batch enhancement request."""
 
-    enhancements_to_add: list[destiny_sdk.robots.BatchEnhancementResultEntry] = Field(
+    enhancements_to_add: list[destiny_sdk.enhancements.Enhancement] = Field(
         default_factory=list,
         description="A list of enhancements to add to the references",
     )
-    robot_errors: list[destiny_sdk.robots.RobotError] = Field(
+    robot_errors: list[destiny_sdk.robots.LinkedRobotError] = Field(
         default_factory=list,
         description="A list of errors encountered by the robot during processing",
     )
@@ -238,13 +238,14 @@ class BatchEnhancementResultValidator(BaseModel):
     )
 
     @classmethod
-    def from_raw(cls, json: list[str], expected_reference_ids: set[UUID4]) -> Self:
+    def from_raw(cls, json_in: list[str], expected_reference_ids: set[UUID4]) -> Self:
         """Create a BatchEnhancementResult from a jsonl entry."""
         file_entry_validator: TypeAdapter[
             destiny_sdk.robots.BatchEnhancementResultEntry
         ] = TypeAdapter(destiny_sdk.robots.BatchEnhancementResultEntry)
         self = cls()
-        for entry_ref, entry in enumerate(json):
+
+        for entry_ref, entry in enumerate(json_in):
             if not entry:
                 continue
             try:
@@ -268,6 +269,11 @@ class BatchEnhancementResultValidator(BaseModel):
                     "in batch enhancement result."
                 )
                 continue
+
+            if isinstance(file_entry, destiny_sdk.enhancements.Enhancement):
+                self.enhancements_to_add.append(file_entry)
+            else:
+                self.robot_errors.append(file_entry)
 
             self.reference_ids.add(file_entry.reference_id)
 

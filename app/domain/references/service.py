@@ -1,6 +1,5 @@
 """The service for interacting with and managing references."""
 
-import destiny_sdk
 from pydantic import UUID4
 
 from app.core.config import get_settings
@@ -287,47 +286,6 @@ class ReferenceService(GenericService):
             validation_result_file=validation_result_file.to_sql(),
         )
 
-    async def validate_and_import_batch_enhancement_result(
-        self,
-        batch_enhancement_request: BatchEnhancementRequest,
-    ) -> None:
-        """Validate and import the result of a batch enhancement request."""
-        validated_result = (
-            await self._batch_enhancement_service.validate_batch_enhancement_result(
-                batch_enhancement_request
-            )
-        )
-        successes: list[str] = []
-        failures: list[str] = []
-        for enhancement in validated_result.enhancements_to_add:
-            success, msg = await self.handle_batch_enhancement_result_entry(enhancement)
-            if success:
-                successes.append(msg)
-            else:
-                failures.append(msg)
-
-        (
-            status,
-            validation_result_file,
-        ) = await self._batch_enhancement_service.finalise_and_store_batch_enhancement_result(  # noqa: E501
-            batch_enhancement_request,
-            validated_result,
-            successes,
-            failures,
-        )
-        if status == BatchEnhancementRequestStatus.FAILED:
-            await self.mark_batch_enhancement_request_failed(
-                batch_enhancement_request.id,
-                "Result received but every enhancement failed.",
-            )
-        else:
-            await self.update_batch_enhancement_request_status(
-                batch_enhancement_request.id, status
-            )
-        await self.add_validation_result_file_to_batch_enhancement_request(
-            batch_enhancement_request.id, validation_result_file
-        )
-
     @unit_of_work
     async def collect_and_dispatch_references_for_batch_enhancement(
         self,
@@ -370,34 +328,73 @@ class ReferenceService(GenericService):
                 request_status=BatchEnhancementRequestStatus.ACCEPTED,
             )
 
+    async def validate_and_import_batch_enhancement_result(
+        self,
+        batch_enhancement_request: BatchEnhancementRequest,
+    ) -> None:
+        """Validate and import the result of a batch enhancement request."""
+        validated_result = (
+            await self._batch_enhancement_service.validate_batch_enhancement_result(
+                batch_enhancement_request
+            )
+        )
+        successes: list[str] = []
+        failures: list[str] = []
+        for enhancement in validated_result.enhancements_to_add:
+            success, msg = await self.handle_batch_enhancement_result_entry(
+                Enhancement.from_sdk(enhancement)
+            )
+            if success:
+                successes.append(msg)
+            else:
+                failures.append(msg)
+
+        (
+            status,
+            validation_result_file,
+        ) = await self._batch_enhancement_service.finalise_and_store_batch_enhancement_result(  # noqa: E501
+            batch_enhancement_request,
+            validated_result,
+            successes,
+            failures,
+        )
+
+        if status == BatchEnhancementRequestStatus.FAILED:
+            await self.mark_batch_enhancement_request_failed(
+                batch_enhancement_request.id,
+                "Result received but every enhancement failed.",
+            )
+        else:
+            await self.update_batch_enhancement_request_status(
+                batch_enhancement_request.id, status
+            )
+        await self.add_validation_result_file_to_batch_enhancement_request(
+            batch_enhancement_request.id, validation_result_file
+        )
+
     async def handle_batch_enhancement_result_entry(
         self,
-        file_entry: destiny_sdk.robots.BatchEnhancementResultEntry,
+        enhancement: Enhancement,
     ) -> tuple[bool, str]:
         """Handle the import of a single batch enhancement result entry."""
-        if isinstance(file_entry, destiny_sdk.robots.LinkedRobotError):
-            return (
-                False,
-                f"Reference {file_entry.reference_id}: {file_entry.message}",
-            )
-
         try:
             await self.add_enhancement(
-                file_entry.reference_id,
-                Enhancement.from_sdk(file_entry, file_entry.reference_id),
+                enhancement.reference_id,
+                enhancement,
             )
         except SQLNotFoundError:
             return (
                 False,
-                f"Reference {file_entry.reference_id}: Reference doesn't exist.",
+                f"Reference {enhancement.reference_id}: Reference doesn't exist.",
             )
         except SQLDuplicateError:
             return (
                 False,
-                f"Reference {file_entry.reference_id}: Enhancement already exists.",
+                f"Reference {enhancement.reference_id}: Enhancement already "
+                "exists on reference.",
             )
 
         return (
             True,
-            f"Reference {file_entry.reference_id}: Enhancement added.",
+            f"Reference {enhancement.reference_id}: Enhancement added.",
         )

@@ -218,17 +218,31 @@ class Reference(DomainBaseModel, SQLAttributeMixin):
         incoming_reference.enhancements = incoming_reference.enhancements or []
 
         # Merge identifiers
-        self.identifiers.extend(
-            [
+        if collision_strategy == CollisionStrategy.MERGE_DEFENSIVE:
+            self.identifiers.extend(
+                [
+                    identifier
+                    for identifier in incoming_reference.identifiers
+                    if _get_identifier_key(identifier.identifier)
+                    not in {
+                        _get_identifier_key(identifier.identifier)
+                        for identifier in self.identifiers
+                    }
+                ]
+            )
+        elif collision_strategy in (
+            CollisionStrategy.MERGE_AGGRESSIVE,
+            CollisionStrategy.OVERWRITE,
+        ):
+            self.identifiers = [
                 identifier
-                for identifier in incoming_reference.identifiers
+                for identifier in self.identifiers
                 if _get_identifier_key(identifier.identifier)
                 not in {
                     _get_identifier_key(identifier.identifier)
-                    for identifier in self.identifiers
+                    for identifier in incoming_reference.identifiers
                 }
-            ]
-        )
+            ] + incoming_reference.identifiers
 
         # On an overwrite, we don't preserve the existing enhancements, only identifiers
         if collision_strategy == CollisionStrategy.OVERWRITE:
@@ -236,17 +250,28 @@ class Reference(DomainBaseModel, SQLAttributeMixin):
             return
 
         # Otherwise, merge enhancements
-        self.enhancements.extend(
-            [
+        if collision_strategy == CollisionStrategy.MERGE_DEFENSIVE:
+            self.enhancements.extend(
+                [
+                    enhancement
+                    for enhancement in incoming_reference.enhancements
+                    if (enhancement.content.enhancement_type, enhancement.source)
+                    not in {
+                        (enhancement.content.enhancement_type, enhancement.source)
+                        for enhancement in self.enhancements
+                    }
+                ]
+            )
+        elif collision_strategy == CollisionStrategy.MERGE_AGGRESSIVE:
+            self.enhancements = [
                 enhancement
-                for enhancement in incoming_reference.enhancements
+                for enhancement in self.enhancements
                 if (enhancement.content.enhancement_type, enhancement.source)
                 not in {
                     (enhancement.content.enhancement_type, enhancement.source)
-                    for enhancement in self.enhancements
+                    for enhancement in incoming_reference.enhancements
                 }
-            ]
-        )
+            ] + incoming_reference.enhancements
 
         return
 
