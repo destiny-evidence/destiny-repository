@@ -7,7 +7,7 @@ from pydantic import UUID4, HttpUrl
 
 from app.core.exceptions import RobotEnhancementError, RobotUnreachableError
 from app.domain.references.models.models import EnhancementRequest, Reference
-from app.domain.robots.models import Robots
+from app.domain.robots.models import RobotConfig, Robots
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
@@ -26,9 +26,13 @@ class RobotService(GenericService):
         """Get the url for a given robot id."""
         return self.robots.get_robot_url(robot_id)
 
+    def get_robot_config(self, robot_id: UUID4) -> RobotConfig:
+        """Get the config for a given robot_id."""
+        return self.robots.get_robot_config(robot_id)
+
     async def request_enhancement_from_robot(
         self,
-        robot_url: HttpUrl,
+        robot_config: RobotConfig,
         enhancement_request: EnhancementRequest,
         reference: Reference,
     ) -> httpx.Response:
@@ -40,9 +44,11 @@ class RobotService(GenericService):
         )
 
         try:
-            async with httpx.AsyncClient() as client:
+            auth = destiny_sdk.client_auth.DestinyAuth(robot_config.auth_method)
+            async with httpx.AsyncClient(auth=auth) as client:
                 response = await client.post(
-                    str(robot_url), json=robot_request.model_dump(mode="json")
+                    str(robot_config.robot_url),
+                    json=robot_request.model_dump(mode="json"),
                 )
         except httpx.RequestError as exception:
             error = (

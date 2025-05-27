@@ -1,5 +1,6 @@
 """Send authenticated requests to Destiny Repository."""
 
+from collections.abc import Generator
 from enum import StrEnum
 from typing import Annotated, Literal
 
@@ -92,6 +93,42 @@ ClientAuthenticationMethod = Annotated[
 ]
 
 
+class DestinyAuth(httpx.Auth):
+    """
+    Custom httpx.Auth to inject Bearer token from ClientAuthenticationMethod.
+
+    Automatically refreshes token on expiration.
+    """
+
+    def __init__(self, auth_method: ClientAuthenticationMethod) -> None:
+        """Initialize DestinyAuth with a client authentication method."""
+        self._auth_method = auth_method
+        self._token: str | None = None
+
+    def auth_flow(
+        self, request: httpx.Request
+    ) -> Generator[httpx.Request, httpx.Response, None]:
+        """Auth flow called by httpx to add token to a request."""
+        # TODO (Jack): rework this to check token expiry instead of retrying call
+        # https://github.com/destiny-evidence/destiny-repository/issues/101
+        if not self._token:
+            self._token = self._auth_method.get_token()
+        request.headers["Authorization"] = f"Bearer {self._token}"
+        response = yield request
+
+        if response.status_code == httpx.codes.UNAUTHORIZED:
+            try:
+                detail = response.json().get("detail", "")
+            except ValueError:
+                detail = ""
+
+            if detail == "Token is expired.":
+                # Refresh token and retry
+                self._token = self._auth_method.get_token()
+                request.headers["Authorization"] = f"Bearer {self._token}"
+                yield request
+
+
 def send_robot_result(
     url: HttpUrl, auth_method: ClientAuthenticationMethod, robot_result: RobotResult
 ) -> None:
@@ -108,10 +145,9 @@ def send_robot_result(
     :param robot_result: The Robot Result to send
     :type robot_result: RobotResult
     """
-    token = auth_method.get_token()
-    with httpx.Client() as client:
+    auth = DestinyAuth(auth_method)
+    with httpx.Client(auth=auth) as client:
         client.post(
             str(url),
-            headers={"Authorization": f"Bearer {token}"},
             json=robot_result.model_dump(mode="json"),
         )

@@ -3,6 +3,7 @@
 import uuid
 from collections.abc import AsyncGenerator
 
+import destiny_sdk
 import pytest
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
@@ -36,6 +37,7 @@ pytestmark = pytest.mark.usefixtures("session")
 
 ROBOT_ID = uuid.uuid4()
 ROBOT_URL = "http://www.test-robot-here.com/"
+FAKE_ROBOT_TOKEN = "access_token"  # noqa: S105
 
 
 @pytest.fixture
@@ -64,6 +66,9 @@ def app() -> FastAPI:
                 robot_url=ROBOT_URL,
                 dependent_enhancements=[],
                 dependent_identifiers=[],
+                auth_method=destiny_sdk.client_auth.AccessTokenAuthentication(
+                    access_token=FAKE_ROBOT_TOKEN
+                ),
             )
         ]
     )

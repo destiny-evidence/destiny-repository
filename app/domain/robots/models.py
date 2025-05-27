@@ -6,6 +6,7 @@ Intended to be replaced with a Model and a persistence class at a later date.
 
 from uuid import UUID
 
+import destiny_sdk
 from pydantic import BaseModel, HttpUrl
 
 from app.core.exceptions import NotFoundError
@@ -25,6 +26,7 @@ class RobotConfig(BaseModel):
     # or provided on a best-efforts basis.
     dependent_enhancements: list[EnhancementType]
     dependent_identifiers: list[ExternalIdentifierType]
+    auth_method: destiny_sdk.client_auth.ClientAuthenticationMethod
 
 
 class Robots:
