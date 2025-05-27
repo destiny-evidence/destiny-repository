@@ -2,6 +2,7 @@ import uuid
 
 import httpx
 import pytest
+from destiny_sdk.client_auth import AccessTokenAuthentication
 from destiny_sdk.visibility import Visibility
 from fastapi import status
 from pydantic import HttpUrl
@@ -16,6 +17,7 @@ from app.domain.robots.service import RobotService
 
 ROBOT_ID = uuid.uuid4()
 ROBOT_URL = HttpUrl("http://www.theres-a-robot-here.com/")
+FAKE_ROBOT_TOKEN = "access_token"  # noqa: S105
 
 KNOWN_ROBOTS = [
     RobotConfig(
@@ -23,6 +25,7 @@ KNOWN_ROBOTS = [
         robot_url=ROBOT_URL,
         dependent_enhancements=[],
         dependent_identifiers=[],
+        auth_method=AccessTokenAuthentication(access_token=FAKE_ROBOT_TOKEN),
     ),
 ]
 
@@ -45,10 +48,11 @@ async def test_request_enhancement_from_robot_happy_path(httpx_mock):
         method="POST",
         url=str(ROBOT_URL) + "single/",
         status_code=status.HTTP_202_ACCEPTED,
+        match_headers={"Authorization": f"Bearer {FAKE_ROBOT_TOKEN}"},
     )
 
     await service.request_enhancement_from_robot(
-        robot_url=ROBOT_URL,
+        robot_config=KNOWN_ROBOTS[0],
         enhancement_request=enhancement_request,
         reference=reference,
     )
@@ -75,7 +79,7 @@ async def test_request_enhancement_from_robot_request_error(httpx_mock):
 
     with pytest.raises(RobotUnreachableError):
         await service.request_enhancement_from_robot(
-            robot_url=ROBOT_URL,
+            robot_config=KNOWN_ROBOTS[0],
             enhancement_request=enhancement_request,
             reference=reference,
         )
@@ -100,7 +104,7 @@ async def test_request_enhancement_from_robot_503_response(httpx_mock):
 
     with pytest.raises(RobotUnreachableError):
         await service.request_enhancement_from_robot(
-            robot_url=ROBOT_URL,
+            robot_config=KNOWN_ROBOTS[0],
             enhancement_request=enhancement_request,
             reference=reference,
         )
@@ -127,7 +131,7 @@ async def test_request_enhancement_from_robot_400_response(httpx_mock):
 
     with pytest.raises(RobotEnhancementError):
         await service.request_enhancement_from_robot(
-            robot_url=ROBOT_URL,
+            robot_config=KNOWN_ROBOTS[0],
             enhancement_request=enhancement_request,
             reference=reference,
         )

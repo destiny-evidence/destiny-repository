@@ -162,7 +162,7 @@ class ScoreAnnotation(BaseModel):
     as to the application of the label.
     """
 
-    annotation_type: Literal[AnnotationType.SCORE]
+    annotation_type: Literal[AnnotationType.SCORE] = AnnotationType.SCORE
     scheme: str = Field(
         description="An identifier for the scheme of annotation",
         examples=["openalex:topic", "pubmed:mesh"],
@@ -187,7 +187,7 @@ class BooleanAnnotation(BaseModel):
     initial cases.
     """
 
-    annotation_type: Literal[AnnotationType.BOOLEAN]
+    annotation_type: Literal[AnnotationType.BOOLEAN] = AnnotationType.BOOLEAN
     scheme: str = Field(
         description="An identifier for the scheme of the annotation",
         examples=["openalex:topic", "pubmed:mesh"],

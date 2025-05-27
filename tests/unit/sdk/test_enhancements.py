@@ -55,7 +55,7 @@ def test_annotation_enhancement_valid():
         scheme="openalex:topic",
         value=True,
         label="Machine Learning",
-        score=None,
+        score=0.95,
         data={"confidence": 0.95},
     )
     annotations_content = destiny_sdk.enhancements.AnnotationEnhancement(

@@ -161,7 +161,7 @@ class ReferenceService(GenericService):
             enhancement_request.reference_id, preload=["identifiers", "enhancements"]
         )
 
-        robot_url = robot_service.get_robot_url(enhancement_request.robot_id)
+        robot = robot_service.get_robot_config(enhancement_request.robot_id)
 
         enhancement_request = await self.sql_uow.enhancement_requests.add(
             enhancement_request
@@ -169,7 +169,7 @@ class ReferenceService(GenericService):
 
         try:
             await robot_service.request_enhancement_from_robot(
-                robot_url=robot_url,
+                robot_config=robot,
                 enhancement_request=enhancement_request,
                 reference=reference,
             )

@@ -7,7 +7,7 @@ This documentation auto-generates details about the Authentication and Authoriza
     :depth: 2
     :local:
 
-Serivce Auth
+Service Auth
 ------------
 .. automodule:: libs.sdk.src.destiny_sdk.auth
     :members:

@@ -47,7 +47,8 @@ class RobotService:
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    robot_url, json=robot_request.model_dump(mode="json")
+                    robot_url.rstrip("/") + "/batch/",
+                    json=robot_request.model_dump(mode="json"),
                 )
         except httpx.RequestError as exception:
             error = f"Cannot request enhancement from Robot {robot_id}."
@@ -64,7 +65,7 @@ class RobotService:
 
     async def request_enhancement_from_robot(
         self,
-        robot_url: HttpUrl,
+        robot_config: RobotConfig,
         enhancement_request: EnhancementRequest,
         reference: Reference,
     ) -> httpx.Response:
@@ -74,9 +75,24 @@ class RobotService:
             reference=destiny_sdk.references.Reference(**reference.model_dump()),
             extra_fields=enhancement_request.enhancement_parameters,
         )
+        try:
+            auth = destiny_sdk.client_auth.DestinyAuth(robot_config.auth_method)
+            async with httpx.AsyncClient(auth=auth) as client:
+                response = await client.post(
+                    str(robot_config.robot_url).rstrip("/") + "/single/",
+                    json=robot_request.model_dump(mode="json"),
+                )
+        except httpx.RequestError as exception:
+            error = (
+                f"Cannot request enhancement from Robot {enhancement_request.robot_id}."
+            )
+            raise RobotUnreachableError(error) from exception
 
-        return await self.send_enhancement_request_to_robot(
-            robot_url=str(robot_url).rstrip("/") + "/single/",
-            robot_id=enhancement_request.robot_id,
-            robot_request=robot_request,
-        )
+        if response.status_code != status.HTTP_202_ACCEPTED:
+            if response.status_code >= MIN_FOR_5XX_STATUS_CODES:
+                error = f"Cannot request enhancement from Robot {enhancement_request.robot_id}."  # noqa: E501
+                raise RobotUnreachableError(error)
+            # Expect this is a 4xx
+            raise RobotEnhancementError(detail=response.text)
+
+        return response
