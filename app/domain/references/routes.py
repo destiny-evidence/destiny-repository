@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import (
     AuthMethod,
     AuthScopes,
+    HMACAuth,
     choose_auth_strategy,
 )
 from app.core.config import get_settings
@@ -99,8 +100,7 @@ reference_writer_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_writer,
 )
 
-robot_auth = CachingStrategyAuth(selector=choose_auth_strategy_robot)
-
+robot_auth = HMACAuth()
 router = APIRouter(prefix="/references", tags=["references"])
 robot_router = APIRouter(
     prefix="/robot", tags=["robots"], dependencies=[Depends(robot_auth)]
