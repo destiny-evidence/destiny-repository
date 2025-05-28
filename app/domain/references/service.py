@@ -38,8 +38,8 @@ from app.domain.references.services.ingestion_service import (
 )
 from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
-from app.persistence.blob.models import (
-    BlobStorageFile,
+from app.persistence.blob.service import (
+    upload_file_to_blob_storage,
 )
 from app.persistence.blob.stream import FileStream
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
@@ -259,40 +259,6 @@ class ReferenceService(GenericService):
         )
 
     @unit_of_work
-    async def mark_batch_enhancement_request_failed(
-        self, batch_enhancement_request_id: UUID4, error: str
-    ) -> BatchEnhancementRequest:
-        """Mark a batch enhancement request as failed and supply error message."""
-        return await self.sql_uow.batch_enhancement_requests.update_by_pk(
-            pk=batch_enhancement_request_id,
-            request_status=BatchEnhancementRequestStatus.FAILED,
-            error=error,
-        )
-
-    @unit_of_work
-    async def update_batch_enhancement_request_status(
-        self,
-        batch_enhancement_request_id: UUID4,
-        status: BatchEnhancementRequestStatus,
-    ) -> BatchEnhancementRequest:
-        """Update a batch enhancement request."""
-        return await self.sql_uow.batch_enhancement_requests.update_by_pk(
-            pk=batch_enhancement_request_id, request_status=status
-        )
-
-    @unit_of_work
-    async def add_validation_result_file_to_batch_enhancement_request(
-        self,
-        batch_enhancement_request_id: UUID4,
-        validation_result_file: BlobStorageFile,
-    ) -> BatchEnhancementRequest:
-        """Add a validation result file to a batch enhancement request."""
-        return await self.sql_uow.batch_enhancement_requests.update_by_pk(
-            pk=batch_enhancement_request_id,
-            validation_result_file=validation_result_file.to_sql(),
-        )
-
-    @unit_of_work
     async def collect_and_dispatch_references_for_batch_enhancement(
         self,
         batch_enhancement_request: BatchEnhancementRequest,
@@ -351,47 +317,30 @@ class ReferenceService(GenericService):
                 request_status=BatchEnhancementRequestStatus.ACCEPTED,
             )
 
+    @unit_of_work
     async def validate_and_import_batch_enhancement_result(
         self,
         batch_enhancement_request: BatchEnhancementRequest,
     ) -> None:
-        """Validate and import the result of a batch enhancement request."""
-        validated_result = (
-            await self._batch_enhancement_service.validate_batch_enhancement_result(
-                batch_enhancement_request
-            )
-        )
-        successes: list[str] = []
-        failures: list[str] = []
-        for enhancement in validated_result.enhancements_to_add:
-            success, msg = await self.handle_batch_enhancement_result_entry(
-                Enhancement.from_sdk(enhancement)
-            )
-            if success:
-                successes.append(msg)
-            else:
-                failures.append(msg)
+        """
+        Validate and import the result of a batch enhancement request.
 
-        (
-            status,
-            validation_result_file,
-        ) = await self._batch_enhancement_service.finalise_and_store_batch_enhancement_result(  # noqa: E501
-            batch_enhancement_request,
-            validated_result,
-            successes,
-            failures,
+        This process streams the result of the batch enhancement request line-by-line,
+        adds the enhancement to the database, and streams the validation result to the
+        blob storage service.
+        """
+        validation_result_file = await upload_file_to_blob_storage(
+            content=FileStream(
+                generator=self._batch_enhancement_service.process_batch_enhancement_result(
+                    batch_enhancement_request,
+                    add_enhancement=self.handle_batch_enhancement_result_entry,
+                )
+            ),
+            path="batch_enhancement_result",
+            filename=f"{batch_enhancement_request.id}.txt",
         )
 
-        if status == BatchEnhancementRequestStatus.FAILED:
-            await self.mark_batch_enhancement_request_failed(
-                batch_enhancement_request.id,
-                "Result received but every enhancement failed.",
-            )
-        else:
-            await self.update_batch_enhancement_request_status(
-                batch_enhancement_request.id, status
-            )
-        await self.add_validation_result_file_to_batch_enhancement_request(
+        await self._batch_enhancement_service.add_validation_result_file_to_batch_enhancement_request(  # noqa: E501
             batch_enhancement_request.id, validation_result_file
         )
 
@@ -401,7 +350,7 @@ class ReferenceService(GenericService):
     ) -> tuple[bool, str]:
         """Handle the import of a single batch enhancement result entry."""
         try:
-            await self.add_enhancement(
+            await self._add_enhancement(
                 enhancement.reference_id,
                 enhancement,
             )
@@ -420,4 +369,28 @@ class ReferenceService(GenericService):
         return (
             True,
             f"Reference {enhancement.reference_id}: Enhancement added.",
+        )
+
+    @unit_of_work
+    async def mark_batch_enhancement_request_failed(
+        self,
+        batch_enhancement_request_id: UUID4,
+        error: str,
+    ) -> BatchEnhancementRequest:
+        """Mark a batch enhancement request as failed and supply error message."""
+        return (
+            await self._batch_enhancement_service.mark_batch_enhancement_request_failed(
+                batch_enhancement_request_id, error
+            )
+        )
+
+    @unit_of_work
+    async def update_batch_enhancement_request_status(
+        self,
+        batch_enhancement_request_id: UUID4,
+        status: BatchEnhancementRequestStatus,
+    ) -> BatchEnhancementRequest:
+        """Update a batch enhancement request."""
+        return await self._batch_enhancement_service.update_batch_enhancement_request_status(  # noqa: E501
+            batch_enhancement_request_id, status
         )

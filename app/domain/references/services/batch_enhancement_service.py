@@ -1,14 +1,16 @@
 """Service for managing batch enhancements."""
 
-from io import BytesIO
+from collections.abc import AsyncGenerator, Awaitable, Callable
 
 import destiny_sdk
+from pydantic import UUID4
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
     BatchEnhancementRequestStatus,
+    Enhancement,
 )
 from app.domain.references.models.validators import (
     BatchEnhancementResultValidator,
@@ -18,8 +20,8 @@ from app.persistence.blob.models import (
     BlobStorageFile,
 )
 from app.persistence.blob.service import (
-    get_file_from_blob_storage,
     get_signed_url,
+    stream_file_from_blob_storage,
     upload_file_to_blob_storage,
 )
 from app.persistence.blob.stream import FileStream
@@ -35,6 +37,37 @@ class BatchEnhancementService(GenericService):
     def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(sql_uow)
+
+    async def mark_batch_enhancement_request_failed(
+        self, batch_enhancement_request_id: UUID4, error: str
+    ) -> BatchEnhancementRequest:
+        """Mark a batch enhancement request as failed and supply error message."""
+        return await self.sql_uow.batch_enhancement_requests.update_by_pk(
+            pk=batch_enhancement_request_id,
+            request_status=BatchEnhancementRequestStatus.FAILED,
+            error=error,
+        )
+
+    async def update_batch_enhancement_request_status(
+        self,
+        batch_enhancement_request_id: UUID4,
+        status: BatchEnhancementRequestStatus,
+    ) -> BatchEnhancementRequest:
+        """Update a batch enhancement request."""
+        return await self.sql_uow.batch_enhancement_requests.update_by_pk(
+            pk=batch_enhancement_request_id, request_status=status
+        )
+
+    async def add_validation_result_file_to_batch_enhancement_request(
+        self,
+        batch_enhancement_request_id: UUID4,
+        validation_result_file: BlobStorageFile,
+    ) -> BatchEnhancementRequest:
+        """Add a validation result file to a batch enhancement request."""
+        return await self.sql_uow.batch_enhancement_requests.update_by_pk(
+            pk=batch_enhancement_request_id,
+            validation_result_file=validation_result_file.to_sql(),
+        )
 
     async def build_robot_request(
         self,
@@ -65,68 +98,91 @@ class BatchEnhancementService(GenericService):
 
         return batch_enhancement_request.to_batch_robot_request_sdk(get_signed_url)
 
-    async def validate_batch_enhancement_result(
+    async def process_batch_enhancement_result(
         self,
         batch_enhancement_request: BatchEnhancementRequest,
-    ) -> BatchEnhancementResultValidator:
-        """Validate the result of a batch enhancement request."""
+        add_enhancement: Callable[[Enhancement], Awaitable[tuple[bool, str]]],
+    ) -> AsyncGenerator[str, None]:
+        """
+        Validate the result of a batch enhancement request.
+
+        This generator yields validation messages which are streamed into the
+        result file of the batch enhancement request.
+        """
         if not batch_enhancement_request.result_file:
             msg = (
-                "Batch enhancement request has no result file location. This should "
-                "not happen."
+                "Batch enhancement request has no result file. "
+                "This should not happen."
             )
             raise RuntimeError(msg)
-        content = await get_file_from_blob_storage(
-            batch_enhancement_request.result_file
-        )
-        json_content = content.decode("utf-8").split("\n")
+        expected_reference_ids = set(batch_enhancement_request.reference_ids)
+        successes: list[str] = []
+        failures: list[str] = []
+        attempted_reference_ids: set[UUID4] = set()
+        async with stream_file_from_blob_storage(
+            batch_enhancement_request.result_file,
+        ) as file_stream:
+            # Read the file stream and validate the content
+            i = 1
+            async for line in file_stream:
+                if not line.strip():
+                    continue
+                validated_result = BatchEnhancementResultValidator.from_raw(
+                    line, i, expected_reference_ids
+                )
+                i += 1
+                if validated_result.robot_error:
+                    failures.append(validated_result.robot_error.message)
+                    yield validated_result.robot_error.message
+                elif validated_result.parse_failure:
+                    failures.append(validated_result.parse_failure)
+                    yield validated_result.parse_failure
+                elif validated_result.enhancement_to_add:
+                    attempted_reference_ids.add(
+                        validated_result.enhancement_to_add.reference_id
+                    )
+                    success, message = await add_enhancement(
+                        Enhancement.from_sdk(validated_result.enhancement_to_add)
+                    )
+                    if success:
+                        successes.append(message)
+                    else:
+                        failures.append(message)
+                    yield message
 
-        return BatchEnhancementResultValidator.from_raw(
-            json_content, set(batch_enhancement_request.reference_ids)
+        if missing_reference_ids := (expected_reference_ids - attempted_reference_ids):
+            for missing_reference_id in missing_reference_ids:
+                msg = (
+                    f"Reference {missing_reference_id}: not in batch enhancement "
+                    "result from robot."
+                )
+                failures.append(msg)
+                yield msg
+
+        await self.finalize_batch_enhancement_request(
+            batch_enhancement_request,
+            failures=failures,
+            successes=successes,
         )
 
-    async def finalise_and_store_batch_enhancement_result(
+    async def finalize_batch_enhancement_request(
         self,
         batch_enhancement_request: BatchEnhancementRequest,
-        batch_enhancement_result: BatchEnhancementResultValidator,
+        failures: list[str],
         successes: list[str],
-        import_failures: list[str],
-    ) -> tuple[BatchEnhancementRequestStatus, BlobStorageFile]:
-        """Post import validation of batch enhancement result."""
-        if missing_references := (
-            set(batch_enhancement_request.reference_ids)
-            - batch_enhancement_result.reference_ids
-        ):
-            import_failures.extend(
-                f"Reference {missing_reference}: not in batch enhancement result from "
-                "robot."
-                for missing_reference in missing_references
-            )
-
-        failures = (
-            batch_enhancement_result.parse_failures
-            + [error.message for error in batch_enhancement_result.robot_errors]
-            + import_failures
-        )
-
+    ) -> None:
+        """Finalize the batch enhancement request."""
         if failures and successes:
-            status = BatchEnhancementRequestStatus.PARTIAL_FAILED
+            await self.update_batch_enhancement_request_status(
+                batch_enhancement_request.id,
+                BatchEnhancementRequestStatus.PARTIAL_FAILED,
+            )
         elif not successes:
-            status = BatchEnhancementRequestStatus.FAILED
+            await self.mark_batch_enhancement_request_failed(
+                batch_enhancement_request.id,
+                "Result received but every enhancement failed.",
+            )
         else:
-            status = BatchEnhancementRequestStatus.COMPLETED
-
-        validation_result_file_content = "\n".join([*successes, *failures]).encode(
-            "utf-8"
-        )
-        # No streaming for validation result file for now due to side-effects of the
-        # theoretical generator's results (success/failure metrics needed other than
-        # the file). Streaming may require saving of each entry's result to SQL and
-        # reading using FileStream.
-        validation_result_file = await upload_file_to_blob_storage(
-            content=BytesIO(validation_result_file_content),
-            path="batch_enhancement_result",
-            filename=f"{batch_enhancement_request.id}.txt",
-        )
-
-        return status, validation_result_file
+            await self.update_batch_enhancement_request_status(
+                batch_enhancement_request.id, BatchEnhancementRequestStatus.COMPLETED
+            )

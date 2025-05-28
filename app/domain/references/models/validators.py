@@ -218,63 +218,45 @@ class ReferenceCreateResult(BaseModel):
 class BatchEnhancementResultValidator(BaseModel):
     """Result of a batch enhancement request."""
 
-    enhancements_to_add: list[destiny_sdk.enhancements.Enhancement] = Field(
-        default_factory=list,
-        description="A list of enhancements to add to the references",
+    enhancement_to_add: destiny_sdk.enhancements.Enhancement | None = Field(
+        default=None,
+        description="An enhancement to add to the references",
     )
-    robot_errors: list[destiny_sdk.robots.LinkedRobotError] = Field(
-        default_factory=list,
-        description="A list of errors encountered by the robot during processing",
+    robot_error: destiny_sdk.robots.LinkedRobotError | None = Field(
+        default=None,
+        description="An error encountered by the robot during processing",
     )
-    parse_failures: list[str] = Field(
-        default_factory=list,
-        description=(
-            "A list of errors encountered while parsing the batch enhancement result"
-        ),
-    )
-    reference_ids: set[UUID4] = Field(
-        default_factory=set,
-        description="A list of reference IDs parsed from the given enhancements",
+    parse_failure: str | None = Field(
+        default=None,
+        description=("An error encountered while parsing the batch enhancement result"),
     )
 
     @classmethod
-    def from_raw(cls, json_in: list[str], expected_reference_ids: set[UUID4]) -> Self:
+    def from_raw(
+        cls, entry: str, entry_ref: int, expected_reference_ids: set[UUID4]
+    ) -> Self:
         """Create a BatchEnhancementResult from a jsonl entry."""
         file_entry_validator: TypeAdapter[
             destiny_sdk.robots.BatchEnhancementResultEntry
         ] = TypeAdapter(destiny_sdk.robots.BatchEnhancementResultEntry)
-        self = cls()
 
-        for entry_ref, entry in enumerate(json_in):
-            if not entry:
-                continue
-            try:
-                file_entry = file_entry_validator.validate_json(entry)
-            except ValidationError as exception:
-                self.parse_failures.append(
-                    f"Entry {entry_ref} could not be parsed: {exception}."
+        try:
+            file_entry = file_entry_validator.validate_json(entry)
+        except ValidationError as exception:
+            return cls(
+                parse_failure=f"Entry {entry_ref} could not be parsed: {exception}."
+            )
+
+        if file_entry.reference_id not in expected_reference_ids:
+            return cls(
+                parse_failure=(
+                    f"Entry {entry_ref} has an unexpected reference ID: "
+                    f"{file_entry.reference_id}."
                 )
-                continue
+            )
 
-            if file_entry.reference_id not in expected_reference_ids:
-                self.parse_failures.append(
-                    f"Reference {file_entry.reference_id}: not in batch enhancement "
-                    "request."
-                )
-                continue
-
-            if file_entry.reference_id in self.reference_ids:
-                self.parse_failures.append(
-                    f"Reference {file_entry.reference_id}: duplicate reference ID "
-                    "in batch enhancement result."
-                )
-                continue
-
-            if isinstance(file_entry, destiny_sdk.enhancements.Enhancement):
-                self.enhancements_to_add.append(file_entry)
-            else:
-                self.robot_errors.append(file_entry)
-
-            self.reference_ids.add(file_entry.reference_id)
-
-        return self
+        if isinstance(file_entry, destiny_sdk.enhancements.Enhancement):
+            return cls(
+                enhancement_to_add=file_entry,
+            )
+        return cls(robot_error=file_entry)

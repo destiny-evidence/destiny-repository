@@ -3,7 +3,7 @@
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, Field, HttpUrl, PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -126,6 +126,15 @@ class Settings(BaseSettings):
         default_factory=dict,
         description=(
             "Override the default upload file chunk size. Keyed by file type."
+        ),
+    )
+
+    default_download_file_chunk_size: Literal[1] = Field(
+        default=1,
+        description=(
+            "Number of records to process in a single file chunk when downloading."
+            "Not configurable or used, just representing that we stream line-by-line "
+            "at this point."
         ),
     )
 

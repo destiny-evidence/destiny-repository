@@ -4,6 +4,8 @@ Service for managing files in blob storage.
 TODO: implement streaming on gets and puts instead of in-memory.
 """
 
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager
 from io import BytesIO
 
 from pydantic import HttpUrl
@@ -56,10 +58,14 @@ async def upload_file_to_minio(
         raise BlobStorageError(msg) from e
 
 
-async def get_file_from_minio(
+async def stream_file_from_minio(
     file: BlobStorageFile,
-) -> bytes:
-    """Get a file from MinIO."""
+) -> AsyncGenerator[str, None]:
+    """
+    Yield lines from a file in MinIO as a generator, split by newline.
+
+    This mimics httpx's aiter_lines() functionality.
+    """
     if not settings.minio_config:
         msg = "MinIO configuration is not set."
         raise MinioBlobStorageError(msg)
@@ -75,7 +81,18 @@ async def get_file_from_minio(
             bucket_name=file.container,
             object_name=f"{file.path}/{file.filename}",
         )
-        return response.read()
+        buffer = ""
+        # Iterate over the response stream in chunks
+        for chunk in response.stream(1024):  # 1KB chunks
+            text = chunk.decode("utf-8")
+            buffer += text
+            # Split the buffer by newline and yield each line
+            while "\n" in buffer:
+                line, buffer = buffer.split("\n", 1)
+                yield line
+        # If there's any remaining text in the buffer, yield it as the last line
+        if buffer:
+            yield buffer
     except S3Error as e:
         msg = f"Failed to get file from MinIO: {e}"
         raise BlobStorageError(msg) from e
@@ -135,15 +152,16 @@ async def upload_file_to_blob_storage(
     return file
 
 
-async def get_file_from_blob_storage(
+@asynccontextmanager
+async def stream_file_from_blob_storage(
     file: BlobStorageFile,
-) -> bytes:
-    """Get a file from Blob Storage."""
+) -> AsyncGenerator[AsyncIterator[str], None]:
+    """Async context manager to get lines from a file in Blob Storage."""
     if file.location == BlobStorageLocation.AZURE:
         raise NotImplementedError
     if file.location == BlobStorageLocation.MINIO:
-        return await get_file_from_minio(file)
-
+        yield stream_file_from_minio(file)
+        return
     raise NotImplementedError
 
 
@@ -151,7 +169,12 @@ def get_signed_url(
     file: BlobStorageFile | None,
     interaction_type: BlobSignedUrlType,
 ) -> HttpUrl | None:
-    """Get a signed URL for a file in Blob Storage."""
+    """
+    Get a signed URL for a file in Blob Storage.
+
+    Generally called in a synchronous context (eg translating models),
+    so we don't use async here.
+    """
     if not file:
         return None
     if file.location == BlobStorageLocation.AZURE:
