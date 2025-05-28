@@ -79,3 +79,9 @@ class BlobStorageFile(BaseModel):
             path="/".join(parts[1:-1]),
             filename=parts[-1],
         )
+
+    class Config:
+        """Pydantic model configuration."""
+
+        # Make immutable so that it can be used as a cache key
+        frozen = True

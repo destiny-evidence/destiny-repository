@@ -518,9 +518,7 @@ Errors for individual references are provided <TBC>.
 
     def to_sdk(
         self,
-        to_signed_url: Callable[
-            [BlobStorageFile | None, BlobSignedUrlType], HttpUrl | None
-        ],
+        to_signed_url: Callable[[BlobStorageFile, BlobSignedUrlType], HttpUrl],
     ) -> destiny_sdk.robots.BatchEnhancementRequestRead:
         """Convert the enhancement request to the SDK model."""
         try:
@@ -529,13 +527,19 @@ Errors for individual references are provided <TBC>.
                 | {
                     "reference_data_url": to_signed_url(
                         self.reference_data_file, BlobSignedUrlType.DOWNLOAD
-                    ),
+                    )
+                    if self.reference_data_file
+                    else None,
                     "result_storage_url": to_signed_url(
                         self.result_file, BlobSignedUrlType.UPLOAD
-                    ),
+                    )
+                    if self.result_file
+                    else None,
                     "validation_result_url": to_signed_url(
                         self.validation_result_file, BlobSignedUrlType.DOWNLOAD
-                    ),
+                    )
+                    if self.validation_result_file
+                    else None,
                 },
             )
         except ValidationError as exception:
@@ -543,9 +547,7 @@ Errors for individual references are provided <TBC>.
 
     def to_batch_robot_request_sdk(
         self,
-        to_signed_url: Callable[
-            [BlobStorageFile | None, BlobSignedUrlType], HttpUrl | None
-        ],
+        to_signed_url: Callable[[BlobStorageFile, BlobSignedUrlType], HttpUrl],
     ) -> destiny_sdk.robots.BatchRobotRequest:
         """Convert the enhancement request to the SDK robot request model."""
         try:
@@ -553,10 +555,14 @@ Errors for individual references are provided <TBC>.
                 id=self.id,
                 reference_storage_url=to_signed_url(
                     self.reference_data_file, BlobSignedUrlType.DOWNLOAD
-                ),
+                )
+                if self.reference_data_file
+                else None,
                 result_storage_url=to_signed_url(
                     self.result_file, BlobSignedUrlType.UPLOAD
-                ),
+                )
+                if self.result_file
+                else None,
             )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception

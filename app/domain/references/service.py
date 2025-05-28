@@ -325,9 +325,11 @@ class ReferenceService(GenericService):
         """
         Validate and import the result of a batch enhancement request.
 
-        This process streams the result of the batch enhancement request line-by-line,
-        adds the enhancement to the database, and streams the validation result to the
-        blob storage service.
+        This process:
+        - streams the result of the batch enhancement request line-by-line
+        - adds the enhancement to the database
+        - streams the validation result to the blob storage service line-by-line
+        - does some final validation of missing references and updates the request
         """
         validation_result_file = await upload_file_to_blob_storage(
             content=FileStream(

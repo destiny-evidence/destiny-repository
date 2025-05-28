@@ -85,6 +85,21 @@ class MinioConfig(BaseModel):
     access_key: str
     secret_key: str
     bucket: str = "destiny-repository"
+    presigned_url_expiry_seconds: int = 60 * 60  # 1 hour
+
+
+class AzureBlobConfig(BaseModel):
+    """Azure Blob Storage configuration."""
+
+    account_url: str
+    container: str
+    credential: str | None = None
+    presigned_url_expiry_seconds: int = 60 * 60  # 1 hour
+
+    @property
+    def uses_managed_identity(self) -> bool:
+        """Return True if the configuration uses managed identity."""
+        return self.credential is None
 
 
 class Environment(StrEnum):
@@ -106,6 +121,7 @@ class Settings(BaseSettings):
 
     db_config: DatabaseConfig
     minio_config: MinioConfig | None = None
+    azure_blob_config: AzureBlobConfig | None = None
 
     azure_application_id: str
     azure_login_url: HttpUrl = HttpUrl("https://login.microsoftonline.com")
@@ -138,6 +154,11 @@ class Settings(BaseSettings):
         ),
     )
 
+    presigned_url_expiry_seconds: int = Field(
+        default=3600,
+        description="The number of seconds a signed URL is valid for.",
+    )
+
     # Temporary robot configuration, replace with db table later.
     known_robots: list[RobotConfig] = Field(
         default_factory=list, description="semi-hardcoded robot configuration"
@@ -156,13 +177,21 @@ class Settings(BaseSettings):
     @property
     def default_blob_location(self) -> str:
         """Return the default blob location."""
-        return "minio" if self.running_locally else "azure"
+        if self.running_locally:
+            if self.minio_config:
+                return "minio"
+            if self.azure_blob_config:
+                return "azure"
+        return "azure"
 
     @property
     def default_blob_container(self) -> str:
         """Return the default blob container."""
-        if self.running_locally and self.minio_config:
-            return self.minio_config.bucket
+        if self.running_locally:
+            if self.minio_config:
+                return self.minio_config.bucket
+            if self.azure_blob_config:
+                return self.azure_blob_config.container
         return "destiny-repository"
 
 
