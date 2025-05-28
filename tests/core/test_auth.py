@@ -1,12 +1,14 @@
 """Tests for HMAC Authentication."""
 
+import hashlib
+import hmac
 from collections.abc import AsyncGenerator
 
 import pytest
 from fastapi import APIRouter, Depends, FastAPI, status
 from httpx import ASGITransport, AsyncClient
 
-from app.core.auth import HMACAuth, create_signature
+from app.core.auth import SECRET_KEY, HMACAuth
 
 
 @pytest.fixture
@@ -57,8 +59,10 @@ async def client(hmac_app: FastAPI) -> AsyncGenerator[AsyncClient]:
 
 async def test_hmac_authentication_happy_path(client: AsyncClient):
     """Test authentication is successful when signature is correct."""
+    signature = hmac.new(SECRET_KEY, b"{}", hashlib.sha256).hexdigest()
+
     response = await client.post(
-        "test/hmac/", headers={"Authorization": create_signature()}, json={}
+        "test/hmac/", headers={"Authorization": f"Signature {signature}"}, json={}
     )
 
     assert response.status_code == status.HTTP_200_OK
@@ -67,7 +71,7 @@ async def test_hmac_authentication_happy_path(client: AsyncClient):
 async def test_hmac_authentication_incorrect_signature(client: AsyncClient):
     """Test authentication is successful when signature is correct."""
     response = await client.post(
-        "test/hmac/", headers={"Authorization": "nonsense signature"}, json={}
+        "test/hmac/", headers={"Authorization": "Signature nonsense-signature"}, json={}
     )
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED

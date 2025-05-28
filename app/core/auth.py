@@ -1,5 +1,7 @@
 """Tools for authorising requests."""
 
+import hashlib
+import hmac
 from enum import StrEnum
 from typing import Protocol
 
@@ -39,9 +41,14 @@ def choose_auth_strategy(
     )
 
 
-def create_signature() -> str:
+# To be replaced with the secret key for each robot
+SECRET_KEY = b"dlfskdfhgk8ei346oiehslkdf"
+
+
+async def create_signature(request: Request) -> str:
     """Create an HMAC signature."""
-    return "so fake for now."
+    body = await request.body()
+    return hmac.new(SECRET_KEY, body, hashlib.sha256).hexdigest()
 
 
 class HMACAuthMethod(Protocol):
@@ -81,15 +88,14 @@ class HMACAuth(HMACAuthMethod):
 
     async def __call__(self, request: Request) -> bool:
         """Perform Authorization check."""
-        if not self._verify_signature(request):
+        expected_signature = await create_signature(request)
+
+        if request.headers.get("Authorization") != f"Signature {expected_signature}":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authorized"
             )
 
         return True
-
-    def _verify_signature(self, request: Request) -> bool:
-        return create_signature() == request.headers.get("Authorization")
 
 
 class BypassHMACAuth:
