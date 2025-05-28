@@ -41,10 +41,6 @@ def choose_auth_strategy(
     )
 
 
-# To be replaced with the secret key for each robot
-SECRET_KEY = b"dlfskdfhgk8ei346oiehslkdf"
-
-
 def create_signature(secret_key: bytes, request_body: bytes) -> str:
     """
     Create an HMAC signature using SHA256.
@@ -94,6 +90,10 @@ class HMACAuthMethod(Protocol):
 class HMACAuth(HMACAuthMethod):
     """Adds HMAC auth when used as a router or endpoint dependency."""
 
+    def __init__(self, secret_key: bytes) -> None:
+        """Initialise HMAC auth with a given secret key."""
+        self.secret_key = secret_key
+
     async def __call__(self, request: Request) -> bool:
         """Perform Authorization check."""
         signature_header = request.headers.get("Authorization")
@@ -114,7 +114,7 @@ class HMACAuth(HMACAuthMethod):
             )
 
         request_body = await request.body()
-        expected_signature = create_signature(SECRET_KEY, request_body)
+        expected_signature = create_signature(self.secret_key, request_body)
 
         if not hmac.compare_digest(signature, expected_signature):
             raise AuthException(
@@ -143,4 +143,4 @@ def choose_hmac_auth_strategy() -> HMACAuthMethod:
     if settings.env in (Environment.LOCAL, Environment.TEST):
         return BypassHMACAuth()
 
-    return HMACAuth()
+    return HMACAuth(settings.secret_key.get_secret_value())

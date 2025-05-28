@@ -5,7 +5,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Self
 
-from pydantic import BaseModel, Field, HttpUrl, PostgresDsn, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    HttpUrl,
+    PostgresDsn,
+    SecretBytes,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.logger import get_logger
@@ -115,6 +122,9 @@ class Settings(BaseSettings):
     message_broker_queue_name: str = "taskiq"
     cli_client_id: str | None = None
     app_name: str
+
+    # Temporary secret key config for HMAC auth.
+    secret_key: SecretBytes
 
     # Temporary robot configuration, replace with db table later.
     known_robots: list[RobotConfig] = Field(
