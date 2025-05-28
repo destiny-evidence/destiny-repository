@@ -1,14 +1,12 @@
 """Tests for HMAC Authentication."""
 
-import hashlib
-import hmac
 from collections.abc import AsyncGenerator
 
 import pytest
 from fastapi import APIRouter, Depends, FastAPI, status
 from httpx import ASGITransport, AsyncClient
 
-from app.core.auth import SECRET_KEY, HMACAuth
+from app.core.auth import SECRET_KEY, HMACAuth, create_signature
 
 
 @pytest.fixture
@@ -59,19 +57,41 @@ async def client(hmac_app: FastAPI) -> AsyncGenerator[AsyncClient]:
 
 async def test_hmac_authentication_happy_path(client: AsyncClient):
     """Test authentication is successful when signature is correct."""
-    signature = hmac.new(SECRET_KEY, b"{}", hashlib.sha256).hexdigest()
+    request_body = b'{"message": "info"}'
+    signature = create_signature(SECRET_KEY, request_body)
 
     response = await client.post(
-        "test/hmac/", headers={"Authorization": f"Signature {signature}"}, json={}
+        "test/hmac/",
+        headers={"Authorization": f"Signature {signature}"},
+        content=request_body,
     )
 
     assert response.status_code == status.HTTP_200_OK
 
 
 async def test_hmac_authentication_incorrect_signature(client: AsyncClient):
-    """Test authentication is successful when signature is correct."""
+    """Test authentication fails when the signature does not match."""
     response = await client.post(
         "test/hmac/", headers={"Authorization": "Signature nonsense-signature"}, json={}
     )
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "invalid" in response.json()["detail"]
+
+
+async def test_hmac_authentication_no_signature(client: AsyncClient):
+    """Test authentication fails if the signature is not included."""
+    response = await client.post("test/hmac/", json={})
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "header missing" in response.json()["detail"]
+
+
+async def test_hmac_authentication_wrong_auth_type(client: AsyncClient):
+    """Test authentication fails if the signature is not included."""
+    response = await client.post(
+        "test/hmac/", json={}, headers={"Authorization": "Bearer nonsense-token"}
+    )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "type not supported" in response.json()["detail"]
