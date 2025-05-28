@@ -3,7 +3,7 @@
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import UUID4, BaseModel, Field
+from pydantic import UUID4, BaseModel, BeforeValidator, Field
 
 
 class ExternalIdentifierType(StrEnum):
@@ -27,10 +27,17 @@ class ExternalIdentifierType(StrEnum):
     OTHER = "other"
 
 
+def remove_doi_url(value: str) -> str:
+    """Remove the URL part of the DOI if it exists."""
+    return (
+        value.removeprefix("http://doi.org/").removeprefix("https://doi.org/").strip()
+    )
+
+
 class DOIIdentifier(BaseModel):
     """An external identifier representing a DOI."""
 
-    identifier: str = Field(
+    identifier: Annotated[str, BeforeValidator(remove_doi_url)] = Field(
         description="The DOI of the reference.",
         pattern=r"^10\.\d{4,9}/[-._;()/:a-zA-Z0-9%<>\[\]+&]+$",
     )
