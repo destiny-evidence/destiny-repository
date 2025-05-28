@@ -1,11 +1,13 @@
 import uuid
 
+import destiny_sdk
 import httpx
 import pytest
 from destiny_sdk.visibility import Visibility
 from fastapi import status
 from pydantic import HttpUrl
 
+from app.core.auth import create_signature
 from app.core.exceptions import RobotEnhancementError, RobotUnreachableError
 from app.domain.references.models.models import (
     EnhancementRequest,
@@ -44,10 +46,22 @@ async def test_request_enhancement_from_robot_happy_path(httpx_mock):
         robots=RobotService(known_robots=KNOWN_ROBOTS),
     )
 
+    expected_request_body = destiny_sdk.robots.RobotRequest(
+        id=enhancement_request.id,
+        reference=destiny_sdk.references.Reference(**reference.model_dump()),
+        extra_fields=enhancement_request.enhancement_parameters,
+    ).model_dump_json()
+
+    expected_signature = create_signature(
+        secret_key=KNOWN_ROBOTS[0].communication_secret_name.encode(),
+        request_body=expected_request_body.encode(),
+    )
+
     httpx_mock.add_response(
         method="POST",
         url=str(ROBOT_URL) + "single/",
         status_code=status.HTTP_202_ACCEPTED,
+        match_headers={"Authorization": f"Signature {expected_signature}"},
     )
 
     await service.request_enhancement_from_robot(

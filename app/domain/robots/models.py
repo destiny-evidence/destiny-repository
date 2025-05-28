@@ -24,5 +24,4 @@ class RobotConfig(BaseModel):
     # or provided on a best-efforts basis.
     dependent_enhancements: list[EnhancementType]
     dependent_identifiers: list[ExternalIdentifierType]
-    # Secret to be stored in the azure keyvault
     communication_secret_name: str

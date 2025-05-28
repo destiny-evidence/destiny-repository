@@ -34,3 +34,9 @@ class RobotService:
             raise NotFoundError(detail=error)
 
         return robot
+
+    def get_robot_secret(self, robot_id: UUID) -> str:
+        """Return secret used for signing requests sent to this robot."""
+        # Secret to be stored in the azure keyvault
+        # Currently just using secret name while testing
+        return self.get_robot_config(robot_id).communication_secret_name

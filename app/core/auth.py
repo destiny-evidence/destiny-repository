@@ -2,11 +2,14 @@
 
 import hashlib
 import hmac
+from collections.abc import AsyncGenerator
 from enum import StrEnum
 from typing import Protocol
 
+import fastapi
+import httpx
 from destiny_sdk.auth import AuthException, AuthMethod, AzureJwtAuth, SuccessAuth
-from fastapi import Request, status
+from fastapi import status
 
 from app.core.config import Environment, get_settings
 
@@ -55,6 +58,36 @@ def create_signature(secret_key: bytes, request_body: bytes) -> str:
     return hmac.new(secret_key, request_body, hashlib.sha256).hexdigest()
 
 
+class HMACSigningAuth(httpx.Auth):
+    """Client that adds an HMAC signature to a request."""
+
+    def __init__(self, secret_key: str) -> None:
+        """
+        Initialize the client.
+
+        :param secret_key: the key to use when signing the request
+        :type secret_key:str
+        """
+        self.secret_key = secret_key
+
+    async def async_auth_flow(
+        self, request: httpx.Request
+    ) -> AsyncGenerator[httpx.Request, httpx.Response]:
+        """
+        Add a signature to the given request.
+
+        :param request: request to be sent with signature
+        :type request: Request
+        :yield: the request with signature headers set
+        :rtype: Request
+        """
+        request_body = await request.aread()
+        signature = create_signature(self.secret_key.encode(), request_body)
+
+        request.headers["Authorization"] = f"Signature {signature}"
+        yield request
+
+
 class HMACAuthMethod(Protocol):
     """
     Protocol for HMAC auth methods, enforcing the implmentation of __call__().
@@ -73,7 +106,7 @@ class HMACAuthMethod(Protocol):
 
     async def __call__(
         self,
-        request: Request,
+        request: fastapi.Request,
     ) -> bool:
         """
         Callable interface to allow use as a dependency.
@@ -94,7 +127,7 @@ class HMACAuth(HMACAuthMethod):
         """Initialise HMAC auth with a given secret key."""
         self.secret_key = secret_key
 
-    async def __call__(self, request: Request) -> bool:
+    async def __call__(self, request: fastapi.Request) -> bool:
         """Perform Authorization check."""
         signature_header = request.headers.get("Authorization")
 
@@ -133,7 +166,7 @@ class BypassHMACAuth:
     Not for production use!
     """
 
-    async def __call__(self, request: Request) -> bool:  # noqa: ARG002
+    async def __call__(self, request: fastapi.Request) -> bool:  # noqa: ARG002
         """Bypass Authorization check."""
         return True
 

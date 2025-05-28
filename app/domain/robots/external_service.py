@@ -5,6 +5,7 @@ import httpx
 from fastapi import status
 from pydantic import UUID4, HttpUrl
 
+from app.core.auth import HMACSigningAuth
 from app.core.config import get_settings
 from app.core.exceptions import (
     RobotEnhancementError,
@@ -77,7 +78,8 @@ class RobotCommunicationService:
             extra_fields=enhancement_request.enhancement_parameters,
         )
         try:
-            async with httpx.AsyncClient() as client:
+            auth = HMACSigningAuth(robot_config.communication_secret_name)
+            async with httpx.AsyncClient(auth=auth) as client:
                 response = await client.post(
                     str(robot_config.robot_url).rstrip("/") + "/single/",
                     json=robot_request.model_dump(mode="json"),
