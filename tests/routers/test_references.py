@@ -4,7 +4,6 @@ import uuid
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock
 
-import destiny_sdk
 import pytest
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
@@ -71,9 +70,7 @@ def app() -> FastAPI:
                 robot_url=ROBOT_URL,
                 dependent_enhancements=[],
                 dependent_identifiers=[],
-                auth_method=destiny_sdk.client_auth.AccessTokenAuthentication(
-                    access_token=FAKE_ROBOT_TOKEN
-                ),
+                communication_secret_name="secret-secret",
             )
         ]
     )
@@ -361,8 +358,7 @@ async def test_request_batch_enhancement_happy_path(
     }
 
     response = await client.post(
-        "/references/enhancement/batch/",
-        json=batch_request_create
+        "/references/enhancement/batch/", json=batch_request_create
     )
 
     mock_process = AsyncMock(return_value=None)

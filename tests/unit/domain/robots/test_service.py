@@ -2,7 +2,6 @@ import uuid
 
 import httpx
 import pytest
-from destiny_sdk.client_auth import AccessTokenAuthentication
 from destiny_sdk.visibility import Visibility
 from fastapi import status
 from pydantic import HttpUrl
@@ -25,7 +24,7 @@ KNOWN_ROBOTS = [
         robot_url=ROBOT_URL,
         dependent_enhancements=[],
         dependent_identifiers=[],
-        auth_method=AccessTokenAuthentication(access_token=FAKE_ROBOT_TOKEN),
+        communication_secret_name="secret-secret",
     ),
 ]
 
@@ -48,7 +47,6 @@ async def test_request_enhancement_from_robot_happy_path(httpx_mock):
         method="POST",
         url=str(ROBOT_URL) + "single/",
         status_code=status.HTTP_202_ACCEPTED,
-        match_headers={"Authorization": f"Bearer {FAKE_ROBOT_TOKEN}"},
     )
 
     await service.request_enhancement_from_robot(

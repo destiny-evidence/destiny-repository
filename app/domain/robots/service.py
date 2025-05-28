@@ -76,8 +76,7 @@ class RobotService:
             extra_fields=enhancement_request.enhancement_parameters,
         )
         try:
-            auth = destiny_sdk.client_auth.DestinyAuth(robot_config.auth_method)
-            async with httpx.AsyncClient(auth=auth) as client:
+            async with httpx.AsyncClient() as client:
                 response = await client.post(
                     str(robot_config.robot_url).rstrip("/") + "/single/",
                     json=robot_request.model_dump(mode="json"),
