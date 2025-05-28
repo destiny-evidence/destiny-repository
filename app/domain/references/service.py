@@ -1,5 +1,8 @@
 """The service for interacting with and managing references."""
 
+from collections.abc import Awaitable, Callable
+from typing import cast
+
 from pydantic import UUID4
 
 from app.core.config import get_settings
@@ -11,6 +14,7 @@ from app.core.exceptions import (
     WrongReferenceError,
 )
 from app.core.logger import get_logger
+from app.domain.base import SDKJsonlMixin
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
@@ -37,7 +41,9 @@ from app.domain.service import GenericService
 from app.persistence.blob.models import (
     BlobStorageFile,
 )
+from app.persistence.blob.stream import FileStream
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
+from app.utils.lists import list_chunker
 
 logger = get_logger()
 settings = get_settings()
@@ -294,19 +300,36 @@ class ReferenceService(GenericService):
     ) -> None:
         """Collect and dispatch references for batch enhancement."""
         robot = robot_service.get_robot_config(batch_enhancement_request.robot_id)
-        references = await self._get_hydrated_references(
-            batch_enhancement_request.reference_ids,
-            enhancement_types=robot.dependent_enhancements,
-            external_identifier_types=robot.dependent_identifiers,
+        file_stream = FileStream(
+            # Handle Python's type invariance by casting the function type. We know
+            # Reference is a subclass of SDKJsonlMixin.
+            cast(
+                Callable[..., Awaitable[list[SDKJsonlMixin]]],
+                self._get_hydrated_references,
+            ),
+            [
+                {
+                    "reference_ids": reference_id_chunk,
+                    "enhancement_types": robot.dependent_enhancements,
+                    "external_identifier_types": robot.dependent_identifiers,
+                }
+                for reference_id_chunk in list_chunker(
+                    batch_enhancement_request.reference_ids,
+                    settings.upload_file_chunk_size_override.get(
+                        "batch_enhancement_request_reference_data",
+                        settings.default_upload_file_chunk_size,
+                    ),
+                )
+            ],
         )
 
         robot_request = await self._batch_enhancement_service.build_robot_request(
-            references, batch_enhancement_request
+            file_stream, batch_enhancement_request
         )
 
         try:
             await robot_service.send_enhancement_request_to_robot(
-                robot_url=str(robot.robot_url).rstrip("/") + "/batch/",
+                robot_url=str(robot.robot_url),
                 robot_id=batch_enhancement_request.robot_id,
                 robot_request=robot_request,
             )

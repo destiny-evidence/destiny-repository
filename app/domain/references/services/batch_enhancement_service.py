@@ -9,7 +9,6 @@ from app.core.logger import get_logger
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
     BatchEnhancementRequestStatus,
-    Reference,
 )
 from app.domain.references.models.validators import (
     BatchEnhancementResultValidator,
@@ -23,6 +22,7 @@ from app.persistence.blob.service import (
     get_signed_url,
     upload_file_to_blob_storage,
 )
+from app.persistence.blob.stream import FileStream
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 logger = get_logger()
@@ -38,16 +38,13 @@ class BatchEnhancementService(GenericService):
 
     async def build_robot_request(
         self,
-        references: list[Reference],
+        file_stream: FileStream,
         batch_enhancement_request: BatchEnhancementRequest,
     ) -> destiny_sdk.robots.BatchRobotRequest:
         """Build a robot request from a batch enhancement request."""
         # Build jsonl file data using SDK model
-        jsonl_data = "\n".join(
-            reference.to_sdk().to_jsonl() for reference in references
-        ).encode("utf-8")
         file = await upload_file_to_blob_storage(
-            content=BytesIO(jsonl_data),
+            content=file_stream,
             path="batch_enhancement_request_reference_data",
             filename=f"{batch_enhancement_request.id}.jsonl",
         )
@@ -122,6 +119,10 @@ class BatchEnhancementService(GenericService):
         validation_result_file_content = "\n".join([*successes, *failures]).encode(
             "utf-8"
         )
+        # No streaming for validation result file for now due to side-effects of the
+        # theoretical generator's results (success/failure metrics needed other than
+        # the file). Streaming may require saving of each entry's result to SQL and
+        # reading using FileStream.
         validation_result_file = await upload_file_to_blob_storage(
             content=BytesIO(validation_result_file_content),
             path="batch_enhancement_result",

@@ -6,6 +6,9 @@ from typing import Self
 from pydantic import BaseModel, Field
 
 from app.core.exceptions import BlobStorageError
+from app.core.logger import get_logger
+
+logger = get_logger()
 
 
 class BlobSignedUrlType(StrEnum):
@@ -39,6 +42,24 @@ class BlobStorageFile(BaseModel):
         pattern=r"^[^/]*$",  # Ensure no slashes are present
         description="The name of the file in Azure Blob Storage.",
     )
+
+    @property
+    def content_type(self) -> str:
+        """Return the content type of the file based on its extension."""
+        extension = self.filename.split(".")[-1].casefold()
+        match extension:
+            case "jsonl":
+                return "application/jsonl"
+            case "json":
+                return "application/json"
+            case "csv":
+                return "text/csv"
+            case "txt":
+                return "text/plain"
+            case _:
+                msg = "No content type defined. Defaulting to application/octet-stream."
+                logger.warning(msg, extra={"blob_filename": self.filename})
+                return "application/octet-stream"
 
     def to_sql(self) -> str:
         """Return the SQL persistence representation of the file."""

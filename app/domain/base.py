@@ -62,5 +62,3 @@ class SDKJsonlMixin(BaseModel, ABC):
     @abstractmethod
     def to_sdk(self) -> _JsonlFileInputMixIn:
         """Convert the model to an SDK JSONL input mixin."""
-        msg = "Subclasses must implement this method."
-        raise NotImplementedError(msg)

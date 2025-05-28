@@ -16,6 +16,7 @@ from app.persistence.blob.models import (
     BlobStorageFile,
     BlobStorageLocation,
 )
+from app.persistence.blob.stream import FileStream
 
 settings = get_settings()
 logger = get_logger()
@@ -26,7 +27,7 @@ if settings.minio_config:
 
 
 async def upload_file_to_minio(
-    content: BytesIO,
+    content: FileStream | BytesIO,
     file: BlobStorageFile,
 ) -> None:
     """Upload a file to MinIO."""
@@ -41,12 +42,14 @@ async def upload_file_to_minio(
         secure=False,
     )
     try:
+        if isinstance(content, FileStream):
+            content = await content.read()
         minio_client.put_object(
             bucket_name=file.container,
             object_name=f"{file.path}/{file.filename}",
             data=content,
             length=content.getbuffer().nbytes,
-            content_type="application/octet-stream",
+            content_type=file.content_type,
         )
     except S3Error as e:
         msg = f"Failed to upload file to MinIO: {e}"
@@ -112,7 +115,7 @@ def get_signed_url_from_minio(
 
 
 async def upload_file_to_blob_storage(
-    content: BytesIO,
+    content: FileStream | BytesIO,
     path: str,
     filename: str,
 ) -> BlobStorageFile:

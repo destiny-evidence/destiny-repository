@@ -93,7 +93,11 @@ class Visibility(StrEnum):
     HIDDEN = "hidden"
 
 
-class Reference(DomainBaseModel, SQLAttributeMixin, SDKJsonlMixin):
+class Reference(
+    DomainBaseModel,
+    SDKJsonlMixin,
+    SQLAttributeMixin,
+):
     """Core reference model with database attributes included."""
 
     visibility: Visibility = Field(

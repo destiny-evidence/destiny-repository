@@ -116,6 +116,19 @@ class Settings(BaseSettings):
     cli_client_id: str | None = None
     app_name: str
 
+    default_upload_file_chunk_size: int = Field(
+        default=100,
+        description=(
+            "Number of records to process in a single file chunk when uploading."
+        ),
+    )
+    upload_file_chunk_size_override: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Override the default upload file chunk size. Keyed by file type."
+        ),
+    )
+
     # Temporary robot configuration, replace with db table later.
     known_robots: list[RobotConfig] = Field(
         default_factory=list, description="semi-hardcoded robot configuration"
