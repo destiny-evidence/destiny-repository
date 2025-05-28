@@ -43,28 +43,30 @@ class FileStream:
         self.fn_kwargs = fn_kwargs or []
         self.generator = generator
 
-    def _to_str(self, data: Streamable) -> str:
+    async def _to_str(self, data: Streamable) -> str:
         """Convert a Streamable object to a string."""
         if isinstance(data, list):
-            return "".join(self._to_str(item) for item in data)
+            return "".join(await gather(*(self._to_str(item) for item in data)))
         return (
-            data.to_sdk().to_jsonl() if isinstance(data, SDKJsonlMixin) else data
+            (await data.to_sdk()).to_jsonl()
+            if isinstance(data, SDKJsonlMixin)
+            else data
         ) + "\n"
 
-    def _to_bytes(self, data: Streamable) -> bytes:
+    async def _to_bytes(self, data: Streamable) -> bytes:
         """Convert a Streamable object to bytes."""
-        b = self._to_str(data)
+        b = await self._to_str(data)
         return b.encode("utf-8")
 
     async def stream(self) -> AsyncGenerator[bytes, None]:
         """Asynchronously read data from the function or generator."""
         if self.generator:
             async for chunk in self.generator:
-                yield self._to_bytes(chunk)
+                yield await self._to_bytes(chunk)
         elif self.fn:
             for kwargs in self.fn_kwargs:
                 data = await self.fn(**kwargs)
-                yield self._to_bytes(data)
+                yield await self._to_bytes(data)
 
     async def read(self) -> BytesIO:
         """
@@ -78,10 +80,10 @@ class FileStream:
         buffer = BytesIO()
         if self.generator:
             async for chunk in self.generator:
-                buffer.write(self._to_bytes(chunk))
+                buffer.write(await self._to_bytes(chunk))
         elif self.fn:
             data = await gather(*[self.fn(**kwargs) for kwargs in self.fn_kwargs])
             for chunk in data:
-                buffer.write(self._to_bytes(chunk))
+                buffer.write(await self._to_bytes(chunk))
         buffer.seek(0)
         return buffer

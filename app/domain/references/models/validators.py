@@ -44,7 +44,7 @@ class ExternalIdentifierParseResult(BaseModel):
     )
 
     @classmethod
-    def from_raw(cls, raw_identifier: JSON, entry_ref: int) -> Self:
+    async def from_raw(cls, raw_identifier: JSON, entry_ref: int) -> Self:
         """Parse an external identifier from raw JSON."""
         try:
             identifier: ExternalIdentifier = ExternalIdentifierAdapter.validate_python(
@@ -91,7 +91,7 @@ class EnhancementParseResult(BaseModel):
     )
 
     @classmethod
-    def from_raw(cls, raw_enhancement: JSON, entry_ref: int) -> Self:
+    async def from_raw(cls, raw_enhancement: JSON, entry_ref: int) -> Self:
         """Parse an enhancement from raw JSON."""
         try:
             enhancement = destiny_sdk.enhancements.EnhancementFileInput.model_validate(
@@ -150,12 +150,12 @@ class ReferenceCreateResult(BaseModel):
     )
 
     @property
-    def error_str(self) -> str | None:
+    async def error_str(self) -> str | None:
         """Return a string of errors if they exist."""
         return "\n\n".join(e.strip() for e in self.errors) if self.errors else None
 
     @classmethod
-    def from_raw(
+    async def from_raw(
         cls,
         record_str: str,
         entry_ref: int,
@@ -169,7 +169,7 @@ class ReferenceCreateResult(BaseModel):
             return cls(errors=[f"Entry {entry_ref}:", str(exc)])
 
         identifier_results: list[ExternalIdentifierParseResult] = [
-            ExternalIdentifierParseResult.from_raw(identifier, i)
+            await ExternalIdentifierParseResult.from_raw(identifier, i)
             for i, identifier in enumerate(validated_input.identifiers, 1)
         ]
 
@@ -187,7 +187,7 @@ class ReferenceCreateResult(BaseModel):
             )
 
         enhancement_results: list[EnhancementParseResult] = [
-            EnhancementParseResult.from_raw(enhancement, i)
+            await EnhancementParseResult.from_raw(enhancement, i)
             for i, enhancement in enumerate(validated_input.enhancements, 1)
         ]
 
@@ -232,7 +232,7 @@ class BatchEnhancementResultValidator(BaseModel):
     )
 
     @classmethod
-    def from_raw(
+    async def from_raw(
         cls, entry: str, entry_ref: int, expected_reference_ids: set[UUID4]
     ) -> Self:
         """Create a BatchEnhancementResult from a jsonl entry."""

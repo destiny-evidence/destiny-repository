@@ -81,11 +81,6 @@ async def get_signed_url(
     file: BlobStorageFile,
     interaction_type: BlobSignedUrlType,
 ) -> HttpUrl:
-    """
-    Get a signed URL for a file in Blob Storage.
-
-    Generally called in a synchronous context (eg translating models),
-    so we don't use async here.
-    """
+    """Get a signed URL for a file in Blob Storage."""
     client = await _preload_config(file)
     return HttpUrl(await client.generate_signed_url(file, interaction_type))

@@ -181,7 +181,9 @@ This should not happen.
                     )
                     response = await client.post(
                         str(import_batch.callback_url),
-                        json=import_batch.to_sdk_summary().model_dump(mode="json"),
+                        json=(await import_batch.to_sdk_summary()).model_dump(
+                            mode="json"
+                        ),
                     )
                     response.raise_for_status()
             except Exception:

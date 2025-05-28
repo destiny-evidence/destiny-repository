@@ -61,12 +61,12 @@ class BlobStorageFile(BaseModel):
                 logger.warning(msg, extra={"blob_filename": self.filename})
                 return "application/octet-stream"
 
-    def to_sql(self) -> str:
+    async def to_sql(self) -> str:
         """Return the SQL persistence representation of the file."""
         return f"{self.location}://{self.container}/{self.path}/{self.filename}"
 
     @classmethod
-    def from_sql(cls, sql: str) -> Self:
+    async def from_sql(cls, sql: str) -> Self:
         """Populate the model from a SQL representation."""
         location, url = sql.split("://")
         parts = url.split("/")

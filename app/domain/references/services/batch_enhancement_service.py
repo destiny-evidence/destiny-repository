@@ -92,11 +92,13 @@ class BatchEnhancementService(GenericService):
 
         batch_enhancement_request = await self.sql_uow.batch_enhancement_requests.update_by_pk(  # noqa: E501
             batch_enhancement_request.id,
-            reference_data_file=batch_enhancement_request.reference_data_file.to_sql(),
-            result_file=batch_enhancement_request.result_file.to_sql(),
+            reference_data_file=await batch_enhancement_request.reference_data_file.to_sql(),  # noqa: E501
+            result_file=await batch_enhancement_request.result_file.to_sql(),
         )
 
-        return batch_enhancement_request.to_batch_robot_request_sdk(get_signed_url)
+        return await batch_enhancement_request.to_batch_robot_request_sdk(
+            get_signed_url
+        )
 
     async def process_batch_enhancement_result(
         self,
@@ -127,7 +129,7 @@ class BatchEnhancementService(GenericService):
             async for line in file_stream:
                 if not line.strip():
                     continue
-                validated_result = BatchEnhancementResultValidator.from_raw(
+                validated_result = await BatchEnhancementResultValidator.from_raw(
                     line, i, expected_reference_ids
                 )
                 i += 1
@@ -142,7 +144,7 @@ class BatchEnhancementService(GenericService):
                         validated_result.enhancement_to_add.reference_id
                     )
                     success, message = await add_enhancement(
-                        Enhancement.from_sdk(validated_result.enhancement_to_add)
+                        await Enhancement.from_sdk(validated_result.enhancement_to_add)
                     )
                     if success:
                         successes.append(message)

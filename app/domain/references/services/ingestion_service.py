@@ -78,14 +78,14 @@ class IngestionService(GenericService):
 
         collided_identifiers = await self.fetch_collided_identifiers(
             [
-                GenericExternalIdentifier.from_specific(identifier)
+                await GenericExternalIdentifier.from_specific(identifier)
                 for identifier in reference.identifiers
             ],
         )
 
         if not collided_identifiers:
             # No collision detected
-            return Reference.from_file_input(reference)
+            return await Reference.from_file_input(reference)
 
         if collision_strategy == CollisionStrategy.DISCARD:
             return None
@@ -107,7 +107,9 @@ Identifier(s) are already mapped on an existing reference:
             msg = "Existing reference not found in database. This should not happen."
             raise RuntimeError(msg)
 
-        incoming_reference = Reference.from_file_input(reference, existing_reference.id)
+        incoming_reference = await Reference.from_file_input(
+            reference, existing_reference.id
+        )
 
         # Merge collision strategies
         logger.info(
@@ -117,7 +119,7 @@ Identifier(s) are already mapped on an existing reference:
                 "reference_id": existing_reference.id,
             },
         )
-        existing_reference.merge(incoming_reference, collision_strategy)
+        await existing_reference.merge(incoming_reference, collision_strategy)
         return existing_reference
 
     async def ingest_reference(
@@ -130,7 +132,9 @@ Identifier(s) are already mapped on an existing reference:
         `ReferenceCreate` model) to provide more useful error messages to the user and
         allow for partial successes.
         """
-        reference_create_result = ReferenceCreateResult.from_raw(record_str, entry_ref)
+        reference_create_result = await ReferenceCreateResult.from_raw(
+            record_str, entry_ref
+        )
 
         if not reference_create_result.reference:
             # Parsing failed, return the error

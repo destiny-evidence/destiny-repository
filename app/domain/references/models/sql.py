@@ -351,13 +351,13 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             if domain_obj.enhancement_parameters
             else None,
             error=domain_obj.error,
-            reference_data_file=domain_obj.reference_data_file.to_sql()
+            reference_data_file=await domain_obj.reference_data_file.to_sql()
             if domain_obj.reference_data_file
             else None,
-            result_file=domain_obj.result_file.to_sql()
+            result_file=await domain_obj.result_file.to_sql()
             if domain_obj.result_file
             else None,
-            validation_result_file=domain_obj.validation_result_file.to_sql()
+            validation_result_file=await domain_obj.validation_result_file.to_sql()
             if domain_obj.validation_result_file
             else None,
         )
@@ -376,13 +376,15 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             if self.enhancement_parameters
             else {},
             error=self.error,
-            reference_data_file=BlobStorageFile.from_sql(self.reference_data_file)
+            reference_data_file=await BlobStorageFile.from_sql(self.reference_data_file)
             if self.reference_data_file
             else None,
-            result_file=BlobStorageFile.from_sql(self.result_file)
+            result_file=await BlobStorageFile.from_sql(self.result_file)
             if self.result_file
             else None,
-            validation_result_file=BlobStorageFile.from_sql(self.validation_result_file)
+            validation_result_file=await BlobStorageFile.from_sql(
+                self.validation_result_file
+            )
             if self.validation_result_file
             else None,
         )

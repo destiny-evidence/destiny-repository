@@ -139,14 +139,14 @@ The number of references expected to be included in this import.
     )
 
     @classmethod
-    def from_sdk(cls, data: destiny_sdk.imports.ImportRecordIn) -> Self:
+    async def from_sdk(cls, data: destiny_sdk.imports.ImportRecordIn) -> Self:
         """Create an ImportRecord from the SDK input model."""
         try:
             return cls.model_validate(data.model_dump())
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
-    def to_sdk(self) -> destiny_sdk.imports.ImportRecordRead:
+    async def to_sdk(self) -> destiny_sdk.imports.ImportRecordRead:
         """Convert the ImportRecord to the SDK model."""
         try:
             return destiny_sdk.imports.ImportRecordRead.model_validate(
@@ -191,7 +191,7 @@ The URL to which the processor should send a callback when the batch has been pr
     )
 
     @classmethod
-    def from_sdk(
+    async def from_sdk(
         cls, data: destiny_sdk.imports.ImportBatchIn, import_record_id: uuid.UUID
     ) -> Self:
         """Create an ImportBatch from the SDK input model."""
@@ -202,14 +202,14 @@ The URL to which the processor should send a callback when the batch has been pr
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
-    def to_sdk(self) -> destiny_sdk.imports.ImportBatchRead:
+    async def to_sdk(self) -> destiny_sdk.imports.ImportBatchRead:
         """Convert the ImportBatch to the SDK model."""
         try:
             return destiny_sdk.imports.ImportBatchRead.model_validate(self.model_dump())
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
-    def to_sdk_summary(self) -> destiny_sdk.imports.ImportBatchSummary:
+    async def to_sdk_summary(self) -> destiny_sdk.imports.ImportBatchSummary:
         """Convert the ImportBatch to the SDK summary model."""
         try:
             result_summary: dict[ImportResultStatus, int] = dict.fromkeys(
@@ -258,7 +258,7 @@ class ImportResult(DomainBaseModel, SQLAttributeMixin):
         description="Details of any failure that occurred during processing.",
     )
 
-    def to_sdk(self) -> destiny_sdk.imports.ImportResultRead:
+    async def to_sdk(self) -> destiny_sdk.imports.ImportResultRead:
         """Convert the ImportResult to the SDK model."""
         try:
             return destiny_sdk.imports.ImportResultRead.model_validate(
