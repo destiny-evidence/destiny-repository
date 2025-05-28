@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.logger import get_logger
 from app.domain.references.service import ReferenceService
-from app.domain.robots.models import Robots
+from app.domain.robots.external_service import RobotCommunicationService
 from app.domain.robots.service import RobotService
 from app.persistence.sql.session import db_manager
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -35,10 +35,10 @@ async def get_reference_service(
     return ReferenceService(sql_uow=sql_uow)
 
 
-async def get_robot_service() -> RobotService:
+async def get_robot_service() -> RobotCommunicationService:
     """Return the robot service using the provided unit of work dependencies."""
-    robots = Robots(known_robots=get_settings().known_robots)
-    return RobotService(robots=robots)
+    robots = RobotService(known_robots=get_settings().known_robots)
+    return RobotCommunicationService(robots=robots)
 
 
 @broker.task

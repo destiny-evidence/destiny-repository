@@ -28,7 +28,7 @@ from app.domain.references.tasks import (
     collect_and_dispatch_references_for_batch_enhancement,
     validate_and_import_batch_enhancement_result,
 )
-from app.domain.robots.models import Robots
+from app.domain.robots.external_service import RobotCommunicationService
 from app.domain.robots.service import RobotService
 from app.persistence.blob.service import get_signed_url
 from app.persistence.sql.session import get_session
@@ -52,14 +52,14 @@ def reference_service(
     return ReferenceService(sql_uow=sql_uow)
 
 
-robots = Robots(known_robots=settings.known_robots)
+robots = RobotService(known_robots=settings.known_robots)
 
 
 def robot_service(
-    robots: Annotated[Robots, Depends(robots)],
-) -> RobotService:
+    robots: Annotated[RobotService, Depends(robots)],
+) -> RobotCommunicationService:
     """Return the robot service using the provided unit of work dependencies."""
-    return RobotService(robots=robots)
+    return RobotCommunicationService(robots=robots)
 
 
 def choose_auth_strategy_reader() -> AuthMethod:
@@ -164,7 +164,7 @@ async def add_identifier(
 async def request_enhancement(
     enhancement_request_in: destiny_sdk.robots.EnhancementRequestIn,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    robot_service: Annotated[RobotService, Depends(robot_service)],
+    robot_service: Annotated[RobotCommunicationService, Depends(robot_service)],
 ) -> destiny_sdk.robots.EnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""
     enhancement_request = await reference_service.request_reference_enhancement(

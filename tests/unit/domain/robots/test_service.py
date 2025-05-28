@@ -11,7 +11,8 @@ from app.domain.references.models.models import (
     EnhancementRequest,
     Reference,
 )
-from app.domain.robots.models import RobotConfig, Robots
+from app.domain.robots.external_service import RobotCommunicationService
+from app.domain.robots.models import RobotConfig
 from app.domain.robots.service import RobotService
 
 ROBOT_ID = uuid.uuid4()
@@ -39,8 +40,8 @@ async def test_request_enhancement_from_robot_happy_path(httpx_mock):
         enhancement_parameters={},
     )
 
-    service = RobotService(
-        robots=Robots(known_robots=KNOWN_ROBOTS),
+    service = RobotCommunicationService(
+        robots=RobotService(known_robots=KNOWN_ROBOTS),
     )
 
     httpx_mock.add_response(
@@ -71,8 +72,8 @@ async def test_request_enhancement_from_robot_request_error(httpx_mock):
         enhancement_parameters={},
     )
 
-    service = RobotService(
-        robots=Robots(known_robots=KNOWN_ROBOTS),
+    service = RobotCommunicationService(
+        robots=RobotService(known_robots=KNOWN_ROBOTS),
     )
 
     with pytest.raises(RobotUnreachableError):
@@ -96,8 +97,8 @@ async def test_request_enhancement_from_robot_503_response(httpx_mock):
         enhancement_parameters={},
     )
 
-    service = RobotService(
-        robots=Robots(known_robots=KNOWN_ROBOTS),
+    service = RobotCommunicationService(
+        robots=RobotService(known_robots=KNOWN_ROBOTS),
     )
 
     with pytest.raises(RobotUnreachableError):
@@ -123,8 +124,8 @@ async def test_request_enhancement_from_robot_400_response(httpx_mock):
         enhancement_parameters={},
     )
 
-    service = RobotService(
-        robots=Robots(known_robots=KNOWN_ROBOTS),
+    service = RobotCommunicationService(
+        robots=RobotService(known_robots=KNOWN_ROBOTS),
     )
 
     with pytest.raises(RobotEnhancementError):

@@ -32,7 +32,7 @@ from app.domain.references.services.batch_enhancement_service import (
 from app.domain.references.services.ingestion_service import (
     IngestionService,
 )
-from app.domain.robots.service import RobotService
+from app.domain.robots.external_service import RobotCommunicationService
 from app.domain.service import GenericService
 from app.persistence.blob.models import (
     BlobStorageFile,
@@ -154,7 +154,9 @@ class ReferenceService(GenericService):
 
     @unit_of_work
     async def request_reference_enhancement(
-        self, enhancement_request: EnhancementRequest, robot_service: RobotService
+        self,
+        enhancement_request: EnhancementRequest,
+        robot_service: RobotCommunicationService,
     ) -> EnhancementRequest:
         """Create an enhancement request and send it to robot."""
         reference = await self.sql_uow.references.get_by_pk(
@@ -290,7 +292,7 @@ class ReferenceService(GenericService):
     async def collect_and_dispatch_references_for_batch_enhancement(
         self,
         batch_enhancement_request: BatchEnhancementRequest,
-        robot_service: RobotService,
+        robot_service: RobotCommunicationService,
     ) -> None:
         """Collect and dispatch references for batch enhancement."""
         robot = robot_service.get_robot_config(batch_enhancement_request.robot_id)
