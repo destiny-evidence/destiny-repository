@@ -91,7 +91,7 @@ class MinioConfig(BaseModel):
 class AzureBlobConfig(BaseModel):
     """Azure Blob Storage configuration."""
 
-    account_url: str
+    storage_account_name: str
     container: str
     credential: str | None = None
     presigned_url_expiry_seconds: int = 60 * 60  # 1 hour
@@ -101,6 +101,11 @@ class AzureBlobConfig(BaseModel):
     def uses_managed_identity(self) -> bool:
         """Return True if the configuration uses managed identity."""
         return self.credential is None
+
+    @property
+    def account_url(self) -> str:
+        """Return the account URL for Azure Blob Storage."""
+        return f"https://{self.storage_account_name}.blob.core.windows.net"
 
 
 class Environment(StrEnum):
@@ -134,7 +139,7 @@ class Settings(BaseSettings):
     app_name: str
 
     default_upload_file_chunk_size: int = Field(
-        default=100,
+        default=1,
         description=(
             "Number of records to process in a single file chunk when uploading."
         ),
@@ -193,7 +198,10 @@ class Settings(BaseSettings):
                 return self.minio_config.bucket
             if self.azure_blob_config:
                 return self.azure_blob_config.container
-        return "destiny-repository"
+        if not self.azure_blob_config:
+            msg = "Azure Blob Storage configuration is not given."
+            raise ValueError(msg)
+        return self.azure_blob_config.container
 
 
 @lru_cache(maxsize=1)
