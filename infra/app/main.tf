@@ -278,7 +278,9 @@ resource "azurerm_servicebus_queue" "taskiq" {
 }
 
 resource "azurerm_storage_account" "this" {
-  name                     = "${replace(var.app_name, "-", "")}sa"
+  # Storage account name ust be less than 24 characters, only lowercase letters and numbers,
+  # and globally unique. This is the best we can do.
+  name                     = "${replace(var.app_name, "-", "")}${substr(var.environment, 0, 4)}sa"
   resource_group_name      = azurerm_resource_group.this.name
   location                 = azurerm_resource_group.this.location
   account_tier             = "Standard"
