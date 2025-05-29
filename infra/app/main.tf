@@ -288,9 +288,9 @@ resource "azurerm_storage_account" "this" {
   tags                     = local.minimum_resource_tags
 
   # Avoid accidental blob storage deletion
-  lifecycle {
-    prevent_destroy = true
-  }
+  # lifecycle {
+  #   prevent_destroy = true
+  # }
 }
 
 
