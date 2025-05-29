@@ -308,8 +308,7 @@ class ReferenceService(GenericService):
 
         try:
             await robot_service.send_enhancement_request_to_robot(
-                robot_url=str(robot.robot_url).rstrip("/") + "/batch/",
-                robot_id=batch_enhancement_request.robot_id,
+                robot_config=robot,
                 robot_request=robot_request,
             )
         except RobotUnreachableError as exception:
