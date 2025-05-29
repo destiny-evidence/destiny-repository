@@ -324,9 +324,9 @@ resource "azurerm_storage_management_policy" "operations" {
 resource "azurerm_role_assignment" "blob_storage_rw" {
   # TODO: granularise permissions per container
   for_each = {
-    app          = azurerm_user_assigned_identity.container_apps_identity.principal_id
-    tasks        = azurerm_user_assigned_identity.container_apps_tasks_identity.principal_id
-    principal_id = var.developers_group_id
+    app        = azurerm_user_assigned_identity.container_apps_identity.principal_id
+    tasks      = azurerm_user_assigned_identity.container_apps_tasks_identity.principal_id
+    developers = var.developers_group_id
   }
   scope                = azurerm_storage_account.this.id
   role_definition_name = "Storage Blob Data Contributor"
