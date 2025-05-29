@@ -121,7 +121,9 @@ class Environment(StrEnum):
 class Settings(BaseSettings):
     """Settings model for API."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     project_root: Path = Path(__file__).joinpath("../../..").resolve()
 
