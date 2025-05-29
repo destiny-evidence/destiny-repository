@@ -3,7 +3,7 @@
 from enum import StrEnum
 from typing import Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.exceptions import BlobStorageError
 from app.core.logger import get_logger
@@ -80,8 +80,4 @@ class BlobStorageFile(BaseModel):
             filename=parts[-1],
         )
 
-    class Config:
-        """Pydantic model configuration."""
-
-        # Make immutable so that it can be used as a cache key
-        frozen = True
+    model_config = ConfigDict(frozen=True)
