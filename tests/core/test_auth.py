@@ -2,11 +2,12 @@
 
 from collections.abc import AsyncGenerator
 
+import destiny_sdk
 import pytest
 from fastapi import APIRouter, Depends, FastAPI, status
 from httpx import ASGITransport, AsyncClient
 
-from app.core.auth import HMACAuth, HMACSigningAuth
+from app.core.auth import HMACAuth
 
 TEST_SECRET_KEY = "dlfskdfhgk8ei346oiehslkdfrerikfglser934utofs"
 
@@ -60,7 +61,7 @@ async def client(hmac_app: FastAPI) -> AsyncGenerator[AsyncClient]:
 async def test_hmac_authentication_happy_path(client: AsyncClient):
     """Test authentication is successful when signature is correct."""
     request_body = '{"message": "info"}'
-    auth = HMACSigningAuth(secret_key=TEST_SECRET_KEY)
+    auth = destiny_sdk.client.HMACSigningAuth(secret_key=TEST_SECRET_KEY)
 
     response = await client.post("test/hmac/", content=request_body, auth=auth)
 

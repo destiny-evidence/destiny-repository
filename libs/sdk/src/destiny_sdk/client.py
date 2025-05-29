@@ -1,11 +1,12 @@
-"""Client for interaction with the Destiny API."""
+"""Send authenticated requests to Destiny Repository."""
 
-from collections.abc import Generator
+import hashlib
+import hmac
+from collections.abc import AsyncGenerator, Generator
 
 import httpx
-from httpx import codes
+from pydantic import HttpUrl
 
-from destiny_sdk.client_auth import ClientAuthenticationMethod
 from destiny_sdk.robots import (
     BatchEnhancementRequestRead,
     BatchRobotResult,
@@ -14,36 +15,65 @@ from destiny_sdk.robots import (
 )
 
 
-class _DestinyAuth(httpx.Auth):
+def create_signature(secret_key: str, request_body: bytes) -> str:
     """
-    Custom httpx.Auth to inject Bearer token from ClientAuthenticationMethod.
+    Create an HMAC signature using SHA256.
 
-    Automatically refreshes token on expiration.
+    :param secret_key: secret key with which to encrypt message
+    :type secret_key: bytes
+    :param request_body: request body to be encrypted
+    :type request_body: bytes
+    :return: encrypted hexdigest of the request body with the secret key
+    :rtype: str
     """
+    return hmac.new(secret_key.encode(), request_body, hashlib.sha256).hexdigest()
 
-    def __init__(self, auth_method: ClientAuthenticationMethod) -> None:
-        self._auth_method = auth_method
-        self._token = None
 
-    def auth_flow(
+class HMACSigningAuth(httpx.Auth):
+    """Client that adds an HMAC signature to a request."""
+
+    def __init__(self, secret_key: str) -> None:
+        """
+        Initialize the client.
+
+        :param secret_key: the key to use when signing the request
+        :type secret_key: str
+        """
+        self.secret_key = secret_key
+
+    def sync_auth_flow(
         self, request: httpx.Request
-    ) -> Generator[httpx.Request, httpx.Response, None]:
-        if not self._token:
-            self._token = self._auth_method.get_token()
-        request.headers["Authorization"] = f"Bearer {self._token}"
-        response = yield request
+    ) -> Generator[httpx.Request, httpx.Response]:
+        """
+        Add a signature to the given request.
 
-        if response.status_code == codes.UNAUTHORIZED:
-            try:
-                detail = response.json().get("detail", "")
-            except ValueError:
-                detail = ""
+        :param request: request to be sent with signature
+        :type request: httpx.Request
+        :yield: Generator for Request with signature headers set
+        :rtype: Generator[httpx.Request, httpx.Response]
+        """
+        request_body = request.read()
+        self._add_signature(request, request_body)
+        yield request
 
-            if detail == "Token is expired.":
-                # Refresh token and retry
-                self._token = self._auth_method.get_token()
-                request.headers["Authorization"] = f"Bearer {self._token}"
-                yield request
+    async def async_auth_flow(
+        self, request: httpx.Request
+    ) -> AsyncGenerator[httpx.Request, httpx.Response]:
+        """
+        Add a signature to the given request.
+
+        :param request: request to be sent with signature
+        :type request: httpx.Request
+        :yield: AsyncGenerator for Request with signature headers set
+        :rtype: AsyncGenerator[httpx.Request, httpx.Response]
+        """
+        request_body = await request.aread()
+        self._add_signature(request, request_body)
+        yield request
+
+    def _add_signature(self, request: httpx.Request, request_body: bytes) -> None:
+        signature = create_signature(self.secret_key, request_body)
+        request.headers["Authorization"] = f"Signature {signature}"
 
 
 class Client:
@@ -53,26 +83,26 @@ class Client:
     Current implementation only supports robot results.
     """
 
-    def __init__(self, base_url: str, auth_method: ClientAuthenticationMethod) -> None:
+    def __init__(self, base_url: HttpUrl, secret_key: str) -> None:
         """
         Initialize the client.
 
         :param base_url: The base URL for the Destiny Repository API.
         :type base_url: HttpUrl
-        :param auth_method: The authentication method to use for the API.
-        :type auth_method: ClientAuthenticationMethod
+        :param secret_key: The secret key for signing requests
+        :type auth_method: str
         """
         self.session = httpx.Client(
-            base_url=base_url,
+            base_url=str(base_url),
             headers={"Content-Type": "application/json"},
-            auth=_DestinyAuth(auth_method),
+            auth=HMACSigningAuth(secret_key=secret_key),
         )
 
     def send_robot_result(self, robot_result: RobotResult) -> EnhancementRequestRead:
         """
         Send a RobotResult to destiny repository.
 
-        Generates an JWT using the provided ClientAuthenticationMethod.
+        Signs the request with the client's secret key.
 
         :param robot_result: The Robot Result to send
         :type robot_result: RobotResult
@@ -92,7 +122,7 @@ class Client:
         """
         Send a BatchRobotResult to destiny repository.
 
-        Generates an JWT using the provided ClientAuthenticationMethod.
+        Signs the request with the client's secret key.
 
         :param batch_robot_result: The Batch Robot Result to send
         :type batch_robot_result: BatchRobotResult

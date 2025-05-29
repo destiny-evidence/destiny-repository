@@ -5,7 +5,6 @@ import httpx
 from fastapi import status
 from pydantic import UUID4, HttpUrl
 
-from app.core.auth import HMACSigningAuth
 from app.core.config import get_settings
 from app.core.exceptions import (
     RobotEnhancementError,
@@ -43,7 +42,7 @@ class RobotCommunicationService:
     ) -> httpx.Response:
         """Send a request to a robot, handling error cases."""
         try:
-            auth = HMACSigningAuth(robot.communication_secret_name)
+            auth = destiny_sdk.client.HMACSigningAuth(robot.communication_secret_name)
             async with httpx.AsyncClient(auth=auth) as client:
                 response = await client.post(
                     str(robot.robot_url).rstrip("/") + endpoint,

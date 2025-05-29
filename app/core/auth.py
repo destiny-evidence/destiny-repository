@@ -2,12 +2,10 @@
 
 import hashlib
 import hmac
-from collections.abc import AsyncGenerator, Generator
 from enum import StrEnum
 from typing import Protocol
 
 import fastapi
-import httpx
 from destiny_sdk.auth import AuthException, AuthMethod, AzureJwtAuth, SuccessAuth
 from fastapi import status
 
@@ -56,53 +54,6 @@ def create_signature(secret_key: str, request_body: bytes) -> str:
     :rtype: str
     """
     return hmac.new(secret_key.encode(), request_body, hashlib.sha256).hexdigest()
-
-
-class HMACSigningAuth(httpx.Auth):
-    """Client that adds an HMAC signature to a request."""
-
-    def __init__(self, secret_key: str) -> None:
-        """
-        Initialize the client.
-
-        :param secret_key: the key to use when signing the request
-        :type secret_key: str
-        """
-        self.secret_key = secret_key
-
-    def sync_auth_flow(
-        self, request: httpx.Request
-    ) -> Generator[httpx.Request, httpx.Response]:
-        """
-        Add a signature to the given request.
-
-        :param request: request to be sent with signature
-        :type request: httpx.Request
-        :yield: Generator for Request with signature headers set
-        :rtype: Generator[httpx.Request, httpx.Response]
-        """
-        request_body = request.read()
-        self._add_signature(request, request_body)
-        yield request
-
-    async def async_auth_flow(
-        self, request: httpx.Request
-    ) -> AsyncGenerator[httpx.Request, httpx.Response]:
-        """
-        Add a signature to the given request.
-
-        :param request: request to be sent with signature
-        :type request: httpx.Request
-        :yield: AsyncGenerator for Request with signature headers set
-        :rtype: AsyncGenerator[httpx.Request, httpx.Response]
-        """
-        request_body = await request.aread()
-        self._add_signature(request, request_body)
-        yield request
-
-    def _add_signature(self, request: httpx.Request, request_body: bytes) -> None:
-        signature = create_signature(self.secret_key, request_body)
-        request.headers["Authorization"] = f"Signature {signature}"
 
 
 class HMACAuthMethod(Protocol):
