@@ -11,18 +11,23 @@ This module is based on the following references :
 - https://github.com/425show/fastapi_microsoft_identity/blob/main/fastapi_microsoft_identity/auth_service.py
 """
 
+import hmac
 from collections.abc import Callable
 from enum import StrEnum
 from typing import Annotated, Any, Protocol
+from uuid import UUID
 
 import destiny_sdk
 from cachetools import TTLCache
-from fastapi import Depends, status
+from fastapi import Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from httpx import AsyncClient
 from jose import exceptions, jwt
+from pydantic import UUID4
 
 from app.core.config import Environment, get_settings
+from app.core.exceptions import NotFoundError
+from app.domain.robots.service import RobotService
 
 CACHE_TTL = 60 * 60 * 24  # 24 hours
 
@@ -382,9 +387,70 @@ def choose_auth_strategy(
     )
 
 
+robots = RobotService(known_robots=settings.known_robots)
+
+
+class HMAKnownRobotAuth:
+    """Adds HMAC auth for known robots when used as router or endpoint dependency."""
+
+    async def __call__(
+        self,
+        request: Request,
+        robot_service: Annotated[RobotService, Depends(robots)],
+    ) -> bool:
+        """Perform Authorization check."""
+        signature_header = request.headers.get("Authorization")
+
+        if not signature_header:
+            raise destiny_sdk.auth.AuthException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authorization Signature header missing.",
+            )
+
+        # Need to improve this to handle malformed headers gracefully
+        scheme, _, signature = signature_header.partition(" ")
+
+        if scheme != "Signature":
+            raise destiny_sdk.auth.AuthException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authorization type not supported.",
+            )
+
+        robot_id = request.headers.get("X-Robot-Id")
+
+        if not robot_id:
+            raise destiny_sdk.auth.AuthException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="X-Robot-Id header not set.",
+            )
+
+        request_body = await request.body()
+        expected_signature = destiny_sdk.client.create_signature(
+            secret_key=self._get_secret_key(UUID(robot_id), robot_service),
+            request_body=request_body,
+        )
+
+        if not hmac.compare_digest(signature, expected_signature):
+            raise destiny_sdk.auth.AuthException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Signature is invalid."
+            )
+
+        return True
+
+    def _get_secret_key(self, robot_id: UUID4, robot_service: RobotService) -> str:
+        """Get the secret key for the robot making the request."""
+        try:
+            return robot_service.get_robot_secret(robot_id)
+        except NotFoundError as exc:
+            raise destiny_sdk.auth.AuthException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Robot {robot_id} does not exist.",
+            ) from exc
+
+
 def choose_hmac_auth_strategy() -> destiny_sdk.auth.HMACAuthMethod:
     """Choose an HMAC auth method."""
     if settings.env in (Environment.LOCAL, Environment.TEST):
         return destiny_sdk.auth.BypassHMACAuth()
 
-    return destiny_sdk.auth.HMACAuth(settings.secret_key.get_secret_value())
+    return HMAKnownRobotAuth()

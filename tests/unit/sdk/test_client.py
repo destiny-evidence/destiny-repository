@@ -10,6 +10,7 @@ from pytest_httpx import HTTPXMock
 def test_verify_signature_sent_as_header(httpx_mock: HTTPXMock) -> None:
     """Test that request is authorized with a signature."""
     fake_secret_key = "asdfhjgji94523q0uflsjf349wjilsfjd9q23"
+    fake_robot_id = uuid.uuid4()
     fake_destiny_repository_url = "https://www.destiny-repository-lives-here.co.au"
 
     request_body = EnhancementRequestRead(
@@ -35,7 +36,9 @@ def test_verify_signature_sent_as_header(httpx_mock: HTTPXMock) -> None:
     )
 
     Client(
-        base_url=fake_destiny_repository_url, secret_key=fake_secret_key
+        base_url=fake_destiny_repository_url,
+        secret_key=fake_secret_key,
+        client_id=fake_robot_id,
     ).send_robot_result(
         robot_result=fake_robot_result,
     )

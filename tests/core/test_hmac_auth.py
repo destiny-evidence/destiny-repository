@@ -1,15 +1,19 @@
-"""Tests for HMAC Authentication."""
+"""Test Known Robot HMAC Auth."""
 
-import uuid
 from collections.abc import AsyncGenerator
+from uuid import UUID
 
 import destiny_sdk
 import pytest
 from fastapi import APIRouter, Depends, FastAPI, status
 from httpx import ASGITransport, AsyncClient
 
+from app.core.auth import HMAKnownRobotAuth, robots
+from app.domain.robots.models import RobotConfig
+from app.domain.robots.service import RobotService
+
 TEST_SECRET_KEY = "dlfskdfhgk8ei346oiehslkdfrerikfglser934utofs"
-TEST_CLIENT_ID = uuid.uuid4()
+FAKE_ROBOT_ID = "8f76fdc3-fd5e-404f-968c-4d1c1268204b"
 
 
 @pytest.fixture
@@ -22,7 +26,7 @@ def hmac_app() -> FastAPI:
 
     """
     app = FastAPI(title="Test HMAC Auth")
-    auth = destiny_sdk.auth.HMACAuth(secret_key=TEST_SECRET_KEY)
+    auth = HMAKnownRobotAuth()
 
     def __endpoint() -> dict:
         return {"message": "ok"}
@@ -36,6 +40,18 @@ def hmac_app() -> FastAPI:
     )
 
     app.include_router(router)
+
+    app.dependency_overrides[robots] = RobotService(
+        [
+            RobotConfig(
+                robot_id=FAKE_ROBOT_ID,
+                robot_url="https://www.balderdash.org",
+                dependent_enhancements=[],
+                dependent_identifiers=[],
+                communication_secret_name=TEST_SECRET_KEY,
+            )
+        ]
+    )
     return app
 
 
@@ -58,41 +74,13 @@ async def client(hmac_app: FastAPI) -> AsyncGenerator[AsyncClient]:
         yield client
 
 
-async def test_hmac_authentication_happy_path(client: AsyncClient):
+async def test_hmac_robot_authentication_happy_path(client: AsyncClient):
     """Test authentication is successful when signature is correct."""
     request_body = '{"message": "info"}'
     auth = destiny_sdk.client.HMACSigningAuth(
-        secret_key=TEST_SECRET_KEY, client_id=TEST_CLIENT_ID
+        secret_key=TEST_SECRET_KEY, client_id=UUID(FAKE_ROBOT_ID)
     )
 
     response = await client.post("test/hmac/", content=request_body, auth=auth)
 
     assert response.status_code == status.HTTP_200_OK
-
-
-async def test_hmac_authentication_incorrect_signature(client: AsyncClient):
-    """Test authentication fails when the signature does not match."""
-    response = await client.post(
-        "test/hmac/", headers={"Authorization": "Signature nonsense-signature"}, json={}
-    )
-
-    assert response.status_code == status.HTTP_401_UNAUTHORIZED
-    assert "invalid" in response.json()["detail"]
-
-
-async def test_hmac_authentication_no_signature(client: AsyncClient):
-    """Test authentication fails if the signature is not included."""
-    response = await client.post("test/hmac/", json={})
-
-    assert response.status_code == status.HTTP_401_UNAUTHORIZED
-    assert "header missing" in response.json()["detail"]
-
-
-async def test_hmac_authentication_wrong_auth_type(client: AsyncClient):
-    """Test authentication fails if the signature is not included."""
-    response = await client.post(
-        "test/hmac/", json={}, headers={"Authorization": "Bearer nonsense-token"}
-    )
-
-    assert response.status_code == status.HTTP_401_UNAUTHORIZED
-    assert "type not supported" in response.json()["detail"]

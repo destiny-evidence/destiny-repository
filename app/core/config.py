@@ -10,7 +10,6 @@ from pydantic import (
     Field,
     HttpUrl,
     PostgresDsn,
-    SecretStr,
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -122,8 +121,6 @@ class Settings(BaseSettings):
     message_broker_queue_name: str = "taskiq"
     cli_client_id: str | None = None
     app_name: str
-
-    secret_key: SecretStr
 
     # Temporary robot configuration, replace with db table later.
     known_robots: list[RobotConfig] = Field(

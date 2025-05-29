@@ -2,10 +2,10 @@
 
 import hashlib
 import hmac
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import Generator
 
 import httpx
-from pydantic import HttpUrl
+from pydantic import UUID4, HttpUrl
 
 from destiny_sdk.robots import (
     BatchEnhancementRequestRead,
@@ -32,7 +32,9 @@ def create_signature(secret_key: str, request_body: bytes) -> str:
 class HMACSigningAuth(httpx.Auth):
     """Client that adds an HMAC signature to a request."""
 
-    def __init__(self, secret_key: str) -> None:
+    requires_request_body = True
+
+    def __init__(self, secret_key: str, client_id: UUID4) -> None:
         """
         Initialize the client.
 
@@ -40,8 +42,9 @@ class HMACSigningAuth(httpx.Auth):
         :type secret_key: str
         """
         self.secret_key = secret_key
+        self.client_id = client_id
 
-    def sync_auth_flow(
+    def auth_flow(
         self, request: httpx.Request
     ) -> Generator[httpx.Request, httpx.Response]:
         """
@@ -52,28 +55,10 @@ class HMACSigningAuth(httpx.Auth):
         :yield: Generator for Request with signature headers set
         :rtype: Generator[httpx.Request, httpx.Response]
         """
-        request_body = request.read()
-        self._add_signature(request, request_body)
-        yield request
-
-    async def async_auth_flow(
-        self, request: httpx.Request
-    ) -> AsyncGenerator[httpx.Request, httpx.Response]:
-        """
-        Add a signature to the given request.
-
-        :param request: request to be sent with signature
-        :type request: httpx.Request
-        :yield: AsyncGenerator for Request with signature headers set
-        :rtype: AsyncGenerator[httpx.Request, httpx.Response]
-        """
-        request_body = await request.aread()
-        self._add_signature(request, request_body)
-        yield request
-
-    def _add_signature(self, request: httpx.Request, request_body: bytes) -> None:
-        signature = create_signature(self.secret_key, request_body)
+        signature = create_signature(self.secret_key, request.content)
         request.headers["Authorization"] = f"Signature {signature}"
+        request.headers["X-Robot-Id"] = f"{self.client_id}"
+        yield request
 
 
 class Client:
@@ -83,7 +68,7 @@ class Client:
     Current implementation only supports robot results.
     """
 
-    def __init__(self, base_url: HttpUrl, secret_key: str) -> None:
+    def __init__(self, base_url: HttpUrl, secret_key: str, client_id: UUID4) -> None:
         """
         Initialize the client.
 
@@ -95,7 +80,7 @@ class Client:
         self.session = httpx.Client(
             base_url=str(base_url),
             headers={"Content-Type": "application/json"},
-            auth=HMACSigningAuth(secret_key=secret_key),
+            auth=HMACSigningAuth(secret_key=secret_key, client_id=client_id),
         )
 
     def send_robot_result(self, robot_result: RobotResult) -> EnhancementRequestRead:
