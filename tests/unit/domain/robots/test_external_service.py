@@ -19,7 +19,7 @@ from app.domain.robots.service import RobotService
 
 ROBOT_ID = uuid.uuid4()
 ROBOT_URL = HttpUrl("http://www.theres-a-robot-here.com/")
-FAKE_ROBOT_TOKEN = "access_token"  # noqa: S105
+FAKE_ROBOT_TOKEN = "access_token"
 
 KNOWN_ROBOTS = [
     RobotConfig(
@@ -53,7 +53,7 @@ async def test_request_enhancement_from_robot_happy_path(httpx_mock):
     ).model_dump_json()
 
     expected_signature = create_signature(
-        secret_key=KNOWN_ROBOTS[0].communication_secret_name.encode(),
+        secret_key=KNOWN_ROBOTS[0].communication_secret_name,
         request_body=expected_request_body.encode(),
     )
 

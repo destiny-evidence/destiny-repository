@@ -10,7 +10,7 @@ from pydantic import (
     Field,
     HttpUrl,
     PostgresDsn,
-    SecretBytes,
+    SecretStr,
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -124,7 +124,7 @@ class Settings(BaseSettings):
     app_name: str
 
     # Temporary secret key config for HMAC auth.
-    secret_key: SecretBytes
+    secret_key: SecretStr
 
     # Temporary robot configuration, replace with db table later.
     known_robots: list[RobotConfig] = Field(

@@ -6,9 +6,9 @@ import pytest
 from fastapi import APIRouter, Depends, FastAPI, status
 from httpx import ASGITransport, AsyncClient
 
-from app.core.auth import HMACAuth, create_signature
+from app.core.auth import HMACAuth, HMACSigningAuth
 
-TEST_SECRET_KEY = b"dlfskdfhgk8ei346oiehslkdfrerikfglser934utofs"
+TEST_SECRET_KEY = "dlfskdfhgk8ei346oiehslkdfrerikfglser934utofs"
 
 
 @pytest.fixture
@@ -59,14 +59,10 @@ async def client(hmac_app: FastAPI) -> AsyncGenerator[AsyncClient]:
 
 async def test_hmac_authentication_happy_path(client: AsyncClient):
     """Test authentication is successful when signature is correct."""
-    request_body = b'{"message": "info"}'
-    signature = create_signature(TEST_SECRET_KEY, request_body)
+    request_body = '{"message": "info"}'
+    auth = HMACSigningAuth(secret_key=TEST_SECRET_KEY)
 
-    response = await client.post(
-        "test/hmac/",
-        headers={"Authorization": f"Signature {signature}"},
-        content=request_body,
-    )
+    response = await client.post("test/hmac/", content=request_body, auth=auth)
 
     assert response.status_code == status.HTTP_200_OK
 
