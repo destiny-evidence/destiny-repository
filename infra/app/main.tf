@@ -276,3 +276,58 @@ resource "azurerm_servicebus_queue" "taskiq" {
 
   partitioning_enabled = true
 }
+
+resource "azurerm_storage_account" "this" {
+  name                     = "${replace(local.name, "-", "")}sa" # storage account names must be only lowercase letters and numbers
+  resource_group_name      = azurerm_resource_group.this.name
+  location                 = azurerm_resource_group.this.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+  tags                     = local.minimum_resource_tags
+}
+
+
+resource "azurerm_storage_container" "this" {
+  # This is a container designed for storing operational repository files such as
+  # batch enhancement results and reference data for robots.
+  # We should segregate this from permanent data (such as full texts) at the container
+  # level to easily apply different storage management policies.
+  name                  = local.name
+  storage_account_id    = azurerm_storage_account.this.id
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_management_policy" "this" {
+  storage_account_id = azurerm_storage_account.this.id
+
+  rule {
+    name    = "delete-old-${local.name}-blobs"
+    enabled = false # Disabled for now, enable once comfortable
+    filters {
+      blob_types   = ["blockBlob"]
+      prefix_match = [local.name]
+    }
+    actions {
+      base_blob {
+        delete_after_days_since_modification_greater_than = 30
+      }
+      snapshot {
+        delete_after_days_since_creation_greater_than = 30
+      }
+      version {
+        delete_after_days_since_creation = 30
+      }
+    }
+  }
+}
+
+resource "azurerm_role_assignment" "blob_storage_rw" {
+  for_each = {
+    app          = azurerm_user_assigned_identity.container_apps_identity.principal_id
+    tasks        = azurerm_user_assigned_identity.container_apps_tasks_identity.principal_id
+    principal_id = var.developers_group_id
+  }
+  scope                = azurerm_storage_account.this.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = each.value
+}
