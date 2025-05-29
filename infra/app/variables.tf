@@ -120,3 +120,8 @@ variable "region" {
   description = "The region resources will be deployed into"
   type        = string
 }
+
+variable "open_alex_incremental_updater_client_id" {
+  description = "The client id of the open alex incrememtal updater application"
+  type        = string
+}
