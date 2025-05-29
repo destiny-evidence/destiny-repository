@@ -123,7 +123,6 @@ class Settings(BaseSettings):
     cli_client_id: str | None = None
     app_name: str
 
-    # Temporary secret key config for HMAC auth.
     secret_key: SecretStr
 
     # Temporary robot configuration, replace with db table later.

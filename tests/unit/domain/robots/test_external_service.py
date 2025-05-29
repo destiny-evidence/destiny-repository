@@ -7,7 +7,6 @@ from destiny_sdk.visibility import Visibility
 from fastapi import status
 from pydantic import HttpUrl
 
-from app.core.auth import create_signature
 from app.core.exceptions import RobotEnhancementError, RobotUnreachableError
 from app.domain.references.models.models import (
     EnhancementRequest,
@@ -52,7 +51,7 @@ async def test_send_enhancement_request_to_robot_happy_path(httpx_mock):
         extra_fields=enhancement_request.enhancement_parameters,
     )
 
-    expected_signature = create_signature(
+    expected_signature = destiny_sdk.client.create_signature(
         secret_key=KNOWN_ROBOTS[0].communication_secret_name,
         request_body=robot_request.model_dump_json().encode(),
     )

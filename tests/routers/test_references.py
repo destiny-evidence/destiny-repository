@@ -42,7 +42,7 @@ pytestmark = pytest.mark.usefixtures("session")
 
 ROBOT_ID = uuid.uuid4()
 ROBOT_URL = "http://www.test-robot-here.com/"
-FAKE_ROBOT_TOKEN = "access_token"  # noqa: S105
+FAKE_ROBOT_TOKEN = "access_token"
 
 
 @pytest.fixture
@@ -273,7 +273,7 @@ async def test_fulfill_enhancement_request_happy_path(
     session: AsyncSession,
     client: AsyncClient,
 ) -> None:
-    """Test creating a reference from a robot."""
+    """Test creating an enhancement from a robot."""
     reference = await add_reference(session)
 
     enhancement_request = SQLEnhancementRequest(

@@ -7,8 +7,8 @@ from destiny_sdk.robots import EnhancementRequestRead, RobotError, RobotResult
 from pytest_httpx import HTTPXMock
 
 
-def test_verify_token_send_as_header(httpx_mock: HTTPXMock) -> None:
-    """Test that request is authorizes with provided token."""
+def test_verify_signature_sent_as_header(httpx_mock: HTTPXMock) -> None:
+    """Test that request is authorized with a signature."""
     fake_secret_key = "asdfhjgji94523q0uflsjf349wjilsfjd9q23"
     fake_destiny_repository_url = "https://www.destiny-repository-lives-here.co.au"
 
