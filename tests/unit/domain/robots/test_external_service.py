@@ -33,7 +33,7 @@ KNOWN_ROBOTS = [
 
 
 @pytest.mark.asyncio
-async def test_request_enhancement_from_robot_happy_path(httpx_mock):
+async def test_send_enhancement_request_to_robot_happy_path(httpx_mock):
     reference = Reference(id=uuid.uuid4(), visibility=Visibility.RESTRICTED)
     enhancement_request = EnhancementRequest(
         id=uuid.uuid4(),
@@ -46,15 +46,15 @@ async def test_request_enhancement_from_robot_happy_path(httpx_mock):
         robots=RobotService(known_robots=KNOWN_ROBOTS),
     )
 
-    expected_request_body = destiny_sdk.robots.RobotRequest(
+    robot_request = destiny_sdk.robots.RobotRequest(
         id=enhancement_request.id,
         reference=destiny_sdk.references.Reference(**reference.model_dump()),
         extra_fields=enhancement_request.enhancement_parameters,
-    ).model_dump_json()
+    )
 
     expected_signature = create_signature(
         secret_key=KNOWN_ROBOTS[0].communication_secret_name,
-        request_body=expected_request_body.encode(),
+        request_body=robot_request.model_dump_json().encode(),
     )
 
     httpx_mock.add_response(
@@ -64,17 +64,15 @@ async def test_request_enhancement_from_robot_happy_path(httpx_mock):
         match_headers={"Authorization": f"Signature {expected_signature}"},
     )
 
-    await service.request_enhancement_from_robot(
-        robot_config=KNOWN_ROBOTS[0],
-        enhancement_request=enhancement_request,
-        reference=reference,
+    await service.send_enhancement_request_to_robot(
+        endpoint="/single/", robot=KNOWN_ROBOTS[0], robot_request=robot_request
     )
 
     assert len(httpx_mock.get_requests()) == 1
 
 
 @pytest.mark.asyncio
-async def test_request_enhancement_from_robot_request_error(httpx_mock):
+async def test_send_enhancement_request_to_robot_request_error(httpx_mock):
     # Mock a connection error
     httpx_mock.add_exception(httpx.ConnectError(message="All connections refused"))
 
@@ -86,20 +84,24 @@ async def test_request_enhancement_from_robot_request_error(httpx_mock):
         enhancement_parameters={},
     )
 
+    robot_request = destiny_sdk.robots.RobotRequest(
+        id=enhancement_request.id,
+        reference=destiny_sdk.references.Reference(**reference.model_dump()),
+        extra_fields=enhancement_request.enhancement_parameters,
+    )
+
     service = RobotCommunicationService(
         robots=RobotService(known_robots=KNOWN_ROBOTS),
     )
 
     with pytest.raises(RobotUnreachableError):
-        await service.request_enhancement_from_robot(
-            robot_config=KNOWN_ROBOTS[0],
-            enhancement_request=enhancement_request,
-            reference=reference,
+        await service.send_enhancement_request_to_robot(
+            endpoint="/single/", robot=KNOWN_ROBOTS[0], robot_request=robot_request
         )
 
 
 @pytest.mark.asyncio
-async def test_request_enhancement_from_robot_503_response(httpx_mock):
+async def test_send_enhancement_request_to_robot_503_response(httpx_mock):
     # Mock a robot that is unavailable
     httpx_mock.add_response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
@@ -115,16 +117,20 @@ async def test_request_enhancement_from_robot_503_response(httpx_mock):
         robots=RobotService(known_robots=KNOWN_ROBOTS),
     )
 
+    robot_request = destiny_sdk.robots.RobotRequest(
+        id=enhancement_request.id,
+        reference=destiny_sdk.references.Reference(**reference.model_dump()),
+        extra_fields=enhancement_request.enhancement_parameters,
+    )
+
     with pytest.raises(RobotUnreachableError):
-        await service.request_enhancement_from_robot(
-            robot_config=KNOWN_ROBOTS[0],
-            enhancement_request=enhancement_request,
-            reference=reference,
+        await service.send_enhancement_request_to_robot(
+            endpoint="/single/", robot=KNOWN_ROBOTS[0], robot_request=robot_request
         )
 
 
 @pytest.mark.asyncio
-async def test_request_enhancement_from_robot_400_response(httpx_mock):
+async def test_send_enhancement_request_to_robot_400_response(httpx_mock):
     # Mock a robot that is unavailable
     httpx_mock.add_response(
         status_code=status.HTTP_400_BAD_REQUEST, json={"message": "bad request"}
@@ -138,13 +144,17 @@ async def test_request_enhancement_from_robot_400_response(httpx_mock):
         enhancement_parameters={},
     )
 
+    robot_request = destiny_sdk.robots.RobotRequest(
+        id=enhancement_request.id,
+        reference=destiny_sdk.references.Reference(**reference.model_dump()),
+        extra_fields=enhancement_request.enhancement_parameters,
+    )
+
     service = RobotCommunicationService(
         robots=RobotService(known_robots=KNOWN_ROBOTS),
     )
 
     with pytest.raises(RobotEnhancementError):
-        await service.request_enhancement_from_robot(
-            robot_config=KNOWN_ROBOTS[0],
-            enhancement_request=enhancement_request,
-            reference=reference,
+        await service.send_enhancement_request_to_robot(
+            endpoint="/single/", robot=KNOWN_ROBOTS[0], robot_request=robot_request
         )

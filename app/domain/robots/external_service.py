@@ -11,10 +11,6 @@ from app.core.exceptions import (
     RobotEnhancementError,
     RobotUnreachableError,
 )
-from app.domain.references.models.models import (
-    EnhancementRequest,
-    Reference,
-)
 from app.domain.robots.models import RobotConfig
 from app.domain.robots.service import RobotService
 
@@ -40,60 +36,26 @@ class RobotCommunicationService:
 
     async def send_enhancement_request_to_robot(
         self,
-        robot_config: RobotConfig,
-        robot_request: destiny_sdk.robots.BatchRobotRequest,
+        endpoint: str,
+        robot: RobotConfig,
+        robot_request: destiny_sdk.robots.RobotRequest
+        | destiny_sdk.robots.BatchRobotRequest,
     ) -> httpx.Response:
         """Send a request to a robot, handling error cases."""
         try:
-            auth = HMACSigningAuth(robot_config.communication_secret_name)
+            auth = HMACSigningAuth(robot.communication_secret_name)
             async with httpx.AsyncClient(auth=auth) as client:
                 response = await client.post(
-                    str(robot_config.robot_url).rstrip("/") + "/batch/",
+                    str(robot.robot_url).rstrip("/") + endpoint,
                     json=robot_request.model_dump(mode="json"),
                 )
         except httpx.RequestError as exception:
-            error = f"Cannot request enhancement from Robot {robot_config.robot_id}."
+            error = f"Cannot request enhancement from Robot {robot.robot_id}."
             raise RobotUnreachableError(error) from exception
 
         if response.status_code != status.HTTP_202_ACCEPTED:
             if response.status_code >= MIN_FOR_5XX_STATUS_CODES:
-                error = (
-                    f"Cannot request enhancement from Robot {robot_config.robot_id}."
-                )
-                raise RobotUnreachableError(error)
-            # Expect this is a 4xx
-            raise RobotEnhancementError(detail=response.text)
-
-        return response
-
-    async def request_enhancement_from_robot(
-        self,
-        robot_config: RobotConfig,
-        enhancement_request: EnhancementRequest,
-        reference: Reference,
-    ) -> httpx.Response:
-        """Request an enhancement from a robot."""
-        robot_request = destiny_sdk.robots.RobotRequest(
-            id=enhancement_request.id,
-            reference=destiny_sdk.references.Reference(**reference.model_dump()),
-            extra_fields=enhancement_request.enhancement_parameters,
-        )
-        try:
-            auth = HMACSigningAuth(robot_config.communication_secret_name)
-            async with httpx.AsyncClient(auth=auth) as client:
-                response = await client.post(
-                    str(robot_config.robot_url).rstrip("/") + "/single/",
-                    json=robot_request.model_dump(mode="json"),
-                )
-        except httpx.RequestError as exception:
-            error = (
-                f"Cannot request enhancement from Robot {enhancement_request.robot_id}."
-            )
-            raise RobotUnreachableError(error) from exception
-
-        if response.status_code != status.HTTP_202_ACCEPTED:
-            if response.status_code >= MIN_FOR_5XX_STATUS_CODES:
-                error = f"Cannot request enhancement from Robot {enhancement_request.robot_id}."  # noqa: E501
+                error = f"Cannot request enhancement from Robot {robot.robot_id}."
                 raise RobotUnreachableError(error)
             # Expect this is a 4xx
             raise RobotEnhancementError(detail=response.text)

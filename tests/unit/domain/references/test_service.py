@@ -115,7 +115,7 @@ async def test_trigger_reference_enhancement_request_happy_path(
 ):
     # Mock the robot service
     fake_robot_service = AsyncMock()
-    fake_robot_service.request_enhancement_from_robot.return_value = httpx.Response(
+    fake_robot_service.send_enhancement_request_to_robot.return_value = httpx.Response(
         status_code=status.HTTP_202_ACCEPTED
     )
 
@@ -161,7 +161,7 @@ async def test_trigger_reference_enhancement_request_rejected(
     A robot rejects a request to create an enhancement against a reference.
     """
     fake_robot_service = AsyncMock()
-    fake_robot_service.request_enhancement_from_robot.side_effect = (
+    fake_robot_service.send_enhancement_request_to_robot.side_effect = (
         RobotEnhancementError('{"message":"broken"}')
     )
 

@@ -1,5 +1,6 @@
 """The service for interacting with and managing references."""
 
+import destiny_sdk
 from pydantic import UUID4
 
 from app.core.config import get_settings
@@ -169,11 +170,15 @@ class ReferenceService(GenericService):
             enhancement_request
         )
 
+        robot_request = destiny_sdk.robots.RobotRequest(
+            id=enhancement_request.id,
+            reference=destiny_sdk.references.Reference(**reference.model_dump()),
+            extra_fields=enhancement_request.enhancement_parameters,
+        )
+
         try:
-            await robot_service.request_enhancement_from_robot(
-                robot_config=robot,
-                enhancement_request=enhancement_request,
-                reference=reference,
+            await robot_service.send_enhancement_request_to_robot(
+                endpoint="/single/", robot=robot, robot_request=robot_request
             )
         except RobotUnreachableError as exception:
             return await self.sql_uow.enhancement_requests.update_by_pk(
@@ -308,7 +313,8 @@ class ReferenceService(GenericService):
 
         try:
             await robot_service.send_enhancement_request_to_robot(
-                robot_config=robot,
+                endpoint="/batch/",
+                robot=robot,
                 robot_request=robot_request,
             )
         except RobotUnreachableError as exception:
