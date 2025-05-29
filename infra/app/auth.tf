@@ -100,6 +100,7 @@ resource "azuread_application_api_access" "destiny_repository_auth" {
 
   role_ids = [
     azuread_application_app_role.importer.role_id,
+    azuread_application_app_role.robot.role_id,
     azuread_application_app_role.reference_reader.role_id,
     azuread_application_app_role.reference_writer.role_id
   ]
