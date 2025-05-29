@@ -287,25 +287,25 @@ resource "azurerm_storage_account" "this" {
 }
 
 
-resource "azurerm_storage_container" "this" {
+resource "azurerm_storage_container" "operations" {
   # This is a container designed for storing operational repository files such as
-  # batch enhancement results and reference data for robots.
+  # batch enhancement results and reference data for robots. These are transient.
   # We should segregate this from permanent data (such as full texts) at the container
   # level to easily apply different storage management policies.
-  name                  = local.name
+  name                  = "${local.name}-ops"
   storage_account_id    = azurerm_storage_account.this.id
   container_access_type = "private"
 }
 
-resource "azurerm_storage_management_policy" "this" {
+resource "azurerm_storage_management_policy" "operations" {
   storage_account_id = azurerm_storage_account.this.id
 
   rule {
-    name    = "delete-old-${local.name}-blobs"
+    name    = "delete-old-${azurerm_storage_container.operations.name}-blobs"
     enabled = false # Disabled for now, enable once comfortable
     filters {
       blob_types   = ["blockBlob"]
-      prefix_match = [local.name]
+      prefix_match = [azurerm_storage_container.operations.name]
     }
     actions {
       base_blob {
@@ -322,6 +322,7 @@ resource "azurerm_storage_management_policy" "this" {
 }
 
 resource "azurerm_role_assignment" "blob_storage_rw" {
+  # TODO: granularise permissions per container
   for_each = {
     app          = azurerm_user_assigned_identity.container_apps_identity.principal_id
     tasks        = azurerm_user_assigned_identity.container_apps_tasks_identity.principal_id
