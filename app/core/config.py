@@ -95,6 +95,7 @@ class AzureBlobConfig(BaseModel):
     container: str
     credential: str | None = None
     presigned_url_expiry_seconds: int = 60 * 60  # 1 hour
+    user_delegation_key_duration: int = 60 * 60 * 24  # 1 day
 
     @property
     def uses_managed_identity(self) -> bool:

@@ -7,7 +7,7 @@ from io import BytesIO
 from azure.identity.aio import DefaultAzureCredential
 from azure.storage.blob import BlobSasPermissions, generate_blob_sas
 from azure.storage.blob.aio import BlobServiceClient
-from cachetools.func import ttl_cache
+from cachetools import TTLCache
 
 from app.core.config import AzureBlobConfig
 from app.core.exceptions import AzureBlobStorageError
@@ -20,7 +20,6 @@ from app.persistence.blob.models import (
 from app.persistence.blob.stream import FileStream
 
 logger = get_logger()
-USER_DELEGATION_KEY_DURATION = 60 * 60 * 24
 
 
 class AzureBlobStorageClient(GenericBlobStorageClient):
@@ -44,11 +43,21 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
         self.credential = config.credential
         self.presigned_url_expiry_seconds = presigned_url_expiry_seconds
         self.uses_managed_identity = config.uses_managed_identity
+        self.user_delegation_key_duration = config.user_delegation_key_duration
         self.blob_service_client = BlobServiceClient(
             self.account_url,
             credential=DefaultAzureCredential()
             if self.uses_managed_identity
             else self.credential,
+        )
+        self._user_delegation_key_cache: TTLCache[None, GenericBlobStorageClient] = (
+            TTLCache(maxsize=1, ttl=self.user_delegation_key_duration / 2)
+        )
+        self.presigned_url_cache: TTLCache[
+            tuple[BlobStorageFile, BlobSignedUrlType], str
+        ] = TTLCache(
+            maxsize=1000,
+            ttl=self.presigned_url_expiry_seconds / 2,
         )
 
     async def upload_file(
@@ -96,13 +105,12 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             msg = f"Failed to stream file from Azure Blob Storage: {e}"
             raise AzureBlobStorageError(msg) from e
 
-    @ttl_cache(ttl=USER_DELEGATION_KEY_DURATION / 2)
     async def _get_user_delegation_key(self) -> str:
         """Get a user delegation key from managed identity."""
         user_delegation_key = await self.blob_service_client.get_user_delegation_key(
             datetime.datetime.now(datetime.UTC),
             datetime.datetime.now(datetime.UTC)
-            + datetime.timedelta(seconds=USER_DELEGATION_KEY_DURATION),
+            + datetime.timedelta(seconds=self.user_delegation_key_duration),
         )
         if not user_delegation_key.value:
             msg = "Failed to get user delegation key from Azure Blob Storage."
@@ -115,25 +123,34 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
         interaction_type: BlobSignedUrlType,
     ) -> str:
         """Get a signed URL for a file in Azure Blob Storage."""
-        blob_name = f"{file.path}/{file.filename}"
+        if url := self.presigned_url_cache.get(lookup_key := (file, interaction_type)):
+            return url
+        try:
+            blob_name = f"{file.path}/{file.filename}"
 
-        account_key = (
-            await self._get_user_delegation_key()
-            if self.uses_managed_identity
-            else self.credential
-        )
-        permission = (
-            BlobSasPermissions(read=True)
-            if interaction_type == BlobSignedUrlType.DOWNLOAD
-            else BlobSasPermissions(write=True)
-        )
-        sas_token = generate_blob_sas(
-            account_name=self.account_url.split("//")[1].split(".")[0],
-            container_name=self.container,
-            blob_name=blob_name,
-            account_key=account_key,
-            permission=permission,
-            expiry=datetime.datetime.now(datetime.UTC)
-            + datetime.timedelta(seconds=self.presigned_url_expiry_seconds),
-        )
-        return f"{self.account_url}/{self.container}/{blob_name}?{sas_token}"
+            account_key = (
+                await self._get_user_delegation_key()
+                if self.uses_managed_identity
+                else self.credential
+            )
+            permission = (
+                BlobSasPermissions(read=True)
+                if interaction_type == BlobSignedUrlType.DOWNLOAD
+                else BlobSasPermissions(write=True)
+            )
+            sas_token = generate_blob_sas(
+                account_name=self.account_url.split("//")[1].split(".")[0],
+                container_name=self.container,
+                blob_name=blob_name,
+                account_key=account_key,
+                permission=permission,
+                expiry=datetime.datetime.now(datetime.UTC)
+                + datetime.timedelta(seconds=self.presigned_url_expiry_seconds),
+            )
+        except Exception as e:
+            msg = f"Failed to generate signed URL for Azure Blob Storage: {e}"
+            raise AzureBlobStorageError(msg) from e
+        else:
+            url = f"{self.account_url}/{self.container}/{blob_name}?{sas_token}"
+            self.presigned_url_cache[lookup_key] = url
+            return url

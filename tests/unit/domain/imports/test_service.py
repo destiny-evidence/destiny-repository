@@ -174,7 +174,7 @@ async def test_get_import_batch_summary_batch_completed_no_failures(
     service = ImportService(uow)
 
     batch = await service.get_import_batch_with_results(BATCH_ID)
-    summary = batch.to_sdk_summary()
+    summary = await batch.to_sdk_summary()
 
     assert summary.results.get(ImportResultStatus.COMPLETED) == 1
     assert summary.results.get(ImportResultStatus.FAILED) == 0
@@ -213,7 +213,7 @@ async def test_get_import_batch_summary_batch_completed_with_failures(
     service = ImportService(uow)
 
     batch = await service.get_import_batch_with_results(BATCH_ID)
-    summary = batch.to_sdk_summary()
+    summary = await batch.to_sdk_summary()
 
     assert summary.results.get(ImportResultStatus.FAILED) == 1
     assert summary.results.get(ImportResultStatus.PARTIALLY_FAILED) == 1
@@ -250,7 +250,7 @@ async def test_get_import_batch_summary_batch_in_progress(
     service = ImportService(uow)
 
     batch = await service.get_import_batch_with_results(BATCH_ID)
-    summary = batch.to_sdk_summary()
+    summary = await batch.to_sdk_summary()
 
     assert summary.results.get(ImportResultStatus.COMPLETED) == 1
     assert summary.results.get(ImportResultStatus.STARTED) == 1

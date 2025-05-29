@@ -150,7 +150,7 @@ class ReferenceCreateResult(BaseModel):
     )
 
     @property
-    async def error_str(self) -> str | None:
+    def error_str(self) -> str | None:
         """Return a string of errors if they exist."""
         return "\n\n".join(e.strip() for e in self.errors) if self.errors else None
 

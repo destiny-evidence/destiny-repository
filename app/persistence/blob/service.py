@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from io import BytesIO
 
-from cachetools.func import lru_cache
+from cachetools import LRUCache
 from pydantic import HttpUrl
 
 from app.core.config import get_settings
@@ -26,29 +26,37 @@ from app.persistence.blob.stream import FileStream
 
 settings = get_settings()
 logger = get_logger()
+# We can't decorate async functions with cachetools, so we use a top-level cache
+_config_cache: LRUCache[BlobStorageFile, GenericBlobStorageClient] = LRUCache(
+    maxsize=1000
+)
 
 
-@lru_cache()
 async def _preload_config(
     file: BlobStorageFile,
 ) -> GenericBlobStorageClient:
     """Pre-check configuration for blob storage clients."""
+    if config := _config_cache.get(file):
+        return config
     if file.location == BlobStorageLocation.AZURE:
         if not settings.azure_blob_config:
             msg = "Azure Blob Storage configuration is not given."
             raise AzureBlobStorageError(msg)
-        return AzureBlobStorageClient(
+        config = AzureBlobStorageClient(
             settings.azure_blob_config, settings.presigned_url_expiry_seconds
         )
-    if file.location == BlobStorageLocation.MINIO:
+    elif file.location == BlobStorageLocation.MINIO:
         if not settings.minio_config:
             msg = "MinIO configuration is not given."
             raise MinioBlobStorageError(msg)
-        return MinioBlobStorageClient(
+        config = MinioBlobStorageClient(
             settings.minio_config, settings.presigned_url_expiry_seconds
         )
-    msg = "Unsupported blob storage location."
-    raise BlobStorageError(msg)
+    else:
+        msg = "Unsupported blob storage location."
+        raise BlobStorageError(msg)
+    _config_cache[file] = config
+    return config
 
 
 async def upload_file_to_blob_storage(

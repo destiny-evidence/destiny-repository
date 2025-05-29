@@ -4,6 +4,7 @@ import datetime
 from collections.abc import AsyncGenerator
 from io import BytesIO
 
+from cachetools import TTLCache
 from minio import Minio
 from minio.error import S3Error
 
@@ -40,6 +41,12 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
             access_key=self.access_key,
             secret_key=self.secret_key,
             secure=False,
+        )
+        self.presigned_url_cache: TTLCache[
+            tuple[BlobStorageFile, BlobSignedUrlType], str
+        ] = TTLCache(
+            maxsize=1000,
+            ttl=self.presigned_url_expiry_seconds / 2,
         )
 
     async def upload_file(
@@ -95,9 +102,11 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
         interaction_type: BlobSignedUrlType,
     ) -> str:
         """Get a signed URL for a file in MinIO."""
+        if url := self.presigned_url_cache.get(lookup_key := (file, interaction_type)):
+            return url
         try:
             if interaction_type == BlobSignedUrlType.DOWNLOAD:
-                return self.client.presigned_get_object(
+                url = self.client.presigned_get_object(
                     bucket_name=file.container,
                     object_name=f"{file.path}/{file.filename}",
                     expires=datetime.timedelta(
@@ -105,15 +114,19 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
                     ),
                 )
             if interaction_type == BlobSignedUrlType.UPLOAD:
-                return self.client.presigned_put_object(
+                url = self.client.presigned_put_object(
                     bucket_name=file.container,
                     object_name=f"{file.path}/{file.filename}",
                     expires=datetime.timedelta(
                         seconds=self.presigned_url_expiry_seconds
                     ),
                 )
-            msg = f"Interaction type {interaction_type} is not supported."
-            raise NotImplementedError(msg)
         except S3Error as e:
             msg = f"Failed to get signed URL from MinIO: {e}"
             raise MinioBlobStorageError(msg) from e
+        else:
+            if not url:
+                msg = "Failed to generate signed URL from MinIO."
+                raise MinioBlobStorageError(msg)
+            self.presigned_url_cache[lookup_key] = url
+            return url

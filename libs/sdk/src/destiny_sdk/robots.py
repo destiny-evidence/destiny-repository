@@ -72,8 +72,7 @@ class BatchRobotResult(BaseModel):
 The URL at which the set of enhancements are stored. This should match the corresponding
 :attr:`BatchRobotRequest.result_storage_url <libs.sdk.src.destiny_sdk.robots.BatchRobotRequest.result_storage_url>`.
 The file is to be a jsonl with each line formatted according to
-:class:`Enhancement <libs.sdk.src.destiny_sdk.enhancements.Enhancement>` or
-:class:`LinkedRobotError <libs.sdk.src.destiny_sdk.robots.LinkedRobotError>`.
+:class:`BatchEnhancementResultEntry <libs.sdk.src.destiny_sdk.robots.BatchEnhancementResultEntry>`.
 """,  # noqa: E501
     )
     error: RobotError | None = Field(
@@ -253,21 +252,21 @@ class BatchEnhancementRequestRead(_BatchEnhancementRequestBase):
     reference_data_url: HttpUrl | None = Field(
         default=None,
         description="""
-        The URL at which the set of references are stored. The file is a jsonl
-        with each line formatted according to
-        :class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>`.
-        , one reference per line.
-        Each reference may have identifiers or enhancements attached, as
-        required by the robot.
+The URL at which the set of references are stored. The file is a jsonl with each line
+formatted according to
+:class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>`.
+, one reference per line.
+Each reference may have identifiers or enhancements attached, as
+required by the robot.
         """,
     )
     result_storage_url: HttpUrl | None = Field(
         default=None,
         description="""
-        The URL at which the set of enhancements are stored. The file is to be a jsonl
-        with each line formatted according to
-        :class:`BatchEnhancementResultEntry <libs.sdk.src.destiny_sdk.robots.BatchEnhancementResultEntry>`.
-        This field is only relevant to robots.
+The URL at which the set of enhancements are stored. The file is to be a jsonl
+with each line formatted according to
+:class:`BatchEnhancementResultEntry <libs.sdk.src.destiny_sdk.robots.BatchEnhancementResultEntry>`.
+This field is only relevant to robots.
         """,  # noqa: E501
     )
     validation_result_url: HttpUrl | None = Field(

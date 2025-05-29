@@ -66,7 +66,7 @@ class BatchEnhancementService(GenericService):
         """Add a validation result file to a batch enhancement request."""
         return await self.sql_uow.batch_enhancement_requests.update_by_pk(
             pk=batch_enhancement_request_id,
-            validation_result_file=validation_result_file.to_sql(),
+            validation_result_file=await validation_result_file.to_sql(),
         )
 
     async def build_robot_request(
