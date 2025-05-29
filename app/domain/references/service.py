@@ -38,9 +38,7 @@ from app.domain.references.services.ingestion_service import (
 )
 from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
-from app.persistence.blob.service import (
-    upload_file_to_blob_storage,
-)
+from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 from app.utils.lists import list_chunker
@@ -263,6 +261,7 @@ class ReferenceService(GenericService):
         self,
         batch_enhancement_request: BatchEnhancementRequest,
         robot_service: RobotService,
+        blob_repository: BlobRepository,
     ) -> None:
         """Collect and dispatch references for batch enhancement."""
         robot = robot_service.get_robot_config(batch_enhancement_request.robot_id)
@@ -290,7 +289,7 @@ class ReferenceService(GenericService):
         )
 
         robot_request = await self._batch_enhancement_service.build_robot_request(
-            file_stream, batch_enhancement_request
+            blob_repository, file_stream, batch_enhancement_request
         )
 
         try:
@@ -321,6 +320,7 @@ class ReferenceService(GenericService):
     async def validate_and_import_batch_enhancement_result(
         self,
         batch_enhancement_request: BatchEnhancementRequest,
+        blob_repository: BlobRepository,
     ) -> None:
         """
         Validate and import the result of a batch enhancement request.
@@ -331,10 +331,11 @@ class ReferenceService(GenericService):
         - streams the validation result to the blob storage service line-by-line
         - does some final validation of missing references and updates the request
         """
-        validation_result_file = await upload_file_to_blob_storage(
+        validation_result_file = await blob_repository.upload_file_to_blob_storage(
             content=FileStream(
                 generator=self._batch_enhancement_service.process_batch_enhancement_result(
-                    batch_enhancement_request,
+                    blob_repository=blob_repository,
+                    batch_enhancement_request=batch_enhancement_request,
                     add_enhancement=self.handle_batch_enhancement_result_entry,
                 )
             ),

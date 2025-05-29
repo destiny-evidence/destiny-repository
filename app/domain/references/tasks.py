@@ -8,6 +8,7 @@ from app.core.logger import get_logger
 from app.domain.references.service import ReferenceService
 from app.domain.robots.models import Robots
 from app.domain.robots.service import RobotService
+from app.persistence.blob.repository import BlobRepository
 from app.persistence.sql.session import db_manager
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.tasks import broker
@@ -41,6 +42,11 @@ async def get_robot_service() -> RobotService:
     return RobotService(robots=robots)
 
 
+async def get_blob_repository() -> BlobRepository:
+    """Return the blob repository using the provided session."""
+    return BlobRepository()
+
+
 @broker.task
 async def collect_and_dispatch_references_for_batch_enhancement(
     batch_enhancement_request_id: UUID4,
@@ -52,6 +58,7 @@ async def collect_and_dispatch_references_for_batch_enhancement(
     )
     reference_service = await get_reference_service()
     robot_service = await get_robot_service()
+    blob_repository = await get_blob_repository()
     batch_enhancement_request = await reference_service.get_batch_enhancement_request(
         batch_enhancement_request_id
     )
@@ -60,6 +67,7 @@ async def collect_and_dispatch_references_for_batch_enhancement(
         await reference_service.collect_and_dispatch_references_for_batch_enhancement(
             batch_enhancement_request,
             robot_service,
+            blob_repository,
         )
     except Exception as e:
         logger.exception("Error occurred while creating batch enhancement request")
@@ -79,6 +87,7 @@ async def validate_and_import_batch_enhancement_result(
         extra={"batch_enhancement_request_id": batch_enhancement_request_id},
     )
     reference_service = await get_reference_service()
+    blob_repository = await get_blob_repository()
     batch_enhancement_request = await reference_service.get_batch_enhancement_request(
         batch_enhancement_request_id
     )
@@ -86,6 +95,7 @@ async def validate_and_import_batch_enhancement_result(
     try:
         await reference_service.validate_and_import_batch_enhancement_result(
             batch_enhancement_request,
+            blob_repository,
         )
     except Exception as e:
         logger.exception(

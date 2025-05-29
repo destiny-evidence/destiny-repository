@@ -1,6 +1,6 @@
 import json
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import UUID4
@@ -27,32 +27,25 @@ async def test_build_robot_request_happy_path(fake_uow, fake_repository):
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
     service = BatchEnhancementService(uow)
-    with (
-        patch(
-            "app.domain.references.services.batch_enhancement_service.upload_file_to_blob_storage",
-            AsyncMock(
-                return_value=BlobStorageFile(
-                    location="minio",
-                    container="cont",
-                    path="p",
-                    filename="f",
-                )
-            ),
-        ),
-        patch(
-            "app.domain.references.services.batch_enhancement_service.get_signed_url",
-            return_value="http://signed.url",
-        ),
-    ):
-        result = await service.build_robot_request(references, batch_request)
-        assert str(result.reference_storage_url) == "http://signed.url/"
-        assert str(result.result_storage_url) == "http://signed.url/"
+    mock_blob_repo = MagicMock()
+    mock_blob_repo.upload_file_to_blob_storage = AsyncMock(
+        return_value=BlobStorageFile(
+            location="minio",
+            container="cont",
+            path="p",
+            filename="f",
+        )
+    )
+    mock_blob_repo.get_signed_url = AsyncMock(return_value="http://signed.url/")
+    result = await service.build_robot_request(
+        mock_blob_repo, references, batch_request
+    )
+    assert str(result.reference_storage_url) == "http://signed.url/"
+    assert str(result.result_storage_url) == "http://signed.url/"
 
 
 @pytest.mark.asyncio
-async def test_process_batch_enhancement_result_happy_path(
-    fake_uow, fake_repository, monkeypatch
-):
+async def test_process_batch_enhancement_result_happy_path(fake_uow, fake_repository):
     """
     Test that process_batch_enhancement_result yields expected messages and
     calls add_enhancement.
@@ -72,8 +65,8 @@ async def test_process_batch_enhancement_result_happy_path(
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
     service = BatchEnhancementService(uow)
+    mock_blob_repo = MagicMock()
 
-    # Patch stream_file_from_blob_storage to yield a single line
     class FakeStream:
         def __init__(self, _):
             pass
@@ -89,10 +82,7 @@ async def test_process_batch_enhancement_result_happy_path(
                 batch_request.reference_ids[0], as_error=False
             )
 
-    monkeypatch.setattr(
-        "app.domain.references.services.batch_enhancement_service.stream_file_from_blob_storage",
-        FakeStream,
-    )
+    mock_blob_repo.stream_file_from_blob_storage = FakeStream
 
     # Fake add_enhancement always returns success
     async def fake_add_enhancement(enhancement):
@@ -102,7 +92,7 @@ async def test_process_batch_enhancement_result_happy_path(
     messages = [
         msg
         async for msg in service.process_batch_enhancement_result(
-            batch_request, fake_add_enhancement
+            mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
     assert any("Enhancement added" in m for m in messages)
@@ -147,7 +137,7 @@ def make_batch_enhancement_result_entry(reference_id: UUID4, *, as_error: bool) 
 
 @pytest.mark.asyncio
 async def test_process_batch_enhancement_result_handles_both_entry_types(
-    fake_uow, fake_repository, monkeypatch
+    fake_uow, fake_repository
 ):
     """
     Test process_batch_enhancement_result yields correct messages for both
@@ -168,8 +158,8 @@ async def test_process_batch_enhancement_result_handles_both_entry_types(
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
     service = BatchEnhancementService(uow)
+    mock_blob_repo = MagicMock()
 
-    # Patch stream_file_from_blob_storage to yield both types
     class FakeStream:
         def __init__(self, _):
             pass
@@ -184,10 +174,7 @@ async def test_process_batch_enhancement_result_handles_both_entry_types(
             yield make_batch_enhancement_result_entry(reference_id, as_error=False)
             yield make_batch_enhancement_result_entry(reference_id, as_error=True)
 
-    monkeypatch.setattr(
-        "app.domain.references.services.batch_enhancement_service.stream_file_from_blob_storage",
-        FakeStream,
-    )
+    mock_blob_repo.stream_file_from_blob_storage = FakeStream
 
     # Fake add_enhancement returns success for enhancement
     async def fake_add_enhancement(enhancement):
@@ -196,7 +183,7 @@ async def test_process_batch_enhancement_result_handles_both_entry_types(
     messages = [
         msg
         async for msg in service.process_batch_enhancement_result(
-            batch_request, fake_add_enhancement
+            mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
     assert any("Enhancement added" in m for m in messages)
@@ -208,7 +195,7 @@ async def test_process_batch_enhancement_result_handles_both_entry_types(
 
 @pytest.mark.asyncio
 async def test_process_batch_enhancement_result_missing_reference_id(
-    fake_uow, fake_repository, monkeypatch
+    fake_uow, fake_repository
 ):
     """
     Test that process_batch_enhancement_result yields a message for missing
@@ -230,6 +217,7 @@ async def test_process_batch_enhancement_result_missing_reference_id(
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
     service = BatchEnhancementService(uow)
+    mock_blob_repo = MagicMock()
 
     class FakeStream:
         def __init__(self, _):
@@ -242,13 +230,9 @@ async def test_process_batch_enhancement_result_missing_reference_id(
             pass
 
         async def __aiter__(self):
-            # Only yield for reference_id_1, not reference_id_2
             yield make_batch_enhancement_result_entry(reference_id_1, as_error=False)
 
-    monkeypatch.setattr(
-        "app.domain.references.services.batch_enhancement_service.stream_file_from_blob_storage",
-        FakeStream,
-    )
+    mock_blob_repo.stream_file_from_blob_storage = FakeStream
 
     async def fake_add_enhancement(enhancement):
         return True, f"Reference {enhancement.reference_id}: Enhancement added."
@@ -256,7 +240,7 @@ async def test_process_batch_enhancement_result_missing_reference_id(
     messages = [
         msg
         async for msg in service.process_batch_enhancement_result(
-            batch_request, fake_add_enhancement
+            mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
     assert any("Enhancement added" in m for m in messages)
@@ -268,7 +252,7 @@ async def test_process_batch_enhancement_result_missing_reference_id(
 
 @pytest.mark.asyncio
 async def test_process_batch_enhancement_result_surplus_reference_id(
-    fake_uow, fake_repository, monkeypatch
+    fake_uow, fake_repository
 ):
     """
     Test that process_batch_enhancement_result ignores surplus reference ids in
@@ -290,6 +274,7 @@ async def test_process_batch_enhancement_result_surplus_reference_id(
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
     service = BatchEnhancementService(uow)
     surplus_reference_id = uuid.uuid4()
+    mock_blob_repo = MagicMock()
 
     class FakeStream:
         def __init__(self, _):
@@ -302,24 +287,21 @@ async def test_process_batch_enhancement_result_surplus_reference_id(
             pass
 
         async def __aiter__(self):
-            # Yield a valid entry and a surplus entry
             yield make_batch_enhancement_result_entry(reference_id_1, as_error=False)
             yield make_batch_enhancement_result_entry(
                 surplus_reference_id, as_error=False
             )
 
-    monkeypatch.setattr(
-        "app.domain.references.services.batch_enhancement_service.stream_file_from_blob_storage",
-        FakeStream,
-    )
+    mock_blob_repo.stream_file_from_blob_storage = FakeStream
 
+    # Fake add_enhancement returns success for enhancement
     async def fake_add_enhancement(enhancement):
         return True, f"Reference {enhancement.reference_id}: Enhancement added."
 
     messages = [
         msg
         async for msg in service.process_batch_enhancement_result(
-            batch_request, fake_add_enhancement
+            mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
     # Should only add for the expected reference, and ignore surplus
@@ -333,7 +315,7 @@ async def test_process_batch_enhancement_result_surplus_reference_id(
 
 @pytest.mark.asyncio
 async def test_process_batch_enhancement_result_parse_failure(
-    fake_uow, fake_repository, monkeypatch
+    fake_uow, fake_repository
 ):
     """
     Test that process_batch_enhancement_result yields a parse failure for
@@ -354,6 +336,7 @@ async def test_process_batch_enhancement_result_parse_failure(
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
     service = BatchEnhancementService(uow)
+    mock_blob_repo = MagicMock()
 
     class FakeStream:
         def __init__(self, _):
@@ -366,12 +349,9 @@ async def test_process_batch_enhancement_result_parse_failure(
             pass
 
         async def __aiter__(self):
-            yield "{bad json}"
+            yield "not a json"
 
-    monkeypatch.setattr(
-        "app.domain.references.services.batch_enhancement_service.stream_file_from_blob_storage",
-        FakeStream,
-    )
+    mock_blob_repo.stream_file_from_blob_storage = FakeStream
 
     async def fake_add_enhancement(_):
         msg = "How did we get here?"
@@ -380,7 +360,7 @@ async def test_process_batch_enhancement_result_parse_failure(
     messages = [
         msg
         async for msg in service.process_batch_enhancement_result(
-            batch_request, fake_add_enhancement
+            mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
     # Check parse failure message
@@ -392,7 +372,7 @@ async def test_process_batch_enhancement_result_parse_failure(
 
 @pytest.mark.asyncio
 async def test_process_batch_enhancement_result_add_enhancement_fails(
-    fake_uow, fake_repository, monkeypatch
+    fake_uow, fake_repository
 ):
     """
     Test that process_batch_enhancement_result yields error if add_enhancement
@@ -413,6 +393,7 @@ async def test_process_batch_enhancement_result_add_enhancement_fails(
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
     service = BatchEnhancementService(uow)
+    mock_blob_repo = MagicMock()
 
     class FakeStream:
         def __init__(self, _):
@@ -427,10 +408,7 @@ async def test_process_batch_enhancement_result_add_enhancement_fails(
         async def __aiter__(self):
             yield make_batch_enhancement_result_entry(reference_id, as_error=False)
 
-    monkeypatch.setattr(
-        "app.domain.references.services.batch_enhancement_service.stream_file_from_blob_storage",
-        FakeStream,
-    )
+    mock_blob_repo.stream_file_from_blob_storage = FakeStream
 
     async def fake_add_enhancement(enhancement):
         return False, f"Reference {enhancement.reference_id}: Enhancement failed."
@@ -438,7 +416,7 @@ async def test_process_batch_enhancement_result_add_enhancement_fails(
     messages = [
         msg
         async for msg in service.process_batch_enhancement_result(
-            batch_request, fake_add_enhancement
+            mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
     assert any("Enhancement failed" in m for m in messages)
@@ -449,7 +427,7 @@ async def test_process_batch_enhancement_result_add_enhancement_fails(
 
 @pytest.mark.asyncio
 async def test_process_batch_enhancement_result_all_enhancements_fail(
-    fake_uow, fake_repository, monkeypatch
+    fake_uow, fake_repository
 ):
     """
     Test that process_batch_enhancement_result yields errors and marks batch as
@@ -470,6 +448,7 @@ async def test_process_batch_enhancement_result_all_enhancements_fail(
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
     service = BatchEnhancementService(uow)
+    mock_blob_repo = MagicMock()
 
     class FakeStream:
         def __init__(self, _):
@@ -484,10 +463,7 @@ async def test_process_batch_enhancement_result_all_enhancements_fail(
         async def __aiter__(self):
             yield make_batch_enhancement_result_entry(reference_id, as_error=False)
 
-    monkeypatch.setattr(
-        "app.domain.references.services.batch_enhancement_service.stream_file_from_blob_storage",
-        FakeStream,
-    )
+    mock_blob_repo.stream_file_from_blob_storage = FakeStream
 
     async def fake_add_enhancement(enhancement):
         return False, f"Reference {enhancement.reference_id}: Enhancement failed."
@@ -495,7 +471,7 @@ async def test_process_batch_enhancement_result_all_enhancements_fail(
     messages = [
         msg
         async for msg in service.process_batch_enhancement_result(
-            batch_request, fake_add_enhancement
+            mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
     assert any("Enhancement failed" in m for m in messages)
@@ -505,7 +481,7 @@ async def test_process_batch_enhancement_result_all_enhancements_fail(
 
 @pytest.mark.asyncio
 async def test_process_batch_enhancement_result_empty_result_file(
-    fake_uow, fake_repository, monkeypatch
+    fake_uow, fake_repository
 ):
     """
     Test that process_batch_enhancement_result yields missing reference messages
@@ -526,6 +502,7 @@ async def test_process_batch_enhancement_result_empty_result_file(
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
     service = BatchEnhancementService(uow)
+    mock_blob_repo = MagicMock()
 
     class FakeStream:
         def __init__(self, _):
@@ -541,10 +518,7 @@ async def test_process_batch_enhancement_result_empty_result_file(
             if False:
                 yield  # never yields
 
-    monkeypatch.setattr(
-        "app.domain.references.services.batch_enhancement_service.stream_file_from_blob_storage",
-        FakeStream,
-    )
+    mock_blob_repo.stream_file_from_blob_storage = FakeStream
 
     async def fake_add_enhancement(_):
         return True, "Should not be called"
@@ -552,7 +526,7 @@ async def test_process_batch_enhancement_result_empty_result_file(
     messages = [
         msg
         async for msg in service.process_batch_enhancement_result(
-            batch_request, fake_add_enhancement
+            mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
     assert any("not in batch enhancement result from robot" in m for m in messages)
@@ -562,7 +536,7 @@ async def test_process_batch_enhancement_result_empty_result_file(
 
 @pytest.mark.asyncio
 async def test_process_batch_enhancement_result_duplicate_reference_ids(
-    fake_uow, fake_repository, monkeypatch
+    fake_uow, fake_repository
 ):
     """
     Test that process_batch_enhancement_result processes duplicate reference ids
@@ -583,6 +557,7 @@ async def test_process_batch_enhancement_result_duplicate_reference_ids(
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
     service = BatchEnhancementService(uow)
+    mock_blob_repo = MagicMock()
 
     class FakeStream:
         def __init__(self, _):
@@ -598,10 +573,7 @@ async def test_process_batch_enhancement_result_duplicate_reference_ids(
             yield make_batch_enhancement_result_entry(reference_id, as_error=False)
             yield make_batch_enhancement_result_entry(reference_id, as_error=False)
 
-    monkeypatch.setattr(
-        "app.domain.references.services.batch_enhancement_service.stream_file_from_blob_storage",
-        FakeStream,
-    )
+    mock_blob_repo.stream_file_from_blob_storage = FakeStream
     results = []
 
     async def fake_add_enhancement(enhancement):
@@ -611,7 +583,7 @@ async def test_process_batch_enhancement_result_duplicate_reference_ids(
     messages = [
         msg
         async for msg in service.process_batch_enhancement_result(
-            batch_request, fake_add_enhancement
+            mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
     # Both should be processed

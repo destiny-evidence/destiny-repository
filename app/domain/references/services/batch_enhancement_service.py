@@ -19,11 +19,7 @@ from app.domain.service import GenericService
 from app.persistence.blob.models import (
     BlobStorageFile,
 )
-from app.persistence.blob.service import (
-    get_signed_url,
-    stream_file_from_blob_storage,
-    upload_file_to_blob_storage,
-)
+from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
@@ -71,12 +67,13 @@ class BatchEnhancementService(GenericService):
 
     async def build_robot_request(
         self,
+        blob_repository: BlobRepository,
         file_stream: FileStream,
         batch_enhancement_request: BatchEnhancementRequest,
     ) -> destiny_sdk.robots.BatchRobotRequest:
         """Build a robot request from a batch enhancement request."""
         # Build jsonl file data using SDK model
-        file = await upload_file_to_blob_storage(
+        file = await blob_repository.upload_file_to_blob_storage(
             content=file_stream,
             path="batch_enhancement_request_reference_data",
             filename=f"{batch_enhancement_request.id}.jsonl",
@@ -97,11 +94,12 @@ class BatchEnhancementService(GenericService):
         )
 
         return await batch_enhancement_request.to_batch_robot_request_sdk(
-            get_signed_url
+            blob_repository.get_signed_url
         )
 
     async def process_batch_enhancement_result(
         self,
+        blob_repository: BlobRepository,
         batch_enhancement_request: BatchEnhancementRequest,
         add_enhancement: Callable[[Enhancement], Awaitable[tuple[bool, str]]],
     ) -> AsyncGenerator[str, None]:
@@ -121,7 +119,7 @@ class BatchEnhancementService(GenericService):
         successes: list[str] = []
         failures: list[str] = []
         attempted_reference_ids: set[UUID4] = set()
-        async with stream_file_from_blob_storage(
+        async with blob_repository.stream_file_from_blob_storage(
             batch_enhancement_request.result_file,
         ) as file_stream:
             # Read the file stream and validate the content
