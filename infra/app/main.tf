@@ -284,6 +284,11 @@ resource "azurerm_storage_account" "this" {
   account_tier             = "Standard"
   account_replication_type = "LRS"
   tags                     = local.minimum_resource_tags
+
+  # Avoid accidental blob storage deletion
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 
