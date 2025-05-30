@@ -14,10 +14,22 @@ class _JsonlFileInputMixIn(BaseModel):
     """
 
     def to_jsonl(self) -> str:
-        """Convert the model to a JSONL string."""
+        """
+        Convert the model to a JSONL string.
+
+        :return: The JSONL string representation of the model.
+        :rtype: str
+        """
         return self.model_dump_json(exclude_none=True)
 
     @classmethod
     def from_jsonl(cls, jsonl: str) -> Self:
-        """Create an object from a JSONL string."""
+        """
+        Create an object from a JSONL string.
+
+        :param jsonl: The JSONL string to parse.
+        :type jsonl: str
+        :return: The created object.
+        :rtype: Self
+        """
         return cls.model_validate_json(jsonl)

@@ -3,7 +3,7 @@
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import UUID4, BaseModel, BeforeValidator, Field
+from pydantic import UUID4, BaseModel, Field, field_validator
 
 
 class ExternalIdentifierType(StrEnum):
@@ -37,13 +37,23 @@ def remove_doi_url(value: str) -> str:
 class DOIIdentifier(BaseModel):
     """An external identifier representing a DOI."""
 
-    identifier: Annotated[str, BeforeValidator(remove_doi_url)] = Field(
+    identifier: str = Field(
         description="The DOI of the reference.",
         pattern=r"^10\.\d{4,9}/[-._;()/:a-zA-Z0-9%<>\[\]+&]+$",
     )
     identifier_type: Literal[ExternalIdentifierType.DOI] = Field(
         ExternalIdentifierType.DOI, description="The type of identifier used."
     )
+
+    @field_validator("identifier")
+    @classmethod
+    def remove_doi_url(cls, value: str) -> str:
+        """Remove the URL part of the DOI if it exists."""
+        return (
+            value.removeprefix("http://doi.org/")
+            .removeprefix("https://doi.org/")
+            .strip()
+        )
 
 
 class PubMedIdentifier(BaseModel):
@@ -78,6 +88,7 @@ class OtherIdentifier(BaseModel):
     )
 
 
+#: Union type for all external identifiers.
 ExternalIdentifier = Annotated[
     DOIIdentifier | PubMedIdentifier | OpenAlexIdentifier | OtherIdentifier,
     Field(discriminator="identifier_type"),

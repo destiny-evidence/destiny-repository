@@ -132,6 +132,9 @@ class BatchEnhancementService(GenericService):
                 )
                 i += 1
                 if validated_result.robot_error:
+                    attempted_reference_ids.add(
+                        validated_result.robot_error.reference_id
+                    )
                     failures.append(validated_result.robot_error.message)
                     yield validated_result.robot_error.message
                 elif validated_result.parse_failure:

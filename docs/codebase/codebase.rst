@@ -8,5 +8,6 @@ This section documents the repository codebase itself.
    :caption: Contents:
 
    structure
+   config
    models/imports
    models/references

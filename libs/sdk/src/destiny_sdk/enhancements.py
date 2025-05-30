@@ -145,9 +145,9 @@ class AnnotationType(StrEnum):
 
     **Allowed values**:
     - `boolean`: An annotation which is the boolean application of a label across a
-      reference.
+    reference.
     - `score`: An annotation which is a score for a label across a reference,
-      without a boolean value.
+    without a boolean value.
     """
 
     BOOLEAN = auto()
@@ -172,10 +172,10 @@ class ScoreAnnotation(BaseModel):
     )
     score: float = Field(description="""Score for this annotation""")
     data: dict = Field(
-        description="""
-        An object representation of the annotation including any confidence scores or
-descriptions.
-""",
+        description=(
+            "An object representation of the annotation including any confidence scores"
+            " or descriptions."
+        )
     )
 
 
@@ -207,6 +207,7 @@ descriptions.
     )
 
 
+#: Union type for all annotations.
 Annotation = Annotated[
     BooleanAnnotation | ScoreAnnotation, Field(discriminator="annotation_type")
 ]
@@ -300,6 +301,7 @@ class LocationEnhancement(BaseModel):
     )
 
 
+#: Union type for all enhancement content types.
 EnhancementContent = Annotated[
     BibliographicMetadataEnhancement
     | AbstractContentEnhancement

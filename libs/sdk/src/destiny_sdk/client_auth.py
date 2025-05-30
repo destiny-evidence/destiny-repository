@@ -87,6 +87,7 @@ class AccessTokenAuthentication(_ClientAuthenticationMethod):
         return self.access_token
 
 
+#: Union type for all client authentication methods.
 ClientAuthenticationMethod = Annotated[
     ManagedIdentityAuthentication | AccessTokenAuthentication,
     Field(discriminator="authentication_type"),

@@ -3,7 +3,7 @@ SDK
 
 The DESTINY Repository SDK is a Python package that provides an interface for interacting with the DESTINY data repository.
 
-At present, the SDK primarily provides a set of ``Pydantic`` models that are used to define the API interface. It will be expanded to provide additional functionality in the future.
+At present, the SDK primarily provides a set of ``Pydantic`` schemas that are used to define the API interface. It will be expanded to provide additional functionality in the future.
 
 It is not yet on PyPI, but you can install it from the GitHub repository:
 
@@ -16,5 +16,5 @@ It is not yet on PyPI, but you can install it from the GitHub repository:
    :maxdepth: 1
    :caption: Contents:
 
-   models
+   schemas
    auth
