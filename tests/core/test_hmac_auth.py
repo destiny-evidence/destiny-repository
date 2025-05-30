@@ -8,7 +8,7 @@ import pytest
 from fastapi import APIRouter, Depends, FastAPI, status
 from httpx import ASGITransport, AsyncClient
 
-from app.core.auth import HMAKnownRobotAuth, robots
+from app.core.auth import HMACKnownRobotAuth
 from app.domain.robots.models import RobotConfig
 from app.domain.robots.service import RobotService
 
@@ -26,7 +26,20 @@ def hmac_app() -> FastAPI:
 
     """
     app = FastAPI(title="Test HMAC Auth")
-    auth = HMAKnownRobotAuth()
+
+    robot_service = RobotService(
+        [
+            RobotConfig(
+                robot_id=FAKE_ROBOT_ID,
+                robot_url="https://www.balderdash.org",
+                dependent_enhancements=[],
+                dependent_identifiers=[],
+                communication_secret_name=TEST_SECRET_KEY,
+            )
+        ]
+    )
+
+    auth = HMACKnownRobotAuth(get_secret=robot_service.get_robot_secret)
 
     def __endpoint() -> dict:
         return {"message": "ok"}
@@ -41,17 +54,6 @@ def hmac_app() -> FastAPI:
 
     app.include_router(router)
 
-    app.dependency_overrides[robots] = RobotService(
-        [
-            RobotConfig(
-                robot_id=FAKE_ROBOT_ID,
-                robot_url="https://www.balderdash.org",
-                dependent_enhancements=[],
-                dependent_identifiers=[],
-                communication_secret_name=TEST_SECRET_KEY,
-            )
-        ]
-    )
     return app
 
 

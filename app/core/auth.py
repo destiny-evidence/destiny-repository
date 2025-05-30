@@ -12,7 +12,7 @@ This module is based on the following references :
 """
 
 import hmac
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from typing import Annotated, Any, Protocol
 from uuid import UUID
@@ -27,7 +27,6 @@ from pydantic import UUID4
 
 from app.core.config import Environment, get_settings
 from app.core.exceptions import NotFoundError
-from app.domain.robots.service import RobotService
 
 CACHE_TTL = 60 * 60 * 24  # 24 hours
 
@@ -387,16 +386,16 @@ def choose_auth_strategy(
     )
 
 
-robots = RobotService(known_robots=settings.known_robots)
-
-
-class HMAKnownRobotAuth:
+class HMACKnownRobotAuth:
     """Adds HMAC auth for known robots when used as router or endpoint dependency."""
+
+    def __init__(self, get_secret: Callable[[UUID], Awaitable[str]]) -> None:
+        """Initialize the HMAC auth dependency."""
+        self.get_secret = get_secret
 
     async def __call__(
         self,
         request: Request,
-        robot_service: Annotated[RobotService, Depends(robots)],
     ) -> bool:
         """Perform Authorization check."""
         signature_header = request.headers.get("Authorization")
@@ -426,7 +425,7 @@ class HMAKnownRobotAuth:
 
         request_body = await request.body()
         expected_signature = destiny_sdk.client.create_signature(
-            secret_key=self._get_secret_key(UUID(robot_id), robot_service),
+            secret_key=await self._get_secret_key(UUID(robot_id)),
             request_body=request_body,
         )
 
@@ -437,10 +436,10 @@ class HMAKnownRobotAuth:
 
         return True
 
-    def _get_secret_key(self, robot_id: UUID4, robot_service: RobotService) -> str:
+    async def _get_secret_key(self, robot_id: UUID4) -> str:
         """Get the secret key for the robot making the request."""
         try:
-            return robot_service.get_robot_secret(robot_id)
+            return await self.get_secret(robot_id)
         except NotFoundError as exc:
             raise destiny_sdk.auth.AuthException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -448,9 +447,11 @@ class HMAKnownRobotAuth:
             ) from exc
 
 
-def choose_hmac_auth_strategy() -> destiny_sdk.auth.HMACAuthMethod:
+def choose_hmac_auth_strategy(
+    get_secret: Callable[[UUID], Awaitable[str]],
+) -> destiny_sdk.auth.HMACAuthMethod:
     """Choose an HMAC auth method."""
     if settings.env in (Environment.LOCAL, Environment.TEST):
         return destiny_sdk.auth.BypassHMACAuth()
 
-    return HMAKnownRobotAuth()
+    return HMACKnownRobotAuth(get_secret=get_secret)

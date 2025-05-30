@@ -4,7 +4,7 @@ import uuid
 from typing import Annotated
 
 import destiny_sdk
-from fastapi import APIRouter, Depends, Path, status
+from fastapi import APIRouter, Depends, Path, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import (
@@ -55,11 +55,18 @@ def reference_service(
 robots = RobotService(known_robots=settings.known_robots)
 
 
-def robot_service(
+def robot_communication_service(
     robots: Annotated[RobotService, Depends(robots)],
 ) -> RobotCommunicationService:
     """Return the robot service using the provided unit of work dependencies."""
     return RobotCommunicationService(robots=robots)
+
+
+def robot_service(
+    robots: Annotated[RobotService, Depends(robots)],
+) -> RobotService:
+    """Return the robot service using the provided unit of work dependencies."""
+    return robots
 
 
 def choose_auth_strategy_reader() -> AuthMethod:
@@ -90,7 +97,17 @@ reference_writer_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_writer,
 )
 
-robot_auth = choose_hmac_auth_strategy()
+
+async def robot_auth(
+    request: Request,
+    robot_service: Annotated[RobotService, Depends(robot_service)],
+) -> bool:
+    """Choose robot auth strategy for our authorization."""
+    return await choose_hmac_auth_strategy(
+        get_secret=robot_service.get_robot_secret,
+    )(request)
+
+
 router = APIRouter(prefix="/references", tags=["references"])
 robot_router = APIRouter(
     prefix="/robot", tags=["robots"], dependencies=[Depends(robot_auth)]
@@ -164,7 +181,9 @@ async def add_identifier(
 async def request_enhancement(
     enhancement_request_in: destiny_sdk.robots.EnhancementRequestIn,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    robot_service: Annotated[RobotCommunicationService, Depends(robot_service)],
+    robot_service: Annotated[
+        RobotCommunicationService, Depends(robot_communication_service)
+    ],
 ) -> destiny_sdk.robots.EnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""
     enhancement_request = await reference_service.request_reference_enhancement(
