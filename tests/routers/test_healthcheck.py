@@ -67,7 +67,10 @@ async def test_healthcheck_failure(app: FastAPI, client: AsyncClient) -> None:
         yield mock_session
 
     app.dependency_overrides[get_session] = mock_get_session
-    response = await client.get("/healthcheck/")
+    response = await client.get(
+        "/healthcheck/",
+        params={"database": True, "worker": False, "azure_blob_storage": False},
+    )
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
     assert response.json() == {"detail": "Database connection failed."}
