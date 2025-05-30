@@ -190,8 +190,9 @@ class Settings(BaseSettings):
                 return "azure"
             if self.env == Environment.TEST:
                 # If we reach here, we are in a test environment and haven't
-                # specified a blob config, so assume it is mocked.
-                return "test"
+                # specified a blob config, so assume it is mocked. Just return
+                # minio to keep pydantic happy.
+                return "minio"
         return "azure"
 
     @property
