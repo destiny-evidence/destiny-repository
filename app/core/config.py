@@ -188,6 +188,10 @@ class Settings(BaseSettings):
                 return "minio"
             if self.azure_blob_config:
                 return "azure"
+            if self.env == Environment.TEST:
+                # If we reach here, we are in a test environment and haven't
+                # specified a blob config, so assume it is mocked.
+                return "test"
         return "azure"
 
     @property
@@ -198,6 +202,10 @@ class Settings(BaseSettings):
                 return self.minio_config.bucket
             if self.azure_blob_config:
                 return self.azure_blob_config.container
+            if self.env == Environment.TEST:
+                # If we reach here, we are in a test environment and haven't
+                # specified a blob config, so assume it is mocked.
+                return "test"
         if not self.azure_blob_config:
             msg = "Azure Blob Storage configuration is not given."
             raise ValueError(msg)
