@@ -45,7 +45,7 @@ class DOIIdentifier(BaseModel):
         ExternalIdentifierType.DOI, description="The type of identifier used."
     )
 
-    @field_validator("identifier")
+    @field_validator("identifier", mode="before")
     @classmethod
     def remove_doi_url(cls, value: str) -> str:
         """Remove the URL part of the DOI if it exists."""
