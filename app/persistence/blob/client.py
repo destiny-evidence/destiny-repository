@@ -24,14 +24,28 @@ class GenericBlobStorageClient(ABC):
         content: FileStream | BytesIO,
         file: BlobStorageFile,
     ) -> None:
-        """Upload a file to the blob storage."""
+        """
+        Upload a file to the blob storage.
+
+        :param content: The content of the file to upload.
+        :type content: FileStream | BytesIO
+        :param file: The file to upload.
+        :type file: BlobStorageFile
+        """
 
     @abstractmethod
     async def stream_file(
         self,
         file: BlobStorageFile,
     ) -> AsyncGenerator[str, None]:
-        """Stream a file from the blob storage."""
+        """
+        Stream a file line-by-line from the blob storage.
+
+        :param file: The file to stream.
+        :type file: BlobStorageFile
+        :return: An async generator that yields lines from the file.
+        :rtype: AsyncGenerator[str, None]
+        """
         # Certified python moment
         # https://github.com/python/mypy/issues/5070
         if False:
@@ -43,4 +57,13 @@ class GenericBlobStorageClient(ABC):
         file: BlobStorageFile,
         interaction_type: BlobSignedUrlType,
     ) -> str:
-        """Generate a signed URL for accessing a file in the blob storage."""
+        """
+        Generate a signed URL for the file in blob storage.
+
+        :param file: The file for which to generate the signed URL.
+        :type file: BlobStorageFile
+        :param interaction_type: The type of interaction (upload or download).
+        :type interaction_type: BlobSignedUrlType
+        :return: The signed URL for the file.
+        :rtype: str
+        """

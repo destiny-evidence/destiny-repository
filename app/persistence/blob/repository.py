@@ -41,7 +41,19 @@ class BlobRepository:
         self,
         file: BlobStorageFile,
     ) -> GenericBlobStorageClient:
-        """Pre-check configuration for blob storage clients."""
+        """
+        Pre-check configuration for blob storage clients.
+
+        :param file: The file to check configuration for.
+        :type file: BlobStorageFile
+        :raises AzureBlobStorageError: Raised if file location is Azure and
+            configuration is missing.
+        :raises MinioBlobStorageError: Raised if file location is MinIO and
+            configuration is missing.
+        :raises BlobStorageError: Raised if file location is unsupported.
+        :return: _description_
+        :rtype: GenericBlobStorageClient
+        """
         # This feels best for now as it avoids unnecessary instantiation, but we
         # can consider just creating the clients if their config is provided in
         # __init__().
@@ -72,11 +84,33 @@ class BlobRepository:
         content: FileStream | BytesIO,
         path: str,
         filename: str,
+        container: str | None = None,
+        location: BlobStorageLocation | None = None,
     ) -> BlobStorageFile:
-        """Upload a file to Blob Storage."""
+        """
+        Upload a file to Blob Storage.
+
+        See :class:`app.persistence.blob.stream.FileStream` for
+        examples of how to create and use a ``FileStream`` object.
+
+        :param content: The content of the file to upload.
+        :type content: FileStream | BytesIO
+        :param path: The path to upload the file to.
+        :type path: str
+        :param filename: The name of the file to upload.
+        :type filename: str
+        :param container: The container to upload the file to, defaults to
+            :attr:`app.core.config.Settings.default_blob_container`.
+        :type container: str | None
+        :param location: The location of the blob storage, defaults to
+            :attr:`app.core.config.Settings.default_blob_location`.
+        :type location: BlobStorageLocation | None
+        :return: The information of the uploaded file.
+        :rtype: BlobStorageFile
+        """
         file = BlobStorageFile(
-            location=settings.default_blob_location,
-            container=settings.default_blob_container,
+            location=location or settings.default_blob_location,
+            container=container or settings.default_blob_container,
             path=path,
             filename=filename,
         )
@@ -89,7 +123,24 @@ class BlobRepository:
         self,
         file: BlobStorageFile,
     ) -> AsyncGenerator[AsyncIterator[str], None]:
-        """Async context manager to get lines from a file in Blob Storage."""
+        """
+        Stream a file line-by-line from Blob Storage.
+
+        Usage:
+
+        .. code-block:: python
+
+            async with blob_repo.stream_file_from_blob_storage(file) as stream:
+                async for line in stream:
+                    print(line)
+
+        :param file: The file to stream.
+        :type file: BlobStorageFile
+        :return: An async generator that yields lines one at a time from the file.
+        :rtype: AsyncGenerator[str, None]
+        :yield: Lines from the file, one at a time.
+        :rtype: Iterator[AsyncGenerator[AsyncIterator[str], None]]
+        """
         client = await self._preload_config(file)
         yield client.stream_file(file)
 
@@ -98,6 +149,15 @@ class BlobRepository:
         file: BlobStorageFile,
         interaction_type: BlobSignedUrlType,
     ) -> HttpUrl:
-        """Get a signed URL for a file in Blob Storage."""
+        """
+        Generate a signed URL for a file in Blob Storage.
+
+        :param file: The file for which to generate the signed URL.
+        :type file: BlobStorageFile
+        :param interaction_type: The type of interaction (upload or download).
+        :type interaction_type: BlobSignedUrlType
+        :return: The signed URL for the file.
+        :rtype: HttpUrl
+        """
         client = await self._preload_config(file)
         return HttpUrl(await client.generate_signed_url(file, interaction_type))
