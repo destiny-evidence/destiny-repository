@@ -203,19 +203,9 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
     )
     robot_version: Mapped[str] = mapped_column(String, nullable=True)
     content: Mapped[str] = mapped_column(JSONB, nullable=False)
-    content_version: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
 
     reference: Mapped["Reference"] = relationship(
         "Reference", back_populates="enhancements"
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "enhancement_type",
-            "reference_id",
-            "source",
-            name="uix_enhancement",
-        ),
     )
 
     @classmethod
@@ -228,7 +218,6 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             source=domain_obj.source,
             visibility=domain_obj.visibility,
             robot_version=domain_obj.robot_version,
-            content_version=domain_obj.content_version,
             content=domain_obj.content.model_dump_json(),
         )
 
@@ -241,7 +230,6 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             reference_id=self.reference_id,
             robot_version=self.robot_version,
             content=json.loads(self.content),
-            content_version=self.content_version,
             reference=await self.reference.to_domain()
             if "reference" in (preload or [])
             else None,

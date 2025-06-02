@@ -79,7 +79,6 @@ class DummyDomainEnhancement:
         source,
         visibility,
         robot_version,
-        content_version,
         content,
     ):
         self.id = id
@@ -87,7 +86,6 @@ class DummyDomainEnhancement:
         self.source = source
         self.visibility = visibility
         self.robot_version = robot_version
-        self.content_version = content_version
         self.content = content
         # For preload test on Enhancement.to_domain
         self.reference = None
@@ -171,14 +169,12 @@ async def test_enhancement_from_and_to_domain():
     enh_id = uuid.uuid4()
     ref_id = uuid.uuid4()
     dummy_content = DummyContent()
-    content_version = uuid.uuid4()
     dummy_enh = DummyDomainEnhancement(
         id=enh_id,
         reference_id=ref_id,
         source="test_source",
         visibility=Visibility.PUBLIC,
         robot_version="1.0.0",
-        content_version=content_version,
         content=dummy_content,
     )
 
@@ -190,7 +186,6 @@ async def test_enhancement_from_and_to_domain():
     assert sql_enh.source == dummy_enh.source
     assert sql_enh.visibility == dummy_enh.visibility
     assert sql_enh.robot_version == dummy_enh.robot_version
-    assert sql_enh.content_version == dummy_enh.content_version
     # Verify that content was dumped to JSON string correctly
     dumped = dummy_content.model_dump_json()
     assert json.loads(sql_enh.content) == json.loads(dumped)
@@ -207,7 +202,6 @@ async def test_enhancement_from_and_to_domain():
     assert domain_enh.source == dummy_enh.source
     assert domain_enh.visibility == dummy_enh.visibility
     assert domain_enh.robot_version == dummy_enh.robot_version
-    assert domain_enh.content_version == dummy_enh.content_version
     # Verify that content was loaded correctly
     assert domain_enh.content == destiny_sdk.enhancements.AnnotationEnhancement(
         **json.loads(sql_enh.content)
@@ -273,7 +267,6 @@ async def test_reference_with_relationships():
         source="annotation_source",
         visibility=Visibility.RESTRICTED,
         robot_version="2.0.0",
-        content_version=uuid.uuid4(),
         content=dummy_content,
     )
     # Create dummy domain reference with identifiers and enhancements

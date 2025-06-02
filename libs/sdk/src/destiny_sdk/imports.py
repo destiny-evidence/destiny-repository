@@ -49,6 +49,12 @@ class CollisionStrategy(StrEnum):
     """
     The strategy to use when an identifier collision is detected.
 
+    Identifier collisions are detected on ``identifier_type`` and ``identifier``
+    (and ``other_identifier_name`` where relevant) already present in the database.
+
+    Enhancement collisions are detected on an entry with matching ``enhancement_type``
+    and ``source`` already being present on the collided reference.
+
     - `discard`: Do nothing with the incoming reference.
     - `fail`: Do nothing with the incoming reference and mark it as failed. This
       allows the importing process to "follow up" on the failure.
@@ -56,6 +62,8 @@ class CollisionStrategy(StrEnum):
       enhancements in the merge.
     - `merge_defensive`: Prioritize the existing reference's identifiers and
       enhancements in the merge.
+    - `append`: Performs an aggressive merge of identifiers, and an append of
+      enhancements.
     - `overwrite`: Performs an aggressive merge of identifiers, and an overwrite of
       enhancements (deleting existing and recreating what is imported). This should
       be used sparingly and carefully.
@@ -65,6 +73,7 @@ class CollisionStrategy(StrEnum):
     FAIL = "fail"
     MERGE_AGGRESSIVE = "merge_aggressive"
     MERGE_DEFENSIVE = "merge_defensive"
+    APPEND = "append"
     OVERWRITE = "overwrite"
 
 

@@ -92,7 +92,6 @@ async def test_add_identifier_reference_not_found(fake_repository, fake_uow):
 ENHANCEMENT_DATA = {
     "source": "test_source",
     "visibility": "public",
-    "content_version": uuid.uuid4(),
     "enhancement_type": "annotation",
     "content": {
         "enhancement_type": "annotation",

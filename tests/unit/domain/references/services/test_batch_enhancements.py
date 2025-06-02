@@ -130,7 +130,6 @@ def make_batch_enhancement_result_entry(reference_id: UUID4, *, as_error: bool) 
             },
             "source": "test_source",
             "visibility": "public",
-            "content_version": str(uuid.uuid4()),
         }
     )
 

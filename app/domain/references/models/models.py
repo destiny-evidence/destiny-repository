@@ -161,7 +161,7 @@ class Reference(
         else:
             return reference
 
-    async def merge(
+    async def merge(  # noqa: PLR0912
         self,
         incoming_reference: Self,
         collision_strategy: CollisionStrategy,
@@ -238,6 +238,7 @@ class Reference(
         elif collision_strategy in (
             CollisionStrategy.MERGE_AGGRESSIVE,
             CollisionStrategy.OVERWRITE,
+            CollisionStrategy.APPEND,
         ):
             self.identifiers = [
                 identifier
@@ -255,7 +256,9 @@ class Reference(
             return
 
         # Otherwise, merge enhancements
-        if collision_strategy == CollisionStrategy.MERGE_DEFENSIVE:
+        if collision_strategy == CollisionStrategy.APPEND:
+            self.enhancements += incoming_reference.enhancements
+        elif collision_strategy == CollisionStrategy.MERGE_DEFENSIVE:
             self.enhancements.extend(
                 [
                     enhancement
@@ -368,13 +371,6 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     robot_version: str | None = Field(
         default=None,
         description="The version of the robot that generated the content.",
-    )
-    content_version: uuid.UUID = Field(
-        description="""
-        UUID regenerated when the content changes.
-        Can be used to identify when content has changed.
-        """,
-        default_factory=uuid.uuid4,
     )
     content: EnhancementContent = Field(
         discriminator="enhancement_type",

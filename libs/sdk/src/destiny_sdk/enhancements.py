@@ -327,13 +327,6 @@ class Enhancement(_JsonlFileInputMixIn, BaseModel):
         default=None,
         description="The version of the robot that generated the content.",
     )
-    content_version: uuid.UUID = Field(
-        description="""
-        UUID regenerated when the content changes.
-        Can be used to identify when content has changed.
-        """,
-        default_factory=uuid.uuid4,
-    )
     content: Annotated[
         EnhancementContent,
         Field(
@@ -359,13 +352,6 @@ class EnhancementFileInput(BaseModel):
         # (Adam) Temporary alias for backwards compatibility for already prepared files
         # Next person who sees this can remove it :)
         alias="processor_version",
-    )
-    content_version: uuid.UUID = Field(
-        description="""
-        UUID regenerated when the content changes.
-        Can be used to identify when content has changed.
-        """,
-        default_factory=uuid.uuid4,
     )
     content: EnhancementContent = Field(
         discriminator="enhancement_type",
