@@ -9,7 +9,6 @@ from app.core.config import get_settings
 from app.core.exceptions import (
     RobotEnhancementError,
     RobotUnreachableError,
-    SQLDuplicateError,
     SQLNotFoundError,
     WrongReferenceError,
 )
@@ -361,12 +360,6 @@ class ReferenceService(GenericService):
             return (
                 False,
                 f"Reference {enhancement.reference_id}: Reference doesn't exist.",
-            )
-        except SQLDuplicateError:
-            return (
-                False,
-                f"Reference {enhancement.reference_id}: Enhancement already "
-                "exists on reference.",
             )
 
         return (
