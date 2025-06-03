@@ -1,13 +1,15 @@
 """HMAC authentication assistance methods."""
 
+import hashlib
 import hmac
+import time
 from typing import Protocol, Self
 from uuid import UUID
 
 from fastapi import HTTPException, Request, status
 from pydantic import UUID4, BaseModel
 
-from .client import create_signature
+FIVE_MINUTES = 60 * 5
 
 
 class AuthException(HTTPException):
@@ -26,6 +28,30 @@ class AuthException(HTTPException):
     """
 
 
+def create_signature(
+    secret_key: str, request_body: bytes, client_id: UUID4, timestamp: float
+) -> str:
+    """
+    Create an HMAC signature using SHA256.
+
+    :param secret_key: secret key with which to encrypt message
+    :type secret_key: bytes
+    :param request_body: request body to be encrypted
+    :type request_body: bytes
+    :param client_id: client id to include in hmac
+    :type: UUID4
+    :param timestamp: timestamp for when the request is sent
+    :type: float
+    :return: encrypted hexdigest of the request body with the secret key
+    :rtype: str
+    """
+    timestamp_bytes = f"{timestamp}".encode()
+    signature_components = b":".join([request_body, client_id.bytes, timestamp_bytes])
+    return hmac.new(
+        secret_key.encode(), signature_components, hashlib.sha256
+    ).hexdigest()
+
+
 class HMACAuthorizationHeaders(BaseModel):
     """
     The HTTP authorization headers required for HMAC authentication.
@@ -39,7 +65,7 @@ class HMACAuthorizationHeaders(BaseModel):
 
     signature: str
     client_id: UUID4
-    # Add timestamp later
+    timestamp: float
 
     @classmethod
     def get_hmac_headers(cls, request: Request) -> Self:
@@ -86,7 +112,21 @@ class HMACAuthorizationHeaders(BaseModel):
                 detail="Invalid format for client id, expected UUID4.",
             ) from exc
 
-        return cls(signature=signature, client_id=client_id)
+        timestamp = request.headers.get("X-Request-Timestamp")
+
+        if not timestamp:
+            raise AuthException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="X-Request-Timestamp header missing",
+            )
+
+        if (time.time() - float(timestamp)) > FIVE_MINUTES:
+            raise AuthException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Request timestamp has expired.",
+            )
+
+        return cls(signature=signature, client_id=client_id, timestamp=timestamp)
 
 
 class HMACAuthMethod(Protocol):
@@ -130,7 +170,10 @@ class HMACAuth(HMACAuthMethod):
         auth_headers = HMACAuthorizationHeaders.get_hmac_headers(request)
         request_body = await request.body()
         expected_signature = create_signature(
-            self.secret_key, request_body, auth_headers.client_id
+            self.secret_key,
+            request_body,
+            auth_headers.client_id,
+            auth_headers.timestamp,
         )
 
         if not hmac.compare_digest(auth_headers.signature, expected_signature):

@@ -403,6 +403,7 @@ class HMACKnownRobotAuth(destiny_sdk.auth.HMACAuth):
             secret_key=await self._get_secret_key(auth_headers.client_id),
             request_body=request_body,
             client_id=auth_headers.client_id,
+            timestamp=auth_headers.timestamp,
         )
 
         if not hmac.compare_digest(auth_headers.signature, expected_signature):

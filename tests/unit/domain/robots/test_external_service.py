@@ -1,3 +1,4 @@
+import time
 import uuid
 
 import destiny_sdk
@@ -31,8 +32,16 @@ KNOWN_ROBOTS = [
 ]
 
 
+@pytest.fixture
+def frozen_time(monkeypatch):
+    def frozen_timestamp():
+        return 12345453.32423
+
+    monkeypatch.setattr(time, "time", frozen_timestamp)
+
+
 @pytest.mark.asyncio
-async def test_send_enhancement_request_to_robot_happy_path(httpx_mock):
+async def test_send_enhancement_request_to_robot_happy_path(httpx_mock, frozen_time):  # noqa: ARG001
     reference = Reference(id=uuid.uuid4(), visibility=Visibility.RESTRICTED)
     enhancement_request = EnhancementRequest(
         id=uuid.uuid4(),
@@ -55,6 +64,7 @@ async def test_send_enhancement_request_to_robot_happy_path(httpx_mock):
         secret_key=KNOWN_ROBOTS[0].robot_secret,
         request_body=robot_request.model_dump_json().encode(),
         client_id=ROBOT_ID,
+        timestamp=time.time(),
     )
 
     httpx_mock.add_response(
@@ -63,7 +73,8 @@ async def test_send_enhancement_request_to_robot_happy_path(httpx_mock):
         status_code=status.HTTP_202_ACCEPTED,
         match_headers={
             "Authorization": f"Signature {expected_signature}",
-            "X-Client-Id": str(ROBOT_ID),
+            "X-Client-Id": f"{ROBOT_ID}",
+            "X-Request-Timestamp": f"{time.time()}",
         },
     )
 

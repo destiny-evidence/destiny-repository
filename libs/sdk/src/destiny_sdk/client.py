@@ -1,7 +1,6 @@
 """Send authenticated requests to Destiny Repository."""
 
-import hashlib
-import hmac
+import time
 from collections.abc import Generator
 
 import httpx
@@ -14,24 +13,7 @@ from destiny_sdk.robots import (
     RobotResult,
 )
 
-
-def create_signature(secret_key: str, request_body: bytes, client_id: UUID4) -> str:
-    """
-    Create an HMAC signature using SHA256.
-
-    :param secret_key: secret key with which to encrypt message
-    :type secret_key: bytes
-    :param request_body: request body to be encrypted
-    :type request_body: bytes
-    :param client_id: client id to include in hmac
-    :type: UUID4
-    :return: encrypted hexdigest of the request body with the secret key
-    :rtype: str
-    """
-    signature_components = request_body + f":{client_id}".encode()
-    return hmac.new(
-        secret_key.encode(), signature_components, hashlib.sha256
-    ).hexdigest()
+from .auth import create_signature
 
 
 class HMACSigningAuth(httpx.Auth):
@@ -60,9 +42,13 @@ class HMACSigningAuth(httpx.Auth):
         :yield: Generator for Request with signature headers set
         :rtype: Generator[httpx.Request, httpx.Response]
         """
-        signature = create_signature(self.secret_key, request.content, self.client_id)
+        timestamp = time.time()
+        signature = create_signature(
+            self.secret_key, request.content, self.client_id, timestamp
+        )
         request.headers["Authorization"] = f"Signature {signature}"
         request.headers["X-Client-Id"] = f"{self.client_id}"
+        request.headers["X-Request-Timestamp"] = f"{timestamp}"
         yield request
 
 

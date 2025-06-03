@@ -1,38 +1,55 @@
 """Tests client authentication"""
 
+import time
 import uuid
 
+import pytest
 from destiny_sdk.client import Client, create_signature
 from destiny_sdk.robots import EnhancementRequestRead, RobotError, RobotResult
 from pytest_httpx import HTTPXMock
 
 
-def test_verify_signature_sent_as_header(httpx_mock: HTTPXMock) -> None:
+@pytest.fixture
+def frozen_time(monkeypatch):
+    def frozen_timestamp():
+        return 12345453.32423
+
+    monkeypatch.setattr(time, "time", frozen_timestamp)
+
+
+def test_verify_hmac_headers_sent(httpx_mock: HTTPXMock, frozen_time) -> None:  # noqa: ARG001
     """Test that request is authorized with a signature."""
     fake_secret_key = "asdfhjgji94523q0uflsjf349wjilsfjd9q23"
     fake_robot_id = uuid.uuid4()
     fake_destiny_repository_url = "https://www.destiny-repository-lives-here.co.au"
 
-    request_body = EnhancementRequestRead(
+    fake_robot_result = RobotResult(
+        request_id=uuid.uuid4(), error=RobotError(message="I can't fulfil this request")
+    )
+
+    expected_response_body = EnhancementRequestRead(
         reference_id=uuid.uuid4(),
         id=uuid.uuid4(),
         robot_id=uuid.uuid4(),
-        request_status="completed",
+        request_status="failed",
     )
 
     expected_signature = create_signature(
-        fake_secret_key, request_body.model_dump_json().encode(), fake_robot_id
+        secret_key=fake_secret_key,
+        request_body=fake_robot_result.model_dump_json().encode(),
+        client_id=fake_robot_id,
+        timestamp=time.time(),
     )
 
     httpx_mock.add_response(
         url=fake_destiny_repository_url + "/robot/enhancement/single/",
         method="POST",
-        headers={"Authorization": f"Signature {expected_signature}"},
-        json=request_body.model_dump(mode="json"),
-    )
-
-    fake_robot_result = RobotResult(
-        request_id=uuid.uuid4(), error=RobotError(message="I can't fulfil this request")
+        match_headers={
+            "Authorization": f"Signature {expected_signature}",
+            "X-Client-Id": f"{fake_robot_id}",
+            "X-Request-Timestamp": f"{time.time()}",
+        },
+        json=expected_response_body.model_dump(mode="json"),
     )
 
     Client(
