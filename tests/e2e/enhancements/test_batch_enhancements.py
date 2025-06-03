@@ -80,7 +80,7 @@ def test_complete_batch_enhancement_workflow():
                     line
                 )
             )
-            assert entry.reference_id in reference_ids
+            assert str(entry.reference_id) in reference_ids
             assert not entry.error
         reference_data_file = httpx.get(str(result.reference_data_url))
         for line in reference_data_file.text.splitlines():
