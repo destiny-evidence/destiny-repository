@@ -21,7 +21,7 @@ class EnhancementType(StrEnum):
     - `abstract`: The abstract of a reference.
     - `annotation`: A free-form enhancement for tagging with labels.
     - `locations`: Locations where the reference can be found.
-    - `full text`: The full text of the reference. (To be implemeted)
+    - `full_text`: The full text of the reference. (To be implemeted)
     """
 
     BIBLIOGRAPHIC = auto()
@@ -237,10 +237,10 @@ class DriverVersion(StrEnum):
     article.
     """
 
-    PUBLISHED_VERSION = auto()
-    ACCEPTED_VERSION = auto()
-    SUBMITTED_VERSION = auto()
-    OTHER = auto()
+    PUBLISHED_VERSION = "publishedVersion"
+    ACCEPTED_VERSION = "acceptedVersion"
+    SUBMITTED_VERSION = "submittedVersion"
+    OTHER = "other"
 
 
 class Location(BaseModel):

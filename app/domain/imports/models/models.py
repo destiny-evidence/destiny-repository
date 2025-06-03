@@ -2,7 +2,7 @@
 
 import datetime
 import uuid
-from enum import StrEnum
+from enum import StrEnum, auto
 from typing import Self
 
 import destiny_sdk
@@ -22,10 +22,10 @@ class ImportRecordStatus(StrEnum):
     - `cancelled`: Processing was cancelled by calling the API.
     """
 
-    CREATED = "created"
-    STARTED = "started"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
+    CREATED = auto()
+    STARTED = auto()
+    COMPLETED = auto()
+    CANCELLED = auto()
 
 
 class ImportBatchStatus(StrEnum):
@@ -38,11 +38,11 @@ class ImportBatchStatus(StrEnum):
     - `cancelled`: Processing was cancelled by calling the API.
     """
 
-    CREATED = "created"
-    STARTED = "started"
-    FAILED = "failed"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
+    CREATED = auto()
+    STARTED = auto()
+    FAILED = auto()
+    COMPLETED = auto()
+    CANCELLED = auto()
 
 
 class CollisionStrategy(StrEnum):
@@ -69,12 +69,12 @@ class CollisionStrategy(StrEnum):
       be used sparingly and carefully.
     """
 
-    DISCARD = "discard"
-    FAIL = "fail"
-    MERGE_AGGRESSIVE = "merge_aggressive"
-    MERGE_DEFENSIVE = "merge_defensive"
-    APPEND = "append"
-    OVERWRITE = "overwrite"
+    DISCARD = auto()
+    FAIL = auto()
+    MERGE_AGGRESSIVE = auto()
+    MERGE_DEFENSIVE = auto()
+    APPEND = auto()
+    OVERWRITE = auto()
 
 
 class ImportResultStatus(StrEnum):
@@ -92,12 +92,12 @@ class ImportResultStatus(StrEnum):
     - `cancelled`: Processing was cancelled by calling the API.
     """
 
-    CREATED = "created"
-    STARTED = "started"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
-    PARTIALLY_FAILED = "partially_failed"
-    FAILED = "failed"
+    CREATED = auto()
+    STARTED = auto()
+    COMPLETED = auto()
+    CANCELLED = auto()
+    PARTIALLY_FAILED = auto()
+    FAILED = auto()
 
 
 class ImportRecord(DomainBaseModel, SQLAttributeMixin):

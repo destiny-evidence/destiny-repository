@@ -1,6 +1,6 @@
 """Models for handling files in blob storage."""
 
-from enum import StrEnum
+from enum import StrEnum, auto
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,15 +14,15 @@ logger = get_logger()
 class BlobSignedUrlType(StrEnum):
     """Blob Storage interaction types."""
 
-    DOWNLOAD = "download"
-    UPLOAD = "upload"
+    DOWNLOAD = auto()
+    UPLOAD = auto()
 
 
 class BlobStorageLocation(StrEnum):
     """Blob Storage locations."""
 
-    AZURE = "azure"
-    MINIO = "minio"
+    AZURE = auto()
+    MINIO = auto()
 
 
 class BlobStorageFile(BaseModel):
