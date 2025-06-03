@@ -26,7 +26,7 @@ KNOWN_ROBOTS = [
         robot_url=ROBOT_URL,
         dependent_enhancements=[],
         dependent_identifiers=[],
-        communication_secret_name="secret-secret",
+        robot_secret="secret-secret",
     ),
 ]
 
@@ -52,7 +52,7 @@ async def test_send_enhancement_request_to_robot_happy_path(httpx_mock):
     )
 
     expected_signature = destiny_sdk.client.create_signature(
-        secret_key=KNOWN_ROBOTS[0].communication_secret_name,
+        secret_key=KNOWN_ROBOTS[0].robot_secret,
         request_body=robot_request.model_dump_json().encode(),
         client_id=ROBOT_ID,
     )

@@ -71,7 +71,7 @@ def app() -> FastAPI:
                 robot_url=ROBOT_URL,
                 dependent_enhancements=[],
                 dependent_identifiers=[],
-                communication_secret_name="secret-secret",
+                robot_secret="secret-secret",
             )
         ]
     )

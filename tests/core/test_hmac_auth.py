@@ -34,7 +34,7 @@ def hmac_app() -> FastAPI:
                 robot_url="https://www.balderdash.org",
                 dependent_enhancements=[],
                 dependent_identifiers=[],
-                communication_secret_name=TEST_SECRET_KEY,
+                robot_secret=TEST_SECRET_KEY,
             )
         ]
     )

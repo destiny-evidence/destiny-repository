@@ -43,7 +43,7 @@ class RobotCommunicationService:
         """Send a request to a robot, handling error cases."""
         try:
             auth = destiny_sdk.client.HMACSigningAuth(
-                secret_key=robot.communication_secret_name, client_id=robot.robot_id
+                secret_key=robot.robot_secret, client_id=robot.robot_id
             )
             async with httpx.AsyncClient(auth=auth) as client:
                 response = await client.post(

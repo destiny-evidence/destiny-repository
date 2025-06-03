@@ -39,4 +39,4 @@ class RobotService:
         """Return secret used for signing requests sent to this robot."""
         # Secret to be stored in the azure keyvault
         # Currently just using secret name while testing
-        return self.get_robot_config(robot_id).communication_secret_name
+        return self.get_robot_config(robot_id).robot_secret
