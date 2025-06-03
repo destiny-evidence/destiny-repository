@@ -75,6 +75,25 @@ None, the repository will assume that the result file is ready for processing.
     )
 
 
+class BatchRobotResultValidationEntry(_JsonlFileInputMixIn, BaseModel):
+    """A single entry in the validation result file for a batch enhancement request."""
+
+    reference_id: UUID4 | None = Field(
+        default=None,
+        description=(
+            "The ID of the reference which was enhanced. "
+            "If this is empty, the BatchEnhancementResultEntry could not be parsed."
+        ),
+    )
+    error: str | None = Field(
+        default=None,
+        description=(
+            "Error encountered during the enhancement process for this reference. "
+            "If this is empty, the enhancement was successfully created."
+        ),
+    )
+
+
 class RobotRequest(BaseModel):
     """An enhancement request from the repo to a robot."""
 
@@ -183,13 +202,13 @@ class BatchEnhancementRequestStatus(StrEnum):
     The status of an enhancement request.
 
     **Allowed values**:
-    - `received`: Enhancement request has been received by the robot.
+    - `received`: Enhancement request has been received by the repo.
     - `accepted`: Enhancement request has been accepted by the robot.
-    - `rejected`: Enhancement request has been rejected by the robot (terminal).
-    - `partial_failed`: Some enhancements failed to create (terminal).
-    - `failed`: All enhancements failed to create (terminal).
-    - `processed`: Enhancements have been received by the repo and are being validated.
-    - `completed`: All enhancements have been created (terminal).
+    - `rejected`: Enhancement request has been rejected by the robot.
+    - `partial_failed`: Some enhancements failed to create.
+    - `failed`: All enhancements failed to create.
+    - `importing`: Enhancements have been received by the repo and are being imported.
+    - `completed`: All enhancements have been created.
     """
 
     RECEIVED = "received"
@@ -197,7 +216,7 @@ class BatchEnhancementRequestStatus(StrEnum):
     REJECTED = "rejected"
     PARTIAL_FAILED = "partial_failed"
     FAILED = "failed"
-    PROCESSED = "processed"
+    IMPORTING = "importing"
     COMPLETED = "completed"
 
 

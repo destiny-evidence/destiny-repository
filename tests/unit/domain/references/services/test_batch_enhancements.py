@@ -95,7 +95,9 @@ async def test_process_batch_enhancement_result_happy_path(fake_uow, fake_reposi
             mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
-    assert any("Enhancement added" in m for m in messages)
+    assert len(messages) == 1
+    assert messages[0].reference_id == batch_request.reference_ids[0]
+    assert not messages[0].error
     updated = uow.batch_enhancement_requests.get_first_record()
     assert updated.request_status == BatchEnhancementRequestStatus.COMPLETED
 
@@ -185,8 +187,8 @@ async def test_process_batch_enhancement_result_handles_both_entry_types(
             mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
-    assert any("Enhancement added" in m for m in messages)
-    assert any("robot error message" in m for m in messages)
+    assert len(messages) == 2
+    assert {m.error for m in messages} == {None, "robot error message"}
     updated = uow.batch_enhancement_requests.get_first_record()
     # One success, one failure: should be PARTIAL_FAILED
     assert updated.request_status == BatchEnhancementRequestStatus.PARTIAL_FAILED
@@ -242,8 +244,9 @@ async def test_process_batch_enhancement_result_missing_reference_id(
             mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
-    assert any("Enhancement added" in m for m in messages)
-    assert any("not in batch enhancement result from robot" in m for m in messages)
+    assert len(messages) == 2
+    assert messages[1].reference_id == reference_id_2
+    assert messages[1].error == "Requested reference not in batch enhancement result."
     updated = uow.batch_enhancement_requests.get_first_record()
     # One success, one failure: should be PARTIAL_FAILED
     assert updated.request_status == BatchEnhancementRequestStatus.PARTIAL_FAILED
@@ -303,10 +306,11 @@ async def test_process_batch_enhancement_result_surplus_reference_id(
             mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
-    # Should only add for the expected reference, and ignore surplus
-    assert any(str(reference_id_1) in m for m in messages)
-    # Should yield a parse failure for the surplus reference
-    assert any("unexpected reference ID" in m for m in messages)
+    assert len(messages) == 2
+    assert messages[0].reference_id == reference_id_1
+    assert messages[0].error is None
+    assert messages[1].reference_id == surplus_reference_id
+    assert messages[1].error == "Reference not in batch enhancement request."
     updated = uow.batch_enhancement_requests.get_first_record()
     # Only the expected reference succeeded, so should be completed
     assert updated.request_status == BatchEnhancementRequestStatus.PARTIAL_FAILED
@@ -362,9 +366,8 @@ async def test_process_batch_enhancement_result_parse_failure(
             mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
-    # Check parse failure message
-    assert any("could not be parsed" in m for m in messages)
-    # Check batch status (should be failed, as no successes)
+    assert messages[0].reference_id is None
+    assert messages[0].error.startswith("Entry 1 could not be parsed:")
     updated = uow.batch_enhancement_requests.get_first_record()
     assert updated.request_status == BatchEnhancementRequestStatus.FAILED
 
@@ -409,8 +412,8 @@ async def test_process_batch_enhancement_result_add_enhancement_fails(
 
     mock_blob_repo.stream_file_from_blob_storage = FakeStream
 
-    async def fake_add_enhancement(enhancement):
-        return False, f"Reference {enhancement.reference_id}: Enhancement failed."
+    async def fake_add_enhancement(_enhancement):
+        return False, "Failed to add enhancement to reference."
 
     messages = [
         msg
@@ -418,8 +421,9 @@ async def test_process_batch_enhancement_result_add_enhancement_fails(
             mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
-    assert any("Enhancement failed" in m for m in messages)
-    # Should be failed, as no successes
+    assert len(messages) == 1
+    assert messages[0].reference_id == reference_id
+    assert messages[0].error == "Failed to add enhancement to reference."
     updated = uow.batch_enhancement_requests.get_first_record()
     assert updated.request_status == BatchEnhancementRequestStatus.FAILED
 
@@ -464,8 +468,8 @@ async def test_process_batch_enhancement_result_all_enhancements_fail(
 
     mock_blob_repo.stream_file_from_blob_storage = FakeStream
 
-    async def fake_add_enhancement(enhancement):
-        return False, f"Reference {enhancement.reference_id}: Enhancement failed."
+    async def fake_add_enhancement(_enhancement):
+        return False, "Failed to add enhancement to reference."
 
     messages = [
         msg
@@ -473,7 +477,10 @@ async def test_process_batch_enhancement_result_all_enhancements_fail(
             mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
-    assert any("Enhancement failed" in m for m in messages)
+
+    assert len(messages) == 1
+    assert messages[0].reference_id == reference_id
+    assert messages[0].error == "Failed to add enhancement to reference."
     updated = uow.batch_enhancement_requests.get_first_record()
     assert updated.request_status == BatchEnhancementRequestStatus.FAILED
 
@@ -528,7 +535,9 @@ async def test_process_batch_enhancement_result_empty_result_file(
             mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
-    assert any("not in batch enhancement result from robot" in m for m in messages)
+    assert len(messages) == 1
+    assert messages[0].reference_id == reference_id
+    assert messages[0].error == "Requested reference not in batch enhancement result."
     updated = uow.batch_enhancement_requests.get_first_record()
     assert updated.request_status == BatchEnhancementRequestStatus.FAILED
 
@@ -585,9 +594,11 @@ async def test_process_batch_enhancement_result_duplicate_reference_ids(
             mock_blob_repo, batch_request, fake_add_enhancement
         )
     ]
-    # Both should be processed
-    assert results.count(reference_id) == 2
-    assert sum("Enhancement added" in m for m in messages) == 2
+    assert len(messages) == 2
+    assert messages[0].reference_id == reference_id
+    assert messages[0].error is None
+    assert messages[1].reference_id == reference_id
+    assert messages[1].error is None
     updated = uow.batch_enhancement_requests.get_first_record()
     # All succeeded, so should be completed
     assert updated.request_status == BatchEnhancementRequestStatus.COMPLETED

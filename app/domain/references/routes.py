@@ -311,7 +311,7 @@ async def fulfill_batch_enhancement_request(
     batch_enhancement_request = (
         await reference_service.update_batch_enhancement_request_status(
             batch_enhancement_request_id=robot_result.request_id,
-            status=BatchEnhancementRequestStatus.PROCESSED,
+            status=BatchEnhancementRequestStatus.IMPORTING,
         )
     )
 

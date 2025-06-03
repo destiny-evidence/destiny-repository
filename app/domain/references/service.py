@@ -339,7 +339,7 @@ class ReferenceService(GenericService):
                 )
             ),
             path="batch_enhancement_result",
-            filename=f"{batch_enhancement_request.id}.txt",
+            filename=f"{batch_enhancement_request.id}_repo.jsonl",
         )
 
         await self._batch_enhancement_service.add_validation_result_file_to_batch_enhancement_request(  # noqa: E501
@@ -359,12 +359,24 @@ class ReferenceService(GenericService):
         except SQLNotFoundError:
             return (
                 False,
-                f"Reference {enhancement.reference_id}: Reference doesn't exist.",
+                "Reference does not exist.",
+            )
+        except Exception:
+            logger.exception(
+                "Failed to add enhancement to reference.",
+                extra={
+                    "reference_id": enhancement.reference_id,
+                    "enhancement": enhancement,
+                },
+            )
+            return (
+                False,
+                "Failed to add enhancement to reference.",
             )
 
         return (
             True,
-            f"Reference {enhancement.reference_id}: Enhancement added.",
+            "Enhancement added.",
         )
 
     @unit_of_work

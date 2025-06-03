@@ -59,7 +59,7 @@ class BatchEnhancementRequestStatus(StrEnum):
     - `rejected`: Enhancement request has been rejected by the robot.
     - `partial_failed`: Some enhancements failed to create.
     - `failed`: All enhancements failed to create.
-    - `processed`: Enhancements have been received by the repo and are being validated.
+    - `importing`: Enhancements have been received by the repo and are being imported.
     - `completed`: All enhancements have been created.
     """
 
@@ -68,7 +68,7 @@ class BatchEnhancementRequestStatus(StrEnum):
     REJECTED = "rejected"
     PARTIAL_FAILED = "partial_failed"
     FAILED = "failed"
-    PROCESSED = "processed"
+    IMPORTING = "importing"
     COMPLETED = "completed"
 
 
@@ -564,6 +564,36 @@ Errors for individual references are provided <TBC>.
                 )
                 if self.result_file
                 else None,
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
+
+
+class BatchRobotResultValidationEntry(DomainBaseModel, SDKJsonlMixin):
+    """A single entry in the validation result file for a batch enhancement request."""
+
+    reference_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "The ID of the reference which was enhanced. "
+            "If this is empty, the BatchEnhancementResultEntry could not be parsed."
+        ),
+    )
+    error: str | None = Field(
+        default=None,
+        description=(
+            "Error encountered during the enhancement process for this reference. "
+            "If this is empty, the enhancement was successfully created."
+        ),
+    )
+
+    async def to_sdk(
+        self,
+    ) -> destiny_sdk.robots.BatchRobotResultValidationEntry:
+        """Convert the validation entry to the SDK model."""
+        try:
+            return destiny_sdk.robots.BatchRobotResultValidationEntry.model_validate(
+                self.model_dump(),
             )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception

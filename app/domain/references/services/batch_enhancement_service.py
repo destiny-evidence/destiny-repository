@@ -10,6 +10,7 @@ from app.core.logger import get_logger
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
     BatchEnhancementRequestStatus,
+    BatchRobotResultValidationEntry,
     Enhancement,
 )
 from app.domain.references.models.validators import (
@@ -84,7 +85,7 @@ class BatchEnhancementService(GenericService):
             location=settings.default_blob_location,
             container=settings.default_blob_container,
             path="batch_enhancement_result",
-            filename=f"{batch_enhancement_request.id}.jsonl",
+            filename=f"{batch_enhancement_request.id}_robot.jsonl",
         )
 
         batch_enhancement_request = await self.sql_uow.batch_enhancement_requests.update_by_pk(  # noqa: E501
@@ -102,7 +103,7 @@ class BatchEnhancementService(GenericService):
         blob_repository: BlobRepository,
         batch_enhancement_request: BatchEnhancementRequest,
         add_enhancement: Callable[[Enhancement], Awaitable[tuple[bool, str]]],
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[BatchRobotResultValidationEntry, None]:
         """
         Validate the result of a batch enhancement request.
 
@@ -116,30 +117,35 @@ class BatchEnhancementService(GenericService):
             )
             raise RuntimeError(msg)
         expected_reference_ids = set(batch_enhancement_request.reference_ids)
-        successes: list[str] = []
-        failures: list[str] = []
+        at_least_one_failed = False
+        at_least_one_succeeded = False
         attempted_reference_ids: set[UUID4] = set()
         async with blob_repository.stream_file_from_blob_storage(
             batch_enhancement_request.result_file,
         ) as file_stream:
             # Read the file stream and validate the content
-            i = 1
+            line_no = 1
             async for line in file_stream:
                 if not line.strip():
                     continue
                 validated_result = await BatchEnhancementResultValidator.from_raw(
-                    line, i, expected_reference_ids
+                    line, line_no, expected_reference_ids
                 )
-                i += 1
+                line_no += 1
                 if validated_result.robot_error:
                     attempted_reference_ids.add(
                         validated_result.robot_error.reference_id
                     )
-                    failures.append(validated_result.robot_error.message)
-                    yield validated_result.robot_error.message
+                    at_least_one_failed = True
+                    yield BatchRobotResultValidationEntry(
+                        reference_id=validated_result.robot_error.reference_id,
+                        error=validated_result.robot_error.message,
+                    )
                 elif validated_result.parse_failure:
-                    failures.append(validated_result.parse_failure)
-                    yield validated_result.parse_failure
+                    at_least_one_failed = True
+                    yield BatchRobotResultValidationEntry(
+                        error=validated_result.parse_failure,
+                    )
                 elif validated_result.enhancement_to_add:
                     attempted_reference_ids.add(
                         validated_result.enhancement_to_add.reference_id
@@ -148,39 +154,45 @@ class BatchEnhancementService(GenericService):
                         await Enhancement.from_sdk(validated_result.enhancement_to_add)
                     )
                     if success:
-                        successes.append(message)
+                        yield BatchRobotResultValidationEntry(
+                            reference_id=validated_result.enhancement_to_add.reference_id,
+                        )
+                        at_least_one_succeeded = True
                     else:
-                        failures.append(message)
-                    yield message
+                        yield BatchRobotResultValidationEntry(
+                            reference_id=validated_result.enhancement_to_add.reference_id,
+                            error=message,
+                        )
+                        at_least_one_failed = True
 
         if missing_reference_ids := (expected_reference_ids - attempted_reference_ids):
             for missing_reference_id in missing_reference_ids:
-                msg = (
-                    f"Reference {missing_reference_id}: not in batch enhancement "
-                    "result from robot."
+                at_least_one_failed = True
+                yield BatchRobotResultValidationEntry(
+                    reference_id=missing_reference_id,
+                    error="Requested reference not in batch enhancement result.",
                 )
-                failures.append(msg)
-                yield msg
 
         await self.finalize_batch_enhancement_request(
             batch_enhancement_request,
-            failures=failures,
-            successes=successes,
+            at_least_one_failed=at_least_one_failed,
+            at_least_one_succeeded=at_least_one_succeeded,
         )
 
     async def finalize_batch_enhancement_request(
         self,
         batch_enhancement_request: BatchEnhancementRequest,
-        failures: list[str],
-        successes: list[str],
+        *,
+        at_least_one_failed: bool,
+        at_least_one_succeeded: bool,
     ) -> None:
         """Finalize the batch enhancement request."""
-        if failures and successes:
+        if at_least_one_failed and at_least_one_succeeded:
             await self.update_batch_enhancement_request_status(
                 batch_enhancement_request.id,
                 BatchEnhancementRequestStatus.PARTIAL_FAILED,
             )
-        elif not successes:
+        elif not at_least_one_succeeded:
             await self.mark_batch_enhancement_request_failed(
                 batch_enhancement_request.id,
                 "Result received but every enhancement failed.",

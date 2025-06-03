@@ -249,9 +249,9 @@ class BatchEnhancementResultValidator(BaseModel):
 
         if file_entry.reference_id not in expected_reference_ids:
             return cls(
-                parse_failure=(
-                    f"Entry {entry_ref} has an unexpected reference ID: "
-                    f"{file_entry.reference_id}."
+                robot_error=destiny_sdk.robots.LinkedRobotError(
+                    reference_id=file_entry.reference_id,
+                    message="Reference not in batch enhancement request.",
                 )
             )
 

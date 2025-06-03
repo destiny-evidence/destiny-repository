@@ -67,17 +67,21 @@ def test_complete_batch_enhancement_workflow():
             if (request := response.json())["request_status"] not in (
                 "received",
                 "accepted",
-                "processed",
+                "importing",
             ):
                 break
 
         assert request["request_status"] == "completed"
         result = destiny_sdk.robots.BatchEnhancementRequestRead.model_validate(request)
         validation_file = httpx.get(str(result.validation_result_url))
-        for reference_id in reference_ids:
-            assert (
-                f"Reference {reference_id}: Enhancement added." in validation_file.text
+        for line in validation_file.text.splitlines():
+            entry = (
+                destiny_sdk.robots.BatchRobotResultValidationEntry.model_validate_json(
+                    line
+                )
             )
+            assert entry.reference_id in reference_ids
+            assert not entry.error
         reference_data_file = httpx.get(str(result.reference_data_url))
         for line in reference_data_file.text.splitlines():
             reference = destiny_sdk.references.Reference.model_validate_json(line)
