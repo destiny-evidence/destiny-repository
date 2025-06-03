@@ -76,6 +76,13 @@ locals {
       name  = "MESSAGE_BROKER_QUEUE_NAME"
       value = azurerm_servicebus_queue.taskiq.name
     },
+    {
+      name = "AZURE_BLOB_CONFIG"
+      value = jsonencode({
+        storage_account_name = azurerm_storage_account.this.name
+        container_name       = azurerm_storage_container.operations.name
+      })
+    }
   ]
 
   secrets = [
