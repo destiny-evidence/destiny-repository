@@ -37,7 +37,7 @@ async def test_send_enhancement_request_to_robot_happy_path(httpx_mock):
     enhancement_request = EnhancementRequest(
         id=uuid.uuid4(),
         reference_id=reference.id,
-        robot_id=uuid.uuid4(),
+        robot_id=ROBOT_ID,
         enhancement_parameters={},
     )
 
@@ -54,13 +54,17 @@ async def test_send_enhancement_request_to_robot_happy_path(httpx_mock):
     expected_signature = destiny_sdk.client.create_signature(
         secret_key=KNOWN_ROBOTS[0].communication_secret_name,
         request_body=robot_request.model_dump_json().encode(),
+        client_id=ROBOT_ID,
     )
 
     httpx_mock.add_response(
         method="POST",
         url=str(ROBOT_URL) + "single/",
         status_code=status.HTTP_202_ACCEPTED,
-        match_headers={"Authorization": f"Signature {expected_signature}"},
+        match_headers={
+            "Authorization": f"Signature {expected_signature}",
+            "X-Client-Id": str(ROBOT_ID),
+        },
     )
 
     await service.send_enhancement_request_to_robot(

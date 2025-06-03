@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 
 import destiny_sdk
 import pytest
+from destiny_sdk.client import create_signature
 from fastapi import APIRouter, Depends, FastAPI, status
 from httpx import ASGITransport, AsyncClient
 
@@ -73,11 +74,32 @@ async def test_hmac_authentication_happy_path(client: AsyncClient):
 async def test_hmac_authentication_incorrect_signature(client: AsyncClient):
     """Test authentication fails when the signature does not match."""
     response = await client.post(
-        "test/hmac/", headers={"Authorization": "Signature nonsense-signature"}, json={}
+        "test/hmac/",
+        headers={
+            "Authorization": "Signature nonsense-signature",
+            "X-Client-Id": "fake-client-id",
+        },
+        json={},
     )
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert "invalid" in response.json()["detail"]
+
+
+async def test_hmac_authentication_no_client_id(client: AsyncClient):
+    """Test authentication fails when no client id is provided"""
+    request_body = '{"message": "info"}'
+    signature = create_signature(
+        secret_key=TEST_SECRET_KEY, request_body=request_body, client_id=TEST_CLIENT_ID
+    )
+
+    response = await client.post(
+        "test/hmac/",
+        headers={"Authorization": f"Signature {signature}"},
+        content=request_body,
+    )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 async def test_hmac_authentication_no_signature(client: AsyncClient):

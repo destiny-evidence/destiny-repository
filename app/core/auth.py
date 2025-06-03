@@ -386,50 +386,26 @@ def choose_auth_strategy(
     )
 
 
-class HMACKnownRobotAuth:
+class HMACKnownRobotAuth(destiny_sdk.auth.HMACAuth):
     """Adds HMAC auth for known robots when used as router or endpoint dependency."""
 
     def __init__(self, get_secret: Callable[[UUID], Awaitable[str]]) -> None:
         """Initialize the HMAC auth dependency."""
         self.get_secret = get_secret
 
-    async def __call__(
-        self,
-        request: Request,
-    ) -> bool:
+    async def __call__(self, request: Request) -> bool:
         """Perform Authorization check."""
-        signature_header = request.headers.get("Authorization")
-
-        if not signature_header:
-            raise destiny_sdk.auth.AuthException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authorization Signature header missing.",
-            )
-
-        # Need to improve this to handle malformed headers gracefully
-        scheme, _, signature = signature_header.partition(" ")
-
-        if scheme != "Signature":
-            raise destiny_sdk.auth.AuthException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authorization type not supported.",
-            )
-
-        robot_id = request.headers.get("X-Robot-Id")
-
-        if not robot_id:
-            raise destiny_sdk.auth.AuthException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="X-Robot-Id header not set.",
-            )
-
+        auth_headers = destiny_sdk.auth.HMACAuthorizationHeaders.get_hmac_headers(
+            request
+        )
         request_body = await request.body()
         expected_signature = destiny_sdk.client.create_signature(
-            secret_key=await self._get_secret_key(UUID(robot_id)),
+            secret_key=await self._get_secret_key(UUID(auth_headers.client_id)),
             request_body=request_body,
+            client_id=auth_headers.client_id,
         )
 
-        if not hmac.compare_digest(signature, expected_signature):
+        if not hmac.compare_digest(auth_headers.signature, expected_signature):
             raise destiny_sdk.auth.AuthException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Signature is invalid."
             )

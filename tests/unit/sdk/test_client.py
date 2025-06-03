@@ -21,7 +21,7 @@ def test_verify_signature_sent_as_header(httpx_mock: HTTPXMock) -> None:
     )
 
     expected_signature = create_signature(
-        fake_secret_key, request_body.model_dump_json().encode()
+        fake_secret_key, request_body.model_dump_json().encode(), fake_robot_id
     )
 
     httpx_mock.add_response(

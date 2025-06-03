@@ -1,9 +1,10 @@
 """HMAC authentication assistance methods."""
 
 import hmac
-from typing import Protocol
+from typing import Protocol, Self
 
 from fastapi import HTTPException, Request, status
+from pydantic import BaseModel
 
 from .client import create_signature
 
@@ -24,6 +25,61 @@ class AuthException(HTTPException):
     """
 
 
+class HMACAuthorizationHeaders(BaseModel):
+    """
+    The HTTP authorization headers required for HMAC authentication.
+
+    ```
+    Authorization: Signature [ADD THIS]
+    X-Client-Id: [ADD THIS]
+    ```
+
+    """
+
+    signature: str
+    client_id: str
+    # Add timestamp later
+
+    @classmethod
+    def get_hmac_headers(cls, request: Request) -> Self:
+        """
+        Get the required headers for HMAC authentication.
+
+        :param request: The incoming request
+        :type request: Request
+        :raises AuthException: Authorization header is missing
+        :raises AuthException: Authorization type not supported
+        :raises AuthException: X-Client-Id header is missing
+        :return: Header values necessary for authenticating the request
+        :rtype: HMACAuthorizationHeaders
+        """
+        signature_header = request.headers.get("Authorization")
+
+        if not signature_header:
+            raise AuthException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authorization header missing.",
+            )
+
+        scheme, _, signature = signature_header.partition(" ")
+
+        if scheme != "Signature":
+            raise AuthException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authorization type not supported.",
+            )
+
+        client_id = request.headers.get("X-Client-Id")
+
+        if not client_id:
+            raise AuthException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="X-Client-Id header missing",
+            )
+
+        return cls(signature=signature, client_id=client_id)
+
+
 class HMACAuthMethod(Protocol):
     """
     Protocol for HMAC auth methods, enforcing the implmentation of __call__().
@@ -40,10 +96,7 @@ class HMACAuthMethod(Protocol):
             )
     """
 
-    async def __call__(
-        self,
-        request: Request,
-    ) -> bool:
+    async def __call__(self, request: Request) -> bool:
         """
         Callable interface to allow use as a dependency.
 
@@ -65,27 +118,13 @@ class HMACAuth(HMACAuthMethod):
 
     async def __call__(self, request: Request) -> bool:
         """Perform Authorization check."""
-        signature_header = request.headers.get("Authorization")
-
-        if not signature_header:
-            raise AuthException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authorization Signature header missing.",
-            )
-
-        # Need to improve this to handle malformed headers gracefully
-        scheme, _, signature = signature_header.partition(" ")
-
-        if scheme != "Signature":
-            raise AuthException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authorization type not supported.",
-            )
-
+        auth_headers = HMACAuthorizationHeaders.get_hmac_headers(request)
         request_body = await request.body()
-        expected_signature = create_signature(self.secret_key, request_body)
+        expected_signature = create_signature(
+            self.secret_key, request_body, auth_headers.client_id
+        )
 
-        if not hmac.compare_digest(signature, expected_signature):
+        if not hmac.compare_digest(auth_headers.signature, expected_signature):
             raise AuthException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Signature is invalid."
             )
@@ -102,6 +141,9 @@ class BypassHMACAuth(HMACAuthMethod):
     Not for production use!
     """
 
-    async def __call__(self, request: Request) -> bool:  # noqa: ARG002
+    async def __call__(
+        self,
+        request: Request,  # noqa: ARG002
+    ) -> bool:
         """Bypass Authorization check."""
         return True
