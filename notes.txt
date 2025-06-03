@@ -1,0 +1,7 @@
+- retry logic on blob storage, robots (and others?)
+- sack off BatchRobotResult.storage_url
+- PROCESSED -> IMPORTING
+- marshall validation result to boolean string
+- card up batching batches
+- card up sdk<>domain layer
+  -

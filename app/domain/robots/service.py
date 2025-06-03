@@ -47,7 +47,7 @@ class RobotService:
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    robot_url.rstrip("/"),
+                    robot_url,
                     json=robot_request.model_dump(mode="json"),
                 )
         except httpx.RequestError as exception:

@@ -128,12 +128,7 @@ class FileStream:
         :rtype: BytesIO
         """
         buffer = BytesIO()
-        if self.generator:
-            async for chunk in self.generator:
-                buffer.write(await self._to_bytes(chunk))
-        elif self.fn:
-            data = await gather(*[self.fn(**kwargs) for kwargs in self.fn_kwargs])
-            for chunk in data:
-                buffer.write(await self._to_bytes(chunk))
+        async for chunk in self.stream():
+            buffer.write(chunk)
         buffer.seek(0)
         return buffer
