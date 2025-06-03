@@ -12,21 +12,21 @@ from app.domain.references.models.models import (
 from app.domain.references.models.validators import ReferenceCreateResult
 
 
-def test_generic_external_identifier_from_specific_without_other():
+async def test_generic_external_identifier_from_specific_without_other():
     doi = destiny_sdk.identifiers.DOIIdentifier(
         identifier="10.1000/abc123", identifier_type="doi"
     )
-    gen = GenericExternalIdentifier.from_specific(doi)
+    gen = await GenericExternalIdentifier.from_specific(doi)
     assert gen.identifier == "10.1000/abc123"
     assert gen.identifier_type == "doi"
     assert gen.other_identifier_name is None
 
 
-def test_generic_external_identifier_from_specific_with_other():
+async def test_generic_external_identifier_from_specific_with_other():
     other = destiny_sdk.identifiers.OtherIdentifier(
         identifier="123", identifier_type="other", other_identifier_name="isbn"
     )
-    gen = GenericExternalIdentifier.from_specific(other)
+    gen = await GenericExternalIdentifier.from_specific(other)
     assert gen.identifier == "123"
     assert gen.identifier_type == "other"
     assert gen.other_identifier_name == "isbn"
@@ -43,34 +43,34 @@ def test_reference_create_result_error_str_multiple():
     assert result.error_str == "first error\n\nsecond error"
 
 
-def test_linked_external_identifier_roundtrip():
+async def test_linked_external_identifier_roundtrip():
     sdk_id = destiny_sdk.identifiers.PubMedIdentifier(
         identifier=1234, identifier_type="pm_id"
     )
     sdk_linked = destiny_sdk.identifiers.LinkedExternalIdentifier(
         identifier=sdk_id, reference_id=(u := uuid.uuid4())
     )
-    domain = LinkedExternalIdentifier.from_sdk(sdk_linked)
+    domain = await LinkedExternalIdentifier.from_sdk(sdk_linked)
     assert domain.identifier == sdk_id
     assert domain.reference_id == u
 
-    back = domain.to_sdk()
+    back = await domain.to_sdk()
     assert isinstance(back, destiny_sdk.identifiers.LinkedExternalIdentifier)
     assert back.reference_id == sdk_linked.reference_id
     assert back.identifier == sdk_id
 
 
-def test_enhancement_request_roundtrip():
+async def test_enhancement_request_roundtrip():
     rid = uuid.uuid4()
     req_in = destiny_sdk.robots.EnhancementRequestIn(
         reference_id=rid, robot_id=rid, enhancement_parameters={"param": 42}
     )
-    domain = EnhancementRequest.from_sdk(req_in)
+    domain = await EnhancementRequest.from_sdk(req_in)
     assert domain.reference_id == rid
     assert domain.robot_id == rid
     assert domain.enhancement_parameters == {"param": 42}
 
-    sdk_read = domain.to_sdk()
+    sdk_read = await domain.to_sdk()
     assert isinstance(sdk_read, destiny_sdk.robots.EnhancementRequestRead)
     assert sdk_read.reference_id == rid
     assert sdk_read.robot_id == rid

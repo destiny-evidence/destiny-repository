@@ -67,8 +67,10 @@ async def create_record(
     import_service: Annotated[ImportService, Depends(import_service)],
 ) -> destiny_sdk.imports.ImportRecordRead:
     """Create a record for an import process."""
-    record = await import_service.register_import(ImportRecord.from_sdk(import_record))
-    return record.to_sdk()
+    record = await import_service.register_import(
+        await ImportRecord.from_sdk(import_record)
+    )
+    return await record.to_sdk()
 
 
 @router.get("/record/{import_record_id}/")
@@ -78,7 +80,7 @@ async def get_record(
 ) -> destiny_sdk.imports.ImportRecordRead:
     """Get an import from the database."""
     import_record = await import_service.get_import_record(import_record_id)
-    return import_record.to_sdk()
+    return await import_record.to_sdk()
 
 
 @router.patch(
@@ -101,13 +103,13 @@ async def enqueue_batch(
 ) -> destiny_sdk.imports.ImportBatchRead:
     """Register an import batch for a given import."""
     import_batch = await import_service.register_batch(
-        ImportBatch.from_sdk(batch, import_record_id)
+        await ImportBatch.from_sdk(batch, import_record_id)
     )
     logger.info("Enqueueing import batch", extra={"import_batch_id": import_batch.id})
     await process_import_batch.kiq(
         import_batch_id=import_batch.id,
     )
-    return import_batch.to_sdk()
+    return await import_batch.to_sdk()
 
 
 @router.get("/record/{import_record_id}/batch/")
@@ -119,7 +121,7 @@ async def get_batches(
     import_record = await import_service.get_import_record_with_batches(
         import_record_id
     )
-    return [batch.to_sdk() for batch in import_record.batches or []]
+    return [await batch.to_sdk() for batch in import_record.batches or []]
 
 
 @router.get("/batch/{import_batch_id}/")
@@ -129,7 +131,7 @@ async def get_batch(
 ) -> destiny_sdk.imports.ImportBatchRead:
     """Get batches associated to an import."""
     import_batch = await import_service.get_import_batch(import_batch_id)
-    return import_batch.to_sdk()
+    return await import_batch.to_sdk()
 
 
 @router.get("/batch/{import_batch_id}/summary/")
@@ -139,7 +141,7 @@ async def get_import_batch_summary(
 ) -> destiny_sdk.imports.ImportBatchSummary:
     """Get a summary of an import batch's results."""
     import_batch = await import_service.get_import_batch_with_results(import_batch_id)
-    return import_batch.to_sdk_summary()
+    return await import_batch.to_sdk_summary()
 
 
 @router.get("/batch/{import_batch_id}/results/")
@@ -153,5 +155,6 @@ async def get_import_results(
         import_batch_id, result_status
     )
     return [
-        import_batch_result.to_sdk() for import_batch_result in import_batch_results
+        await import_batch_result.to_sdk()
+        for import_batch_result in import_batch_results
     ]

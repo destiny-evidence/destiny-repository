@@ -1,6 +1,6 @@
 """Visibility enum for repository data."""
 
-from enum import StrEnum
+from enum import StrEnum, auto
 
 
 class Visibility(StrEnum):
@@ -19,6 +19,6 @@ class Visibility(StrEnum):
     - `hidden`: Is not visible, but may be passed to data mining processes.
     """
 
-    PUBLIC = "public"
-    RESTRICTED = "restricted"
-    HIDDEN = "hidden"
+    PUBLIC = auto()
+    RESTRICTED = auto()
+    HIDDEN = auto()

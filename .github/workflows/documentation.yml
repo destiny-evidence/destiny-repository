@@ -28,9 +28,11 @@ jobs:
           virtualenvs-in-project: true
           virtualenvs-path: .venv
           installer-parallel: true
+      - name: Copy .env.example to .env
+        run: cp .env.example .env
       - name: Install dependencies
         run: |
-          poetry install --only=docs
+          poetry install --with=docs
       - name: Sphinx build
         run: |
           poetry run sphinx-build -b html docs docs/html

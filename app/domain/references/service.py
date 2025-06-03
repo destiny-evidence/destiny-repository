@@ -1,5 +1,8 @@
 """The service for interacting with and managing references."""
 
+from collections.abc import Awaitable, Callable
+from typing import cast
+
 import destiny_sdk
 from pydantic import UUID4
 
@@ -7,11 +10,11 @@ from app.core.config import get_settings
 from app.core.exceptions import (
     RobotEnhancementError,
     RobotUnreachableError,
-    SQLDuplicateError,
     SQLNotFoundError,
     WrongReferenceError,
 )
 from app.core.logger import get_logger
+from app.domain.base import SDKJsonlMixin
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
@@ -35,10 +38,10 @@ from app.domain.references.services.ingestion_service import (
 )
 from app.domain.robots.external_service import RobotCommunicationService
 from app.domain.service import GenericService
-from app.persistence.blob.models import (
-    BlobStorageFile,
-)
+from app.persistence.blob.repository import BlobRepository
+from app.persistence.blob.stream import FileStream
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
+from app.utils.lists import list_chunker
 
 logger = get_logger()
 settings = get_settings()
@@ -260,55 +263,39 @@ class ReferenceService(GenericService):
         )
 
     @unit_of_work
-    async def mark_batch_enhancement_request_failed(
-        self, batch_enhancement_request_id: UUID4, error: str
-    ) -> BatchEnhancementRequest:
-        """Mark a batch enhancement request as failed and supply error message."""
-        return await self.sql_uow.batch_enhancement_requests.update_by_pk(
-            pk=batch_enhancement_request_id,
-            request_status=BatchEnhancementRequestStatus.FAILED,
-            error=error,
-        )
-
-    @unit_of_work
-    async def update_batch_enhancement_request_status(
-        self,
-        batch_enhancement_request_id: UUID4,
-        status: BatchEnhancementRequestStatus,
-    ) -> BatchEnhancementRequest:
-        """Update a batch enhancement request."""
-        return await self.sql_uow.batch_enhancement_requests.update_by_pk(
-            pk=batch_enhancement_request_id, request_status=status
-        )
-
-    @unit_of_work
-    async def add_validation_result_file_to_batch_enhancement_request(
-        self,
-        batch_enhancement_request_id: UUID4,
-        validation_result_file: BlobStorageFile,
-    ) -> BatchEnhancementRequest:
-        """Add a validation result file to a batch enhancement request."""
-        return await self.sql_uow.batch_enhancement_requests.update_by_pk(
-            pk=batch_enhancement_request_id,
-            validation_result_file=validation_result_file.to_sql(),
-        )
-
-    @unit_of_work
     async def collect_and_dispatch_references_for_batch_enhancement(
         self,
         batch_enhancement_request: BatchEnhancementRequest,
         robot_service: RobotCommunicationService,
+        blob_repository: BlobRepository,
     ) -> None:
         """Collect and dispatch references for batch enhancement."""
         robot = robot_service.get_robot_config(batch_enhancement_request.robot_id)
-        references = await self._get_hydrated_references(
-            batch_enhancement_request.reference_ids,
-            enhancement_types=robot.dependent_enhancements,
-            external_identifier_types=robot.dependent_identifiers,
+        file_stream = FileStream(
+            # Handle Python's type invariance by casting the function type. We know
+            # Reference is a subclass of SDKJsonlMixin.
+            cast(
+                Callable[..., Awaitable[list[SDKJsonlMixin]]],
+                self._get_hydrated_references,
+            ),
+            [
+                {
+                    "reference_ids": reference_id_chunk,
+                    "enhancement_types": robot.dependent_enhancements,
+                    "external_identifier_types": robot.dependent_identifiers,
+                }
+                for reference_id_chunk in list_chunker(
+                    batch_enhancement_request.reference_ids,
+                    settings.upload_file_chunk_size_override.get(
+                        "batch_enhancement_request_reference_data",
+                        settings.default_upload_file_chunk_size,
+                    ),
+                )
+            ],
         )
 
         robot_request = await self._batch_enhancement_service.build_robot_request(
-            references, batch_enhancement_request
+            blob_repository, file_stream, batch_enhancement_request
         )
 
         try:
@@ -335,47 +322,34 @@ class ReferenceService(GenericService):
                 request_status=BatchEnhancementRequestStatus.ACCEPTED,
             )
 
+    @unit_of_work
     async def validate_and_import_batch_enhancement_result(
         self,
         batch_enhancement_request: BatchEnhancementRequest,
+        blob_repository: BlobRepository,
     ) -> None:
-        """Validate and import the result of a batch enhancement request."""
-        validated_result = (
-            await self._batch_enhancement_service.validate_batch_enhancement_result(
-                batch_enhancement_request
-            )
-        )
-        successes: list[str] = []
-        failures: list[str] = []
-        for enhancement in validated_result.enhancements_to_add:
-            success, msg = await self.handle_batch_enhancement_result_entry(
-                Enhancement.from_sdk(enhancement)
-            )
-            if success:
-                successes.append(msg)
-            else:
-                failures.append(msg)
+        """
+        Validate and import the result of a batch enhancement request.
 
-        (
-            status,
-            validation_result_file,
-        ) = await self._batch_enhancement_service.finalise_and_store_batch_enhancement_result(  # noqa: E501
-            batch_enhancement_request,
-            validated_result,
-            successes,
-            failures,
+        This process:
+        - streams the result of the batch enhancement request line-by-line
+        - adds the enhancement to the database
+        - streams the validation result to the blob storage service line-by-line
+        - does some final validation of missing references and updates the request
+        """
+        validation_result_file = await blob_repository.upload_file_to_blob_storage(
+            content=FileStream(
+                generator=self._batch_enhancement_service.process_batch_enhancement_result(
+                    blob_repository=blob_repository,
+                    batch_enhancement_request=batch_enhancement_request,
+                    add_enhancement=self.handle_batch_enhancement_result_entry,
+                )
+            ),
+            path="batch_enhancement_result",
+            filename=f"{batch_enhancement_request.id}_repo.jsonl",
         )
 
-        if status == BatchEnhancementRequestStatus.FAILED:
-            await self.mark_batch_enhancement_request_failed(
-                batch_enhancement_request.id,
-                "Result received but every enhancement failed.",
-            )
-        else:
-            await self.update_batch_enhancement_request_status(
-                batch_enhancement_request.id, status
-            )
-        await self.add_validation_result_file_to_batch_enhancement_request(
+        await self._batch_enhancement_service.add_validation_result_file_to_batch_enhancement_request(  # noqa: E501
             batch_enhancement_request.id, validation_result_file
         )
 
@@ -385,23 +359,53 @@ class ReferenceService(GenericService):
     ) -> tuple[bool, str]:
         """Handle the import of a single batch enhancement result entry."""
         try:
-            await self.add_enhancement(
+            await self._add_enhancement(
                 enhancement.reference_id,
                 enhancement,
             )
         except SQLNotFoundError:
             return (
                 False,
-                f"Reference {enhancement.reference_id}: Reference doesn't exist.",
+                "Reference does not exist.",
             )
-        except SQLDuplicateError:
+        except Exception:
+            logger.exception(
+                "Failed to add enhancement to reference.",
+                extra={
+                    "reference_id": enhancement.reference_id,
+                    "enhancement": enhancement,
+                },
+            )
             return (
                 False,
-                f"Reference {enhancement.reference_id}: Enhancement already "
-                "exists on reference.",
+                "Failed to add enhancement to reference.",
             )
 
         return (
             True,
-            f"Reference {enhancement.reference_id}: Enhancement added.",
+            "Enhancement added.",
+        )
+
+    @unit_of_work
+    async def mark_batch_enhancement_request_failed(
+        self,
+        batch_enhancement_request_id: UUID4,
+        error: str,
+    ) -> BatchEnhancementRequest:
+        """Mark a batch enhancement request as failed and supply error message."""
+        return (
+            await self._batch_enhancement_service.mark_batch_enhancement_request_failed(
+                batch_enhancement_request_id, error
+            )
+        )
+
+    @unit_of_work
+    async def update_batch_enhancement_request_status(
+        self,
+        batch_enhancement_request_id: UUID4,
+        status: BatchEnhancementRequestStatus,
+    ) -> BatchEnhancementRequest:
+        """Update a batch enhancement request."""
+        return await self._batch_enhancement_service.update_batch_enhancement_request_status(  # noqa: E501
+            batch_enhancement_request_id, status
         )

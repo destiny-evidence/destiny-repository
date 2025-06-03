@@ -19,6 +19,15 @@ def test_invalid_doi():
         )
 
 
+def test_fix_doi():
+    """Test that a DOI with a URL is fixed to just the DOI part."""
+    obj = destiny_sdk.identifiers.DOIIdentifier(
+        identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.DOI,
+        identifier="http://doi.org/10.1000/xyz123",
+    )
+    assert obj.identifier == "10.1000/xyz123"
+
+
 def test_valid_pmid():
     obj = destiny_sdk.identifiers.PubMedIdentifier(
         identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.PM_ID,

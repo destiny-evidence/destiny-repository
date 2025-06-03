@@ -100,6 +100,7 @@ resource "azuread_application_api_access" "destiny_repository_auth" {
 
   role_ids = [
     azuread_application_app_role.importer.role_id,
+    azuread_application_app_role.robot.role_id,
     azuread_application_app_role.reference_reader.role_id,
     azuread_application_app_role.reference_writer.role_id
   ]
@@ -127,5 +128,20 @@ resource "azuread_application_redirect_uris" "local_redirect" {
   redirect_uris = [
     "http://localhost",
     "https://oauth.pstmn.io/v1/callback",
+  ]
+}
+
+# Openalex incremental updater role assignments
+data "azuread_application" "openalex_incremental_updater" {
+  client_id = var.open_alex_incremental_updater_client_id
+}
+
+resource "azuread_application_api_access" "openalex_incremental_updater" {
+  application_id = data.azuread_application.openalex_incremental_updater.id
+  api_client_id  = azuread_application_registration.destiny_repository.client_id
+
+  # Only importer role
+  role_ids = [
+    azuread_application_app_role.importer.role_id
   ]
 }

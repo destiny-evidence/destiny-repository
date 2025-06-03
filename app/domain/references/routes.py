@@ -30,7 +30,7 @@ from app.domain.references.tasks import (
 )
 from app.domain.robots.external_service import RobotCommunicationService
 from app.domain.robots.service import RobotService
-from app.persistence.blob.service import get_signed_url
+from app.persistence.blob.repository import BlobRepository
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
@@ -67,6 +67,11 @@ def robot_service(
 ) -> RobotService:
     """Return the robot service using the provided unit of work dependencies."""
     return robots
+
+
+def blob_repository() -> BlobRepository:
+    """Return the blob storage service."""
+    return BlobRepository()
 
 
 def choose_auth_strategy_reader() -> AuthMethod:
@@ -121,7 +126,7 @@ async def get_reference(
 ) -> destiny_sdk.references.Reference:
     """Get a reference by id."""
     reference = await reference_service.get_reference(reference_id)
-    return reference.to_sdk()
+    return await reference.to_sdk()
 
 
 @router.get("/", dependencies=[Depends(reference_reader_auth)])
@@ -140,7 +145,7 @@ async def get_reference_from_identifier(
     reference = await reference_service.get_reference_from_identifier(
         external_identifier
     )
-    return reference.to_sdk()
+    return await reference.to_sdk()
 
 
 @router.post(
@@ -153,7 +158,7 @@ async def register_reference(
 ) -> destiny_sdk.references.Reference:
     """Create a reference."""
     reference = await reference_service.register_reference()
-    return reference.to_sdk()
+    return await reference.to_sdk()
 
 
 @router.post(
@@ -170,7 +175,7 @@ async def add_identifier(
     identifier = await reference_service.add_identifier(
         reference_id, external_identifier
     )
-    return identifier.to_sdk()
+    return await identifier.to_sdk()
 
 
 @router.post(
@@ -187,11 +192,11 @@ async def request_enhancement(
 ) -> destiny_sdk.robots.EnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""
     enhancement_request = await reference_service.request_reference_enhancement(
-        enhancement_request=EnhancementRequest.from_sdk(enhancement_request_in),
+        enhancement_request=await EnhancementRequest.from_sdk(enhancement_request_in),
         robot_service=robot_service,
     )
 
-    return enhancement_request.to_sdk()
+    return await enhancement_request.to_sdk()
 
 
 @router.post(
@@ -202,11 +207,12 @@ async def request_enhancement(
 async def request_batch_enhancement(
     enhancement_request_in: destiny_sdk.robots.BatchEnhancementRequestIn,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    blob_repository: Annotated[BlobRepository, Depends(blob_repository)],
 ) -> destiny_sdk.robots.BatchEnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""
     enhancement_request = (
         await reference_service.register_batch_reference_enhancement_request(
-            enhancement_request=BatchEnhancementRequest.from_sdk(
+            enhancement_request=await BatchEnhancementRequest.from_sdk(
                 enhancement_request_in
             ),
         )
@@ -219,7 +225,7 @@ async def request_batch_enhancement(
     await collect_and_dispatch_references_for_batch_enhancement.kiq(
         batch_enhancement_request_id=enhancement_request.id,
     )
-    return enhancement_request.to_sdk(get_signed_url)
+    return await enhancement_request.to_sdk(blob_repository.get_signed_url)
 
 
 @router.get(
@@ -237,7 +243,7 @@ async def check_enhancement_request_status(
         enhancement_request_id
     )
 
-    return enhancement_request.to_sdk()
+    return await enhancement_request.to_sdk()
 
 
 @router.get(
@@ -249,13 +255,14 @@ async def check_batch_enhancement_request_status(
         uuid.UUID, Path(description="The ID of the batch enhancement request.")
     ],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    blob_repository: Annotated[BlobRepository, Depends(blob_repository)],
 ) -> destiny_sdk.robots.BatchEnhancementRequestRead:
     """Check the status of a batch enhancement request."""
     batch_enhancement_request = await reference_service.get_batch_enhancement_request(
         batch_enhancement_request_id
     )
 
-    return batch_enhancement_request.to_sdk(get_signed_url)
+    return await batch_enhancement_request.to_sdk(blob_repository.get_signed_url)
 
 
 @robot_router.post("/enhancement/single/", status_code=status.HTTP_200_OK)
@@ -269,22 +276,22 @@ async def fulfill_enhancement_request(
             enhancement_request_id=robot_result.request_id,
             error=robot_result.error.message,
         )
-        return enhancement_request.to_sdk()
+        return await enhancement_request.to_sdk()
     if not robot_result.enhancement:
         enhancement_request = await reference_service.mark_enhancement_request_failed(
             enhancement_request_id=robot_result.request_id,
             error="No enhancement received.",
         )
-        return enhancement_request.to_sdk()
+        return await enhancement_request.to_sdk()
 
     enhancement_request = (
         await reference_service.create_reference_enhancement_from_request(
             enhancement_request_id=robot_result.request_id,
-            enhancement=Enhancement.from_sdk(robot_result.enhancement),
+            enhancement=await Enhancement.from_sdk(robot_result.enhancement),
         )
     )
 
-    return enhancement_request.to_sdk()
+    return await enhancement_request.to_sdk()
 
 
 @robot_router.post(
@@ -294,6 +301,7 @@ async def fulfill_enhancement_request(
 async def fulfill_batch_enhancement_request(
     robot_result: destiny_sdk.robots.BatchRobotResult,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    blob_repository: Annotated[BlobRepository, Depends(blob_repository)],
 ) -> destiny_sdk.robots.BatchEnhancementRequestRead:
     """Receive the robot result and kick off importing the enhancements."""
     logger.info(
@@ -307,12 +315,12 @@ async def fulfill_batch_enhancement_request(
                 error=robot_result.error.message,
             )
         )
-        return batch_enhancement_request.to_sdk(get_signed_url)
+        return await batch_enhancement_request.to_sdk(blob_repository.get_signed_url)
 
     batch_enhancement_request = (
         await reference_service.update_batch_enhancement_request_status(
             batch_enhancement_request_id=robot_result.request_id,
-            status=BatchEnhancementRequestStatus.PROCESSED,
+            status=BatchEnhancementRequestStatus.IMPORTING,
         )
     )
 
@@ -320,4 +328,4 @@ async def fulfill_batch_enhancement_request(
         batch_enhancement_request_id=robot_result.request_id,
     )
 
-    return batch_enhancement_request.to_sdk(get_signed_url)
+    return await batch_enhancement_request.to_sdk(blob_repository.get_signed_url)

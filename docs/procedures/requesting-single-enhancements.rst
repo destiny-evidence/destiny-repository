@@ -1,5 +1,5 @@
-Requesting Enhancements
-=======================
+Requesting Single Enhancements
+==============================
 
 .. note:: This document is a work in progress and may not be complete or accurate.
 

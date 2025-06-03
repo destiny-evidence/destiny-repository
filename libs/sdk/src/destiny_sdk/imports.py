@@ -1,7 +1,7 @@
 """Import process classes for the Destiny SDK."""
 
 import datetime
-from enum import StrEnum
+from enum import StrEnum, auto
 
 from pydantic import (
     UUID4,
@@ -22,10 +22,10 @@ class ImportRecordStatus(StrEnum):
     - `cancelled`: Processing was cancelled by calling the API.
     """
 
-    CREATED = "created"
-    STARTED = "started"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
+    CREATED = auto()
+    STARTED = auto()
+    COMPLETED = auto()
+    CANCELLED = auto()
 
 
 class ImportBatchStatus(StrEnum):
@@ -38,16 +38,22 @@ class ImportBatchStatus(StrEnum):
     - `cancelled`: Processing was cancelled by calling the API.
     """
 
-    CREATED = "created"
-    STARTED = "started"
-    FAILED = "failed"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
+    CREATED = auto()
+    STARTED = auto()
+    FAILED = auto()
+    COMPLETED = auto()
+    CANCELLED = auto()
 
 
 class CollisionStrategy(StrEnum):
     """
     The strategy to use when an identifier collision is detected.
+
+    Identifier collisions are detected on ``identifier_type`` and ``identifier``
+    (and ``other_identifier_name`` where relevant) already present in the database.
+
+    Enhancement collisions are detected on an entry with matching ``enhancement_type``
+    and ``source`` already being present on the collided reference.
 
     - `discard`: Do nothing with the incoming reference.
     - `fail`: Do nothing with the incoming reference and mark it as failed. This
@@ -56,16 +62,19 @@ class CollisionStrategy(StrEnum):
       enhancements in the merge.
     - `merge_defensive`: Prioritize the existing reference's identifiers and
       enhancements in the merge.
+    - `append`: Performs an aggressive merge of identifiers, and an append of
+      enhancements.
     - `overwrite`: Performs an aggressive merge of identifiers, and an overwrite of
       enhancements (deleting existing and recreating what is imported). This should
       be used sparingly and carefully.
     """
 
-    DISCARD = "discard"
-    FAIL = "fail"
-    MERGE_AGGRESSIVE = "merge_aggressive"
-    MERGE_DEFENSIVE = "merge_defensive"
-    OVERWRITE = "overwrite"
+    DISCARD = auto()
+    FAIL = auto()
+    MERGE_AGGRESSIVE = auto()
+    MERGE_DEFENSIVE = auto()
+    APPEND = auto()
+    OVERWRITE = auto()
 
 
 class ImportResultStatus(StrEnum):
@@ -83,12 +92,12 @@ class ImportResultStatus(StrEnum):
     - `cancelled`: Processing was cancelled by calling the API.
     """
 
-    CREATED = "created"
-    STARTED = "started"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
-    PARTIALLY_FAILED = "partially_failed"
-    FAILED = "failed"
+    CREATED = auto()
+    STARTED = auto()
+    COMPLETED = auto()
+    CANCELLED = auto()
+    PARTIALLY_FAILED = auto()
+    FAILED = auto()
 
 
 class _ImportRecordBase(BaseModel):

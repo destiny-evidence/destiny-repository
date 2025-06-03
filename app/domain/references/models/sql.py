@@ -203,19 +203,9 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
     )
     robot_version: Mapped[str] = mapped_column(String, nullable=True)
     content: Mapped[str] = mapped_column(JSONB, nullable=False)
-    content_version: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
 
     reference: Mapped["Reference"] = relationship(
         "Reference", back_populates="enhancements"
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "enhancement_type",
-            "reference_id",
-            "source",
-            name="uix_enhancement",
-        ),
     )
 
     @classmethod
@@ -228,7 +218,6 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             source=domain_obj.source,
             visibility=domain_obj.visibility,
             robot_version=domain_obj.robot_version,
-            content_version=domain_obj.content_version,
             content=domain_obj.content.model_dump_json(),
         )
 
@@ -241,7 +230,6 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             reference_id=self.reference_id,
             robot_version=self.robot_version,
             content=json.loads(self.content),
-            content_version=self.content_version,
             reference=await self.reference.to_domain()
             if "reference" in (preload or [])
             else None,
@@ -351,13 +339,13 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             if domain_obj.enhancement_parameters
             else None,
             error=domain_obj.error,
-            reference_data_file=domain_obj.reference_data_file.to_sql()
+            reference_data_file=await domain_obj.reference_data_file.to_sql()
             if domain_obj.reference_data_file
             else None,
-            result_file=domain_obj.result_file.to_sql()
+            result_file=await domain_obj.result_file.to_sql()
             if domain_obj.result_file
             else None,
-            validation_result_file=domain_obj.validation_result_file.to_sql()
+            validation_result_file=await domain_obj.validation_result_file.to_sql()
             if domain_obj.validation_result_file
             else None,
         )
@@ -376,13 +364,15 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             if self.enhancement_parameters
             else {},
             error=self.error,
-            reference_data_file=BlobStorageFile.from_sql(self.reference_data_file)
+            reference_data_file=await BlobStorageFile.from_sql(self.reference_data_file)
             if self.reference_data_file
             else None,
-            result_file=BlobStorageFile.from_sql(self.result_file)
+            result_file=await BlobStorageFile.from_sql(self.result_file)
             if self.result_file
             else None,
-            validation_result_file=BlobStorageFile.from_sql(self.validation_result_file)
+            validation_result_file=await BlobStorageFile.from_sql(
+                self.validation_result_file
+            )
             if self.validation_result_file
             else None,
         )

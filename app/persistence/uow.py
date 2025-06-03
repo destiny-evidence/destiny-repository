@@ -5,6 +5,7 @@ from contextlib import AbstractAsyncContextManager
 from types import TracebackType
 from typing import Final, Self
 
+from app.core.logger import get_logger
 from app.domain.imports.repository import (
     ImportBatchRepositoryBase,
     ImportRecordRepositoryBase,
@@ -18,6 +19,8 @@ from app.domain.references.repository import (
     ReferenceRepositoryBase,
 )
 from app.persistence.repository import GenericAsyncRepository
+
+logger = get_logger()
 
 
 class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
@@ -87,6 +90,9 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
     ) -> None:
         """Clean up any connections and rollback if an exception has been raised."""
         if exc_type:
+            logger.exception(
+                "Rolling back unit of work.",
+            )
             await self.rollback()
         self._is_active = False
 

@@ -218,9 +218,23 @@ Unable to add {self._persistence_cls.__name__}: duplicate.
         Args:
         - record (T): The record to be persisted.
 
+        Raises:
+        - SQLDuplicateError: If the record or any dependents already exists in the
+        database and violate a unique constraint.
+
         """
         persistence = await self._persistence_cls.from_domain(record)
-        persistence = await self._session.merge(persistence)
+        try:
+            persistence = await self._session.merge(persistence)
+        except IntegrityError as e:
+            detail = f"""
+Unable to merge {self._persistence_cls.__name__}: duplicate.
+"""
+            raise SQLDuplicateError(
+                detail=detail,
+                lookup_model=self._persistence_cls.__name__,
+                collision=str(e.orig),
+            ) from e
         await self._session.flush()
         await self._session.refresh(persistence)
         return await persistence.to_domain()
