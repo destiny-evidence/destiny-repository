@@ -15,7 +15,7 @@ from destiny_sdk.robots import (
 )
 
 
-def create_signature(secret_key: str, request_body: bytes, client_id: str) -> str:
+def create_signature(secret_key: str, request_body: bytes, client_id: UUID4) -> str:
     """
     Create an HMAC signature using SHA256.
 
@@ -23,6 +23,8 @@ def create_signature(secret_key: str, request_body: bytes, client_id: str) -> st
     :type secret_key: bytes
     :param request_body: request body to be encrypted
     :type request_body: bytes
+    :param client_id: client id to include in hmac
+    :type: UUID4
     :return: encrypted hexdigest of the request body with the secret key
     :rtype: str
     """
@@ -58,9 +60,7 @@ class HMACSigningAuth(httpx.Auth):
         :yield: Generator for Request with signature headers set
         :rtype: Generator[httpx.Request, httpx.Response]
         """
-        signature = create_signature(
-            self.secret_key, request.content, str(self.client_id)
-        )
+        signature = create_signature(self.secret_key, request.content, self.client_id)
         request.headers["Authorization"] = f"Signature {signature}"
         request.headers["X-Client-Id"] = f"{self.client_id}"
         yield request

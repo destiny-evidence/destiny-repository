@@ -2,9 +2,10 @@
 
 import hmac
 from typing import Protocol, Self
+from uuid import UUID
 
 from fastapi import HTTPException, Request, status
-from pydantic import BaseModel
+from pydantic import UUID4, BaseModel
 
 from .client import create_signature
 
@@ -37,7 +38,7 @@ class HMACAuthorizationHeaders(BaseModel):
     """
 
     signature: str
-    client_id: str
+    client_id: UUID4
     # Add timestamp later
 
     @classmethod
@@ -76,6 +77,14 @@ class HMACAuthorizationHeaders(BaseModel):
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="X-Client-Id header missing",
             )
+
+        try:
+            UUID(client_id)
+        except (ValueError, TypeError) as exc:
+            raise AuthException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid format for client id, expected UUID4.",
+            ) from exc
 
         return cls(signature=signature, client_id=client_id)
 

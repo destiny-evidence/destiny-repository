@@ -1,7 +1,7 @@
 """Test Known Robot HMAC Auth."""
 
+import uuid
 from collections.abc import AsyncGenerator
-from uuid import UUID
 
 import destiny_sdk
 import pytest
@@ -13,7 +13,7 @@ from app.domain.robots.models import RobotConfig
 from app.domain.robots.service import RobotService
 
 TEST_SECRET_KEY = "dlfskdfhgk8ei346oiehslkdfrerikfglser934utofs"
-FAKE_ROBOT_ID = "8f76fdc3-fd5e-404f-968c-4d1c1268204b"
+FAKE_ROBOT_ID = uuid.uuid4()
 
 
 @pytest.fixture
@@ -80,7 +80,7 @@ async def test_hmac_robot_authentication_happy_path(client: AsyncClient):
     """Test authentication is successful when signature is correct."""
     request_body = '{"message": "info"}'
     auth = destiny_sdk.client.HMACSigningAuth(
-        secret_key=TEST_SECRET_KEY, client_id=UUID(FAKE_ROBOT_ID)
+        secret_key=TEST_SECRET_KEY, client_id=FAKE_ROBOT_ID
     )
 
     response = await client.post("test/hmac/", content=request_body, auth=auth)

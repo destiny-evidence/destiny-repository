@@ -71,19 +71,22 @@ async def test_hmac_authentication_happy_path(client: AsyncClient):
     assert response.status_code == status.HTTP_200_OK
 
 
-async def test_hmac_authentication_incorrect_signature(client: AsyncClient):
-    """Test authentication fails when the signature does not match."""
+async def test_hmac_authentication_no_signature(client: AsyncClient):
+    """Test authentication fails if the signature is not included."""
+    response = await client.post("test/hmac/", json={})
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "Authorization header missing" in response.json()["detail"]
+
+
+async def test_hmac_authentication_wrong_auth_type(client: AsyncClient):
+    """Test authentication fails if the signature is not included."""
     response = await client.post(
-        "test/hmac/",
-        headers={
-            "Authorization": "Signature nonsense-signature",
-            "X-Client-Id": "fake-client-id",
-        },
-        json={},
+        "test/hmac/", json={}, headers={"Authorization": "Bearer nonsense-token"}
     )
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
-    assert "invalid" in response.json()["detail"]
+    assert "type not supported" in response.json()["detail"]
 
 
 async def test_hmac_authentication_no_client_id(client: AsyncClient):
@@ -100,21 +103,39 @@ async def test_hmac_authentication_no_client_id(client: AsyncClient):
     )
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "X-Client-Id header missing" in response.json()["detail"]
 
 
-async def test_hmac_authentication_no_signature(client: AsyncClient):
-    """Test authentication fails if the signature is not included."""
-    response = await client.post("test/hmac/", json={})
+async def test_hmac_authentication_invalid_client_id_format(client: AsyncClient):
+    """Test authentication fails when no client id is provided"""
+    request_body = '{"message": "info"}'
+    signature = create_signature(
+        secret_key=TEST_SECRET_KEY, request_body=request_body, client_id=TEST_CLIENT_ID
+    )
 
-    assert response.status_code == status.HTTP_401_UNAUTHORIZED
-    assert "header missing" in response.json()["detail"]
-
-
-async def test_hmac_authentication_wrong_auth_type(client: AsyncClient):
-    """Test authentication fails if the signature is not included."""
     response = await client.post(
-        "test/hmac/", json={}, headers={"Authorization": "Bearer nonsense-token"}
+        "test/hmac/",
+        headers={
+            "Authorization": f"Signature {signature}",
+            "X-Client-Id": "not-a-uuid",
+        },
+        content=request_body,
     )
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
-    assert "type not supported" in response.json()["detail"]
+    assert "Invalid format for client id" in response.json()["detail"]
+
+
+async def test_hmac_authentication_incorrect_signature(client: AsyncClient):
+    """Test authentication fails when the signature does not match."""
+    response = await client.post(
+        "test/hmac/",
+        headers={
+            "Authorization": "Signature nonsense-signature",
+            "X-Client-Id": f"{TEST_CLIENT_ID}",
+        },
+        json={},
+    )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "Signature" in response.json()["detail"]

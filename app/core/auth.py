@@ -400,7 +400,7 @@ class HMACKnownRobotAuth(destiny_sdk.auth.HMACAuth):
         )
         request_body = await request.body()
         expected_signature = destiny_sdk.client.create_signature(
-            secret_key=await self._get_secret_key(UUID(auth_headers.client_id)),
+            secret_key=await self._get_secret_key(auth_headers.client_id),
             request_body=request_body,
             client_id=auth_headers.client_id,
         )
