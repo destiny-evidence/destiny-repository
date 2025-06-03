@@ -28,9 +28,9 @@ def create_signature(secret_key: str, request_body: bytes, client_id: UUID4) -> 
     :return: encrypted hexdigest of the request body with the secret key
     :rtype: str
     """
-    signature_components = f"{request_body!r}:{client_id}"
+    signature_components = request_body + f":{client_id}".encode()
     return hmac.new(
-        secret_key.encode(), signature_components.encode(), hashlib.sha256
+        secret_key.encode(), signature_components, hashlib.sha256
     ).hexdigest()
 
 

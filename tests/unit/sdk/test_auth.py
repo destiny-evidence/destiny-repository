@@ -61,7 +61,7 @@ async def client(hmac_app: FastAPI) -> AsyncGenerator[AsyncClient]:
 
 async def test_hmac_authentication_happy_path(client: AsyncClient):
     """Test authentication is successful when signature is correct."""
-    request_body = '{"message": "info"}'
+    request_body = b'{"message": "info"}'
     auth = destiny_sdk.client.HMACSigningAuth(
         secret_key=TEST_SECRET_KEY, client_id=TEST_CLIENT_ID
     )
@@ -91,7 +91,7 @@ async def test_hmac_authentication_wrong_auth_type(client: AsyncClient):
 
 async def test_hmac_authentication_no_client_id(client: AsyncClient):
     """Test authentication fails when no client id is provided"""
-    request_body = '{"message": "info"}'
+    request_body = b'{"message": "info"}'
     signature = create_signature(
         secret_key=TEST_SECRET_KEY, request_body=request_body, client_id=TEST_CLIENT_ID
     )
@@ -108,7 +108,7 @@ async def test_hmac_authentication_no_client_id(client: AsyncClient):
 
 async def test_hmac_authentication_invalid_client_id_format(client: AsyncClient):
     """Test authentication fails when no client id is provided"""
-    request_body = '{"message": "info"}'
+    request_body = b'{"message": "info"}'
     signature = create_signature(
         secret_key=TEST_SECRET_KEY, request_body=request_body, client_id=TEST_CLIENT_ID
     )
