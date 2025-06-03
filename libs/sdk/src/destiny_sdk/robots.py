@@ -1,6 +1,6 @@
 """Schemas that define inputs/outputs for robots."""
 
-from enum import StrEnum
+from enum import StrEnum, auto
 from typing import Annotated, Self
 
 from pydantic import UUID4, BaseModel, Field, HttpUrl, model_validator
@@ -155,11 +155,11 @@ class EnhancementRequestStatus(StrEnum):
     - `completed`: Enhancement has been created.
     """
 
-    RECEIVED = "received"
-    ACCEPTED = "accepted"
-    REJECTED = "rejected"
-    FAILED = "failed"
-    COMPLETED = "completed"
+    RECEIVED = auto()
+    ACCEPTED = auto()
+    REJECTED = auto()
+    FAILED = auto()
+    COMPLETED = auto()
 
 
 class _EnhancementRequestBase(BaseModel):
@@ -211,13 +211,13 @@ class BatchEnhancementRequestStatus(StrEnum):
     - `completed`: All enhancements have been created.
     """
 
-    RECEIVED = "received"
-    ACCEPTED = "accepted"
-    REJECTED = "rejected"
-    PARTIAL_FAILED = "partial_failed"
-    FAILED = "failed"
-    IMPORTING = "importing"
-    COMPLETED = "completed"
+    RECEIVED = auto()
+    ACCEPTED = auto()
+    REJECTED = auto()
+    PARTIAL_FAILED = auto()
+    FAILED = auto()
+    IMPORTING = auto()
+    COMPLETED = auto()
 
 
 class _BatchEnhancementRequestBase(BaseModel):

@@ -1,7 +1,7 @@
 """Send authenticated requests to Destiny Repository."""
 
 from collections.abc import Generator
-from enum import StrEnum
+from enum import StrEnum, auto
 from typing import Annotated, Literal
 
 import httpx
@@ -20,8 +20,8 @@ class AuthenticationType(StrEnum):
     - `managed_identity`: Authenticate with a managed identity
     """
 
-    ACCESS_TOKEN = "access_token"  # noqa: S105
-    MANAGED_IDENTITY = "managed_identity"
+    ACCESS_TOKEN = auto()
+    MANAGED_IDENTITY = auto()
 
 
 class _ClientAuthenticationMethod(BaseModel):

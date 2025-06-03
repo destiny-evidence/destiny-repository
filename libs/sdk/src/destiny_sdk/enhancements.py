@@ -24,11 +24,11 @@ class EnhancementType(StrEnum):
     - `full text`: The full text of the reference. (To be implemeted)
     """
 
-    BIBLIOGRAPHIC = "bibliographic"
-    ABSTRACT = "abstract"
-    ANNOTATION = "annotation"
-    LOCATION = "location"
-    FULL_TEXT = "full text"
+    BIBLIOGRAPHIC = auto()
+    ABSTRACT = auto()
+    ANNOTATION = auto()
+    LOCATION = auto()
+    FULL_TEXT = auto()
 
 
 class AuthorPosition(StrEnum):
@@ -43,9 +43,9 @@ class AuthorPosition(StrEnum):
     - `last`: The last author
     """
 
-    FIRST = "first"
-    MIDDLE = "middle"
-    LAST = "last"
+    FIRST = auto()
+    MIDDLE = auto()
+    LAST = auto()
 
 
 class Authorship(BaseModel):
@@ -113,9 +113,9 @@ class AbstractProcessType(StrEnum):
     - `other`
     """
 
-    UNINVERTED = "uninverted"
-    CLOSED_API = "closed_api"
-    OTHER = "other"
+    UNINVERTED = auto()
+    CLOSED_API = auto()
+    OTHER = auto()
 
 
 class AbstractContentEnhancement(BaseModel):
@@ -237,10 +237,10 @@ class DriverVersion(StrEnum):
     article.
     """
 
-    PUBLISHED_VERSION = "publishedVersion"
-    ACCEPTED_VERSION = "acceptedVersion"
-    SUBMITTED_VERSION = "submittedVersion"
-    OTHER = "other"
+    PUBLISHED_VERSION = auto()
+    ACCEPTED_VERSION = auto()
+    SUBMITTED_VERSION = auto()
+    OTHER = auto()
 
 
 class Location(BaseModel):

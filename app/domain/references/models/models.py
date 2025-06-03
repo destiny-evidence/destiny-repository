@@ -2,7 +2,7 @@
 
 import uuid
 from collections.abc import Awaitable, Callable
-from enum import StrEnum
+from enum import StrEnum, auto
 from typing import Self
 
 import destiny_sdk
@@ -42,11 +42,11 @@ class EnhancementRequestStatus(StrEnum):
     - `completed`: Enhancement has been created.
     """
 
-    RECEIVED = "received"
-    ACCEPTED = "accepted"
-    REJECTED = "rejected"
-    FAILED = "failed"
-    COMPLETED = "completed"
+    RECEIVED = auto()
+    ACCEPTED = auto()
+    REJECTED = auto()
+    FAILED = auto()
+    COMPLETED = auto()
 
 
 class BatchEnhancementRequestStatus(StrEnum):
@@ -63,13 +63,13 @@ class BatchEnhancementRequestStatus(StrEnum):
     - `completed`: All enhancements have been created.
     """
 
-    RECEIVED = "received"
-    ACCEPTED = "accepted"
-    REJECTED = "rejected"
-    PARTIAL_FAILED = "partial_failed"
-    FAILED = "failed"
-    IMPORTING = "importing"
-    COMPLETED = "completed"
+    RECEIVED = auto()
+    ACCEPTED = auto()
+    REJECTED = auto()
+    PARTIAL_FAILED = auto()
+    FAILED = auto()
+    IMPORTING = auto()
+    COMPLETED = auto()
 
 
 class Visibility(StrEnum):
@@ -88,9 +88,9 @@ class Visibility(StrEnum):
     - `hidden`: Is not visible, but may be passed to data mining processes.
     """
 
-    PUBLIC = "public"
-    RESTRICTED = "restricted"
-    HIDDEN = "hidden"
+    PUBLIC = auto()
+    RESTRICTED = auto()
+    HIDDEN = auto()
 
 
 class Reference(

@@ -1,6 +1,6 @@
 """Identifier classes for the Destiny SDK."""
 
-from enum import StrEnum
+from enum import StrEnum, auto
 from typing import Annotated, Literal
 
 from pydantic import UUID4, BaseModel, Field, field_validator
@@ -21,10 +21,10 @@ class ExternalIdentifierType(StrEnum):
     - `other`: Any other identifier not defined. This should be used sparingly.
     """
 
-    DOI = "doi"
-    PM_ID = "pm_id"
-    OPEN_ALEX = "open_alex"
-    OTHER = "other"
+    DOI = auto()
+    PM_ID = auto()
+    OPEN_ALEX = auto()
+    OTHER = auto()
 
 
 def remove_doi_url(value: str) -> str:

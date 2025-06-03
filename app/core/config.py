@@ -1,6 +1,6 @@
 """API config parsing and model."""
 
-from enum import StrEnum
+from enum import StrEnum, auto
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Self
@@ -111,11 +111,11 @@ class AzureBlobConfig(BaseModel):
 class Environment(StrEnum):
     """Environment enum."""
 
-    PRODUCTION = "production"
-    STAGING = "staging"
-    DEVELOPMENT = "development"
-    LOCAL = "local"
-    TEST = "test"
+    PRODUCTION = auto()
+    STAGING = auto()
+    DEVELOPMENT = auto()
+    LOCAL = auto()
+    TEST = auto()
 
 
 class Settings(BaseSettings):
