@@ -15,7 +15,7 @@ from pydantic import (
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.logger import get_logger
-from app.domain.robots.models import RobotConfig
+from app.domain.robots.models import Robot
 
 logger = get_logger()
 
@@ -172,7 +172,7 @@ class Settings(BaseSettings):
     )
 
     # Temporary robot configuration, replace with db table later.
-    known_robots: list[RobotConfig] = Field(
+    known_robots: list[Robot] = Field(
         default_factory=list, description="semi-hardcoded robot configuration"
     )
 

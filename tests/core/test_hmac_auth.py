@@ -7,9 +7,10 @@ import destiny_sdk
 import pytest
 from fastapi import APIRouter, Depends, FastAPI, status
 from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 
 from app.core.auth import HMACMultiClientAuth
-from app.domain.robots.models import RobotConfig
+from app.domain.robots.models import Robot
 from app.domain.robots.service import RobotService
 
 TEST_SECRET_KEY = "dlfskdfhgk8ei346oiehslkdfrerikfglser934utofs"
@@ -29,12 +30,12 @@ def hmac_app() -> FastAPI:
 
     robot_service = RobotService(
         [
-            RobotConfig(
-                robot_id=FAKE_ROBOT_ID,
-                robot_url="https://www.balderdash.org",
+            Robot(
+                id=FAKE_ROBOT_ID,
+                robot_base_url="https://www.balderdash.org",
                 dependent_enhancements=[],
                 dependent_identifiers=[],
-                robot_secret=TEST_SECRET_KEY,
+                robot_secret=SecretStr(TEST_SECRET_KEY),
             )
         ]
     )

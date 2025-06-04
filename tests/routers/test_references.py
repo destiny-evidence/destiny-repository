@@ -28,7 +28,7 @@ from app.domain.references.models.sql import EnhancementRequest as SQLEnhancemen
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.routes import robots
 from app.domain.references.service import ReferenceService
-from app.domain.robots.models import RobotConfig
+from app.domain.robots.models import Robot
 from app.domain.robots.service import RobotService
 from app.main import (
     enhance_wrong_reference_exception_handler,
@@ -66,9 +66,9 @@ def app() -> FastAPI:
     app.include_router(references.robot_router)
     app.dependency_overrides[robots] = RobotService(
         [
-            RobotConfig(
-                robot_id=ROBOT_ID,
-                robot_url=ROBOT_URL,
+            Robot(
+                id=ROBOT_ID,
+                robot_base_url=ROBOT_URL,
                 dependent_enhancements=[],
                 dependent_identifiers=[],
                 robot_secret="secret-secret",

@@ -13,7 +13,7 @@ from app.domain.references.models.models import (
     EnhancementRequest,
     Reference,
 )
-from app.domain.robots.models import RobotConfig
+from app.domain.robots.models import Robot
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 
@@ -22,9 +22,9 @@ ROBOT_URL = HttpUrl("http://www.theres-a-robot-here.com/")
 FAKE_ROBOT_TOKEN = "access_token"
 
 KNOWN_ROBOTS = [
-    RobotConfig(
-        robot_id=ROBOT_ID,
-        robot_url=ROBOT_URL,
+    Robot(
+        id=ROBOT_ID,
+        robot_base_url=ROBOT_URL,
         dependent_enhancements=[],
         dependent_identifiers=[],
         robot_secret="secret-secret",
@@ -61,7 +61,7 @@ async def test_send_enhancement_request_to_robot_happy_path(httpx_mock, frozen_t
     )
 
     expected_signature = destiny_sdk.client.create_signature(
-        secret_key=KNOWN_ROBOTS[0].robot_secret,
+        secret_key=KNOWN_ROBOTS[0].robot_secret.get_secret_value(),
         request_body=robot_request.model_dump_json().encode(),
         client_id=ROBOT_ID,
         timestamp=time.time(),
