@@ -12,6 +12,7 @@ from httpx import ASGITransport, AsyncClient
 
 TEST_SECRET_KEY = "dlfskdfhgk8ei346oiehslkdfrerikfglser934utofs"
 TEST_CLIENT_ID = uuid.uuid4()
+REQUEST_BODY = b'{"message": "info"}'
 
 
 @pytest.fixture
@@ -62,19 +63,19 @@ async def client(hmac_app: FastAPI) -> AsyncGenerator[AsyncClient]:
 
 async def test_hmac_authentication_happy_path(client: AsyncClient):
     """Test authentication is successful when signature is correct."""
-    request_body = b'{"message": "info"}'
+
     auth = destiny_sdk.client.HMACSigningAuth(
         secret_key=TEST_SECRET_KEY, client_id=TEST_CLIENT_ID
     )
 
-    response = await client.post("test/hmac/", content=request_body, auth=auth)
+    response = await client.post("test/hmac/", content=REQUEST_BODY, auth=auth)
 
     assert response.status_code == status.HTTP_200_OK
 
 
 async def test_hmac_authentication_no_signature(client: AsyncClient):
     """Test authentication fails if the signature is not included."""
-    response = await client.post("test/hmac/", json={})
+    response = await client.post("test/hmac/", content=REQUEST_BODY)
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert "Authorization header missing" in response.json()["detail"]
@@ -83,7 +84,9 @@ async def test_hmac_authentication_no_signature(client: AsyncClient):
 async def test_hmac_authentication_wrong_auth_type(client: AsyncClient):
     """Test authentication fails if the signature is not included."""
     response = await client.post(
-        "test/hmac/", json={}, headers={"Authorization": "Bearer nonsense-token"}
+        "test/hmac/",
+        content=REQUEST_BODY,
+        headers={"Authorization": "Bearer nonsense-token"},
     )
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -92,10 +95,9 @@ async def test_hmac_authentication_wrong_auth_type(client: AsyncClient):
 
 async def test_hmac_authentication_no_client_id(client: AsyncClient):
     """Test authentication fails when no client id is provided"""
-    request_body = b'{"message": "info"}'
     signature = create_signature(
         secret_key=TEST_SECRET_KEY,
-        request_body=request_body,
+        request_body=REQUEST_BODY,
         client_id=TEST_CLIENT_ID,
         timestamp=time.time(),
     )
@@ -103,7 +105,7 @@ async def test_hmac_authentication_no_client_id(client: AsyncClient):
     response = await client.post(
         "test/hmac/",
         headers={"Authorization": f"Signature {signature}"},
-        content=request_body,
+        content=REQUEST_BODY,
     )
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -112,10 +114,9 @@ async def test_hmac_authentication_no_client_id(client: AsyncClient):
 
 async def test_hmac_authentication_invalid_client_id_format(client: AsyncClient):
     """Test authentication fails when no client id is provided"""
-    request_body = b'{"message": "info"}'
     signature = create_signature(
         secret_key=TEST_SECRET_KEY,
-        request_body=request_body,
+        request_body=REQUEST_BODY,
         client_id=TEST_CLIENT_ID,
         timestamp=time.time(),
     )
@@ -126,7 +127,7 @@ async def test_hmac_authentication_invalid_client_id_format(client: AsyncClient)
             "Authorization": f"Signature {signature}",
             "X-Client-Id": "not-a-uuid",
         },
-        content=request_body,
+        content=REQUEST_BODY,
     )
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -135,10 +136,9 @@ async def test_hmac_authentication_invalid_client_id_format(client: AsyncClient)
 
 async def test_hmac_authentication_no_timestamp(client: AsyncClient):
     """Test authentication fails when no client id is provided"""
-    request_body = b'{"message": "info"}'
     signature = create_signature(
         secret_key=TEST_SECRET_KEY,
-        request_body=request_body,
+        request_body=REQUEST_BODY,
         client_id=TEST_CLIENT_ID,
         timestamp=time.time(),
     )
@@ -149,7 +149,7 @@ async def test_hmac_authentication_no_timestamp(client: AsyncClient):
             "Authorization": f"Signature {signature}",
             "X-Client-Id": f"{TEST_CLIENT_ID}",
         },
-        content=request_body,
+        content=REQUEST_BODY,
     )
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -159,10 +159,9 @@ async def test_hmac_authentication_no_timestamp(client: AsyncClient):
 async def test_hmac_authentication_request_too_old(client: AsyncClient):
     """Test authentication fails when no client id is provided"""
     six_minutes = 60 * 6
-    request_body = b'{"message": "info"}'
     signature = create_signature(
         secret_key=TEST_SECRET_KEY,
-        request_body=request_body,
+        request_body=REQUEST_BODY,
         client_id=TEST_CLIENT_ID,
         timestamp=time.time(),
     )
@@ -174,7 +173,7 @@ async def test_hmac_authentication_request_too_old(client: AsyncClient):
             "X-Client-Id": f"{TEST_CLIENT_ID}",
             "X-Request-Timestamp": f"{time.time() - six_minutes}",
         },
-        content=request_body,
+        content=REQUEST_BODY,
     )
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -190,7 +189,7 @@ async def test_hmac_authentication_incorrect_signature(client: AsyncClient):
             "X-Client-Id": f"{TEST_CLIENT_ID}",
             "X-Request-Timestamp": f"{time.time()}",
         },
-        json={},
+        content=REQUEST_BODY,
     )
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
