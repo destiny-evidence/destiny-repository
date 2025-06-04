@@ -25,12 +25,15 @@ Visibility
     :inherited-members: BaseModel, str
 
 
+.. _sdk_schemas:Robots:
+
 Robots
 ------
 .. automodule:: libs.sdk.src.destiny_sdk.robots
     :members:
     :undoc-members:
     :inherited-members: BaseModel, str
+
 
 Enhancements
 ------------

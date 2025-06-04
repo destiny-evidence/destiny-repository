@@ -203,3 +203,5 @@ docker compose down -v \
 ```
 
 Note if you get unexpected `destiny_sdk` errors, you may need to add the `--build` flag to the `up` command above.
+
+You also may need to start the ssh agent to pull and build the [toy robot](https://github.com/destiny-evidence/toy-robot/blob/main/README.md) - see the toy robot README for more info.

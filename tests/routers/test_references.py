@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock
 
 import destiny_sdk
 import pytest
@@ -10,6 +11,7 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import UUID4
 from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
+from taskiq import InMemoryBroker
 
 from app.core.exceptions import (
     NotFoundError,
@@ -18,6 +20,7 @@ from app.core.exceptions import (
 )
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
+    BatchEnhancementRequestStatus,
     EnhancementRequestStatus,
     EnhancementType,
     Visibility,
@@ -25,12 +28,14 @@ from app.domain.references.models.models import (
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.routes import robots
+from app.domain.references.service import ReferenceService
 from app.domain.robots.models import RobotConfig, Robots
 from app.main import (
     enhance_wrong_reference_exception_handler,
     not_found_exception_handler,
     sdk_to_domain_exception_handler,
 )
+from app.tasks import broker
 
 # Use the database session in all tests to set up the database manager.
 pytestmark = pytest.mark.usefixtures("session")
@@ -114,7 +119,6 @@ def robot_result_enhancement(
             "source": "robot",
             "visibility": Visibility.RESTRICTED,
             "robot_version": "0.0.1",
-            "content_version": f"{uuid.uuid4()}",
             "content": {
                 "enhancement_type": EnhancementType.ANNOTATION,
                 "annotations": [
@@ -149,7 +153,7 @@ async def test_request_reference_enhancement_happy_path(
 
     # Mock the robot response
     httpx_mock.add_response(
-        method="POST", url=ROBOT_URL, status_code=status.HTTP_202_ACCEPTED
+        method="POST", url=ROBOT_URL + "single/", status_code=status.HTTP_202_ACCEPTED
     )
 
     enhancement_request_create = {
@@ -159,7 +163,7 @@ async def test_request_reference_enhancement_happy_path(
     }
 
     response = await client.post(
-        "/references/enhancement/", json=enhancement_request_create
+        "/references/enhancement/single/", json=enhancement_request_create
     )
 
     assert response.status_code == status.HTTP_202_ACCEPTED
@@ -177,7 +181,7 @@ async def test_request_reference_enhancement_robot_rejects_request(
     # Mock the robot response
     httpx_mock.add_response(
         method="POST",
-        url=ROBOT_URL,
+        url=ROBOT_URL + "single/",
         status_code=status.HTTP_418_IM_A_TEAPOT,
         json={"message": "broken"},
     )
@@ -189,7 +193,7 @@ async def test_request_reference_enhancement_robot_rejects_request(
     }
 
     response = await client.post(
-        "/references/enhancement/", json=enhancement_request_create
+        "/references/enhancement/single/", json=enhancement_request_create
     )
 
     data = await session.get(SQLEnhancementRequest, response.json()["id"])
@@ -216,7 +220,7 @@ async def test_not_found_exception_handler_returns_response_with_404(
     }
 
     response = await client.post(
-        "/references/enhancement/", json=enhancement_request_create
+        "/references/enhancement/single/", json=enhancement_request_create
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
@@ -236,7 +240,7 @@ async def test_request_reference_enhancement_nonexistent_reference(
     }
 
     response = await client.post(
-        "/references/enhancement/", json=enhancement_request_create
+        "/references/enhancement/single/", json=enhancement_request_create
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
@@ -259,7 +263,7 @@ async def test_check_enhancement_request_status_happy_path(
     await session.commit()
 
     response = await client.get(
-        f"/references/enhancement/request/{enhancement_request.id}/"
+        f"/references/enhancement/single/request/{enhancement_request.id}/"
     )
 
     assert response.status_code == status.HTTP_200_OK
@@ -284,7 +288,7 @@ async def test_fulfill_enhancement_request_happy_path(
 
     robot_result = robot_result_enhancement(enhancement_request.id, reference.id)
 
-    response = await client.post("/robot/enhancement/", json=robot_result)
+    response = await client.post("/robot/enhancement/single/", json=robot_result)
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["request_status"] == EnhancementRequestStatus.COMPLETED
@@ -310,7 +314,7 @@ async def test_fulfill_enhancement_request_robot_has_errors(
         "error": {"message": "Could not fulfill this enhancement request."},
     }
 
-    response = await client.post("/robot/enhancement/", json=robot_result)
+    response = await client.post("/robot/enhancement/single/", json=robot_result)
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["request_status"] == EnhancementRequestStatus.FAILED
@@ -337,6 +341,41 @@ async def test_wrong_reference_exception_handler_returns_response_with_400(
         enhancement_request.id, different_reference.id
     )
 
-    response = await client.post("/robot/enhancement/", json=robot_result)
+    response = await client.post("/robot/enhancement/single/", json=robot_result)
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_request_batch_enhancement_happy_path(
+    session: AsyncSession, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test requesting a batch enhancement for multiple references."""
+    # Add references to the database
+    reference_1 = await add_reference(session)
+    reference_2 = await add_reference(session)
+
+    batch_request_create = {
+        "reference_ids": [str(reference_1.id), str(reference_2.id)],
+        "robot_id": str(uuid.uuid4()),
+    }
+
+    response = await client.post(
+        "/references/enhancement/batch/", json=batch_request_create
+    )
+
+    mock_process = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        ReferenceService,
+        "collect_and_dispatch_references_for_batch_enhancement",
+        mock_process,
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    response_data = response.json()
+    assert "id" in response_data
+    assert response_data["request_status"] == BatchEnhancementRequestStatus.RECEIVED
+    assert response_data["reference_ids"] == [str(reference_1.id), str(reference_2.id)]
+
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+    mock_process.assert_awaited_once()

@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
+from app.core.config import Environment
 from app.core.exceptions import NotFoundError
 from app.domain.imports import routes as imports
 from app.domain.imports.models.models import (
@@ -287,7 +288,7 @@ async def test_auth_failure(
     client: AsyncClient, fake_application_id: str, fake_tenant_id: str
 ):
     """Test that we reject invalid tokens."""
-    imports.settings.env = "production"
+    imports.settings.env = Environment.PRODUCTION
     imports.settings.azure_application_id = fake_application_id
     imports.settings.azure_tenant_id = fake_tenant_id
     imports.import_auth.reset()
@@ -320,7 +321,7 @@ async def test_missing_auth(
     fake_tenant_id: str,
 ):
     """Test that we reject missing tokens."""
-    imports.settings.env = "production"
+    imports.settings.env = Environment.PRODUCTION
     imports.settings.azure_application_id = fake_application_id
     imports.settings.azure_tenant_id = fake_tenant_id
     imports.import_auth.reset()

@@ -8,9 +8,8 @@ COPY pyproject.toml poetry.lock README.md ./
 COPY libs/sdk ./libs/sdk
 
 ARG POETRY_INSTALL_DEV=false
-
 RUN if [ "$POETRY_INSTALL_DEV" = "true" ]; then \
-    poetry bundle venv --with dev /app/.venv; \
+    poetry bundle venv --without docs --with dev /app/.venv; \
     else \
     poetry bundle venv --only=main /app/.venv; \
     fi

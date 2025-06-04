@@ -2,12 +2,13 @@
 
 from pydantic import UUID4, BaseModel, Field
 
-from .enhancements import Enhancement, EnhancementFileInput
-from .identifiers import ExternalIdentifier
-from .visibility import Visibility
+from destiny_sdk.core import _JsonlFileInputMixIn
+from destiny_sdk.enhancements import Enhancement, EnhancementFileInput
+from destiny_sdk.identifiers import ExternalIdentifier
+from destiny_sdk.visibility import Visibility
 
 
-class Reference(BaseModel):
+class Reference(_JsonlFileInputMixIn, BaseModel):
     """Core reference class."""
 
     visibility: Visibility = Field(
@@ -27,7 +28,7 @@ class Reference(BaseModel):
     )
 
 
-class ReferenceFileInput(BaseModel):
+class ReferenceFileInput(_JsonlFileInputMixIn, BaseModel):
     """Enhancement model used to marshall a file input."""
 
     visibility: Visibility = Field(
@@ -42,7 +43,3 @@ class ReferenceFileInput(BaseModel):
         default=None,
         description="A list of enhancements for the reference",
     )
-
-    def to_jsonl(self) -> str:
-        """Convert the model to a JSONL string."""
-        return self.model_dump_json(exclude_none=True)

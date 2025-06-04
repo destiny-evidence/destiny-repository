@@ -1,7 +1,8 @@
 """Models associated with references."""
 
 import uuid
-from enum import StrEnum
+from collections.abc import Awaitable, Callable
+from enum import StrEnum, auto
 from typing import Self
 
 import destiny_sdk
@@ -10,14 +11,19 @@ import destiny_sdk
 from destiny_sdk.enhancements import EnhancementContent, EnhancementType  # noqa: F401
 from destiny_sdk.identifiers import ExternalIdentifier, ExternalIdentifierType
 from pydantic import (
-    BaseModel,
     Field,
+    HttpUrl,
     TypeAdapter,
     ValidationError,
 )
 
 from app.core.exceptions import SDKToDomainError
-from app.domain.base import DomainBaseModel, SQLAttributeMixin
+from app.core.logger import get_logger
+from app.domain.base import DomainBaseModel, SDKJsonlMixin, SQLAttributeMixin
+from app.domain.imports.models.models import CollisionStrategy
+from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
+
+logger = get_logger()
 
 ExternalIdentifierAdapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
     ExternalIdentifier,
@@ -36,11 +42,34 @@ class EnhancementRequestStatus(StrEnum):
     - `completed`: Enhancement has been created.
     """
 
-    RECEIVED = "received"
-    ACCEPTED = "accepted"
-    REJECTED = "rejected"
-    FAILED = "failed"
-    COMPLETED = "completed"
+    RECEIVED = auto()
+    ACCEPTED = auto()
+    REJECTED = auto()
+    FAILED = auto()
+    COMPLETED = auto()
+
+
+class BatchEnhancementRequestStatus(StrEnum):
+    """
+    The status of an enhancement request.
+
+    **Allowed values**:
+    - `received`: Enhancement request has been received by the repo.
+    - `accepted`: Enhancement request has been accepted by the robot.
+    - `rejected`: Enhancement request has been rejected by the robot.
+    - `partial_failed`: Some enhancements failed to create.
+    - `failed`: All enhancements failed to create.
+    - `importing`: Enhancements have been received by the repo and are being imported.
+    - `completed`: All enhancements have been created.
+    """
+
+    RECEIVED = auto()
+    ACCEPTED = auto()
+    REJECTED = auto()
+    PARTIAL_FAILED = auto()
+    FAILED = auto()
+    IMPORTING = auto()
+    COMPLETED = auto()
 
 
 class Visibility(StrEnum):
@@ -59,12 +88,16 @@ class Visibility(StrEnum):
     - `hidden`: Is not visible, but may be passed to data mining processes.
     """
 
-    PUBLIC = "public"
-    RESTRICTED = "restricted"
-    HIDDEN = "hidden"
+    PUBLIC = auto()
+    RESTRICTED = auto()
+    HIDDEN = auto()
 
 
-class Reference(DomainBaseModel, SQLAttributeMixin):
+class Reference(
+    DomainBaseModel,
+    SDKJsonlMixin,
+    SQLAttributeMixin,
+):
     """Core reference model with database attributes included."""
 
     visibility: Visibility = Field(
@@ -80,25 +113,26 @@ class Reference(DomainBaseModel, SQLAttributeMixin):
         description="A list of enhancements for the reference",
     )
 
-    def to_sdk(self) -> destiny_sdk.references.Reference:
+    async def to_sdk(self) -> destiny_sdk.references.Reference:
         """Convert the reference to the SDK model."""
         try:
             return destiny_sdk.references.Reference(
                 id=self.id,
                 visibility=self.visibility,
                 identifiers=[
-                    identifier.to_sdk().identifier
+                    (await identifier.to_sdk()).identifier
                     for identifier in self.identifiers or []
                 ],
                 enhancements=[
-                    enhancement.to_sdk() for enhancement in self.enhancements or []
+                    await enhancement.to_sdk()
+                    for enhancement in self.enhancements or []
                 ],
             )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
     @classmethod
-    def from_file_input(
+    async def from_file_input(
         cls,
         reference_in: destiny_sdk.references.ReferenceFileInput,
         reference_id: uuid.UUID | None = None,
@@ -127,6 +161,128 @@ class Reference(DomainBaseModel, SQLAttributeMixin):
         else:
             return reference
 
+    async def merge(  # noqa: PLR0912
+        self,
+        incoming_reference: Self,
+        collision_strategy: CollisionStrategy,
+    ) -> None:
+        """
+        Merge an incoming reference into this one.
+
+        Args:
+            - existing_reference (Reference): The existing reference.
+            - incoming_reference (Reference): The incoming reference.
+            - collision_strategy (CollisionStrategy): The strategy to use for
+                handling collisions.
+
+        Returns:
+            - Reference: The final reference to be persisted.
+
+        """
+
+        def _get_identifier_key(
+            identifier: ExternalIdentifier,
+        ) -> tuple[str, str | None]:
+            """
+            Get the key for an identifier.
+
+            Args:
+                - identifier (LinkedExternalIdentifier)
+
+            Returns:
+                - tuple[str, str | None]: The key for the identifier.
+
+            """
+            return (
+                identifier.identifier_type,
+                identifier.other_identifier_name
+                if hasattr(identifier, "other_identifier_name")
+                else None,
+            )
+
+        # Graft matching IDs from self to incoming
+        for identifier in incoming_reference.identifiers or []:
+            for existing_identifier in self.identifiers or []:
+                if _get_identifier_key(identifier.identifier) == _get_identifier_key(
+                    existing_identifier.identifier
+                ):
+                    identifier.id = existing_identifier.id
+        for enhancement in incoming_reference.enhancements or []:
+            for existing_enhancement in self.enhancements or []:
+                if (enhancement.content.enhancement_type, enhancement.source) == (
+                    existing_enhancement.content.enhancement_type,
+                    existing_enhancement.source,
+                ):
+                    enhancement.id = existing_enhancement.id
+
+        if not self.identifiers or not incoming_reference.identifiers:
+            msg = "No identifiers found in merge. This should not happen."
+            raise RuntimeError(msg)
+
+        self.enhancements = self.enhancements or []
+        incoming_reference.enhancements = incoming_reference.enhancements or []
+
+        # Merge identifiers
+        if collision_strategy == CollisionStrategy.MERGE_DEFENSIVE:
+            self.identifiers.extend(
+                [
+                    identifier
+                    for identifier in incoming_reference.identifiers
+                    if _get_identifier_key(identifier.identifier)
+                    not in {
+                        _get_identifier_key(identifier.identifier)
+                        for identifier in self.identifiers
+                    }
+                ]
+            )
+        elif collision_strategy in (
+            CollisionStrategy.MERGE_AGGRESSIVE,
+            CollisionStrategy.OVERWRITE,
+            CollisionStrategy.APPEND,
+        ):
+            self.identifiers = [
+                identifier
+                for identifier in self.identifiers
+                if _get_identifier_key(identifier.identifier)
+                not in {
+                    _get_identifier_key(identifier.identifier)
+                    for identifier in incoming_reference.identifiers
+                }
+            ] + incoming_reference.identifiers
+
+        # On an overwrite, we don't preserve the existing enhancements, only identifiers
+        if collision_strategy == CollisionStrategy.OVERWRITE:
+            self.enhancements = incoming_reference.enhancements.copy()
+            return
+
+        # Otherwise, merge enhancements
+        if collision_strategy == CollisionStrategy.APPEND:
+            self.enhancements += incoming_reference.enhancements
+        elif collision_strategy == CollisionStrategy.MERGE_DEFENSIVE:
+            self.enhancements.extend(
+                [
+                    enhancement
+                    for enhancement in incoming_reference.enhancements
+                    if (enhancement.content.enhancement_type, enhancement.source)
+                    not in {
+                        (enhancement.content.enhancement_type, enhancement.source)
+                        for enhancement in self.enhancements
+                    }
+                ]
+            )
+        elif collision_strategy == CollisionStrategy.MERGE_AGGRESSIVE:
+            self.enhancements = [
+                enhancement
+                for enhancement in self.enhancements
+                if (enhancement.content.enhancement_type, enhancement.source)
+                not in {
+                    (enhancement.content.enhancement_type, enhancement.source)
+                    for enhancement in incoming_reference.enhancements
+                }
+            ] + incoming_reference.enhancements
+
+        return
+
 
 class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
     """External identifier model with database attributes included."""
@@ -143,7 +299,7 @@ class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
     )
 
     @classmethod
-    def from_sdk(
+    async def from_sdk(
         cls,
         external_identifier: destiny_sdk.identifiers.LinkedExternalIdentifier,
     ) -> Self:
@@ -155,7 +311,7 @@ class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
-    def to_sdk(self) -> destiny_sdk.identifiers.LinkedExternalIdentifier:
+    async def to_sdk(self) -> destiny_sdk.identifiers.LinkedExternalIdentifier:
         """Convert the external identifier to the SDK model."""
         try:
             return destiny_sdk.identifiers.LinkedExternalIdentifier(
@@ -185,7 +341,7 @@ class GenericExternalIdentifier(DomainBaseModel):
     )
 
     @classmethod
-    def from_specific(
+    async def from_specific(
         cls,
         external_identifier: ExternalIdentifier,
     ) -> Self:
@@ -203,20 +359,6 @@ class ExternalIdentifierSearch(GenericExternalIdentifier):
     """Model to search for an external identifier."""
 
 
-class ExternalIdentifierParseResult(BaseModel):
-    """Result of an attempt to parse an external identifier."""
-
-    external_identifier: ExternalIdentifier | None = Field(
-        default=None,
-        description="The external identifier to create",
-        discriminator="identifier_type",
-    )
-    error: str | None = Field(
-        default=None,
-        description="Error encountered during the parsing process",
-    )
-
-
 class Enhancement(DomainBaseModel, SQLAttributeMixin):
     """Core enhancement model with database attributes included."""
 
@@ -229,13 +371,6 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     robot_version: str | None = Field(
         default=None,
         description="The version of the robot that generated the content.",
-    )
-    content_version: uuid.UUID = Field(
-        description="""
-        UUID regenerated when the content changes.
-        Can be used to identify when content has changed.
-        """,
-        default_factory=uuid.uuid4,
     )
     content: EnhancementContent = Field(
         discriminator="enhancement_type",
@@ -251,19 +386,21 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     )
 
     @classmethod
-    def from_sdk(
+    async def from_sdk(
         cls,
         enhancement: destiny_sdk.enhancements.Enhancement,
+        reference_id: uuid.UUID | None = None,
     ) -> Self:
         """Create an enhancement from the SDK model."""
         try:
             return cls.model_validate(
-                enhancement.model_dump(),
+                enhancement.model_dump()
+                | ({"reference_id": reference_id} if reference_id else {})
             )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
-    def to_sdk(self) -> destiny_sdk.enhancements.Enhancement:
+    async def to_sdk(self) -> destiny_sdk.enhancements.Enhancement:
         """Convert the enhancement to the SDK model."""
         try:
             return destiny_sdk.enhancements.Enhancement.model_validate(
@@ -301,7 +438,7 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
     )
 
     @classmethod
-    def from_sdk(
+    async def from_sdk(
         cls,
         enhancement_request: destiny_sdk.robots.EnhancementRequestIn,
     ) -> Self:
@@ -313,7 +450,7 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
-    def to_sdk(self) -> destiny_sdk.robots.EnhancementRequestRead:
+    async def to_sdk(self) -> destiny_sdk.robots.EnhancementRequestRead:
         """Convert the enhancement request to the SDK model."""
         try:
             return destiny_sdk.robots.EnhancementRequestRead.model_validate(
@@ -323,43 +460,140 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
             raise SDKToDomainError(errors=exception.errors()) from exception
 
 
-class EnhancementParseResult(BaseModel):
-    """Result of an attempt to parse an enhancement."""
+class BatchEnhancementRequest(DomainBaseModel, SQLAttributeMixin):
+    """Request to add enhancements to a list of references."""
 
-    enhancement: destiny_sdk.enhancements.EnhancementFileInput | None = Field(
+    reference_ids: list[uuid.UUID] = Field(
+        description="The IDs of the references these enhancements are associated with."
+    )
+    robot_id: uuid.UUID = Field(
+        description="The robot to request the enhancement from."
+    )
+    request_status: BatchEnhancementRequestStatus = Field(
+        default=BatchEnhancementRequestStatus.RECEIVED,
+        description="The status of the request to create an enhancement.",
+    )
+    enhancement_parameters: dict | None = Field(
         default=None,
-        description="The enhancement to create",
+        description="Additional optional parameters to pass through to the robot.",
     )
     error: str | None = Field(
         default=None,
-        description="Error encountered during the parsing process",
-    )
-
-
-class ReferenceCreateResult(BaseModel):
-    """
-    Result of an attempt to create a reference.
-
-    If reference is None, no reference was created and errors will be populated.
-    If reference exists and there are errors, the reference was created but there
-    were errors in the hydration.
-    If reference exists and there are no errors, the reference was created and all
-    enhancements/identifiers were hydrated successfully from the input.
-    """
-
-    reference: Reference | None = Field(
-        default=None,
         description="""
-    The created reference.
-    If None, no reference was created.
-    """,
+Procedural error affecting all references encountered during the enhancement process.
+Errors for individual references are provided <TBC>.
+""",
     )
-    errors: list[str] = Field(
-        default_factory=list,
-        description="A list of errors encountered during the creation process",
+    reference_data_file: BlobStorageFile | None = Field(
+        default=None,
+        description="The file containing the reference data for the robot.",
+    )
+    result_file: BlobStorageFile | None = Field(
+        default=None,
+        description="The file containing the result data from the robot.",
+    )
+    validation_result_file: BlobStorageFile | None = Field(
+        default=None,
+        description="The file containing the validation result data from the robot.",
     )
 
     @property
-    def error_str(self) -> str | None:
-        """Return a string of errors if they exist."""
-        return "\n\n".join(e.strip() for e in self.errors) if self.errors else None
+    def n_references(self) -> int:
+        """The number of references in the request."""
+        return len(self.reference_ids)
+
+    @classmethod
+    async def from_sdk(
+        cls,
+        enhancement_request: destiny_sdk.robots.BatchEnhancementRequestIn,
+    ) -> Self:
+        """Create an enhancement request from the SDK model."""
+        try:
+            return cls.model_validate(enhancement_request.model_dump())
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
+
+    async def to_sdk(
+        self,
+        to_signed_url: Callable[
+            [BlobStorageFile, BlobSignedUrlType], Awaitable[HttpUrl]
+        ],
+    ) -> destiny_sdk.robots.BatchEnhancementRequestRead:
+        """Convert the enhancement request to the SDK model."""
+        try:
+            return destiny_sdk.robots.BatchEnhancementRequestRead.model_validate(
+                self.model_dump()
+                | {
+                    "reference_data_url": await to_signed_url(
+                        self.reference_data_file, BlobSignedUrlType.DOWNLOAD
+                    )
+                    if self.reference_data_file
+                    else None,
+                    "result_storage_url": await to_signed_url(
+                        self.result_file, BlobSignedUrlType.UPLOAD
+                    )
+                    if self.result_file
+                    else None,
+                    "validation_result_url": await to_signed_url(
+                        self.validation_result_file, BlobSignedUrlType.DOWNLOAD
+                    )
+                    if self.validation_result_file
+                    else None,
+                },
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
+
+    async def to_batch_robot_request_sdk(
+        self,
+        to_signed_url: Callable[
+            [BlobStorageFile, BlobSignedUrlType], Awaitable[HttpUrl]
+        ],
+    ) -> destiny_sdk.robots.BatchRobotRequest:
+        """Convert the enhancement request to the SDK robot request model."""
+        try:
+            return destiny_sdk.robots.BatchRobotRequest(
+                id=self.id,
+                reference_storage_url=await to_signed_url(
+                    self.reference_data_file, BlobSignedUrlType.DOWNLOAD
+                )
+                if self.reference_data_file
+                else None,
+                result_storage_url=await to_signed_url(
+                    self.result_file, BlobSignedUrlType.UPLOAD
+                )
+                if self.result_file
+                else None,
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
+
+
+class BatchRobotResultValidationEntry(DomainBaseModel, SDKJsonlMixin):
+    """A single entry in the validation result file for a batch enhancement request."""
+
+    reference_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "The ID of the reference which was enhanced. "
+            "If this is empty, the BatchEnhancementResultEntry could not be parsed."
+        ),
+    )
+    error: str | None = Field(
+        default=None,
+        description=(
+            "Error encountered during the enhancement process for this reference. "
+            "If this is empty, the enhancement was successfully created."
+        ),
+    )
+
+    async def to_sdk(
+        self,
+    ) -> destiny_sdk.robots.BatchRobotResultValidationEntry:
+        """Convert the validation entry to the SDK model."""
+        try:
+            return destiny_sdk.robots.BatchRobotResultValidationEntry.model_validate(
+                self.model_dump(),
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception

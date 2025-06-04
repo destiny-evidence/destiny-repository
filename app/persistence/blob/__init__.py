@@ -1,0 +1,1 @@
+"""Blob persistence implementation."""

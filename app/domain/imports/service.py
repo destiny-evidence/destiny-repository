@@ -13,7 +13,7 @@ from app.domain.imports.models.models import (
     ImportResult,
     ImportResultStatus,
 )
-from app.domain.references.reference_service import ReferenceService
+from app.domain.references.service import ReferenceService
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 
@@ -114,14 +114,14 @@ This should not happen.
             await self.sql_uow.results.update_by_pk(
                 import_result.id,
                 status=ImportResultStatus.PARTIALLY_FAILED,
-                reference_id=reference_result.reference.id,
+                reference_id=reference_result.reference_id,
                 failure_details=reference_result.error_str,
             )
         else:
             await self.sql_uow.results.update_by_pk(
                 import_result.id,
                 status=ImportResultStatus.COMPLETED,
-                reference_id=reference_result.reference.id,
+                reference_id=reference_result.reference_id,
             )
 
     async def process_batch(self, import_batch: ImportBatch) -> None:
@@ -181,7 +181,9 @@ This should not happen.
                     )
                     response = await client.post(
                         str(import_batch.callback_url),
-                        json=import_batch.to_sdk_summary().model_dump(mode="json"),
+                        json=(await import_batch.to_sdk_summary()).model_dump(
+                            mode="json"
+                        ),
                     )
                     response.raise_for_status()
             except Exception:

@@ -8,5 +8,7 @@ This section documents the repository codebase itself.
    :caption: Contents:
 
    structure
+   config
+   persistence/blob
    models/imports
    models/references

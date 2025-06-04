@@ -6,7 +6,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, HttpUrl, PastDate
 
-from .visibility import Visibility
+from destiny_sdk.core import _JsonlFileInputMixIn
+from destiny_sdk.visibility import Visibility
 
 
 class EnhancementType(StrEnum):
@@ -20,14 +21,14 @@ class EnhancementType(StrEnum):
     - `abstract`: The abstract of a reference.
     - `annotation`: A free-form enhancement for tagging with labels.
     - `locations`: Locations where the reference can be found.
-    - `full text`: The full text of the reference. (To be implemeted)
+    - `full_text`: The full text of the reference. (To be implemeted)
     """
 
-    BIBLIOGRAPHIC = "bibliographic"
-    ABSTRACT = "abstract"
-    ANNOTATION = "annotation"
-    LOCATION = "location"
-    FULL_TEXT = "full text"
+    BIBLIOGRAPHIC = auto()
+    ABSTRACT = auto()
+    ANNOTATION = auto()
+    LOCATION = auto()
+    FULL_TEXT = auto()
 
 
 class AuthorPosition(StrEnum):
@@ -42,9 +43,9 @@ class AuthorPosition(StrEnum):
     - `last`: The last author
     """
 
-    FIRST = "first"
-    MIDDLE = "middle"
-    LAST = "last"
+    FIRST = auto()
+    MIDDLE = auto()
+    LAST = auto()
 
 
 class Authorship(BaseModel):
@@ -112,9 +113,9 @@ class AbstractProcessType(StrEnum):
     - `other`
     """
 
-    UNINVERTED = "uninverted"
-    CLOSED_API = "closed_api"
-    OTHER = "other"
+    UNINVERTED = auto()
+    CLOSED_API = auto()
+    OTHER = auto()
 
 
 class AbstractContentEnhancement(BaseModel):
@@ -144,9 +145,9 @@ class AnnotationType(StrEnum):
 
     **Allowed values**:
     - `boolean`: An annotation which is the boolean application of a label across a
-      reference.
+    reference.
     - `score`: An annotation which is a score for a label across a reference,
-      without a boolean value.
+    without a boolean value.
     """
 
     BOOLEAN = auto()
@@ -171,10 +172,10 @@ class ScoreAnnotation(BaseModel):
     )
     score: float = Field(description="""Score for this annotation""")
     data: dict = Field(
-        description="""
-        An object representation of the annotation including any confidence scores or
-descriptions.
-""",
+        description=(
+            "An object representation of the annotation including any confidence scores"
+            " or descriptions."
+        )
     )
 
 
@@ -206,6 +207,7 @@ descriptions.
     )
 
 
+#: Union type for all annotations.
 Annotation = Annotated[
     BooleanAnnotation | ScoreAnnotation, Field(discriminator="annotation_type")
 ]
@@ -299,6 +301,7 @@ class LocationEnhancement(BaseModel):
     )
 
 
+#: Union type for all enhancement content types.
 EnhancementContent = Annotated[
     BibliographicMetadataEnhancement
     | AbstractContentEnhancement
@@ -308,7 +311,7 @@ EnhancementContent = Annotated[
 ]
 
 
-class Enhancement(BaseModel):
+class Enhancement(_JsonlFileInputMixIn, BaseModel):
     """Core enhancement class."""
 
     reference_id: uuid.UUID = Field(
@@ -324,13 +327,6 @@ class Enhancement(BaseModel):
         default=None,
         description="The version of the robot that generated the content.",
     )
-    content_version: uuid.UUID = Field(
-        description="""
-        UUID regenerated when the content changes.
-        Can be used to identify when content has changed.
-        """,
-        default_factory=uuid.uuid4,
-    )
     content: Annotated[
         EnhancementContent,
         Field(
@@ -341,7 +337,7 @@ class Enhancement(BaseModel):
 
 
 class EnhancementFileInput(BaseModel):
-    """Enhancement model used to marshall a file input."""
+    """Enhancement model used to marshall a file input to new references."""
 
     source: str = Field(
         description="The enhancement source for tracking provenance.",
@@ -356,13 +352,6 @@ class EnhancementFileInput(BaseModel):
         # (Adam) Temporary alias for backwards compatibility for already prepared files
         # Next person who sees this can remove it :)
         alias="processor_version",
-    )
-    content_version: uuid.UUID = Field(
-        description="""
-        UUID regenerated when the content changes.
-        Can be used to identify when content has changed.
-        """,
-        default_factory=uuid.uuid4,
     )
     content: EnhancementContent = Field(
         discriminator="enhancement_type",

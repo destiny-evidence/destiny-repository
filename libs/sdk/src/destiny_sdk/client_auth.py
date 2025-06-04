@@ -1,14 +1,14 @@
 """Send authenticated requests to Destiny Repository."""
 
 from collections.abc import Generator
-from enum import StrEnum
+from enum import StrEnum, auto
 from typing import Annotated, Literal
 
 import httpx
 import msal
 from pydantic import BaseModel, Field, HttpUrl
 
-from .robots import RobotResult
+from destiny_sdk.robots import RobotResult
 
 
 class AuthenticationType(StrEnum):
@@ -20,8 +20,8 @@ class AuthenticationType(StrEnum):
     - `managed_identity`: Authenticate with a managed identity
     """
 
-    ACCESS_TOKEN = "access_token"  # noqa: S105
-    MANAGED_IDENTITY = "managed_identity"
+    ACCESS_TOKEN = auto()
+    MANAGED_IDENTITY = auto()
 
 
 class _ClientAuthenticationMethod(BaseModel):
@@ -87,6 +87,7 @@ class AccessTokenAuthentication(_ClientAuthenticationMethod):
         return self.access_token
 
 
+#: Union type for all client authentication methods.
 ClientAuthenticationMethod = Annotated[
     ManagedIdentityAuthentication | AccessTokenAuthentication,
     Field(discriminator="authentication_type"),

@@ -6,16 +6,14 @@ import uuid
 from typing import Self
 
 from sqlalchemy import UUID, ForeignKey, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import ENUM, JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.references.models.models import (
-    Enhancement as DomainEnhancement,
+    BatchEnhancementRequest as DomainBatchEnhancementRequest,
 )
 from app.domain.references.models.models import (
-    EnhancementRequest as DomainEnhancementRequest,
-)
-from app.domain.references.models.models import (
+    BatchEnhancementRequestStatus,
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifierAdapter,
@@ -23,11 +21,18 @@ from app.domain.references.models.models import (
     Visibility,
 )
 from app.domain.references.models.models import (
+    Enhancement as DomainEnhancement,
+)
+from app.domain.references.models.models import (
+    EnhancementRequest as DomainEnhancementRequest,
+)
+from app.domain.references.models.models import (
     LinkedExternalIdentifier as DomainExternalIdentifier,
 )
 from app.domain.references.models.models import (
     Reference as DomainReference,
 )
+from app.persistence.blob.models import BlobStorageFile
 from app.persistence.sql.persistence import GenericSQLPersistence
 
 
@@ -198,19 +203,9 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
     )
     robot_version: Mapped[str] = mapped_column(String, nullable=True)
     content: Mapped[str] = mapped_column(JSONB, nullable=False)
-    content_version: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
 
     reference: Mapped["Reference"] = relationship(
         "Reference", back_populates="enhancements"
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "enhancement_type",
-            "reference_id",
-            "source",
-            name="uix_enhancement",
-        ),
     )
 
     @classmethod
@@ -223,7 +218,6 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             source=domain_obj.source,
             visibility=domain_obj.visibility,
             robot_version=domain_obj.robot_version,
-            content_version=domain_obj.content_version,
             content=domain_obj.content.model_dump_json(),
         )
 
@@ -236,7 +230,6 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             reference_id=self.reference_id,
             robot_version=self.robot_version,
             content=json.loads(self.content),
-            content_version=self.content_version,
             reference=await self.reference.to_domain()
             if "reference" in (preload or [])
             else None,
@@ -266,9 +259,9 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
         )
     )
 
-    enhancement_parameters: Mapped[str] = mapped_column(JSONB, nullable=True)
+    enhancement_parameters: Mapped[str | None] = mapped_column(JSONB, nullable=True)
 
-    error: Mapped[str] = mapped_column(String, nullable=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
 
     reference: Mapped["Reference"] = relationship("Reference")
 
@@ -301,5 +294,85 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             error=self.error,
             reference=await self.reference.to_domain()
             if "reference" in (preload or [])
+            else None,
+        )
+
+
+class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementRequest]):
+    """
+    SQL Persistence model for a BatchEnhancementRequest.
+
+    This is used in the repository layer to pass data between the domain and the
+    database.
+    """
+
+    __tablename__ = "batch_enhancement_request"
+
+    reference_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID), nullable=False)
+
+    robot_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
+
+    request_status: Mapped[BatchEnhancementRequestStatus] = mapped_column(
+        ENUM(
+            *[status.value for status in BatchEnhancementRequestStatus],
+            name="batch_enhancement_request_status",
+        )
+    )
+
+    enhancement_parameters: Mapped[str | None] = mapped_column(JSONB, nullable=True)
+
+    reference_data_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    result_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    validation_result_file: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    @classmethod
+    async def from_domain(cls, domain_obj: DomainBatchEnhancementRequest) -> Self:
+        """Create a persistence model from a domain Enhancement object."""
+        return cls(
+            id=domain_obj.id,
+            reference_ids=domain_obj.reference_ids,
+            robot_id=domain_obj.robot_id,
+            request_status=domain_obj.request_status,
+            enhancement_parameters=json.dumps(domain_obj.enhancement_parameters)
+            if domain_obj.enhancement_parameters
+            else None,
+            error=domain_obj.error,
+            reference_data_file=await domain_obj.reference_data_file.to_sql()
+            if domain_obj.reference_data_file
+            else None,
+            result_file=await domain_obj.result_file.to_sql()
+            if domain_obj.result_file
+            else None,
+            validation_result_file=await domain_obj.validation_result_file.to_sql()
+            if domain_obj.validation_result_file
+            else None,
+        )
+
+    async def to_domain(
+        self,
+        preload: list[str] | None = None,  # noqa: ARG002
+    ) -> DomainBatchEnhancementRequest:
+        """Convert the persistence model into a Domain Enhancement object."""
+        return DomainBatchEnhancementRequest(
+            id=self.id,
+            reference_ids=self.reference_ids,
+            robot_id=self.robot_id,
+            request_status=self.request_status,
+            enhancement_parameters=json.loads(self.enhancement_parameters)
+            if self.enhancement_parameters
+            else {},
+            error=self.error,
+            reference_data_file=await BlobStorageFile.from_sql(self.reference_data_file)
+            if self.reference_data_file
+            else None,
+            result_file=await BlobStorageFile.from_sql(self.result_file)
+            if self.result_file
+            else None,
+            validation_result_file=await BlobStorageFile.from_sql(
+                self.validation_result_file
+            )
+            if self.validation_result_file
             else None,
         )

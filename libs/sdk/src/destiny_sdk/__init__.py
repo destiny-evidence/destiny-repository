@@ -2,6 +2,7 @@
 
 from . import (
     auth,
+    client,
     client_auth,
     enhancements,
     identifiers,
@@ -13,6 +14,7 @@ from . import (
 
 __all__ = [
     "auth",
+    "client",
     "client_auth",
     "enhancements",
     "identifiers",

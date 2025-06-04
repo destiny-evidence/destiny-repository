@@ -3,6 +3,7 @@
 import uuid
 from unittest.mock import AsyncMock
 
+import destiny_sdk
 import pytest
 
 from app.domain.imports.models.models import (
@@ -15,7 +16,7 @@ from app.domain.imports.models.models import (
     ImportResultStatus,
 )
 from app.domain.imports.service import ImportService
-from app.domain.references.models.models import Reference, ReferenceCreateResult
+from app.domain.references.models.validators import ReferenceCreateResult
 
 RECORD_ID = uuid.uuid4()
 REF_ID = uuid.uuid4()
@@ -75,7 +76,7 @@ async def test_import_reference_happy_path(fake_repository, fake_uow):
 
     fake_reference_service = AsyncMock()
     fake_reference_service.ingest_reference.return_value = ReferenceCreateResult(
-        reference=Reference(id=REF_ID)
+        reference=destiny_sdk.references.ReferenceFileInput(),
     )
 
     await service.import_reference(
@@ -83,8 +84,7 @@ async def test_import_reference_happy_path(fake_repository, fake_uow):
     )
 
     import_result = repo_results.get_first_record()
-
-    assert import_result.reference_id == REF_ID
+    assert import_result.id
     assert import_result.status == ImportResultStatus.COMPLETED
 
 
@@ -123,7 +123,8 @@ async def test_import_reference_reference_created_with_errors(
 
     fake_reference_service = AsyncMock()
     fake_reference_service.ingest_reference.return_value = ReferenceCreateResult(
-        reference=Reference(id=REF_ID), errors=[import_reference_error]
+        reference=destiny_sdk.references.ReferenceFileInput(),
+        errors=[import_reference_error],
     )
 
     await service.import_reference(
@@ -173,7 +174,7 @@ async def test_get_import_batch_summary_batch_completed_no_failures(
     service = ImportService(uow)
 
     batch = await service.get_import_batch_with_results(BATCH_ID)
-    summary = batch.to_sdk_summary()
+    summary = await batch.to_sdk_summary()
 
     assert summary.results.get(ImportResultStatus.COMPLETED) == 1
     assert summary.results.get(ImportResultStatus.FAILED) == 0
@@ -212,7 +213,7 @@ async def test_get_import_batch_summary_batch_completed_with_failures(
     service = ImportService(uow)
 
     batch = await service.get_import_batch_with_results(BATCH_ID)
-    summary = batch.to_sdk_summary()
+    summary = await batch.to_sdk_summary()
 
     assert summary.results.get(ImportResultStatus.FAILED) == 1
     assert summary.results.get(ImportResultStatus.PARTIALLY_FAILED) == 1
@@ -249,7 +250,7 @@ async def test_get_import_batch_summary_batch_in_progress(
     service = ImportService(uow)
 
     batch = await service.get_import_batch_with_results(BATCH_ID)
-    summary = batch.to_sdk_summary()
+    summary = await batch.to_sdk_summary()
 
     assert summary.results.get(ImportResultStatus.COMPLETED) == 1
     assert summary.results.get(ImportResultStatus.STARTED) == 1

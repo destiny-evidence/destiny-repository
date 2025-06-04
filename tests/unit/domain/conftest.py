@@ -61,6 +61,35 @@ class FakeRepository:
             )
         del self.repository[pk]
 
+    async def merge(self, record: DummyDomainSQLModel) -> DummyDomainSQLModel:
+        """Merge a record into the repository, adding it if it doesn't exist."""
+        if record.id not in self.repository:
+            self.repository[record.id] = record
+        else:
+            existing_record = self.repository[record.id]
+            for key, value in record.model_dump().items():
+                setattr(existing_record, key, value)
+        return self.repository[record.id]
+
+    async def verify_pk_existence(self, pks: list[UUID]) -> None:
+        """Verify that the given primary keys exist in the repository.
+
+        Args:
+            pks (list[UUID]): The primary keys to verify.
+
+        Raises:
+            SQLNotFoundError: If any of the primary keys do not exist in the repository.
+        """
+        missing_pks = {str(pk) for pk in pks if pk not in self.repository}
+        if missing_pks:
+            detail = f"{missing_pks} not in repository"
+            raise SQLNotFoundError(
+                detail=detail,
+                lookup_model=self.__class__.__name__,
+                lookup_type="id",
+                lookup_value=missing_pks,
+            )
+
     def iter_records(self):
         """Create an iterator over the records in the repository
         Returns:
@@ -94,6 +123,7 @@ class FakeUnitOfWork:
         external_identifiers=None,
         enhancements=None,
         enhancement_requests=None,
+        batch_enhancement_requests=None,
     ):
         self.batches = batches
         self.imports = imports
@@ -102,6 +132,7 @@ class FakeUnitOfWork:
         self.external_identifiers = external_identifiers
         self.enhancements = enhancements
         self.enhancement_requests = enhancement_requests
+        self.batch_enhancement_requests = batch_enhancement_requests
         self.committed = False
 
     async def __aenter__(self):

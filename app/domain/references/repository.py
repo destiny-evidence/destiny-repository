@@ -1,12 +1,16 @@
 """Repositories for imports and associated models."""
 
 from abc import ABC
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.core.exceptions import SQLNotFoundError
+from app.domain.references.models.models import (
+    BatchEnhancementRequest as DomainBatchEnhancementRequest,
+)
 from app.domain.references.models.models import Enhancement as DomainEnhancement
 from app.domain.references.models.models import (
     EnhancementRequest as DomainEnhancementRequest,
@@ -18,6 +22,9 @@ from app.domain.references.models.models import (
     LinkedExternalIdentifier as DomainExternalIdentifier,
 )
 from app.domain.references.models.models import Reference as DomainReference
+from app.domain.references.models.sql import (
+    BatchEnhancementRequest as SQLBatchEnhancementRequest,
+)
 from app.domain.references.models.sql import Enhancement as SQLEnhancement
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import ExternalIdentifier as SQLExternalIdentifier
@@ -47,6 +54,42 @@ class ReferenceSQLRepository(
             DomainReference,
             SQLReference,
         )
+
+    async def get_hydrated(
+        self,
+        reference_ids: list[UUID],
+        enhancement_types: list[str] | None = None,
+        external_identifier_types: list[str] | None = None,
+    ) -> list[DomainReference]:
+        """Get a list of references with enhancements and identifiers by id."""
+        query = select(SQLReference).where(SQLReference.id.in_(reference_ids))
+        preload: list[str] = []
+        if enhancement_types:
+            query = query.options(
+                joinedload(
+                    SQLReference.enhancements.and_(
+                        SQLEnhancement.enhancement_type.in_(enhancement_types)
+                    )
+                )
+            )
+            preload.append("enhancements")
+        if external_identifier_types:
+            query = query.options(
+                joinedload(
+                    SQLReference.identifiers.and_(
+                        SQLExternalIdentifier.identifier_type.in_(
+                            external_identifier_types
+                        )
+                    )
+                )
+            )
+            preload.append("identifiers")
+        result = await self._session.execute(query)
+        db_references = result.unique().scalars().all()
+        return [
+            await db_reference.to_domain(preload=preload)
+            for db_reference in db_references
+        ]
 
 
 class ExternalIdentifierRepositoryBase(
@@ -161,4 +204,28 @@ class EnhancementRequestSQLRepository(
             session,
             DomainEnhancementRequest,
             SQLEnhancementRequest,
+        )
+
+
+class BatchEnhancementRequestRepositoryBase(
+    GenericAsyncRepository[DomainBatchEnhancementRequest, GenericPersistenceType],
+    ABC,
+):
+    """Abstract implementation of a repository for batch enhancement requests."""
+
+
+class BatchEnhancementRequestSQLRepository(
+    GenericAsyncSqlRepository[
+        DomainBatchEnhancementRequest, SQLBatchEnhancementRequest
+    ],
+    BatchEnhancementRequestRepositoryBase,
+):
+    """Concrete implementation of a repository for batch enhancement requests."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Initialize the repository with the database session."""
+        super().__init__(
+            session,
+            DomainBatchEnhancementRequest,
+            SQLBatchEnhancementRequest,
         )

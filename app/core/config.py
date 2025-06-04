@@ -1,8 +1,9 @@
 """API config parsing and model."""
 
+from enum import StrEnum, auto
 from functools import lru_cache
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, Field, HttpUrl, PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -77,6 +78,46 @@ If db_pass is provided, azure_db_resource_url must not be provided."""
         return self
 
 
+class MinioConfig(BaseModel):
+    """Minio configuration."""
+
+    host: str
+    access_key: str
+    secret_key: str
+    bucket: str = "destiny-repository"
+    presigned_url_expiry_seconds: int = 60 * 60  # 1 hour
+
+
+class AzureBlobConfig(BaseModel):
+    """Azure Blob Storage configuration."""
+
+    storage_account_name: str
+    container: str
+    credential: str | None = None
+    presigned_url_expiry_seconds: int = 60 * 60  # 1 hour
+    user_delegation_key_duration: int = 60 * 60 * 24  # 1 day
+
+    @property
+    def uses_managed_identity(self) -> bool:
+        """Return True if the configuration uses managed identity."""
+        return self.credential is None
+
+    @property
+    def account_url(self) -> str:
+        """Return the account URL for Azure Blob Storage."""
+        return f"https://{self.storage_account_name}.blob.core.windows.net"
+
+
+class Environment(StrEnum):
+    """Environment enum."""
+
+    PRODUCTION = auto()
+    STAGING = auto()
+    DEVELOPMENT = auto()
+    LOCAL = auto()
+    TEST = auto()
+
+
 class Settings(BaseSettings):
     """Settings model for API."""
 
@@ -85,6 +126,8 @@ class Settings(BaseSettings):
     project_root: Path = Path(__file__).joinpath("../../..").resolve()
 
     db_config: DatabaseConfig
+    minio_config: MinioConfig | None = None
+    azure_blob_config: AzureBlobConfig | None = None
 
     azure_application_id: str
     azure_login_url: HttpUrl = HttpUrl("https://login.microsoftonline.com")
@@ -95,15 +138,82 @@ class Settings(BaseSettings):
     cli_client_id: str | None = None
     app_name: str
 
+    default_upload_file_chunk_size: int = Field(
+        default=1,
+        description=(
+            "Number of records to process in a single file chunk when uploading."
+        ),
+    )
+    upload_file_chunk_size_override: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Override the default upload file chunk size. Keyed by file type."
+        ),
+    )
+
+    default_download_file_chunk_size: Literal[1] = Field(
+        default=1,
+        description=(
+            "Number of records to process in a single file chunk when downloading."
+            "Not configurable or used, just representing that we stream line-by-line "
+            "at this point."
+        ),
+    )
+
+    presigned_url_expiry_seconds: int = Field(
+        default=3600,
+        description="The number of seconds a signed URL is valid for.",
+    )
+
     # Temporary robot configuration, replace with db table later.
     known_robots: list[RobotConfig] = Field(
         default_factory=list, description="semi-hardcoded robot configuration"
     )
 
-    env: str = Field("production", description="The environment the app is running in.")
+    env: Environment = Field(
+        default=Environment.PRODUCTION,
+        description="The environment the app is running in.",
+    )
+
+    @property
+    def running_locally(self) -> bool:
+        """Return True if the app is running locally."""
+        return self.env in (Environment.LOCAL, Environment.TEST)
+
+    @property
+    def default_blob_location(self) -> str:
+        """Return the default blob location."""
+        if self.running_locally:
+            if self.minio_config:
+                return "minio"
+            if self.azure_blob_config:
+                return "azure"
+            if self.env == Environment.TEST:
+                # If we reach here, we are in a test environment and haven't
+                # specified a blob config, so assume it is mocked. Just return
+                # minio to keep pydantic happy.
+                return "minio"
+        return "azure"
+
+    @property
+    def default_blob_container(self) -> str:
+        """Return the default blob container."""
+        if self.running_locally:
+            if self.minio_config:
+                return self.minio_config.bucket
+            if self.azure_blob_config:
+                return self.azure_blob_config.container
+            if self.env == Environment.TEST:
+                # If we reach here, we are in a test environment and haven't
+                # specified a blob config, so assume it is mocked.
+                return "test"
+        if not self.azure_blob_config:
+            msg = "Azure Blob Storage configuration is not given."
+            raise ValueError(msg)
+        return self.azure_blob_config.container
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Get a cached settings object."""
-    return Settings()  # type: ignore[call-arg]
+    return Settings()

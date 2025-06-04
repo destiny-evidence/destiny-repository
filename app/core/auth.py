@@ -4,6 +4,8 @@ from enum import StrEnum
 
 from destiny_sdk.auth import AuthMethod, AzureJwtAuth, SuccessAuth
 
+from app.core.config import Environment
+
 CACHE_TTL = 60 * 60 * 24  # 24 hours
 
 
@@ -17,10 +19,13 @@ class AuthScopes(StrEnum):
 
 
 def choose_auth_strategy(
-    environment: str, tenant_id: str, application_id: str, auth_scope: AuthScopes
+    environment: Environment,
+    tenant_id: str,
+    application_id: str,
+    auth_scope: AuthScopes,
 ) -> AuthMethod:
     """Choose a strategy for our authorization."""
-    if environment in ("dev", "test"):
+    if environment in (Environment.LOCAL, Environment.TEST):
         return SuccessAuth()
 
     return AzureJwtAuth(
