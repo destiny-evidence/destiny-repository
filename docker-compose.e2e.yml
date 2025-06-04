@@ -90,9 +90,12 @@ services:
       MINIO_CONFIG: '{"HOST":"fs:9000", "ACCESS_KEY": "localuser", "SECRET_KEY": "localpass"}'
       KNOWN_ROBOTS: '[{"robot_id": "1ee5aa1f-3248-4d21-9fee-718d4ff0ba5f", "robot_url": "http://toy-robot:8001/toy/enhancement/", "dependent_enhancements":["annotation","abstract"], "dependent_identifiers":["doi","pm_id"], "auth_method":{"authentication_type": "access_token", "access_token": "dummy"}}]'
     entrypoint: taskiq worker app.tasks:broker --fs-discover
+  # Excluded by default until open sourced
   toy-robot:
+    profiles:
+      - toy-robot
     build:
-      context: git@github.com:destiny-evidence/toy-robot.git#toy-robot-batch-enhancements
+      context: git@github.com:destiny-evidence/toy-robot.git
       ssh: [default]
     environment:
       DESTINY_REPOSITORY_URL: "http://repository:8000"

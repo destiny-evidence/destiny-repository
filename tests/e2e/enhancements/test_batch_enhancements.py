@@ -23,6 +23,8 @@ engine = create_engine(db_url)
 
 # e2e tests are ordered for easier seeding of downstream tests
 @pytest.mark.order(2)
+# Remove the below if you want to run e2e tests locally with the toy robot.
+@pytest.mark.skip(reason="Skipped in GH action, requires toy robot access.")
 def test_complete_batch_enhancement_workflow():
     """Test complete batch enhancement workflow, happy-ish path."""
     with (
