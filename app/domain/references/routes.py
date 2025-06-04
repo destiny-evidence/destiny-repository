@@ -55,10 +55,10 @@ def reference_service(
 robots = RobotService(known_robots=settings.known_robots)
 
 
-def robot_communication_service(
+def robot_request_dispatcher(
     robots: Annotated[RobotService, Depends(robots)],
 ) -> RobotRequestDispatcher:
-    """Return the robot service using the provided unit of work dependencies."""
+    """Return the robot request dispatcher."""
     return RobotRequestDispatcher(robots=robots)
 
 
@@ -186,9 +186,7 @@ async def add_identifier(
 async def request_enhancement(
     enhancement_request_in: destiny_sdk.robots.EnhancementRequestIn,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    robot_service: Annotated[
-        RobotRequestDispatcher, Depends(robot_communication_service)
-    ],
+    robot_service: Annotated[RobotRequestDispatcher, Depends(robot_request_dispatcher)],
 ) -> destiny_sdk.robots.EnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""
     enhancement_request = await reference_service.request_reference_enhancement(
