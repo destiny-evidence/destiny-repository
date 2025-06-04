@@ -56,11 +56,11 @@ class HMACAuthorizationHeaders(BaseModel):
     """
     The HTTP authorization headers required for HMAC authentication.
 
-    ```
-    Authorization: Signature [ADD THIS]
-    X-Client-Id: [ADD THIS]
-    ```
+    Expects the following headers to be present in the request
 
+    - Authorization: Signature [request signature]
+    - X-Client-Id: [UUID]
+    - X-Request-Timestamp: [float]
     """
 
     signature: str
@@ -77,6 +77,9 @@ class HMACAuthorizationHeaders(BaseModel):
         :raises AuthException: Authorization header is missing
         :raises AuthException: Authorization type not supported
         :raises AuthException: X-Client-Id header is missing
+        :raises AuthException: Client id format is invalid
+        :raises AuthException: X-Request-Timestamp header is missing
+        :raises AuthException: Request timestamp has expired
         :return: Header values necessary for authenticating the request
         :rtype: HMACAuthorizationHeaders
         """
