@@ -58,7 +58,7 @@ jobs:
 
       - name: Build
         run: |
-          docker compose -f docker-compose.yml -f docker-compose.e2e.yml build
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d
 
       - name: Wait for e2e container to finish
         run: |
