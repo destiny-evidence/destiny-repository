@@ -23,7 +23,6 @@ from fastapi import Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from httpx import AsyncClient
 from jose import exceptions, jwt
-from pydantic import UUID4
 
 from app.core.config import Environment, get_settings
 from app.core.exceptions import NotFoundError
@@ -192,7 +191,7 @@ class AzureJwtAuth(AuthMethod):
     To use AzureJwtAuth you will need to have an Entra Id application registration
     with app roles configured for your auth scopes.
 
-    Any client communicating with your robot requires assignment to the app role
+    Any client communicating with your service requires assignment to the app role
     that matches the auth scope it wishes to use. Azure will provide these scopes
     back in the JWT.
 
@@ -386,21 +385,38 @@ def choose_auth_strategy(
     )
 
 
-class HMACKnownRobotAuth(destiny_sdk.auth.HMACAuth):
-    """Adds HMAC auth for known robots when used as router or endpoint dependency."""
+class HMACMultiClientAuth(destiny_sdk.auth.HMACAuthMethod):
+    """
+    Adds HMAC auth that supports authenticating with multiple clients.
 
-    def __init__(self, get_secret: Callable[[UUID], Awaitable[str]]) -> None:
-        """Initialize the HMAC auth dependency."""
-        self.get_secret = get_secret
+    Uses a client secret lookup function provided at initialisation,
+    which is then called with the client_id provided in the request header.
+    """
+
+    def __init__(self, get_client_secret: Callable[[UUID], Awaitable[str]]) -> None:
+        """
+        Initialize with a client secret lookup callable.
+
+        :param get_client_secret: Callable that will return the client secret an id.
+        :type get_client_secret: Callable[[UUID], Awaitable[str]]
+        """
+        self.get_secret = get_client_secret
 
     async def __call__(self, request: Request) -> bool:
         """Perform Authorization check."""
-        auth_headers = destiny_sdk.auth.HMACAuthorizationHeaders.get_hmac_headers(
-            request
-        )
+        auth_headers = destiny_sdk.auth.HMACAuthorizationHeaders.from_request(request)
         request_body = await request.body()
+
+        try:
+            secret_key = await self.get_secret(auth_headers.client_id)
+        except NotFoundError as exc:
+            raise destiny_sdk.auth.AuthException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Client {auth_headers.client_id} does not exist.",
+            ) from exc
+
         expected_signature = destiny_sdk.client.create_signature(
-            secret_key=await self._get_secret_key(auth_headers.client_id),
+            secret_key=secret_key,
             request_body=request_body,
             client_id=auth_headers.client_id,
             timestamp=auth_headers.timestamp,
@@ -413,22 +429,12 @@ class HMACKnownRobotAuth(destiny_sdk.auth.HMACAuth):
 
         return True
 
-    async def _get_secret_key(self, robot_id: UUID4) -> str:
-        """Get the secret key for the robot making the request."""
-        try:
-            return await self.get_secret(robot_id)
-        except NotFoundError as exc:
-            raise destiny_sdk.auth.AuthException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Robot {robot_id} does not exist.",
-            ) from exc
-
 
 def choose_hmac_auth_strategy(
-    get_secret: Callable[[UUID], Awaitable[str]],
+    get_client_secret: Callable[[UUID], Awaitable[str]],
 ) -> destiny_sdk.auth.HMACAuthMethod:
     """Choose an HMAC auth method."""
     if settings.env in (Environment.LOCAL, Environment.TEST):
         return destiny_sdk.auth.BypassHMACAuth()
 
-    return HMACKnownRobotAuth(get_secret=get_secret)
+    return HMACMultiClientAuth(get_client_secret=get_client_secret)

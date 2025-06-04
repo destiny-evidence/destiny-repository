@@ -8,7 +8,7 @@ import pytest
 from fastapi import APIRouter, Depends, FastAPI, status
 from httpx import ASGITransport, AsyncClient
 
-from app.core.auth import HMACKnownRobotAuth
+from app.core.auth import HMACMultiClientAuth
 from app.domain.robots.models import RobotConfig
 from app.domain.robots.service import RobotService
 
@@ -39,7 +39,7 @@ def hmac_app() -> FastAPI:
         ]
     )
 
-    auth = HMACKnownRobotAuth(get_secret=robot_service.get_robot_secret)
+    auth = HMACMultiClientAuth(get_client_secret=robot_service.get_robot_secret)
 
     def __endpoint() -> dict:
         return {"message": "ok"}
@@ -76,7 +76,7 @@ async def client(hmac_app: FastAPI) -> AsyncGenerator[AsyncClient]:
         yield client
 
 
-async def test_hmac_robot_authentication_happy_path(client: AsyncClient):
+async def test_hmac_multi_client_authentication_happy_path(client: AsyncClient):
     """Test authentication is successful when signature is correct."""
     request_body = '{"message": "info"}'
     auth = destiny_sdk.client.HMACSigningAuth(

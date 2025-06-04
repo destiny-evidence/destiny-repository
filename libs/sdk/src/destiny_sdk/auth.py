@@ -68,7 +68,7 @@ class HMACAuthorizationHeaders(BaseModel):
     timestamp: float
 
     @classmethod
-    def get_hmac_headers(cls, request: Request) -> Self:
+    def from_request(cls, request: Request) -> Self:
         """
         Get the required headers for HMAC authentication.
 
@@ -167,7 +167,7 @@ class HMACAuth(HMACAuthMethod):
 
     async def __call__(self, request: Request) -> bool:
         """Perform Authorization check."""
-        auth_headers = HMACAuthorizationHeaders.get_hmac_headers(request)
+        auth_headers = HMACAuthorizationHeaders.from_request(request)
         request_body = await request.body()
         expected_signature = create_signature(
             self.secret_key,
