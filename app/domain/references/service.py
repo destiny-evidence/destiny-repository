@@ -70,6 +70,16 @@ class ReferenceService(GenericService):
         if enhancement.reference_id != reference_id:
             detail = "Enhancement is for a different reference than requested."
             raise WrongReferenceError(detail)
+
+        # Validate derived_from enhancement IDs if present
+        if (
+            hasattr(enhancement.content, "derived_from")
+            and enhancement.content.derived_from
+        ):
+            await self.sql_uow.enhancements.verify_pk_existence(
+                enhancement.content.derived_from
+            )
+
         reference = await self.sql_uow.references.get_by_pk(
             reference_id, preload=["enhancements", "identifiers"]
         )

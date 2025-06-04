@@ -190,6 +190,27 @@ def fake_import_batch():
 
 
 @pytest.fixture
+def fake_enhancement_data():
+    return {
+        "source": "test_source",
+        "visibility": "public",
+        "enhancement_type": "annotation",
+        "content": {
+            "enhancement_type": "annotation",
+            "annotations": [
+                {
+                    "annotation_type": "boolean",
+                    "scheme": "openalex:topic",
+                    "value": "true",
+                    "label": "test_label",
+                    "data": {"foo": "bar"},
+                }
+            ],
+        },
+    }
+
+
+@pytest.fixture
 def fake_repository():
     return FakeRepository
 
