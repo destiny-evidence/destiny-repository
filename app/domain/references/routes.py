@@ -28,7 +28,7 @@ from app.domain.references.tasks import (
     collect_and_dispatch_references_for_batch_enhancement,
     validate_and_import_batch_enhancement_result,
 )
-from app.domain.robots.external_service import RobotCommunicationService
+from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.sql.session import get_session
@@ -57,9 +57,9 @@ robots = RobotService(known_robots=settings.known_robots)
 
 def robot_communication_service(
     robots: Annotated[RobotService, Depends(robots)],
-) -> RobotCommunicationService:
+) -> RobotRequestDispatcher:
     """Return the robot service using the provided unit of work dependencies."""
-    return RobotCommunicationService(robots=robots)
+    return RobotRequestDispatcher(robots=robots)
 
 
 def robot_service(
@@ -187,7 +187,7 @@ async def request_enhancement(
     enhancement_request_in: destiny_sdk.robots.EnhancementRequestIn,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     robot_service: Annotated[
-        RobotCommunicationService, Depends(robot_communication_service)
+        RobotRequestDispatcher, Depends(robot_communication_service)
     ],
 ) -> destiny_sdk.robots.EnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""

@@ -13,8 +13,8 @@ from app.domain.references.models.models import (
     EnhancementRequest,
     Reference,
 )
-from app.domain.robots.external_service import RobotCommunicationService
 from app.domain.robots.models import RobotConfig
+from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 
 ROBOT_ID = uuid.uuid4()
@@ -50,7 +50,7 @@ async def test_send_enhancement_request_to_robot_happy_path(httpx_mock, frozen_t
         enhancement_parameters={},
     )
 
-    service = RobotCommunicationService(
+    dispatcher = RobotRequestDispatcher(
         robots=RobotService(known_robots=KNOWN_ROBOTS),
     )
 
@@ -78,7 +78,7 @@ async def test_send_enhancement_request_to_robot_happy_path(httpx_mock, frozen_t
         },
     )
 
-    await service.send_enhancement_request_to_robot(
+    await dispatcher.send_enhancement_request_to_robot(
         endpoint="/single/", robot=KNOWN_ROBOTS[0], robot_request=robot_request
     )
 
@@ -104,12 +104,12 @@ async def test_send_enhancement_request_to_robot_request_error(httpx_mock):
         extra_fields=enhancement_request.enhancement_parameters,
     )
 
-    service = RobotCommunicationService(
+    dispatcher = RobotRequestDispatcher(
         robots=RobotService(known_robots=KNOWN_ROBOTS),
     )
 
     with pytest.raises(RobotUnreachableError):
-        await service.send_enhancement_request_to_robot(
+        await dispatcher.send_enhancement_request_to_robot(
             endpoint="/single/", robot=KNOWN_ROBOTS[0], robot_request=robot_request
         )
 
@@ -127,7 +127,7 @@ async def test_send_enhancement_request_to_robot_503_response(httpx_mock):
         enhancement_parameters={},
     )
 
-    service = RobotCommunicationService(
+    dispatcher = RobotRequestDispatcher(
         robots=RobotService(known_robots=KNOWN_ROBOTS),
     )
 
@@ -138,7 +138,7 @@ async def test_send_enhancement_request_to_robot_503_response(httpx_mock):
     )
 
     with pytest.raises(RobotUnreachableError):
-        await service.send_enhancement_request_to_robot(
+        await dispatcher.send_enhancement_request_to_robot(
             endpoint="/single/", robot=KNOWN_ROBOTS[0], robot_request=robot_request
         )
 
@@ -164,11 +164,11 @@ async def test_send_enhancement_request_to_robot_400_response(httpx_mock):
         extra_fields=enhancement_request.enhancement_parameters,
     )
 
-    service = RobotCommunicationService(
+    dispatcher = RobotRequestDispatcher(
         robots=RobotService(known_robots=KNOWN_ROBOTS),
     )
 
     with pytest.raises(RobotEnhancementError):
-        await service.send_enhancement_request_to_robot(
+        await dispatcher.send_enhancement_request_to_robot(
             endpoint="/single/", robot=KNOWN_ROBOTS[0], robot_request=robot_request
         )

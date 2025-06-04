@@ -23,7 +23,7 @@ from app.domain.references.models.models import (
     Visibility,
 )
 from app.domain.references.service import ReferenceService
-from app.domain.robots.external_service import RobotCommunicationService
+from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 
 
@@ -217,7 +217,7 @@ async def test_trigger_reference_enhancement_nonexistent_reference(
     with pytest.raises(SQLNotFoundError):
         await service.request_reference_enhancement(
             enhancement_request=received_enhancement_request,
-            robot_service=RobotCommunicationService(RobotService({})),
+            robot_service=RobotRequestDispatcher(RobotService({})),
         )
 
 
@@ -250,7 +250,7 @@ async def test_trigger_reference_enhancement_nonexistent_robot(
     with pytest.raises(NotFoundError):
         await service.request_reference_enhancement(
             enhancement_request=received_enhancement_request,
-            robot_service=RobotCommunicationService(RobotService({})),
+            robot_service=RobotRequestDispatcher(RobotService({})),
         )
 
 

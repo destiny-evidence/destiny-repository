@@ -3,7 +3,7 @@
 import destiny_sdk
 import httpx
 from fastapi import status
-from pydantic import UUID4, HttpUrl
+from pydantic import UUID4
 
 from app.core.config import get_settings
 from app.core.exceptions import (
@@ -18,16 +18,12 @@ MIN_FOR_5XX_STATUS_CODES = 500
 settings = get_settings()
 
 
-class RobotCommunicationService:
-    """The service which manages interacting with robots."""
+class RobotRequestDispatcher:
+    """Dispatcher for sending enhancement requests to robots."""
 
     def __init__(self, robots: RobotService) -> None:
-        """Initialize the service with a unit of work."""
+        """Initialize the dispatcher with existing robots."""
         self.robots = robots
-
-    def get_robot_url(self, robot_id: UUID4) -> HttpUrl:
-        """Get the url for a given robot id."""
-        return self.robots.get_robot_url(robot_id)
 
     def get_robot_config(self, robot_id: UUID4) -> RobotConfig:
         """Get the config for a given robot id."""
