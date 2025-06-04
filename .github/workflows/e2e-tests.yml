@@ -56,6 +56,10 @@ jobs:
       #   run: |
       #     docker compose -f docker-compose.yml -f docker-compose.e2e.yml build --ssh default
 
+      - name: Build
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml build
+
       - name: Wait for e2e container to finish
         run: |
           while [ "$(docker inspect -f '{{.State.Status}}' e2e 2>/dev/null)" != "exited" ]; do
