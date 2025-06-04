@@ -287,3 +287,34 @@ If the URL expires, a new one can be generated using
         "individual reference. If there was an error with processing an individual "
         "reference, it is passed in the validation result file.",
     )
+
+
+class _RobotBase(BaseModel):
+    """Base robot class."""
+
+    name: str = Field(description="The name of the robot. Must be unique.")
+    description: str = Field(description="A detailed description of the robot.")
+    robot_url: HttpUrl = Field(description=("The base URL of the robot."))
+    owner: str = Field(
+        description="The owner of the robot (team/organisation/individual)."
+    )
+
+
+class RobotCreate(_RobotBase):
+    """The model for creating a robot."""
+
+
+class Robot(_RobotBase):
+    """The model for updating or reading a robot."""
+
+    id: UUID4 = Field(description=("The ID of the robot."))
+
+
+class ProvisionedRobot(Robot):
+    """
+    The robot model with client secret included.
+
+    This is only ever exposed by the repo on creation or on secret cycle.
+    """
+
+    client_secret: str = Field(description=("The client secret for the robot."))
