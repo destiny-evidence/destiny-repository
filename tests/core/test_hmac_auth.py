@@ -7,14 +7,19 @@ import destiny_sdk
 import pytest
 from fastapi import APIRouter, Depends, FastAPI, status
 from httpx import ASGITransport, AsyncClient
-from pydantic import SecretStr
 
 from app.core.auth import HMACMultiClientAuth
 from app.domain.robots.models import Robot
 from app.domain.robots.service import RobotService
 
-TEST_SECRET_KEY = "dlfskdfhgk8ei346oiehslkdfrerikfglser934utofs"
-FAKE_ROBOT_ID = uuid.uuid4()
+robot = Robot(
+    id=uuid.uuid4(),
+    base_url="https://www.balderdash.org",
+    client_secret="secret-secret",
+    description="it's a robot",
+    name="robot",
+    owner="owner",
+)
 
 
 @pytest.fixture
@@ -28,17 +33,7 @@ def hmac_app() -> FastAPI:
     """
     app = FastAPI(title="Test HMAC Auth")
 
-    robot_service = RobotService(
-        [
-            Robot(
-                id=FAKE_ROBOT_ID,
-                robot_base_url="https://www.balderdash.org",
-                dependent_enhancements=[],
-                dependent_identifiers=[],
-                robot_secret=SecretStr(TEST_SECRET_KEY),
-            )
-        ]
-    )
+    robot_service = RobotService([robot])
 
     auth = HMACMultiClientAuth(get_client_secret=robot_service.get_robot_secret)
 
@@ -81,7 +76,7 @@ async def test_hmac_multi_client_authentication_happy_path(client: AsyncClient):
     """Test authentication is successful when signature is correct."""
     request_body = '{"message": "info"}'
     auth = destiny_sdk.client.HMACSigningAuth(
-        secret_key=TEST_SECRET_KEY, client_id=FAKE_ROBOT_ID
+        secret_key=robot.client_secret.get_secret_value(), client_id=robot.id
     )
 
     response = await client.post("test/hmac/", content=request_body, auth=auth)

@@ -39,11 +39,11 @@ class RobotRequestDispatcher:
         """Send a request to a robot, handling error cases."""
         try:
             auth = destiny_sdk.client.HMACSigningAuth(
-                secret_key=robot.robot_secret.get_secret_value(), client_id=robot.id
+                secret_key=robot.client_secret.get_secret_value(), client_id=robot.id
             )
             async with httpx.AsyncClient(auth=auth) as client:
                 response = await client.post(
-                    str(robot.robot_base_url).rstrip("/") + endpoint,
+                    str(robot.base_url).rstrip("/") + endpoint,
                     json=robot_request.model_dump(mode="json"),
                 )
         except httpx.RequestError as exception:

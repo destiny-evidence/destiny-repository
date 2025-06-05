@@ -24,10 +24,11 @@ FAKE_ROBOT_TOKEN = "access_token"
 KNOWN_ROBOTS = [
     Robot(
         id=ROBOT_ID,
-        robot_base_url=ROBOT_URL,
-        dependent_enhancements=[],
-        dependent_identifiers=[],
-        robot_secret="secret-secret",
+        base_url=ROBOT_URL,
+        client_secret="secret-secret",
+        description="it's a robot",
+        name="robot",
+        owner="owner",
     ),
 ]
 
@@ -61,7 +62,7 @@ async def test_send_enhancement_request_to_robot_happy_path(httpx_mock, frozen_t
     )
 
     expected_signature = destiny_sdk.client.create_signature(
-        secret_key=KNOWN_ROBOTS[0].robot_secret.get_secret_value(),
+        secret_key=KNOWN_ROBOTS[0].client_secret.get_secret_value(),
         request_body=robot_request.model_dump_json().encode(),
         client_id=ROBOT_ID,
         timestamp=time.time(),

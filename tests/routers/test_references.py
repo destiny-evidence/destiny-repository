@@ -68,10 +68,11 @@ def app() -> FastAPI:
         [
             Robot(
                 id=ROBOT_ID,
-                robot_base_url=ROBOT_URL,
-                dependent_enhancements=[],
-                dependent_identifiers=[],
-                robot_secret="secret-secret",
+                base_url=ROBOT_URL,
+                client_secret="secret-secret",
+                description="description",
+                name="name",
+                owner="owner",
             )
         ]
     )

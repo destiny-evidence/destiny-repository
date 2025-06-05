@@ -281,8 +281,6 @@ class ReferenceService(GenericService):
             [
                 {
                     "reference_ids": reference_id_chunk,
-                    "enhancement_types": robot.dependent_enhancements,
-                    "external_identifier_types": robot.dependent_identifiers,
                 }
                 for reference_id_chunk in list_chunker(
                     batch_enhancement_request.reference_ids,

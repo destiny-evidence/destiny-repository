@@ -2,10 +2,7 @@
 
 from typing import Self
 
-from destiny_sdk.enhancements import EnhancementType
-from destiny_sdk.identifiers import ExternalIdentifierType
-from sqlalchemy import String
-from sqlalchemy.dialects.postgresql import ARRAY, ENUM
+from sqlalchemy import String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.domain.robots.models import Robot as DomainRobot
@@ -22,28 +19,21 @@ class Robot(GenericSQLPersistence[DomainRobot]):
 
     __tablename__ = "robot"
 
-    robot_base_url: Mapped[str] = mapped_column(String, nullable=False)
+    base_url: Mapped[str] = mapped_column(String, nullable=False)
 
-    robot_secret: Mapped[str] = mapped_column(String, nullable=False)
+    client_secret: Mapped[str] = mapped_column(String, nullable=False)
 
-    dependent_enhancements: Mapped[list[EnhancementType]] = mapped_column(
-        ARRAY(
-            ENUM(
-                *[enhancement_type.value for enhancement_type in EnhancementType],
-                name="enhancement_type",
-            )
+    description: Mapped[str] = mapped_column(String, nullable=False)
+
+    name: Mapped[str] = mapped_column(String, nullable=False)
+
+    owner: Mapped[str] = mapped_column(String, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "name",
+            name="uix_robot",
         ),
-        nullable=True,
-    )
-
-    dependent_identifiers: Mapped[list[ExternalIdentifierType]] = mapped_column(
-        ARRAY(
-            ENUM(
-                *[identifier_type.value for identifier_type in ExternalIdentifierType],
-                name="identifier_type",
-            )
-        ),
-        nullable=True,
     )
 
     @classmethod
@@ -51,20 +41,11 @@ class Robot(GenericSQLPersistence[DomainRobot]):
         """Create a persistence model from a domain Robot object."""
         return cls(
             id=domain_obj.id,
-            robot_base_url=str(domain_obj.robot_base_url),
-            robot_secret=domain_obj.robot_secret.get_secret_value(),
-            dependent_enhancements=[
-                enhancement_type.value
-                for enhancement_type in domain_obj.dependent_enhancements
-            ]
-            if domain_obj.dependent_enhancements
-            else None,
-            dependent_identifiers=[
-                identifier_type.value
-                for identifier_type in domain_obj.dependent_identifiers
-            ]
-            if domain_obj.dependent_identifiers
-            else None,
+            base_url=str(domain_obj.base_url),
+            client_secret=domain_obj.client_secret.get_secret_value(),
+            description=domain_obj.description,
+            name=domain_obj.name,
+            owner=domain_obj.owner,
         )
 
     async def to_domain(
@@ -74,12 +55,9 @@ class Robot(GenericSQLPersistence[DomainRobot]):
         """Convert the persistence model indo a Domain Robot object."""
         return DomainRobot(
             id=self.id,
-            robot_base_url=self.robot_base_url,
-            robot_secret=self.robot_secret,
-            dependent_enhancements=self.dependent_enhancements
-            if self.dependent_enhancements
-            else [],
-            dependent_identifiers=self.dependent_identifiers
-            if self.dependent_identifiers
-            else [],
+            base_url=self.base_url,
+            client_secret=self.client_secret,
+            description=self.description,
+            name=self.name,
+            owner=self.owner,
         )

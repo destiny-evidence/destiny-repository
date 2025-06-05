@@ -1,7 +1,6 @@
 # Dummy domain object for testing conversion
 import uuid
 
-import destiny_sdk
 import pytest
 from pydantic import HttpUrl, SecretStr
 
@@ -9,72 +8,41 @@ from app.domain.robots.sql import Robot
 
 
 class DummyDomainRobot:
-    def __init__(
-        self,
-        id,
-        robot_base_url,
-        dependent_enhancements,
-        dependent_identifiers,
-        robot_secret,
-    ):
+    def __init__(self, id, base_url, client_secret, description, name, owner):
         self.id = id
-        self.robot_base_url = robot_base_url
-        self.robot_secret = robot_secret
-        self.dependent_enhancements = dependent_enhancements
-        self.dependent_identifiers = dependent_identifiers
+        self.base_url = base_url
+        self.client_secret = client_secret
+        self.description = description
+        self.name = name
+        self.owner = owner
 
 
 @pytest.mark.asyncio
-async def test_robot_to_and_from_domain_without_dependencies():
+async def test_robot_to_and_from_domain():
     robot_id = uuid.uuid4()
     dummy_robot = DummyDomainRobot(
         id=robot_id,
-        robot_base_url=HttpUrl("http://127.0.0.1:8000"),
-        robot_secret=SecretStr("dlkfsdflglsfglfkglsdkgfds"),
-        dependent_enhancements=[],
-        dependent_identifiers=[],
+        base_url=HttpUrl("http://127.0.0.1:8000"),
+        client_secret=SecretStr("dlkfsdflglsfglfkglsdkgfds"),
+        description="description",
+        name="name",
+        owner="owner",
     )
 
     # Convert from domain to SQL model
     sql_robot = await Robot.from_domain(dummy_robot)
     assert sql_robot.id == dummy_robot.id
-    assert sql_robot.robot_base_url == str(dummy_robot.robot_base_url)
-    assert sql_robot.robot_secret == dummy_robot.robot_secret.get_secret_value()
-    assert sql_robot.dependent_enhancements is None
-    assert sql_robot.dependent_identifiers is None
+    assert sql_robot.base_url == str(dummy_robot.base_url)
+    assert sql_robot.client_secret == dummy_robot.client_secret.get_secret_value()
+    assert sql_robot.description == dummy_robot.description
+    assert sql_robot.name == dummy_robot.name
+    assert sql_robot.owner == dummy_robot.owner
 
     # Convert from SQL model to domain
     domain_ref = await sql_robot.to_domain()
     assert domain_ref.id == dummy_robot.id
-    assert domain_ref.robot_base_url == dummy_robot.robot_base_url
-    assert domain_ref.robot_secret == dummy_robot.robot_secret
-    assert domain_ref.dependent_enhancements == dummy_robot.dependent_enhancements
-    assert domain_ref.dependent_identifiers == dummy_robot.dependent_identifiers
-
-
-@pytest.mark.asyncio
-async def test_robot_to_and_from_domain_with_dependencies():
-    robot_id = uuid.uuid4()
-    dummy_robot = DummyDomainRobot(
-        id=robot_id,
-        robot_base_url=HttpUrl("http://127.0.0.1:8000"),
-        robot_secret=SecretStr("dlkfsdflglsfglfkglsdkgfds"),
-        dependent_enhancements=[destiny_sdk.enhancements.EnhancementType.ANNOTATION],
-        dependent_identifiers=[destiny_sdk.identifiers.ExternalIdentifierType.DOI],
-    )
-
-    # Convert from domain to SQL model
-    sql_robot = await Robot.from_domain(dummy_robot)
-    assert sql_robot.id == dummy_robot.id
-    assert sql_robot.dependent_enhancements == [
-        destiny_sdk.enhancements.EnhancementType.ANNOTATION.value
-    ]
-    assert sql_robot.dependent_identifiers == [
-        destiny_sdk.identifiers.ExternalIdentifierType.DOI.value
-    ]
-
-    # Convert from SQL model to domain
-    domain_ref = await sql_robot.to_domain()
-    assert domain_ref.id == dummy_robot.id
-    assert domain_ref.dependent_enhancements == dummy_robot.dependent_enhancements
-    assert domain_ref.dependent_identifiers == dummy_robot.dependent_identifiers
+    assert domain_ref.base_url == dummy_robot.base_url
+    assert domain_ref.client_secret == dummy_robot.client_secret
+    assert domain_ref.description == dummy_robot.description
+    assert domain_ref.name == dummy_robot.name
+    assert domain_ref.owner == dummy_robot.owner

@@ -23,7 +23,7 @@ class RobotService:
 
     def get_robot_url(self, robot_id: UUID) -> HttpUrl:
         """Return the url for a given robot."""
-        return self.get_robot_config(robot_id).robot_base_url
+        return self.get_robot_config(robot_id).base_url
 
     def get_robot_config(self, robot_id: UUID) -> Robot:
         """Return the config for a given robot."""
@@ -39,4 +39,4 @@ class RobotService:
         """Return secret used for signing requests sent to this robot."""
         # Secret to be stored in the azure keyvault
         # Currently just using secret name while testing
-        return self.get_robot_config(robot_id).robot_secret.get_secret_value()
+        return self.get_robot_config(robot_id).client_secret.get_secret_value()

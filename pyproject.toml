@@ -24,7 +24,7 @@ azure-identity = "^1.21.0"
 azure-servicebus = "^7.14.2"
 azure-storage-blob = "^12.25.1"
 cachetools = "^5.5.2"
-destiny-sdk = {path = "libs/sdk"}
+destiny-sdk = {develop = true, path = "libs/sdk"}
 fastapi = {extras = ["standard"], version = "^0.115.6"}
 greenlet = "^3.1.1"
 minio = "^7.2.15"
