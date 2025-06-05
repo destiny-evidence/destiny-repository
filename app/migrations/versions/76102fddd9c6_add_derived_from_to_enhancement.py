@@ -1,9 +1,9 @@
 """
 Add derived_from to enhancement
 
-Revision ID: 8277cac7f304
-Revises: 148b5e9b8c30
-Create Date: 2025-06-05 04:39:24.947556+00:00
+Revision ID: 76102fddd9c6
+Revises: cba2a740897b
+Create Date: 2025-06-05 06:56:46.327786+00:00
 
 """
 from collections.abc import Sequence
@@ -13,10 +13,9 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-
 # revision identifiers, used by Alembic.
-revision: str = '8277cac7f304'
-down_revision: Union[str, None] = '148b5e9b8c30'
+revision: str = '76102fddd9c6'
+down_revision: Union[str, None] = 'cba2a740897b'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
