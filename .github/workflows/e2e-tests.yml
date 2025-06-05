@@ -30,7 +30,10 @@ jobs:
           MESSAGE_BROKER_URL=overwritten-in-docker-compose-e2e
           MESSAGE_BROKER_NAMESPACE=destiny-repository-staging.servicebus.windows.net
           MESSAGE_BROKER_QUEUE_NAME=taskiq
-          MEM_LIMIT=1073741824 # 1GiB for those playing at home
+          ELASTIC_MEM_LIMIT=1073741824 # 1GiB for those playing at home
+          ELASTIC_STACK_VERSION=9.0.0
+          ELASTIC_PASSWORD="destiny"
+          KIBANA_PASSWORD="destiny"
           EOF
 
       - name: Install Docker Compose
