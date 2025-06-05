@@ -334,7 +334,7 @@ async def test_create_valid_derived_reference_enhancement_from_request(
     )
 
     derived_enhancement = fake_enhancement_data.copy()
-    derived_enhancement["content"]["derived_from"] = [existing_enhancement.id]
+    derived_enhancement["derived_from"] = [existing_enhancement.id]
 
     service = ReferenceService(uow)
     enhancement_request = await service.create_reference_enhancement_from_request(
@@ -345,9 +345,7 @@ async def test_create_valid_derived_reference_enhancement_from_request(
     reference = fake_reference_repo.get_first_record()
 
     assert enhancement_request.request_status == EnhancementRequestStatus.COMPLETED
-    assert reference.enhancements[1]["content"]["derived_from"] == [
-        existing_enhancement.id
-    ]
+    assert reference.enhancements[1]["derived_from"] == [existing_enhancement.id]
 
 
 @pytest.mark.asyncio
@@ -375,7 +373,7 @@ async def test_create_invalid_derived_reference_enhancement_from_request(
 
     derived_enhancement = fake_enhancement_data.copy()
     derived_from = uuid.uuid4()
-    derived_enhancement["content"]["derived_from"] = [derived_from]
+    derived_enhancement["derived_from"] = [derived_from]
 
     service = ReferenceService(uow)
     with pytest.raises(
@@ -384,7 +382,7 @@ async def test_create_invalid_derived_reference_enhancement_from_request(
     ):
         await service.create_reference_enhancement_from_request(
             enhancement_request_id=existing_enhancement_request.id,
-            enhancement=Enhancement(reference_id=reference_id, **fake_enhancement_data),
+            enhancement=Enhancement(reference_id=reference_id, **derived_enhancement),
         )
 
 

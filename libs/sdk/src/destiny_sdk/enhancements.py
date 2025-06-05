@@ -64,16 +64,7 @@ class Authorship(BaseModel):
     )
 
 
-class BaseEnhancementContent(BaseModel):
-    """Base class for all enhancement content types."""
-
-    derived_from: list[uuid.UUID] | None = Field(
-        default=None,
-        description="List of enhancement IDs that this enhancement was derived from.",
-    )
-
-
-class BibliographicMetadataEnhancement(BaseEnhancementContent):
+class BibliographicMetadataEnhancement(BaseModel):
     """
     An enhancement which is made up of bibliographic metadata.
 
@@ -127,7 +118,7 @@ class AbstractProcessType(StrEnum):
     OTHER = auto()
 
 
-class AbstractContentEnhancement(BaseEnhancementContent):
+class AbstractContentEnhancement(BaseModel):
     """
     An enhancement which is specific to the abstract of a reference.
 
@@ -222,7 +213,7 @@ Annotation = Annotated[
 ]
 
 
-class AnnotationEnhancement(BaseEnhancementContent):
+class AnnotationEnhancement(BaseModel):
     """An enhancement which is composed of a list of Annotations."""
 
     enhancement_type: Literal[EnhancementType.ANNOTATION] = EnhancementType.ANNOTATION
@@ -297,7 +288,7 @@ which means we are not able to determine a license for this location.
     )
 
 
-class LocationEnhancement(BaseEnhancementContent):
+class LocationEnhancement(BaseModel):
     """
     An enhancement which describes locations where this reference can be found.
 
@@ -335,6 +326,10 @@ class Enhancement(_JsonlFileInputMixIn, BaseModel):
     robot_version: str | None = Field(
         default=None,
         description="The version of the robot that generated the content.",
+    )
+    derived_from: list[uuid.UUID] | None = Field(
+        default=None,
+        description="List of enhancement IDs that this enhancement was derived from.",
     )
     content: Annotated[
         EnhancementContent,

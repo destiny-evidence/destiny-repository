@@ -80,12 +80,14 @@ class DummyDomainEnhancement:
         visibility,
         robot_version,
         content,
+        derived_from=None,
     ):
         self.id = id
         self.reference_id = reference_id
         self.source = source
         self.visibility = visibility
         self.robot_version = robot_version
+        self.derived_from = derived_from
         self.content = content
         # For preload test on Enhancement.to_domain
         self.reference = None

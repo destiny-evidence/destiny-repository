@@ -72,12 +72,9 @@ class ReferenceService(GenericService):
             raise WrongReferenceError(detail)
 
         # Validate derived_from enhancement IDs if present
-        if (
-            hasattr(enhancement.content, "derived_from")
-            and enhancement.content.derived_from
-        ):
+        if enhancement.derived_from:
             await self.sql_uow.enhancements.verify_pk_existence(
-                enhancement.content.derived_from
+                enhancement.derived_from
             )
 
         reference = await self.sql_uow.references.get_by_pk(
