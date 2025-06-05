@@ -1,27 +1,21 @@
-"""
-Class for managing robots used to request enhancements from.
+"""Domain model for robots."""
 
-Intended to be replaced with a Model and a persistence class at a later date.
-"""
+from pydantic import Field, HttpUrl, SecretStr
 
-from uuid import UUID
-
-from pydantic import BaseModel, HttpUrl
-
-from app.domain.references.models.models import EnhancementType, ExternalIdentifierType
+from app.domain.base import DomainBaseModel, SQLAttributeMixin
 
 
-class RobotConfig(BaseModel):
-    """
-    Primitive configuration for a robot.
+class Robot(DomainBaseModel, SQLAttributeMixin):
+    """Core Robot model."""
 
-    To be replaced with a full persistence implementation at a later date.
-    """
+    base_url: HttpUrl = Field(description="The base url where the robot is located.")
 
-    robot_id: UUID
-    robot_url: HttpUrl
-    # Future implementation should configure whether each dependency is required
-    # or provided on a best-efforts basis.
-    dependent_enhancements: list[EnhancementType]
-    dependent_identifiers: list[ExternalIdentifierType]
-    robot_secret: str
+    client_secret: SecretStr = Field(
+        description="The secret key used for communicating with this robot."
+    )
+
+    description: str = Field(description="Description of the robot.")
+
+    name: str = Field(description="The name of the robot.")
+
+    owner: str = Field(description="Owner of the robot.")

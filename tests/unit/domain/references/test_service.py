@@ -8,7 +8,6 @@ import pytest
 from fastapi import status
 
 from app.core.exceptions import (
-    NotFoundError,
     RobotEnhancementError,
     SQLNotFoundError,
     WrongReferenceError,
@@ -23,6 +22,7 @@ from app.domain.references.models.models import (
     Visibility,
 )
 from app.domain.references.service import ReferenceService
+from app.domain.robots.models import Robot
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 
@@ -112,10 +112,10 @@ ENHANCEMENT_DATA = {
 async def test_trigger_reference_enhancement_request_happy_path(
     fake_repository, fake_uow
 ):
-    # Mock the robot service
-    fake_robot_service = AsyncMock()
-    fake_robot_service.send_enhancement_request_to_robot.return_value = httpx.Response(
-        status_code=status.HTTP_202_ACCEPTED
+    # Mock the robot dispatcher
+    fake_robot_request_dispatcher = AsyncMock()
+    fake_robot_request_dispatcher.send_enhancement_request_to_robot.return_value = (
+        httpx.Response(status_code=status.HTTP_202_ACCEPTED)
     )
 
     reference_id = uuid.uuid4()
@@ -130,19 +130,37 @@ async def test_trigger_reference_enhancement_request_happy_path(
     )
     fake_enhancement_requests = fake_repository()
 
-    uow = fake_uow(
-        enhancement_requests=fake_enhancement_requests, references=fake_references
+    robot_id = uuid.uuid4()
+    fake_robots = fake_repository(
+        init_entries=[
+            Robot(
+                id=robot_id,
+                base_url="https://www.robothere.org/",
+                client_secret="fdkjglkdfjglfksdgf",
+                description="description",
+                name="name",
+                owner="owner",
+            )
+        ]
     )
 
-    service = ReferenceService(uow)
+    uow = fake_uow(
+        enhancement_requests=fake_enhancement_requests,
+        references=fake_references,
+        robots=fake_robots,
+    )
+
+    referece_service = ReferenceService(uow)
+    robot_service = RobotService(uow)
 
     received_enhancement_request = EnhancementRequest(
-        reference_id=reference_id, robot_id=uuid.uuid4(), enhancement_parameters={}
+        reference_id=reference_id, robot_id=robot_id, enhancement_parameters={}
     )
 
-    enhancement_request = await service.request_reference_enhancement(
+    enhancement_request = await referece_service.request_reference_enhancement(
         enhancement_request=received_enhancement_request,
-        robot_service=fake_robot_service,
+        robot_service=robot_service,
+        robot_request_dispatcher=fake_robot_request_dispatcher,
     )
 
     stored_request = fake_enhancement_requests.get_first_record()
@@ -159,8 +177,8 @@ async def test_trigger_reference_enhancement_request_rejected(
     """
     A robot rejects a request to create an enhancement against a reference.
     """
-    fake_robot_service = AsyncMock()
-    fake_robot_service.send_enhancement_request_to_robot.side_effect = (
+    fake_robot_request_dispatcher = AsyncMock()
+    fake_robot_request_dispatcher.send_enhancement_request_to_robot.side_effect = (
         RobotEnhancementError('{"message":"broken"}')
     )
 
@@ -172,19 +190,37 @@ async def test_trigger_reference_enhancement_request_rejected(
     )
     fake_enhancement_requests = fake_repository()
 
-    uow = fake_uow(
-        enhancement_requests=fake_enhancement_requests, references=fake_references
+    robot_id = uuid.uuid4()
+    fake_robots = fake_repository(
+        init_entries=[
+            Robot(
+                id=robot_id,
+                base_url="https://www.robothere.org/",
+                client_secret="fdkjglkdfjglfksdgf",
+                description="description",
+                name="name",
+                owner="owner",
+            )
+        ]
     )
 
-    service = ReferenceService(uow)
+    uow = fake_uow(
+        enhancement_requests=fake_enhancement_requests,
+        references=fake_references,
+        robots=fake_robots,
+    )
+
+    reference_service = ReferenceService(uow)
+    robot_service = RobotService(uow)
 
     received_enhancement_request = EnhancementRequest(
-        reference_id=reference_id, robot_id=uuid.uuid4(), enhancement_parameters={}
+        reference_id=reference_id, robot_id=robot_id, enhancement_parameters={}
     )
 
-    enhancement_request = await service.request_reference_enhancement(
+    enhancement_request = await reference_service.request_reference_enhancement(
         enhancement_request=received_enhancement_request,
-        robot_service=fake_robot_service,
+        robot_service=robot_service,
+        robot_request_dispatcher=fake_robot_request_dispatcher,
     )
 
     stored_request = fake_enhancement_requests.get_first_record()
@@ -204,9 +240,13 @@ async def test_trigger_reference_enhancement_nonexistent_reference(
     """
     unknown_reference_id = uuid.uuid4()
 
-    uow = fake_uow(enhancement_requests=fake_repository(), references=fake_repository())
+    uow = fake_uow(
+        enhancement_requests=fake_repository(),
+        references=fake_repository(),
+        robots=fake_repository(),
+    )
 
-    service = ReferenceService(uow)
+    reference_service = ReferenceService(uow)
 
     received_enhancement_request = EnhancementRequest(
         reference_id=unknown_reference_id,
@@ -215,9 +255,10 @@ async def test_trigger_reference_enhancement_nonexistent_reference(
     )
 
     with pytest.raises(SQLNotFoundError):
-        await service.request_reference_enhancement(
+        await reference_service.request_reference_enhancement(
             enhancement_request=received_enhancement_request,
-            robot_service=RobotRequestDispatcher(RobotService({})),
+            robot_service=RobotService(uow),
+            robot_request_dispatcher=RobotRequestDispatcher(),
         )
 
 
@@ -238,19 +279,22 @@ async def test_trigger_reference_enhancement_nonexistent_robot(
     fake_enhancement_requests = fake_repository()
 
     uow = fake_uow(
-        enhancement_requests=fake_enhancement_requests, references=fake_references
+        enhancement_requests=fake_enhancement_requests,
+        references=fake_references,
+        robots=fake_repository(),
     )
 
-    service = ReferenceService(uow)
+    reference_service = ReferenceService(uow)
 
     received_enhancement_request = EnhancementRequest(
         reference_id=reference_id, robot_id=uuid.uuid4(), enhancement_parameters={}
     )
 
-    with pytest.raises(NotFoundError):
-        await service.request_reference_enhancement(
+    with pytest.raises(SQLNotFoundError):
+        await reference_service.request_reference_enhancement(
             enhancement_request=received_enhancement_request,
-            robot_service=RobotRequestDispatcher(RobotService({})),
+            robot_service=RobotService(uow),
+            robot_request_dispatcher=RobotRequestDispatcher(),
         )
 
 

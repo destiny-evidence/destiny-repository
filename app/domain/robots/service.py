@@ -1,42 +1,35 @@
 """Service for managing Robots."""
 
-from uuid import UUID
+from pydantic import UUID4, HttpUrl
 
-from pydantic import HttpUrl
+from app.domain.robots.models import Robot
+from app.domain.service import GenericService
+from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
-from app.core.exceptions import NotFoundError
-from app.domain.robots.models import RobotConfig
 
+class RobotService(GenericService):
+    """Service for creating and managing robots."""
 
-class RobotService:
-    """Class for keeping track of robots."""
-
-    known_robots: dict[UUID, RobotConfig]
-
-    def __init__(self, known_robots: list[RobotConfig]) -> None:
+    def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:
         """Initialize the robots."""
-        self.known_robots = {robot.robot_id: robot for robot in known_robots}
+        self.sql_uow = sql_uow
 
-    def __call__(self):  # noqa: ANN204
-        """Allow us to use this class as a dependency."""
-        return self
+    async def _get_robot(self, robot_id: UUID4) -> Robot:
+        """Return a given robot."""
+        return await self.sql_uow.robots.get_by_pk(robot_id)
 
-    def get_robot_url(self, robot_id: UUID) -> HttpUrl:
+    async def get_robot_url(self, robot_id: UUID4) -> HttpUrl:
         """Return the url for a given robot."""
-        return self.get_robot_config(robot_id).robot_url
+        robot = await self._get_robot(robot_id)
+        return robot.base_url
 
-    def get_robot_config(self, robot_id: UUID) -> RobotConfig:
-        """Return the config for a given robot."""
-        robot = self.known_robots.get(robot_id, None)
+    async def get_robot(self, robot_id: UUID4) -> Robot:
+        """Return a given robot."""
+        return await self._get_robot(robot_id)
 
-        if not robot:
-            error = f"Robot {robot_id} does not exist."
-            raise NotFoundError(detail=error)
-
-        return robot
-
-    async def get_robot_secret(self, robot_id: UUID) -> str:
+    async def get_robot_secret(self, robot_id: UUID4) -> str:
         """Return secret used for signing requests sent to this robot."""
         # Secret to be stored in the azure keyvault
         # Currently just using secret name while testing
-        return self.get_robot_config(robot_id).robot_secret
+        robot = await self._get_robot(robot_id)
+        return robot.client_secret.get_secret_value()

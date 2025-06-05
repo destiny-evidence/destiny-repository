@@ -1,4 +1,4 @@
-"""Repositories for imports and associated models."""
+"""Repositories for references and associated models."""
 
 from abc import ABC
 from uuid import UUID
