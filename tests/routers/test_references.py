@@ -4,7 +4,6 @@ import uuid
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock
 
-import destiny_sdk
 import pytest
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
@@ -29,7 +28,8 @@ from app.domain.references.models.sql import EnhancementRequest as SQLEnhancemen
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.routes import robots
 from app.domain.references.service import ReferenceService
-from app.domain.robots.models import RobotConfig, Robots
+from app.domain.robots.models import RobotConfig
+from app.domain.robots.service import RobotService
 from app.main import (
     enhance_wrong_reference_exception_handler,
     not_found_exception_handler,
@@ -42,7 +42,7 @@ pytestmark = pytest.mark.usefixtures("session")
 
 ROBOT_ID = uuid.uuid4()
 ROBOT_URL = "http://www.test-robot-here.com/"
-FAKE_ROBOT_TOKEN = "access_token"  # noqa: S105
+FAKE_ROBOT_TOKEN = "access_token"
 
 
 @pytest.fixture
@@ -64,16 +64,14 @@ def app() -> FastAPI:
 
     app.include_router(references.router)
     app.include_router(references.robot_router)
-    app.dependency_overrides[robots] = Robots(
+    app.dependency_overrides[robots] = RobotService(
         [
             RobotConfig(
                 robot_id=ROBOT_ID,
                 robot_url=ROBOT_URL,
                 dependent_enhancements=[],
                 dependent_identifiers=[],
-                auth_method=destiny_sdk.client_auth.AccessTokenAuthentication(
-                    access_token=FAKE_ROBOT_TOKEN
-                ),
+                robot_secret="secret-secret",
             )
         ]
     )
@@ -274,7 +272,7 @@ async def test_fulfill_enhancement_request_happy_path(
     session: AsyncSession,
     client: AsyncClient,
 ) -> None:
-    """Test creating a reference from a robot."""
+    """Test creating an enhancement from a robot."""
     reference = await add_reference(session)
 
     enhancement_request = SQLEnhancementRequest(

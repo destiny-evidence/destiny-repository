@@ -23,7 +23,7 @@ from app.domain.references.models.models import (
     Visibility,
 )
 from app.domain.references.service import ReferenceService
-from app.domain.robots.models import Robots
+from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 
 
@@ -114,7 +114,7 @@ async def test_trigger_reference_enhancement_request_happy_path(
 ):
     # Mock the robot service
     fake_robot_service = AsyncMock()
-    fake_robot_service.request_enhancement_from_robot.return_value = httpx.Response(
+    fake_robot_service.send_enhancement_request_to_robot.return_value = httpx.Response(
         status_code=status.HTTP_202_ACCEPTED
     )
 
@@ -160,7 +160,7 @@ async def test_trigger_reference_enhancement_request_rejected(
     A robot rejects a request to create an enhancement against a reference.
     """
     fake_robot_service = AsyncMock()
-    fake_robot_service.request_enhancement_from_robot.side_effect = (
+    fake_robot_service.send_enhancement_request_to_robot.side_effect = (
         RobotEnhancementError('{"message":"broken"}')
     )
 
@@ -217,7 +217,7 @@ async def test_trigger_reference_enhancement_nonexistent_reference(
     with pytest.raises(SQLNotFoundError):
         await service.request_reference_enhancement(
             enhancement_request=received_enhancement_request,
-            robot_service=RobotService(Robots({})),
+            robot_service=RobotRequestDispatcher(RobotService({})),
         )
 
 
@@ -250,7 +250,7 @@ async def test_trigger_reference_enhancement_nonexistent_robot(
     with pytest.raises(NotFoundError):
         await service.request_reference_enhancement(
             enhancement_request=received_enhancement_request,
-            robot_service=RobotService(Robots({})),
+            robot_service=RobotRequestDispatcher(RobotService({})),
         )
 
 

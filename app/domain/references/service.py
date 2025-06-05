@@ -3,6 +3,7 @@
 from collections.abc import Awaitable, Callable
 from typing import cast
 
+import destiny_sdk
 from pydantic import UUID4
 
 from app.core.config import get_settings
@@ -35,7 +36,7 @@ from app.domain.references.services.batch_enhancement_service import (
 from app.domain.references.services.ingestion_service import (
     IngestionService,
 )
-from app.domain.robots.service import RobotService
+from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.service import GenericService
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
@@ -157,7 +158,9 @@ class ReferenceService(GenericService):
 
     @unit_of_work
     async def request_reference_enhancement(
-        self, enhancement_request: EnhancementRequest, robot_service: RobotService
+        self,
+        enhancement_request: EnhancementRequest,
+        robot_service: RobotRequestDispatcher,
     ) -> EnhancementRequest:
         """Create an enhancement request and send it to robot."""
         reference = await self.sql_uow.references.get_by_pk(
@@ -170,11 +173,15 @@ class ReferenceService(GenericService):
             enhancement_request
         )
 
+        robot_request = destiny_sdk.robots.RobotRequest(
+            id=enhancement_request.id,
+            reference=destiny_sdk.references.Reference(**reference.model_dump()),
+            extra_fields=enhancement_request.enhancement_parameters,
+        )
+
         try:
-            await robot_service.request_enhancement_from_robot(
-                robot_config=robot,
-                enhancement_request=enhancement_request,
-                reference=reference,
+            await robot_service.send_enhancement_request_to_robot(
+                endpoint="/single/", robot=robot, robot_request=robot_request
             )
         except RobotUnreachableError as exception:
             return await self.sql_uow.enhancement_requests.update_by_pk(
@@ -259,7 +266,7 @@ class ReferenceService(GenericService):
     async def collect_and_dispatch_references_for_batch_enhancement(
         self,
         batch_enhancement_request: BatchEnhancementRequest,
-        robot_service: RobotService,
+        robot_service: RobotRequestDispatcher,
         blob_repository: BlobRepository,
     ) -> None:
         """Collect and dispatch references for batch enhancement."""
@@ -293,8 +300,8 @@ class ReferenceService(GenericService):
 
         try:
             await robot_service.send_enhancement_request_to_robot(
-                robot_url=str(robot.robot_url).rstrip("/") + "/batch/",
-                robot_id=batch_enhancement_request.robot_id,
+                endpoint="/batch/",
+                robot=robot,
                 robot_request=robot_request,
             )
         except RobotUnreachableError as exception:
