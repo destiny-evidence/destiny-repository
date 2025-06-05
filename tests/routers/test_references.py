@@ -26,10 +26,8 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import Reference as SQLReference
-from app.domain.references.routes import robots
 from app.domain.references.service import ReferenceService
-from app.domain.robots.models import Robot
-from app.domain.robots.service import RobotService
+from app.domain.robots.sql import Robot as SQLRobot
 from app.main import (
     enhance_wrong_reference_exception_handler,
     not_found_exception_handler,
@@ -39,10 +37,6 @@ from app.tasks import broker
 
 # Use the database session in all tests to set up the database manager.
 pytestmark = pytest.mark.usefixtures("session")
-
-ROBOT_ID = uuid.uuid4()
-ROBOT_URL = "http://www.test-robot-here.com/"
-FAKE_ROBOT_TOKEN = "access_token"
 
 
 @pytest.fixture
@@ -64,18 +58,6 @@ def app() -> FastAPI:
 
     app.include_router(references.router)
     app.include_router(references.robot_router)
-    app.dependency_overrides[robots] = RobotService(
-        [
-            Robot(
-                id=ROBOT_ID,
-                base_url=ROBOT_URL,
-                client_secret="secret-secret",
-                description="description",
-                name="name",
-                owner="owner",
-            )
-        ]
-    )
 
     return app
 
@@ -105,6 +87,20 @@ async def add_reference(session: AsyncSession) -> SQLReference:
     session.add(reference)
     await session.commit()
     return reference
+
+
+async def add_robot(session: AsyncSession) -> SQLRobot:
+    """Add a robot to the database."""
+    robot = SQLRobot(
+        base_url="http://www.test-robot-here.com/",
+        client_secret="secret-secret",
+        description="description",
+        name="name",
+        owner="owner",
+    )
+    session.add(robot)
+    await session.commit()
+    return robot
 
 
 def robot_result_enhancement(
@@ -149,15 +145,18 @@ async def test_request_reference_enhancement_happy_path(
     """Test requesting an existing reference be enhanced."""
     # Create a reference to request enhancement against
     reference = await add_reference(session)
+    robot = await add_robot(session)
 
     # Mock the robot response
     httpx_mock.add_response(
-        method="POST", url=ROBOT_URL + "single/", status_code=status.HTTP_202_ACCEPTED
+        method="POST",
+        url=robot.base_url + "single/",
+        status_code=status.HTTP_202_ACCEPTED,
     )
 
     enhancement_request_create = {
         "reference_id": f"{reference.id}",
-        "robot_id": f"{ROBOT_ID}",
+        "robot_id": f"{robot.id}",
         "enhancement_parameters": {"some": "parameters"},
     }
 
@@ -176,18 +175,19 @@ async def test_request_reference_enhancement_robot_rejects_request(
     """Test requesting enhancement to a robot that rejects the request."""
     # Create a reference to request enhancement against
     reference = await add_reference(session)
+    robot = await add_robot(session)
 
     # Mock the robot response
     httpx_mock.add_response(
         method="POST",
-        url=ROBOT_URL + "single/",
+        url=robot.base_url + "single/",
         status_code=status.HTTP_418_IM_A_TEAPOT,
         json={"message": "broken"},
     )
 
     enhancement_request_create = {
         "reference_id": f"{reference.id}",
-        "robot_id": f"{ROBOT_ID}",
+        "robot_id": f"{robot.id}",
         "enhancement_parameters": {"some": "parametrs"},
     }
 
@@ -209,7 +209,6 @@ async def test_not_found_exception_handler_returns_response_with_404(
     Triggers the exception handler for NotFoundErrors.
     """
     unknown_robot_id = uuid.uuid4()
-
     reference = await add_reference(session)
 
     enhancement_request_create = {
@@ -227,14 +226,16 @@ async def test_not_found_exception_handler_returns_response_with_404(
 
 
 async def test_request_reference_enhancement_nonexistent_reference(
+    session: AsyncSession,
     client: AsyncClient,
 ) -> None:
     """Test requesting a nonexistent reference be enhanced."""
+    robot = await add_robot(session)
     fake_reference_id = uuid.uuid4()
 
     enhancement_request_create = {
         "reference_id": f"{fake_reference_id}",
-        "robot_id": f"{uuid.uuid4()}",
+        "robot_id": f"{robot.id}",
         "enhancement_parameters": {"some": "parametrs"},
     }
 
@@ -251,10 +252,11 @@ async def test_check_enhancement_request_status_happy_path(
 ) -> None:
     """Test checking the status of an enhancement request."""
     reference = await add_reference(session)
+    robot = await add_robot(session)
 
     enhancement_request = SQLEnhancementRequest(
         reference_id=reference.id,
-        robot_id=uuid.uuid4(),
+        robot_id=robot.id,
         request_status=EnhancementRequestStatus.COMPLETED,
         enhancement_parameters={},
     )
@@ -275,10 +277,11 @@ async def test_fulfill_enhancement_request_happy_path(
 ) -> None:
     """Test creating an enhancement from a robot."""
     reference = await add_reference(session)
+    robot = await add_robot(session)
 
     enhancement_request = SQLEnhancementRequest(
         reference_id=reference.id,
-        robot_id=uuid.uuid4(),
+        robot_id=robot.id,
         request_status=EnhancementRequestStatus.ACCEPTED,
         enhancement_parameters={},
     )
@@ -298,10 +301,11 @@ async def test_fulfill_enhancement_request_robot_has_errors(
 ) -> None:
     """Test handling a robot that fails to fulfill an enhancement request."""
     reference = await add_reference(session)
+    robot = await add_robot(session)
 
     enhancement_request = SQLEnhancementRequest(
         reference_id=reference.id,
-        robot_id=uuid.uuid4(),
+        robot_id=robot.id,
         request_status=EnhancementRequestStatus.ACCEPTED,
         enhancement_parameters={},
     )
@@ -326,10 +330,11 @@ async def test_wrong_reference_exception_handler_returns_response_with_400(
     """Test handling a robot that fails to fulfill an enhancement request."""
     reference = await add_reference(session)
     different_reference = await add_reference(session)
+    robot = await add_robot(session)
 
     enhancement_request = SQLEnhancementRequest(
         reference_id=reference.id,
-        robot_id=uuid.uuid4(),
+        robot_id=robot.id,
         request_status=EnhancementRequestStatus.ACCEPTED,
         enhancement_parameters={},
     )
@@ -352,10 +357,11 @@ async def test_request_batch_enhancement_happy_path(
     # Add references to the database
     reference_1 = await add_reference(session)
     reference_2 = await add_reference(session)
+    robot = await add_robot(session)
 
     batch_request_create = {
         "reference_ids": [str(reference_1.id), str(reference_2.id)],
-        "robot_id": str(uuid.uuid4()),
+        "robot_id": f"{robot.id}",
     }
 
     response = await client.post(

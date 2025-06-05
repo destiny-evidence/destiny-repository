@@ -3,7 +3,6 @@
 import destiny_sdk
 import httpx
 from fastapi import status
-from pydantic import UUID4
 
 from app.core.config import get_settings
 from app.core.exceptions import (
@@ -11,7 +10,6 @@ from app.core.exceptions import (
     RobotUnreachableError,
 )
 from app.domain.robots.models import Robot
-from app.domain.robots.service import RobotService
 
 MIN_FOR_5XX_STATUS_CODES = 500
 
@@ -20,14 +18,6 @@ settings = get_settings()
 
 class RobotRequestDispatcher:
     """Dispatcher for sending enhancement requests to robots."""
-
-    def __init__(self, robots: RobotService) -> None:
-        """Initialize the dispatcher with existing robots."""
-        self.robots = robots
-
-    def get_robot_config(self, robot_id: UUID4) -> Robot:
-        """Get the config for a given robot id."""
-        return self.robots.get_robot_config(robot_id)
 
     async def send_enhancement_request_to_robot(
         self,

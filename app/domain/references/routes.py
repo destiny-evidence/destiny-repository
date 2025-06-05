@@ -52,21 +52,16 @@ def reference_service(
     return ReferenceService(sql_uow=sql_uow)
 
 
-robots = RobotService(known_robots=settings.known_robots)
-
-
-def robot_request_dispatcher(
-    robots: Annotated[RobotService, Depends(robots)],
-) -> RobotRequestDispatcher:
-    """Return the robot request dispatcher."""
-    return RobotRequestDispatcher(robots=robots)
-
-
 def robot_service(
-    robots: Annotated[RobotService, Depends(robots)],
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
 ) -> RobotService:
     """Return the robot service using the provided unit of work dependencies."""
-    return robots
+    return RobotService(sql_uow=sql_uow)
+
+
+def robot_request_dispatcher() -> RobotRequestDispatcher:
+    """Return the robot request dispatcher."""
+    return RobotRequestDispatcher()
 
 
 def blob_repository() -> BlobRepository:
@@ -186,12 +181,16 @@ async def add_identifier(
 async def request_enhancement(
     enhancement_request_in: destiny_sdk.robots.EnhancementRequestIn,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    robot_service: Annotated[RobotRequestDispatcher, Depends(robot_request_dispatcher)],
+    robot_service: Annotated[RobotService, Depends(robot_service)],
+    robot_request_dispatcher: Annotated[
+        RobotRequestDispatcher, Depends(robot_request_dispatcher)
+    ],
 ) -> destiny_sdk.robots.EnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""
     enhancement_request = await reference_service.request_reference_enhancement(
         enhancement_request=await EnhancementRequest.from_sdk(enhancement_request_in),
         robot_service=robot_service,
+        robot_request_dispatcher=robot_request_dispatcher,
     )
 
     return await enhancement_request.to_sdk()

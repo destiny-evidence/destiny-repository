@@ -37,6 +37,7 @@ from app.domain.references.services.ingestion_service import (
     IngestionService,
 )
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
+from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
@@ -160,14 +161,15 @@ class ReferenceService(GenericService):
     async def request_reference_enhancement(
         self,
         enhancement_request: EnhancementRequest,
-        robot_service: RobotRequestDispatcher,
+        robot_service: RobotService,
+        robot_request_dispatcher: RobotRequestDispatcher,
     ) -> EnhancementRequest:
         """Create an enhancement request and send it to robot."""
         reference = await self.sql_uow.references.get_by_pk(
             enhancement_request.reference_id, preload=["identifiers", "enhancements"]
         )
 
-        robot = robot_service.get_robot_config(enhancement_request.robot_id)
+        robot = await robot_service.get_robot(enhancement_request.robot_id)
 
         enhancement_request = await self.sql_uow.enhancement_requests.add(
             enhancement_request
@@ -180,7 +182,7 @@ class ReferenceService(GenericService):
         )
 
         try:
-            await robot_service.send_enhancement_request_to_robot(
+            await robot_request_dispatcher.send_enhancement_request_to_robot(
                 endpoint="/single/", robot=robot, robot_request=robot_request
             )
         except RobotUnreachableError as exception:
@@ -266,11 +268,12 @@ class ReferenceService(GenericService):
     async def collect_and_dispatch_references_for_batch_enhancement(
         self,
         batch_enhancement_request: BatchEnhancementRequest,
-        robot_service: RobotRequestDispatcher,
+        robot_service: RobotService,
+        robot_request_dispatcher: RobotRequestDispatcher,
         blob_repository: BlobRepository,
     ) -> None:
         """Collect and dispatch references for batch enhancement."""
-        robot = robot_service.get_robot_config(batch_enhancement_request.robot_id)
+        robot = await robot_service.get_robot(batch_enhancement_request.robot_id)
         file_stream = FileStream(
             # Handle Python's type invariance by casting the function type. We know
             # Reference is a subclass of SDKJsonlMixin.
@@ -297,7 +300,7 @@ class ReferenceService(GenericService):
         )
 
         try:
-            await robot_service.send_enhancement_request_to_robot(
+            await robot_request_dispatcher.send_enhancement_request_to_robot(
                 endpoint="/batch/",
                 robot=robot,
                 robot_request=robot_request,
