@@ -3,10 +3,9 @@
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.core.logger import get_logger
 from app.domain.references.service import ReferenceService
-from app.domain.robots.models import Robots
+from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.sql.session import db_manager
@@ -36,15 +35,23 @@ async def get_reference_service(
     return ReferenceService(sql_uow=sql_uow)
 
 
-async def get_robot_service() -> RobotService:
-    """Return the robot service using the provided unit of work dependencies."""
-    robots = Robots(known_robots=get_settings().known_robots)
-    return RobotService(robots=robots)
+async def get_robot_service(
+    sql_uow: AsyncSqlUnitOfWork | None = None,
+) -> RobotService:
+    """Return the rebot service using the provided unit of work dependencies."""
+    if sql_uow is None:
+        sql_uow = await get_unit_of_work()
+    return RobotService(sql_uow=sql_uow)
 
 
 async def get_blob_repository() -> BlobRepository:
     """Return the blob repository using the provided session."""
     return BlobRepository()
+
+
+async def get_robot_request_dispatcher() -> RobotRequestDispatcher:
+    """Return the robot request dispatcher."""
+    return RobotRequestDispatcher()
 
 
 @broker.task
@@ -58,6 +65,7 @@ async def collect_and_dispatch_references_for_batch_enhancement(
     )
     reference_service = await get_reference_service()
     robot_service = await get_robot_service()
+    robot_request_dispatcher = await get_robot_request_dispatcher()
     blob_repository = await get_blob_repository()
     batch_enhancement_request = await reference_service.get_batch_enhancement_request(
         batch_enhancement_request_id
@@ -67,6 +75,7 @@ async def collect_and_dispatch_references_for_batch_enhancement(
         await reference_service.collect_and_dispatch_references_for_batch_enhancement(
             batch_enhancement_request,
             robot_service,
+            robot_request_dispatcher,
             blob_repository,
         )
     except Exception as e:

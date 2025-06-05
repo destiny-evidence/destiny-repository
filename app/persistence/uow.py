@@ -18,6 +18,7 @@ from app.domain.references.repository import (
     ExternalIdentifierRepositoryBase,
     ReferenceRepositoryBase,
 )
+from app.domain.robots.repository import RobotRepositoryBase
 from app.persistence.repository import GenericAsyncRepository
 
 logger = get_logger()
@@ -34,6 +35,7 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
     enhancements: EnhancementRepositoryBase
     enhancement_requests: EnhancementRequestRepositoryBase
     batch_enhancement_requests: BatchEnhancementRequestRepositoryBase
+    robots: RobotRepositoryBase
 
     _protected_attrs: Final[set[str]] = {
         "imports",

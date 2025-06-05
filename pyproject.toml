@@ -24,7 +24,7 @@ azure-identity = "^1.21.0"
 azure-servicebus = "^7.14.2"
 azure-storage-blob = "^12.25.1"
 cachetools = "^5.5.2"
-destiny-sdk = {path = "libs/sdk"}
+destiny-sdk = {develop = true, path = "libs/sdk"}
 fastapi = {extras = ["standard"], version = "^0.115.6"}
 greenlet = "^3.1.1"
 minio = "^7.2.15"
@@ -96,6 +96,8 @@ lint.per-file-ignores = {"app/migrations/env.py" = [
     "INP001", # File is part of an implicit namespace package.
     "PLR2004", # Magic value used in comparison
     "S101", # Use of `assert` detected
+    "S105", # hardcoded tokens
+    "S106", # hardcoded passwords
 ], "tests/unit*" = [
     "A002", # Mocking pydantic classes with built in classes causes shadows
     "ANN", # Relax type hinting constraints in unit tests

@@ -12,11 +12,11 @@ Service Auth
 .. automodule:: libs.sdk.src.destiny_sdk.auth
     :members:
     :undoc-members:
-    :inherited-members:
+    :inherited-members: BaseModel
 
 Client Auth
 -----------
-.. automodule:: libs.sdk.src.destiny_sdk.client_auth
+.. automodule:: libs.sdk.src.destiny_sdk.client
     :members:
     :undoc-members:
-    :inherited-members: BaseModel
+    :inherited-members:

@@ -5,11 +5,16 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import BaseModel, Field, HttpUrl, PostgresDsn, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    HttpUrl,
+    PostgresDsn,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.logger import get_logger
-from app.domain.robots.models import RobotConfig
 
 logger = get_logger()
 
@@ -163,11 +168,6 @@ class Settings(BaseSettings):
     presigned_url_expiry_seconds: int = Field(
         default=3600,
         description="The number of seconds a signed URL is valid for.",
-    )
-
-    # Temporary robot configuration, replace with db table later.
-    known_robots: list[RobotConfig] = Field(
-        default_factory=list, description="semi-hardcoded robot configuration"
     )
 
     env: Environment = Field(
