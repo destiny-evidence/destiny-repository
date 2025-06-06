@@ -1,246 +1,196 @@
-"""Test auth tools."""
+"""Tests for HMAC Authentication."""
 
-import datetime
-from collections.abc import Callable
-from enum import StrEnum
-from unittest.mock import AsyncMock, Mock
+import time
+import uuid
+from collections.abc import AsyncGenerator
 
+import destiny_sdk
 import pytest
-from destiny_sdk.auth import AuthMethod, AzureJwtAuth, StrategyAuth, SuccessAuth
-from fastapi import HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials
-from pytest_httpx import HTTPXMock
+from destiny_sdk.client import create_signature
+from fastapi import APIRouter, Depends, FastAPI, status
+from httpx import ASGITransport, AsyncClient
 
-
-class FakeAuthScopes(StrEnum):
-    READ_ALL = "read.all"
+TEST_SECRET_KEY = "dlfskdfhgk8ei346oiehslkdfrerikfglser934utofs"
+TEST_CLIENT_ID = uuid.uuid4()
+REQUEST_BODY = b'{"message": "info"}'
 
 
 @pytest.fixture
-def auth(fake_tenant_id: str, fake_application_id: str) -> AzureJwtAuth:
-    """Create fixure AzureJwtAuth instance for testing."""
-    return AzureJwtAuth(fake_tenant_id, fake_application_id, FakeAuthScopes.READ_ALL)
+def hmac_app() -> FastAPI:
+    """
+    Create a FastAPI application instance for testing HMAC authentication.
 
+    Returns:
+        FastAPI: FastAPI app with test router configured with HMAC auth.
 
-async def test_verify_token_success(
-    httpx_mock: HTTPXMock,
-    auth: AzureJwtAuth,
-    fake_public_key: dict,
-    generate_fake_token: Callable[[dict], str],
-) -> None:
-    """Test that a valid token is successfully verified."""
-    payload = {"sub": "test_subject"}
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    """
+    app = FastAPI(title="Test HMAC Auth")
+    auth = destiny_sdk.auth.HMACAuth(secret_key=TEST_SECRET_KEY)
 
-    token = generate_fake_token(payload)
-    result = await auth.verify_token(token)
-    assert payload["sub"] == result["sub"]
+    def __endpoint() -> dict:
+        return {"message": "ok"}
 
-
-async def test_verify_token_cached_jwks(
-    httpx_mock: HTTPXMock,
-    auth: AzureJwtAuth,
-    fake_public_key: dict,
-    generate_fake_token: Callable[[dict], str],
-):
-    """Test that we cache the jwks fetched from Azure."""
-    payload = {"sub": "test_subject"}
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
-
-    token = generate_fake_token(payload)
-
-    result = await auth.verify_token(token)
-    assert payload["sub"] == result["sub"]
-
-    result = await auth.verify_token(token)
-    assert payload["sub"] == result["sub"]
-
-    # Check we have one request to Azure despite verifying two tokens
-    assert len(httpx_mock.get_requests()) == 1
-
-
-async def test_verify_token_invalid(
-    httpx_mock: HTTPXMock, auth: AzureJwtAuth, fake_public_key: dict
-):
-    """Test that we raise an appropriate exception with an invalid token."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
-
-    with pytest.raises(HTTPException) as excinfo:
-        await auth.verify_token("sample.jwt.token")
-    assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
-    assert excinfo.value.detail == "Unable to parse authentication token."
-
-
-async def test_verify_token_expired(
-    httpx_mock: HTTPXMock,
-    auth: AzureJwtAuth,
-    fake_public_key: dict,
-    generate_fake_token: Callable[[dict], str],
-):
-    """Test that we raise an appropriate exception with an expired token."""
-    payload = {
-        "exp": datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=10),
-    }
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
-
-    token = generate_fake_token(payload)
-    with pytest.raises(HTTPException) as excinfo:
-        await auth.verify_token(token)
-    assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
-    assert excinfo.value.detail == "Token is expired."
-
-
-async def test_verify_token_incorrect_claims(
-    httpx_mock: HTTPXMock,
-    auth: AzureJwtAuth,
-    fake_public_key: dict,
-    generate_fake_token: Callable[[dict], str],
-):
-    """Test that we raise an exception with a token including incorrect claims."""
-    payload = {
-        "aud": "api://wrong_application_id",
-    }
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
-
-    token = generate_fake_token(payload)
-    with pytest.raises(HTTPException) as excinfo:
-        await auth.verify_token(token)
-    assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
-    assert (
-        excinfo.value.detail
-        == "Incorrect claims, please check the audience and issuer."
+    router = APIRouter(prefix="/test", dependencies=[Depends(auth)])
+    router.add_api_route(
+        path="/hmac/",
+        methods=["POST"],
+        status_code=status.HTTP_200_OK,
+        endpoint=__endpoint,
     )
 
-
-async def test_verify_token_no_keys(
-    httpx_mock: HTTPXMock,
-    auth: AzureJwtAuth,
-    generate_fake_token: Callable[[], str],
-):
-    """Test that we raise an exception when our token's kid can't be found."""
-    httpx_mock.add_response(json={"keys": [{"kid": "wrong_kid"}]})
-
-    token = generate_fake_token()
-    with pytest.raises(HTTPException) as excinfo:
-        await auth.verify_token(token)
-    assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
-    assert excinfo.value.detail == "Unable to find appropriate key."
+    app.include_router(router)
+    return app
 
 
-async def test_verify_token_jwks_retry(
-    httpx_mock: HTTPXMock,
-    auth: AzureJwtAuth,
-    fake_public_key: dict,
-    generate_fake_token: Callable[[dict], str],
-):
-    """Test that we get a fresh public key if the one we have is stale."""
-    stale_public_key = fake_public_key.copy()
-    stale_public_key["n"] = "stale_n"
-    auth.cache["jwks"] = {"keys": [stale_public_key]}
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+@pytest.fixture
+async def client(hmac_app: FastAPI) -> AsyncGenerator[AsyncClient]:
+    """
+    Create a test client for the FastAPI application.
 
-    payload = {"sub": "test_subject"}
-    token = generate_fake_token(payload)
-    result = await auth.verify_token(token)
-    assert payload["sub"] == result["sub"]
+    Args:
+        app (FastAPI): FastAPI application instance.
 
-    assert len(httpx_mock.get_requests()) == 1
-    assert auth.cache["jwks"] == {"keys": [fake_public_key]}
+    Returns:
+        TestClient: Test client for the FastAPI application.
+
+    """
+    async with AsyncClient(
+        transport=ASGITransport(app=hmac_app),
+        base_url="http://test",
+    ) as client:
+        yield client
 
 
-async def test_verify_token_parse_failure_after_retry(
-    httpx_mock: HTTPXMock,
-    auth: AzureJwtAuth,
-    fake_public_key: dict,
-    generate_fake_token: Callable[[], str],
-):
-    """Test that we only retry once if we fail to find a key for our token."""
-    stale_public_key = fake_public_key.copy()
-    stale_public_key["n"] = "stale_n"
-    auth.cache["jwks"] = {"keys": [stale_public_key]}
-    httpx_mock.add_response(json={"keys": [stale_public_key]})
+async def test_hmac_authentication_happy_path(client: AsyncClient):
+    """Test authentication is successful when signature is correct."""
 
-    token = generate_fake_token()
-    with pytest.raises(HTTPException) as excinfo:
-        await auth.verify_token(token)
-
-    assert len(httpx_mock.get_requests()) == 1
-    assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
-    assert excinfo.value.detail == "Unable to parse authentication token."
-
-
-async def test_requires_read_all_success(
-    httpx_mock: HTTPXMock,
-    auth: AzureJwtAuth,
-    fake_public_key: dict,
-    generate_fake_token: Callable[..., str],
-):
-    """Test that we successfully validate a token with the requested scope."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
-
-    token = generate_fake_token(scope=FakeAuthScopes.READ_ALL.value)
-    credentials = Mock()
-    credentials.credentials = token
-    assert await auth(credentials) is True
-
-
-async def test_requires_read_all_scope_not_found(
-    httpx_mock: HTTPXMock,
-    auth: AzureJwtAuth,
-    fake_public_key: dict,
-    generate_fake_token: Callable[..., str],
-):
-    """Test that we raise an exception with a token without the appropriate scope."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
-
-    token = generate_fake_token(scope="not.read.all")
-    credentials = Mock()
-    credentials.credentials = token
-    with pytest.raises(HTTPException) as excinfo:
-        await auth(credentials)
-    assert excinfo.value.status_code == status.HTTP_403_FORBIDDEN
-    assert (
-        excinfo.value.detail
-        == "IDW10203: The app permissions (role) claim does not contain the scope read.all"  # noqa: E501
+    auth = destiny_sdk.client.HMACSigningAuth(
+        secret_key=TEST_SECRET_KEY, client_id=TEST_CLIENT_ID
     )
 
+    response = await client.post("test/hmac/", content=REQUEST_BODY, auth=auth)
 
-async def test_requires_read_all_scope_not_present(
-    httpx_mock: HTTPXMock,
-    auth: AzureJwtAuth,
-    fake_public_key: dict,
-    generate_fake_token: Callable[..., str],
-):
-    """Test that we raise an exception when no scope is present."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    assert response.status_code == status.HTTP_200_OK
 
-    token = generate_fake_token()
-    credentials = Mock()
-    credentials.credentials = token
-    with pytest.raises(HTTPException) as excinfo:
-        await auth(credentials)
-    assert excinfo.value.status_code == status.HTTP_403_FORBIDDEN
-    assert (
-        excinfo.value.detail
-        == "IDW10201: No app permissions (role) claim was found in the bearer token"
+
+async def test_hmac_authentication_no_signature(client: AsyncClient):
+    """Test authentication fails if the signature is not included."""
+    response = await client.post("test/hmac/", content=REQUEST_BODY)
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "Authorization header missing" in response.json()["detail"]
+
+
+async def test_hmac_authentication_wrong_auth_type(client: AsyncClient):
+    """Test authentication fails if the signature is not included."""
+    response = await client.post(
+        "test/hmac/",
+        content=REQUEST_BODY,
+        headers={"Authorization": "Bearer nonsense-token"},
     )
 
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "type not supported" in response.json()["detail"]
 
-async def test_strategy_auth_selection():
-    """Test that we can use a strategy."""
-    mock_auth_method = AsyncMock(AuthMethod)
-    strategy_auth = StrategyAuth(selector=lambda: mock_auth_method)
 
-    await strategy_auth(
-        HTTPAuthorizationCredentials(scheme="Bearer", credentials="foo")
+async def test_hmac_authentication_no_client_id(client: AsyncClient):
+    """Test authentication fails when no client id is provided"""
+    signature = create_signature(
+        secret_key=TEST_SECRET_KEY,
+        request_body=REQUEST_BODY,
+        client_id=TEST_CLIENT_ID,
+        timestamp=time.time(),
     )
-    assert mock_auth_method.called
+
+    response = await client.post(
+        "test/hmac/",
+        headers={"Authorization": f"Signature {signature}"},
+        content=REQUEST_BODY,
+    )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "X-Client-Id header missing" in response.json()["detail"]
 
 
-async def test_fake_auth_success(generate_fake_token: Callable[..., str]):
-    """Test that our fake auth method succeeds on demand, with and without tokens."""
-    auth = SuccessAuth()
-    creds = Mock(credentials=generate_fake_token())
+async def test_hmac_authentication_invalid_client_id_format(client: AsyncClient):
+    """Test authentication fails when no client id is provided"""
+    signature = create_signature(
+        secret_key=TEST_SECRET_KEY,
+        request_body=REQUEST_BODY,
+        client_id=TEST_CLIENT_ID,
+        timestamp=time.time(),
+    )
 
-    assert await auth(creds)
-    assert await auth(None)
+    response = await client.post(
+        "test/hmac/",
+        headers={
+            "Authorization": f"Signature {signature}",
+            "X-Client-Id": "not-a-uuid",
+        },
+        content=REQUEST_BODY,
+    )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "Invalid format for client id" in response.json()["detail"]
+
+
+async def test_hmac_authentication_no_timestamp(client: AsyncClient):
+    """Test authentication fails when no client id is provided"""
+    signature = create_signature(
+        secret_key=TEST_SECRET_KEY,
+        request_body=REQUEST_BODY,
+        client_id=TEST_CLIENT_ID,
+        timestamp=time.time(),
+    )
+
+    response = await client.post(
+        "test/hmac/",
+        headers={
+            "Authorization": f"Signature {signature}",
+            "X-Client-Id": f"{TEST_CLIENT_ID}",
+        },
+        content=REQUEST_BODY,
+    )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "X-Request-Timestamp header missing" in response.json()["detail"]
+
+
+async def test_hmac_authentication_request_too_old(client: AsyncClient):
+    """Test authentication fails when no client id is provided"""
+    six_minutes = 60 * 6
+    signature = create_signature(
+        secret_key=TEST_SECRET_KEY,
+        request_body=REQUEST_BODY,
+        client_id=TEST_CLIENT_ID,
+        timestamp=time.time(),
+    )
+
+    response = await client.post(
+        "test/hmac/",
+        headers={
+            "Authorization": f"Signature {signature}",
+            "X-Client-Id": f"{TEST_CLIENT_ID}",
+            "X-Request-Timestamp": f"{time.time() - six_minutes}",
+        },
+        content=REQUEST_BODY,
+    )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "Request timestamp has expired." in response.json()["detail"]
+
+
+async def test_hmac_authentication_incorrect_signature(client: AsyncClient):
+    """Test authentication fails when the signature does not match."""
+    response = await client.post(
+        "test/hmac/",
+        headers={
+            "Authorization": "Signature nonsense-signature",
+            "X-Client-Id": f"{TEST_CLIENT_ID}",
+            "X-Request-Timestamp": f"{time.time()}",
+        },
+        content=REQUEST_BODY,
+    )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "Signature" in response.json()["detail"]

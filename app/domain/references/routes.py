@@ -4,14 +4,15 @@ import uuid
 from typing import Annotated
 
 import destiny_sdk
-from destiny_sdk.auth import CachingStrategyAuth
-from fastapi import APIRouter, Depends, Path, status
+from fastapi import APIRouter, Depends, Path, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import (
     AuthMethod,
     AuthScopes,
+    CachingStrategyAuth,
     choose_auth_strategy,
+    choose_hmac_auth_strategy,
 )
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -27,7 +28,7 @@ from app.domain.references.tasks import (
     collect_and_dispatch_references_for_batch_enhancement,
     validate_and_import_batch_enhancement_result,
 )
-from app.domain.robots.models import Robots
+from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.sql.session import get_session
@@ -51,19 +52,21 @@ def reference_service(
     return ReferenceService(sql_uow=sql_uow)
 
 
+def robot_service(
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
+) -> RobotService:
+    """Return the robot service using the provided unit of work dependencies."""
+    return RobotService(sql_uow=sql_uow)
+
+
+def robot_request_dispatcher() -> RobotRequestDispatcher:
+    """Return the robot request dispatcher."""
+    return RobotRequestDispatcher()
+
+
 def blob_repository() -> BlobRepository:
     """Return the blob storage service."""
     return BlobRepository()
-
-
-robots = Robots(known_robots=settings.known_robots)
-
-
-def robot_service(
-    robots: Annotated[Robots, Depends(robots)],
-) -> RobotService:
-    """Return the robot service using the provided unit of work dependencies."""
-    return RobotService(robots=robots)
 
 
 def choose_auth_strategy_reader() -> AuthMethod:
@@ -86,16 +89,6 @@ def choose_auth_strategy_writer() -> AuthMethod:
     )
 
 
-def choose_auth_strategy_robot() -> AuthMethod:
-    """Choose robot scope auth strategy for our authorization."""
-    return choose_auth_strategy(
-        environment=settings.env,
-        tenant_id=settings.azure_tenant_id,
-        application_id=settings.azure_application_id,
-        auth_scope=AuthScopes.ROBOT,
-    )
-
-
 reference_reader_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_reader,
 )
@@ -104,7 +97,16 @@ reference_writer_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_writer,
 )
 
-robot_auth = CachingStrategyAuth(selector=choose_auth_strategy_robot)
+
+async def robot_auth(
+    request: Request,
+    robot_service: Annotated[RobotService, Depends(robot_service)],
+) -> bool:
+    """Choose robot auth strategy for our authorization."""
+    return await choose_hmac_auth_strategy(
+        get_client_secret=robot_service.get_robot_secret,
+    )(request)
+
 
 router = APIRouter(prefix="/references", tags=["references"])
 robot_router = APIRouter(
@@ -180,11 +182,15 @@ async def request_enhancement(
     enhancement_request_in: destiny_sdk.robots.EnhancementRequestIn,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     robot_service: Annotated[RobotService, Depends(robot_service)],
+    robot_request_dispatcher: Annotated[
+        RobotRequestDispatcher, Depends(robot_request_dispatcher)
+    ],
 ) -> destiny_sdk.robots.EnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""
     enhancement_request = await reference_service.request_reference_enhancement(
         enhancement_request=await EnhancementRequest.from_sdk(enhancement_request_in),
         robot_service=robot_service,
+        robot_request_dispatcher=robot_request_dispatcher,
     )
 
     return await enhancement_request.to_sdk()

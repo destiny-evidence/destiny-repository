@@ -3,7 +3,6 @@
 from . import (
     auth,
     client,
-    client_auth,
     enhancements,
     identifiers,
     imports,
@@ -15,7 +14,6 @@ from . import (
 __all__ = [
     "auth",
     "client",
-    "client_auth",
     "enhancements",
     "identifiers",
     "imports",
