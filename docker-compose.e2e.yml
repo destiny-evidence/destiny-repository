@@ -124,7 +124,7 @@ services:
       - 8001:8001
     depends_on:
       repository:
-        condition: service_healthy
+        condition: service_started
       e2e-task-worker:
         condition: service_started
       # toy-robot:
