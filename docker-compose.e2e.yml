@@ -61,17 +61,17 @@ services:
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
       MINIO_CONFIG: '{"HOST":"fs:9000", "ACCESS_KEY": "localuser", "SECRET_KEY": "localpass"}'
       KNOWN_ROBOTS: '[{"robot_id": "1ee5aa1f-3248-4d21-9fee-718d4ff0ba5f", "robot_url": "http://toy-robot:8001/toy/enhancement/", "dependent_enhancements":["annotation","abstract"], "dependent_identifiers":["doi","pm_id"], "robot_secret": "dummy_robot_secret"}]'
-    # healthcheck:
-    #   test:
-    #     [
-    #       "CMD",
-    #       "python",
-    #       "-c",
-    #       "import socket; sock = socket.create_connection(('localhost',8000), 2); sock.close()",
-    #     ]
-    #   interval: 2s
-    #   timeout: 2s
-    #   retries: 5
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import socket; sock = socket.create_connection(('localhost',8000), 2); sock.close()",
+        ]
+      interval: 2s
+      timeout: 2s
+      retries: 5
   e2e-task-worker:
     build:
       context: .
@@ -124,7 +124,7 @@ services:
       - 8001:8001
     depends_on:
       repository:
-        condition: service_started
+        condition: service_healthy
       e2e-task-worker:
         condition: service_started
       # toy-robot:
