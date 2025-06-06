@@ -189,7 +189,7 @@ class ReferenceService(GenericService):
 
         robot_request = destiny_sdk.robots.RobotRequest(
             id=enhancement_request.id,
-            reference=destiny_sdk.references.Reference(**reference.model_dump()),
+            reference=await reference.to_sdk(),
             extra_fields=enhancement_request.enhancement_parameters,
         )
 
