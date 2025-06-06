@@ -34,6 +34,7 @@ jobs:
           ELASTIC_STACK_VERSION=9.0.0
           ELASTIC_PASSWORD="destiny"
           KIBANA_PASSWORD="destiny"
+          ES_CLUSTER_NAME="docker-cluster"
           EOF
 
       - name: Install Docker Compose

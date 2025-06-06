@@ -161,7 +161,7 @@ services:
       - ${ES_PORT}:9200
     environment:
       - node.name=elasticsearch
-      - cluster.name=${CLUSTER_NAME}
+      - cluster.name=${ES_CLUSTER_NAME}
       - cluster.initial_master_nodes=elasticsearch
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - bootstrap.memory_lock=true
