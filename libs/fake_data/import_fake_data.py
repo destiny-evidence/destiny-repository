@@ -140,9 +140,8 @@ if __name__ == "__main__":
         import_fake_data(args.filename, callback_id)
         # Keep the main thread running
         logger.info("Main thread is running. Press Ctrl+C to stop.")
-        finished.acquire()
-        finished.wait()  # Wait until the server is done
-        finished.release()
+        with finished:
+            finished.wait()  # Wait until the server is done
         logger.info("Import completed successfully.")
     except KeyboardInterrupt:
         logger.info("Server is shutting down...")
