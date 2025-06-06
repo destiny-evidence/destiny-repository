@@ -3,7 +3,7 @@
 from abc import abstractmethod
 from typing import Generic, Self
 
-from pydantic import BaseModel
+from elasticsearch.dsl import AsyncDocument
 
 from app.persistence.generics import GenericDomainModelType
 
@@ -12,7 +12,7 @@ from app.persistence.generics import GenericDomainModelType
 # https://stackoverflow.com/a/49668970
 class GenericESPersistence(
     Generic[GenericDomainModelType],
-    BaseModel,
+    AsyncDocument,
 ):
     """
     Generic implementation for an elasticsearch persistence model.

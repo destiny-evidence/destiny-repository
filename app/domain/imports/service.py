@@ -47,6 +47,22 @@ class ImportService(GenericService):
         return await self.sql_uow.batches.get_by_pk(import_batch_id)
 
     @unit_of_work
+    async def get_imported_references_from_batch(
+        self, import_batch_id: UUID4
+    ) -> set[UUID4]:
+        """Get all imported references from a batch."""
+        results = await self.sql_uow.results.get_by_filter(
+            import_batch_id=import_batch_id,
+        )
+        return {
+            result.reference_id
+            for result in results
+            if result.reference_id
+            and result.status
+            in (ImportResultStatus.COMPLETED, ImportResultStatus.PARTIALLY_FAILED)
+        }
+
+    @unit_of_work
     async def get_import_batch_with_results(
         self, import_batch_id: UUID4
     ) -> ImportBatch:
@@ -165,10 +181,6 @@ This should not happen.
                 import_batch.id, ImportBatchStatus.FAILED
             )
             return
-
-        await self._update_import_batch_status(
-            import_batch.id, ImportBatchStatus.COMPLETED
-        )
 
         if import_batch.callback_url:
             try:
