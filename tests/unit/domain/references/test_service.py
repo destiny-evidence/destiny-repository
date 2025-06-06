@@ -8,6 +8,7 @@ import pytest
 from fastapi import status
 
 from app.core.exceptions import (
+    DerivedEnhancementNotFoundError,
     RobotEnhancementError,
     SQLNotFoundError,
     WrongReferenceError,
@@ -416,13 +417,15 @@ async def test_create_invalid_derived_reference_enhancement_from_request(
     )
 
     derived_enhancement = fake_enhancement_data.copy()
-    derived_from = uuid.uuid4()
-    derived_enhancement["derived_from"] = [derived_from]
+    derived_from1 = uuid.uuid4()
+    derived_from2 = uuid.uuid4()
+    derived_enhancement["derived_from"] = [derived_from1, derived_from2]
 
     service = ReferenceService(uow)
     with pytest.raises(
-        SQLNotFoundError,
-        match=f"{{'{derived_from}'}} not in repository",
+        DerivedEnhancementNotFoundError,
+        match=rf"Enhancement with ids \{{'({derived_from1}|{derived_from2})', "
+        rf"'({derived_from1}|{derived_from2})'}} does not exist\.",
     ):
         await service.create_reference_enhancement_from_request(
             enhancement_request_id=existing_enhancement_request.id,
