@@ -66,6 +66,7 @@ jobs:
       - name: Run test with pytest via poetry
         env:
           DB_CONFIG: '{"DB_URL": "postgresql+asyncpg://postgres:${{ secrets.db_password }}@localhost:5432/destiny_test"}'
+          ES_CONFIG: '{"ES_URL": "https://localhost:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": ".certs/ca.crt"}'
           AZURE_APPLICATION_ID: ${{ vars.azure_application_id }}
           AZURE_TENANT_ID: ${{ vars.azure_tenant_id }}
           MESSAGE_BROKER_URL: amqp://guest:guest@localhost:5672
