@@ -69,8 +69,8 @@ services:
           "-c",
           "import socket; sock = socket.create_connection(('localhost',8000), 2); sock.close()",
         ]
-      interval: 2s
-      timeout: 2s
+      interval: 10s
+      timeout: 10s
       retries: 5
   e2e-task-worker:
     build:
@@ -109,8 +109,8 @@ services:
   #         "-c",
   #         "import socket; sock = socket.create_connection(('localhost',8001), 2); sock.close()",
   #       ]
-  #     interval: 2s
-  #     timeout: 2s
+  #     interval: 10s
+  #     timeout: 10s
   #     retries: 5
   e2e:
     container_name: e2e
