@@ -22,6 +22,7 @@ from app.core.logger import configure_logger, get_logger
 from app.domain.imports.routes import router as import_router
 from app.domain.references.routes import robot_router
 from app.domain.references.routes import router as reference_router
+from app.persistence.es.client import es_manager
 from app.persistence.sql.session import db_manager
 from app.tasks import broker
 from app.utils.healthcheck import router as healthcheck_router
@@ -33,13 +34,16 @@ logger = get_logger()
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Lifespan hook for FastAPI."""
+    # TODO(Adam): implement similar pattern for blob storage  # noqa: TD003
     db_manager.init(settings.db_config, settings.app_name)
+    es_manager.init(settings.es_config)
     await broker.startup()
 
     yield
 
     await broker.shutdown()
     await db_manager.close()
+    await es_manager.close()
 
 
 app = FastAPI(title="DESTINY Climate and Health Repository", lifespan=lifespan)

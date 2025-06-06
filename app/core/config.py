@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import BaseModel, Field, HttpUrl, PostgresDsn, model_validator
+from pydantic import BaseModel, Field, FilePath, HttpUrl, PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.logger import get_logger
@@ -78,6 +78,25 @@ If db_pass is provided, azure_db_resource_url must not be provided."""
         return self
 
 
+class ESConfig(BaseModel):
+    """Elasticsearch configuration."""
+
+    es_url: HttpUrl | list[HttpUrl] = Field(
+        description="If a list, connections will be created to all nodes in the list.",
+    )
+    es_user: str
+    es_pass: str
+    es_ca_path: FilePath
+
+    @property
+    def es_hosts(self) -> list[str]:
+        """Return the Elasticsearch host(s) as a list of strings."""
+        return [
+            str(url)
+            for url in (self.es_url if isinstance(self.es_url, list) else [self.es_url])
+        ]
+
+
 class MinioConfig(BaseModel):
     """Minio configuration."""
 
@@ -128,6 +147,7 @@ class Settings(BaseSettings):
     project_root: Path = Path(__file__).joinpath("../../..").resolve()
 
     db_config: DatabaseConfig
+    es_config: ESConfig
     minio_config: MinioConfig | None = None
     azure_blob_config: AzureBlobConfig | None = None
 

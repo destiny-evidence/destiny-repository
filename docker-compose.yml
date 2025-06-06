@@ -104,6 +104,7 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_STACK_VERSION}
     volumes:
       - certs:/usr/share/elasticsearch/config/certs
+      - ./.certs:/certs-local
     user: "0"
     command: >
       bash -c '
@@ -137,6 +138,8 @@ services:
         chown -R root:root config/certs;
         find . -type d -exec chmod 750 \{\} \;;
         find . -type f -exec chmod 640 \{\} \;;
+        echo "Copying CA to local certs directory";
+        cp config/certs/ca/ca.crt /certs-local/ca.crt;
         echo "Waiting for Elasticsearch availability";
         until curl -s --cacert config/certs/ca/ca.crt https://elasticsearch:9200 | grep -q "missing authentication credentials"; do sleep 30; done;
         echo "Setting kibana_system password";

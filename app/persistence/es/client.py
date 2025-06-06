@@ -1,0 +1,58 @@
+"""Management of the Elasticsearch client."""
+
+import contextlib
+from collections.abc import AsyncIterator
+
+from elasticsearch import AsyncElasticsearch
+
+from app.core.config import ESConfig
+from app.core.logger import get_logger
+
+logger = get_logger()
+
+
+class AsyncESClientManager:
+    """Manages AsyncElasticsearch client lifecycle."""
+
+    def __init__(self) -> None:
+        """Initialize the AsyncESClientManager."""
+        self._client: AsyncElasticsearch | None = None
+
+    def init(self, es_config: ESConfig) -> None:
+        """Initialize the Elasticsearch client manager."""
+        if self._client is None:
+            self._client = AsyncElasticsearch(
+                hosts=es_config.es_hosts,
+                ca_certs=str(es_config.es_ca_path),
+                basic_auth=(es_config.es_user, es_config.es_pass),
+            )
+
+    async def close(self) -> None:
+        """Close the Elasticsearch client."""
+        if self._client is not None:
+            await self._client.close()
+            self._client = None
+
+    @contextlib.asynccontextmanager
+    async def client(self) -> AsyncIterator[AsyncElasticsearch]:
+        """Yield the AsyncElasticsearch client as an async context manager."""
+        if self._client is None:
+            msg = "AsyncESClientManager is not initialized"
+            raise RuntimeError(msg)
+        try:
+            yield self._client
+        finally:
+            pass  # Optionally handle per-request cleanup
+
+
+es_manager = AsyncESClientManager()
+
+
+async def get_client() -> AsyncIterator[AsyncElasticsearch]:
+    """
+    Yield an AsyncElasticsearch client for FastAPI dependency injection.
+
+    Usage: Depends(get_client)
+    """
+    async with es_manager.client() as client:
+        yield client

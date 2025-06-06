@@ -4,6 +4,7 @@ from typing import Annotated
 
 from azure.identity.aio import DefaultAzureCredential
 from azure.storage.blob.aio import BlobServiceClient
+from elasticsearch import AsyncElasticsearch
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
+from app.persistence.es.client import get_client
 from app.persistence.sql.session import get_session
 from app.tasks import broker
 
@@ -25,13 +27,15 @@ class HealthCheckOptions(BaseModel):
 
     worker: bool = True
     database: bool = True
+    elasticsearch: bool = True
     azure_blob_storage: bool = True
 
 
 @router.get("/", status_code=status.HTTP_200_OK)
 async def get_healthcheck(
     healthcheck_options: Annotated[HealthCheckOptions, Depends()],
-    session: Annotated[AsyncSession, Depends(get_session)],
+    db_session: Annotated[AsyncSession, Depends(get_session)],
+    es_client: Annotated[AsyncElasticsearch, Depends(get_client)],
 ) -> JSONResponse:
     """Verify we are able to connect to the database."""
     if healthcheck_options.worker:
@@ -41,7 +45,7 @@ async def get_healthcheck(
         # For now we just check we can write to the queue.
         await _stub.kiq()
 
-    result = await healthcheck(session, healthcheck_options)
+    result = await healthcheck(db_session, es_client, healthcheck_options)
     if result:
         raise HTTPException(status_code=500, detail=result)
     return JSONResponse(content={"status": "ok"})
@@ -54,17 +58,26 @@ async def _stub() -> None:
 
 
 async def healthcheck(
-    session: AsyncSession, healthcheck_options: HealthCheckOptions
+    db_session: AsyncSession,
+    es_client: AsyncElasticsearch,
+    healthcheck_options: HealthCheckOptions,
 ) -> str | None:
     """Run healthcheck. Returns an error message if failed else None."""
     logger.info("Running healthcheck", extra={"options": healthcheck_options})
 
     if healthcheck_options.database:
         try:
-            await session.execute(text("SELECT 1"))
+            await db_session.execute(text("SELECT 1"))
         except Exception:
             logger.exception("Database connection failed.")
             return "Database connection failed."
+
+    if healthcheck_options.elasticsearch:
+        try:
+            await es_client.info()
+        except Exception:
+            logger.exception("Elasticsearch connection failed.")
+            return "Elasticsearch connection failed."
 
     if healthcheck_options.azure_blob_storage:
         if not settings.azure_blob_config:
