@@ -42,7 +42,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await db_manager.close()
 
 
-app = FastAPI(title="DESTINY Climate and Health Repository", lifespan=lifespan)
+app = FastAPI(title="DESTINY Climate and Health Repository!", lifespan=lifespan)
 
 app.include_router(import_router)
 app.include_router(reference_router)
