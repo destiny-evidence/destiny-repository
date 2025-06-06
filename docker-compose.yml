@@ -11,8 +11,8 @@ services:
       - db_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-d", "destiny_dev", "-U", "localuser"]
-      interval: 2s
-      timeout: 2s
+      interval: 10s
+      timeout: 10s
       retries: 5
   fs:
     image: minio/minio:latest
@@ -27,8 +27,8 @@ services:
     command: server /data --console-address ":9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 2s
-      timeout: 2s
+      interval: 10s
+      timeout: 10s
       retries: 5
   http:
     image: hashicorp/http-echo:latest
@@ -47,8 +47,8 @@ services:
       RABBITMQ_DEFAULT_PASS: guest
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "status"]
-      interval: 2s
-      timeout: 2s
+      interval: 10s
+      timeout: 10s
       retries: 5
 
   app:
