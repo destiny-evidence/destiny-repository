@@ -36,7 +36,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Lifespan hook for FastAPI."""
     # TODO(Adam): implement similar pattern for blob storage  # noqa: TD003
     db_manager.init(settings.db_config, settings.app_name)
-    es_manager.init(settings.es_config)
+    await es_manager.init(settings.es_config)
     await broker.startup()
 
     yield

@@ -75,6 +75,21 @@ async def process_import_batch(import_batch_id: UUID4) -> None:
     # Import into database
     await import_service.process_batch(import_batch)
 
+    if (
+        import_batch := await import_service.get_import_batch(import_batch_id)
+    ).status in (
+        ImportBatchStatus.FAILED,
+        ImportBatchStatus.CANCELLED,
+    ):
+        logger.error(
+            "Import batch processing stopped, elasticsearch indexing will not proceed.",
+            extra={
+                "import_batch_id": import_batch_id,
+                "import_batch_status": import_batch.status,
+            },
+        )
+        return
+
     # Update elasticsearch index
     await import_service.update_import_batch_status(
         import_batch.id, ImportBatchStatus.INDEXING

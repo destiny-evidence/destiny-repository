@@ -74,7 +74,7 @@ async def healthcheck(
 
     if healthcheck_options.elasticsearch:
         try:
-            await es_client.info()
+            await es_client.cluster.health()
         except Exception:
             logger.exception("Elasticsearch connection failed.")
             return "Elasticsearch connection failed."

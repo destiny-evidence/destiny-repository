@@ -193,3 +193,5 @@ infra/app/*.py
 
 
 .certs
+
+libs/fake_data/*.jsonl

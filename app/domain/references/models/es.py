@@ -58,6 +58,11 @@ class AnnotationDocument(InnerDoc):
     scheme: str | None = mapped_field(Keyword())
     label: str | None = mapped_field(Keyword())
 
+    class Meta:
+        """Allow unmapped fields in the document."""
+
+        dynamic = True
+
 
 class EnhancementContentDocument(InnerDoc):
     """
@@ -69,8 +74,13 @@ class EnhancementContentDocument(InnerDoc):
 
     enhancement_type: EnhancementType = mapped_field(Keyword(required=True, index=True))
     annotations: list[AnnotationDocument] | None = mapped_field(
-        Nested(AnnotationDocument, dynamic=True, required=False)
+        Nested(AnnotationDocument, required=False)
     )
+
+    class Meta:
+        """Allow unmapped fields in the document."""
+
+        dynamic = True
 
 
 class EnhancementDocument(InnerDoc):
@@ -80,7 +90,7 @@ class EnhancementDocument(InnerDoc):
     source: str = mapped_field(Keyword(required=True))
     robot_version: str | None = mapped_field(Keyword())
     content: EnhancementContentDocument = mapped_field(
-        Object(EnhancementContentDocument, dynamic=True, required=True)
+        Object(EnhancementContentDocument, required=True)
     )
 
     @classmethod
@@ -108,20 +118,19 @@ class EnhancementDocument(InnerDoc):
 class ReferenceDocument(GenericESPersistence[Reference]):
     """Persistence model for references in Elasticsearch."""
 
-    # mypy exceptions: https://stackoverflow.com/questions/51575931/class-inheritance-in-python-3-7-dataclasses
-
-    id: UUID4 = mapped_field(Keyword(required=True, index=True))  # type: ignore[misc]
-    visibility: Visibility = mapped_field(Keyword(required=True))  # type: ignore[misc]
-    identifiers: list[ExternalIdentifierDocument] = mapped_field(  # type: ignore[misc]
+    visibility: Visibility = mapped_field(Keyword(required=True))
+    identifiers: list[ExternalIdentifierDocument] = mapped_field(
         Nested(ExternalIdentifierDocument)
     )
-    enhancements: list[EnhancementDocument] = mapped_field(Nested(EnhancementDocument))  # type: ignore[misc]
+    enhancements: list[EnhancementDocument] = mapped_field(Nested(EnhancementDocument))
 
     @classmethod
     async def from_domain(cls, domain_obj: Reference) -> Self:
         """Create a persistence model from a domain model."""
         return cls(
-            id=domain_obj.id,
+            # Parent's parent does accept meta, but mypy doesn't like it here.
+            # Ignoring easier than chaining __init__ methods IMO.
+            meta={"id": domain_obj.id},  # type: ignore[call-arg]
             visibility=domain_obj.visibility,
             identifiers=await asyncio.gather(
                 *(
@@ -140,7 +149,7 @@ class ReferenceDocument(GenericESPersistence[Reference]):
     async def to_domain(self) -> Reference:
         """Create a domain model from this persistence model."""
         return Reference(
-            id=self.id,
+            id=self.meta.id,
             visibility=self.visibility,
             identifiers=await asyncio.gather(
                 *(
@@ -155,3 +164,8 @@ class ReferenceDocument(GenericESPersistence[Reference]):
                 )
             ),
         )
+
+    class Index:
+        """Index metadata for the persistence model."""
+
+        name = "reference"

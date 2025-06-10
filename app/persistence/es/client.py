@@ -7,8 +7,10 @@ from elasticsearch import AsyncElasticsearch
 
 from app.core.config import ESConfig
 from app.core.logger import get_logger
+from app.domain.references.models.es import ReferenceDocument
 
 logger = get_logger()
+indices = [ReferenceDocument]
 
 
 class AsyncESClientManager:
@@ -18,7 +20,7 @@ class AsyncESClientManager:
         """Initialize the AsyncESClientManager."""
         self._client: AsyncElasticsearch | None = None
 
-    def init(self, es_config: ESConfig) -> None:
+    async def init(self, es_config: ESConfig) -> None:
         """Initialize the Elasticsearch client manager."""
         if self._client is None:
             self._client = AsyncElasticsearch(
@@ -26,6 +28,12 @@ class AsyncESClientManager:
                 ca_certs=str(es_config.es_ca_path),
                 basic_auth=(es_config.es_user, es_config.es_pass),
             )
+        for index in indices:
+            exists = await self._client.indices.exists(index=index.Index.name)
+            if not exists:
+                msg = f"Creating index {index.Index.name}"
+                logger.info(msg)
+                await index.init(using=self._client)
 
     async def close(self) -> None:
         """Close the Elasticsearch client."""
