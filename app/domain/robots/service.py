@@ -27,6 +27,11 @@ class RobotService(GenericService):
         """Return a given robot."""
         return await self._get_robot(robot_id)
 
+    @unit_of_work
+    async def get_robot_uow(self, robot_id: UUID4) -> Robot:
+        """Return a given robot."""
+        return await self._get_robot(robot_id)
+
     async def get_robot_secret(self, robot_id: UUID4) -> str:
         """Return secret used for signing requests sent to this robot."""
         # Secret to be stored in the azure keyvault
@@ -38,3 +43,9 @@ class RobotService(GenericService):
     async def add_robot(self, robot: Robot) -> Robot:
         """Register a new robot."""
         return await self.sql_uow.robots.add(robot)
+
+    @unit_of_work
+    async def update_robot(self, robot: Robot) -> Robot:
+        """Update an existing robot."""
+        await self.sql_uow.robots.verify_pk_existence([robot.id])
+        return await self.sql_uow.robots.merge(robot)

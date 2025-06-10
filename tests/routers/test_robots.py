@@ -83,3 +83,63 @@ async def test_add_robot_fails_when_name_is_the_same(
 
     response = await client.post("/robot/", json=robot_in)
     assert response.status_code == status.HTTP_409_CONFLICT
+
+
+async def test_update_robot_happy_path(
+    session: AsyncSession, client: AsyncClient
+) -> None:
+    """Test that updating an existing robot succeeds."""
+    robot = {
+        "base_url": "http://www.mimetic-alloy.com",
+        "name": "T-1000",
+        "owner": "Skynet",
+        "description": "Liquid metal android assassin.",
+    }
+
+    existing_robot = SQLRobot(client_secret="secret-secret", **robot)
+    session.add(existing_robot)
+    await session.commit()
+
+    robot_update = robot.copy()
+    new_description = "Melted and decomissioned."
+    robot_update["description"] = new_description
+    robot_update["id"] = str(existing_robot.id)
+
+    response = await client.put("/robot/", json=robot_update)
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["id"] == str(existing_robot.id)
+
+    response = await client.get(f"/robot/{existing_robot.id}/")
+    assert response.json()["description"] == new_description
+
+
+async def test_update_robot_fails_if_name_is_the_same_as_other_robots(
+    session: AsyncSession, client: AsyncClient
+) -> None:
+    """Test that trying to update the name of a robot to something non-unique fails."""
+    robot_1 = {
+        "base_url": "http://www.mimetic-alloy.com",
+        "name": "T-1000",
+        "owner": "Skynet",
+        "description": "Liquid metal android assassin.",
+    }
+
+    robot_2 = {
+        "base_url": "http://www.robotic-endoskeleton.com",
+        "name": "T-800",
+        "owner": "Skynet",
+        "description": "Cyberdyne Systems Model 101",
+    }
+
+    robot_to_update = SQLRobot(client_secret="even-more-secret", **robot_2)
+
+    session.add(SQLRobot(client_secret="secret-secret", **robot_1))
+    session.add(robot_to_update)
+    await session.commit()
+
+    robot_update = robot_2.copy()
+    robot_update["name"] = robot_1["name"]
+    robot_update["id"] = str(robot_to_update.id)
+
+    response = await client.put("/robot/", json=robot_update)
+    assert response.status_code == status.HTTP_409_CONFLICT

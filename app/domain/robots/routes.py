@@ -65,6 +65,9 @@ async def update_robot(
     robot_service: Annotated[RobotService, Depends(robot_service)],
 ) -> destiny_sdk.robots.Robot:
     """Update an existing robot."""
+    robot = await Robot.from_sdk(robot_update)
+    updated_robot = await robot_service.update_robot(robot=robot)
+    return await updated_robot.to_sdk()
 
 
 @router.post(path="/", status_code=status.HTTP_201_CREATED)
@@ -84,6 +87,8 @@ async def get_robot(
     robot_service: Annotated[RobotService, Depends(robot_service)],
 ) -> destiny_sdk.robots.Robot:
     """Get an existing Robot."""
+    robot = await robot_service.get_robot_uow(robot_id=robot_id)
+    return await robot.to_sdk()
 
 
 @router.post(path="/secret/", status_code=status.HTTP_201_CREATED)
