@@ -1,10 +1,10 @@
 """Router for handling management of robots."""
 
+import uuid
 from typing import Annotated
 
 import destiny_sdk
 from fastapi import APIRouter, Depends, Path, status
-from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import (
@@ -15,6 +15,7 @@ from app.core.auth import (
 )
 from app.core.config import get_settings
 from app.core.logger import get_logger
+from app.domain.robots.models import Robot
 from app.domain.robots.service import RobotService
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -68,15 +69,18 @@ async def update_robot(
 
 @router.post(path="/", status_code=status.HTTP_201_CREATED)
 async def register_robot(
-    robot_update: destiny_sdk.robots.RobotIn,
+    robot_create: destiny_sdk.robots.RobotIn,
     robot_service: Annotated[RobotService, Depends(robot_service)],
 ) -> destiny_sdk.robots.ProvisionedRobot:
     """Register a new robot."""
+    robot = await Robot.from_sdk(robot_create)
+    provisioned_robot = await robot_service.add_robot(robot=robot)
+    return await provisioned_robot.to_sdk()
 
 
 @router.get(path="/{robot_id}/", status_code=status.HTTP_200_OK)
 async def get_robot(
-    robot_id: Annotated[UUID4, Path(description="The id of the robot.")],
+    robot_id: Annotated[uuid.UUID, Path(description="The id of the robot.")],
     robot_service: Annotated[RobotService, Depends(robot_service)],
 ) -> destiny_sdk.robots.Robot:
     """Get an existing Robot."""
@@ -84,6 +88,6 @@ async def get_robot(
 
 @router.post(path="/secret/", status_code=status.HTTP_201_CREATED)
 async def cycle_robot_secret(
-    robot_id: UUID4, robot_service: Annotated[RobotService, Depends(robot_service)]
+    robot_id: uuid.UUID, robot_service: Annotated[RobotService, Depends(robot_service)]
 ) -> destiny_sdk.robots.ProvisionedRobot:
     """Cycle the robot's client_secret."""

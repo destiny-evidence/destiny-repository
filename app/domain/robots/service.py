@@ -4,7 +4,7 @@ from pydantic import UUID4, HttpUrl
 
 from app.domain.robots.models import Robot
 from app.domain.service import GenericService
-from app.persistence.sql.uow import AsyncSqlUnitOfWork
+from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 
 
 class RobotService(GenericService):
@@ -33,3 +33,8 @@ class RobotService(GenericService):
         # Currently just using secret name while testing
         robot = await self._get_robot(robot_id)
         return robot.client_secret.get_secret_value()
+
+    @unit_of_work
+    async def add_robot(self, robot: Robot) -> Robot:
+        """Register a new robot."""
+        return await self.sql_uow.robots.add(robot)

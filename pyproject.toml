@@ -26,6 +26,7 @@ azure-storage-blob = "^12.25.1"
 cachetools = "^5.5.2"
 destiny-sdk = {develop = true, path = "libs/sdk"}
 fastapi = {extras = ["standard"], version = "^0.115.6"}
+frozenlist = "1.6.0"
 greenlet = "^3.1.1"
 minio = "^7.2.15"
 pydantic-settings = "^2.7.1"
@@ -59,7 +60,6 @@ sphinx = "^8.2.3"
 sphinxcontrib-mermaid = "^1.0.0"
 
 [tool.poetry.group.e2e.dependencies]
-destiny-sdk = {develop = true, path = "libs/sdk"}
 httpx = "^0.28.1"
 psycopg = "^3.2.6"
 pytest = "^8.3.4"
