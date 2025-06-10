@@ -22,6 +22,7 @@ from app.core.logger import configure_logger, get_logger
 from app.domain.imports.routes import router as import_router
 from app.domain.references.routes import robot_router
 from app.domain.references.routes import router as reference_router
+from app.domain.references.routes import router as robot_management_router
 from app.persistence.sql.session import db_manager
 from app.tasks import broker
 from app.utils.healthcheck import router as healthcheck_router
@@ -47,6 +48,7 @@ app = FastAPI(title="DESTINY Climate and Health Repository", lifespan=lifespan)
 app.include_router(import_router)
 app.include_router(reference_router)
 app.include_router(robot_router)
+app.include_router(robot_management_router)
 app.include_router(healthcheck_router)
 
 configure_logger()
