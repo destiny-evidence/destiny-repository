@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.core.exceptions import SQLNotFoundError
-from app.domain.references.models.es import Reference as ESReference
+from app.domain.references.models.es import ReferenceDocument
 from app.domain.references.models.models import (
     BatchEnhancementRequest as DomainBatchEnhancementRequest,
 )
@@ -96,7 +96,7 @@ class ReferenceSQLRepository(
 
 
 class ReferenceESRepository(
-    GenericAsyncESRepository[DomainReference, ESReference],
+    GenericAsyncESRepository[DomainReference, ReferenceDocument],
     ReferenceRepositoryBase,
 ):
     """Concrete implementation of a repository for references using Elasticsearch."""
@@ -106,7 +106,7 @@ class ReferenceESRepository(
         super().__init__(
             client,
             DomainReference,
-            ESReference,
+            ReferenceDocument,
         )
 
 

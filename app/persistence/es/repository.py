@@ -1,12 +1,13 @@
 """Generic repositories define expected functionality."""
 
 from abc import ABC
+from collections.abc import AsyncGenerator
 from typing import Generic
 
 from elasticsearch import AsyncElasticsearch
 from pydantic import UUID4
 
-from app.core.exceptions import ESError
+from app.core.exceptions import ESError, ESNotFoundError
 from app.persistence.es.generics import GenericESPersistenceType
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
@@ -43,7 +44,7 @@ class GenericAsyncESRepository(
 
     async def get_by_pk(
         self,
-        pk: UUID4,  # noqa: ARG002
+        pk: UUID4,
         preload: list[str] | None = None,
     ) -> GenericDomainModelType:
         """
@@ -58,17 +59,51 @@ class GenericAsyncESRepository(
             msg = "Preloading is not supported in Elasticsearch repositories."
             raise ESError(msg)
 
-        msg = "ES yet to be implemented."
-        raise NotImplementedError(msg)
+        result = await self._persistence_cls.get(
+            id=str(pk),
+            using=self._client,
+        )
+        if not result:
+            detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
+            raise ESNotFoundError(
+                detail=detail,
+                lookup_model=self._persistence_cls.__name__,
+                lookup_type="id",
+                lookup_value=pk,
+            )
+        return await result.to_domain()
 
     async def add(self, record: GenericDomainModelType) -> GenericDomainModelType:
         """
-        Add a record to the repository.
+        Add a record to the repository. If it already exists, it will be updated.
 
         :param record: The record to be persisted.
         :type record: GenericDomainModelType
         :return: The persisted record.
         :rtype: GenericDomainModelType
         """
-        msg = "ES yet to be implemented."
-        raise NotImplementedError(msg)
+        es_record = await self._persistence_cls.from_domain(record)
+        _created = await es_record.save(using=self._client)
+        return record
+
+    async def add_bulk(
+        self,
+        get_records: AsyncGenerator[GenericDomainModelType, None],
+    ) -> None:
+        """
+        Add multiple records to the repository in bulk, memory-efficiently.
+
+        :param records: A generator of lists of records to be persisted.
+        :type records: AsyncGenerator[GenericDomainModelType, None]
+        """
+
+        async def es_record_translation_generator() -> (
+            AsyncGenerator[GenericESPersistenceType, None]
+        ):
+            """Translate domain records to Elasticsearch records."""
+            async for record in get_records:
+                yield await self._persistence_cls.from_domain(record)
+
+        await self._persistence_cls.bulk(
+            es_record_translation_generator(), using=self._client
+        )

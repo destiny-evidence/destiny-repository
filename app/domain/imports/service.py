@@ -83,12 +83,18 @@ class ImportService(GenericService):
         await self._get_import_record(batch.import_record_id)
         return await self.sql_uow.batches.add(batch)
 
-    @unit_of_work
     async def _update_import_batch_status(
         self, import_batch_id: UUID4, status: ImportBatchStatus
     ) -> ImportBatch:
         """Update the status of an import batch."""
         return await self.sql_uow.batches.update_by_pk(import_batch_id, status=status)
+
+    @unit_of_work
+    async def update_import_batch_status(
+        self, import_batch_id: UUID4, status: ImportBatchStatus
+    ) -> ImportBatch:
+        """Update the status of an import batch."""
+        return await self._update_import_batch_status(import_batch_id, status)
 
     @unit_of_work
     async def import_reference(
@@ -150,7 +156,7 @@ This should not happen.
         - Persist the file via the Reference service.
         - Hit the callback URL with the results.
         """
-        await self._update_import_batch_status(
+        await self.update_import_batch_status(
             import_batch.id, ImportBatchStatus.STARTED
         )
 
@@ -177,7 +183,7 @@ This should not happen.
                         i += 1
         except Exception:
             logger.exception("Failed to process batch", extra={"batch": import_batch})
-            await self._update_import_batch_status(
+            await self.update_import_batch_status(
                 import_batch.id, ImportBatchStatus.FAILED
             )
             return

@@ -159,6 +159,21 @@ class Settings(BaseSettings):
     cli_client_id: str | None = None
     app_name: str
 
+    default_es_indexing_chunk_size: int = Field(
+        default=1000,
+        description=(
+            "Number of records to process in a single chunk when indexing to "
+            "Elasticsearch."
+        ),
+    )
+    es_indexing_chunk_size_override: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Override the default Elasticsearch indexing chunk size. Keyed by operation"
+            " type eg 'reference_import'."
+        ),
+    )
+
     default_upload_file_chunk_size: int = Field(
         default=1,
         description=(

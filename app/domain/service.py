@@ -20,4 +20,8 @@ class GenericService:
         :type es_uow: AsyncESUnitOfWork | None
         """
         self.sql_uow = sql_uow
-        self.es_uow = es_uow
+
+        # This helps the static type checker understand that es_uow is not None if
+        # we access it.
+        if es_uow:
+            self.es_uow: AsyncESUnitOfWork = es_uow
