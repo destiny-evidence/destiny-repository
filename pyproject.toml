@@ -41,6 +41,7 @@ uvloop = "^0.21.0"
 
 [tool.poetry.group.dev.dependencies]
 destiny-sdk = {develop = true, path = "libs/sdk"}
+faker = "^37.3.0"
 msal = "^1.31.1"
 mypy = "^1.14.1"
 pre-commit = "^4.2.0"
