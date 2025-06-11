@@ -170,7 +170,7 @@ This should not happen.
                 client.stream("GET", str(import_batch.storage_url)) as response,
             ):
                 response.raise_for_status()
-                i = 1
+                entry_ref = 1
                 async for line in response.aiter_lines():
                     if line.strip():
                         await self.import_reference(
@@ -178,9 +178,9 @@ This should not happen.
                             import_batch.collision_strategy,
                             line,
                             reference_service,
-                            i,
+                            entry_ref,
                         )
-                        i += 1
+                        entry_ref += 1
         except Exception:
             logger.exception("Failed to process batch", extra={"batch": import_batch})
             await self.update_import_batch_status(

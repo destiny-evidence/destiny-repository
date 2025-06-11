@@ -14,12 +14,14 @@ from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import DatabaseConfig, get_settings
+from app.persistence.es.client import AsyncESClientManager, es_manager
 from app.persistence.sql.persistence import Base
 from app.persistence.sql.session import (
     AsyncDatabaseSessionManager,
     db_manager,
 )
 from tests.db_utils import alembic_config_from_url, tmp_database
+from tests.es_utils import create_test_indices, delete_test_indices
 
 settings = get_settings()
 MIGRATION_TASK: asyncio.Task | None = None
@@ -172,3 +174,20 @@ def stubbed_jwks_response(httpx_mock: HTTPXMock, fake_public_key: dict) -> None:
         url=re.compile(r"https://login.microsoftonline.com/"),
         json={"keys": [fake_public_key]},
     )
+
+
+@pytest.fixture(scope="session")
+async def es_manager_for_tests() -> AsyncGenerator[AsyncESClientManager, None]:
+    """Build shared ES client manager for tests."""
+    await es_manager.init(settings.es_config)
+    yield es_manager
+    await es_manager.close()
+
+
+@pytest.fixture
+async def es_client(es_manager_for_tests: AsyncESClientManager):
+    """Yield the ES client for the test and cleanup indices after."""
+    async with es_manager_for_tests.client() as client:
+        await create_test_indices(client)
+        yield client
+        await delete_test_indices(client)
