@@ -82,7 +82,7 @@ resource "azuread_app_role_assignment" "developer_to_reference_writer" {
 }
 
 resource "azuread_app_role_assignment" "developer_to_robot_writer" {
-  app_role_id         = azuread_application_app_role.robot_writer
+  app_role_id         = azuread_application_app_role.robot_writer.role_id
   principal_object_id = var.developers_group_id
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
 }
