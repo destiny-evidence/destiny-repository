@@ -29,7 +29,9 @@ class Robot(DomainBaseModel, SQLAttributeMixin):
     )
 
     @classmethod
-    async def from_sdk(cls, data: destiny_sdk.robots.RobotIn) -> Self:
+    async def from_sdk(
+        cls, data: destiny_sdk.robots.RobotIn | destiny_sdk.robots.Robot
+    ) -> Self:
         """Create a Robot from the SDK input model."""
         try:
             return cls.model_validate(data.model_dump())

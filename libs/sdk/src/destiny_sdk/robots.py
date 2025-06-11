@@ -3,7 +3,7 @@
 from enum import StrEnum, auto
 from typing import Annotated, Self
 
-from pydantic import UUID4, BaseModel, Field, HttpUrl, model_validator
+from pydantic import UUID4, BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 from destiny_sdk.core import _JsonlFileInputMixIn
 from destiny_sdk.enhancements import Enhancement
@@ -295,6 +295,8 @@ class _RobotBase(BaseModel):
 
     A Robot is a provider of enhancements to destiny repository
     """
+
+    model_config = ConfigDict(extra="forbid")  # Forbid extra fields on robot models
 
     name: str = Field(description="The name of the robot, must be unique.")
     base_url: HttpUrl = Field(

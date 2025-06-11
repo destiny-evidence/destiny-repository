@@ -112,6 +112,11 @@ async def test_update_robot_happy_path(
     response = await client.get(f"/robot/{existing_robot.id}/")
     assert response.json()["description"] == new_description
 
+    await session.commit()
+
+    data = await session.get(SQLRobot, response.json()["id"])
+    assert data.description == new_description
+
 
 async def test_update_robot_fails_if_name_is_the_same_as_other_robots(
     session: AsyncSession, client: AsyncClient
@@ -143,3 +148,27 @@ async def test_update_robot_fails_if_name_is_the_same_as_other_robots(
 
     response = await client.put("/robot/", json=robot_update)
     assert response.status_code == status.HTTP_409_CONFLICT
+
+
+async def test_update_robot_fails_if_try_to_specify_client_secret(
+    session: AsyncSession, client: AsyncClient
+) -> None:
+    """Test that trying to update the name of a robot to something non-unique fails."""
+    existing_robot = {
+        "base_url": "http://www.mimetic-alloy.com",
+        "name": "T-1000",
+        "owner": "Skynet",
+        "description": "Liquid metal android assassin.",
+    }
+
+    robot = SQLRobot(client_secret="even-more-secret", **existing_robot)
+
+    session.add(robot)
+    await session.commit()
+
+    robot_update = existing_robot.copy()
+    robot_update["id"] = str(robot.id)
+    robot_update["client_secret"] = "this isn't allowed!"
+
+    response = await client.put("/robot/", json=robot_update)
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
