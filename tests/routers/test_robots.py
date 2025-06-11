@@ -49,18 +49,22 @@ async def client(app: FastAPI) -> AsyncGenerator[AsyncClient]:
         yield client
 
 
-async def test_register_robot_happy_path(
-    session: AsyncSession, client: AsyncClient
-) -> None:
-    """Test registering a reference."""
-    robot_in = {
+@pytest.fixture
+def robot_t_1000():
+    """Return dictionary of basic robot fields."""
+    return {
         "base_url": "http://www.mimetic-alloy.com",
         "name": "T-1000",
         "owner": "Skynet",
         "description": "Liquid metal android assassin.",
     }
 
-    response = await client.post("/robot/", json=robot_in)
+
+async def test_register_robot_happy_path(
+    session: AsyncSession, client: AsyncClient, robot_t_1000: dict[str, str]
+) -> None:
+    """Test registering a robot."""
+    response = await client.post("/robot/", json=robot_t_1000)
 
     assert response.status_code == status.HTTP_201_CREATED
     data = await session.get(SQLRobot, response.json()["id"])
@@ -68,40 +72,26 @@ async def test_register_robot_happy_path(
 
 
 async def test_add_robot_fails_when_name_is_the_same(
-    session: AsyncSession, client: AsyncClient
+    session: AsyncSession, client: AsyncClient, robot_t_1000: dict[str, str]
 ) -> None:
     """Test that registering a robot with the same name causes a 409 response."""
-    robot_in = {
-        "base_url": "http://www.mimetic-alloy.com",
-        "name": "T-1000",
-        "owner": "Skynet",
-        "description": "Liquid metal android assassin.",
-    }
-
-    existing_robot = SQLRobot(client_secret="secret-secret", **robot_in)
+    existing_robot = SQLRobot(client_secret="secret-secret", **robot_t_1000)
     session.add(existing_robot)
     await session.commit()
 
-    response = await client.post("/robot/", json=robot_in)
+    response = await client.post("/robot/", json=robot_t_1000)
     assert response.status_code == status.HTTP_409_CONFLICT
 
 
 async def test_update_robot_happy_path(
-    session: AsyncSession, client: AsyncClient
+    session: AsyncSession, client: AsyncClient, robot_t_1000: dict[str, str]
 ) -> None:
     """Test that updating an existing robot succeeds."""
-    robot = {
-        "base_url": "http://www.mimetic-alloy.com",
-        "name": "T-1000",
-        "owner": "Skynet",
-        "description": "Liquid metal android assassin.",
-    }
-
-    existing_robot = SQLRobot(client_secret="secret-secret", **robot)
+    existing_robot = SQLRobot(client_secret="secret-secret", **robot_t_1000)
     session.add(existing_robot)
     await session.commit()
 
-    robot_update = robot.copy()
+    robot_update = robot_t_1000.copy()
     new_description = "Melted and decomissioned."
     robot_update["description"] = new_description
     robot_update["id"] = str(existing_robot.id)
@@ -115,31 +105,24 @@ async def test_update_robot_happy_path(
 
 
 async def test_update_robot_fails_if_name_is_the_same_as_other_robots(
-    session: AsyncSession, client: AsyncClient
+    session: AsyncSession, client: AsyncClient, robot_t_1000: dict[str, str]
 ) -> None:
     """Test that trying to update the name of a robot to something non-unique fails."""
-    robot_1 = {
-        "base_url": "http://www.mimetic-alloy.com",
-        "name": "T-1000",
-        "owner": "Skynet",
-        "description": "Liquid metal android assassin.",
-    }
-
-    robot_2 = {
+    robot_t_800 = {
         "base_url": "http://www.robotic-endoskeleton.com",
         "name": "T-800",
         "owner": "Skynet",
         "description": "Cyberdyne Systems Model 101",
     }
 
-    robot_to_update = SQLRobot(client_secret="even-more-secret", **robot_2)
+    robot_to_update = SQLRobot(client_secret="even-more-secret", **robot_t_800)
 
-    session.add(SQLRobot(client_secret="secret-secret", **robot_1))
+    session.add(SQLRobot(client_secret="secret-secret", **robot_t_1000))
     session.add(robot_to_update)
     await session.commit()
 
-    robot_update = robot_2.copy()
-    robot_update["name"] = robot_1["name"]
+    robot_update = robot_t_800.copy()
+    robot_update["name"] = robot_t_1000["name"]
     robot_update["id"] = str(robot_to_update.id)
 
     response = await client.put("/robot/", json=robot_update)
@@ -147,22 +130,15 @@ async def test_update_robot_fails_if_name_is_the_same_as_other_robots(
 
 
 async def test_update_robot_fails_if_try_to_specify_client_secret(
-    session: AsyncSession, client: AsyncClient
+    session: AsyncSession, client: AsyncClient, robot_t_1000: dict[str, str]
 ) -> None:
     """Test that trying to update the name of a robot to something non-unique fails."""
-    existing_robot = {
-        "base_url": "http://www.mimetic-alloy.com",
-        "name": "T-1000",
-        "owner": "Skynet",
-        "description": "Liquid metal android assassin.",
-    }
-
-    robot = SQLRobot(client_secret="even-more-secret", **existing_robot)
+    robot = SQLRobot(client_secret="even-more-secret", **robot_t_1000)
 
     session.add(robot)
     await session.commit()
 
-    robot_update = existing_robot.copy()
+    robot_update = robot_t_1000.copy()
     robot_update["id"] = str(robot.id)
     robot_update["client_secret"] = "this isn't allowed!"
 
@@ -170,16 +146,11 @@ async def test_update_robot_fails_if_try_to_specify_client_secret(
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
 
-async def test_get_robot_happy_path(session: AsyncSession, client: AsyncClient) -> None:
+async def test_get_robot_happy_path(
+    session: AsyncSession, client: AsyncClient, robot_t_1000: dict[str, str]
+) -> None:
     """Test we can get an existing robot."""
-    robot_in = {
-        "base_url": "http://www.mimetic-alloy.com",
-        "name": "T-1000",
-        "owner": "Skynet",
-        "description": "Liquid metal android assassin.",
-    }
-
-    robot = SQLRobot(client_secret="even-more-secret", **robot_in)
+    robot = SQLRobot(client_secret="even-more-secret", **robot_t_1000)
 
     session.add(robot)
     await session.commit()
@@ -200,18 +171,11 @@ async def test_get_robot_robot_does_not_exist(
 
 
 async def test_cycle_robot_secret_happy_path(
-    session: AsyncSession, client: AsyncClient
+    session: AsyncSession, client: AsyncClient, robot_t_1000: dict[str, str]
 ) -> None:
     """Test we can cycle the client secret for a robot."""
     initial_secret = "even-more-secret"
-    robot_in = {
-        "base_url": "http://www.mimetic-alloy.com",
-        "name": "T-1000",
-        "owner": "Skynet",
-        "description": "Liquid metal android assassin.",
-    }
-
-    robot = SQLRobot(client_secret=initial_secret, **robot_in)
+    robot = SQLRobot(client_secret=initial_secret, **robot_t_1000)
 
     session.add(robot)
     await session.commit()
