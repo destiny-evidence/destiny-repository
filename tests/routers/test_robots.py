@@ -109,13 +109,8 @@ async def test_update_robot_happy_path(
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["id"] == str(existing_robot.id)
 
-    response = await client.get(f"/robot/{existing_robot.id}/")
-    assert response.json()["description"] == new_description
-
-    await session.commit()
-
-    data = await session.get(SQLRobot, response.json()["id"])
-    assert data.description == new_description
+    await session.refresh(existing_robot)
+    assert existing_robot.description == new_description
 
 
 async def test_update_robot_fails_if_name_is_the_same_as_other_robots(
@@ -172,3 +167,23 @@ async def test_update_robot_fails_if_try_to_specify_client_secret(
 
     response = await client.put("/robot/", json=robot_update)
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+async def test_get_robot_happy_path(session: AsyncSession, client: AsyncClient) -> None:
+    """Test we can get an existing robot."""
+    robot_in = {
+        "base_url": "http://www.mimetic-alloy.com",
+        "name": "T-1000",
+        "owner": "Skynet",
+        "description": "Liquid metal android assassin.",
+    }
+
+    robot = SQLRobot(client_secret="even-more-secret", **robot_in)
+
+    session.add(robot)
+    await session.commit()
+
+    response = await client.get(f"/robot/{robot.id}/")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["name"] == "T-1000"
