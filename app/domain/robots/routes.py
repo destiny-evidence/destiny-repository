@@ -78,7 +78,7 @@ async def register_robot(
     """Register a new robot."""
     robot = await Robot.from_sdk(robot_create)
     provisioned_robot = await robot_service.add_robot(robot=robot)
-    return await provisioned_robot.to_sdk()
+    return await provisioned_robot.to_sdk_provisioned()
 
 
 @router.get(path="/{robot_id}/", status_code=status.HTTP_200_OK)

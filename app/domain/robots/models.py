@@ -1,19 +1,18 @@
 """Domain model for robots."""
 
-import secrets
 from typing import Self
 
 import destiny_sdk
-from pydantic import Field, HttpUrl, SecretStr, ValidationError
+from pydantic import ConfigDict, Field, HttpUrl, SecretStr, ValidationError
 
 from app.core.exceptions import SDKToDomainError
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 
-ENOUGH_BYTES_FOR_SAFETY = 32
-
 
 class Robot(DomainBaseModel, SQLAttributeMixin):
     """Core Robot model."""
+
+    model_config = ConfigDict(extra="forbid")  # Forbid extra fields on robot model
 
     base_url: HttpUrl = Field(description="The base url where the robot is located.")
 
@@ -23,8 +22,8 @@ class Robot(DomainBaseModel, SQLAttributeMixin):
 
     owner: str = Field(description="Owner of the robot.")
 
-    client_secret: SecretStr = Field(
-        default_factory=lambda: SecretStr(secrets.token_hex(ENOUGH_BYTES_FOR_SAFETY)),
+    client_secret: SecretStr | None = Field(
+        default=None,
         description="The secret key used for communicating with this robot.",
     )
 
@@ -38,11 +37,21 @@ class Robot(DomainBaseModel, SQLAttributeMixin):
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
-    async def to_sdk(self) -> destiny_sdk.robots.ProvisionedRobot:
-        """Convert the robot to an sdk model."""
+    async def to_sdk(self) -> destiny_sdk.robots.Robot:
+        """Convert the robot to a Robot SDK model."""
         try:
             model = self.model_dump()
-            model["client_secret"] = self.client_secret.get_secret_value()
+            model.pop("client_secret", None)
+            return destiny_sdk.robots.Robot.model_validate(model)
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
+
+    async def to_sdk_provisioned(self) -> destiny_sdk.robots.ProvisionedRobot:
+        """Convert the robot to a ProvisionedRobot SDK model."""
+        try:
+            model = self.model_dump()
+            if self.client_secret:
+                model["client_secret"] = self.client_secret.get_secret_value()
             return destiny_sdk.robots.ProvisionedRobot.model_validate(model)
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception

@@ -1,10 +1,14 @@
 """Service for managing Robots."""
 
-from pydantic import UUID4, HttpUrl
+import secrets
+
+from pydantic import UUID4, HttpUrl, SecretStr
 
 from app.domain.robots.models import Robot
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
+
+ENOUGH_BYTES_FOR_SAFETY = 32
 
 
 class RobotService(GenericService):
@@ -37,15 +41,18 @@ class RobotService(GenericService):
         # Secret to be stored in the azure keyvault
         # Currently just using secret name while testing
         robot = await self._get_robot(robot_id)
+        if not robot.client_secret:
+            msg = f"Robot {robot_id} has no client secret."
+            raise RuntimeError(msg)
         return robot.client_secret.get_secret_value()
 
     @unit_of_work
     async def add_robot(self, robot: Robot) -> Robot:
         """Register a new robot."""
+        robot.client_secret = SecretStr(secrets.token_hex(ENOUGH_BYTES_FOR_SAFETY))
         return await self.sql_uow.robots.add(robot)
 
     @unit_of_work
     async def update_robot(self, robot: Robot) -> Robot:
         """Update an existing robot."""
-        await self.sql_uow.robots.verify_pk_existence([robot.id])
         return await self.sql_uow.robots.merge(robot)
