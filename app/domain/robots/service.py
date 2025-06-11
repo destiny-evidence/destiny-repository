@@ -56,3 +56,11 @@ class RobotService(GenericService):
     async def update_robot(self, robot: Robot) -> Robot:
         """Update an existing robot."""
         return await self.sql_uow.robots.merge(robot)
+
+    @unit_of_work
+    async def cycle_robot_secret(self, robot_id: UUID4) -> Robot:
+        """Cycle the client secret for a given robot."""
+        new_client_secret = secrets.token_hex(ENOUGH_BYTES_FOR_SAFETY)
+        return await self.sql_uow.robots.update_by_pk(
+            robot_id, client_secret=new_client_secret
+        )

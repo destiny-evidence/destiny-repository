@@ -1,5 +1,6 @@
 """Tests for the robot management router."""
 
+import uuid
 from collections.abc import AsyncGenerator
 
 import pytest
@@ -7,7 +8,7 @@ from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import DuplicateError
+from app.core.exceptions import DuplicateError, NotFoundError
 from app.domain.robots import routes as robots
 from app.domain.robots.sql import Robot as SQLRobot
 from app.main import duplicate_exception_handler
@@ -187,3 +188,37 @@ async def test_get_robot_happy_path(session: AsyncSession, client: AsyncClient) 
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["name"] == "T-1000"
+
+
+async def test_get_robot_robot_does_not_exist(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+) -> None:
+    """Test returns 404 if the requested robot does not exist."""
+    with pytest.raises(NotFoundError):
+        await client.get(f"/robot/{uuid.uuid4()}/")
+
+
+async def test_cycle_robot_secret_happy_path(
+    session: AsyncSession, client: AsyncClient
+) -> None:
+    """Test we can cycle the client secret for a robot."""
+    initial_secret = "even-more-secret"
+    robot_in = {
+        "base_url": "http://www.mimetic-alloy.com",
+        "name": "T-1000",
+        "owner": "Skynet",
+        "description": "Liquid metal android assassin.",
+    }
+
+    robot = SQLRobot(client_secret=initial_secret, **robot_in)
+
+    session.add(robot)
+    await session.commit()
+
+    response = await client.post(f"/robot/{robot.id}/secret/")
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.json()["client_secret"] != initial_secret
+
+    await session.refresh(robot)
+    assert response.json()["client_secret"] == robot.client_secret

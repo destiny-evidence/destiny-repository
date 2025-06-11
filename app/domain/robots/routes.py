@@ -91,8 +91,11 @@ async def get_robot(
     return await robot.to_sdk()
 
 
-@router.post(path="/secret/", status_code=status.HTTP_201_CREATED)
+@router.post(path="/{robot_id}/secret/", status_code=status.HTTP_201_CREATED)
 async def cycle_robot_secret(
-    robot_id: uuid.UUID, robot_service: Annotated[RobotService, Depends(robot_service)]
+    robot_id: Annotated[uuid.UUID, Path(description="The id of the robot.")],
+    robot_service: Annotated[RobotService, Depends(robot_service)],
 ) -> destiny_sdk.robots.ProvisionedRobot:
     """Cycle the robot's client_secret."""
+    robot_secret_cycled = await robot_service.cycle_robot_secret(robot_id=robot_id)
+    return await robot_secret_cycled.to_sdk_provisioned()
