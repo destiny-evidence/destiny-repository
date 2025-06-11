@@ -8,6 +8,7 @@ from pydantic import UUID4
 
 from app.core.config import get_settings
 from app.core.exceptions import (
+    InvalidParentEnhancementError,
     RobotEnhancementError,
     RobotUnreachableError,
     SQLNotFoundError,
@@ -74,9 +75,13 @@ class ReferenceService(GenericService):
             raise WrongReferenceError(detail)
 
         if enhancement.derived_from:
-            await self.sql_uow.enhancements.verify_pk_existence(
-                enhancement.derived_from
-            )
+            try:
+                await self.sql_uow.enhancements.verify_pk_existence(
+                    enhancement.derived_from
+                )
+            except SQLNotFoundError as e:
+                detail = f"Enhancements with ids {e.lookup_value} do not exist."
+                raise InvalidParentEnhancementError(detail) from e
 
         reference = await self.sql_uow.references.get_by_pk(
             reference_id, preload=["enhancements", "identifiers"]
