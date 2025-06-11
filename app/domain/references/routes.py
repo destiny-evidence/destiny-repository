@@ -26,6 +26,7 @@ from app.domain.references.models.models import (
 from app.domain.references.service import ReferenceService
 from app.domain.references.tasks import (
     collect_and_dispatch_references_for_batch_enhancement,
+    rebuild_reference_index,
     validate_and_import_batch_enhancement_result,
 )
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
@@ -260,6 +261,12 @@ async def check_batch_enhancement_request_status(
     )
 
     return await batch_enhancement_request.to_sdk(blob_repository.get_signed_url)
+
+
+@router.post("/index/rebuild/")
+async def rebuild_index() -> None:
+    """Delete, recreate and repopulate the Elasticsearch index."""
+    await rebuild_reference_index.kiq()
 
 
 @robot_router.post("/enhancement/single/", status_code=status.HTTP_200_OK)

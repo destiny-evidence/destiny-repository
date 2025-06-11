@@ -127,6 +127,11 @@ class ReferenceService(GenericService):
         )
 
     @sql_uow
+    async def get_all_reference_ids(self) -> list[UUID4]:
+        """Get all reference IDs from the database."""
+        return await self.sql_uow.references.get_all_pks()
+
+    @sql_uow
     async def get_reference_from_identifier(
         self, identifier: ExternalIdentifierSearch
     ) -> Reference:
@@ -265,6 +270,8 @@ class ReferenceService(GenericService):
 
         await self._add_enhancement(enhancement_request.reference_id, enhancement)
 
+        await self.index_reference(reference_id=enhancement_request.reference_id)
+
         return await self.sql_uow.enhancement_requests.update_by_pk(
             enhancement_request.id,
             request_status=EnhancementRequestStatus.COMPLETED,
@@ -345,7 +352,7 @@ class ReferenceService(GenericService):
         self,
         batch_enhancement_request: BatchEnhancementRequest,
         blob_repository: BlobRepository,
-    ) -> None:
+    ) -> BatchEnhancementRequestStatus:
         """
         Validate and import the result of a batch enhancement request.
 
@@ -370,6 +377,18 @@ class ReferenceService(GenericService):
         await self._batch_enhancement_service.add_validation_result_file_to_batch_enhancement_request(  # noqa: E501
             batch_enhancement_request.id, validation_result_file
         )
+
+        # This is a bit hacky - we retrieve the terminal status from the import,
+        # and then set to indexing. Essentially using the SQL UOW as a transport
+        # from the blob generator to this layer.
+        batch_enhancement_request = await self.get_batch_enhancement_request(
+            batch_enhancement_request.id
+        )
+        await self.update_batch_enhancement_request_status(
+            batch_enhancement_request.id,
+            BatchEnhancementRequestStatus.INDEXING,
+        )
+        return batch_enhancement_request.request_status
 
     async def handle_batch_enhancement_result_entry(
         self,
@@ -459,3 +478,17 @@ class ReferenceService(GenericService):
                     yield reference
 
         await self.es_uow.references.add_bulk(reference_generator())
+
+    @es_uow
+    async def index_reference(
+        self,
+        reference_id: UUID4,
+    ) -> None:
+        """Index a single reference in Elasticsearch."""
+        reference = await self.get_reference(reference_id)
+        await self.es_uow.references.add(reference)
+
+    async def repopulate_reference_index(self) -> None:
+        """Index ALL references in Elasticsearch."""
+        reference_ids = await self.get_all_reference_ids()
+        await self.index_references(reference_ids)

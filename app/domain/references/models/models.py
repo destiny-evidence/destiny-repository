@@ -60,6 +60,8 @@ class BatchEnhancementRequestStatus(StrEnum):
     - `partial_failed`: Some enhancements failed to create.
     - `failed`: All enhancements failed to create.
     - `importing`: Enhancements have been received by the repo and are being imported.
+    - `indexing`: Enhancements have been imported and are being indexed.
+    - `indexing_failed`: Enhancements have been imported but indexing failed.
     - `completed`: All enhancements have been created.
     """
 
@@ -69,6 +71,8 @@ class BatchEnhancementRequestStatus(StrEnum):
     PARTIAL_FAILED = auto()
     FAILED = auto()
     IMPORTING = auto()
+    INDEXING = auto()
+    INDEXING_FAILED = auto()
     COMPLETED = auto()
 
 

@@ -94,14 +94,26 @@ async def process_import_batch(import_batch_id: UUID4) -> None:
     await import_service.update_import_batch_status(
         import_batch.id, ImportBatchStatus.INDEXING
     )
-    imported_references = await import_service.get_imported_references_from_batch(
-        import_batch_id=import_batch_id
-    )
+    try:
+        imported_references = await import_service.get_imported_references_from_batch(
+            import_batch_id=import_batch_id
+        )
+        await reference_service.index_references(
+            reference_ids=imported_references,
+        )
 
-    await reference_service.index_references(
-        reference_ids=imported_references,
-    )
+    except Exception:
+        logger.exception(
+            "Error indexing references in Elasticsearch",
+            extra={
+                "import_batch_id": import_batch_id,
+            },
+        )
+        await import_service.update_import_batch_status(
+            import_batch.id, ImportBatchStatus.INDEXING_FAILED
+        )
 
-    await import_service.update_import_batch_status(
-        import_batch.id, ImportBatchStatus.COMPLETED
-    )
+    else:
+        await import_service.update_import_batch_status(
+            import_batch.id, ImportBatchStatus.COMPLETED
+        )
