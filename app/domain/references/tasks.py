@@ -43,23 +43,14 @@ async def get_es_unit_of_work(
 
 
 async def get_reference_service(
-    sql_uow: AsyncSqlUnitOfWork | None = None,
-    es_uow: AsyncESUnitOfWork | None = None,
+    sql_uow: AsyncSqlUnitOfWork, es_uow: AsyncESUnitOfWork
 ) -> ReferenceService:
     """Return the reference service using the provided unit of work dependencies."""
-    if sql_uow is None:
-        sql_uow = await get_sql_unit_of_work()
-    if es_uow is None:
-        es_uow = await get_es_unit_of_work()
     return ReferenceService(sql_uow=sql_uow, es_uow=es_uow)
 
 
-async def get_robot_service(
-    sql_uow: AsyncSqlUnitOfWork | None = None,
-) -> RobotService:
-    """Return the robot service using the provided unit of work dependencies."""
-    if sql_uow is None:
-        sql_uow = await get_sql_unit_of_work()
+async def get_robot_service(sql_uow: AsyncSqlUnitOfWork) -> RobotService:
+    """Return the rebot service using the provided unit of work dependencies."""
     return RobotService(sql_uow=sql_uow)
 
 
@@ -82,8 +73,10 @@ async def collect_and_dispatch_references_for_batch_enhancement(
         "Processing batch enhancement request",
         extra={"batch_enhancement_request_id": batch_enhancement_request_id},
     )
-    reference_service = await get_reference_service()
-    robot_service = await get_robot_service()
+    sql_uow = await get_sql_unit_of_work()
+    es_uow = await get_es_unit_of_work()
+    reference_service = await get_reference_service(sql_uow, es_uow)
+    robot_service = await get_robot_service(sql_uow)
     robot_request_dispatcher = await get_robot_request_dispatcher()
     blob_repository = await get_blob_repository()
     batch_enhancement_request = await reference_service.get_batch_enhancement_request(
@@ -114,7 +107,9 @@ async def validate_and_import_batch_enhancement_result(
         "Processing batch enhancement result",
         extra={"batch_enhancement_request_id": batch_enhancement_request_id},
     )
-    reference_service = await get_reference_service()
+    sql_uow = await get_sql_unit_of_work()
+    es_uow = await get_es_unit_of_work()
+    reference_service = await get_reference_service(sql_uow, es_uow)
     blob_repository = await get_blob_repository()
     batch_enhancement_request = await reference_service.get_batch_enhancement_request(
         batch_enhancement_request_id
@@ -172,7 +167,9 @@ async def validate_and_import_batch_enhancement_result(
 async def rebuild_reference_index() -> None:
     """Async logic for rebuilding the reference index."""
     logger.info("Rebuilding reference index")
-    reference_service = await get_reference_service()
+    sql_uow = await get_sql_unit_of_work()
+    es_uow = await get_es_unit_of_work()
+    reference_service = await get_reference_service(sql_uow, es_uow)
     async with es_manager.client() as client:
         await ReferenceDocument._index.delete(using=client)  # noqa: SLF001
         await ReferenceDocument.init(using=client)

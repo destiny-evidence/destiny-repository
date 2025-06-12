@@ -130,7 +130,16 @@ class GenericAsyncSqlRepository(
         for key, value in kwargs.items():
             setattr(persistence, key, value)
 
-        await self._session.flush()
+        try:
+            await self._session.flush()
+        except IntegrityError as e:
+            detail = f"Unable to update {self._persistence_cls.__name__}: duplicate."
+            raise SQLDuplicateError(
+                detail=detail,
+                lookup_model=self._persistence_cls.__name__,
+                collision=str(e.orig),
+            ) from e
+
         await self._session.refresh(persistence)
         return await persistence.to_domain()
 
@@ -226,6 +235,7 @@ Unable to add {self._persistence_cls.__name__}: duplicate.
         persistence = await self._persistence_cls.from_domain(record)
         try:
             persistence = await self._session.merge(persistence)
+            await self._session.flush()
         except IntegrityError as e:
             detail = f"""
 Unable to merge {self._persistence_cls.__name__}: duplicate.
@@ -235,7 +245,6 @@ Unable to merge {self._persistence_cls.__name__}: duplicate.
                 lookup_model=self._persistence_cls.__name__,
                 collision=str(e.orig),
             ) from e
-        await self._session.flush()
         await self._session.refresh(persistence)
         return await persistence.to_domain()
 

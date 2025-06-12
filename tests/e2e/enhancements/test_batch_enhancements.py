@@ -14,7 +14,7 @@ import pytest
 from elasticsearch import Elasticsearch
 from sqlalchemy import create_engine, text
 
-toy_robot_id = os.environ["TOY_ROBOT_ID"]
+toy_robot_url = os.environ["TOY_ROBOT_URL"]
 
 db_url = os.environ["DB_URL"]
 minio_url = os.environ["MINIO_URL"]
@@ -26,7 +26,7 @@ engine = create_engine(db_url)
 @pytest.mark.order(2)
 # Remove the below if you want to run e2e tests locally with the toy robot.
 # @pytest.mark.skip(reason="Skipped in GH action, requires toy robot access.")
-def test_complete_batch_enhancement_workflow():
+def test_complete_batch_enhancement_workflow():  # noqa: PLR0915
     """Test complete batch enhancement workflow, happy-ish path."""
     with (
         httpx.Client(base_url=repo_url) as repo_client,
@@ -48,6 +48,20 @@ def test_complete_batch_enhancement_workflow():
             assert response.status_code == 200
             reference_ids.append(response.json()["id"])
         assert len(reference_ids) == 3
+
+        # Register the toy robot
+        response = repo_client.post(
+            "/robot/",
+            json=destiny_sdk.robots.RobotIn(
+                name="Toy Robot",
+                base_url=toy_robot_url,
+                description="Provides toy annotation enhancements",
+                owner="Future Evidence Foundation",
+            ).model_dump(mode="json"),
+        )
+
+        assert response.status_code == 201
+        toy_robot_id = response.json()["id"]
 
         response = repo_client.post(
             "/references/enhancement/batch/",

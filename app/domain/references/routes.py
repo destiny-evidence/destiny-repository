@@ -116,7 +116,7 @@ async def robot_auth(
 ) -> bool:
     """Choose robot auth strategy for our authorization."""
     return await choose_hmac_auth_strategy(
-        get_client_secret=robot_service.get_robot_secret,
+        get_client_secret=robot_service.get_robot_secret_standalone,
     )(request)
 
 

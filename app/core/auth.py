@@ -45,7 +45,7 @@ class AuthScopes(StrEnum):
     IMPORT = "import"
     REFERENCE_READER = "reference.reader"
     REFERENCE_WRITER = "reference.writer"
-    ROBOT = "robot"
+    ROBOT_WRITER = "robot.writer"
 
 
 class AuthMethod(Protocol):
