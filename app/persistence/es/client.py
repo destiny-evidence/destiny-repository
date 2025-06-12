@@ -23,11 +23,24 @@ class AsyncESClientManager:
     async def init(self, es_config: ESConfig) -> None:
         """Initialize the Elasticsearch client manager."""
         if self._client is None:
-            self._client = AsyncElasticsearch(
-                hosts=es_config.es_hosts,
-                ca_certs=str(es_config.es_ca_path),
-                basic_auth=(es_config.es_user, es_config.es_pass),
-            )
+            if es_config.uses_api_key:
+                self._client = AsyncElasticsearch(
+                    cloud_id=es_config.cloud_id,
+                    api_key=es_config.api_key,
+                )
+            elif es_config.es_user and es_config.es_pass and es_config.es_ca_path:
+                self._client = AsyncElasticsearch(
+                    hosts=es_config.es_hosts,
+                    ca_certs=str(es_config.es_ca_path),
+                    basic_auth=(
+                        es_config.es_user,
+                        es_config.es_pass,
+                    ),
+                )
+            else:
+                msg = "Traditional auth requires es_user, es_pass, and es_ca_path"
+                raise ValueError(msg)
+
         for index in indices:
             exists = await self._client.indices.exists(index=index.Index.name)
             if not exists:

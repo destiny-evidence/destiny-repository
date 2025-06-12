@@ -125,3 +125,33 @@ variable "open_alex_incremental_updater_client_id" {
   description = "The client id of the open alex incrememtal updater application"
   type        = string
 }
+
+variable "elasticsearch_sku" {
+  description = "SKU for the Elasticsearch cluster"
+  type        = string
+  default     = "ess-consumption-2024_Monthly"
+}
+
+variable "elasticsearch_admin_email" {
+  description = "Email address for the Elasticsearch admin user"
+  type        = string
+}
+
+# elasticsearch is not available in all regions, see https://www.elastic.co/cloud/regions
+variable "elasticsearch_region" {
+  description = "Region for the Elasticsearch cluster"
+  type        = string
+  default     = "azure-westeurope"
+}
+
+variable "elastic_stack_version" {
+  description = "Version of the Elastic Stack to use"
+  type        = string
+  default     = "9.0.2"
+}
+
+variable "elastic_cloud_apikey" {
+  description = "API key for the Elastic Cloud provider"
+  type        = string
+  sensitive   = true
+}

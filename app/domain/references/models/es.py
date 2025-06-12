@@ -6,6 +6,7 @@ from typing import Self
 from elasticsearch.dsl import InnerDoc, Keyword, Nested, Object, Text, mapped_field
 from pydantic import UUID4
 
+from app.core.config import get_settings
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementType,
@@ -16,6 +17,8 @@ from app.domain.references.models.models import (
     Visibility,
 )
 from app.persistence.es.persistence import GenericESPersistence
+
+settings = get_settings()
 
 
 class ExternalIdentifierDocument(InnerDoc):
@@ -168,4 +171,4 @@ class ReferenceDocument(GenericESPersistence[Reference]):
     class Index:
         """Index metadata for the persistence model."""
 
-        name = "reference"
+        name = f"{settings.app_name}-reference"

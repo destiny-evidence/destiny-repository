@@ -80,20 +80,52 @@ If db_pass is provided, azure_db_resource_url must not be provided."""
 class ESConfig(BaseModel):
     """Elasticsearch configuration."""
 
-    es_url: HttpUrl | list[HttpUrl] = Field(
+    # Traditional authentication (for local development)
+    es_url: HttpUrl | list[HttpUrl] | None = Field(
+        default=None,
         description="If a list, connections will be created to all nodes in the list.",
     )
-    es_user: str
-    es_pass: str
-    es_ca_path: FilePath
+    es_user: str | None = None
+    es_pass: str | None = None
+    es_ca_path: FilePath | None = None
+
+    # API key authentication (for production)
+    cloud_id: str | None = None
+    api_key: str | None = None
+
+    @model_validator(mode="after")
+    def validate_auth_method(self) -> Self:
+        """Validate that either traditional auth or API key auth is provided."""
+        has_traditional = all(
+            [self.es_url, self.es_user, self.es_pass, self.es_ca_path]
+        )
+        has_api_key = all([self.cloud_id, self.api_key])
+
+        if not has_traditional and not has_api_key:
+            msg = (
+                "Either traditional auth (es_url, es_user, es_pass, es_ca_path) "
+                "or API key auth (cloud_id, api_key) must be provided"
+            )
+            raise ValueError(msg)
+
+        if has_traditional and has_api_key:
+            msg = "Cannot provide both traditional auth and API key auth"
+            raise ValueError(msg)
+
+        return self
+
+    @property
+    def uses_api_key(self) -> bool:
+        """Return True if using API key authentication."""
+        return self.cloud_id is not None and self.api_key is not None
 
     @property
     def es_hosts(self) -> list[str]:
         """Return the Elasticsearch host(s) as a list of strings."""
-        return [
-            str(url)
-            for url in (self.es_url if isinstance(self.es_url, list) else [self.es_url])
-        ]
+        if self.uses_api_key or self.es_url is None:
+            return []
+        urls = self.es_url if isinstance(self.es_url, list) else [self.es_url]
+        return [str(url) for url in urls]
 
 
 class MinioConfig(BaseModel):
