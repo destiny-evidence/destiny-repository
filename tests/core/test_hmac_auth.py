@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 
 import destiny_sdk
 import pytest
+from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,7 +53,9 @@ async def client(hmac_app: FastAPI) -> AsyncGenerator[AsyncClient]:
 
 
 async def test_hmac_multi_client_authentication_happy_path(
-    session: AsyncSession, client: AsyncClient
+    session: AsyncSession,
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
 ) -> None:
     """Test authentication is successful when signature is correct."""
     auth_settings.env = Environment.PRODUCTION

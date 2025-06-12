@@ -351,6 +351,9 @@ async def test_create_reference_enhancement_from_request_happy_path(
     assert enhancement_request.request_status == EnhancementRequestStatus.COMPLETED
     assert reference.enhancements[0]["source"] == fake_enhancement_data.get("source")
 
+    es_reference = fake_reference_repo_es.get_first_record()
+    assert es_reference == reference
+
 
 @pytest.mark.asyncio
 async def test_create_valid_derived_reference_enhancement_from_request(
@@ -364,6 +367,7 @@ async def test_create_valid_derived_reference_enhancement_from_request(
     fake_reference_repo = fake_repository(
         [Reference(id=reference_id, enhancements=[existing_enhancement])]
     )
+    fake_reference_repo_es = fake_repository()
     fake_enhancements_repo = fake_repository([existing_enhancement])
 
     existing_enhancement_request = EnhancementRequest(
@@ -379,11 +383,12 @@ async def test_create_valid_derived_reference_enhancement_from_request(
         references=fake_reference_repo,
         enhancements=fake_enhancements_repo,
     )
+    es_uow = fake_uow(references=fake_reference_repo_es)
 
     derived_enhancement = fake_enhancement_data.copy()
     derived_enhancement["derived_from"] = [existing_enhancement.id]
 
-    service = ReferenceService(uow)
+    service = ReferenceService(uow, es_uow)
     enhancement_request = await service.create_reference_enhancement_from_request(
         enhancement_request_id=existing_enhancement_request.id,
         enhancement=Enhancement(reference_id=reference_id, **derived_enhancement),
@@ -393,6 +398,9 @@ async def test_create_valid_derived_reference_enhancement_from_request(
 
     assert enhancement_request.request_status == EnhancementRequestStatus.COMPLETED
     assert reference.enhancements[1]["derived_from"] == [existing_enhancement.id]
+
+    es_reference = fake_reference_repo_es.get_first_record()
+    assert es_reference == reference
 
 
 @pytest.mark.asyncio
