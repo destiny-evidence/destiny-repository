@@ -8,6 +8,7 @@ from pydantic import UUID4
 
 from app.core.config import get_settings
 from app.core.exceptions import (
+    InvalidParentEnhancementError,
     RobotEnhancementError,
     RobotUnreachableError,
     SQLNotFoundError,
@@ -82,7 +83,19 @@ class ReferenceService(GenericService):
         if enhancement.reference_id != reference_id:
             detail = "Enhancement is for a different reference than requested."
             raise WrongReferenceError(detail)
-        reference = await self._get_reference(reference_id)
+
+        if enhancement.derived_from:
+            try:
+                await self.sql_uow.enhancements.verify_pk_existence(
+                    enhancement.derived_from
+                )
+            except SQLNotFoundError as e:
+                detail = f"Enhancements with ids {e.lookup_value} do not exist."
+                raise InvalidParentEnhancementError(detail) from e
+
+        reference = await self.sql_uow.references.get_by_pk(
+            reference_id, preload=["enhancements", "identifiers"]
+        )
         # This uses SQLAlchemy to treat References as an aggregate of enhancements.
         # All considered this is a naive implementation, but it works for now.
         reference.enhancements = [*(reference.enhancements or []), *[enhancement]]
@@ -202,7 +215,7 @@ class ReferenceService(GenericService):
 
         robot_request = destiny_sdk.robots.RobotRequest(
             id=enhancement_request.id,
-            reference=destiny_sdk.references.Reference(**reference.model_dump()),
+            reference=await reference.to_sdk(),
             extra_fields=enhancement_request.enhancement_parameters,
         )
 

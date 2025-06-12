@@ -12,11 +12,11 @@ from fastapi.responses import JSONResponse
 from app.core.config import get_settings
 from app.core.exceptions import (
     DuplicateError,
+    InvalidPayloadError,
     NotFoundError,
     SDKToDomainError,
     SQLDuplicateError,
     SQLNotFoundError,
-    WrongReferenceError,
 )
 from app.core.logger import configure_logger, get_logger
 from app.domain.imports.routes import router as import_router
@@ -150,7 +150,7 @@ async def sdk_to_domain_exception_handler(
     _request: Request,
     exception: SDKToDomainError,
 ) -> JSONResponse:
-    """Return unprocessible responsers when sdk -> domain converstion fails."""
+    """Return unprocessable entity response when sdk -> domain converstion fails."""
     # Probably want to reduce the amount of information we're giving back here.
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -158,14 +158,14 @@ async def sdk_to_domain_exception_handler(
     )
 
 
-@app.exception_handler(WrongReferenceError)
+@app.exception_handler(InvalidPayloadError)
 async def enhance_wrong_reference_exception_handler(
     _request: Request,
-    exception: WrongReferenceError,
+    exception: InvalidPayloadError,
 ) -> JSONResponse:
-    """Return unprocessible responsers when sdk -> domain converstion fails."""
+    """Return unprocessable entity response when the payload is invalid."""
     return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content=jsonable_encoder({"detail": exception.detail}),
     )
 

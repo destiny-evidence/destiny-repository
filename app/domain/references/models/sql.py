@@ -202,6 +202,9 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         nullable=False,
     )
     robot_version: Mapped[str] = mapped_column(String, nullable=True)
+    derived_from: Mapped[list[uuid.UUID] | None] = mapped_column(
+        ARRAY(UUID), nullable=True
+    )
     content: Mapped[str] = mapped_column(JSONB, nullable=False)
 
     reference: Mapped["Reference"] = relationship(
@@ -218,6 +221,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             source=domain_obj.source,
             visibility=domain_obj.visibility,
             robot_version=domain_obj.robot_version,
+            derived_from=domain_obj.derived_from,
             content=domain_obj.content.model_dump_json(),
         )
 
@@ -229,6 +233,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             visibility=self.visibility,
             reference_id=self.reference_id,
             robot_version=self.robot_version,
+            derived_from=self.derived_from,
             content=json.loads(self.content),
             reference=await self.reference.to_domain()
             if "reference" in (preload or [])
