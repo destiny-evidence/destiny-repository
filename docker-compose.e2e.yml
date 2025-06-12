@@ -91,7 +91,7 @@ services:
   # Excluded by default until open sourced
   # toy-robot:
   #   build:
-  #     context: git@github.com:destiny-evidence/toy-robot.git#toy-robot-with-hmac
+  #     context: git@github.com:destiny-evidence/toy-robot.git
   #     ssh: [default]
   #   environment:
   #     DESTINY_REPOSITORY_URL: "http://repository:8000"
