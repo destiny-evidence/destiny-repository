@@ -99,7 +99,7 @@ class ESConfig(BaseModel):
 class ESTestConfig(BaseModel):
     """Elasticsearch test configuration."""
 
-    es_url: HttpUrl = HttpUrl("http://localhost:9200")
+    es_insecure_url: HttpUrl = HttpUrl("http://localhost:9200")
 
 
 class MinioConfig(BaseModel):
