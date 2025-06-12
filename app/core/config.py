@@ -81,6 +81,7 @@ class ESConfig(BaseModel):
     """Elasticsearch configuration."""
 
     es_url: HttpUrl | list[HttpUrl] | None = Field(
+        default=None,
         description="If a list, connections will be created to all nodes in the list.",
     )
     es_user: str | None = None

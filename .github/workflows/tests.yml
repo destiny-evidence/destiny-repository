@@ -34,12 +34,18 @@ jobs:
           # Maps tcp port 5432 on service container to the host
           - 5432:5432
       elasticsearch:
-        image: elasticsearch:8.13.4
+        image: elasticsearch:9.0.0
         env:
           discovery.type: single-node
           xpack.security.enabled: "false"
+          xpack.license.self_generated.type: basic
         ports:
           - 9200:9200
+        options: >-
+          --health-cmd curl -f http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=30s
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
