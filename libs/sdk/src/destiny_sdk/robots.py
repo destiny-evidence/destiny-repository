@@ -3,7 +3,7 @@
 from enum import StrEnum, auto
 from typing import Annotated, Self
 
-from pydantic import UUID4, BaseModel, Field, HttpUrl, model_validator
+from pydantic import UUID4, BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 from destiny_sdk.core import _JsonlFileInputMixIn
 from destiny_sdk.enhancements import Enhancement
@@ -286,4 +286,52 @@ If the URL expires, a new one can be generated using
         "is only used if the entire batch enhancement request failed, rather than an "
         "individual reference. If there was an error with processing an individual "
         "reference, it is passed in the validation result file.",
+    )
+
+
+class _RobotBase(BaseModel):
+    """
+    Base Robot class.
+
+    A Robot is a provider of enhancements to destiny repository
+    """
+
+    model_config = ConfigDict(extra="forbid")  # Forbid extra fields on robot models
+
+    name: str = Field(description="The name of the robot, must be unique.")
+    base_url: HttpUrl = Field(
+        description="The base url of the robot. The robot must implement endpoints "
+        "base_url/single for the enhancement of single references and "
+        "base_url/batch for batch enhancements of references.",
+    )
+    description: str = Field(
+        description="Description of the enhancement the robot provides."
+    )
+    owner: str = Field(description="The owner/publisher of the robot.")
+
+
+class RobotIn(_RobotBase):
+    """The model for registering a new robot."""
+
+
+class Robot(_RobotBase):
+    """Then model for a registered robot."""
+
+    id: UUID4 = Field(
+        description="The id of the robot provided by destiny repository. "
+        "Used as the client_id when sending HMAC authenticated requests."
+    )
+
+
+class ProvisionedRobot(Robot):
+    """
+    The model for a provisioned robot.
+
+    Used only when a robot is initially created,
+    or when cycling a robot's client_secret.
+    """
+
+    client_secret: str = Field(
+        description="The client secret of the robot, used as the secret key "
+        "when sending HMAC authenticated requests."
     )

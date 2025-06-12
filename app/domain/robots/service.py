@@ -1,10 +1,14 @@
 """Service for managing Robots."""
 
-from pydantic import UUID4, HttpUrl
+import secrets
+
+from pydantic import UUID4, SecretStr
 
 from app.domain.robots.models import Robot
 from app.domain.service import GenericService
-from app.persistence.sql.uow import AsyncSqlUnitOfWork
+from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
+
+ENOUGH_BYTES_FOR_SAFETY = 32
 
 
 class RobotService(GenericService):
@@ -14,22 +18,42 @@ class RobotService(GenericService):
         """Initialize the robots."""
         self.sql_uow = sql_uow
 
-    async def _get_robot(self, robot_id: UUID4) -> Robot:
+    async def get_robot(self, robot_id: UUID4) -> Robot:
         """Return a given robot."""
         return await self.sql_uow.robots.get_by_pk(robot_id)
 
-    async def get_robot_url(self, robot_id: UUID4) -> HttpUrl:
-        """Return the url for a given robot."""
-        robot = await self._get_robot(robot_id)
-        return robot.base_url
-
-    async def get_robot(self, robot_id: UUID4) -> Robot:
+    @unit_of_work
+    async def get_robot_standalone(self, robot_id: UUID4) -> Robot:
         """Return a given robot."""
-        return await self._get_robot(robot_id)
+        return await self.get_robot(robot_id)
 
     async def get_robot_secret(self, robot_id: UUID4) -> str:
         """Return secret used for signing requests sent to this robot."""
         # Secret to be stored in the azure keyvault
         # Currently just using secret name while testing
-        robot = await self._get_robot(robot_id)
-        return robot.client_secret.get_secret_value()
+        robot = await self.get_robot(robot_id)
+        return await robot.get_client_secret()
+
+    @unit_of_work
+    async def get_robot_secret_standalone(self, robot_id: UUID4) -> str:
+        """Return secret used for signing requests sent to this robot."""
+        return await self.get_robot_secret(robot_id=robot_id)
+
+    @unit_of_work
+    async def add_robot(self, robot: Robot) -> Robot:
+        """Register a new robot."""
+        robot.client_secret = SecretStr(secrets.token_hex(ENOUGH_BYTES_FOR_SAFETY))
+        return await self.sql_uow.robots.add(robot)
+
+    @unit_of_work
+    async def update_robot(self, robot: Robot) -> Robot:
+        """Update an existing robot."""
+        return await self.sql_uow.robots.merge(robot)
+
+    @unit_of_work
+    async def cycle_robot_secret(self, robot_id: UUID4) -> Robot:
+        """Cycle the client secret for a given robot."""
+        new_client_secret = secrets.token_hex(ENOUGH_BYTES_FOR_SAFETY)
+        return await self.sql_uow.robots.update_by_pk(
+            robot_id, client_secret=new_client_secret
+        )

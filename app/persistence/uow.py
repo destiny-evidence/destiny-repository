@@ -44,6 +44,9 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
         "references",
         "external_identifiers",
         "enhancements",
+        "enhancement_requests",
+        "batch_enhancement_requests",
+        "robots",
     }
 
     def __init__(self) -> None:
