@@ -32,10 +32,7 @@ class RobotService(GenericService):
         # Secret to be stored in the azure keyvault
         # Currently just using secret name while testing
         robot = await self.get_robot(robot_id)
-        if not robot.client_secret:
-            msg = f"Robot {robot_id} has no client secret."
-            raise RuntimeError(msg)
-        return robot.client_secret.get_secret_value()
+        return await robot.get_client_secret()
 
     @unit_of_work
     async def get_robot_secret_standalone(self, robot_id: UUID4) -> str:
