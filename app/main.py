@@ -22,7 +22,7 @@ from app.core.logger import configure_logger, get_logger
 from app.domain.imports.routes import router as import_router
 from app.domain.references.routes import robot_router
 from app.domain.references.routes import router as reference_router
-from app.domain.references.routes import router as robot_management_router
+from app.domain.robots.routes import router as robot_management_router
 from app.persistence.sql.session import db_manager
 from app.tasks import broker
 from app.utils.healthcheck import router as healthcheck_router

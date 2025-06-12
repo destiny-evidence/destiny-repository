@@ -87,7 +87,7 @@ async def get_robot(
     robot_service: Annotated[RobotService, Depends(robot_service)],
 ) -> destiny_sdk.robots.Robot:
     """Get an existing Robot."""
-    robot = await robot_service.get_robot_uow(robot_id=robot_id)
+    robot = await robot_service.get_robot_standalone(robot_id=robot_id)
     return await robot.to_sdk()
 
 

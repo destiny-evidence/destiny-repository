@@ -23,7 +23,7 @@ class RobotService(GenericService):
         return await self.sql_uow.robots.get_by_pk(robot_id)
 
     @unit_of_work
-    async def get_robot_uow(self, robot_id: UUID4) -> Robot:
+    async def get_robot_standalone(self, robot_id: UUID4) -> Robot:
         """Return a given robot."""
         return await self.get_robot(robot_id)
 
