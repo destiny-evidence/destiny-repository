@@ -38,6 +38,11 @@ class RobotService(GenericService):
         return robot.client_secret.get_secret_value()
 
     @unit_of_work
+    async def get_robot_secret_standalone(self, robot_id: UUID4) -> str:
+        """Return secret used for signing requests sent to this robot."""
+        return await self.get_robot_secret(robot_id=robot_id)
+
+    @unit_of_work
     async def add_robot(self, robot: Robot) -> Robot:
         """Register a new robot."""
         robot.client_secret = SecretStr(secrets.token_hex(ENOUGH_BYTES_FOR_SAFETY))
