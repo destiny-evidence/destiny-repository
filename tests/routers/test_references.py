@@ -347,7 +347,7 @@ async def test_wrong_reference_exception_handler_returns_response_with_400(
 
     response = await client.post("/robot/enhancement/single/", json=robot_result)
 
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
 
 async def test_request_batch_enhancement_happy_path(

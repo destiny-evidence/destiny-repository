@@ -8,6 +8,7 @@ import pytest
 from fastapi import status
 
 from app.core.exceptions import (
+    InvalidParentEnhancementError,
     RobotEnhancementError,
     SQLNotFoundError,
     WrongReferenceError,
@@ -87,25 +88,6 @@ async def test_add_identifier_reference_not_found(fake_repository, fake_uow):
     )
     with pytest.raises(SQLNotFoundError):
         await service.add_identifier(dummy_id, fake_identifier_create)
-
-
-ENHANCEMENT_DATA = {
-    "source": "test_source",
-    "visibility": "public",
-    "enhancement_type": "annotation",
-    "content": {
-        "enhancement_type": "annotation",
-        "annotations": [
-            {
-                "annotation_type": "boolean",
-                "scheme": "openalex:topic",
-                "value": "true",
-                "label": "test_label",
-                "data": {"foo": "bar"},
-            }
-        ],
-    },
-}
 
 
 @pytest.mark.asyncio
@@ -337,7 +319,7 @@ async def test_get_enhancement_request_doesnt_exist(fake_repository, fake_uow):
 
 @pytest.mark.asyncio
 async def test_create_reference_enhancement_from_request_happy_path(
-    fake_repository, fake_uow
+    fake_repository, fake_uow, fake_enhancement_data
 ):
     enhancement_request_id = uuid.uuid4()
     reference_id = uuid.uuid4()
@@ -359,18 +341,101 @@ async def test_create_reference_enhancement_from_request_happy_path(
     service = ReferenceService(uow)
     enhancement_request = await service.create_reference_enhancement_from_request(
         enhancement_request_id=existing_enhancement_request.id,
-        enhancement=Enhancement(reference_id=reference_id, **ENHANCEMENT_DATA),
+        enhancement=Enhancement(reference_id=reference_id, **fake_enhancement_data),
     )
 
     reference = fake_reference_repo.get_first_record()
 
     assert enhancement_request.request_status == EnhancementRequestStatus.COMPLETED
-    assert reference.enhancements[0]["source"] == ENHANCEMENT_DATA.get("source")
+    assert reference.enhancements[0]["source"] == fake_enhancement_data.get("source")
+
+
+@pytest.mark.asyncio
+async def test_create_valid_derived_reference_enhancement_from_request(
+    fake_repository, fake_uow, fake_enhancement_data
+):
+    enhancement_request_id = uuid.uuid4()
+    reference_id = uuid.uuid4()
+    existing_enhancement = Enhancement(
+        reference_id=reference_id, **fake_enhancement_data
+    )
+    fake_reference_repo = fake_repository(
+        [Reference(id=reference_id, enhancements=[existing_enhancement])]
+    )
+    fake_enhancements_repo = fake_repository([existing_enhancement])
+
+    existing_enhancement_request = EnhancementRequest(
+        id=enhancement_request_id,
+        reference_id=reference_id,
+        robot_id=uuid.uuid4(),
+        request_status=EnhancementRequestStatus.ACCEPTED,
+    )
+
+    fake_enhancement_requests = fake_repository([existing_enhancement_request])
+    uow = fake_uow(
+        enhancement_requests=fake_enhancement_requests,
+        references=fake_reference_repo,
+        enhancements=fake_enhancements_repo,
+    )
+
+    derived_enhancement = fake_enhancement_data.copy()
+    derived_enhancement["derived_from"] = [existing_enhancement.id]
+
+    service = ReferenceService(uow)
+    enhancement_request = await service.create_reference_enhancement_from_request(
+        enhancement_request_id=existing_enhancement_request.id,
+        enhancement=Enhancement(reference_id=reference_id, **derived_enhancement),
+    )
+
+    reference = fake_reference_repo.get_first_record()
+
+    assert enhancement_request.request_status == EnhancementRequestStatus.COMPLETED
+    assert reference.enhancements[1]["derived_from"] == [existing_enhancement.id]
+
+
+@pytest.mark.asyncio
+async def test_create_invalid_derived_reference_enhancement_from_request(
+    fake_repository, fake_uow, fake_enhancement_data
+):
+    enhancement_request_id = uuid.uuid4()
+    reference_id = uuid.uuid4()
+    fake_reference_repo = fake_repository([Reference(id=reference_id)])
+    fake_enhancements_repo = fake_repository()
+
+    existing_enhancement_request = EnhancementRequest(
+        id=enhancement_request_id,
+        reference_id=reference_id,
+        robot_id=uuid.uuid4(),
+        request_status=EnhancementRequestStatus.ACCEPTED,
+    )
+
+    fake_enhancement_requests = fake_repository([existing_enhancement_request])
+    uow = fake_uow(
+        enhancement_requests=fake_enhancement_requests,
+        references=fake_reference_repo,
+        enhancements=fake_enhancements_repo,
+    )
+
+    derived_enhancement = fake_enhancement_data.copy()
+    derived_from1 = uuid.uuid4()
+    derived_from2 = uuid.uuid4()
+    derived_enhancement["derived_from"] = [derived_from1, derived_from2]
+
+    service = ReferenceService(uow)
+    with pytest.raises(
+        InvalidParentEnhancementError,
+        match=rf"Enhancements with ids {{'({derived_from1}|{derived_from2})', "
+        rf"'({derived_from1}|{derived_from2})'}} do not exist.",
+    ):
+        await service.create_reference_enhancement_from_request(
+            enhancement_request_id=existing_enhancement_request.id,
+            enhancement=Enhancement(reference_id=reference_id, **derived_enhancement),
+        )
 
 
 @pytest.mark.asyncio
 async def test_create_reference_enhancement_from_request_reference_not_found(
-    fake_repository, fake_uow
+    fake_repository, fake_uow, fake_enhancement_data
 ):
     enhancement_request_id = uuid.uuid4()
     non_existent_reference_id = uuid.uuid4()
@@ -396,14 +461,14 @@ async def test_create_reference_enhancement_from_request_reference_not_found(
         await service.create_reference_enhancement_from_request(
             enhancement_request_id=existing_enhancement_request.id,
             enhancement=Enhancement(
-                reference_id=non_existent_reference_id, **ENHANCEMENT_DATA
+                reference_id=non_existent_reference_id, **fake_enhancement_data
             ),
         )
 
 
 @pytest.mark.asyncio
 async def test_create_reference_enhancement_from_request_enhancement_request_not_found(
-    fake_repository, fake_uow
+    fake_repository, fake_uow, fake_enhancement_data
 ):
     reference_id = uuid.uuid4()
 
@@ -418,13 +483,13 @@ async def test_create_reference_enhancement_from_request_enhancement_request_not
     with pytest.raises(SQLNotFoundError):
         await service.create_reference_enhancement_from_request(
             enhancement_request_id=uuid.uuid4(),
-            enhancement=Enhancement(reference_id=reference_id, **ENHANCEMENT_DATA),
+            enhancement=Enhancement(reference_id=reference_id, **fake_enhancement_data),
         )
 
 
 @pytest.mark.asyncio
 async def test_create_reference_enhancement_from_request_enhancement_for_wrong_reference(  # noqa: E501
-    fake_repository, fake_uow
+    fake_repository, fake_uow, fake_enhancement_data
 ):
     enhancement_request_id = uuid.uuid4()
     reference_id = uuid.uuid4()
@@ -453,7 +518,7 @@ async def test_create_reference_enhancement_from_request_enhancement_for_wrong_r
         await service.create_reference_enhancement_from_request(
             enhancement_request_id=existing_enhancement_request.id,
             enhancement=Enhancement(
-                reference_id=different_reference_id, **ENHANCEMENT_DATA
+                reference_id=different_reference_id, **fake_enhancement_data
             ),
         )
 
