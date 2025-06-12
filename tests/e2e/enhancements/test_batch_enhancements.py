@@ -131,7 +131,7 @@ def test_complete_batch_enhancement_workflow():
         basic_auth=(os.environ["ES_USER"], os.environ["ES_PASS"]),
         ca_certs=os.environ["ES_CA_PATH"],
     )
-    es_index = "reference"
+    es_index = "destiny-repository-reference"
     for reference_id in reference_ids:
         response = es.get(index=es_index, id=reference_id)
         toy_found = False
