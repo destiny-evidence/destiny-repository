@@ -327,6 +327,10 @@ class Enhancement(_JsonlFileInputMixIn, BaseModel):
         default=None,
         description="The version of the robot that generated the content.",
     )
+    derived_from: list[uuid.UUID] | None = Field(
+        default=None,
+        description="List of enhancement IDs that this enhancement was derived from.",
+    )
     content: Annotated[
         EnhancementContent,
         Field(
