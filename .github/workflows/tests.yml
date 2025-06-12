@@ -38,11 +38,10 @@ jobs:
         env:
           discovery.type: single-node
           xpack.security.enabled: "false"
-          xpack.license.self_generated.type: basic
         ports:
           - 9200:9200
         options: >-
-          --health-cmd curl -f http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=30s
+          --health-cmd "curl http://localhost:9200/_cluster/health"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
