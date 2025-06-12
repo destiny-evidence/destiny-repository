@@ -273,9 +273,7 @@ class ReferenceService(GenericService):
         blob_repository: BlobRepository,
     ) -> None:
         """Collect and dispatch references for batch enhancement."""
-        robot = await robot_service.get_robot_standalone(
-            batch_enhancement_request.robot_id
-        )
+        robot = await robot_service.get_robot(batch_enhancement_request.robot_id)
         file_stream = FileStream(
             # Handle Python's type invariance by casting the function type. We know
             # Reference is a subclass of SDKJsonlMixin.
