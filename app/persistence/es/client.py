@@ -25,7 +25,7 @@ class AsyncESClientManager:
         if self._client is None:
             if isinstance(es_config, ESTestConfig):
                 self._client = AsyncElasticsearch(
-                    hosts=str(es_config.es_url),
+                    str(es_config.es_url),
                 )
             else:
                 self._client = AsyncElasticsearch(
