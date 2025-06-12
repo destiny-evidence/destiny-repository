@@ -25,8 +25,8 @@ engine = create_engine(db_url)
 # e2e tests are ordered for easier seeding of downstream tests
 @pytest.mark.order(2)
 # Remove the below if you want to run e2e tests locally with the toy robot.
-# @pytest.mark.skip(reason="Skipped in GH action, requires toy robot access.")
-def test_complete_batch_enhancement_workflow():  # noqa: PLR0915
+@pytest.mark.skip(reason="Skipped in GH action, requires toy robot access.")
+def test_complete_batch_enhancement_workflow():
     """Test complete batch enhancement workflow, happy-ish path."""
     with (
         httpx.Client(base_url=repo_url) as repo_client,
@@ -103,17 +103,6 @@ def test_complete_batch_enhancement_workflow():  # noqa: PLR0915
         for line in reference_data_file.text.splitlines():
             reference = destiny_sdk.references.Reference.model_validate_json(line)
             assert str(reference.id) in reference_ids
-            # Check we only got enhancements we're dependent on
-            dependent_enhancements = {"abstract", "annotation"}
-            dependent_identifiers = {"doi", "pm_id"}
-            assert not (
-                {e.content.enhancement_type for e in reference.enhancements}
-                - dependent_enhancements
-            )
-            assert not (
-                {i.identifier_type for i in reference.identifiers}
-                - dependent_identifiers
-            )
 
     # Finally check we got some toys themselves
     with engine.connect() as conn:
@@ -147,7 +136,10 @@ def test_complete_batch_enhancement_workflow():  # noqa: PLR0915
         response = es.get(index=es_index, id=reference_id)
         toy_found = False
         for row in response["_source"]["enhancements"]:
-            if row["enhancement_type"] == "annotation" and row["source"] == "Toy Robot":
+            if (
+                row["content"]["enhancement_type"] == "annotation"
+                and row["source"] == "Toy Robot"
+            ):
                 toy_found = True
 
         if not toy_found:

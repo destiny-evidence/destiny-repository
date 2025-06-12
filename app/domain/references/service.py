@@ -399,12 +399,15 @@ class ReferenceService(GenericService):
         # This is a bit hacky - we retrieve the terminal status from the import,
         # and then set to indexing. Essentially using the SQL UOW as a transport
         # from the blob generator to this layer.
-        batch_enhancement_request = await self.get_batch_enhancement_request(
-            batch_enhancement_request.id
+        batch_enhancement_request = (
+            await self.sql_uow.batch_enhancement_requests.get_by_pk(
+                batch_enhancement_request.id
+            )
         )
-        await self.update_batch_enhancement_request_status(
+
+        await self.sql_uow.batch_enhancement_requests.update_by_pk(
             batch_enhancement_request.id,
-            BatchEnhancementRequestStatus.INDEXING,
+            request_status=BatchEnhancementRequestStatus.INDEXING,
         )
         return batch_enhancement_request.request_status
 
