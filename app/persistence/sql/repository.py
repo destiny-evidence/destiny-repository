@@ -130,7 +130,16 @@ class GenericAsyncSqlRepository(
         for key, value in kwargs.items():
             setattr(persistence, key, value)
 
-        await self._session.flush()
+        try:
+            await self._session.flush()
+        except IntegrityError as e:
+            detail = f"Unable to update {self._persistence_cls.__name__}: duplicate."
+            raise SQLDuplicateError(
+                detail=detail,
+                lookup_model=self._persistence_cls.__name__,
+                collision=str(e.orig),
+            ) from e
+
         await self._session.refresh(persistence)
         return await persistence.to_domain()
 
