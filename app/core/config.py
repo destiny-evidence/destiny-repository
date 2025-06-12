@@ -96,6 +96,12 @@ class ESConfig(BaseModel):
         ]
 
 
+class ESTestConfig(BaseModel):
+    """Elasticsearch test configuration."""
+
+    es_url: HttpUrl = HttpUrl("http://localhost:9200")
+
+
 class MinioConfig(BaseModel):
     """Minio configuration."""
 
@@ -146,7 +152,7 @@ class Settings(BaseSettings):
     project_root: Path = Path(__file__).joinpath("../../..").resolve()
 
     db_config: DatabaseConfig
-    es_config: ESConfig
+    es_config: ESConfig | ESTestConfig
     minio_config: MinioConfig | None = None
     azure_blob_config: AzureBlobConfig | None = None
 
@@ -242,6 +248,17 @@ class Settings(BaseSettings):
             msg = "Azure Blob Storage configuration is not given."
             raise ValueError(msg)
         return self.azure_blob_config.container
+
+    @model_validator(mode="after")
+    def validate_es_config(self) -> Self:
+        """Validate the Elasticsearch configuration."""
+        if isinstance(self.es_config, ESTestConfig) and self.env != Environment.TEST:
+            msg = (
+                "Elasticsearch test config should only be used in the TEST environment."
+                " Specify credentials."
+            )
+            raise ValueError(msg)
+        return self
 
 
 @lru_cache(maxsize=1)
