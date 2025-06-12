@@ -137,7 +137,7 @@ async def test_update_robot_fails_if_name_is_the_same_as_other_robots(
 async def test_update_robot_fails_if_try_to_specify_client_secret(
     session: AsyncSession, client: AsyncClient, robot_t_1000: dict[str, str]
 ) -> None:
-    """Test that trying to update the name of a robot to something non-unique fails."""
+    """Test that trying to update the client secret fails."""
     robot = SQLRobot(client_secret="even-more-secret", **robot_t_1000)
 
     session.add(robot)
