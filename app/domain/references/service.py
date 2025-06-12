@@ -65,6 +65,11 @@ class ReferenceService(GenericService):
     @sql_uow
     async def get_reference(self, reference_id: UUID4) -> Reference:
         """Get a single reference by id."""
+        return await self._get_reference(reference_id)
+
+    async def _get_reference(self, reference_id: UUID4) -> Reference:
+        """Get a single reference by id without using the unit of work."""
+        # This method is used internally and does not use the unit of work.
         return await self.sql_uow.references.get_by_pk(
             reference_id, preload=["identifiers", "enhancements"]
         )
@@ -77,9 +82,7 @@ class ReferenceService(GenericService):
         if enhancement.reference_id != reference_id:
             detail = "Enhancement is for a different reference than requested."
             raise WrongReferenceError(detail)
-        reference = await self.sql_uow.references.get_by_pk(
-            reference_id, preload=["enhancements", "identifiers"]
-        )
+        reference = await self._get_reference(reference_id)
         # This uses SQLAlchemy to treat References as an aggregate of enhancements.
         # All considered this is a naive implementation, but it works for now.
         reference.enhancements = [*(reference.enhancements or []), *[enhancement]]
@@ -270,7 +273,9 @@ class ReferenceService(GenericService):
 
         await self._add_enhancement(enhancement_request.reference_id, enhancement)
 
-        await self.index_reference(reference_id=enhancement_request.reference_id)
+        await self.index_reference(
+            reference=await self._get_reference(enhancement_request.reference_id)
+        )
 
         return await self.sql_uow.enhancement_requests.update_by_pk(
             enhancement_request.id,
@@ -482,10 +487,9 @@ class ReferenceService(GenericService):
     @es_uow
     async def index_reference(
         self,
-        reference_id: UUID4,
+        reference: Reference,
     ) -> None:
         """Index a single reference in Elasticsearch."""
-        reference = await self.get_reference(reference_id)
         await self.es_uow.references.add(reference)
 
     async def repopulate_reference_index(self) -> None:

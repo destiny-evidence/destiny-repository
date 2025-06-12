@@ -188,27 +188,6 @@ This should not happen.
             )
             return
 
-        if import_batch.callback_url:
-            try:
-                async with httpx.AsyncClient(
-                    transport=httpx.AsyncHTTPTransport(retries=2)
-                ) as client:
-                    # Refresh the import batch to get the latest status
-                    import_batch = await self.get_import_batch_with_results(
-                        import_batch.id
-                    )
-                    response = await client.post(
-                        str(import_batch.callback_url),
-                        json=(await import_batch.to_sdk_summary()).model_dump(
-                            mode="json"
-                        ),
-                    )
-                    response.raise_for_status()
-            except Exception:
-                logger.exception(
-                    "Failed to send callback", extra={"batch": import_batch}
-                )
-
     @unit_of_work
     async def add_batch_result(
         self,

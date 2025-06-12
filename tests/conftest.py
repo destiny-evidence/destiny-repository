@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 from alembic.command import upgrade
+from elasticsearch import AsyncElasticsearch
 from jose import jwt
 from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -185,7 +186,9 @@ async def es_manager_for_tests() -> AsyncGenerator[AsyncESClientManager, None]:
 
 
 @pytest.fixture
-async def es_client(es_manager_for_tests: AsyncESClientManager):
+async def es_client(
+    es_manager_for_tests: AsyncESClientManager,
+) -> AsyncGenerator[AsyncElasticsearch, None]:
     """Yield the ES client for the test and cleanup indices after."""
     async with es_manager_for_tests.client() as client:
         await create_test_indices(client)

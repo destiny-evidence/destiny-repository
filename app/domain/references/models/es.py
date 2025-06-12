@@ -22,9 +22,7 @@ class ExternalIdentifierDocument(InnerDoc):
     """Persistence model for external identifiers in Elasticsearch."""
 
     identifier: str = mapped_field(Text(required=True))
-    identifier_type: ExternalIdentifierType = mapped_field(
-        Keyword(required=True, index=True)
-    )
+    identifier_type: ExternalIdentifierType = mapped_field(Keyword(required=True))
     other_identifier_name: str | None = mapped_field(Keyword())
 
     @classmethod
@@ -100,7 +98,9 @@ class EnhancementDocument(InnerDoc):
             visibility=domain_obj.visibility,
             source=domain_obj.source,
             robot_version=domain_obj.robot_version,
-            content=EnhancementContentDocument(**domain_obj.content.model_dump()),
+            content=EnhancementContentDocument(
+                **domain_obj.content.model_dump(mode="json")
+            ),
         )
 
     async def to_domain(self, reference_id: UUID4) -> Enhancement:

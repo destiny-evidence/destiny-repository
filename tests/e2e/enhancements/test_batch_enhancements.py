@@ -11,6 +11,7 @@ import time
 import destiny_sdk
 import httpx
 import pytest
+from elasticsearch import Elasticsearch
 from sqlalchemy import create_engine, text
 
 toy_robot_id = os.environ["TOY_ROBOT_ID"]
@@ -24,7 +25,7 @@ engine = create_engine(db_url)
 # e2e tests are ordered for easier seeding of downstream tests
 @pytest.mark.order(2)
 # Remove the below if you want to run e2e tests locally with the toy robot.
-@pytest.mark.skip(reason="Skipped in GH action, requires toy robot access.")
+# @pytest.mark.skip(reason="Skipped in GH action, requires toy robot access.")
 def test_complete_batch_enhancement_workflow():
     """Test complete batch enhancement workflow, happy-ish path."""
     with (
@@ -119,4 +120,22 @@ def test_complete_batch_enhancement_workflow():
 
         if not all(toy_found.values()):
             msg = "Expected toy robot enhancement not found in reference."
+            raise AssertionError(msg)
+
+    time.sleep(1)
+    es = Elasticsearch(
+        os.environ["ES_URL"],
+        basic_auth=(os.environ["ES_USER"], os.environ["ES_PASS"]),
+        ca_certs=os.environ["ES_CA_PATH"],
+    )
+    es_index = "reference"
+    for reference_id in reference_ids:
+        response = es.get(index=es_index, id=reference_id)
+        toy_found = False
+        for row in response["_source"]["enhancements"]:
+            if row["enhancement_type"] == "annotation" and row["source"] == "Toy Robot":
+                toy_found = True
+
+        if not toy_found:
+            msg = "Expected toy robot enhancement not found in elasticsearch reference."
             raise AssertionError(msg)

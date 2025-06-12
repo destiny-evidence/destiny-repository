@@ -1,5 +1,6 @@
 """Import tasks module for the DESTINY Climate and Health Repository API."""
 
+import httpx
 from elasticsearch import AsyncElasticsearch
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -117,3 +118,24 @@ async def process_import_batch(import_batch_id: UUID4) -> None:
         await import_service.update_import_batch_status(
             import_batch.id, ImportBatchStatus.COMPLETED
         )
+
+        if import_batch.callback_url:
+            try:
+                async with httpx.AsyncClient(
+                    transport=httpx.AsyncHTTPTransport(retries=2)
+                ) as client:
+                    # Refresh the import batch to get the latest status
+                    import_batch = await import_service.get_import_batch_with_results(
+                        import_batch.id
+                    )
+                    response = await client.post(
+                        str(import_batch.callback_url),
+                        json=(await import_batch.to_sdk_summary()).model_dump(
+                            mode="json"
+                        ),
+                    )
+                    response.raise_for_status()
+            except Exception:
+                logger.exception(
+                    "Failed to send callback", extra={"batch": import_batch}
+                )
