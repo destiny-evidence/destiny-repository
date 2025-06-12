@@ -80,26 +80,56 @@ If db_pass is provided, azure_db_resource_url must not be provided."""
 class ESConfig(BaseModel):
     """Elasticsearch configuration."""
 
-    es_url: HttpUrl | list[HttpUrl] = Field(
+    es_url: HttpUrl | list[HttpUrl] | None = Field(
         description="If a list, connections will be created to all nodes in the list.",
     )
-    es_user: str
-    es_pass: str
-    es_ca_path: FilePath
+    es_user: str | None = None
+    es_pass: str | None = None
+    es_ca_path: FilePath | None = None
+
+    es_insecure_url: HttpUrl | None = Field(
+        default=None,
+        description=(
+            "For connecting to insecure Elasticsearch instances when testing."
+        ),
+    )
 
     @property
     def es_hosts(self) -> list[str]:
         """Return the Elasticsearch host(s) as a list of strings."""
+        if not self.es_url:
+            msg = "Elasticsearch URL is not provided."
+            raise ValueError(msg)
         return [
             str(url)
             for url in (self.es_url if isinstance(self.es_url, list) else [self.es_url])
         ]
 
+    @model_validator(mode="after")
+    def validate_parameters(self) -> Self:
+        """Validate the given parameters."""
+        if self.es_insecure_url and any(
+            (self.es_user, self.es_pass, self.es_ca_path, self.es_url)
+        ):
+            msg = (
+                "If es_insecure_url is provided, es_user, es_pass and es_ca_path "
+                "should not be provided."
+            )
+            raise ValueError(msg)
 
-class ESTestConfig(BaseModel):
-    """Elasticsearch test configuration."""
+        if not self.es_insecure_url and (
+            not self.es_user
+            or not self.es_pass
+            or not self.es_ca_path
+            or not self.es_url
+        ):
+            msg = (
+                "If es_insecure_url is not provided, es_url, es_user, es_pass and"
+                " es_ca_path must all be provided."
+            )
+            raise ValueError(msg)
 
-    es_insecure_url: HttpUrl = HttpUrl("http://localhost:9200")
+        return self
 
 
 class MinioConfig(BaseModel):
@@ -152,7 +182,7 @@ class Settings(BaseSettings):
     project_root: Path = Path(__file__).joinpath("../../..").resolve()
 
     db_config: DatabaseConfig
-    es_config: ESConfig | ESTestConfig
+    es_config: ESConfig
     minio_config: MinioConfig | None = None
     azure_blob_config: AzureBlobConfig | None = None
 
@@ -248,17 +278,6 @@ class Settings(BaseSettings):
             msg = "Azure Blob Storage configuration is not given."
             raise ValueError(msg)
         return self.azure_blob_config.container
-
-    @model_validator(mode="after")
-    def validate_es_config(self) -> Self:
-        """Validate the Elasticsearch configuration."""
-        if isinstance(self.es_config, ESTestConfig) and self.env != Environment.TEST:
-            msg = (
-                "Elasticsearch test config should only be used in the TEST environment."
-                " Specify credentials."
-            )
-            raise ValueError(msg)
-        return self
 
 
 @lru_cache(maxsize=1)

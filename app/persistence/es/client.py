@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 
 from elasticsearch import AsyncElasticsearch
 
-from app.core.config import ESConfig, ESTestConfig
+from app.core.config import ESConfig
 from app.core.logger import get_logger
 from app.domain.references.models.es import ReferenceDocument
 
@@ -20,10 +20,10 @@ class AsyncESClientManager:
         """Initialize the AsyncESClientManager."""
         self._client: AsyncElasticsearch | None = None
 
-    async def init(self, es_config: ESConfig | ESTestConfig) -> None:
+    async def init(self, es_config: ESConfig) -> None:
         """Initialize the Elasticsearch client manager."""
         if self._client is None:
-            if isinstance(es_config, ESTestConfig):
+            if es_config.es_insecure_url:
                 self._client = AsyncElasticsearch(
                     str(es_config.es_insecure_url),
                 )
@@ -31,7 +31,7 @@ class AsyncESClientManager:
                 self._client = AsyncElasticsearch(
                     hosts=es_config.es_hosts,
                     ca_certs=str(es_config.es_ca_path),
-                    basic_auth=(es_config.es_user, es_config.es_pass),
+                    basic_auth=(es_config.es_user, es_config.es_pass),  # type: ignore[arg-type]
                 )
         for index in indices:
             exists = await self._client.indices.exists(index=index.Index.name)
