@@ -5,6 +5,7 @@ import argparse
 
 import destiny_sdk
 import httpx
+from fastapi import status
 from pydantic import HttpUrl
 
 from app.core.config import get_settings
@@ -37,6 +38,10 @@ def register_robot(
             json=robot_to_register.model_dump(mode="json"),
             headers={"Authorization": f"Bearer {access_token}"},
         )
+
+        if response.status_code >= status.HTTP_400_BAD_REQUEST:
+            msg = response.json()["detail"]
+            raise httpx.HTTPError(msg)
 
         return destiny_sdk.robots.ProvisionedRobot.model_validate(response.json())
 
@@ -90,15 +95,19 @@ if __name__ == "__main__":
     parser = argument_parser()
     args = parser.parse_args()
 
-    registered_robot = register_robot(
-        destiny_repository_url=args.repository_url,
-        robot_name=args.name,
-        robot_base_url=args.base_url,
-        robot_description=args.description,
-        robot_owner=args.owner,
-    )
+    try:
+        registered_robot = register_robot(
+            destiny_repository_url=args.repository_url,
+            robot_name=args.name,
+            robot_base_url=args.base_url,
+            robot_description=args.description,
+            robot_owner=args.owner,
+        )
 
-    print("New Robot Registered")
-    print(f"Name: {registered_robot.name}")
-    print(f"Robot Id: {registered_robot.id}")
-    print(f"Robot Secret: {registered_robot.client_secret}")
+        print("New Robot Registered")
+        print(f"Name: {registered_robot.name}")
+        print(f"Robot Id: {registered_robot.id}")
+        print(f"Robot Secret: {registered_robot.client_secret}")
+
+    except httpx.HTTPError as exc:
+        print(f"Robot registration failed: {exc}")
