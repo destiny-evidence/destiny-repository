@@ -8,13 +8,23 @@ from app.domain.robots.sql import Robot
 
 
 class DummyDomainRobot:
-    def __init__(self, id, base_url, client_secret, description, name, owner):
+    def __init__(
+        self,
+        id,
+        base_url,
+        client_secret,
+        description,
+        name,
+        owner,
+        enhance_incoming_references,
+    ):
         self.id = id
         self.base_url = base_url
         self.client_secret = client_secret
         self.description = description
         self.name = name
         self.owner = owner
+        self.enhance_incoming_references = enhance_incoming_references
 
 
 @pytest.mark.asyncio
@@ -27,6 +37,7 @@ async def test_robot_to_and_from_domain():
         description="description",
         name="name",
         owner="owner",
+        enhance_incoming_references=True,
     )
 
     # Convert from domain to SQL model
@@ -37,6 +48,9 @@ async def test_robot_to_and_from_domain():
     assert sql_robot.description == dummy_robot.description
     assert sql_robot.name == dummy_robot.name
     assert sql_robot.owner == dummy_robot.owner
+    assert (
+        sql_robot.enhance_incoming_references == dummy_robot.enhance_incoming_references
+    )
 
     # Convert from SQL model to domain
     domain_ref = await sql_robot.to_domain()
@@ -46,3 +60,8 @@ async def test_robot_to_and_from_domain():
     assert domain_ref.description == dummy_robot.description
     assert domain_ref.name == dummy_robot.name
     assert domain_ref.owner == dummy_robot.owner
+
+    assert (
+        domain_ref.enhance_incoming_references
+        == dummy_robot.enhance_incoming_references
+    )

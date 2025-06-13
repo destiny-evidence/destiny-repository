@@ -30,8 +30,7 @@ class Robot(GenericSQLPersistence[DomainRobot]):
     owner: Mapped[str] = mapped_column(String, nullable=False)
 
     enhance_incoming_references: Mapped[bool] = mapped_column(
-        "enhance_incoming_references",
-        nullable=False,
+        "enhance_incoming_references", nullable=False, default=False
     )
 
     __table_args__ = (

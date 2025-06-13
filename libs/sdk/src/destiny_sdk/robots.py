@@ -308,6 +308,11 @@ class _RobotBase(BaseModel):
         description="Description of the enhancement the robot provides."
     )
     owner: str = Field(description="The owner/publisher of the robot.")
+    enhance_incoming_references: bool = Field(
+        default=False,
+        description="Whether this robot should automatically receive enhancement "
+        "requests for new references.",
+    )
 
 
 class RobotIn(_RobotBase):

@@ -6,7 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import get_logger
 from app.domain.references.models.es import ReferenceDocument
-from app.domain.references.models.models import BatchEnhancementRequestStatus
+from app.domain.references.models.models import (
+    BatchEnhancementRequest,
+    BatchEnhancementRequestStatus,
+)
 from app.domain.references.service import ReferenceService
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
@@ -175,3 +178,43 @@ async def rebuild_reference_index() -> None:
         await ReferenceDocument.init(using=client)
 
     await reference_service.repopulate_reference_index()
+
+
+async def request_default_enhancements(
+    reference_ids: set[UUID4],
+) -> list[BatchEnhancementRequest]:
+    """
+    Request default enhancements for a set of references.
+
+    Technically a task distributor, not a task - may live in a higher layer
+    later in life.
+    """
+    sql_uow = await get_sql_unit_of_work()
+    es_uow = await get_es_unit_of_work()
+    robot_service = await get_robot_service(sql_uow)
+    reference_service = await get_reference_service(sql_uow, es_uow)
+
+    requests = []
+    for robot in await robot_service.get_robots_standalone():
+        if robot.enhance_incoming_references:
+            enhancement_request = (
+                await reference_service.register_batch_reference_enhancement_request(
+                    enhancement_request=BatchEnhancementRequest(
+                        reference_ids=reference_ids,
+                        robot_id=robot.id,
+                    ),
+                )
+            )
+            requests.append(enhancement_request)
+            logger.info(
+                "Enqueueing enhancement batch for imported references",
+                extra={
+                    "batch_enhancement_request_id": enhancement_request.id,
+                    "robot_id": robot.id,
+                },
+            )
+            # Taskception
+            await collect_and_dispatch_references_for_batch_enhancement.kiq(
+                batch_enhancement_request_id=enhancement_request.id,
+            )
+    return requests

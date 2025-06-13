@@ -285,4 +285,4 @@ Unable to merge {self._persistence_cls.__name__}: duplicate.
                 options.append(joinedload(relationship))
         query = select(self._persistence_cls).options(*options)
         result = await self._session.execute(query)
-        return [row.to_domain() for row in result.scalars().all()]
+        return [await row.to_domain() for row in result.scalars().all()]
