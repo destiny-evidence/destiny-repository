@@ -47,6 +47,22 @@ class ImportService(GenericService):
         return await self.sql_uow.batches.get_by_pk(import_batch_id)
 
     @unit_of_work
+    async def get_imported_references_from_batch(
+        self, import_batch_id: UUID4
+    ) -> set[UUID4]:
+        """Get all imported references from a batch."""
+        results = await self.sql_uow.results.get_by_filter(
+            import_batch_id=import_batch_id,
+        )
+        return {
+            result.reference_id
+            for result in results
+            if result.reference_id
+            and result.status
+            in (ImportResultStatus.COMPLETED, ImportResultStatus.PARTIALLY_FAILED)
+        }
+
+    @unit_of_work
     async def get_import_batch_with_results(
         self, import_batch_id: UUID4
     ) -> ImportBatch:
@@ -67,12 +83,18 @@ class ImportService(GenericService):
         await self._get_import_record(batch.import_record_id)
         return await self.sql_uow.batches.add(batch)
 
-    @unit_of_work
     async def _update_import_batch_status(
         self, import_batch_id: UUID4, status: ImportBatchStatus
     ) -> ImportBatch:
         """Update the status of an import batch."""
         return await self.sql_uow.batches.update_by_pk(import_batch_id, status=status)
+
+    @unit_of_work
+    async def update_import_batch_status(
+        self, import_batch_id: UUID4, status: ImportBatchStatus
+    ) -> ImportBatch:
+        """Update the status of an import batch."""
+        return await self._update_import_batch_status(import_batch_id, status)
 
     @unit_of_work
     async def import_reference(
@@ -134,7 +156,7 @@ This should not happen.
         - Persist the file via the Reference service.
         - Hit the callback URL with the results.
         """
-        await self._update_import_batch_status(
+        await self.update_import_batch_status(
             import_batch.id, ImportBatchStatus.STARTED
         )
 
@@ -148,7 +170,7 @@ This should not happen.
                 client.stream("GET", str(import_batch.storage_url)) as response,
             ):
                 response.raise_for_status()
-                i = 1
+                entry_ref = 1
                 async for line in response.aiter_lines():
                     if line.strip():
                         await self.import_reference(
@@ -156,40 +178,15 @@ This should not happen.
                             import_batch.collision_strategy,
                             line,
                             reference_service,
-                            i,
+                            entry_ref,
                         )
-                        i += 1
+                        entry_ref += 1
         except Exception:
             logger.exception("Failed to process batch", extra={"batch": import_batch})
-            await self._update_import_batch_status(
+            await self.update_import_batch_status(
                 import_batch.id, ImportBatchStatus.FAILED
             )
             return
-
-        await self._update_import_batch_status(
-            import_batch.id, ImportBatchStatus.COMPLETED
-        )
-
-        if import_batch.callback_url:
-            try:
-                async with httpx.AsyncClient(
-                    transport=httpx.AsyncHTTPTransport(retries=2)
-                ) as client:
-                    # Refresh the import batch to get the latest status
-                    import_batch = await self.get_import_batch_with_results(
-                        import_batch.id
-                    )
-                    response = await client.post(
-                        str(import_batch.callback_url),
-                        json=(await import_batch.to_sdk_summary()).model_dump(
-                            mode="json"
-                        ),
-                    )
-                    response.raise_for_status()
-            except Exception:
-                logger.exception(
-                    "Failed to send callback", extra={"batch": import_batch}
-                )
 
     @unit_of_work
     async def add_batch_result(

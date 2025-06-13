@@ -20,6 +20,7 @@ from pathlib import Path
 import httpx
 import pytest
 import uvicorn
+from elasticsearch import Elasticsearch
 from fastapi import FastAPI
 from sqlalchemy import create_engine, text
 
@@ -453,3 +454,39 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         assert response.status_code == 200
         import_record = response.json()
         assert import_record["status"] == "completed"
+
+        # 9: Check Elasticsearch too
+        time.sleep(1)  # Wait for ES indexing to complete
+        es = Elasticsearch(
+            os.environ["ES_URL"],
+            basic_auth=(os.environ["ES_USER"], os.environ["ES_PASS"]),
+            ca_certs=os.environ["ES_CA_PATH"],
+        )
+        es_index = "reference"
+        assert es.indices.exists(index=es_index)
+        es_response = es.search(
+            index=es_index,
+            query={
+                "nested": {
+                    "path": "identifiers",
+                    "query": {
+                        "bool": {
+                            "must": [
+                                {
+                                    "match": {
+                                        "identifiers.identifier": "10.1235/sampledoitwoelectricboogaloo"
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                }
+            },
+        )
+        assert es_response["hits"]["total"]["value"] == 1
+        es_reference = es_response["hits"]["hits"][0]["_source"]
+        for enhancement in es_reference["enhancements"]:
+            if enhancement["content"]["enhancement_type"] == "bibliographic":
+                assert (
+                    enhancement["content"]["authorship"][0]["display_name"] == "Wynstan"
+                )

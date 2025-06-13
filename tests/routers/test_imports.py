@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock
 
 import pytest
+from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -137,6 +138,7 @@ async def test_get_missing_import(client: AsyncClient) -> None:
 async def test_create_batch_for_import(
     client: AsyncClient,
     session: AsyncSession,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
     valid_import: SQLImportRecord,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -109,6 +109,22 @@ class SQLDuplicateError(DuplicateError):
         super().__init__(detail, *args)
 
 
+class ESError(Exception):
+    """An exception thrown in an Elasticsearch operation."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the ESError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        self.detail = detail
+        super().__init__(detail, *args)
+
+
 class InvalidPayloadError(Exception):
     """Exception for when a payload is invalid."""
 
@@ -122,6 +138,34 @@ class InvalidPayloadError(Exception):
 
         """
         self.detail = detail
+        super().__init__(detail, *args)
+
+
+class ESNotFoundError(NotFoundError, ESError):
+    """Exception for when we can't find something in Elasticsearch."""
+
+    def __init__(
+        self,
+        detail: str,
+        lookup_model: str,
+        lookup_type: str,
+        lookup_value: object,
+        *args: object,
+    ) -> None:
+        """
+        Initialize the SQLNotFoundError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            lookup_model (str): The name of the model attempted to be accessed.
+            lookup_type (str): The type of lookup performed (e.g., "id", "name").
+            lookup_value (Any): The value(s) used in the lookup.
+            *args: Additional arguments for the exception.
+
+        """
+        self.lookup_model = lookup_model
+        self.lookup_type = lookup_type
+        self.lookup_value = lookup_value
         super().__init__(detail, *args)
 
 

@@ -247,3 +247,18 @@ Unable to merge {self._persistence_cls.__name__}: duplicate.
             ) from e
         await self._session.refresh(persistence)
         return await persistence.to_domain()
+
+    async def get_all_pks(self) -> list[UUID4]:
+        """
+        Get all primary keys in the repository.
+
+        Generally used as a convenience method before calling another bulk
+        method that requires primary keys.
+
+        Returns:
+        - list[UUID4]: A list of all primary keys in the repository.
+
+        """
+        query = select(self._persistence_cls.id)
+        result = await self._session.execute(query)
+        return [row[0] for row in result.fetchall()]

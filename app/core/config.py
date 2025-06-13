@@ -5,13 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import (
-    BaseModel,
-    Field,
-    HttpUrl,
-    PostgresDsn,
-    model_validator,
-)
+from pydantic import BaseModel, Field, FilePath, HttpUrl, PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.logger import get_logger
@@ -83,6 +77,62 @@ If db_pass is provided, azure_db_resource_url must not be provided."""
         return self
 
 
+class ESConfig(BaseModel):
+    """Elasticsearch configuration."""
+
+    es_url: HttpUrl | list[HttpUrl] | None = Field(
+        default=None,
+        description="If a list, connections will be created to all nodes in the list.",
+    )
+    es_user: str | None = None
+    es_pass: str | None = None
+    es_ca_path: FilePath | None = None
+
+    es_insecure_url: HttpUrl | None = Field(
+        default=None,
+        description=(
+            "For connecting to insecure Elasticsearch instances when testing."
+        ),
+    )
+
+    @property
+    def es_hosts(self) -> list[str]:
+        """Return the Elasticsearch host(s) as a list of strings."""
+        if not self.es_url:
+            msg = "Elasticsearch URL is not provided."
+            raise ValueError(msg)
+        return [
+            str(url)
+            for url in (self.es_url if isinstance(self.es_url, list) else [self.es_url])
+        ]
+
+    @model_validator(mode="after")
+    def validate_parameters(self) -> Self:
+        """Validate the given parameters."""
+        if self.es_insecure_url and any(
+            (self.es_user, self.es_pass, self.es_ca_path, self.es_url)
+        ):
+            msg = (
+                "If es_insecure_url is provided, es_user, es_pass and es_ca_path "
+                "should not be provided."
+            )
+            raise ValueError(msg)
+
+        if not self.es_insecure_url and (
+            not self.es_user
+            or not self.es_pass
+            or not self.es_ca_path
+            or not self.es_url
+        ):
+            msg = (
+                "If es_insecure_url is not provided, es_url, es_user, es_pass and"
+                " es_ca_path must all be provided."
+            )
+            raise ValueError(msg)
+
+        return self
+
+
 class MinioConfig(BaseModel):
     """Minio configuration."""
 
@@ -133,6 +183,7 @@ class Settings(BaseSettings):
     project_root: Path = Path(__file__).joinpath("../../..").resolve()
 
     db_config: DatabaseConfig
+    es_config: ESConfig
     minio_config: MinioConfig | None = None
     azure_blob_config: AzureBlobConfig | None = None
 
@@ -144,6 +195,21 @@ class Settings(BaseSettings):
     message_broker_queue_name: str = "taskiq"
     cli_client_id: str | None = None
     app_name: str
+
+    default_es_indexing_chunk_size: int = Field(
+        default=1000,
+        description=(
+            "Number of records to process in a single chunk when indexing to "
+            "Elasticsearch."
+        ),
+    )
+    es_indexing_chunk_size_override: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Override the default Elasticsearch indexing chunk size. Keyed by operation"
+            " type eg 'reference_import'."
+        ),
+    )
 
     default_upload_file_chunk_size: int = Field(
         default=1,
