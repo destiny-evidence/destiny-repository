@@ -90,9 +90,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
                 references[row.reference_id]["enhancements"].append(
                     {
                         "enhancement_type": row.enhancement_type,
-                        "enhancement_content": json.loads(row.content)
-                        if row.content
-                        else None,
+                        "enhancement_content": row.content if row.content else None,
                         "source": row.source,
                     }
                 )
