@@ -3,7 +3,7 @@
 import asyncio
 import json
 import uuid
-from typing import Self
+from typing import Any, Self
 
 from sqlalchemy import UUID, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
@@ -205,7 +205,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
     derived_from: Mapped[list[uuid.UUID] | None] = mapped_column(
         ARRAY(UUID), nullable=True
     )
-    content: Mapped[str] = mapped_column(JSONB, nullable=False)
+    content: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
     reference: Mapped["Reference"] = relationship(
         "Reference", back_populates="enhancements"
@@ -222,7 +222,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             visibility=domain_obj.visibility,
             robot_version=domain_obj.robot_version,
             derived_from=domain_obj.derived_from,
-            content=domain_obj.content.model_dump_json(),
+            content=domain_obj.content.model_dump(mode="json"),
         )
 
     async def to_domain(self, preload: list[str] | None = None) -> DomainEnhancement:
@@ -234,7 +234,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             reference_id=self.reference_id,
             robot_version=self.robot_version,
             derived_from=self.derived_from,
-            content=json.loads(self.content),
+            content=self.content,
             reference=await self.reference.to_domain()
             if "reference" in (preload or [])
             else None,
