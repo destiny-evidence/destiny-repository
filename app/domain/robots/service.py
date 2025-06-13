@@ -27,6 +27,15 @@ class RobotService(GenericService):
         """Return a given robot."""
         return await self.get_robot(robot_id)
 
+    async def get_robots(self) -> list[Robot]:
+        """Return all robots."""
+        return await self.sql_uow.robots.get_all()
+
+    @unit_of_work
+    async def get_robots_standalone(self) -> list[Robot]:
+        """Return all robots."""
+        return await self.get_robots()
+
     async def get_robot_secret(self, robot_id: UUID4) -> str:
         """Return secret used for signing requests sent to this robot."""
         # Secret to be stored in the azure keyvault

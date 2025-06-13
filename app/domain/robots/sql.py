@@ -29,6 +29,11 @@ class Robot(GenericSQLPersistence[DomainRobot]):
 
     owner: Mapped[str] = mapped_column(String, nullable=False)
 
+    enhance_incoming_references: Mapped[bool] = mapped_column(
+        "enhance_incoming_references",
+        nullable=False,
+    )
+
     __table_args__ = (
         UniqueConstraint(
             "name",
@@ -49,6 +54,7 @@ class Robot(GenericSQLPersistence[DomainRobot]):
             description=domain_obj.description,
             name=domain_obj.name,
             owner=domain_obj.owner,
+            enhance_incoming_references=domain_obj.enhance_incoming_references,
         )
 
     async def to_domain(
@@ -63,4 +69,5 @@ class Robot(GenericSQLPersistence[DomainRobot]):
             description=self.description,
             name=self.name,
             owner=self.owner,
+            enhance_incoming_references=self.enhance_incoming_references,
         )

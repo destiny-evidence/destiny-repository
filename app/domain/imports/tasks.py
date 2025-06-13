@@ -9,7 +9,12 @@ from app.core.exceptions import TaskError
 from app.core.logger import get_logger
 from app.domain.imports.models.models import ImportBatchStatus
 from app.domain.imports.service import ImportService
+from app.domain.references.models.models import BatchEnhancementRequest
 from app.domain.references.service import ReferenceService
+from app.domain.references.tasks import (
+    collect_and_dispatch_references_for_batch_enhancement,
+)
+from app.domain.robots.service import RobotService
 from app.persistence.es.client import es_manager
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.session import db_manager
@@ -42,23 +47,24 @@ async def get_es_unit_of_work(
 
 
 async def get_import_service(
-    sql_uow: AsyncSqlUnitOfWork | None = None,
+    sql_uow: AsyncSqlUnitOfWork,
 ) -> ImportService:
     """Return the import service using the provided unit of work dependencies."""
-    if sql_uow is None:
-        sql_uow = await get_sql_unit_of_work()
     return ImportService(sql_uow=sql_uow)
 
 
+async def get_robot_service(
+    sql_uow: AsyncSqlUnitOfWork,
+) -> RobotService:
+    """Return the robot service using the provided unit of work dependencies."""
+    return RobotService(sql_uow=sql_uow)
+
+
 async def get_reference_service(
-    sql_uow: AsyncSqlUnitOfWork | None = None,
-    es_uow: AsyncESUnitOfWork | None = None,
+    sql_uow: AsyncSqlUnitOfWork,
+    es_uow: AsyncESUnitOfWork,
 ) -> ReferenceService:
     """Return the reference service using the provided unit of work dependencies."""
-    if sql_uow is None:
-        sql_uow = await get_sql_unit_of_work()
-    if es_uow is None:
-        es_uow = await get_es_unit_of_work()
     return ReferenceService(sql_uow=sql_uow, es_uow=es_uow)
 
 
@@ -66,8 +72,11 @@ async def get_reference_service(
 async def process_import_batch(import_batch_id: UUID4) -> None:
     """Async logic for processing an import batch."""
     logger.info("Processing import batch", extra={"import_batch_id": import_batch_id})
-    import_service = await get_import_service()
-    reference_service = await get_reference_service()
+    sql_uow = await get_sql_unit_of_work()
+    es_uow = await get_es_unit_of_work()
+    import_service = await get_import_service(sql_uow)
+    reference_service = await get_reference_service(sql_uow, es_uow)
+    robot_service = await get_robot_service(sql_uow)
 
     import_batch = await import_service.get_import_batch(import_batch_id)
     if not import_batch:
@@ -139,3 +148,33 @@ async def process_import_batch(import_batch_id: UUID4) -> None:
                 logger.exception(
                     "Failed to send callback", extra={"batch": import_batch}
                 )
+
+    # Perform any default enhancement hydration.
+    # This is a naive, quick-win implementation that should be replaced in the future to
+    # handle more complex cascading scenarios, perhaps with an orchestrator like Prefect
+
+    # This is performed using the existing batch enhancement request workflow.
+    logger.info("Creating default enhancements for imported references")
+    for robot in await robot_service.get_robots_standalone():
+        if robot.enhance_incoming_references:
+            enhancement_request = (
+                await reference_service.register_batch_reference_enhancement_request(
+                    enhancement_request=BatchEnhancementRequest(
+                        reference_ids=imported_references,
+                        robot_id=robot.id,
+                    ),
+                )
+            )
+
+            logger.info(
+                "Enqueueing enhancement batch for imported references",
+                extra={
+                    "batch_enhancement_request_id": enhancement_request.id,
+                    "robot_id": robot.id,
+                    "import_batch_id": import_batch_id,
+                },
+            )
+            # Taskception
+            await collect_and_dispatch_references_for_batch_enhancement.kiq(
+                batch_enhancement_request_id=enhancement_request.id,
+            )

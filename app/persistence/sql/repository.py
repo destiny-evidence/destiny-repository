@@ -262,3 +262,27 @@ Unable to merge {self._persistence_cls.__name__}: duplicate.
         query = select(self._persistence_cls.id)
         result = await self._session.execute(query)
         return [row[0] for row in result.fetchall()]
+
+    async def get_all(
+        self, preload: list[str] | None = None
+    ) -> list[GenericDomainModelType]:
+        """
+        Get all records in the repository.
+
+        Use with memory caution :)
+
+        Args:
+        - preload (list[str]): A list of attributes to preload using a join.
+
+        Returns:
+        - list[T]: A list of all records in the repository.
+
+        """
+        options = []
+        if preload:
+            for p in preload:
+                relationship = getattr(self._persistence_cls, p)
+                options.append(joinedload(relationship))
+        query = select(self._persistence_cls).options(*options)
+        result = await self._session.execute(query)
+        return [row.to_domain() for row in result.scalars().all()]
