@@ -54,21 +54,19 @@ class DummyContent:
     def __init__(self):
         self.enhancement_type = EnhancementType.ANNOTATION
 
-    def model_dump_json(self):
-        return json.dumps(
-            {
-                "enhancement_type": "annotation",
-                "annotations": [
-                    {
-                        "annotation_type": "boolean",
-                        "scheme": "openalex:topic",
-                        "value": True,
-                        "label": "test_label",
-                        "data": {"foo": "bar"},
-                    }
-                ],
-            }
-        )
+    def model_dump(self, mode="json"):
+        return {
+            "enhancement_type": "annotation",
+            "annotations": [
+                {
+                    "annotation_type": "boolean",
+                    "scheme": "openalex:topic",
+                    "value": True,
+                    "label": "test_label",
+                    "data": {"foo": "bar"},
+                }
+            ],
+        }
 
 
 class DummyDomainEnhancement:
@@ -189,8 +187,8 @@ async def test_enhancement_from_and_to_domain():
     assert sql_enh.visibility == dummy_enh.visibility
     assert sql_enh.robot_version == dummy_enh.robot_version
     # Verify that content was dumped to JSON string correctly
-    dumped = dummy_content.model_dump_json()
-    assert json.loads(sql_enh.content) == json.loads(dumped)
+    dumped = dummy_content.model_dump(mode="json")
+    assert sql_enh.content == dumped
 
     # For preload test, assign a dummy SQL Reference to the relationship
     dummy_sql_ref = Reference(id=ref_id, visibility=Visibility.HIDDEN)
@@ -206,7 +204,7 @@ async def test_enhancement_from_and_to_domain():
     assert domain_enh.robot_version == dummy_enh.robot_version
     # Verify that content was loaded correctly
     assert domain_enh.content == destiny_sdk.enhancements.AnnotationEnhancement(
-        **json.loads(sql_enh.content)
+        **sql_enh.content
     )
     # Verify that the preloaded reference was converted
     assert domain_enh.reference.id == dummy_sql_ref.id
