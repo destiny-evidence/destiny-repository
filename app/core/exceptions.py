@@ -125,8 +125,6 @@ class SQLIntegrityError(IntegrityError):
             lookup_model (str): The name of the model the collision occured in.
 
         """
-        detail = f"Unable to perform operation on {lookup_model}."
-
         # Try extract details from the exception message.
         # (There's no nice way to check for integrity errors before handling
         # the exception.)
@@ -134,15 +132,18 @@ class SQLIntegrityError(IntegrityError):
         err_str = str(error)
         try:
             # Extract detail information using regex
-            detail_match = re.search(r"DETAIL:\s+(.+?)(?:\n|$)", err_str)
-            if detail_match:
-                detail = f"Violation: {detail_match.group(1).strip()}"
-                collision = detail_match.group(1).strip()
+            reason_match = re.search(r"DETAIL:\s+(.+?)(?:\n|$)", err_str)
+            if reason_match:
+                collision = f"Violation: {reason_match.group(1).strip()}"
 
         except Exception:  # noqa: BLE001
             collision = err_str
 
-        return cls(detail=detail, lookup_model=lookup_model, collision=collision)
+        return cls(
+            detail=f"Unable to perform operation on {lookup_model}.",
+            lookup_model=lookup_model,
+            collision=collision,
+        )
 
 
 class InvalidPayloadError(Exception):

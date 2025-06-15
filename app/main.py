@@ -122,18 +122,13 @@ async def not_found_exception_handler(
 
 
 @app.exception_handler(IntegrityError)
-async def duplicate_exception_handler(
+async def integrity_exception_handler(
     _request: Request,
     exception: IntegrityError,
 ) -> JSONResponse:
     """Exception handler to return 409 responses when an IntegrityError is thrown."""
     if isinstance(exception, SQLIntegrityError):
-        content = {
-            "detail": (
-                f"Operation could not be performed on {exception.lookup_model}. "
-                f"{exception.collision}"
-            )
-        }
+        content = {"detail": f"{exception.detail} {exception.collision}"}
     else:
         content = {"detail": exception.detail}
 

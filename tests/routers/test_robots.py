@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import IntegrityError, NotFoundError
 from app.domain.robots import routes as robots
 from app.domain.robots.sql import Robot as SQLRobot
-from app.main import duplicate_exception_handler, not_found_exception_handler
+from app.main import integrity_exception_handler, not_found_exception_handler
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def app() -> FastAPI:
     """
     app = FastAPI(
         exception_handlers={
-            IntegrityError: duplicate_exception_handler,
+            IntegrityError: integrity_exception_handler,
             NotFoundError: not_found_exception_handler,
         }
     )
