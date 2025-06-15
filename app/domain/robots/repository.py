@@ -5,7 +5,7 @@ from abc import ABC
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import SQLDuplicateError, SQLNotFoundError
+from app.core.exceptions import SQLIntegrityError, SQLNotFoundError
 from app.domain.robots.models import Robot as DomainRobot
 from app.domain.robots.sql import Robot as SQLRobot
 from app.persistence.generics import GenericPersistenceType
@@ -52,7 +52,7 @@ class RobotSQLRepository(
 
         Raises:
         - SQLNotFoundError: If the robot does not already exist.
-        - SQLDuplicateError: If the merge violates a unique constraint.
+        - SQLIntegrityError: If the merge violates a unique constraint.
 
         """
         persistence = await self._session.get(self._persistence_cls, robot.id)
@@ -75,11 +75,9 @@ class RobotSQLRepository(
         try:
             await self._session.flush()
         except IntegrityError as e:
-            detail = f"Unable to merge {self._persistence_cls.__name__}: duplicate."
-            raise SQLDuplicateError(
-                detail=detail,
-                lookup_model=self._persistence_cls.__name__,
-                collision=str(e.orig),
+            default_collision = f"Unable to merge {self._persistence_cls.__name__}."
+            raise SQLIntegrityError.from_sqlacademy_integrity_error(
+                e, self._persistence_cls.__name__, default_collision
             ) from e
 
         await self._session.refresh(persistence)

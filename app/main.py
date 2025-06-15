@@ -11,11 +11,11 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.core.exceptions import (
-    DuplicateError,
+    IntegrityError,
     InvalidPayloadError,
     NotFoundError,
     SDKToDomainError,
-    SQLDuplicateError,
+    SQLIntegrityError,
     SQLNotFoundError,
 )
 from app.core.logger import configure_logger, get_logger
@@ -121,13 +121,13 @@ async def not_found_exception_handler(
     )
 
 
-@app.exception_handler(DuplicateError)
+@app.exception_handler(IntegrityError)
 async def duplicate_exception_handler(
     _request: Request,
-    exception: DuplicateError,
+    exception: IntegrityError,
 ) -> JSONResponse:
-    """Exception handler to return 409 responses when DuplicateError is thrown."""
-    if isinstance(exception, SQLDuplicateError):
+    """Exception handler to return 409 responses when an IntegrityError is thrown."""
+    if isinstance(exception, SQLIntegrityError):
         content = {
             "detail": (
                 f"Duplicate {exception.lookup_model} could not be added."
