@@ -130,7 +130,7 @@ async def duplicate_exception_handler(
     if isinstance(exception, SQLIntegrityError):
         content = {
             "detail": (
-                f"Duplicate {exception.lookup_model} could not be added."
+                f"Operation could not be performed on {exception.lookup_model}. "
                 f"{exception.collision}"
             )
         }
