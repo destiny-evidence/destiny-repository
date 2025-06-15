@@ -112,10 +112,7 @@ class SQLIntegrityError(IntegrityError):
 
     @classmethod
     def from_sqlacademy_integrity_error(
-        cls,
-        error: SQLAlchemyIntegriyError,
-        lookup_model: str,
-        default_collision_reason: str,
+        cls, error: SQLAlchemyIntegriyError, lookup_model: str
     ) -> Self:
         """
         Construct an SQLIntegrityError from an IntegrityError raised by SQLAlchemy.
@@ -126,12 +123,9 @@ class SQLIntegrityError(IntegrityError):
         Args:
             error (sqlalchemy.exc.IntegrityError): Error thrown by sqlalchemy
             lookup_model (str): The name of the model the collision occured in.
-            default_collision_reason (str): Fallback collision text
 
         """
         detail = f"Unable to perform operation on {lookup_model}."
-
-        collision = default_collision_reason
 
         # Try extract details from the exception message.
         # (There's no nice way to check for integrity errors before handling

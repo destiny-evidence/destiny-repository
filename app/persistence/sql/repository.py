@@ -132,9 +132,8 @@ class GenericAsyncSqlRepository(
         try:
             await self._session.flush()
         except IntegrityError as e:
-            default_collision = f"Unable to update {self._persistence_cls.__name__}."
             raise SQLIntegrityError.from_sqlacademy_integrity_error(
-                e, self._persistence_cls.__name__, default_collision
+                e, self._persistence_cls.__name__
             ) from e
 
         await self._session.refresh(persistence)
@@ -183,9 +182,8 @@ class GenericAsyncSqlRepository(
             self._session.add(persistence)
             await self._session.flush()
         except IntegrityError as e:
-            default_collision = f"ID {persistence.id} already exists."
             raise SQLIntegrityError.from_sqlacademy_integrity_error(
-                e, self._persistence_cls.__name__, default_collision
+                e, self._persistence_cls.__name__
             ) from e
 
         await self._session.refresh(persistence)
@@ -212,9 +210,8 @@ class GenericAsyncSqlRepository(
             persistence = await self._session.merge(persistence)
             await self._session.flush()
         except IntegrityError as e:
-            default_collision = f"Unable to merge {self._persistence_cls.__name__}."
             raise SQLIntegrityError.from_sqlacademy_integrity_error(
-                e, self._persistence_cls.__name__, default_collision
+                e, self._persistence_cls.__name__
             ) from e
 
         await self._session.refresh(persistence)
