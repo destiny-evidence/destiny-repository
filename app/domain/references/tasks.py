@@ -186,7 +186,7 @@ async def request_default_enhancements(
     """
     Request default enhancements for a set of references.
 
-    Technically a task distributor, not a task - may live in a higher layer
+    Technically this is a task distributor, not a task - may live in a higher layer
     later in life.
     """
     sql_uow = await get_sql_unit_of_work()
@@ -213,7 +213,6 @@ async def request_default_enhancements(
                     "robot_id": robot.id,
                 },
             )
-            # Taskception
             await collect_and_dispatch_references_for_batch_enhancement.kiq(
                 batch_enhancement_request_id=enhancement_request.id,
             )
