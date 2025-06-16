@@ -28,8 +28,9 @@ class RobotRequestDispatcher:
     ) -> httpx.Response:
         """Send a request to a robot, handling error cases."""
         try:
+            client_secret = await robot.get_client_secret()
             auth = destiny_sdk.client.HMACSigningAuth(
-                secret_key=robot.client_secret.get_secret_value(), client_id=robot.id
+                secret_key=client_secret, client_id=robot.id
             )
             async with httpx.AsyncClient(auth=auth) as client:
                 response = await client.post(

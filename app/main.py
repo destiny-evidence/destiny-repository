@@ -11,17 +11,18 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.core.exceptions import (
-    DuplicateError,
+    IntegrityError,
     InvalidPayloadError,
     NotFoundError,
     SDKToDomainError,
-    SQLDuplicateError,
+    SQLIntegrityError,
     SQLNotFoundError,
 )
 from app.core.logger import configure_logger, get_logger
 from app.domain.imports.routes import router as import_router
 from app.domain.references.routes import robot_router
 from app.domain.references.routes import router as reference_router
+from app.domain.robots.routes import router as robot_management_router
 from app.persistence.sql.session import db_manager
 from app.tasks import broker
 from app.utils.healthcheck import router as healthcheck_router
@@ -47,6 +48,7 @@ app = FastAPI(title="DESTINY Climate and Health Repository", lifespan=lifespan)
 app.include_router(import_router)
 app.include_router(reference_router)
 app.include_router(robot_router)
+app.include_router(robot_management_router)
 app.include_router(healthcheck_router)
 
 configure_logger()
@@ -119,19 +121,14 @@ async def not_found_exception_handler(
     )
 
 
-@app.exception_handler(DuplicateError)
-async def duplicate_exception_handler(
+@app.exception_handler(IntegrityError)
+async def integrity_exception_handler(
     _request: Request,
-    exception: DuplicateError,
+    exception: IntegrityError,
 ) -> JSONResponse:
-    """Exception handler to return 409 responses when DuplicateError is thrown."""
-    if isinstance(exception, SQLDuplicateError):
-        content = {
-            "detail": (
-                f"Duplicate {exception.lookup_model} could not be added."
-                f"{exception.collision}"
-            )
-        }
+    """Exception handler to return 409 responses when an IntegrityError is thrown."""
+    if isinstance(exception, SQLIntegrityError):
+        content = {"detail": f"{exception.detail} {exception.collision}"}
     else:
         content = {"detail": exception.detail}
 
