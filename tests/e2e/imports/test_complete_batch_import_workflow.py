@@ -240,7 +240,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         )
         assert response.status_code in (409, 500)
         assert response.json()["detail"] == (
-            "Duplicate ImportBatch could not be added."
+            "Unable to perform operation on ImportBatch. Violation: "
             f"Key (import_record_id, storage_url)=({import_record['id']}, {url}) already exists."
         )
 

@@ -1,8 +1,10 @@
 """Custom exceptions for the app."""
 
-from typing import Any
+import re
+from typing import Any, Self
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError as SQLAlchemyIntegriyError
 
 
 class CustomHTTPException(HTTPException):
@@ -68,12 +70,12 @@ class SQLNotFoundError(NotFoundError):
         super().__init__(detail, *args)
 
 
-class DuplicateError(Exception):
-    """Exception for when we try to add something we expect to be unique."""
+class IntegrityError(Exception):
+    """Exception for when a change would violate data integrity."""
 
     def __init__(self, detail: str, *args: object) -> None:
         """
-        Initialize the DuplicateError exception.
+        Initialize the IntegrityError exception.
 
         Args:
             detail (str): The detail message for the exception.
@@ -84,8 +86,8 @@ class DuplicateError(Exception):
         super().__init__(detail, *args)
 
 
-class SQLDuplicateError(DuplicateError):
-    """Exception for when we try to add something we expect to be unique to the DB."""
+class SQLIntegrityError(IntegrityError):
+    """Exception for when a change would violate data integrity in the database."""
 
     def __init__(
         self,
@@ -95,18 +97,53 @@ class SQLDuplicateError(DuplicateError):
         *args: object,
     ) -> None:
         """
-        Initialize the SQLDuplicateError exception.
+        Initialize the SQLIntegrityError exception.
 
         Args:
             detail (str): The detail message for the exception.
             lookup_model (str): The name of the model attempted to be accessed.
-            collision (str): Details on the collision.
+            collision (str): Details on the integrity violation.
             *args: Additional arguments for the exception.
 
         """
         self.lookup_model = lookup_model
         self.collision = collision
         super().__init__(detail, *args)
+
+    @classmethod
+    def from_sqlacademy_integrity_error(
+        cls, error: SQLAlchemyIntegriyError, lookup_model: str
+    ) -> Self:
+        """
+        Construct an SQLIntegrityError from an IntegrityError raised by SQLAlchemy.
+
+        Attempt to parse the collision reason from the Integrity error,
+        falling back to a default collision reason if not available.
+
+        Args:
+            error (sqlalchemy.exc.IntegrityError): Error thrown by sqlalchemy
+            lookup_model (str): The name of the model the collision occured in.
+
+        """
+        # Try extract details from the exception message.
+        # (There's no nice way to check for integrity errors before handling
+        # the exception.)
+
+        err_str = str(error)
+        try:
+            # Extract detail information using regex
+            reason_match = re.search(r"DETAIL:\s+(.+?)(?:\n|$)", err_str)
+            if reason_match:
+                collision = f"Violation: {reason_match.group(1).strip()}"
+
+        except Exception:  # noqa: BLE001
+            collision = err_str
+
+        return cls(
+            detail=f"Unable to perform operation on {lookup_model}.",
+            lookup_model=lookup_model,
+            collision=collision,
+        )
 
 
 class ESError(Exception):
