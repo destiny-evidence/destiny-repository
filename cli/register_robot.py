@@ -6,37 +6,26 @@ import argparse
 import destiny_sdk
 import httpx
 from fastapi import status
-from pydantic import HttpUrl
+from pydantic import HttpUrl, ValidationError
 
-from app.core.config import get_settings
+from app.core.config import Environment
+from cli.auth import CLIAuth
 
-from .get_token import get_token
-
-settings = get_settings()
+from .config import get_settings
 
 
 def register_robot(
-    destiny_repository_url: HttpUrl,
-    robot_name: str,
-    robot_base_url: HttpUrl,
-    robot_description: str,
-    robot_owner: str,
+    env: Environment, robot_to_register: destiny_sdk.robots.RobotIn
 ) -> destiny_sdk.robots.ProvisionedRobot:
     """Register a robot to destiny repository."""
-    robot_to_register = destiny_sdk.robots.RobotIn(
-        name=robot_name,
-        base_url=robot_base_url,
-        description=robot_description,
-        owner=robot_owner,
-    )
-
-    access_token = get_token()
+    settings = get_settings(env)
 
     with httpx.Client() as client:
+        auth = CLIAuth(env=env)
         response = client.post(
-            url=str(destiny_repository_url).rstrip("/") + "/robot/",
+            url=str(settings.destiny_repository_url).rstrip("/") + "/robot/",
             json=robot_to_register.model_dump(mode="json"),
-            headers={"Authorization": f"Bearer {access_token}"},
+            auth=auth,
         )
 
         if response.status_code >= status.HTTP_400_BAD_REQUEST:
@@ -81,10 +70,11 @@ def argument_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "-r",
-        "--repository-url",
-        type=HttpUrl,
-        help="The url of destiny repository.",
+        "-e",
+        "--env",
+        type=Environment,
+        default=Environment.LOCAL,
+        help="The environment to create the robot in",
         required=True,
     )
 
@@ -96,18 +86,22 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
+        robot_to_register = destiny_sdk.robots.RobotIn(
+            name=args.name,
+            base_url=args.base_url,
+            description=args.description,
+            owner=args.owner,
+        )
+
         registered_robot = register_robot(
-            destiny_repository_url=args.repository_url,
-            robot_name=args.name,
-            robot_base_url=args.base_url,
-            robot_description=args.description,
-            robot_owner=args.owner,
+            env=args.env, robot_to_register=robot_to_register
         )
 
         print("New Robot Registered")
+        print(f"Environment: {args.env}")
         print(f"Name: {registered_robot.name}")
         print(f"Robot Id: {registered_robot.id}")
         print(f"Robot Secret: {registered_robot.client_secret}")
 
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, ValidationError) as exc:
         print(f"Robot registration failed: {exc}")
