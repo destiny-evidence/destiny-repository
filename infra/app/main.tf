@@ -104,12 +104,14 @@ locals {
 
 module "container_app" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "1.3.0"
+  version                         = "1.5.0"
   app_name                        = var.app_name
+  cpu                             = var.container_app_cpu
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id
   container_registry_login_server = data.azurerm_container_registry.this.login_server
   infrastructure_subnet_id        = azurerm_subnet.app.id
+  memory                          = var.container_app_memory
   resource_group_name             = azurerm_resource_group.this.name
   region                          = azurerm_resource_group.this.location
   max_replicas                    = var.app_max_replicas
@@ -168,12 +170,14 @@ module "container_app" {
 
 module "container_app_tasks" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "1.3.0"
+  version                         = "1.5.0"
   app_name                        = "${var.app_name}-task"
+  cpu                             = var.container_app_tasks_cpu
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id
   container_registry_login_server = data.azurerm_container_registry.this.login_server
   infrastructure_subnet_id        = azurerm_subnet.tasks.id
+  memory                          = var.container_app_tasks_memory
   resource_group_name             = azurerm_resource_group.this.name
   region                          = azurerm_resource_group.this.location
   max_replicas                    = var.tasks_max_replicas

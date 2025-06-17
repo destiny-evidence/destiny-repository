@@ -37,6 +37,31 @@ variable "budget_code" {
   type        = string
 }
 
+
+variable "container_app_cpu" {
+  description = "CPU for the app container app"
+  type        = number
+  default     = 0.5
+}
+
+variable "container_app_memory" {
+  description = "Memory for the app container app"
+  type        = string
+  default     = "1Gi"
+}
+
+variable "container_app_tasks_cpu" {
+  description = "CPU for the tasks container app"
+  type        = number
+  default     = 0.5
+}
+
+variable "container_app_tasks_memory" {
+  description = "Memory for the tasks container app"
+  type        = string
+  default     = "1Gi"
+}
+
 variable "container_registry_name" {
   description = "The name of the container registry being used"
   type        = string
