@@ -10,7 +10,7 @@ from cli.config import get_settings
 
 
 class CLIAuth(httpx.Auth):
-    """Client that adds an HMAC signature to a request."""
+    """Client that adds an Azure token to a request."""
 
     def __init__(self, env: Environment) -> None:
         """
