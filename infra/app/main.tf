@@ -387,6 +387,10 @@ resource "ec_deployment" "cluster" {
     logs = true
     metrics = true
   }
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "elasticstack_elasticsearch_security_api_key" "app" {
