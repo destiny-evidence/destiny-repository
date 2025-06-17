@@ -12,3 +12,4 @@ This section documents the repository codebase itself.
    persistence/blob
    models/imports
    models/references
+   models/robots
