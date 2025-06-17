@@ -104,12 +104,14 @@ locals {
 
 module "container_app" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "1.3.0"
+  version                         = "1.5.0"
   app_name                        = var.app_name
+  cpu                             = var.container_app_cpu
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id
   container_registry_login_server = data.azurerm_container_registry.this.login_server
   infrastructure_subnet_id        = azurerm_subnet.app.id
+  memory                          = var.container_app_memory
   resource_group_name             = azurerm_resource_group.this.name
   region                          = azurerm_resource_group.this.location
   max_replicas                    = var.app_max_replicas
@@ -168,12 +170,14 @@ module "container_app" {
 
 module "container_app_tasks" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "1.3.0"
+  version                         = "1.5.0"
   app_name                        = "${var.app_name}-task"
+  cpu                             = var.container_app_tasks_cpu
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id
   container_registry_login_server = data.azurerm_container_registry.this.login_server
   infrastructure_subnet_id        = azurerm_subnet.tasks.id
+  memory                          = var.container_app_tasks_memory
   resource_group_name             = azurerm_resource_group.this.name
   region                          = azurerm_resource_group.this.location
   max_replicas                    = var.tasks_max_replicas
@@ -193,7 +197,7 @@ module "container_app_tasks" {
   ])
   secrets = local.secrets
 
-  command = ["taskiq", "worker", "app.tasks:broker", "--fs-discover"]
+  command = ["taskiq", "worker", "app.tasks:broker", "--fs-discover", "--max-async-tasks", var.container_app_tasks_n_concurrent_jobs]
 
   # Unfortunately the Azure terraform provider doesn't support setting up managed identity auth for scaling rules.
   custom_scale_rules = [
@@ -201,15 +205,15 @@ module "container_app_tasks" {
       name             = "queue-length-scale-rule"
       custom_rule_type = "azure-servicebus"
       metadata = {
-        namespace   = azurerm_servicebus_namespace.this.name
-        queueName   = azurerm_servicebus_queue.taskiq.name
-        queueLength = var.queue_length_scaling_threshold
+        namespace    = azurerm_servicebus_namespace.this.name
+        queueName    = azurerm_servicebus_queue.taskiq.name
+        messageCount = var.queue_active_jobs_scaling_threshold
       }
       authentication = {
         secret_name       = "servicebus-connection-string"
         trigger_parameter = "connection"
       }
-    }
+    },
   ]
 }
 
