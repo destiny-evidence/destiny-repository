@@ -213,6 +213,14 @@ module "container_app_tasks" {
         secret_name       = "servicebus-connection-string"
         trigger_parameter = "connection"
       }
+    },
+    {
+      name             = "cpu-scale-rule"
+      custom_rule_type = "cpu"
+      metadata = {
+        type  = "Utilization"
+        value = var.cpu_scaling_threshold
+      }
     }
   ]
 }
