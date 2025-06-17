@@ -16,8 +16,8 @@ class CLIAuth(httpx.Auth):
         """
         Initialize the client.
 
-        :param secret_key: the key to use when signing the request
-        :type secret_key: str
+        :param env: the environment the CLI is running in
+        :type env: Environment
         """
         self.env = env
 
