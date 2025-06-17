@@ -62,6 +62,12 @@ variable "container_app_tasks_memory" {
   default     = "1Gi"
 }
 
+variable "container_app_tasks_n_concurrent_jobs" {
+  description = "Number of concurrent jobs for the tasks container app"
+  type        = number
+  default     = 4
+}
+
 variable "container_registry_name" {
   description = "The name of the container registry being used"
   type        = string
@@ -78,8 +84,8 @@ variable "cpu_scaling_threshold" {
   default     = 70
 }
 
-variable "queue_length_scaling_threshold" {
-  description = "Queue length threshold for scaling the tasks container app"
+variable "queue_active_jobs_scaling_threshold" {
+  description = "Active jobs threshold for scaling the tasks container app"
   type        = number
   default     = 100
 }

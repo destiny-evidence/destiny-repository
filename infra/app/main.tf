@@ -197,7 +197,7 @@ module "container_app_tasks" {
   ])
   secrets = local.secrets
 
-  command = ["taskiq", "worker", "app.tasks:broker", "--fs-discover"]
+  command = ["taskiq", "worker", "app.tasks:broker", "--fs-discover", "--max-async-tasks", var.container_app_tasks_n_concurrent_jobs]
 
   # Unfortunately the Azure terraform provider doesn't support setting up managed identity auth for scaling rules.
   custom_scale_rules = [
@@ -205,23 +205,15 @@ module "container_app_tasks" {
       name             = "queue-length-scale-rule"
       custom_rule_type = "azure-servicebus"
       metadata = {
-        namespace   = azurerm_servicebus_namespace.this.name
-        queueName   = azurerm_servicebus_queue.taskiq.name
-        queueLength = var.queue_length_scaling_threshold
+        namespace    = azurerm_servicebus_namespace.this.name
+        queueName    = azurerm_servicebus_queue.taskiq.name
+        messageCount = var.queue_active_jobs_scaling_threshold
       }
       authentication = {
         secret_name       = "servicebus-connection-string"
         trigger_parameter = "connection"
       }
     },
-    {
-      name             = "cpu-scale-rule"
-      custom_rule_type = "cpu"
-      metadata = {
-        type  = "Utilization"
-        value = var.cpu_scaling_threshold
-      }
-    }
   ]
 }
 
