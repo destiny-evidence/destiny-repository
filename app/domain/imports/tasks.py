@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import TaskError
 from app.core.logger import get_logger
+from app.domain.imports.models.models import ImportBatchStatus
 from app.domain.imports.service import ImportService
 from app.persistence.sql.session import db_manager
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -42,5 +43,15 @@ async def process_import_batch(import_batch_id: UUID4) -> None:
     import_batch = await import_service.get_import_batch(import_batch_id)
     if not import_batch:
         raise TaskError(detail=f"Import batch with ID {import_batch_id} not found.")
+    if import_batch.status in (
+        ImportBatchStatus.FAILED,
+        ImportBatchStatus.COMPLETED,
+        ImportBatchStatus.CANCELLED,
+    ):
+        logger.info(
+            "Terminal task received for import batch, not processing.",
+            extra={"import_batch_id": import_batch_id, "status": import_batch.status},
+        )
+        return
 
     await import_service.process_batch(import_batch)

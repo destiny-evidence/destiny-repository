@@ -133,6 +133,23 @@ class FakeServiceBusClient:
         """Close the client."""
 
 
+class FakeServiceBusAutoLockRenewer:
+    """
+    Fake Service Bus AutoLockRenewer for testing.
+
+    This class is used to mock the behavior of the actual
+    Azure Service Bus AutoLockRenewer during unit tests.
+    """
+
+    async def register(
+        self, receiver: FakeServiceBusReceiver, message: AmqpAnnotatedMessage
+    ) -> None:
+        """Simulate registering a message for lock renewal."""
+
+    async def close(self) -> None:
+        """Simulate closing the auto lock renewer."""
+
+
 @pytest.fixture
 def queue_name() -> str:
     """
@@ -177,6 +194,7 @@ async def broker(
         connection_string=connection_string,
         queue_name=queue_name,
     )
+    broker.auto_lock_renewer = FakeServiceBusAutoLockRenewer()
     broker.is_worker_process = True
 
     monkeypatch.setattr(
