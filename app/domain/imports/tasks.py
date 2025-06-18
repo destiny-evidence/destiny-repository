@@ -54,8 +54,4 @@ async def process_import_batch(import_batch_id: UUID4) -> None:
         )
         return
 
-    await import_service.update_import_batch_status(
-        import_batch.id, ImportBatchStatus.STARTED
-    )
-
     await import_service.process_batch(import_batch)
