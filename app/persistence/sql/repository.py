@@ -160,6 +160,21 @@ class GenericAsyncSqlRepository(
         await self._session.delete(persistence)
         await self._session.flush()
 
+    async def delete_by_pks(self, pks: list[UUID4]) -> None:
+        """
+        Delete records using their primary keys.
+
+        Args:
+        - pks (list[UUID4]): The primary keys to use to look up the records.
+
+        """
+        persistence = await self._session.execute(
+            select(self._persistence_cls).where(self._persistence_cls.id.in_(pks))
+        )
+        for record in persistence.scalars().all():
+            await self._session.delete(record)
+        await self._session.flush()
+
     async def add(self, record: GenericDomainModelType) -> GenericDomainModelType:
         """
         Add a record to the repository.

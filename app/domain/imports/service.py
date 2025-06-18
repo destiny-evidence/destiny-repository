@@ -46,14 +46,20 @@ class ImportService(GenericService):
         """Get a single import by id."""
         return await self.sql_uow.batches.get_by_pk(import_batch_id)
 
-    @unit_of_work
-    async def get_import_batch_with_results(
+    async def _get_import_batch_with_results(
         self, import_batch_id: UUID4
     ) -> ImportBatch:
         """Get a single import by id with preloaded results."""
         return await self.sql_uow.batches.get_by_pk(
             import_batch_id, preload=["import_results"]
         )
+
+    @unit_of_work
+    async def get_import_batch_with_results(
+        self, import_batch_id: UUID4
+    ) -> ImportBatch:
+        """Get a single import batch with preloaded results."""
+        return await self._get_import_batch_with_results(import_batch_id)
 
     @unit_of_work
     async def register_import(self, import_record: ImportRecord) -> ImportRecord:
@@ -67,7 +73,6 @@ class ImportService(GenericService):
         await self._get_import_record(batch.import_record_id)
         return await self.sql_uow.batches.add(batch)
 
-    @unit_of_work
     async def _update_import_batch_status(
         self, import_batch_id: UUID4, status: ImportBatchStatus
     ) -> ImportBatch:
@@ -75,6 +80,12 @@ class ImportService(GenericService):
         return await self.sql_uow.batches.update_by_pk(import_batch_id, status=status)
 
     @unit_of_work
+    async def update_import_batch_status(
+        self, import_batch_id: UUID4, status: ImportBatchStatus
+    ) -> ImportBatch:
+        """Update the status of an import batch."""
+        return await self._update_import_batch_status(import_batch_id, status=status)
+
     async def import_reference(
         self,
         import_batch_id: UUID4,
@@ -124,6 +135,7 @@ This should not happen.
                 reference_id=reference_result.reference_id,
             )
 
+    @unit_of_work
     async def process_batch(self, import_batch: ImportBatch) -> None:
         """
         Process an import batch.
@@ -134,10 +146,6 @@ This should not happen.
         - Persist the file via the Reference service.
         - Hit the callback URL with the results.
         """
-        await self._update_import_batch_status(
-            import_batch.id, ImportBatchStatus.STARTED
-        )
-
         # Note: if parallelised, you would need to create a different
         # reference service with a new uow for each thread.
         try:
@@ -176,7 +184,7 @@ This should not happen.
                     transport=httpx.AsyncHTTPTransport(retries=2)
                 ) as client:
                     # Refresh the import batch to get the latest status
-                    import_batch = await self.get_import_batch_with_results(
+                    import_batch = await self._get_import_batch_with_results(
                         import_batch.id
                     )
                     response = await client.post(
