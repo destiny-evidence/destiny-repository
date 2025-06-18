@@ -63,7 +63,6 @@ async def client(hmac_app: FastAPI) -> AsyncGenerator[AsyncClient]:
 
 async def test_hmac_authentication_happy_path(client: AsyncClient):
     """Test authentication is successful when signature is correct."""
-
     auth = destiny_sdk.client.HMACSigningAuth(
         secret_key=TEST_SECRET_KEY, client_id=TEST_CLIENT_ID
     )
