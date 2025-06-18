@@ -402,3 +402,18 @@ resource "elasticstack_elasticsearch_security_api_key" "app" {
     }
   })
 }
+
+resource "elasticstack_elasticsearch_security_api_key" "read_only" {
+  name = "${var.app_name}-${var.environment}-read-only"
+  role_descriptors = jsonencode({
+    app_access = {
+      indices = [
+        {
+          names      = ["${var.app_name}-*"]
+          privileges = ["read"]
+          allow_restricted_indices = false
+        }
+      ]
+    }
+  })
+}
