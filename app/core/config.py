@@ -145,6 +145,15 @@ class Settings(BaseSettings):
     cli_client_id: str | None = None
     app_name: str
 
+    # Message lock renewal configuration
+    message_lock_renewal_duration: int = Field(
+        default=3600 * 3,  # 3 hours
+        description=(
+            "Duration in seconds to keep renewing message locks. "
+            "Should be longer than expected processing time."
+        ),
+    )
+
     default_upload_file_chunk_size: int = Field(
         default=1,
         description=(
