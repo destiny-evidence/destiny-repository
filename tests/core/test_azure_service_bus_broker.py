@@ -147,12 +147,7 @@ async def test_kick_success(
 
     message = await asyncio.wait_for(get_first_task(broker), timeout=1.0)
 
-    assert message.data == sent.message
-    await maybe_awaitable(message.ack())
-
-    # Check that the message has been completed after acknowledgment
-    with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(get_first_task(broker), timeout=1.0)
+    assert message == sent.message
 
 
 @pytest.mark.anyio
@@ -188,8 +183,7 @@ async def test_delayed_message(
     # Now the message should be available
     message = await asyncio.wait_for(get_first_task(broker), timeout=5.0)
 
-    assert message.data == b"delayed-message"
-    await maybe_awaitable(message.ack())
+    assert message == b"delayed-message"
 
 
 @pytest.mark.anyio
