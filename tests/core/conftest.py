@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from azure.servicebus import ServiceBusReceiveMode
 from azure.servicebus.aio import ServiceBusClient
 from azure.servicebus.amqp import AmqpAnnotatedMessage
 
@@ -120,8 +121,12 @@ class FakeServiceBusClient:
         """Get ServiceBusSender for the specific queue."""
         return FakeServiceBusSender()
 
-    def get_queue_receiver(self, queue_name: str) -> FakeServiceBusReceiver:  # noqa: ARG002
-        """Get ServiceBusSender for the specific queue."""
+    def get_queue_receiver(
+        self,
+        queue_name: str,  # noqa: ARG002
+        receive_mode: ServiceBusReceiveMode,  # noqa: ARG002
+    ) -> FakeServiceBusReceiver:
+        """Get ServiceBusReceiver for the specific queue."""
         return FakeServiceBusReceiver()
 
     async def close(self) -> None:
