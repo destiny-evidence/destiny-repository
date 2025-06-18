@@ -2,6 +2,10 @@
 
 _Powering a comprehensive repository of climate and health research_
 
+[Project Homepage](https://destiny-evidence.github.io/website/)
+
+[Documentation](https://destiny-evidence.github.io/destiny-repository/)
+
 ## Setup
 
 ### Requirements
