@@ -2,7 +2,6 @@
 
 import destiny_sdk
 
-from app.core.exceptions import NotFoundError
 from app.core.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
@@ -38,21 +37,7 @@ class IngestionService(GenericService):
             - list[LinkedExternalIdentifier]: The collided identifiers.
 
         """
-        collided = []
-        for identifier in identifiers:
-            try:
-                existing_identifier = (
-                    await self.sql_uow.external_identifiers.get_by_type_and_identifier(
-                        identifier.identifier_type,
-                        identifier.identifier,
-                        identifier.other_identifier_name,
-                    )
-                )
-            except NotFoundError:
-                pass
-            else:
-                collided.append(existing_identifier)
-        return collided
+        return await self.sql_uow.external_identifiers.get_by_identifiers(identifiers)
 
     async def detect_and_handle_collision(
         self,
@@ -158,6 +143,7 @@ Identifier(s) are already mapped on an existing reference:
             )
 
         final_reference = await self.sql_uow.references.merge(collision_result)
+        reference_create_result.reference_id = final_reference.id
 
         logger.info(
             "Reference ingested",
