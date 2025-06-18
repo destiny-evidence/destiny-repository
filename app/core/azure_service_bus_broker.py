@@ -61,6 +61,7 @@ class AzureServiceBusBroker(AsyncBroker):
 
     def __init__(
         self,
+        max_lock_renewal_duration: int = 10800,  # 3 hours
         connection_string: str | None = None,
         namespace: str | None = None,
         queue_name: str = "taskiq",
@@ -80,6 +81,7 @@ class AzureServiceBusBroker(AsyncBroker):
         self.connection_string = connection_string
         self.namespace = namespace
         self._queue_name = queue_name
+        self.max_lock_renewal_duration = max_lock_renewal_duration
 
         self.service_bus_client: ServiceBusClient | None = None
         self.sender: ServiceBusSender | None = None
@@ -116,7 +118,9 @@ class AzureServiceBusBroker(AsyncBroker):
                 receive_mode=ServiceBusReceiveMode.PEEK_LOCK,
             )
             if not self.auto_lock_renewer:
-                self.auto_lock_renewer = AutoLockRenewer()
+                self.auto_lock_renewer = AutoLockRenewer(
+                    max_lock_renewal_duration=self.max_lock_renewal_duration
+                )
 
     async def shutdown(self) -> None:
         """Close all connections on shutdown."""
