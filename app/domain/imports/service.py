@@ -2,6 +2,7 @@
 
 import httpx
 from pydantic import UUID4
+from sqlalchemy.exc import IntegrityError
 
 from app.core.logger import get_logger
 from app.domain.imports.models.models import (
@@ -133,7 +134,7 @@ This should not happen.
     async def process_import_batch_file(
         self,
         import_batch: ImportBatch,
-    ) -> bool:
+    ) -> ImportBatchStatus:
         """Process an import batch."""
         # Note: if parallelised, you would need to create a different
         # reference service with a new uow for each thread.
@@ -156,17 +157,16 @@ This should not happen.
                             i,
                         )
                         i += 1
+        except IntegrityError:
+            # This handles the case where files loaded in parallel cause a conflict at
+            # the persistence layer. We indicate to the user that they can generally
+            # resolve this conflict by resubmitting.
+            return ImportBatchStatus.FAILED_RETRYABLE
         except Exception:
             logger.exception("Failed to process batch", extra={"batch": import_batch})
-            await self._update_import_batch_status(
-                import_batch.id, ImportBatchStatus.FAILED
-            )
-            return False
+            return ImportBatchStatus.FAILED
         else:
-            await self._update_import_batch_status(
-                import_batch.id, ImportBatchStatus.COMPLETED
-            )
-            return True
+            return ImportBatchStatus.COMPLETED
 
     async def process_batch(self, import_batch: ImportBatch) -> None:
         """
@@ -182,9 +182,16 @@ This should not happen.
             import_batch.id, ImportBatchStatus.STARTED
         )
 
-        success = await self.process_import_batch_file(import_batch)
+        import_batch_status = await self.process_import_batch_file(import_batch)
 
-        if import_batch.callback_url and success:
+        # We update the state outside the main transaction in case there is an error in
+        # the main transaction voiding the session (for eg, SQLIntegrityError).
+        await self.update_import_batch_status(import_batch.id, import_batch_status)
+
+        if (
+            import_batch.callback_url
+            and import_batch_status == ImportBatchStatus.COMPLETED
+        ):
             try:
                 async with httpx.AsyncClient(
                     transport=httpx.AsyncHTTPTransport(retries=2)
