@@ -218,15 +218,6 @@ The identifier of the batch.
 """,
     )
 
-    created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
-        description="The timestamp at which the batch was created.",
-    )
-    updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
-        description="The timestamp at which the batch's status was last updated.",
-    )
-
     import_batch_id: UUID4 = Field(description="The ID of the batch being summarised")
 
     import_batch_status: ImportBatchStatus = Field(
