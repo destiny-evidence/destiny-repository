@@ -13,7 +13,12 @@ from typing import TypeVar
 
 from azure.identity.aio import DefaultAzureCredential
 from azure.servicebus import ServiceBusReceivedMessage, ServiceBusReceiveMode
-from azure.servicebus.aio import ServiceBusClient, ServiceBusReceiver, ServiceBusSender
+from azure.servicebus.aio import (
+    AutoLockRenewer,
+    ServiceBusClient,
+    ServiceBusReceiver,
+    ServiceBusSender,
+)
 from azure.servicebus.amqp import AmqpAnnotatedMessage, AmqpMessageBodyType
 from taskiq import AckableMessage, AsyncBroker, BrokerMessage
 
@@ -80,6 +85,7 @@ class AzureServiceBusBroker(AsyncBroker):
         self.sender: ServiceBusSender | None = None
         self.receiver: ServiceBusReceiver | None = None
         self.credential: DefaultAzureCredential | None = None
+        self.auto_lock_renewer: AutoLockRenewer | None = None
 
     async def startup(self) -> None:
         """Initialize connections and create queues if needed."""
@@ -107,8 +113,10 @@ class AzureServiceBusBroker(AsyncBroker):
         if self.is_worker_process:
             self.receiver = self.service_bus_client.get_queue_receiver(
                 queue_name=self._queue_name,
-                receive_mode=ServiceBusReceiveMode.RECEIVE_AND_DELETE,
+                receive_mode=ServiceBusReceiveMode.PEEK_LOCK,
             )
+            if not self.auto_lock_renewer:
+                self.auto_lock_renewer = AutoLockRenewer()
 
     async def shutdown(self) -> None:
         """Close all connections on shutdown."""
@@ -175,7 +183,7 @@ class AzureServiceBusBroker(AsyncBroker):
         :yields: parsed broker message.
         :raises MessageBrokerError:detail= if startup wasn't called.
         """
-        if self.receiver is None:
+        if self.receiver is None or self.auto_lock_renewer is None:
             raise MessageBrokerError(detail="Call startup before starting listening.")
 
         while True:
@@ -185,6 +193,7 @@ class AzureServiceBusBroker(AsyncBroker):
 
                 # Process each message
                 for sb_message in batch_messages:
+                    self.auto_lock_renewer.register(self.receiver, sb_message)
 
                     async def ack_message(
                         sb_message: ServiceBusReceivedMessage = sb_message,
