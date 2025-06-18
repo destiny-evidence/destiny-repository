@@ -158,6 +158,7 @@ Identifier(s) are already mapped on an existing reference:
             )
 
         final_reference = await self.sql_uow.references.merge(collision_result)
+        reference_create_result.reference_id = final_reference.id
 
         logger.info(
             "Reference ingested",
