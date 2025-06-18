@@ -12,10 +12,10 @@ from datetime import UTC, datetime, timedelta
 from typing import TypeVar
 
 from azure.identity.aio import DefaultAzureCredential
-from azure.servicebus import ServiceBusReceivedMessage, ServiceBusReceiveMode
+from azure.servicebus import ServiceBusReceiveMode
 from azure.servicebus.aio import ServiceBusClient, ServiceBusReceiver, ServiceBusSender
 from azure.servicebus.amqp import AmqpAnnotatedMessage, AmqpMessageBodyType
-from taskiq import AckableMessage, AsyncBroker, BrokerMessage
+from taskiq import AsyncBroker, BrokerMessage
 
 from app.core.config import get_settings
 from app.core.exceptions import MessageBrokerError
@@ -166,7 +166,7 @@ class AzureServiceBusBroker(AsyncBroker):
             scheduled_time = datetime.now(UTC) + timedelta(seconds=delay)
             await self.sender.schedule_messages(service_bus_message, scheduled_time)
 
-    async def listen(self) -> AsyncGenerator[AckableMessage, None]:
+    async def listen(self) -> AsyncGenerator[bytes, None]:
         """
         Listen to queue.
 
@@ -185,17 +185,6 @@ class AzureServiceBusBroker(AsyncBroker):
 
                 # Process each message
                 for sb_message in batch_messages:
-
-                    async def ack_message(
-                        sb_message: ServiceBusReceivedMessage = sb_message,
-                    ) -> None:
-                        if self.receiver is not None:
-                            await self.receiver.complete_message(sb_message)
-                        else:
-                            logger.error(
-                                "Receiver is None. Cannot complete the message."
-                            )
-
                     body_type = sb_message.body_type
                     raw_body = sb_message.body
 
@@ -209,12 +198,7 @@ class AzureServiceBusBroker(AsyncBroker):
                         )
                         data = str(raw_body).encode("utf-8")
 
-                    ackable = AckableMessage(
-                        data=data,
-                        ack=ack_message,
-                    )
-
-                    yield ackable
+                    yield data
             except Exception:
                 logger.exception("Error receiving messages")
                 # Wait a bit before retrying
