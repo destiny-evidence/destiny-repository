@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TypeVar
 
 from azure.identity.aio import DefaultAzureCredential
-from azure.servicebus import ServiceBusReceivedMessage
+from azure.servicebus import ServiceBusReceivedMessage, ServiceBusReceiveMode
 from azure.servicebus.aio import ServiceBusClient, ServiceBusReceiver, ServiceBusSender
 from azure.servicebus.amqp import AmqpAnnotatedMessage, AmqpMessageBodyType
 from taskiq import AckableMessage, AsyncBroker, BrokerMessage
@@ -107,6 +107,7 @@ class AzureServiceBusBroker(AsyncBroker):
         if self.is_worker_process:
             self.receiver = self.service_bus_client.get_queue_receiver(
                 queue_name=self._queue_name,
+                receive_mode=ServiceBusReceiveMode.RECEIVE_AND_DELETE,
             )
 
     async def shutdown(self) -> None:
