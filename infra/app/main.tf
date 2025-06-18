@@ -362,12 +362,6 @@ resource "azurerm_resource_provider_registration" "elastic" {
   name = "Microsoft.Elastic"
 }
 
-resource "azurerm_marketplace_agreement" "elasticsearch" {
-  publisher = "elastic"
-  offer     = "elasticsearch"
-  plan      = var.elasticsearch_sku
-}
-
 resource "ec_deployment" "cluster" {
   name = "${var.app_name}-${substr(var.environment, 0, 4)}-es"
   region                 = var.elasticsearch_region
