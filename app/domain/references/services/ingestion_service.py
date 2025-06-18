@@ -37,9 +37,6 @@ class IngestionService(GenericService):
             - list[LinkedExternalIdentifier]: The collided identifiers.
 
         """
-        if not identifiers:
-            return []
-
         return await self.sql_uow.external_identifiers.get_by_identifiers(identifiers)
 
     async def detect_and_handle_collision(
