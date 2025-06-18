@@ -14,16 +14,12 @@ or replace the dependency in `pyproject.toml` with
 destiny-sdk = {path = "./PATH/TO/sdk/", develop = true}
 ```
 
-## Installing elsewhere as a dependency
-
-This will eventually live on PyPI - for now:
+## Installing from PyPI
 
 ```sh
-poetry add git+ssh://git@github.com:destiny-evidence/destiny-repository.git#subdirectory=libs/sdk
+poetry add destiny-sdk
 ```
 
-or replace the dependency in `pyproject.toml` with
+## Documentation
 
-```toml
-destiny-sdk = {git = "ssh://git@github.com:destiny-evidence/destiny-repository.git", subdirectory = "libs/sdk"}
-```
+The documentation for destiny-sdk is hosted [here](https://destiny-evidence.github.io/destiny-repository/sdk/sdk.html)

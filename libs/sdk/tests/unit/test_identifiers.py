@@ -29,11 +29,13 @@ def test_fix_doi():
 
 
 def test_valid_pmid():
+    identifier = 123456
+
     obj = destiny_sdk.identifiers.PubMedIdentifier(
         identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.PM_ID,
-        identifier=123456,
+        identifier=identifier,
     )
-    assert obj.identifier == 123456
+    assert obj.identifier == identifier
 
 
 def test_invalid_pmid():
