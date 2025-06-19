@@ -7,7 +7,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import SQLIntegrityError, SQLNotFoundError
-from app.domain.robots.models.es import RobotAutomationPercolationDocument
+from app.domain.robots.models.es import (
+    RobotAutomationPercolatable,
+    RobotAutomationPercolationDocument,
+)
 from app.domain.robots.models.models import (
     Robot as DomainRobot,
 )
@@ -20,7 +23,6 @@ from app.domain.robots.models.sql import (
 from app.domain.robots.models.sql import (
     RobotAutomation as SQLRobotAutomation,
 )
-from app.domain.robots.models.es import RobotAutomationPercolatable
 from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
