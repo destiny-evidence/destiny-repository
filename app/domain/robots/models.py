@@ -22,6 +22,12 @@ class Robot(DomainBaseModel, SQLAttributeMixin):
 
     owner: str = Field(description="Owner of the robot.")
 
+    enhance_incoming_references: bool = Field(
+        default=False,
+        description="Whether this robot should automatically receive enhancement "
+        "requests for new references.",
+    )
+
     client_secret: SecretStr | None = Field(
         default=None,
         description="The secret key used for communicating with this robot.",
