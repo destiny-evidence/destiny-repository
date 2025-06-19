@@ -2,9 +2,9 @@
 
 import httpx
 from pydantic import UUID4
-from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
+from app.core.exceptions import SQLIntegrityError
 from app.core.logger import get_logger
 from app.domain.imports.models.models import (
     CollisionStrategy,
@@ -160,7 +160,7 @@ This should not happen.
                             i,
                         )
                         i += 1
-        except IntegrityError as exc:
+        except SQLIntegrityError as exc:
             # This handles the case where files loaded in parallel cause a conflict at
             # the persistence layer.
             logger.warning(

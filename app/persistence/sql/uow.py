@@ -2,11 +2,14 @@
 
 import functools
 from collections.abc import AsyncGenerator, Awaitable, Callable
+from contextlib import suppress
 from types import TracebackType
 from typing import ParamSpec, Self, TypeVar
 
+from sqlalchemy.exc import PendingRollbackError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logger import get_logger
 from app.domain.imports.repository import (
     ImportBatchSQLRepository,
     ImportRecordSQLRepository,
@@ -21,6 +24,8 @@ from app.domain.references.repository import (
 )
 from app.domain.robots.repository import RobotSQLRepository
 from app.persistence.uow import AsyncUnitOfWorkBase
+
+logger = get_logger()
 
 
 class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
@@ -71,11 +76,21 @@ class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
 
     async def rollback(self) -> None:
         """Roll back the session."""
-        await self.session.rollback()
+        with suppress(PendingRollbackError):
+            # An SQL-layer error has already rolled back the session
+            await self.session.rollback()
 
     async def commit(self) -> None:
         """Commit the session."""
-        await self.session.commit()
+        try:
+            await self.session.commit()
+        except PendingRollbackError:
+            # An SQL-layer error has caused the session to be rolled back.
+            # We'd only get this far if said error was caught by the service,
+            # hence why this is just a warning.
+            logger.warning(
+                "Session commit failed; this session has already been rolled back."
+            )
 
 
 T = TypeVar("T")
