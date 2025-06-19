@@ -1,9 +1,9 @@
 """The service for interacting with and managing imports."""
 
 import httpx
+from asyncpg.exceptions import DeadlockDetectedError
 from pydantic import UUID4
 
-from app.core.config import get_settings
 from app.core.exceptions import SQLIntegrityError
 from app.core.logger import get_logger
 from app.domain.imports.models.models import (
@@ -20,8 +20,6 @@ from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 
 logger = get_logger()
-
-settings = get_settings()
 
 
 class ImportService(GenericService):
@@ -169,6 +167,14 @@ This should not happen.
                 extra={"import_batch_id": import_batch.id, "error": str(exc)},
             )
             return ImportBatchStatus.RETRYING
+        except DeadlockDetectedError as exc:
+            # This handles deadlocks that can occur when multiple processes try to
+            # update the same record at the same time.
+            logger.warning(
+                "Deadlock while processing batch. Will retry if retries remaining.",
+                extra={"import_batch_id": import_batch.id, "error": str(exc)},
+            )
+            return ImportBatchStatus.RETRYING
         except httpx.NetworkError as exc:
             # This handles retryable network errors like connection refused,
             # connection reset by peer, timeouts, etc.
@@ -183,7 +189,7 @@ This should not happen.
         else:
             return ImportBatchStatus.COMPLETED
 
-    async def process_batch(self, import_batch: ImportBatch) -> None:
+    async def process_batch(self, import_batch: ImportBatch) -> ImportBatchStatus:
         """
         Process an import batch.
 
@@ -199,36 +205,6 @@ This should not happen.
 
         import_batch_status = await self.process_import_batch_file(import_batch)
         await self.update_import_batch_status(import_batch.id, import_batch_status)
-
-        n_retries = 0
-        while (
-            import_batch_status == ImportBatchStatus.RETRYING
-            and n_retries < settings.import_batch_retry_count
-        ):
-            logger.info(
-                "Retrying import batch",
-                extra={
-                    "batch_id": import_batch.id,
-                    "n_retries": n_retries,
-                },
-            )
-            import_batch_status = await self.process_import_batch_file(import_batch)
-            # Redundant update if retrying again but updates updated_at metadata
-            await self.update_import_batch_status(import_batch.id, import_batch_status)
-            n_retries += 1
-
-        if import_batch_status == ImportBatchStatus.RETRYING:
-            logger.error(
-                "Import batch failed after retries. Marking as failed.",
-                extra={
-                    "batch_id": import_batch.id,
-                    "n_retries": n_retries,
-                },
-            )
-            await self.update_import_batch_status(
-                import_batch.id, ImportBatchStatus.FAILED
-            )
-            return
 
         if (
             import_batch.callback_url
@@ -253,6 +229,8 @@ This should not happen.
                 logger.exception(
                     "Failed to send callback", extra={"batch": import_batch}
                 )
+
+        return import_batch_status
 
     @unit_of_work
     async def add_batch_result(
