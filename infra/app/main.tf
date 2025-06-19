@@ -82,7 +82,11 @@ locals {
         storage_account_name = azurerm_storage_account.this.name
         container            = azurerm_storage_container.operations.name
       })
-    }
+    },
+    {
+      name        = "ES_CONFIG"
+      secret_name = "es-config"
+    },
   ]
 
   secrets = [
@@ -98,6 +102,13 @@ locals {
     {
       name  = "servicebus-connection-string"
       value = azurerm_servicebus_namespace.this.default_primary_connection_string
+    },
+    {
+      name  = "es-config"
+      value = jsonencode({
+        cloud_id = ec_deployment.cluster.elasticsearch.cloud_id
+        api_key  = elasticstack_elasticsearch_security_api_key.app.encoded
+      })
     },
   ]
 }
@@ -349,4 +360,64 @@ resource "azurerm_role_assignment" "blob_storage_rw" {
   scope                = azurerm_storage_account.this.id
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = each.value
+}
+
+resource "azurerm_resource_provider_registration" "elastic" {
+  name = "Microsoft.Elastic"
+}
+
+resource "ec_deployment" "cluster" {
+  name = "${var.app_name}-${substr(var.environment, 0, 4)}-es"
+  region                 = var.elasticsearch_region
+  version                = var.elastic_stack_version
+  deployment_template_id = "azure-general-purpose"
+
+  elasticsearch = {
+    hot = {
+      autoscaling = {}
+    }
+  }
+
+  kibana = {}
+
+  observability = {
+    deployment_id = "self"
+    logs = true
+    metrics = true
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "elasticstack_elasticsearch_security_api_key" "app" {
+  name = "${var.app_name}-${var.environment}-app"
+  role_descriptors = jsonencode({
+    app_access = {
+      cluster = ["monitor"]
+      indices = [
+        {
+          names      = ["${var.app_name}-*"]
+          privileges = ["read", "write", "create_index", "manage"]
+          allow_restricted_indices = false
+        }
+      ]
+    }
+  })
+}
+
+resource "elasticstack_elasticsearch_security_api_key" "read_only" {
+  name = "${var.app_name}-${var.environment}-read-only"
+  role_descriptors = jsonencode({
+    app_access = {
+      indices = [
+        {
+          names      = ["${var.app_name}-*"]
+          privileges = ["read"]
+          allow_restricted_indices = false
+        }
+      ]
+    }
+  })
 }

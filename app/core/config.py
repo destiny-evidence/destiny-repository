@@ -80,6 +80,7 @@ If db_pass is provided, azure_db_resource_url must not be provided."""
 class ESConfig(BaseModel):
     """Elasticsearch configuration."""
 
+    # Traditional authentication (for local development)
     es_url: HttpUrl | list[HttpUrl] | None = Field(
         default=None,
         description="If a list, connections will be created to all nodes in the list.",
@@ -94,11 +95,19 @@ class ESConfig(BaseModel):
             "For connecting to insecure Elasticsearch instances when testing."
         ),
     )
+    # API key authentication (for production)
+    cloud_id: str | None = None
+    api_key: str | None = None
+
+    @property
+    def uses_api_key(self) -> bool:
+        """Return True if using API key authentication."""
+        return self.cloud_id is not None and self.api_key is not None
 
     @property
     def es_hosts(self) -> list[str]:
         """Return the Elasticsearch host(s) as a list of strings."""
-        if not self.es_url:
+        if self.uses_api_key or self.es_url is None:
             msg = "Elasticsearch URL is not provided."
             raise ValueError(msg)
         return [
@@ -109,24 +118,23 @@ class ESConfig(BaseModel):
     @model_validator(mode="after")
     def validate_parameters(self) -> Self:
         """Validate the given parameters."""
-        if self.es_insecure_url and any(
-            (self.es_user, self.es_pass, self.es_ca_path, self.es_url)
-        ):
-            msg = (
-                "If es_insecure_url is provided, es_user, es_pass and es_ca_path "
-                "should not be provided."
-            )
-            raise ValueError(msg)
+        has_api_key = all([self.cloud_id, self.api_key])
+        has_user_pass = any((self.es_url, self.es_user, self.es_pass, self.es_ca_path))
 
-        if not self.es_insecure_url and (
-            not self.es_user
-            or not self.es_pass
-            or not self.es_ca_path
-            or not self.es_url
-        ):
+        # count how many auth methods are provided
+        auth_methods = sum(
+            [
+                has_api_key,
+                has_user_pass,
+                bool(self.es_insecure_url),
+            ]
+        )
+
+        if auth_methods != 1:
             msg = (
-                "If es_insecure_url is not provided, es_url, es_user, es_pass and"
-                " es_ca_path must all be provided."
+                "Exactly one of the following authentication methods must be provided: "
+                "API key (cloud_id, api_key), traditional auth (es_url, es_user, "
+                "es_pass, es_ca_path), or insecure URL (es_insecure_url)."
             )
             raise ValueError(msg)
 
