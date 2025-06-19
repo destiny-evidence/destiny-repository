@@ -20,6 +20,7 @@ from app.domain.robots.models.sql import (
 from app.domain.robots.models.sql import (
     RobotAutomation as SQLRobotAutomation,
 )
+from app.domain.robots.models.es import RobotAutomationPercolatable
 from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
@@ -130,4 +131,30 @@ class RobotAutomationESRepository(
             client,
             DomainRobotAutomation,
             RobotAutomationPercolationDocument,
+        )
+
+    async def percolate(
+        self,
+        documents: list[RobotAutomationPercolatable],
+    ):
+        """
+        Percolate documents against the percolation queries in Elasticsearch.
+
+        :param documents: A list of documents to percolate.
+        :type documents: list[RobotAutomationPercolatable]
+        :return: The results of the percolation.
+        :rtype: TODO
+        """
+        percolation = await (
+            self._persistence_cls.search()
+            .using(self._client)
+            .query(
+                {
+                    "percolate": {
+                        "field": "query",
+                        "documents": [document.to_dict() for document in documents],
+                    }
+                }
+            )
+            .execute()
         )

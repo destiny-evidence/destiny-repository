@@ -39,3 +39,7 @@ class GenericESPersistence(
         """
 
         name: str
+
+
+class Percolatable(AsyncDocument):
+    """Percolatable document for Elasticsearch."""
