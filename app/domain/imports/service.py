@@ -4,6 +4,7 @@ import httpx
 from pydantic import UUID4
 from sqlalchemy.exc import IntegrityError
 
+from app.core.config import get_settings
 from app.core.logger import get_logger
 from app.domain.imports.models.models import (
     CollisionStrategy,
@@ -19,6 +20,8 @@ from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
 
 logger = get_logger()
+
+settings = get_settings()
 
 
 class ImportService(GenericService):
@@ -157,11 +160,23 @@ This should not happen.
                             i,
                         )
                         i += 1
-        except IntegrityError:
+        except IntegrityError as exc:
             # This handles the case where files loaded in parallel cause a conflict at
-            # the persistence layer. We indicate to the user that they can generally
-            # resolve this conflict by resubmitting.
-            return ImportBatchStatus.FAILED_RETRYABLE
+            # the persistence layer.
+            logger.warning(
+                "Integrity error processing batch, likely caused by inconsistent state"
+                " being loaded in parallel. Will retry.",
+                extra={"import_batch_id": import_batch.id, "error": str(exc)},
+            )
+            return ImportBatchStatus.RETRYING
+        except httpx.NetworkError as exc:
+            # This handles retryable network errors like connection refused,
+            # connection reset by peer, timeouts, etc.
+            logger.warning(
+                "Network error processing batch. Will retry.",
+                extra={"import_batch_id": import_batch.id, "error": str(exc)},
+            )
+            return ImportBatchStatus.RETRYING
         except Exception:
             logger.exception("Failed to process batch", extra={"batch": import_batch})
             return ImportBatchStatus.FAILED
@@ -183,10 +198,27 @@ This should not happen.
         )
 
         import_batch_status = await self.process_import_batch_file(import_batch)
+        await self.update_import_batch_status(import_batch.id, import_batch_status)
+
+        n_retries = 0
+        while (
+            import_batch_status == ImportBatchStatus.RETRYING
+            and n_retries < settings.import_batch_retry_count
+        ):
+            logger.info(
+                "Retrying import batch",
+                extra={
+                    "batch_id": import_batch.id,
+                    "n_retries": n_retries,
+                },
+            )
+            import_batch_status = await self.process_import_batch_file(import_batch)
+            # Redundant update if retrying again but updates updated_at metadata
+            await self.update_import_batch_status(import_batch.id, import_batch_status)
+            n_retries += 1
 
         # We update the state outside the main transaction in case there is an error in
         # the main transaction voiding the session (for eg, SQLIntegrityError).
-        await self.update_import_batch_status(import_batch.id, import_batch_status)
 
         if (
             import_batch.callback_url
