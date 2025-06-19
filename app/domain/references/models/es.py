@@ -115,14 +115,22 @@ class EnhancementDocument(InnerDoc):
         )
 
 
-class ReferenceDocument(GenericESPersistence[Reference]):
-    """Persistence model for references in Elasticsearch."""
+class ReferenceDocumentFields:
+    """
+    Fields for the ReferenceDocument.
+
+    This provides a source of truth for top-level and InnerDoc implementations.
+    """
 
     visibility: Visibility = mapped_field(Keyword(required=True))
     identifiers: list[ExternalIdentifierDocument] = mapped_field(
         Nested(ExternalIdentifierDocument)
     )
     enhancements: list[EnhancementDocument] = mapped_field(Nested(EnhancementDocument))
+
+
+class ReferenceDocument(GenericESPersistence[Reference], ReferenceDocumentFields):
+    """Persistence model for references in Elasticsearch."""
 
     @classmethod
     async def from_domain(cls, domain_obj: Reference) -> Self:

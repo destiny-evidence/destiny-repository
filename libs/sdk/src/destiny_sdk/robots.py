@@ -1,9 +1,9 @@
 """Schemas that define inputs/outputs for robots."""
 
 from enum import StrEnum, auto
-from typing import Annotated, Self
+from typing import Annotated, Any, Self
 
-from pydantic import UUID4, BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic import UUID4, BaseModel, ConfigDict, Field, HttpUrl, Json, model_validator
 
 from destiny_sdk.core import _JsonlFileInputMixIn
 from destiny_sdk.enhancements import Enhancement
@@ -334,4 +334,21 @@ class ProvisionedRobot(Robot):
     client_secret: str = Field(
         description="The client secret of the robot, used as the secret key "
         "when sending HMAC authenticated requests."
+    )
+
+
+class RobotAutomation(BaseModel):
+    """
+    Automation model for a robot.
+
+    This is used as a source of truth for an Elasticsearch index that percolates
+    references or enhancements against the queries. If a query matches, a request
+    is sent to the specified robot to perform the enhancement.
+    """
+
+    robot_id: UUID4 = Field(
+        description="The ID of the robot that will be used to enhance the reference."
+    )
+    query: Json[dict[str, Any]] = Field(
+        description="The query that will be used to match references against."
     )

@@ -8,9 +8,10 @@ from elasticsearch import AsyncElasticsearch
 from app.core.config import ESConfig
 from app.core.logger import get_logger
 from app.domain.references.models.es import ReferenceDocument
+from app.domain.robots.models.es import RobotAutomationPercolationDocument
 
 logger = get_logger()
-indices = [ReferenceDocument]
+indices = [ReferenceDocument, RobotAutomationPercolationDocument]
 
 
 class AsyncESClientManager:
