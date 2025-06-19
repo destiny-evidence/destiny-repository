@@ -3,6 +3,7 @@
 import httpx
 from asyncpg.exceptions import DeadlockDetectedError  # type: ignore[import-untyped]
 from pydantic import UUID4
+from sqlalchemy.exc import DBAPIError
 
 from app.core.exceptions import SQLIntegrityError
 from app.core.logger import get_logger
@@ -167,7 +168,7 @@ This should not happen.
                 extra={"import_batch_id": import_batch.id, "error": str(exc)},
             )
             return ImportBatchStatus.RETRYING
-        except DeadlockDetectedError as exc:
+        except (DBAPIError, DeadlockDetectedError) as exc:
             # This handles deadlocks that can occur when multiple processes try to
             # update the same record at the same time.
             logger.warning(
@@ -175,7 +176,7 @@ This should not happen.
                 extra={"import_batch_id": import_batch.id, "error": str(exc)},
             )
             return ImportBatchStatus.RETRYING
-        except httpx.NetworkError as exc:
+        except (httpx.NetworkError, httpx.RemoteProtocolError) as exc:
             # This handles retryable network errors like connection refused,
             # connection reset by peer, timeouts, etc.
             logger.warning(
