@@ -35,9 +35,15 @@ async def get_import_service(
 
 
 @broker.task
-async def process_import_batch(import_batch_id: UUID4) -> None:
+async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -> None:
     """Async logic for processing an import batch."""
-    logger.info("Processing import batch", extra={"import_batch_id": import_batch_id})
+    logger.info(
+        "Processing import batch",
+        extra={
+            "import_batch_id": import_batch_id,
+            "remaining_retries": remaining_retries,
+        },
+    )
     import_service = await get_import_service()
 
     import_batch = await import_service.get_import_batch(import_batch_id)
@@ -54,4 +60,25 @@ async def process_import_batch(import_batch_id: UUID4) -> None:
         )
         return
 
-    await import_service.process_batch(import_batch)
+    status = await import_service.process_batch(import_batch)
+    if status == ImportBatchStatus.RETRYING:
+        if remaining_retries:
+            logger.info(
+                "Retrying import batch.",
+                extra={
+                    "import_batch_id": import_batch_id,
+                    "remaining_retries": remaining_retries,
+                },
+            )
+            await process_import_batch.kiq(import_batch.id, remaining_retries - 1)
+        else:
+            logger.info(
+                "No remaining retries for import batch, marking as failed.",
+                extra={
+                    "import_batch_id": import_batch_id,
+                    "remaining_retries": remaining_retries,
+                },
+            )
+            await import_service.update_import_batch_status(
+                import_batch.id, ImportBatchStatus.FAILED
+            )
