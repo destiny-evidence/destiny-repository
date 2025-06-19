@@ -1,7 +1,7 @@
 """The service for interacting with and managing imports."""
 
 import httpx
-from asyncpg.exceptions import DeadlockDetectedError
+from asyncpg.exceptions import DeadlockDetectedError  # type: ignore[import-untyped]
 from pydantic import UUID4
 
 from app.core.exceptions import SQLIntegrityError
