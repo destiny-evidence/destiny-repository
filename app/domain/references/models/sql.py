@@ -5,7 +5,7 @@ import json
 import uuid
 from typing import Any, Self
 
-from sqlalchemy import UUID, ForeignKey, String, UniqueConstraint
+from sqlalchemy import UUID, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -138,6 +138,7 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
             name="uix_external_identifier",
             postgresql_nulls_not_distinct=True,
         ),
+        Index("ix_external_identifier_reference_id", "reference_id"),
     )
 
     @classmethod
@@ -210,6 +211,8 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
     reference: Mapped["Reference"] = relationship(
         "Reference", back_populates="enhancements"
     )
+
+    __table_args__ = (Index("ix_enhancement_reference_id", "reference_id"),)
 
     @classmethod
     async def from_domain(cls, domain_obj: DomainEnhancement) -> Self:
