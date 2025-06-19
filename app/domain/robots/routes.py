@@ -15,7 +15,7 @@ from app.core.auth import (
 )
 from app.core.config import get_settings
 from app.core.logger import get_logger
-from app.domain.robots.models import Robot
+from app.domain.robots.models.models import Robot
 from app.domain.robots.service import RobotService
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork

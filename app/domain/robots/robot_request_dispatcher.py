@@ -9,7 +9,7 @@ from app.core.exceptions import (
     RobotEnhancementError,
     RobotUnreachableError,
 )
-from app.domain.robots.models import Robot
+from app.domain.robots.models.models import Robot
 
 MIN_FOR_5XX_STATUS_CODES = 500
 

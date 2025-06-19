@@ -12,7 +12,7 @@ from app.domain.references.models.models import (
     EnhancementRequest,
     Reference,
 )
-from app.domain.robots.models import Robot
+from app.domain.robots.models.models import Robot
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 
 

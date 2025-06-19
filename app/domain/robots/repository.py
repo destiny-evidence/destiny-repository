@@ -6,8 +6,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import SQLIntegrityError, SQLNotFoundError
-from app.domain.robots.models import Robot as DomainRobot
-from app.domain.robots.sql import Robot as SQLRobot
+from app.domain.robots.models.models import Robot as DomainRobot
+from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
 from app.persistence.sql.repository import GenericAsyncSqlRepository

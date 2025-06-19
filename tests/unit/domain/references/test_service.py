@@ -23,7 +23,7 @@ from app.domain.references.models.models import (
     Visibility,
 )
 from app.domain.references.service import ReferenceService
-from app.domain.robots.models import Robot
+from app.domain.robots.models.models import Robot
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 
