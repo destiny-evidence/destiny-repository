@@ -4,7 +4,7 @@ import asyncio
 import uuid
 from typing import Any, Self
 
-from elasticsearch.dsl import InnerDoc, Keyword, Object, Percolator, Text, mapped_field
+from elasticsearch.dsl import InnerDoc, Keyword, Object, Percolator, mapped_field
 
 from app.domain.references.models.es import (
     EnhancementDocument,
@@ -48,15 +48,15 @@ class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
     """Persistence model for robot automation percolation in Elasticsearch."""
 
     enhancement: EnhancementDocument | None = mapped_field(
-        Object(EnhancementDocument, required=False),
+        Object(EnhancementDocument, required=False, index=False),
     )
     reference: _ReferenceDocument | None = mapped_field(
-        Object(_ReferenceDocument, required=False),
+        Object(_ReferenceDocument, required=False, index=False),
     )
     # The ID of the reference that this query is percolating against.
     # This is used to link the percolation result back to the reference.
     reference_id: uuid.UUID = mapped_field(
-        Text(required=False),
+        Keyword(required=False, index=False),
     )
     query: dict[str, Any] = mapped_field(
         Percolator(required=True),

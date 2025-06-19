@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 from typing import Generic
 
 from elasticsearch import AsyncElasticsearch
+from elasticsearch.dsl import InnerDoc
 from pydantic import UUID4
 
 from app.core.exceptions import ESError, ESNotFoundError
@@ -106,4 +107,24 @@ class GenericAsyncESRepository(
 
         await self._persistence_cls.bulk(
             es_record_translation_generator(), using=self._client
+        )
+
+    async def percolate(
+        self,
+        documents: list[InnerDoc],
+    ):
+        await self._persistence_cls.search(
+            query={
+                "percolate": {
+                "field": "query",
+                "documents": [{
+                    "reference": <_ReferenceDocument instance>,
+                    "reference_id": "some-reference-id"
+                }, {
+                    "enhancement": <EnhancementDocument instance>, 
+                    "reference_id": "some-other-reference-id"
+                }]
+                }
+            },
+            using=self._client,
         )
