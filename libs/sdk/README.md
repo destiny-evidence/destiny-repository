@@ -52,3 +52,18 @@ If you want to use a local build of the sdk `z.whl`, do
 poetry build
 poetry add ./PATH/TO/WHEEL.whl
 ```
+
+### Publishing to test pypi
+
+```sh
+poetry config repositories.testpypi https://test.pypi.org/legacy/
+poetry config pypi-token.testpypi [YOUR_TESTPYPI_TOKEN]
+poetry publish --repository testpypi
+```
+
+## Publishing
+
+```sh
+poetry config pypi-token.pypi [YOUR_PYPI_TOKEN]
+poetry publish
+```
