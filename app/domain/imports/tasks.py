@@ -62,8 +62,7 @@ async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -
 
     status = await import_service.process_batch(import_batch)
     if status == ImportBatchStatus.RETRYING:
-        remaining_retries -= 1
-        if remaining_retries >= 0:
+        if remaining_retries:
             logger.info(
                 "Retrying import batch.",
                 extra={
@@ -71,7 +70,7 @@ async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -
                     "remaining_retries": remaining_retries,
                 },
             )
-            await process_import_batch.kiq(import_batch.id, remaining_retries)
+            await process_import_batch.kiq(import_batch.id, remaining_retries - 1)
         else:
             logger.info(
                 "No remaining retries for import batch, marking as failed.",
