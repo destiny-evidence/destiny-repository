@@ -2,7 +2,37 @@
 
 SDK for interaction with the DESTINY repository. For now this just contains data models for validation and structuring, but will be built out to include convenience functions etc.
 
-## Installing as an editable package for local sdk development
+## Documentation
+
+The documentation for destiny-sdk is hosted [here](https://destiny-evidence.github.io/destiny-repository/sdk/sdk.html)
+
+## Installation from PyPI
+
+```sh
+pip install destiny-sdk
+```
+
+```sh
+poetry add destiny-sdk
+```
+
+## Development
+
+### Dependencies
+
+```sh
+poetry install
+```
+
+### Tests
+
+```sh
+poetry run pytest
+```
+
+### Installing as an editable package of another project
+
+Run the following command in the root folder of the other project (assuming poetry as a packaging framework). Pip also has an `--editable` option that you can use.
 
 ```sh
 poetry add --editable ./PATH/TO/sdk/
@@ -14,12 +44,11 @@ or replace the dependency in `pyproject.toml` with
 destiny-sdk = {path = "./PATH/TO/sdk/", develop = true}
 ```
 
-## Installing from PyPI
+### Installing a local wheel
+
+If you want to use a local build of the sdk `z.whl`, do
 
 ```sh
-poetry add destiny-sdk
+poetry build
+poetry add ./PATH/TO/WHEEL.whl
 ```
-
-## Documentation
-
-The documentation for destiny-sdk is hosted [here](https://destiny-evidence.github.io/destiny-repository/sdk/sdk.html)
