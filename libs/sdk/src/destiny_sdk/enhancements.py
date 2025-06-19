@@ -1,10 +1,11 @@
 """Enhancement classes for the Destiny Repository."""
 
+import datetime
 import uuid
 from enum import StrEnum, auto
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, HttpUrl, PastDate
+from pydantic import BaseModel, Field, HttpUrl
 
 from destiny_sdk.core import _JsonlFileInputMixIn
 from destiny_sdk.visibility import Visibility
@@ -86,10 +87,10 @@ class BibliographicMetadataEnhancement(BaseModel):
 other works have cited this work
 """,
     )
-    created_date: PastDate | None = Field(
+    created_date: datetime.date | None = Field(
         default=None, description="The ISO8601 date this metadata record was created"
     )
-    publication_date: PastDate | None = Field(
+    publication_date: datetime.date | None = Field(
         default=None, description="The date which the version of record was published."
     )
     publication_year: int | None = Field(
