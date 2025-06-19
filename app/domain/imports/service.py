@@ -217,8 +217,18 @@ This should not happen.
             await self.update_import_batch_status(import_batch.id, import_batch_status)
             n_retries += 1
 
-        # We update the state outside the main transaction in case there is an error in
-        # the main transaction voiding the session (for eg, SQLIntegrityError).
+        if import_batch_status == ImportBatchStatus.RETRYING:
+            logger.error(
+                "Import batch failed after retries. Marking as failed.",
+                extra={
+                    "batch_id": import_batch.id,
+                    "n_retries": n_retries,
+                },
+            )
+            await self.update_import_batch_status(
+                import_batch.id, ImportBatchStatus.FAILED
+            )
+            return
 
         if (
             import_batch.callback_url
