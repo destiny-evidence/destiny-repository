@@ -165,7 +165,7 @@ This should not happen.
             # the persistence layer.
             logger.warning(
                 "Integrity error processing batch, likely caused by inconsistent state"
-                " being loaded in parallel. Will retry.",
+                " being loaded in parallel. Will retry if retries remaining.",
                 extra={"import_batch_id": import_batch.id, "error": str(exc)},
             )
             return ImportBatchStatus.RETRYING
@@ -173,7 +173,7 @@ This should not happen.
             # This handles retryable network errors like connection refused,
             # connection reset by peer, timeouts, etc.
             logger.warning(
-                "Network error processing batch. Will retry.",
+                "Network error processing batch. Will retry if retries remaining.",
                 extra={"import_batch_id": import_batch.id, "error": str(exc)},
             )
             return ImportBatchStatus.RETRYING
