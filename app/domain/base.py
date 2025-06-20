@@ -3,15 +3,23 @@
 import datetime
 import uuid
 from abc import ABC, abstractmethod
+from typing import Self
 
 from destiny_sdk.core import _JsonlFileInputMixIn
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.utils.time_and_date import utc_now
 
 
 class DomainBaseModel(BaseModel):
     """Base model for all domain models to inherit from."""
+
+    @model_validator(mode="after")
+    def check_json_serializable(self) -> Self:
+        """Runtime check to ensure the model is JSON serializable."""
+        json_str = self.model_dump(mode="json")
+        self.model_validate(json_str)
+        return self
 
 
 class SQLAttributeMixin(BaseModel):

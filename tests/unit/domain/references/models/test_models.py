@@ -3,8 +3,11 @@
 import uuid
 
 import destiny_sdk
+import pytest
+from pydantic import ValidationError
 
 from app.domain.references.models.models import (
+    Enhancement,
     EnhancementRequest,
     GenericExternalIdentifier,
     LinkedExternalIdentifier,
@@ -75,3 +78,23 @@ async def test_enhancement_request_roundtrip():
     assert sdk_read.reference_id == rid
     assert sdk_read.robot_id == rid
     assert sdk_read.enhancement_parameters == {"param": 42}
+
+
+async def test_enhancement_unserializable_failure():
+    """Test that an enhancement with unserializable parameters raises an error."""
+    with pytest.raises(ValidationError):
+        Enhancement(
+            reference_id=uuid.uuid4(),
+            source="dummy",
+            visibility="public",
+            content=destiny_sdk.enhancements.LocationEnhancement(
+                locations=[
+                    destiny_sdk.enhancements.Location(
+                        # Example where input is not JSON serializable.
+                        # Serializing makes the URL longer than max length,
+                        # deserializing then fails.
+                        landing_page_url=r"http://obfuscated.org/doing-cool-researÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€š\Â¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§h-on-french-letters/1234"  # noqa: E501, RUF001
+                    )
+                ],
+            ),
+        )
