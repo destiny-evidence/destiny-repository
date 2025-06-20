@@ -8,10 +8,14 @@ plugins = ["pydantic.mypy"]
 
 [tool.poetry]
 authors = [
-    "Andrew Harvey <aharvey@futureevidence.org>",
+    "Adam Hamilton <adam@futureevidence.org>",
+    "Andrew Harvey <andrew@futureevidence.org>",
+    "Daniel Breves <daniel@futureevidence.org>",
     "Harry Moss <h.moss@ucl.ac.uk",
+    "Jack Walmisley <jack@futureevidence.org>",
 ]
 description = ""
+license = "AGPL-3.0-or-later"
 name = "destiny-repository"
 package-mode = false
 readme = "README.md"
@@ -68,9 +72,7 @@ pytest-order = "^1.3.0"
 
 [tool.pytest.ini_options]
 addopts = ["--color=yes", "--import-mode=importlib", "--verbose"]
-env = [
-    "ENV=test",
-]
+env = ["ENV=test"]
 norecursedirs = ["tests/e2e"]
 pythonpath = "."
 testpaths = ["tests"]

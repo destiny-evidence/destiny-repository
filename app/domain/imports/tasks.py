@@ -1,6 +1,5 @@
 """Import tasks module for the DESTINY Climate and Health Repository API."""
 
-import httpx
 from elasticsearch import AsyncElasticsearch
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,22 +62,59 @@ async def get_reference_service(
 
 
 @broker.task
-async def process_import_batch(import_batch_id: UUID4) -> None:
+async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -> None:
     """Async logic for processing an import batch."""
-    logger.info("Processing import batch", extra={"import_batch_id": import_batch_id})
+    logger.info(
+        "Processing import batch",
+        extra={
+            "import_batch_id": import_batch_id,
+            "remaining_retries": remaining_retries,
+        },
+    )
     import_service = await get_import_service()
     reference_service = await get_reference_service()
 
     import_batch = await import_service.get_import_batch(import_batch_id)
     if not import_batch:
         raise TaskError(detail=f"Import batch with ID {import_batch_id} not found.")
+    if import_batch.status in (
+        ImportBatchStatus.FAILED,
+        ImportBatchStatus.INDEXING_FAILED,
+        ImportBatchStatus.COMPLETED,
+        ImportBatchStatus.CANCELLED,
+    ):
+        logger.info(
+            "Terminal task received for import batch, not processing.",
+            extra={"import_batch_id": import_batch_id, "status": import_batch.status},
+        )
+        return
 
     # Import into database
-    await import_service.process_batch(import_batch)
+    status = await import_service.process_batch(import_batch)
+    if status == ImportBatchStatus.RETRYING:
+        if remaining_retries:
+            logger.info(
+                "Retrying import batch.",
+                extra={
+                    "import_batch_id": import_batch_id,
+                    "remaining_retries": remaining_retries,
+                },
+            )
+            await process_import_batch.kiq(import_batch.id, remaining_retries - 1)
+        else:
+            logger.info(
+                "No remaining retries for import batch, marking as failed.",
+                extra={
+                    "import_batch_id": import_batch_id,
+                    "remaining_retries": remaining_retries,
+                },
+            )
+            await import_service.update_import_batch_status(
+                import_batch.id, ImportBatchStatus.FAILED
+            )
+        return
 
-    if (
-        import_batch := await import_service.get_import_batch(import_batch_id)
-    ).status in (
+    if status in (
         ImportBatchStatus.FAILED,
         ImportBatchStatus.CANCELLED,
     ):
@@ -92,9 +128,6 @@ async def process_import_batch(import_batch_id: UUID4) -> None:
         return
 
     # Update elasticsearch index
-    await import_service.update_import_batch_status(
-        import_batch.id, ImportBatchStatus.INDEXING
-    )
     try:
         imported_references = await import_service.get_imported_references_from_batch(
             import_batch_id=import_batch_id
@@ -118,24 +151,7 @@ async def process_import_batch(import_batch_id: UUID4) -> None:
         await import_service.update_import_batch_status(
             import_batch.id, ImportBatchStatus.COMPLETED
         )
-
-        if import_batch.callback_url:
-            try:
-                async with httpx.AsyncClient(
-                    transport=httpx.AsyncHTTPTransport(retries=2)
-                ) as client:
-                    # Refresh the import batch to get the latest status
-                    import_batch = await import_service.get_import_batch_with_results(
-                        import_batch.id
-                    )
-                    response = await client.post(
-                        str(import_batch.callback_url),
-                        json=(await import_batch.to_sdk_summary()).model_dump(
-                            mode="json"
-                        ),
-                    )
-                    response.raise_for_status()
-            except Exception:
-                logger.exception(
-                    "Failed to send callback", extra={"batch": import_batch}
-                )
+        # Note we only callback on success - probably not ideal.
+        # In general we will revisit callbacks with their due respect as we implement
+        # them in the enhancement flow.
+        await import_service.dispatch_import_batch_callback(import_batch)

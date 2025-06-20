@@ -108,6 +108,7 @@ async def enqueue_batch(
     logger.info("Enqueueing import batch", extra={"import_batch_id": import_batch.id})
     await process_import_batch.kiq(
         import_batch_id=import_batch.id,
+        remaining_retries=settings.import_batch_retry_count,
     )
     return await import_batch.to_sdk()
 

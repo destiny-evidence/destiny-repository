@@ -34,13 +34,20 @@ class ImportBatchStatus(StrEnum):
 
     - `created`: Created, but no processing has started.
     - `started`: Processing has started on the batch.
+    - `failed`: Processing has failed.
+    - `retrying`: Processing has failed, but is being retried.
+    - `indexing`: The imports have been saved and are being indexed.
+    - `indexing_failed`: The imports have been saved but were not indexed.
     - `completed`: Processing has been completed.
     - `cancelled`: Processing was cancelled by calling the API.
     """
 
     CREATED = auto()
     STARTED = auto()
+    RETRYING = auto()
     FAILED = auto()
+    INDEXING = auto()
+    INDEXING_FAILED = auto()
     COMPLETED = auto()
     CANCELLED = auto()
 
@@ -216,15 +223,6 @@ class ImportBatchSummary(_ImportBatchBase):
         description="""
 The identifier of the batch.
 """,
-    )
-
-    created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
-        description="The timestamp at which the batch was created.",
-    )
-    updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
-        description="The timestamp at which the batch's status was last updated.",
     )
 
     import_batch_id: UUID4 = Field(description="The ID of the batch being summarised")

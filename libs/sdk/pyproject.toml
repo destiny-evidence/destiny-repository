@@ -3,7 +3,12 @@ build-backend = "poetry.core.masonry.api"
 requires = ["poetry-core"]
 
 [tool.poetry]
-authors = ["Andrew Harvey <andrew@futureevidence.org>"]
+authors = [
+    "Adam Hamilton <adam@futureevidence.org>",
+    "Andrew Harvey <andrew@futureevidence.org>",
+    "Daniel Breves <daniel@futureevidence.org>",
+    "Jack Walmisley <jack@futureevidence.org>",
+]
 description = "A library to support interaction with the DESTINY repository"
 license = "Apache 2.0"
 name = "destiny_sdk"

@@ -219,6 +219,24 @@ class Settings(BaseSettings):
         ),
     )
 
+    import_batch_retry_count: int = Field(
+        default=3,
+        description=(
+            "Number of times to retry processing an import batch before marking it as "
+            "failed. We only retry on errors we are confident can be resolved - eg "
+            "network issues or inconsistent database state being loaded in parallel."
+        ),
+    )
+
+    # Message lock renewal configuration
+    message_lock_renewal_duration: int = Field(
+        default=3600 * 3,  # 3 hours
+        description=(
+            "Duration in seconds to keep renewing message locks. "
+            "Should be longer than expected processing time."
+        ),
+    )
+
     default_upload_file_chunk_size: int = Field(
         default=1,
         description=(

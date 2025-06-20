@@ -4,7 +4,7 @@ from abc import ABC
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -19,6 +19,7 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.models import (
     ExternalIdentifierType,
+    GenericExternalIdentifier,
 )
 from app.domain.references.models.models import (
     LinkedExternalIdentifier as DomainExternalIdentifier,
@@ -186,6 +187,41 @@ class ExternalIdentifierSQLRepository(
             )
 
         return await db_identifier.to_domain(preload=preload)
+
+    async def get_by_identifiers(
+        self,
+        identifiers: list[GenericExternalIdentifier],
+    ) -> list[DomainExternalIdentifier]:
+        """
+        Get multiple external identifiers that match the given identifiers.
+
+        :param identifiers: List of generic external identifiers to search for
+        :type identifiers: list[GenericExternalIdentifier]
+        :return: List of matching external identifiers found in the database
+        :rtype: list[DomainExternalIdentifier]
+        """
+        if not identifiers:
+            return []
+
+        # Build OR conditions for each identifier combination
+        conditions = []
+        for identifier in identifiers:
+            condition = (
+                SQLExternalIdentifier.identifier_type == identifier.identifier_type
+            ) & (SQLExternalIdentifier.identifier == identifier.identifier)
+            if identifier.identifier_type == ExternalIdentifierType.OTHER:
+                condition &= (
+                    SQLExternalIdentifier.other_identifier_name
+                    == identifier.other_identifier_name
+                )
+            conditions.append(condition)
+
+        query = select(SQLExternalIdentifier).where(or_(*conditions))
+
+        result = await self._session.execute(query)
+        db_identifiers = result.unique().scalars().all()
+
+        return [await db_identifier.to_domain() for db_identifier in db_identifiers]
 
 
 class EnhancementRepositoryBase(

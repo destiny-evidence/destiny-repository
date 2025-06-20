@@ -309,11 +309,14 @@ class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
     ) -> Self:
         """Create an external identifier from the SDK model."""
         try:
-            return cls.model_validate(
+            c = cls.model_validate(
                 external_identifier.model_dump(),
             )
+            c.check_serializability()
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
+        else:
+            return c
 
     async def to_sdk(self) -> destiny_sdk.identifiers.LinkedExternalIdentifier:
         """Convert the external identifier to the SDK model."""
@@ -401,12 +404,15 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     ) -> Self:
         """Create an enhancement from the SDK model."""
         try:
-            return cls.model_validate(
+            c = cls.model_validate(
                 enhancement.model_dump()
                 | ({"reference_id": reference_id} if reference_id else {})
             )
+            c.check_serializability()
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
+        else:
+            return c
 
     async def to_sdk(self) -> destiny_sdk.enhancements.Enhancement:
         """Convert the enhancement to the SDK model."""
@@ -452,11 +458,14 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
     ) -> Self:
         """Create an enhancement request from the SDK model."""
         try:
-            return cls.model_validate(
+            c = cls.model_validate(
                 enhancement_request.model_dump(),
             )
+            c.check_serializability()
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
+        else:
+            return c
 
     async def to_sdk(self) -> destiny_sdk.robots.EnhancementRequestRead:
         """Convert the enhancement request to the SDK model."""
@@ -517,9 +526,12 @@ Errors for individual references are provided <TBC>.
     ) -> Self:
         """Create an enhancement request from the SDK model."""
         try:
-            return cls.model_validate(enhancement_request.model_dump())
+            c = cls.model_validate(enhancement_request.model_dump())
+            c.check_serializability()
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
+        else:
+            return c
 
     async def to_sdk(
         self,
