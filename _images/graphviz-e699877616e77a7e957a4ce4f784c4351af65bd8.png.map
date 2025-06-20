@@ -1,0 +1,10 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.BatchEnhancementRequest
+
+Request to add enhancements to a list of references.
+" alt="" coords="5,5,451,285"/>
+<area shape="rect" id="node2" title="app.persistence.blob.models.BlobStorageFile
+
+Model to represent Blob Storage files.
+" alt="" coords="595,230,833,370"/>
+</map>
