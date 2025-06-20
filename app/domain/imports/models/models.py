@@ -154,9 +154,12 @@ The number of references expected to be included in this import.
     async def from_sdk(cls, data: destiny_sdk.imports.ImportRecordIn) -> Self:
         """Create an ImportRecord from the SDK input model."""
         try:
-            return cls.model_validate(data.model_dump())
+            c = cls.model_validate(data.model_dump())
+            c.check_serializability()
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
+        else:
+            return c
 
     async def to_sdk(self) -> destiny_sdk.imports.ImportRecordRead:
         """Convert the ImportRecord to the SDK model."""
@@ -208,11 +211,14 @@ The URL to which the processor should send a callback when the batch has been pr
     ) -> Self:
         """Create an ImportBatch from the SDK input model."""
         try:
-            return cls.model_validate(
+            c = cls.model_validate(
                 data.model_dump() | {"import_record_id": import_record_id}
             )
+            c.check_serializability()
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
+        else:
+            return c
 
     async def to_sdk(self) -> destiny_sdk.imports.ImportBatchRead:
         """Convert the ImportBatch to the SDK model."""
