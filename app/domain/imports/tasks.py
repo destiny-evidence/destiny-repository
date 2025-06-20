@@ -71,8 +71,9 @@ async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -
             "remaining_retries": remaining_retries,
         },
     )
-    import_service = await get_import_service()
-    reference_service = await get_reference_service()
+    sql_uow = await get_sql_unit_of_work()
+    import_service = await get_import_service(sql_uow=sql_uow)
+    reference_service = await get_reference_service(sql_uow=sql_uow)
 
     import_batch = await import_service.get_import_batch(import_batch_id)
     if not import_batch:
@@ -90,7 +91,8 @@ async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -
         return
 
     # Import into database
-    status = await import_service.process_batch(import_batch)
+    status = await import_service.process_batch(import_batch, reference_service)
+
     if status == ImportBatchStatus.RETRYING:
         if remaining_retries:
             logger.info(
@@ -113,45 +115,3 @@ async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -
                 import_batch.id, ImportBatchStatus.FAILED
             )
         return
-
-    if status in (
-        ImportBatchStatus.FAILED,
-        ImportBatchStatus.CANCELLED,
-    ):
-        logger.error(
-            "Import batch processing stopped, elasticsearch indexing will not proceed.",
-            extra={
-                "import_batch_id": import_batch_id,
-                "import_batch_status": import_batch.status,
-            },
-        )
-        return
-
-    # Update elasticsearch index
-    try:
-        imported_references = await import_service.get_imported_references_from_batch(
-            import_batch_id=import_batch_id
-        )
-        await reference_service.index_references(
-            reference_ids=imported_references,
-        )
-
-    except Exception:
-        logger.exception(
-            "Error indexing references in Elasticsearch",
-            extra={
-                "import_batch_id": import_batch_id,
-            },
-        )
-        await import_service.update_import_batch_status(
-            import_batch.id, ImportBatchStatus.INDEXING_FAILED
-        )
-
-    else:
-        await import_service.update_import_batch_status(
-            import_batch.id, ImportBatchStatus.COMPLETED
-        )
-        # Note we only callback on success - probably not ideal.
-        # In general we will revisit callbacks with their due respect as we implement
-        # them in the enhancement flow.
-        await import_service.dispatch_import_batch_callback(import_batch)

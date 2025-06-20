@@ -150,8 +150,7 @@ This should not happen.
 
     @unit_of_work
     async def process_import_batch_file(
-        self,
-        import_batch: ImportBatch,
+        self, import_batch: ImportBatch, reference_service: ReferenceService
     ) -> ImportBatchStatus:
         """
         Process an import batch.
@@ -160,10 +159,8 @@ This should not happen.
         - Stream the file from the storage URL.
         - Parse each entry of the file via the Reference service.
         - Persist the file via the Reference service.
-        - Hit the callback URL with the results.
         """
         try:
-            reference_service = ReferenceService(self.sql_uow)
             logger.info("Processing batch", extra={"batch": import_batch})
             async with (
                 httpx.AsyncClient() as client,
@@ -212,24 +209,6 @@ This should not happen.
         else:
             return ImportBatchStatus.INDEXING
 
-    async def process_batch(self, import_batch: ImportBatch) -> ImportBatchStatus:
-        """
-        Process an import batch.
-
-        Actions:
-        - Stream the file from the storage URL.
-        - Parse each entry of the file via the Reference service.
-        - Persist the file via the Reference service.
-        - Hit the callback URL with the results.
-        """
-        await self.update_import_batch_status(
-            import_batch.id, ImportBatchStatus.STARTED
-        )
-
-        import_batch_status = await self.process_import_batch_file(import_batch)
-        await self.update_import_batch_status(import_batch.id, import_batch_status)
-        return import_batch_status
-
     async def dispatch_import_batch_callback(
         self,
         import_batch: ImportBatch,
@@ -255,6 +234,56 @@ This should not happen.
                 logger.exception(
                     "Failed to send callback", extra={"batch": import_batch}
                 )
+
+    async def process_batch(
+        self, import_batch: ImportBatch, reference_service: ReferenceService
+    ) -> ImportBatchStatus:
+        """Process an import batch."""
+        await self.update_import_batch_status(
+            import_batch.id, ImportBatchStatus.STARTED
+        )
+
+        # Persist to database
+        import_batch_status = await self.process_import_batch_file(
+            import_batch, reference_service
+        )
+        await self.update_import_batch_status(import_batch.id, import_batch_status)
+
+        if import_batch_status != ImportBatchStatus.INDEXING:
+            logger.error(
+                "Import batch processing stopped, "
+                "elasticsearch indexing will not proceed.",
+                extra={
+                    "import_batch_id": import_batch.id,
+                    "import_batch_status": import_batch.status,
+                },
+            )
+            return import_batch_status
+
+        # Update elasticsearch index
+        try:
+            imported_references = await self.get_imported_references_from_batch(
+                import_batch_id=import_batch.id
+            )
+            await reference_service.index_references(
+                reference_ids=imported_references,
+            )
+
+        except Exception:
+            logger.exception(
+                "Error indexing references in Elasticsearch",
+                extra={
+                    "import_batch_id": import_batch.id,
+                },
+            )
+            import_batch_status = ImportBatchStatus.INDEXING_FAILED
+
+        else:
+            import_batch_status = ImportBatchStatus.COMPLETED
+
+        await self.update_import_batch_status(import_batch.id, import_batch_status)
+        await self.dispatch_import_batch_callback(import_batch)
+        return import_batch_status
 
     @unit_of_work
     async def add_batch_result(
