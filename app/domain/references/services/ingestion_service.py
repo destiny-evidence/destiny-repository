@@ -149,8 +149,6 @@ Identifier(s) are already mapped on an existing reference:
             "Reference ingested",
             extra={
                 "reference_id": final_reference.id,
-                "n_identifiers": len(final_reference.identifiers or []),
-                "n_enhancements": len(final_reference.enhancements or []),
                 "n_errors": len(reference_create_result.errors),
             },
         )

@@ -1,0 +1,1 @@
+"""Elasticsearch-specific persistence implementations."""

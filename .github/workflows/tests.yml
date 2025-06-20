@@ -33,6 +33,18 @@ jobs:
         ports:
           # Maps tcp port 5432 on service container to the host
           - 5432:5432
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:9.0.0
+        env:
+          discovery.type: single-node
+          xpack.security.enabled: "false"
+        ports:
+          - 9200:9200
+        options: >-
+          --health-cmd "curl http://localhost:9200/_cluster/health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -66,6 +78,7 @@ jobs:
       - name: Run test with pytest via poetry
         env:
           DB_CONFIG: '{"DB_URL": "postgresql+asyncpg://postgres:${{ secrets.db_password }}@localhost:5432/destiny_test"}'
+          ES_CONFIG: '{"ES_INSECURE_URL": "http://localhost:9200"}'
           AZURE_APPLICATION_ID: ${{ vars.azure_application_id }}
           AZURE_TENANT_ID: ${{ vars.azure_tenant_id }}
           MESSAGE_BROKER_URL: amqp://guest:guest@localhost:5672

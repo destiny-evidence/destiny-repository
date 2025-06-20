@@ -4,6 +4,7 @@ import uuid
 from typing import Annotated
 
 import destiny_sdk
+from elasticsearch import AsyncElasticsearch
 from fastapi import APIRouter, Depends, Path, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,11 +27,14 @@ from app.domain.references.models.models import (
 from app.domain.references.service import ReferenceService
 from app.domain.references.tasks import (
     collect_and_dispatch_references_for_batch_enhancement,
+    rebuild_reference_index,
     validate_and_import_batch_enhancement_result,
 )
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 from app.persistence.blob.repository import BlobRepository
+from app.persistence.es.client import get_client
+from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
@@ -38,22 +42,30 @@ settings = get_settings()
 logger = get_logger()
 
 
-def unit_of_work(
+def sql_unit_of_work(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> AsyncSqlUnitOfWork:
     """Return the unit of work for operating on references."""
     return AsyncSqlUnitOfWork(session=session)
 
 
+def es_unit_of_work(
+    client: Annotated[AsyncElasticsearch, Depends(get_client)],
+) -> AsyncESUnitOfWork:
+    """Return the unit of work for operating on references in Elasticsearch."""
+    return AsyncESUnitOfWork(client=client)
+
+
 def reference_service(
-    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
+    es_uow: Annotated[AsyncESUnitOfWork, Depends(es_unit_of_work)],
 ) -> ReferenceService:
     """Return the reference service using the provided unit of work dependencies."""
-    return ReferenceService(sql_uow=sql_uow)
+    return ReferenceService(sql_uow=sql_uow, es_uow=es_uow)
 
 
 def robot_service(
-    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
 ) -> RobotService:
     """Return the robot service using the provided unit of work dependencies."""
     return RobotService(sql_uow=sql_uow)
@@ -260,6 +272,12 @@ async def check_batch_enhancement_request_status(
     )
 
     return await batch_enhancement_request.to_sdk(blob_repository.get_signed_url)
+
+
+@router.post("/index/rebuild/")
+async def rebuild_index() -> None:
+    """Delete, recreate and repopulate the Elasticsearch index."""
+    await rebuild_reference_index.kiq()
 
 
 @robot_router.post("/enhancement/single/", status_code=status.HTTP_200_OK)

@@ -22,6 +22,7 @@ jobs:
           cat <<EOF > .env
           APP_NAME=destiny-repository-e2e-tests
           DB_CONFIG=overwritten-in-docker-compose-e2e
+          ES_CONFIG=overwritten-in-docker-compose-e2e
           AZURE_APPLICATION_ID=00000000-0000-0000-0000-000000000000
           AZURE_LOGIN_URL=https://login.microsoftonline.com
           AZURE_TENANT_ID=00000000-0000-0000-0000-000000000000
@@ -33,6 +34,9 @@ jobs:
           ELASTIC_MEM_LIMIT=1073741824 # 1GiB for those playing at home
           ELASTIC_STACK_VERSION=9.0.0
           ELASTIC_PASSWORD="destiny"
+          LICENSE=basic
+          ES_PORT=9200
+          KIBANA_PORT=5601
           KIBANA_PASSWORD="destiny"
           ES_CLUSTER_NAME="docker-cluster"
           EOF

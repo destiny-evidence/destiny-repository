@@ -34,13 +34,20 @@ class ImportBatchStatus(StrEnum):
 
     - `created`: Created, but no processing has started.
     - `started`: Processing has started on the batch.
+    - `failed`: Processing has failed.
+    - `retrying`: Processing has failed, but is being retried.
+    - `indexing`: The imports have been saved and are being indexed.
+    - `indexing_failed`: The imports have been saved but were not indexed.
     - `completed`: Processing has been completed.
     - `cancelled`: Processing was cancelled by calling the API.
     """
 
     CREATED = auto()
     STARTED = auto()
+    RETRYING = auto()
     FAILED = auto()
+    INDEXING = auto()
+    INDEXING_FAILED = auto()
     COMPLETED = auto()
     CANCELLED = auto()
 

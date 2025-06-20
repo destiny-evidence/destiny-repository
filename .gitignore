@@ -192,3 +192,8 @@ cython_debug/
 # delete-me working files
 tmp-scripts.sh
 infra/app/*.py
+
+
+.certs
+
+libs/fake_data/*.jsonl

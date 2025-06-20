@@ -105,9 +105,9 @@ def main() -> None:
         "--output", "-o", type=str, required=True, help="Output filename"
     )
     args = parser.parse_args()
-    for _ in range(args.count):
-        fake_ref = generate_fake_reference_for_import()
-        with Path(args.output).open("w") as f:
+    with Path(args.output).open("w") as f:
+        for _ in range(args.count):
+            fake_ref = generate_fake_reference_for_import()
             f.write(fake_ref.model_dump_json() + "\n")
 
 

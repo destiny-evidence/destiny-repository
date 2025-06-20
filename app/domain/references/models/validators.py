@@ -169,8 +169,8 @@ class ReferenceCreateResult(BaseModel):
             return cls(errors=[f"Entry {entry_ref}:", str(exc)])
 
         identifier_results: list[ExternalIdentifierParseResult] = [
-            await ExternalIdentifierParseResult.from_raw(identifier, i)
-            for i, identifier in enumerate(validated_input.identifiers, 1)
+            await ExternalIdentifierParseResult.from_raw(identifier, entry_ref)
+            for entry_ref, identifier in enumerate(validated_input.identifiers, 1)
         ]
 
         # Fail out if all identifiers failed
@@ -187,8 +187,8 @@ class ReferenceCreateResult(BaseModel):
             )
 
         enhancement_results: list[EnhancementParseResult] = [
-            await EnhancementParseResult.from_raw(enhancement, i)
-            for i, enhancement in enumerate(validated_input.enhancements, 1)
+            await EnhancementParseResult.from_raw(enhancement, entry_ref)
+            for entry_ref, enhancement in enumerate(validated_input.enhancements, 1)
         ]
 
         return cls(

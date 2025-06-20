@@ -30,12 +30,15 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
       DB_CONFIG: '{"DB_URL": "postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
       ENV: "test"
       AZURE_APPLICATION_ID: "dummy"
       AZURE_TENANT_ID: "dummy"
       APP_NAME: "dummy"
+      ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "dummy", "ES_PASS": "dummy", "ES_CA_PATH": "/.dockerenv"}'
     entrypoint: alembic upgrade head
   repository:
     build:
@@ -51,8 +54,12 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
     volumes:
       - ./app:/src/app
+      - ./libs/sdk:/app/libs/sdk
+      - certs:/app/certs
     env_file:
       - .env
     environment:
@@ -60,6 +67,7 @@ services:
       MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
       MINIO_CONFIG: '{"HOST":"fs:9000", "ACCESS_KEY": "localuser", "SECRET_KEY": "localpass"}'
+      ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
     healthcheck:
       test:
         [
@@ -79,15 +87,20 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
     volumes:
       - ./app:/app/app
+      - ./libs/sdk:/app/libs/sdk
+      - certs:/app/certs
     env_file:
       - .env
     environment:
       MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
       MINIO_CONFIG: '{"HOST":"fs:9000", "ACCESS_KEY": "localuser", "SECRET_KEY": "localpass"}'
-    entrypoint: taskiq worker app.tasks:broker --fs-discover
+      ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
+    entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover
   # Excluded by default until open sourced
   # toy-robot:
   #   build:
@@ -116,6 +129,7 @@ services:
       dockerfile: Dockerfile.e2e
     volumes:
       - ./tests/e2e:/e2e
+      - certs:/usr/share/elasticsearch/config/certs
       - shared-minio:/shared-minio
     ports:
       - 8001:8001
@@ -132,6 +146,10 @@ services:
       HTTP_CLIENT_URL: "http://http:5678"
       MINIO_URL: "http://fs:9000"
       CALLBACK_URL: "http://e2e:8001"
+      ES_URL: "https://elasticsearch:9200"
+      ES_CA_PATH: /usr/share/elasticsearch/config/certs/ca/ca.crt
+      ES_USER: "elastic"
+      ES_PASS: "destiny"
       TOY_ROBOT_URL: "http://toy-robot:8001/toy/enhancement/"
       ENV: "test"
       MINIO_PRESIGNED_URL_FILEPATH: /shared-minio/presigned_urls.json

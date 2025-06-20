@@ -1,6 +1,6 @@
 """The service for interacting with and managing references."""
 
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
 from typing import cast
 
 import destiny_sdk
@@ -42,7 +42,10 @@ from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
-from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
+from app.persistence.es.uow import AsyncESUnitOfWork
+from app.persistence.es.uow import unit_of_work as es_uow
+from app.persistence.sql.uow import AsyncSqlUnitOfWork
+from app.persistence.sql.uow import unit_of_work as sql_uow
 from app.utils.lists import list_chunker
 
 logger = get_logger()
@@ -52,15 +55,22 @@ settings = get_settings()
 class ReferenceService(GenericService):
     """The service which manages our references."""
 
-    def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:
+    def __init__(
+        self, sql_uow: AsyncSqlUnitOfWork, es_uow: AsyncESUnitOfWork | None = None
+    ) -> None:
         """Initialize the service with a unit of work."""
-        super().__init__(sql_uow)
+        super().__init__(sql_uow, es_uow)
         self._ingestion_service = IngestionService(sql_uow)
         self._batch_enhancement_service = BatchEnhancementService(sql_uow)
 
-    @unit_of_work
+    @sql_uow
     async def get_reference(self, reference_id: UUID4) -> Reference:
         """Get a single reference by id."""
+        return await self._get_reference(reference_id)
+
+    async def _get_reference(self, reference_id: UUID4) -> Reference:
+        """Get a single reference by id without using the unit of work."""
+        # This method is used internally and does not use the unit of work.
         return await self.sql_uow.references.get_by_pk(
             reference_id, preload=["identifiers", "enhancements"]
         )
@@ -91,7 +101,7 @@ class ReferenceService(GenericService):
         reference.enhancements = [*(reference.enhancements or []), *[enhancement]]
         return await self.sql_uow.references.merge(reference)
 
-    @unit_of_work
+    @sql_uow
     async def add_enhancement(
         self, reference_id: UUID4, enhancement: Enhancement
     ) -> Reference:
@@ -120,7 +130,24 @@ class ReferenceService(GenericService):
             else None,
         )
 
-    @unit_of_work
+    @sql_uow
+    async def get_hydrated_references(
+        self,
+        reference_ids: list[UUID4],
+        enhancement_types: list[EnhancementType] | None = None,
+        external_identifier_types: list[ExternalIdentifierType] | None = None,
+    ) -> list[Reference]:
+        """Get a list of references with enhancements and identifiers by id."""
+        return await self._get_hydrated_references(
+            reference_ids, enhancement_types, external_identifier_types
+        )
+
+    @sql_uow
+    async def get_all_reference_ids(self) -> list[UUID4]:
+        """Get all reference IDs from the database."""
+        return await self.sql_uow.references.get_all_pks()
+
+    @sql_uow
     async def get_reference_from_identifier(
         self, identifier: ExternalIdentifierSearch
     ) -> Reference:
@@ -136,12 +163,12 @@ class ReferenceService(GenericService):
             db_identifier.reference_id, preload=["identifiers", "enhancements"]
         )
 
-    @unit_of_work
+    @sql_uow
     async def register_reference(self) -> Reference:
         """Create a new reference."""
         return await self.sql_uow.references.add(Reference())
 
-    @unit_of_work
+    @sql_uow
     async def add_identifier(
         self, reference_id: UUID4, identifier: ExternalIdentifier
     ) -> LinkedExternalIdentifier:
@@ -168,7 +195,7 @@ class ReferenceService(GenericService):
             record_str, entry_ref, collision_strategy
         )
 
-    @unit_of_work
+    @sql_uow
     async def request_reference_enhancement(
         self,
         enhancement_request: EnhancementRequest,
@@ -214,7 +241,7 @@ class ReferenceService(GenericService):
             request_status=EnhancementRequestStatus.ACCEPTED,
         )
 
-    @unit_of_work
+    @sql_uow
     async def register_batch_reference_enhancement_request(
         self,
         enhancement_request: BatchEnhancementRequest,
@@ -228,7 +255,7 @@ class ReferenceService(GenericService):
 
         return await self.sql_uow.batch_enhancement_requests.add(enhancement_request)
 
-    @unit_of_work
+    @sql_uow
     async def get_enhancement_request(
         self,
         enhancement_request_id: UUID4,
@@ -236,7 +263,7 @@ class ReferenceService(GenericService):
         """Get an enhancement request by request id."""
         return await self._get_enhancement_request(enhancement_request_id)
 
-    @unit_of_work
+    @sql_uow
     async def get_batch_enhancement_request(
         self,
         batch_enhancement_request_id: UUID4,
@@ -246,7 +273,7 @@ class ReferenceService(GenericService):
             batch_enhancement_request_id
         )
 
-    @unit_of_work
+    @sql_uow
     async def create_reference_enhancement_from_request(
         self,
         enhancement_request_id: UUID4,
@@ -259,12 +286,16 @@ class ReferenceService(GenericService):
 
         await self._add_enhancement(enhancement_request.reference_id, enhancement)
 
+        await self.index_reference(
+            reference=await self._get_reference(enhancement_request.reference_id)
+        )
+
         return await self.sql_uow.enhancement_requests.update_by_pk(
             enhancement_request.id,
             request_status=EnhancementRequestStatus.COMPLETED,
         )
 
-    @unit_of_work
+    @sql_uow
     async def mark_enhancement_request_failed(
         self, enhancement_request_id: UUID4, error: str
     ) -> EnhancementRequest:
@@ -275,7 +306,7 @@ class ReferenceService(GenericService):
             error=error,
         )
 
-    @unit_of_work
+    @sql_uow
     async def collect_and_dispatch_references_for_batch_enhancement(
         self,
         batch_enhancement_request: BatchEnhancementRequest,
@@ -334,12 +365,12 @@ class ReferenceService(GenericService):
                 request_status=BatchEnhancementRequestStatus.ACCEPTED,
             )
 
-    @unit_of_work
+    @sql_uow
     async def validate_and_import_batch_enhancement_result(
         self,
         batch_enhancement_request: BatchEnhancementRequest,
         blob_repository: BlobRepository,
-    ) -> None:
+    ) -> BatchEnhancementRequestStatus:
         """
         Validate and import the result of a batch enhancement request.
 
@@ -364,6 +395,21 @@ class ReferenceService(GenericService):
         await self._batch_enhancement_service.add_validation_result_file_to_batch_enhancement_request(  # noqa: E501
             batch_enhancement_request.id, validation_result_file
         )
+
+        # This is a bit hacky - we retrieve the terminal status from the import,
+        # and then set to indexing. Essentially using the SQL UOW as a transport
+        # from the blob generator to this layer.
+        batch_enhancement_request = (
+            await self.sql_uow.batch_enhancement_requests.get_by_pk(
+                batch_enhancement_request.id
+            )
+        )
+
+        await self.sql_uow.batch_enhancement_requests.update_by_pk(
+            batch_enhancement_request.id,
+            request_status=BatchEnhancementRequestStatus.INDEXING,
+        )
+        return batch_enhancement_request.request_status
 
     async def handle_batch_enhancement_result_entry(
         self,
@@ -398,7 +444,7 @@ class ReferenceService(GenericService):
             "Enhancement added.",
         )
 
-    @unit_of_work
+    @sql_uow
     async def mark_batch_enhancement_request_failed(
         self,
         batch_enhancement_request_id: UUID4,
@@ -411,7 +457,7 @@ class ReferenceService(GenericService):
             )
         )
 
-    @unit_of_work
+    @sql_uow
     async def update_batch_enhancement_request_status(
         self,
         batch_enhancement_request_id: UUID4,
@@ -421,3 +467,48 @@ class ReferenceService(GenericService):
         return await self._batch_enhancement_service.update_batch_enhancement_request_status(  # noqa: E501
             batch_enhancement_request_id, status
         )
+
+    @es_uow
+    async def index_references(
+        self,
+        reference_ids: Iterable[UUID4],
+    ) -> None:
+        """Index references in Elasticsearch."""
+        ids = list(reference_ids)
+        chunk_size = settings.es_indexing_chunk_size_override.get(
+            "reference_import",
+            settings.default_es_indexing_chunk_size,
+        )
+
+        logger.info(
+            "Indexing references in Elasticsearch",
+            extra={
+                "n_references": len(ids),
+                "chunk_size": chunk_size,
+            },
+        )
+
+        async def reference_generator() -> AsyncGenerator[Reference, None]:
+            """Generate references for indexing."""
+            for reference_id_chunk in list_chunker(
+                ids,
+                chunk_size,
+            ):
+                references = await self.get_hydrated_references(reference_id_chunk)
+                for reference in references:
+                    yield reference
+
+        await self.es_uow.references.add_bulk(reference_generator())
+
+    @es_uow
+    async def index_reference(
+        self,
+        reference: Reference,
+    ) -> None:
+        """Index a single reference in Elasticsearch."""
+        await self.es_uow.references.add(reference)
+
+    async def repopulate_reference_index(self) -> None:
+        """Index ALL references in Elasticsearch."""
+        reference_ids = await self.get_all_reference_ids()
+        await self.index_references(reference_ids)

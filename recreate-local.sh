@@ -4,7 +4,7 @@
 
 docker compose down -v
 
-docker compose up -d
+docker compose --profile search up -d
 
 poetry run alembic upgrade head
 

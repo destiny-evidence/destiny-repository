@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock
 
 import pytest
+from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from pydantic import UUID4
@@ -18,6 +19,7 @@ from app.core.exceptions import (
     WrongReferenceError,
 )
 from app.domain.references import routes as references
+from app.domain.references.models.es import ReferenceDocument
 from app.domain.references.models.models import (
     BatchEnhancementRequestStatus,
     EnhancementRequestStatus,
@@ -274,9 +276,13 @@ async def test_check_enhancement_request_status_happy_path(
 async def test_fulfill_enhancement_request_happy_path(
     session: AsyncSession,
     client: AsyncClient,
+    es_client: AsyncElasticsearch,
 ) -> None:
     """Test creating an enhancement from a robot."""
     reference = await add_reference(session)
+    await (await ReferenceDocument.from_domain(await reference.to_domain())).save(
+        using=es_client
+    )
     robot = await add_robot(session)
 
     enhancement_request = SQLEnhancementRequest(
@@ -294,6 +300,12 @@ async def test_fulfill_enhancement_request_happy_path(
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["request_status"] == EnhancementRequestStatus.COMPLETED
+
+    es_reference = await ReferenceDocument.get(str(reference.id), using=es_client)
+    assert es_reference
+    assert (
+        es_reference.enhancements[0].content == robot_result["enhancement"]["content"]
+    )
 
 
 async def test_fulfill_enhancement_request_robot_has_errors(
@@ -351,7 +363,10 @@ async def test_wrong_reference_exception_handler_returns_response_with_400(
 
 
 async def test_request_batch_enhancement_happy_path(
-    session: AsyncSession, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    session: AsyncSession,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
 ) -> None:
     """Test requesting a batch enhancement for multiple references."""
     # Add references to the database
