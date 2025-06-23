@@ -5,13 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import (
-    BaseModel,
-    Field,
-    HttpUrl,
-    PostgresDsn,
-    model_validator,
-)
+from pydantic import BaseModel, Field, FilePath, HttpUrl, PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.logger import get_logger
@@ -83,6 +77,70 @@ If db_pass is provided, azure_db_resource_url must not be provided."""
         return self
 
 
+class ESConfig(BaseModel):
+    """Elasticsearch configuration."""
+
+    # Traditional authentication (for local development)
+    es_url: HttpUrl | list[HttpUrl] | None = Field(
+        default=None,
+        description="If a list, connections will be created to all nodes in the list.",
+    )
+    es_user: str | None = None
+    es_pass: str | None = None
+    es_ca_path: FilePath | None = None
+
+    es_insecure_url: HttpUrl | None = Field(
+        default=None,
+        description=(
+            "For connecting to insecure Elasticsearch instances when testing."
+        ),
+    )
+    # API key authentication (for production)
+    cloud_id: str | None = None
+    api_key: str | None = None
+
+    @property
+    def uses_api_key(self) -> bool:
+        """Return True if using API key authentication."""
+        return self.cloud_id is not None and self.api_key is not None
+
+    @property
+    def es_hosts(self) -> list[str]:
+        """Return the Elasticsearch host(s) as a list of strings."""
+        if self.uses_api_key or self.es_url is None:
+            msg = "Elasticsearch URL is not provided."
+            raise ValueError(msg)
+        return [
+            str(url)
+            for url in (self.es_url if isinstance(self.es_url, list) else [self.es_url])
+        ]
+
+    @model_validator(mode="after")
+    def validate_parameters(self) -> Self:
+        """Validate the given parameters."""
+        has_api_key = all([self.cloud_id, self.api_key])
+        has_user_pass = any((self.es_url, self.es_user, self.es_pass, self.es_ca_path))
+
+        # count how many auth methods are provided
+        auth_methods = sum(
+            [
+                has_api_key,
+                has_user_pass,
+                bool(self.es_insecure_url),
+            ]
+        )
+
+        if auth_methods != 1:
+            msg = (
+                "Exactly one of the following authentication methods must be provided: "
+                "API key (cloud_id, api_key), traditional auth (es_url, es_user, "
+                "es_pass, es_ca_path), or insecure URL (es_insecure_url)."
+            )
+            raise ValueError(msg)
+
+        return self
+
+
 class MinioConfig(BaseModel):
     """Minio configuration."""
 
@@ -133,6 +191,7 @@ class Settings(BaseSettings):
     project_root: Path = Path(__file__).joinpath("../../..").resolve()
 
     db_config: DatabaseConfig
+    es_config: ESConfig
     minio_config: MinioConfig | None = None
     azure_blob_config: AzureBlobConfig | None = None
 
@@ -144,6 +203,21 @@ class Settings(BaseSettings):
     message_broker_queue_name: str = "taskiq"
     cli_client_id: str | None = None
     app_name: str
+
+    default_es_indexing_chunk_size: int = Field(
+        default=1000,
+        description=(
+            "Number of records to process in a single chunk when indexing to "
+            "Elasticsearch."
+        ),
+    )
+    es_indexing_chunk_size_override: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Override the default Elasticsearch indexing chunk size. Keyed by operation"
+            " type eg 'reference_import'."
+        ),
+    )
 
     import_batch_retry_count: int = Field(
         default=3,

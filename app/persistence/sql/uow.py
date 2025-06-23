@@ -4,7 +4,7 @@ import functools
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import suppress
 from types import TracebackType
-from typing import ParamSpec, Self, TypeVar
+from typing import TYPE_CHECKING, ParamSpec, Self, TypeVar, cast
 
 from sqlalchemy.exc import PendingRollbackError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +25,8 @@ from app.domain.references.repository import (
 from app.domain.robots.repository import RobotSQLRepository
 from app.persistence.uow import AsyncUnitOfWorkBase
 
+if TYPE_CHECKING:
+    from app.domain.service import GenericService
 logger = get_logger()
 
 
@@ -102,10 +104,10 @@ def unit_of_work(fn: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
 
     @functools.wraps(fn)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-        sql_uow: AsyncSqlUnitOfWork = args[0].sql_uow  # type:ignore[arg-type, attr-defined]
-        async with sql_uow:
+        svc = cast("GenericService", args[0])
+        async with svc.sql_uow:
             result: T = await fn(*args, **kwargs)
-            await sql_uow.commit()
+            await svc.sql_uow.commit()
             return result
 
     return wrapper
@@ -118,10 +120,10 @@ def generator_unit_of_work(
 
     @functools.wraps(fn)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> AsyncGenerator[T, None]:
-        sql_uow: AsyncSqlUnitOfWork = args[0].sql_uow  # type:ignore[arg-type, attr-defined]
-        async with sql_uow:
+        svc = cast("GenericService", args[0])
+        async with svc.sql_uow:
             async for item in fn(*args, **kwargs):
                 yield item
-            await sql_uow.commit()
+            await svc.sql_uow.commit()
 
     return wrapper
