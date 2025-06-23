@@ -11,7 +11,7 @@ def test_bibliographic_metadata_enhancement_valid():
         authorship=[],
         cited_by_count=10,
         created_date=date(2020, 1, 1),
-        publication_date=date(2020, 1, 2),
+        publication_date=date(2050, 1, 2),
         publication_year=2020,
         publisher="Test Publisher",
         title="Test Title",

@@ -5,13 +5,29 @@ import uuid
 from abc import ABC, abstractmethod
 
 from destiny_sdk.core import _JsonlFileInputMixIn
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+)
 
 from app.utils.time_and_date import utc_now
 
 
 class DomainBaseModel(BaseModel):
     """Base model for all domain models to inherit from."""
+
+    def check_serializability(self) -> None:
+        """
+        Check that incoming SDK model is json-serializable.
+
+        This should be called during all domain model conversions.
+
+        Raises:
+            ValidationError: If the model is not json-serializable.
+
+        """
+        self.model_validate(self.model_dump(mode="json"))
 
 
 class SQLAttributeMixin(BaseModel):

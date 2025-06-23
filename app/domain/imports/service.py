@@ -1,8 +1,11 @@
 """The service for interacting with and managing imports."""
 
 import httpx
+from asyncpg.exceptions import DeadlockDetectedError  # type: ignore[import-untyped]
 from pydantic import UUID4
+from sqlalchemy.exc import DBAPIError
 
+from app.core.exceptions import SQLIntegrityError
 from app.core.logger import get_logger
 from app.domain.imports.models.models import (
     CollisionStrategy,
@@ -66,7 +69,7 @@ class ImportService(GenericService):
     async def get_import_batch_with_results(
         self, import_batch_id: UUID4
     ) -> ImportBatch:
-        """Get a single import by id with preloaded results."""
+        """Get a single import batch with preloaded results."""
         return await self.sql_uow.batches.get_by_pk(
             import_batch_id, preload=["import_results"]
         )
@@ -94,9 +97,8 @@ class ImportService(GenericService):
         self, import_batch_id: UUID4, status: ImportBatchStatus
     ) -> ImportBatch:
         """Update the status of an import batch."""
-        return await self._update_import_batch_status(import_batch_id, status)
+        return await self._update_import_batch_status(import_batch_id, status=status)
 
-    @unit_of_work
     async def import_reference(
         self,
         import_batch_id: UUID4,
@@ -146,7 +148,10 @@ This should not happen.
                 reference_id=reference_result.reference_id,
             )
 
-    async def process_batch(self, import_batch: ImportBatch) -> None:
+    @unit_of_work
+    async def process_import_batch_file(
+        self, import_batch: ImportBatch, reference_service: ReferenceService
+    ) -> ImportBatchStatus:
         """
         Process an import batch.
 
@@ -154,16 +159,8 @@ This should not happen.
         - Stream the file from the storage URL.
         - Parse each entry of the file via the Reference service.
         - Persist the file via the Reference service.
-        - Hit the callback URL with the results.
         """
-        await self.update_import_batch_status(
-            import_batch.id, ImportBatchStatus.STARTED
-        )
-
-        # Note: if parallelised, you would need to create a different
-        # reference service with a new uow for each thread.
         try:
-            reference_service = ReferenceService(self.sql_uow)
             logger.info("Processing batch", extra={"batch": import_batch})
             async with (
                 httpx.AsyncClient() as client,
@@ -181,12 +178,112 @@ This should not happen.
                             entry_ref,
                         )
                         entry_ref += 1
+        except SQLIntegrityError as exc:
+            # This handles the case where files loaded in parallel cause a conflict at
+            # the persistence layer.
+            logger.warning(
+                "Integrity error processing batch, likely caused by inconsistent state"
+                " being loaded in parallel. Will retry if retries remaining.",
+                extra={"import_batch_id": import_batch.id, "error": str(exc)},
+            )
+            return ImportBatchStatus.RETRYING
+        except (DBAPIError, DeadlockDetectedError) as exc:
+            # This handles deadlocks that can occur when multiple processes try to
+            # update the same record at the same time.
+            logger.warning(
+                "Deadlock while processing batch. Will retry if retries remaining.",
+                extra={"import_batch_id": import_batch.id, "error": str(exc)},
+            )
+            return ImportBatchStatus.RETRYING
+        except (httpx.NetworkError, httpx.RemoteProtocolError) as exc:
+            # This handles retryable network errors like connection refused,
+            # connection reset by peer, timeouts, etc.
+            logger.warning(
+                "Network error processing batch. Will retry if retries remaining.",
+                extra={"import_batch_id": import_batch.id, "error": str(exc)},
+            )
+            return ImportBatchStatus.RETRYING
         except Exception:
             logger.exception("Failed to process batch", extra={"batch": import_batch})
-            await self.update_import_batch_status(
-                import_batch.id, ImportBatchStatus.FAILED
+            return ImportBatchStatus.FAILED
+        else:
+            return ImportBatchStatus.INDEXING
+
+    async def dispatch_import_batch_callback(
+        self,
+        import_batch: ImportBatch,
+    ) -> None:
+        """Dispatch the callback for an import batch."""
+        if import_batch.callback_url:
+            try:
+                async with httpx.AsyncClient(
+                    transport=httpx.AsyncHTTPTransport(retries=2)
+                ) as client:
+                    # Refresh the import batch to get the latest status
+                    import_batch = await self.get_import_batch_with_results(
+                        import_batch.id
+                    )
+                    response = await client.post(
+                        str(import_batch.callback_url),
+                        json=(await import_batch.to_sdk_summary()).model_dump(
+                            mode="json"
+                        ),
+                    )
+                    response.raise_for_status()
+            except Exception:
+                logger.exception(
+                    "Failed to send callback", extra={"batch": import_batch}
+                )
+
+    async def process_batch(
+        self, import_batch: ImportBatch, reference_service: ReferenceService
+    ) -> ImportBatchStatus:
+        """Process an import batch."""
+        await self.update_import_batch_status(
+            import_batch.id, ImportBatchStatus.STARTED
+        )
+
+        # Persist to database
+        import_batch_status = await self.process_import_batch_file(
+            import_batch, reference_service
+        )
+        await self.update_import_batch_status(import_batch.id, import_batch_status)
+
+        if import_batch_status != ImportBatchStatus.INDEXING:
+            logger.error(
+                "Import batch processing stopped, "
+                "elasticsearch indexing will not proceed.",
+                extra={
+                    "import_batch_id": import_batch.id,
+                    "import_batch_status": import_batch.status,
+                },
             )
-            return
+            return import_batch_status
+
+        # Update elasticsearch index
+        try:
+            imported_references = await self.get_imported_references_from_batch(
+                import_batch_id=import_batch.id
+            )
+            await reference_service.index_references(
+                reference_ids=imported_references,
+            )
+
+        except Exception:
+            logger.exception(
+                "Error indexing references in Elasticsearch",
+                extra={
+                    "import_batch_id": import_batch.id,
+                },
+            )
+            import_batch_status = ImportBatchStatus.INDEXING_FAILED
+
+        else:
+            import_batch_status = ImportBatchStatus.COMPLETED
+
+        await self.update_import_batch_status(import_batch.id, import_batch_status)
+        await self.dispatch_import_batch_callback(import_batch)
+        return import_batch_status
 
     @unit_of_work
     async def add_batch_result(

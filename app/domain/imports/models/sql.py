@@ -6,7 +6,15 @@ import uuid
 from typing import Self
 
 from pydantic import HttpUrl
-from sqlalchemy import UUID, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    UUID,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -71,6 +79,7 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
             "storage_url",
             name="uix_import_batch",
         ),
+        Index("ix_import_batch_import_record_id", "import_record_id"),
     )
 
     @classmethod
@@ -195,6 +204,8 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
     import_batch: Mapped[ImportBatch] = relationship(
         "ImportBatch", back_populates="import_results"
     )
+
+    __table_args__ = (Index("ix_import_result_import_batch_id", "import_batch_id"),)
 
     @classmethod
     async def from_domain(cls, domain_obj: DomainImportResult) -> Self:

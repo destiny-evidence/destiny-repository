@@ -55,7 +55,7 @@ app.include_router(robot_router)
 app.include_router(robot_management_router)
 app.include_router(healthcheck_router)
 
-configure_logger()
+configure_logger(rich_rendering=settings.running_locally)
 
 
 @app.middleware("http")

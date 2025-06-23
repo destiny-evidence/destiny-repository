@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from azure.servicebus import ServiceBusReceiveMode
 from azure.servicebus.aio import ServiceBusClient
 from azure.servicebus.amqp import AmqpAnnotatedMessage
 
@@ -120,12 +121,33 @@ class FakeServiceBusClient:
         """Get ServiceBusSender for the specific queue."""
         return FakeServiceBusSender()
 
-    def get_queue_receiver(self, queue_name: str) -> FakeServiceBusReceiver:  # noqa: ARG002
-        """Get ServiceBusSender for the specific queue."""
+    def get_queue_receiver(
+        self,
+        queue_name: str,  # noqa: ARG002
+        receive_mode: ServiceBusReceiveMode,  # noqa: ARG002
+    ) -> FakeServiceBusReceiver:
+        """Get ServiceBusReceiver for the specific queue."""
         return FakeServiceBusReceiver()
 
     async def close(self) -> None:
         """Close the client."""
+
+
+class FakeServiceBusAutoLockRenewer:
+    """
+    Fake Service Bus AutoLockRenewer for testing.
+
+    This class is used to mock the behavior of the actual
+    Azure Service Bus AutoLockRenewer during unit tests.
+    """
+
+    async def register(
+        self, receiver: FakeServiceBusReceiver, message: AmqpAnnotatedMessage
+    ) -> None:
+        """Simulate registering a message for lock renewal."""
+
+    async def close(self) -> None:
+        """Simulate closing the auto lock renewer."""
 
 
 @pytest.fixture
@@ -172,6 +194,7 @@ async def broker(
         connection_string=connection_string,
         queue_name=queue_name,
     )
+    broker.auto_lock_renewer = FakeServiceBusAutoLockRenewer()
     broker.is_worker_process = True
 
     monkeypatch.setattr(

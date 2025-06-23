@@ -33,9 +33,12 @@ class Robot(DomainBaseModel, SQLAttributeMixin):
     ) -> Self:
         """Create a Robot from the SDK input model."""
         try:
-            return cls.model_validate(data.model_dump())
+            c = cls.model_validate(data.model_dump())
+            c.check_serializability()
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
+        else:
+            return c
 
     async def to_sdk(self) -> destiny_sdk.robots.Robot:
         """Convert the robot to a Robot SDK model."""

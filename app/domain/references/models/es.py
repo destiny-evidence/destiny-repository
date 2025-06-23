@@ -15,7 +15,7 @@ from app.domain.references.models.models import (
     Reference,
     Visibility,
 )
-from app.persistence.es.persistence import GenericESPersistence
+from app.persistence.es.persistence import INDEX_PREFIX, GenericESPersistence
 
 
 class ExternalIdentifierDocument(InnerDoc):
@@ -176,4 +176,4 @@ class ReferenceDocument(GenericESPersistence[Reference], ReferenceDocumentFields
     class Index:
         """Index metadata for the persistence model."""
 
-        name = "reference"
+        name = f"{INDEX_PREFIX}-reference"

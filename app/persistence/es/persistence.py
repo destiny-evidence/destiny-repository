@@ -7,6 +7,8 @@ from elasticsearch.dsl import AsyncDocument
 
 from app.persistence.generics import GenericDomainModelType
 
+INDEX_PREFIX = "destiny-repository"
+
 
 # NB does not inherit ABC due to metadata mixing issues.
 # https://stackoverflow.com/a/49668970
