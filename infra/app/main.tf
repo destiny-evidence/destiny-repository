@@ -115,7 +115,7 @@ locals {
 
 module "container_app" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "1.6.0"
+  version                         = "1.6.2"
   app_name                        = var.app_name
   cpu                             = var.container_app_cpu
   environment                     = var.environment
@@ -181,7 +181,7 @@ module "container_app" {
 
 module "container_app_tasks" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "1.6.0"
+  version                         = "1.6.2"
   app_name                        = "${var.app_name}-task"
   cpu                             = var.container_app_tasks_cpu
   environment                     = var.environment
