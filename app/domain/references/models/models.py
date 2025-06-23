@@ -156,6 +156,7 @@ class Reference(
                 )
                 for enhancement in reference_in.enhancements or []
             ]
+            reference.check_serializability()
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
         else:
