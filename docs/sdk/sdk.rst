@@ -3,14 +3,15 @@ SDK
 
 The DESTINY Repository SDK is a Python package that provides an interface for interacting with the DESTINY data repository.
 
-At present, the SDK primarily provides a set of ``Pydantic`` schemas that are used to define the API interface. It will be expanded to provide additional functionality in the future.
+At present, the SDK primarily provides a set of ``Pydantic`` schemas that are used to define the API interface. It also provides classes to support authentication to and from destiny repository, which are intended to be used with Robots.
 
-It is not yet on PyPI, but you can install it from the GitHub repository:
+The SDK is published via PyPI at https://pypi.org/project/destiny_sdk/ and can be installed with the following
 
 .. code-block:: bash
 
-   poetry add git+ssh://git@github.com:destiny-evidence/destiny-repository.git#subdirectory=libs/sdk
+   poetry add destiny-sdk
 
+Or whichever python package installation method you prefer.
 
 .. toctree::
    :maxdepth: 1

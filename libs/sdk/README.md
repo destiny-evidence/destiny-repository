@@ -67,3 +67,13 @@ poetry publish --repository testpypi
 poetry config pypi-token.pypi [YOUR_PYPI_TOKEN]
 poetry publish
 ```
+
+### Versioning
+
+Follow the [semver](https://semver.org/) guidelines for versioning, tldr;
+
+Given a version number `MAJOR.MINOR.PATCH`, increment the:
+
+- `MAJOR` version when you make incompatible API change
+- `MINOR` version when you add functionality in a backward compatible manner
+- `PATCH` version when you make backward compatible bug fixes
