@@ -23,6 +23,7 @@ from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
     ExternalIdentifierSearch,
+    RobotAutomation,
 )
 from app.domain.references.service import ReferenceService
 from app.domain.references.tasks import (
@@ -344,3 +345,17 @@ async def fulfill_batch_enhancement_request(
     )
 
     return await batch_enhancement_request.to_sdk(blob_repository.get_signed_url)
+
+
+@robot_router.post(path="/automation/", status_code=status.HTTP_201_CREATED)
+async def add_robot_automation(
+    robot_automation: destiny_sdk.robots.RobotAutomation,
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    robot_service: Annotated[RobotService, Depends(robot_service)],
+) -> destiny_sdk.robots.RobotAutomation:
+    """Add a robot automation."""
+    automation = await RobotAutomation.from_sdk(robot_automation)
+    added_automation = await reference_service.add_robot_automation(
+        robot_service=robot_service, automation=automation
+    )
+    return await added_automation.to_sdk()

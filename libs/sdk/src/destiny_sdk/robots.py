@@ -3,7 +3,7 @@
 from enum import StrEnum, auto
 from typing import Annotated, Any, Self
 
-from pydantic import UUID4, BaseModel, ConfigDict, Field, HttpUrl, Json, model_validator
+from pydantic import UUID4, BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 from destiny_sdk.core import _JsonlFileInputMixIn
 from destiny_sdk.enhancements import Enhancement
@@ -349,6 +349,6 @@ class RobotAutomation(BaseModel):
     robot_id: UUID4 = Field(
         description="The ID of the robot that will be used to enhance the reference."
     )
-    query: Json[dict[str, Any]] = Field(
+    query: dict[str, Any] = Field(
         description="The query that will be used to match references against."
     )

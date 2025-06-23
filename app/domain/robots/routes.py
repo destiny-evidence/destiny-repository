@@ -6,7 +6,7 @@ from typing import Annotated
 import destiny_sdk
 from fastapi import APIRouter, Depends, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from elasticsearch import AsyncElasticsearch
+
 from app.core.auth import (
     AuthMethod,
     AuthScopes,
@@ -15,10 +15,8 @@ from app.core.auth import (
 )
 from app.core.config import get_settings
 from app.core.logger import get_logger
-from app.domain.robots.models.models import Robot, RobotAutomation
+from app.domain.robots.models.models import Robot
 from app.domain.robots.service import RobotService
-from app.persistence.es.client import get_client
-from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
@@ -33,19 +31,11 @@ def sql_unit_of_work(
     return AsyncSqlUnitOfWork(session=session)
 
 
-def es_unit_of_work(
-    client: Annotated[AsyncElasticsearch, Depends(get_client)],
-) -> AsyncESUnitOfWork:
-    """Return the unit of work for operating on robots in Elasticsearch."""
-    return AsyncESUnitOfWork(client=client)
-
-
 def robot_service(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
-    es_uow: Annotated[AsyncESUnitOfWork, Depends(es_unit_of_work)],
 ) -> RobotService:
     """Return the robot service using the provided unit of work dependencies."""
-    return RobotService(sql_uow=sql_uow, es_uow=es_uow)
+    return RobotService(sql_uow=sql_uow)
 
 
 def choose_auth_strategy_robot_writer() -> AuthMethod:
@@ -109,14 +99,3 @@ async def cycle_robot_secret(
     """Cycle the robot's client_secret."""
     robot_secret_cycled = await robot_service.cycle_robot_secret(robot_id=robot_id)
     return await robot_secret_cycled.to_sdk_provisioned()
-
-
-@router.post(path="/automation/", status_code=status.HTTP_200_OK)
-async def add_robot_automation(
-    robot_automation: destiny_sdk.robots.RobotAutomation,
-    robot_service: Annotated[RobotService, Depends(robot_service)],
-) -> destiny_sdk.robots.RobotAutomation:
-    """Add an automation to a robot."""
-    automation = await RobotAutomation.from_sdk(robot_automation)
-    added_automation = await robot_service.add_robot_automation(automation=automation)
-    return await added_automation.to_sdk()

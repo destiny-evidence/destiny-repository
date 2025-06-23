@@ -5,9 +5,11 @@ from collections.abc import AsyncGenerator
 from typing import Generic
 
 from elasticsearch import AsyncElasticsearch
+from elasticsearch.dsl.exceptions import UnknownDslObject
+from elasticsearch.exceptions import BadRequestError
 from pydantic import UUID4
 
-from app.core.exceptions import ESError, ESNotFoundError
+from app.core.exceptions import ESError, ESMalformedError, ESNotFoundError
 from app.persistence.es.generics import GenericESPersistenceType
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
@@ -83,7 +85,13 @@ class GenericAsyncESRepository(
         :rtype: GenericDomainModelType
         """
         es_record = await self._persistence_cls.from_domain(record)
-        _created = await es_record.save(using=self._client)
+        try:
+            await es_record.save(using=self._client)
+        except (BadRequestError, UnknownDslObject) as exc:
+            # This is usually raised on incorrect percolation queries but
+            # we raise it more generally.
+            msg = f"Malformed Elasticsearch document: {record}. Error: {exc}."
+            raise ESMalformedError(msg) from exc
         return record
 
     async def add_bulk(

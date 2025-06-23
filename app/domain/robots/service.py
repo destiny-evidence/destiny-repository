@@ -4,10 +4,8 @@ import secrets
 
 from pydantic import UUID4, SecretStr
 
-from app.domain.robots.models.models import Robot, RobotAutomation
+from app.domain.robots.models.models import Robot
 from app.domain.service import GenericService
-from app.persistence.es.uow import AsyncESUnitOfWork
-from app.persistence.es.uow import unit_of_work as es_unit_of_work
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
 
@@ -17,10 +15,9 @@ ENOUGH_BYTES_FOR_SAFETY = 32
 class RobotService(GenericService):
     """Service for creating and managing robots."""
 
-    def __init__(self, sql_uow: AsyncSqlUnitOfWork, es_uow: AsyncESUnitOfWork) -> None:
+    def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:
         """Initialize the robots."""
         self.sql_uow = sql_uow
-        self.es_uow = es_uow
 
     async def get_robot(self, robot_id: UUID4) -> Robot:
         """Return a given robot."""
@@ -61,13 +58,3 @@ class RobotService(GenericService):
         return await self.sql_uow.robots.update_by_pk(
             robot_id, client_secret=new_client_secret
         )
-
-    @sql_unit_of_work
-    @es_unit_of_work
-    async def add_robot_automation(
-        self, automation: RobotAutomation
-    ) -> RobotAutomation:
-        """Add an automation to a robot."""
-        automation = await self.sql_uow.robot_automations.add(automation)
-        await self.es_uow.robot_automations.add(automation)
-        return automation

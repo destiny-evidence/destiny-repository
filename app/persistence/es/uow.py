@@ -8,8 +8,10 @@ from typing import TYPE_CHECKING, ParamSpec, Self, TypeVar, cast
 from elasticsearch import AsyncElasticsearch
 
 from app.core.exceptions import UOWError
-from app.domain.references.repository import ReferenceESRepository
-from app.domain.robots.repository import RobotAutomationESRepository
+from app.domain.references.repository import (
+    ReferenceESRepository,
+    RobotAutomationESRepository,
+)
 from app.persistence.uow import AsyncUnitOfWorkBase
 
 if TYPE_CHECKING:

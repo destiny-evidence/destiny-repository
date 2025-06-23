@@ -206,6 +206,22 @@ class ESNotFoundError(NotFoundError, ESError):
         super().__init__(detail, *args)
 
 
+class ESMalformedError(ESError):
+    """Exception for when an Elasticsearch document is malformed."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the ESMalformedError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        self.detail = detail
+        super().__init__(detail, *args)
+
+
 class WrongReferenceError(InvalidPayloadError):
     """Exception for when enhancement is for a different reference than requested."""
 

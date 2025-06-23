@@ -17,10 +17,10 @@ from app.domain.references.repository import (
     EnhancementRequestRepositoryBase,
     ExternalIdentifierRepositoryBase,
     ReferenceRepositoryBase,
+    RobotAutomationRepositoryBase,
 )
 from app.domain.robots.repository import (
     RobotRepositoryBase,
-    RobotAutomationRepositoryBase,
 )
 from app.persistence.repository import GenericAsyncRepository
 

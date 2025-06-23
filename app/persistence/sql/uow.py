@@ -21,10 +21,10 @@ from app.domain.references.repository import (
     EnhancementSQLRepository,
     ExternalIdentifierSQLRepository,
     ReferenceSQLRepository,
+    RobotAutomationSQLRepository,
 )
 from app.domain.robots.repository import (
     RobotSQLRepository,
-    RobotAutomationSQLRepository,
 )
 from app.persistence.uow import AsyncUnitOfWorkBase
 

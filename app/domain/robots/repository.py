@@ -2,28 +2,16 @@
 
 from abc import ABC
 
-from elasticsearch import AsyncElasticsearch
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import SQLIntegrityError, SQLNotFoundError
-from app.domain.robots.models.es import (
-    RobotAutomationPercolatable,
-    RobotAutomationPercolationDocument,
-)
 from app.domain.robots.models.models import (
     Robot as DomainRobot,
-)
-from app.domain.robots.models.models import (
-    RobotAutomation as DomainRobotAutomation,
 )
 from app.domain.robots.models.sql import (
     Robot as SQLRobot,
 )
-from app.domain.robots.models.sql import (
-    RobotAutomation as SQLRobotAutomation,
-)
-from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
 from app.persistence.sql.repository import GenericAsyncSqlRepository
@@ -97,66 +85,3 @@ class RobotSQLRepository(
 
         await self._session.refresh(persistence)
         return await persistence.to_domain()
-
-
-class RobotAutomationRepositoryBase(
-    GenericAsyncRepository[DomainRobotAutomation, GenericPersistenceType],
-    ABC,
-):
-    """Abstract implementation of a repository for Robot Automations."""
-
-
-class RobotAutomationSQLRepository(
-    GenericAsyncSqlRepository[DomainRobotAutomation, SQLRobotAutomation],
-    RobotAutomationRepositoryBase,
-):
-    """Concrete implementation of a repository for robot automations using SQL."""
-
-    def __init__(self, session: AsyncSession) -> None:
-        """Initialize the repository with the database session."""
-        super().__init__(
-            session,
-            DomainRobotAutomation,
-            SQLRobotAutomation,
-        )
-
-
-class RobotAutomationESRepository(
-    GenericAsyncESRepository[DomainRobotAutomation, RobotAutomationPercolationDocument],
-    RobotAutomationRepositoryBase,
-):
-    """Concrete implementation for robot automations using Elasticsearch."""
-
-    def __init__(self, client: AsyncElasticsearch) -> None:
-        """Initialize the repository with the Elasticsearch client."""
-        super().__init__(
-            client,
-            DomainRobotAutomation,
-            RobotAutomationPercolationDocument,
-        )
-
-    async def percolate(
-        self,
-        documents: list[RobotAutomationPercolatable],
-    ):
-        """
-        Percolate documents against the percolation queries in Elasticsearch.
-
-        :param documents: A list of documents to percolate.
-        :type documents: list[RobotAutomationPercolatable]
-        :return: The results of the percolation.
-        :rtype: TODO
-        """
-        percolation = await (
-            self._persistence_cls.search()
-            .using(self._client)
-            .query(
-                {
-                    "percolate": {
-                        "field": "query",
-                        "documents": [document.to_dict() for document in documents],
-                    }
-                }
-            )
-            .execute()
-        )

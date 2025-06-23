@@ -32,6 +32,9 @@ from app.domain.references.models.models import (
 from app.domain.references.models.models import (
     Reference as DomainReference,
 )
+from app.domain.references.models.models import (
+    RobotAutomation as DomainRobotAutomation,
+)
 from app.persistence.blob.models import BlobStorageFile
 from app.persistence.sql.persistence import GenericSQLPersistence
 
@@ -383,4 +386,49 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             )
             if self.validation_result_file
             else None,
+        )
+
+
+class RobotAutomation(GenericSQLPersistence[DomainRobotAutomation]):
+    """
+    SQL Persistence model for a Robot Automation.
+
+    This is used in the repository layer to pass data between the domain and the
+    database.
+    """
+
+    __tablename__ = "robot_automation"
+
+    robot_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("robot.id"), nullable=False
+    )
+
+    query: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "robot_id",
+            "query",
+            name="uix_robot_automation",
+        ),
+    )
+
+    @classmethod
+    async def from_domain(cls, domain_obj: DomainRobotAutomation) -> Self:
+        """Create a persistence model from a domain RobotAutomation object."""
+        return cls(
+            id=domain_obj.id,
+            robot_id=domain_obj.robot_id,
+            query=domain_obj.query,
+        )
+
+    async def to_domain(
+        self,
+        preload: list[str] | None = None,  # noqa: ARG002
+    ) -> DomainRobotAutomation:
+        """Convert the persistence model into a Domain RobotAutomation object."""
+        return DomainRobotAutomation(
+            id=self.id,
+            robot_id=self.robot_id,
+            query=self.query,
         )

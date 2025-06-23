@@ -29,6 +29,7 @@ from app.domain.references.models.models import (
     ExternalIdentifierType,
     LinkedExternalIdentifier,
     Reference,
+    RobotAutomation,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.services.batch_enhancement_service import (
@@ -512,3 +513,17 @@ class ReferenceService(GenericService):
         """Index ALL references in Elasticsearch."""
         reference_ids = await self.get_all_reference_ids()
         await self.index_references(reference_ids)
+
+    @sql_uow
+    @es_uow
+    async def add_robot_automation(
+        self, robot_service: RobotService, automation: RobotAutomation
+    ) -> RobotAutomation:
+        """Add an automation to a robot."""
+        await robot_service.get_robot(automation.robot_id)
+        automation = await self.sql_uow.robot_automations.add(automation)
+        # We do the indexing inside the SQL UoW as the ES indexing actually provides
+        # some handy validation against the index itself. This is caught with an API-
+        # level exception handler, so we don't need to handle it here.
+        await self.es_uow.robot_automations.add(automation)
+        return automation

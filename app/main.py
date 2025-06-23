@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.core.exceptions import (
+    ESMalformedError,
     IntegrityError,
     InvalidPayloadError,
     NotFoundError,
@@ -163,6 +164,22 @@ async def enhance_wrong_reference_exception_handler(
     """Return unprocessable entity response when the payload is invalid."""
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=jsonable_encoder({"detail": exception.detail}),
+    )
+
+
+@app.exception_handler(ESMalformedError)
+async def es_malformed_exception_handler(
+    _request: Request,
+    exception: ESMalformedError,
+) -> JSONResponse:
+    """
+    Return unprocessable entity response when an Elasticsearch document is malformed.
+
+    This is generally raised on incorrect percolation queries attempting to be saved.
+    """
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
         content=jsonable_encoder({"detail": exception.detail}),
     )
 
