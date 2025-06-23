@@ -362,10 +362,6 @@ resource "azurerm_role_assignment" "blob_storage_rw" {
   principal_id         = each.value
 }
 
-resource "azurerm_resource_provider_registration" "elastic" {
-  name = "Microsoft.Elastic"
-}
-
 resource "ec_deployment" "cluster" {
   name = "${var.app_name}-${substr(var.environment, 0, 4)}-es"
   region                 = var.elasticsearch_region
