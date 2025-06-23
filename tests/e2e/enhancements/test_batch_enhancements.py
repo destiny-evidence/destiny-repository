@@ -11,6 +11,7 @@ import time
 import destiny_sdk
 import httpx
 import pytest
+from elasticsearch import Elasticsearch
 from sqlalchemy import create_engine, text
 
 toy_robot_url = os.environ["TOY_ROBOT_URL"]
@@ -102,17 +103,6 @@ def test_complete_batch_enhancement_workflow():
         for line in reference_data_file.text.splitlines():
             reference = destiny_sdk.references.Reference.model_validate_json(line)
             assert str(reference.id) in reference_ids
-            # Check we only got enhancements we're dependent on
-            dependent_enhancements = {"abstract", "annotation"}
-            dependent_identifiers = {"doi", "pm_id"}
-            assert not (
-                {e.content.enhancement_type for e in reference.enhancements}
-                - dependent_enhancements
-            )
-            assert not (
-                {i.identifier_type for i in reference.identifiers}
-                - dependent_identifiers
-            )
 
     # Finally check we got some toys themselves
     with engine.connect() as conn:
@@ -133,4 +123,25 @@ def test_complete_batch_enhancement_workflow():
 
         if not all(toy_found.values()):
             msg = "Expected toy robot enhancement not found in reference."
+            raise AssertionError(msg)
+
+    time.sleep(1)
+    es = Elasticsearch(
+        os.environ["ES_URL"],
+        basic_auth=(os.environ["ES_USER"], os.environ["ES_PASS"]),
+        ca_certs=os.environ["ES_CA_PATH"],
+    )
+    es_index = "destiny-repository-reference"
+    for reference_id in reference_ids:
+        response = es.get(index=es_index, id=reference_id)
+        toy_found = False
+        for row in response["_source"]["enhancements"]:
+            if (
+                row["content"]["enhancement_type"] == "annotation"
+                and row["source"] == "Toy Robot"
+            ):
+                toy_found = True
+
+        if not toy_found:
+            msg = "Expected toy robot enhancement not found in elasticsearch reference."
             raise AssertionError(msg)

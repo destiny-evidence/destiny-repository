@@ -3,11 +3,13 @@
 from abc import ABC
 from uuid import UUID
 
+from elasticsearch import AsyncElasticsearch
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.core.exceptions import SQLNotFoundError
+from app.domain.references.models.es import ReferenceDocument
 from app.domain.references.models.models import (
     BatchEnhancementRequest as DomainBatchEnhancementRequest,
 )
@@ -30,6 +32,7 @@ from app.domain.references.models.sql import Enhancement as SQLEnhancement
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import ExternalIdentifier as SQLExternalIdentifier
 from app.domain.references.models.sql import Reference as SQLReference
+from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
 from app.persistence.sql.repository import GenericAsyncSqlRepository
@@ -62,9 +65,14 @@ class ReferenceSQLRepository(
         enhancement_types: list[str] | None = None,
         external_identifier_types: list[str] | None = None,
     ) -> list[DomainReference]:
-        """Get a list of references with enhancements and identifiers by id."""
+        """
+        Get a list of references with enhancements and identifiers by id.
+
+        If enhancement_types or external_identifier_types are provided,
+        only those types will be included in the results. Otherwise all
+        enhancements and identifiers will be included.
+        """
         query = select(SQLReference).where(SQLReference.id.in_(reference_ids))
-        preload: list[str] = []
         if enhancement_types:
             query = query.options(
                 joinedload(
@@ -73,7 +81,8 @@ class ReferenceSQLRepository(
                     )
                 )
             )
-            preload.append("enhancements")
+        else:
+            query = query.options(joinedload(SQLReference.enhancements))
         if external_identifier_types:
             query = query.options(
                 joinedload(
@@ -84,13 +93,29 @@ class ReferenceSQLRepository(
                     )
                 )
             )
-            preload.append("identifiers")
+        else:
+            query = query.options(joinedload(SQLReference.identifiers))
         result = await self._session.execute(query)
         db_references = result.unique().scalars().all()
         return [
-            await db_reference.to_domain(preload=preload)
+            await db_reference.to_domain(preload=["enhancements", "identifiers"])
             for db_reference in db_references
         ]
+
+
+class ReferenceESRepository(
+    GenericAsyncESRepository[DomainReference, ReferenceDocument],
+    ReferenceRepositoryBase,
+):
+    """Concrete implementation of a repository for references using Elasticsearch."""
+
+    def __init__(self, client: AsyncElasticsearch) -> None:
+        """Initialize the repository with the Elasticsearch client."""
+        super().__init__(
+            client,
+            DomainReference,
+            ReferenceDocument,
+        )
 
 
 class ExternalIdentifierRepositoryBase(

@@ -6,6 +6,7 @@ from taskiq_aio_pika import AioPikaBroker
 from app.core.azure_service_bus_broker import AzureServiceBusBroker
 from app.core.config import Environment, get_settings
 from app.core.logger import configure_logger
+from app.persistence.es.client import es_manager
 from app.persistence.sql.session import db_manager
 
 settings = get_settings()
@@ -28,9 +29,11 @@ configure_logger(rich_rendering=settings.running_locally)
 async def startup(_state: TaskiqState) -> None:
     """Initialize the database when the worker is ready."""
     db_manager.init(settings.db_config, settings.app_name)
+    await es_manager.init(settings.es_config)
 
 
 @broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)
 async def shutdown(_state: TaskiqState) -> None:
     """Close DB connections when the worker is shutting down."""
     await db_manager.close()
+    await es_manager.close()
