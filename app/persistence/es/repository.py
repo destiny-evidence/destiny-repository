@@ -1,10 +1,11 @@
 """Generic repositories define expected functionality."""
 
+import contextlib
 from abc import ABC
 from collections.abc import AsyncGenerator
 from typing import Generic
 
-from elasticsearch import AsyncElasticsearch
+from elasticsearch import AsyncElasticsearch, NotFoundError
 from elasticsearch.dsl.exceptions import UnknownDslObject
 from elasticsearch.exceptions import BadRequestError
 from pydantic import UUID4
@@ -61,10 +62,13 @@ class GenericAsyncESRepository(
             msg = "Preloading is not supported in Elasticsearch repositories."
             raise ESError(msg)
 
-        result = await self._persistence_cls.get(
-            id=str(pk),
-            using=self._client,
-        )
+        result = None
+        with contextlib.suppress(NotFoundError):
+            result = await self._persistence_cls.get(
+                id=str(pk),
+                using=self._client,
+            )
+
         if not result:
             detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
             raise ESNotFoundError(

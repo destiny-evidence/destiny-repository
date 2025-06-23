@@ -26,7 +26,6 @@ async def create_test_indices(client: AsyncElasticsearch):
 
 async def delete_test_indices(client: AsyncElasticsearch):
     """Delete all indices after tests."""
-    patch_index_names()
     for index in indices:
         exists = await client.indices.exists(index=index.Index.name)
         if exists:

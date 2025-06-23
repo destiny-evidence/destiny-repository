@@ -128,27 +128,19 @@ class EnhancementDocument(InnerDoc):
         )
 
 
-class ReferenceDocumentFields:
-    """
-    Fields for the ReferenceDocument.
-
-    This provides a source of truth for top-level and InnerDoc implementations.
-    """
-
-    visibility: Visibility = mapped_field(Keyword(required=True))
-    identifiers: list[ExternalIdentifierDocument] = mapped_field(
-        Nested(ExternalIdentifierDocument)
-    )
-    enhancements: list[EnhancementDocument] = mapped_field(Nested(EnhancementDocument))
-
-
-class ReferenceDocument(GenericESPersistence[Reference], ReferenceDocumentFields):
+class ReferenceDocument(GenericESPersistence[Reference]):
     """Persistence model for references in Elasticsearch."""
 
     class Index:
         """Index metadata for the persistence model."""
 
         name = f"{INDEX_PREFIX}-reference"
+
+    visibility: Visibility = mapped_field(Keyword(required=True))
+    identifiers: list[ExternalIdentifierDocument] = mapped_field(
+        Nested(ExternalIdentifierDocument)
+    )
+    enhancements: list[EnhancementDocument] = mapped_field(Nested(EnhancementDocument))
 
     @classmethod
     async def from_domain(cls, domain_obj: Reference) -> Self:
@@ -179,21 +171,27 @@ class ReferenceDocument(GenericESPersistence[Reference], ReferenceDocumentFields
             visibility=self.visibility,
             identifiers=await asyncio.gather(
                 *(
-                    identifier.to_domain(reference_id=self.id)
+                    identifier.to_domain(reference_id=self.meta.id)
                     for identifier in self.identifiers
                 )
             ),
             enhancements=await asyncio.gather(
                 *(
-                    enhancement.to_domain(reference_id=self.id)
+                    enhancement.to_domain(reference_id=self.meta.id)
                     for enhancement in self.enhancements
                 )
             ),
         )
 
 
-class ReferenceInnerDocument(InnerDoc, ReferenceDocumentFields):
+class ReferenceInnerDocument(InnerDoc):
     """InnerDoc for references in Elasticsearch."""
+
+    visibility: Visibility = mapped_field(Keyword(required=True))
+    identifiers: list[ExternalIdentifierDocument] = mapped_field(
+        Nested(ExternalIdentifierDocument)
+    )
+    enhancements: list[EnhancementDocument] = mapped_field(Nested(EnhancementDocument))
 
     @classmethod
     async def from_domain(cls, domain_obj: Reference) -> Self:
