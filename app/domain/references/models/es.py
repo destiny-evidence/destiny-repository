@@ -5,6 +5,7 @@ import uuid
 from typing import Any, Self
 
 from elasticsearch.dsl import (
+    Boolean,
     InnerDoc,
     Keyword,
     Nested,
@@ -66,8 +67,10 @@ class ExternalIdentifierDocument(InnerDoc):
 class AnnotationDocument(InnerDoc):
     """Persistence model for useful annotation fields in Elasticsearch."""
 
-    scheme: str | None = mapped_field(Keyword())
-    label: str | None = mapped_field(Keyword())
+    scheme: str = mapped_field(Keyword())
+    label: str = mapped_field(Keyword())
+    annotation_type: str = mapped_field(Keyword())
+    value: bool = mapped_field(Boolean())
 
     class Meta:
         """Allow unmapped fields in the document."""
@@ -239,11 +242,6 @@ class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
     enhancement: EnhancementDocument | None = mapped_field(
         Object(EnhancementDocument, required=False),
     )
-    # The ID of the reference that this query is percolating against.
-    # This is used to link the percolation result back to the reference.
-    reference_id: uuid.UUID | None = mapped_field(
-        Text(required=False),
-    )
 
     @classmethod
     async def from_domain(cls, domain_obj: RobotAutomation) -> Self:
@@ -284,7 +282,4 @@ class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
             enhancement=await EnhancementDocument.from_domain(percolatable)
             if isinstance(percolatable, Enhancement)
             else None,
-            reference_id=percolatable.id
-            if isinstance(percolatable, Reference)
-            else percolatable.reference_id,
         )

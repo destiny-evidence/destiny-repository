@@ -12,6 +12,7 @@ from destiny_sdk.enhancements import EnhancementContent, EnhancementType  # noqa
 from destiny_sdk.identifiers import ExternalIdentifier, ExternalIdentifierType
 from pydantic import (
     UUID4,
+    BaseModel,
     Field,
     HttpUrl,
     TypeAdapter,
@@ -653,3 +654,10 @@ class RobotAutomation(DomainBaseModel, SQLAttributeMixin):
             return destiny_sdk.robots.RobotAutomation.model_validate(self.model_dump())
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
+
+
+class RobotAutomationPercolationResult(BaseModel):
+    """Result of a percolation query against RobotAutomations."""
+
+    robot_id: UUID4
+    reference_ids: set[UUID4]

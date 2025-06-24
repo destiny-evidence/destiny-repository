@@ -191,6 +191,6 @@ async def es_client(
 ) -> AsyncGenerator[AsyncElasticsearch, None]:
     """Yield the ES client for the test and cleanup indices after."""
     async with es_manager_for_tests.client() as client:
+        await delete_test_indices(client)
         await create_test_indices(client)
         yield client
-        await delete_test_indices(client)

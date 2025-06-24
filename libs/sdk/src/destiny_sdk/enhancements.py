@@ -173,10 +173,11 @@ class ScoreAnnotation(BaseModel):
     )
     score: float = Field(description="""Score for this annotation""")
     data: dict = Field(
+        default_factory=dict,
         description=(
             "An object representation of the annotation including any confidence scores"
             " or descriptions."
-        )
+        ),
     )
 
 
@@ -201,6 +202,7 @@ class BooleanAnnotation(BaseModel):
         None, description="A confidence score for this annotation"
     )
     data: dict = Field(
+        default_factory=dict,
         description="""
 An object representation of the annotation including any confidence scores or
 descriptions.

@@ -25,6 +25,7 @@ from app.domain.references.models.models import (
 from app.domain.references.models.models import (
     ExternalIdentifierType,
     GenericExternalIdentifier,
+    RobotAutomationPercolationResult,
 )
 from app.domain.references.models.models import (
     LinkedExternalIdentifier as DomainExternalIdentifier,
@@ -342,7 +343,7 @@ class RobotAutomationESRepository(
     async def percolate(
         self,
         percolatables: list[DomainReference | DomainEnhancement],
-    ) -> None:
+    ) -> list[RobotAutomationPercolationResult]:
         """
         Percolate documents against the percolation queries in Elasticsearch.
 
@@ -359,7 +360,7 @@ class RobotAutomationESRepository(
             ).to_dict()
             for percolatable in percolatables
         ]
-        await (
+        results = await (
             self._persistence_cls.search()
             .using(self._client)
             .query(
@@ -372,3 +373,23 @@ class RobotAutomationESRepository(
             )
             .execute()
         )
+
+        robot_automation_percolation_results: list[
+            RobotAutomationPercolationResult
+        ] = []
+        for result in results:
+            matches: list[DomainReference | DomainEnhancement] = [
+                percolatables[slot]
+                for slot in result.meta.fields["_percolator_document_slot"]
+            ]
+            reference_ids = {
+                match.id if isinstance(match, DomainReference) else match.reference_id
+                for match in matches
+            }
+            robot_automation_percolation_results.append(
+                RobotAutomationPercolationResult(
+                    robot_id=result.robot_id, reference_ids=reference_ids
+                )
+            )
+
+        return robot_automation_percolation_results
