@@ -285,6 +285,10 @@ async def rebuild_index() -> None:
 async def fulfill_enhancement_request(
     robot_result: destiny_sdk.robots.RobotResult,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    robot_service: Annotated[RobotService, Depends(robot_service)],
+    robot_request_dispatcher: Annotated[
+        RobotRequestDispatcher, Depends(robot_request_dispatcher)
+    ],
 ) -> destiny_sdk.robots.EnhancementRequestRead:
     """Create an enhancement against an existing enhancement request."""
     if robot_result.error:
@@ -304,6 +308,8 @@ async def fulfill_enhancement_request(
         await reference_service.create_reference_enhancement_from_request(
             enhancement_request_id=robot_result.request_id,
             enhancement=await Enhancement.from_sdk(robot_result.enhancement),
+            robot_service=robot_service,
+            robot_request_dispatcher=robot_request_dispatcher,
         )
     )
 

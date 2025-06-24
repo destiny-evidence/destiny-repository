@@ -281,6 +281,8 @@ class ReferenceService(GenericService):
         self,
         enhancement_request_id: UUID4,
         enhancement: Enhancement,
+        robot_service: RobotService,
+        robot_request_dispatcher: RobotRequestDispatcher,
     ) -> EnhancementRequest:
         """Finalise the creation of an enhancement against a reference."""
         enhancement_request = await self._get_enhancement_request(
@@ -292,6 +294,25 @@ class ReferenceService(GenericService):
         await self.index_reference(
             reference=await self._get_reference(enhancement_request.reference_id)
         )
+
+        for robot_automation in await self.detect_robot_automations(
+            enhancement_ids=[enhancement.id],
+        ):
+            logger.info(
+                "Detected robot automation for enhancement",
+                extra={
+                    "robot_id": robot_automation.robot_id,
+                    "reference_ids": robot_automation.reference_ids,
+                },
+            )
+            await self.request_reference_enhancement(
+                EnhancementRequest(
+                    reference_id=enhancement_request.reference_id,
+                    robot_id=robot_automation.robot_id,
+                ),
+                robot_service=robot_service,
+                robot_request_dispatcher=robot_request_dispatcher,
+            )
 
         return await self.sql_uow.enhancement_requests.update_by_pk(
             enhancement_request.id,
