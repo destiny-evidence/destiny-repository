@@ -245,7 +245,10 @@ async def test_process_batch_enhancement_result_missing_reference_id(
 
     mock_blob_repo.stream_file_from_blob_storage = FakeStream
 
+    added_enhancements = []
+
     async def fake_add_enhancement(enhancement):
+        added_enhancements.append(enhancement)
         return True, f"Reference {enhancement.reference_id}: Enhancement added."
 
     inserted_enhancement_ids = set()
@@ -262,6 +265,7 @@ async def test_process_batch_enhancement_result_missing_reference_id(
     assert messages[1].reference_id == reference_id_2
     assert messages[1].error == "Requested reference not in batch enhancement result."
     assert len(inserted_enhancement_ids) == 1
+    assert added_enhancements[0].id == inserted_enhancement_ids.pop()
     updated = uow.batch_enhancement_requests.get_first_record()
     # One success, one failure: should be PARTIAL_FAILED
     assert updated.request_status == BatchEnhancementRequestStatus.PARTIAL_FAILED

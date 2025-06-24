@@ -460,7 +460,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             basic_auth=(os.environ["ES_USER"], os.environ["ES_PASS"]),
             ca_certs=os.environ["ES_CA_PATH"],
         )
-        es_index = "destiny-repository-reference"
+        es_index = "destiny-repository-local-reference"
         assert es.indices.exists(index=es_index)
         es_response = es.search(
             index=es_index,
