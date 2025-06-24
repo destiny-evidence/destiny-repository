@@ -174,13 +174,13 @@ class ReferenceDocument(GenericESPersistence[Reference]):
             visibility=self.visibility,
             identifiers=await asyncio.gather(
                 *(
-                    identifier.to_domain(reference_id=self.meta.id)
+                    identifier.to_domain(reference_id=uuid.UUID(self.meta.id))
                     for identifier in self.identifiers
                 )
             ),
             enhancements=await asyncio.gather(
                 *(
-                    enhancement.to_domain(reference_id=self.meta.id)
+                    enhancement.to_domain(reference_id=uuid.UUID(self.meta.id))
                     for enhancement in self.enhancements
                 )
             ),

@@ -249,40 +249,6 @@ This should not happen.
         )
         await self.update_import_batch_status(import_batch.id, import_batch_status)
 
-        if import_batch_status != ImportBatchStatus.INDEXING:
-            logger.error(
-                "Import batch processing stopped, "
-                "elasticsearch indexing will not proceed.",
-                extra={
-                    "import_batch_id": import_batch.id,
-                    "import_batch_status": import_batch.status,
-                },
-            )
-            return import_batch_status
-
-        # Update elasticsearch index
-        try:
-            imported_references = await self.get_imported_references_from_batch(
-                import_batch_id=import_batch.id
-            )
-            await reference_service.index_references(
-                reference_ids=imported_references,
-            )
-
-        except Exception:
-            logger.exception(
-                "Error indexing references in Elasticsearch",
-                extra={
-                    "import_batch_id": import_batch.id,
-                },
-            )
-            import_batch_status = ImportBatchStatus.INDEXING_FAILED
-
-        else:
-            import_batch_status = ImportBatchStatus.COMPLETED
-
-        await self.update_import_batch_status(import_batch.id, import_batch_status)
-        await self.dispatch_import_batch_callback(import_batch)
         return import_batch_status
 
     @unit_of_work

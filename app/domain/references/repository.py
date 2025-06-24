@@ -1,6 +1,7 @@
 """Repositories for references and associated models."""
 
 from abc import ABC
+from collections.abc import Sequence
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
@@ -342,7 +343,7 @@ class RobotAutomationESRepository(
 
     async def percolate(
         self,
-        percolatables: list[DomainReference | DomainEnhancement],
+        percolatables: Sequence[DomainReference | DomainEnhancement],
     ) -> list[RobotAutomationPercolationResult]:
         """
         Percolate documents against the percolation queries in Elasticsearch.
@@ -350,7 +351,7 @@ class RobotAutomationESRepository(
         :param percolatables: A list of percolatable domain objects.
         :type percolatables: list[DomainReference | DomainEnhancement]
         :return: The results of the percolation.
-        :rtype: TODO
+        :rtype: list[RobotAutomationPercolationResult]
         """
         documents = [
             (

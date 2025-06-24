@@ -219,6 +219,21 @@ class Settings(BaseSettings):
         ),
     )
 
+    default_es_percolation_chunk_size: int = Field(
+        default=1000,
+        description=(
+            "Number of records to process in a single chunk when percolating to "
+            "Elasticsearch."
+        ),
+    )
+    es_percolation_chunk_size_override: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Override the default Elasticsearch percolation chunk size. Keyed by"
+            " operation type eg 'robot_automation'."
+        ),
+    )
+
     import_batch_retry_count: int = Field(
         default=3,
         description=(

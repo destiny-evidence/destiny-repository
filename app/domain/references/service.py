@@ -1,5 +1,6 @@
 """The service for interacting with and managing references."""
 
+from collections import defaultdict
 from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
 from typing import cast
 
@@ -30,6 +31,7 @@ from app.domain.references.models.models import (
     LinkedExternalIdentifier,
     Reference,
     RobotAutomation,
+    RobotAutomationPercolationResult,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.services.batch_enhancement_service import (
@@ -405,12 +407,13 @@ class ReferenceService(GenericService):
                 batch_enhancement_request.id
             )
         )
+        terminal_status = batch_enhancement_request.request_status
 
         await self.sql_uow.batch_enhancement_requests.update_by_pk(
             batch_enhancement_request.id,
             request_status=BatchEnhancementRequestStatus.INDEXING,
         )
-        return batch_enhancement_request.request_status
+        return terminal_status
 
     async def handle_batch_enhancement_result_entry(
         self,
@@ -527,3 +530,54 @@ class ReferenceService(GenericService):
         # level exception handler, so we don't need to handle it here.
         await self.es_uow.robot_automations.add(automation)
         return automation
+
+    @es_uow
+    async def detect_robot_automations(
+        self,
+        reference_ids: Iterable[UUID4] | None = None,
+        enhancement_ids: Iterable[UUID4] | None = None,
+    ) -> list[RobotAutomationPercolationResult]:
+        """Detect and dispatch robot automations for an added reference/enhancement."""
+        robot_automations: list[RobotAutomationPercolationResult] = []
+
+        if reference_ids:
+            for reference_id_chunk in list_chunker(
+                list(reference_ids),
+                settings.es_percolation_chunk_size_override.get(
+                    "robot_automation",
+                    settings.default_es_percolation_chunk_size,
+                ),
+            ):
+                references = await self.get_hydrated_references(
+                    reference_id_chunk,
+                )
+                robot_automations.extend(
+                    await self.es_uow.robot_automations.percolate(references)
+                )
+        if enhancement_ids:
+            for enhancement_id_chunk in list_chunker(
+                list(enhancement_ids),
+                settings.es_percolation_chunk_size_override.get(
+                    "robot_automation",
+                    settings.default_es_percolation_chunk_size,
+                ),
+            ):
+                enhancements = await self.sql_uow.enhancements.get_by_pks(
+                    enhancement_id_chunk
+                )
+                robot_automations.extend(
+                    await self.es_uow.robot_automations.percolate(enhancements)
+                )
+
+        # Merge robot_automations on robot_id
+        robot_automations_dict: dict[UUID4, set[UUID4]] = defaultdict(set)
+        for automation in robot_automations:
+            robot_automations_dict[automation.robot_id] |= automation.reference_ids
+
+        return [
+            RobotAutomationPercolationResult(
+                robot_id=robot_id,
+                reference_ids=list(reference_ids),
+            )
+            for robot_id, reference_ids in robot_automations_dict.items()
+        ]

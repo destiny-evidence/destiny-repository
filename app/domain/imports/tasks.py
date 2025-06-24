@@ -9,6 +9,7 @@ from app.core.logger import get_logger
 from app.domain.imports.models.models import ImportBatchStatus
 from app.domain.imports.service import ImportService
 from app.domain.references.service import ReferenceService
+from app.domain.references.tasks import detect_and_dispatch_robot_automations
 from app.persistence.es.client import es_manager
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.session import db_manager
@@ -115,3 +116,50 @@ async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -
                 import_batch.id, ImportBatchStatus.FAILED
             )
         return
+
+    # Update elasticsearch index
+    if status != ImportBatchStatus.INDEXING:
+        logger.error(
+            "Import batch processing stopped, "
+            "elasticsearch indexing and automatic enhancements will not proceed.",
+            extra={
+                "import_batch_id": import_batch.id,
+                "import_batch_status": import_batch.status,
+            },
+        )
+        return
+
+    imported_references = await import_service.get_imported_references_from_batch(
+        import_batch_id=import_batch.id
+    )
+    try:
+        await reference_service.index_references(
+            reference_ids=imported_references,
+        )
+
+    except Exception:
+        logger.exception(
+            "Error indexing references in Elasticsearch",
+            extra={
+                "import_batch_id": import_batch.id,
+            },
+        )
+        import_batch_status = ImportBatchStatus.INDEXING_FAILED
+
+    else:
+        import_batch_status = ImportBatchStatus.COMPLETED
+
+    await import_service.update_import_batch_status(
+        import_batch.id, import_batch_status
+    )
+    await import_service.dispatch_import_batch_callback(import_batch)
+
+    # Perform automatic enhancements on imported references
+    logger.info("Creating automatic enhancements for imported references")
+    requests = await detect_and_dispatch_robot_automations(
+        reference_ids=imported_references
+    )
+    for request in requests:
+        logger.info(
+            "Created automatic enhancement request", extra={"request_id": request.id}
+        )

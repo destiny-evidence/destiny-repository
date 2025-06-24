@@ -75,6 +75,48 @@ class GenericAsyncSqlRepository(
             )
         return await result.to_domain(preload=preload)
 
+    async def get_by_pks(
+        self, pks: list[UUID4], preload: list[str] | None = None
+    ) -> list[GenericDomainModelType]:
+        """
+        Get records using their primary keys.
+
+        Args:
+        - pks (list[UUID4]): The primary keys to use to look up the records.
+        - preload (list[str]): A list of attributes to preload using a join.
+
+        Returns:
+        - list[GenericDomainModelType]: A list of domain models.
+
+        Raises:
+        - SQLNotFoundError: If any of the records do not exist.
+
+        """
+        options = []
+        if preload:
+            for p in preload:
+                relationship = getattr(self._persistence_cls, p)
+                options.append(joinedload(relationship))
+
+        query = select(self._persistence_cls).where(self._persistence_cls.id.in_(pks))
+        result = await self._session.execute(query)
+        db_references = result.scalars().all()
+
+        if len(db_references) != len(pks):
+            missing_pks = set(pks) - {ref.id for ref in db_references}
+            detail = (
+                f"Unable to find {self._persistence_cls.__name__}"
+                f" with pks {missing_pks}"
+            )
+            raise SQLNotFoundError(
+                detail=detail,
+                lookup_model=self._persistence_cls.__name__,
+                lookup_type="id",
+                lookup_value=missing_pks,
+            )
+
+        return [await ref.to_domain(preload=preload) for ref in db_references]
+
     async def verify_pk_existence(self, pks: list[UUID4]) -> None:
         """
         Check if every pk exists in the database.
@@ -83,7 +125,7 @@ class GenericAsyncSqlRepository(
             pks (list[UUID4]): List of primary keys to check.
 
         Raises:
-            SQLNotFoundError: If any of the references do not exist.
+            SQLNotFoundError: If any of the records do not exist.
 
         """
         query = select(self._persistence_cls).where(self._persistence_cls.id.in_(pks))
