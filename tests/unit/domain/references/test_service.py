@@ -20,6 +20,7 @@ from app.domain.references.models.models import (
     EnhancementRequestStatus,
     ExternalIdentifierAdapter,
     Reference,
+    RobotAutomationPercolationResult,
     Visibility,
 )
 from app.domain.references.service import ReferenceService
@@ -672,3 +673,67 @@ async def test_register_batch_reference_enhancement_request_missing_pk(
         await service.register_batch_reference_enhancement_request(
             enhancement_request=batch_enhancement_request
         )
+
+
+@pytest.mark.asyncio
+async def test_detect_robot_automations(
+    fake_repository, fake_uow, fake_enhancement_data
+):
+    """Test the detection of robot automations for references."""
+
+    reference_id = uuid.uuid4()
+    robot_id = uuid.uuid4()
+
+    enhancement = Enhancement(reference_id=reference_id, **fake_enhancement_data)
+    hydrated_references = [
+        Reference(id=reference_id, visibility="public", enhancements=[enhancement]),
+        Reference(id=uuid.uuid4(), visibility="public", enhancements=[enhancement]),
+        Reference(id=uuid.uuid4(), visibility="public", enhancements=[enhancement]),
+    ]
+
+    # Extend the fake repository with get_hydrated and percolation
+    class FakeRepo(fake_repository):
+        def __init__(self, init_entries=None):
+            super().__init__(init_entries=init_entries)
+            self.hydrated_references = init_entries
+
+        async def get_hydrated(
+            self,
+            reference_ids,
+            enhancement_types=None,
+            external_identifier_types=None,
+        ):
+            return await self.get_by_pks(reference_ids)
+
+        async def percolate(self, documents):
+            # Returns a match on all documents against one robot
+            return [
+                RobotAutomationPercolationResult(
+                    robot_id=robot_id,
+                    reference_ids={
+                        getattr(document, "reference_id", getattr(document, "id", None))
+                        for document in documents
+                    },
+                )
+            ]
+
+    fake_enhancements_repo = fake_repository([enhancement])
+    fake_references_repo = FakeRepo(hydrated_references)
+    fake_robot_automations_repo = FakeRepo()
+
+    sql_uow = fake_uow(
+        references=fake_references_repo,
+        enhancements=fake_enhancements_repo,
+    )
+    es_uow = fake_uow(robot_automations=fake_robot_automations_repo)
+
+    service = ReferenceService(sql_uow=sql_uow, es_uow=es_uow)
+    results = await service.detect_robot_automations(
+        reference_ids=[r.id for r in hydrated_references],
+        enhancement_ids=[enhancement.id],
+    )
+    assert len(results) == 1
+    assert results[0].robot_id == robot_id
+    # Checks that the robot automations were marged (shared reference id on the
+    # enhancement and a reference)
+    assert len(results[0].reference_ids) == 3

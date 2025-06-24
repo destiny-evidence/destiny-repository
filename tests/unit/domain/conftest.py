@@ -143,6 +143,7 @@ class FakeUnitOfWork:
         enhancement_requests=None,
         batch_enhancement_requests=None,
         robots=None,
+        robot_automations=None,
     ):
         self.batches = batches
         self.imports = imports
@@ -153,6 +154,7 @@ class FakeUnitOfWork:
         self.enhancement_requests = enhancement_requests
         self.batch_enhancement_requests = batch_enhancement_requests
         self.robots = robots
+        self.robot_automations = robot_automations
         self.committed = False
 
     async def __aenter__(self):
