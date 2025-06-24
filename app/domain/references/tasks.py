@@ -121,11 +121,12 @@ async def validate_and_import_batch_enhancement_result(
     )
 
     try:
-        terminal_status = (
-            await reference_service.validate_and_import_batch_enhancement_result(
-                batch_enhancement_request,
-                blob_repository,
-            )
+        (
+            terminal_status,
+            imported_enhancement_ids,
+        ) = await reference_service.validate_and_import_batch_enhancement_result(
+            batch_enhancement_request,
+            blob_repository,
         )
     except Exception as e:
         logger.exception(
@@ -166,6 +167,13 @@ async def validate_and_import_batch_enhancement_result(
             BatchEnhancementRequestStatus.INDEXING_FAILED,
         )
 
+    # Perform robot automations
+    await detect_and_dispatch_robot_automations(
+        reference_service,
+        enhancement_ids=imported_enhancement_ids,
+        source_str=f"BatchEnhancementRequest:{batch_enhancement_request.id}",
+    )
+
 
 @broker.task
 async def rebuild_reference_index() -> None:
@@ -182,8 +190,10 @@ async def rebuild_reference_index() -> None:
 
 
 async def detect_and_dispatch_robot_automations(
+    reference_service: ReferenceService,
     reference_ids: Iterable[UUID4] | None = None,
     enhancement_ids: Iterable[UUID4] | None = None,
+    source_str: str | None = None,
 ) -> list[BatchEnhancementRequest]:
     """
     Request default enhancements for a set of references.
@@ -191,10 +201,6 @@ async def detect_and_dispatch_robot_automations(
     Technically this is a task distributor, not a task - may live in a higher layer
     later in life.
     """
-    sql_uow = await get_sql_unit_of_work()
-    es_uow = await get_es_unit_of_work()
-    reference_service = await get_reference_service(sql_uow, es_uow)
-
     requests: list[BatchEnhancementRequest] = []
     robot_automations = await reference_service.detect_robot_automations(
         reference_ids=reference_ids,
@@ -206,6 +212,9 @@ async def detect_and_dispatch_robot_automations(
                 enhancement_request=BatchEnhancementRequest(
                     reference_ids=reference_ids,
                     robot_id=robot_automation.robot_id,
+                    enhancement_parameters={"source": source_str}
+                    if source_str
+                    else None,
                 ),
             )
         )

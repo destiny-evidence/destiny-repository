@@ -157,7 +157,9 @@ async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -
     # Perform automatic enhancements on imported references
     logger.info("Creating automatic enhancements for imported references")
     requests = await detect_and_dispatch_robot_automations(
-        reference_ids=imported_references
+        reference_service=reference_service,
+        reference_ids=imported_references,
+        source_str=f"ImportBatch:{import_batch.id}",
     )
     for request in requests:
         logger.info(

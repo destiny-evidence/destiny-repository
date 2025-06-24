@@ -309,6 +309,9 @@ class ReferenceService(GenericService):
                 EnhancementRequest(
                     reference_id=enhancement_request.reference_id,
                     robot_id=robot_automation.robot_id,
+                    enhancement_parameters={
+                        "source": f"EnhancementRequest:{enhancement_request.id}"
+                    },
                 ),
                 robot_service=robot_service,
                 robot_request_dispatcher=robot_request_dispatcher,
@@ -394,7 +397,7 @@ class ReferenceService(GenericService):
         self,
         batch_enhancement_request: BatchEnhancementRequest,
         blob_repository: BlobRepository,
-    ) -> BatchEnhancementRequestStatus:
+    ) -> tuple[BatchEnhancementRequestStatus, set[UUID4]]:
         """
         Validate and import the result of a batch enhancement request.
 
@@ -404,12 +407,15 @@ class ReferenceService(GenericService):
         - streams the validation result to the blob storage service line-by-line
         - does some final validation of missing references and updates the request
         """
+        # Mutable set to track imported enhancement IDs
+        imported_enhancement_ids: set[UUID4] = set()
         validation_result_file = await blob_repository.upload_file_to_blob_storage(
             content=FileStream(
                 generator=self._batch_enhancement_service.process_batch_enhancement_result(
                     blob_repository=blob_repository,
                     batch_enhancement_request=batch_enhancement_request,
                     add_enhancement=self.handle_batch_enhancement_result_entry,
+                    imported_enhancement_ids=imported_enhancement_ids,
                 )
             ),
             path="batch_enhancement_result",
@@ -434,7 +440,7 @@ class ReferenceService(GenericService):
             batch_enhancement_request.id,
             request_status=BatchEnhancementRequestStatus.INDEXING,
         )
-        return terminal_status
+        return terminal_status, imported_enhancement_ids
 
     async def handle_batch_enhancement_result_entry(
         self,
