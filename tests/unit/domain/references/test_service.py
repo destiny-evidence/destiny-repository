@@ -346,7 +346,7 @@ async def test_create_reference_enhancement_from_request_happy_path(
 
     service = ReferenceService(sql_uow=uow, es_uow=es_uow)
     robot_automation_mock = AsyncMock()
-    service.detect_robot_automations = robot_automation_mock
+    service._detect_robot_automations = robot_automation_mock  # noqa: SLF001
     enhancement_request = await service.create_reference_enhancement_from_request(
         enhancement_request_id=existing_enhancement_request.id,
         enhancement=enhancement,
@@ -400,7 +400,7 @@ async def test_create_valid_derived_reference_enhancement_from_request(
 
     service = ReferenceService(uow, es_uow)
     robot_automation_mock = AsyncMock()
-    service.detect_robot_automations = robot_automation_mock
+    service._detect_robot_automations = robot_automation_mock  # noqa: SLF001
     enhancement_request = await service.create_reference_enhancement_from_request(
         enhancement_request_id=existing_enhancement_request.id,
         enhancement=new_enhancement,
@@ -677,9 +677,14 @@ async def test_register_batch_reference_enhancement_request_missing_pk(
 
 @pytest.mark.asyncio
 async def test_detect_robot_automations(
-    fake_repository, fake_uow, fake_enhancement_data
+    fake_repository, fake_uow, fake_enhancement_data, monkeypatch
 ):
     """Test the detection of robot automations for references."""
+    # Patch settings to test chunking
+    monkeypatch.setattr(
+        "app.domain.references.service.settings.es_percolation_chunk_size_override",
+        {"robot_automation": 2},
+    )
 
     reference_id = uuid.uuid4()
     robot_id = uuid.uuid4()

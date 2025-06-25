@@ -111,6 +111,12 @@ class ReferenceService(GenericService):
         """Add an enhancement to a reference."""
         return await self._add_enhancement(reference_id, enhancement)
 
+    async def _get_enhancements(
+        self, enhancement_ids: list[UUID4]
+    ) -> list[Enhancement]:
+        """Get a list of enhancements by id."""
+        return await self.sql_uow.enhancements.get_by_pks(enhancement_ids)
+
     async def _get_hydrated_references(
         self,
         reference_ids: list[UUID4],
@@ -295,9 +301,18 @@ class ReferenceService(GenericService):
             reference=await self._get_reference(enhancement_request.reference_id)
         )
 
-        for robot_automation in await self.detect_robot_automations(
+        for robot_automation in await self._detect_robot_automations(
             enhancement_ids=[enhancement.id],
         ):
+            if robot_automation.robot_id == enhancement_request.robot_id:
+                logger.warning(
+                    "Detected robot automation loop, skipping."
+                    " This is likely a problem in the percolating query.",
+                    extra={
+                        "robot_id": robot_automation.robot_id,
+                        "source": f"EnhancementRequest:{enhancement_request.id}",
+                    },
+                )
             logger.info(
                 "Detected robot automation for enhancement",
                 extra={
@@ -309,9 +324,7 @@ class ReferenceService(GenericService):
                 EnhancementRequest(
                     reference_id=enhancement_request.reference_id,
                     robot_id=robot_automation.robot_id,
-                    enhancement_parameters={
-                        "source": f"EnhancementRequest:{enhancement_request.id}"
-                    },
+                    source=f"EnhancementRequest:{enhancement_request.id}",
                 ),
                 robot_service=robot_service,
                 robot_request_dispatcher=robot_request_dispatcher,
@@ -559,7 +572,7 @@ class ReferenceService(GenericService):
         return automation
 
     @es_uow
-    async def detect_robot_automations(
+    async def _detect_robot_automations(
         self,
         reference_ids: Iterable[UUID4] | None = None,
         enhancement_ids: Iterable[UUID4] | None = None,
@@ -575,7 +588,7 @@ class ReferenceService(GenericService):
                     settings.default_es_percolation_chunk_size,
                 ),
             ):
-                references = await self.get_hydrated_references(
+                references = await self._get_hydrated_references(
                     reference_id_chunk,
                 )
                 robot_automations.extend(
@@ -589,9 +602,7 @@ class ReferenceService(GenericService):
                     settings.default_es_percolation_chunk_size,
                 ),
             ):
-                enhancements = await self.sql_uow.enhancements.get_by_pks(
-                    enhancement_id_chunk
-                )
+                enhancements = await self._get_enhancements(enhancement_id_chunk)
                 robot_automations.extend(
                     await self.es_uow.robot_automations.percolate(enhancements)
                 )
@@ -608,3 +619,14 @@ class ReferenceService(GenericService):
             )
             for robot_id, reference_ids in robot_automations_dict.items()
         ]
+
+    @sql_uow
+    async def detect_robot_automations(
+        self,
+        reference_ids: Iterable[UUID4] | None = None,
+        enhancement_ids: Iterable[UUID4] | None = None,
+    ) -> list[RobotAutomationPercolationResult]:
+        """Detect robot automations for a set of references or enhancements."""
+        return await self._detect_robot_automations(
+            reference_ids=reference_ids, enhancement_ids=enhancement_ids
+        )

@@ -435,6 +435,10 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
     robot_id: uuid.UUID = Field(
         description="The robot to request the enhancement from."
     )
+    source: str | None = Field(
+        default=None,
+        description="The source of the batch enhancement request.",
+    )
     enhancement_parameters: dict | None = Field(
         default=None,
         description="Additional optional parameters to pass through to the robot.",
@@ -491,6 +495,10 @@ class BatchEnhancementRequest(DomainBaseModel, SQLAttributeMixin):
     request_status: BatchEnhancementRequestStatus = Field(
         default=BatchEnhancementRequestStatus.RECEIVED,
         description="The status of the request to create an enhancement.",
+    )
+    source: str | None = Field(
+        default=None,
+        description="The source of the batch enhancement request.",
     )
     enhancement_parameters: dict | None = Field(
         default=None,

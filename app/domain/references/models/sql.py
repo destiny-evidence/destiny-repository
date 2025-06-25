@@ -1,7 +1,6 @@
 """Objects used to interface with SQL implementations."""
 
 import asyncio
-import json
 import uuid
 from typing import Any, Self
 
@@ -270,7 +269,11 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
         )
     )
 
-    enhancement_parameters: Mapped[str | None] = mapped_column(JSONB, nullable=True)
+    source: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    enhancement_parameters: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
 
     error: Mapped[str | None] = mapped_column(String, nullable=True)
 
@@ -284,7 +287,8 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             reference_id=domain_obj.reference_id,
             robot_id=domain_obj.robot_id,
             request_status=domain_obj.request_status,
-            enhancement_parameters=json.dumps(domain_obj.enhancement_parameters)
+            source=domain_obj.source,
+            enhancement_parameters=domain_obj.enhancement_parameters
             if domain_obj.enhancement_parameters
             else None,
             error=domain_obj.error,
@@ -299,7 +303,8 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             reference_id=self.reference_id,
             robot_id=self.robot_id,
             request_status=self.request_status,
-            enhancement_parameters=json.loads(self.enhancement_parameters)
+            source=self.source,
+            enhancement_parameters=self.enhancement_parameters
             if self.enhancement_parameters
             else {},
             error=self.error,
@@ -330,7 +335,11 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
         )
     )
 
-    enhancement_parameters: Mapped[str | None] = mapped_column(JSONB, nullable=True)
+    source: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    enhancement_parameters: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
 
     reference_data_file: Mapped[str | None] = mapped_column(String, nullable=True)
     result_file: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -346,7 +355,8 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             reference_ids=domain_obj.reference_ids,
             robot_id=domain_obj.robot_id,
             request_status=domain_obj.request_status,
-            enhancement_parameters=json.dumps(domain_obj.enhancement_parameters)
+            source=domain_obj.source,
+            enhancement_parameters=domain_obj.enhancement_parameters
             if domain_obj.enhancement_parameters
             else None,
             error=domain_obj.error,
@@ -371,7 +381,8 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             reference_ids=self.reference_ids,
             robot_id=self.robot_id,
             request_status=self.request_status,
-            enhancement_parameters=json.loads(self.enhancement_parameters)
+            source=self.source,
+            enhancement_parameters=self.enhancement_parameters
             if self.enhancement_parameters
             else {},
             error=self.error,

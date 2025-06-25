@@ -172,6 +172,7 @@ async def validate_and_import_batch_enhancement_result(
         reference_service,
         enhancement_ids=imported_enhancement_ids,
         source_str=f"BatchEnhancementRequest:{batch_enhancement_request.id}",
+        skip_robot_id=batch_enhancement_request.robot_id,
     )
 
 
@@ -194,6 +195,7 @@ async def detect_and_dispatch_robot_automations(
     reference_ids: Iterable[UUID4] | None = None,
     enhancement_ids: Iterable[UUID4] | None = None,
     source_str: str | None = None,
+    skip_robot_id: UUID4 | None = None,
 ) -> list[BatchEnhancementRequest]:
     """
     Request default enhancements for a set of references.
@@ -207,14 +209,22 @@ async def detect_and_dispatch_robot_automations(
         enhancement_ids=enhancement_ids,
     )
     for robot_automation in robot_automations:
+        if robot_automation.robot_id == skip_robot_id:
+            logger.warning(
+                "Detected robot automation loop, skipping."
+                " This is likely a problem in the percolation query.",
+                extra={
+                    "robot_id": robot_automation.robot_id,
+                    "source": source_str,
+                },
+            )
+            continue
         enhancement_request = (
             await reference_service.register_batch_reference_enhancement_request(
                 enhancement_request=BatchEnhancementRequest(
-                    reference_ids=reference_ids,
+                    reference_ids=robot_automation.reference_ids,
                     robot_id=robot_automation.robot_id,
-                    enhancement_parameters={"source": source_str}
-                    if source_str
-                    else None,
+                    source=source_str,
                 ),
             )
         )

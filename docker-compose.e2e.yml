@@ -102,26 +102,27 @@ services:
       ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
     entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover
   # Excluded by default until open sourced
-  # toy-robot:
-  #   build:
-  #     context: git@github.com:destiny-evidence/toy-robot.git
-  #     ssh: [default]
-  #   environment:
-  #     DESTINY_REPOSITORY_URL: "http://repository:8000"
-  #     ENV: "test"
-  #     ROBOT_ID: "1ee5aa1f-3248-4d21-9fee-718d4ff0ba5f" # Just a dummy, won't be used.
-  #     ROBOT_SECRET: "dummy"
-  #   healthcheck:
-  #     test:
-  #       [
-  #         "CMD",
-  #         "python",
-  #         "-c",
-  #         "import socket; sock = socket.create_connection(('localhost',8001), 2); sock.close()",
-  #       ]
-  #     interval: 10s
-  #     timeout: 10s
-  #     retries: 5
+  toy-robot:
+    image: toy-robot
+    # build:
+    #   context: git@github.com:destiny-evidence/toy-robot.git
+    #   ssh: [default]
+    environment:
+      DESTINY_REPOSITORY_URL: "http://repository:8000"
+      ENV: "test"
+      ROBOT_ID: "1ee5aa1f-3248-4d21-9fee-718d4ff0ba5f" # Just a dummy, won't be used.
+      ROBOT_SECRET: "dummy"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import socket; sock = socket.create_connection(('localhost',8001), 2); sock.close()",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
   e2e:
     container_name: e2e
     build:

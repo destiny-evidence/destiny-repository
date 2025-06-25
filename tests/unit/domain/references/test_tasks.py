@@ -28,6 +28,7 @@ async def test_robot_automations(monkeypatch, fake_uow):
         robot_id=robot_id,
         id=uuid.uuid4(),
         status="RECEIVED",
+        source="test_source",
     )
     mock_register_request = AsyncMock(return_value=expected_request)
     monkeypatch.setattr(
@@ -60,6 +61,7 @@ async def test_robot_automations(monkeypatch, fake_uow):
         reference_service=ReferenceService(fake_uow()),
         reference_ids=in_reference_ids,
         enhancement_ids=in_enhancement_ids,
+        source_str="test_source",
     )
     assert len(requests) == 1
     assert requests[0] == expected_request

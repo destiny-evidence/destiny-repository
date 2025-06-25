@@ -70,7 +70,7 @@ class AnnotationDocument(InnerDoc):
     scheme: str = mapped_field(Keyword())
     label: str = mapped_field(Keyword())
     annotation_type: str = mapped_field(Keyword())
-    value: bool = mapped_field(Boolean())
+    value: bool | None = mapped_field(Boolean(required=False))
 
     class Meta:
         """Allow unmapped fields in the document."""

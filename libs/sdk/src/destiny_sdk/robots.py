@@ -174,6 +174,10 @@ class _EnhancementRequestBase(BaseModel):
     robot_id: UUID4 = Field(
         description="The robot to be used to create the enhancement."
     )
+    source: str | None = Field(
+        default=None,
+        description="The source of the batch enhancement request.",
+    )
 
     enhancement_parameters: dict | None = Field(
         default=None, description="Information needed to create the enhancement. TBC."
@@ -232,6 +236,10 @@ class _BatchEnhancementRequestBase(BaseModel):
     )
     reference_ids: list[UUID4] = Field(
         description="The IDs of the references to be enhanced."
+    )
+    source: str | None = Field(
+        default=None,
+        description="The source of the batch enhancement request.",
     )
 
 
