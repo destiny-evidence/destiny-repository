@@ -24,7 +24,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from httpx import AsyncClient
 from jose import exceptions, jwt
 
-from app.core.config import Environment, get_settings
+from app.core.config import get_settings
 from app.core.exceptions import NotFoundError
 
 CACHE_TTL = 60 * 60 * 24  # 24 hours
@@ -369,13 +369,14 @@ class SuccessAuth(AuthMethod):
 
 
 def choose_auth_strategy(
-    environment: Environment,
     tenant_id: str,
     application_id: str,
     auth_scope: AuthScopes,
+    *,
+    bypass_auth: bool,
 ) -> AuthMethod:
     """Choose a strategy for our authorization."""
-    if environment in (Environment.LOCAL, Environment.TEST):
+    if bypass_auth:
         return SuccessAuth()
 
     return AzureJwtAuth(
@@ -434,7 +435,7 @@ def choose_hmac_auth_strategy(
     get_client_secret: Callable[[UUID], Awaitable[str]],
 ) -> destiny_sdk.auth.HMACAuthMethod:
     """Choose an HMAC auth method."""
-    if settings.env in (Environment.LOCAL, Environment.TEST):
+    if settings.running_locally:
         return destiny_sdk.auth.BypassHMACAuth()
 
     return HMACMultiClientAuth(get_client_secret=get_client_secret)

@@ -467,7 +467,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             basic_auth=(os.environ["ES_USER"], os.environ["ES_PASS"]),
             ca_certs=os.environ["ES_CA_PATH"],
         )
-        es_index = "destiny-repository-local-reference"
+        es_index = "destiny-repository-e2e-reference"
         assert es.indices.exists(index=es_index)
         es_response = es.search(
             index=es_index,
@@ -517,9 +517,8 @@ def register_toy_robot(client: httpx.Client) -> None:
     # or if a new toy enhancement is added to a reference (we do some fancy stuff in
     # the next test to do this once and stop the cycle).
     response = client.post(
-        "/robot/automation/",
+        f"/robot/{toy_robot_id}/automation/",
         json={
-            "robot_id": toy_robot_id,
             "query": {
                 "bool": {
                     "should": [

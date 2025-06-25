@@ -413,15 +413,16 @@ async def test_add_robot_automation_happy_path(
     robot = await add_robot(session)
 
     robot_automation_create = {
-        "robot_id": str(robot.id),
         "query": {"match": {"robot_id": str(robot.id)}},
     }
 
-    response = await client.post("/robot/automation/", json=robot_automation_create)
+    response = await client.post(
+        f"/robot/{robot.id}/automation/", json=robot_automation_create
+    )
 
     assert response.status_code == status.HTTP_201_CREATED
     response_data = response.json()
-    assert response_data["robot_id"] == robot_automation_create["robot_id"]
+    assert uuid.UUID(response_data["robot_id"]) == robot.id
     assert response_data["query"] == robot_automation_create["query"]
 
 
@@ -431,11 +432,12 @@ async def test_add_robot_automation_missing_robot(
 ) -> None:
     """Test adding a robot automation with a missing robot."""
     robot_automation_create = {
-        "robot_id": str(uuid.uuid4()),
         "query": {"match": {"robot_id": "some-robot-id"}},
     }
 
-    response = await client.post("/robot/automation/", json=robot_automation_create)
+    response = await client.post(
+        f"/robot/{uuid.uuid4()}/automation/", json=robot_automation_create
+    )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert "robot" in response.json()["detail"].casefold()
@@ -454,16 +456,19 @@ async def test_add_robot_automation_invalid_query(
         "query": {"invalid": "query"},
     }
 
-    response = await client.post("/robot/automation/", json=robot_automation_create)
+    response = await client.post(
+        f"/robot/{robot.id}/automation/", json=robot_automation_create
+    )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert "DSL class `invalid` does not exist in query" in response.json()["detail"]
 
     robot_automation_create = {
-        "robot_id": str(robot.id),
         "query": {"match": {"invalid": "value"}},
     }
 
-    response = await client.post("/robot/automation/", json=robot_automation_create)
+    response = await client.post(
+        f"/robot/{robot.id}/automation/", json=robot_automation_create
+    )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert (

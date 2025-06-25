@@ -17,7 +17,7 @@ broker: AsyncBroker = AzureServiceBusBroker(
     max_lock_renewal_duration=settings.message_lock_renewal_duration,
 )
 
-if settings.env == Environment.LOCAL:
+if settings.env in (Environment.LOCAL, Environment.E2E):
     broker = AioPikaBroker(settings.message_broker_url)
 elif settings.env == "test":
     broker = InMemoryBroker()

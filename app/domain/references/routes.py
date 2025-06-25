@@ -85,20 +85,20 @@ def blob_repository() -> BlobRepository:
 def choose_auth_strategy_reader() -> AuthMethod:
     """Choose reader scope auth strategy for our authorization."""
     return choose_auth_strategy(
-        environment=settings.env,
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScopes.REFERENCE_READER,
+        bypass_auth=settings.running_locally,
     )
 
 
 def choose_auth_strategy_writer() -> AuthMethod:
     """Choose writer scope auth strategy for our authorization."""
     return choose_auth_strategy(
-        environment=settings.env,
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScopes.REFERENCE_WRITER,
+        bypass_auth=settings.running_locally,
     )
 
 
@@ -353,14 +353,15 @@ async def fulfill_batch_enhancement_request(
     return await batch_enhancement_request.to_sdk(blob_repository.get_signed_url)
 
 
-@robot_router.post(path="/automation/", status_code=status.HTTP_201_CREATED)
+@robot_router.post(path="/{robot_id}/automation/", status_code=status.HTTP_201_CREATED)
 async def add_robot_automation(
-    robot_automation: destiny_sdk.robots.RobotAutomation,
+    robot_id: uuid.UUID,
+    robot_automation: destiny_sdk.robots.RobotAutomationIn,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     robot_service: Annotated[RobotService, Depends(robot_service)],
 ) -> destiny_sdk.robots.RobotAutomation:
     """Add a robot automation."""
-    automation = await RobotAutomation.from_sdk(robot_automation)
+    automation = await RobotAutomation.from_sdk(robot_automation, robot_id)
     added_automation = await reference_service.add_robot_automation(
         robot_service=robot_service, automation=automation
     )

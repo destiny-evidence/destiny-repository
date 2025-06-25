@@ -98,9 +98,13 @@ class GenericAsyncSqlRepository(
                 relationship = getattr(self._persistence_cls, p)
                 options.append(joinedload(relationship))
 
-        query = select(self._persistence_cls).where(self._persistence_cls.id.in_(pks))
+        query = (
+            select(self._persistence_cls)
+            .where(self._persistence_cls.id.in_(pks))
+            .options(*options)
+        )
         result = await self._session.execute(query)
-        db_references = result.scalars().all()
+        db_references = result.unique().scalars().all()
 
         if len(db_references) != len(pks):
             missing_pks = set(pks) - {ref.id for ref in db_references}

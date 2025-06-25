@@ -25,7 +25,7 @@ class CLIAuth(httpx.Auth):
         self, request: httpx.Request
     ) -> Generator[httpx.Request, httpx.Response]:
         """Add a Bearer token to the request if we're not in a test environment."""
-        if self.env not in (Environment.LOCAL, Environment.TEST):
+        if self.env not in (Environment.LOCAL, Environment.TEST, Environment.E2E):
             settings = get_settings(self.env)
 
             access_token = get_token(

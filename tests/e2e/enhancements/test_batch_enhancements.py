@@ -27,7 +27,6 @@ engine = create_engine(db_url)
 # e2e tests are ordered for easier seeding of downstream tests
 @pytest.mark.order(2)
 # Remove the below if you want to run e2e tests locally with the toy robot.
-# @pytest.mark.skip(reason="Skipped in GH action, requires toy robot access.")
 def test_complete_batch_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
     """Test complete batch enhancement workflow, happy-ish path."""
     with (
@@ -168,7 +167,7 @@ def test_complete_batch_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
         basic_auth=(os.environ["ES_USER"], os.environ["ES_PASS"]),
         ca_certs=os.environ["ES_CA_PATH"],
     )
-    es_index = "destiny-repository-local-reference"
+    es_index = "destiny-repository-e2e-reference"
     for reference_id in reference_ids:
         response = es.get(index=es_index, id=reference_id)
         toys_found = 0

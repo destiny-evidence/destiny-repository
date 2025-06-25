@@ -46,10 +46,10 @@ def import_service(
 def choose_auth_strategy_imports() -> AuthMethod:
     """Choose import scope auth strategy for our imports authorization."""
     return choose_auth_strategy(
-        environment=settings.env,
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScopes.IMPORT,
+        bypass_auth=settings.running_locally,
     )
 
 

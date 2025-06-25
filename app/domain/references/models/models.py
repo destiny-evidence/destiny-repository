@@ -646,10 +646,12 @@ class RobotAutomation(DomainBaseModel, SQLAttributeMixin):
     )
 
     @classmethod
-    async def from_sdk(cls, data: destiny_sdk.robots.RobotAutomation) -> Self:
+    async def from_sdk(
+        cls, data: destiny_sdk.robots.RobotAutomationIn, robot_id: uuid.UUID
+    ) -> Self:
         """Create a RobotAutomation from the SDK input model."""
         try:
-            c = cls.model_validate(data.model_dump())
+            c = cls.model_validate(data.model_dump() | {"robot_id": robot_id})
             c.check_serializability()
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
