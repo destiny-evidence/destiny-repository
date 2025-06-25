@@ -212,7 +212,10 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         "Reference", back_populates="enhancements"
     )
 
-    __table_args__ = (Index("ix_enhancement_reference_id", "reference_id"),)
+    __table_args__ = (
+        Index("ix_enhancement_reference_id", "reference_id"),
+        Index("ix_enhancement_enhancement_type", "enhancement_type"),
+    )
 
     @classmethod
     async def from_domain(cls, domain_obj: DomainEnhancement) -> Self:
