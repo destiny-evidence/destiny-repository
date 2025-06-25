@@ -206,12 +206,12 @@ class ESNotFoundError(NotFoundError, ESError):
         super().__init__(detail, *args)
 
 
-class ESMalformedError(ESError):
+class ESMalformedDocumentError(ESError):
     """Exception for when an Elasticsearch document is malformed."""
 
     def __init__(self, detail: str, *args: object) -> None:
         """
-        Initialize the ESMalformedError exception.
+        Initialize the ESMalformedDocumentError exception.
 
         Args:
             detail (str): The detail message for the exception.

@@ -181,6 +181,24 @@ class Environment(StrEnum):
     TEST = auto()
 
 
+class ESIndexingOperation(StrEnum):
+    """Enum for Elasticsearch indexing operations."""
+
+    REFERENCE_IMPORT = auto()
+
+
+class ESPercolationOperation(StrEnum):
+    """Enum for Elasticsearch percolation operations."""
+
+    ROBOT_AUTOMATION = auto()
+
+
+class UploadFile(StrEnum):
+    """Enum for upload file types."""
+
+    BATCH_ENHANCEMENT_REQUEST_REFERENCE_DATA = auto()
+
+
 class Settings(BaseSettings):
     """Settings model for API."""
 
@@ -211,12 +229,9 @@ class Settings(BaseSettings):
             "Elasticsearch."
         ),
     )
-    es_indexing_chunk_size_override: dict[str, int] = Field(
+    es_indexing_chunk_size_override: dict[ESIndexingOperation, int] = Field(
         default_factory=dict,
-        description=(
-            "Override the default Elasticsearch indexing chunk size. Keyed by operation"
-            " type eg 'reference_import'."
-        ),
+        description=("Override the default Elasticsearch indexing chunk size."),
     )
 
     default_es_percolation_chunk_size: int = Field(
@@ -226,12 +241,9 @@ class Settings(BaseSettings):
             "Elasticsearch."
         ),
     )
-    es_percolation_chunk_size_override: dict[str, int] = Field(
+    es_percolation_chunk_size_override: dict[ESPercolationOperation, int] = Field(
         default_factory=dict,
-        description=(
-            "Override the default Elasticsearch percolation chunk size. Keyed by"
-            " operation type eg 'robot_automation'."
-        ),
+        description=("Override the default Elasticsearch percolation chunk size."),
     )
 
     import_batch_retry_count: int = Field(
@@ -258,11 +270,9 @@ class Settings(BaseSettings):
             "Number of records to process in a single file chunk when uploading."
         ),
     )
-    upload_file_chunk_size_override: dict[str, int] = Field(
+    upload_file_chunk_size_override: dict[UploadFile, int] = Field(
         default_factory=dict,
-        description=(
-            "Override the default upload file chunk size. Keyed by file type."
-        ),
+        description=("Override the default upload file chunk size."),
     )
 
     default_download_file_chunk_size: Literal[1] = Field(

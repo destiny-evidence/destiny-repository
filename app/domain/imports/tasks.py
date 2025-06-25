@@ -4,7 +4,7 @@ from elasticsearch import AsyncElasticsearch
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import TaskError
+from app.core.exceptions import ESError, TaskError
 from app.core.logger import get_logger
 from app.domain.imports.models.models import ImportBatchStatus
 from app.domain.imports.service import ImportService
@@ -137,9 +137,17 @@ async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -
             reference_ids=imported_references,
         )
 
-    except Exception:
+    except ESError:
         logger.exception(
             "Error indexing references in Elasticsearch",
+            extra={
+                "import_batch_id": import_batch.id,
+            },
+        )
+        import_batch_status = ImportBatchStatus.INDEXING_FAILED
+    except Exception:
+        logger.exception(
+            "Unexpected error indexing references in Elasticsearch",
             extra={
                 "import_batch_id": import_batch.id,
             },

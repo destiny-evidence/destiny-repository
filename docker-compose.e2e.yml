@@ -103,10 +103,7 @@ services:
     entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover
   # Excluded by default until open sourced
   toy-robot:
-    image: toy-robot
-    # build:
-    #   context: git@github.com:destiny-evidence/toy-robot.git
-    #   ssh: [default]
+    build: https://github.com/destiny-evidence/toy-robot.git
     environment:
       DESTINY_REPOSITORY_URL: "http://repository:8000"
       ENV: "test"
@@ -139,8 +136,8 @@ services:
         condition: service_healthy
       e2e-task-worker:
         condition: service_started
-      # toy-robot:
-      #   condition: service_healthy
+      toy-robot:
+        condition: service_healthy
     environment:
       DB_URL: "postgresql+psycopg://localuser:localpass@db:5432/destiny_dev"
       REPO_URL: "http://repository:8000"

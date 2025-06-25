@@ -7,6 +7,7 @@ import httpx
 import pytest
 from fastapi import status
 
+from app.core.config import ESPercolationOperation
 from app.core.exceptions import (
     InvalidParentEnhancementError,
     RobotEnhancementError,
@@ -683,7 +684,7 @@ async def test_detect_robot_automations(
     # Patch settings to test chunking
     monkeypatch.setattr(
         "app.domain.references.service.settings.es_percolation_chunk_size_override",
-        {"robot_automation": 2},
+        {ESPercolationOperation.ROBOT_AUTOMATION: 2},
     )
 
     reference_id = uuid.uuid4()

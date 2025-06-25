@@ -7,7 +7,12 @@ from typing import cast
 import destiny_sdk
 from pydantic import UUID4
 
-from app.core.config import get_settings
+from app.core.config import (
+    ESIndexingOperation,
+    ESPercolationOperation,
+    UploadFile,
+    get_settings,
+)
 from app.core.exceptions import (
     InvalidParentEnhancementError,
     RobotEnhancementError,
@@ -370,7 +375,7 @@ class ReferenceService(GenericService):
                 for reference_id_chunk in list_chunker(
                     batch_enhancement_request.reference_ids,
                     settings.upload_file_chunk_size_override.get(
-                        "batch_enhancement_request_reference_data",
+                        UploadFile.BATCH_ENHANCEMENT_REQUEST_REFERENCE_DATA,
                         settings.default_upload_file_chunk_size,
                     ),
                 )
@@ -520,7 +525,7 @@ class ReferenceService(GenericService):
         """Index references in Elasticsearch."""
         ids = list(reference_ids)
         chunk_size = settings.es_indexing_chunk_size_override.get(
-            "reference_import",
+            ESIndexingOperation.REFERENCE_IMPORT,
             settings.default_es_indexing_chunk_size,
         )
 
@@ -584,7 +589,7 @@ class ReferenceService(GenericService):
             for reference_id_chunk in list_chunker(
                 list(reference_ids),
                 settings.es_percolation_chunk_size_override.get(
-                    "robot_automation",
+                    ESPercolationOperation.ROBOT_AUTOMATION,
                     settings.default_es_percolation_chunk_size,
                 ),
             ):
@@ -598,7 +603,7 @@ class ReferenceService(GenericService):
             for enhancement_id_chunk in list_chunker(
                 list(enhancement_ids),
                 settings.es_percolation_chunk_size_override.get(
-                    "robot_automation",
+                    ESPercolationOperation.ROBOT_AUTOMATION,
                     settings.default_es_percolation_chunk_size,
                 ),
             ):

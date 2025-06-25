@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
 from app.core.exceptions import (
-    ESMalformedError,
+    ESMalformedDocumentError,
     NotFoundError,
     SDKToDomainError,
     WrongReferenceError,
@@ -57,7 +57,7 @@ def app() -> FastAPI:
             NotFoundError: not_found_exception_handler,
             SDKToDomainError: sdk_to_domain_exception_handler,
             WrongReferenceError: enhance_wrong_reference_exception_handler,
-            ESMalformedError: es_malformed_exception_handler,
+            ESMalformedDocumentError: es_malformed_exception_handler,
         }
     )
 

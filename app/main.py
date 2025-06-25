@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.core.exceptions import (
-    ESMalformedError,
+    ESMalformedDocumentError,
     IntegrityError,
     InvalidPayloadError,
     NotFoundError,
@@ -168,10 +168,10 @@ async def enhance_wrong_reference_exception_handler(
     )
 
 
-@app.exception_handler(ESMalformedError)
+@app.exception_handler(ESMalformedDocumentError)
 async def es_malformed_exception_handler(
     _request: Request,
-    exception: ESMalformedError,
+    exception: ESMalformedDocumentError,
 ) -> JSONResponse:
     """
     Return unprocessable entity response when an Elasticsearch document is malformed.

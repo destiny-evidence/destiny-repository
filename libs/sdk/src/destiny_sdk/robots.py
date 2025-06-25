@@ -358,5 +358,6 @@ class RobotAutomation(BaseModel):
         description="The ID of the robot that will be used to enhance the reference."
     )
     query: dict[str, Any] = Field(
-        description="The query that will be used to match references against."
+        description="The percolator query that will be used to match references "
+        " or enhancements against."
     )
