@@ -11,3 +11,5 @@ Procedures and guidelines for interacting with the DESTINY repository.
     requesting-single-enhancements
     requesting-batch-enhancements
     robot-registration
+    robot-automation
+    destiny-reference-flow

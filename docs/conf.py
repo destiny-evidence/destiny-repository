@@ -9,6 +9,8 @@
 
 import os
 import sys
+from unittest.mock import patch, MagicMock
+
 
 # Add the project root to sys.path so Sphinx can find your modules
 sys.path.insert(0, os.path.abspath('..'))
@@ -48,3 +50,15 @@ def linkcode_resolve(domain, info):
         return None
     filename = info['module'].replace('.', '/')
     return "https://github.com/destiny-evidence/destiny-repository/blob/main/%s.py" % filename
+
+
+def patched_get_settings():
+    # Return a mock or custom settings object as needed for docs
+    return MagicMock()
+
+def setup(app):
+    # Patch app.core.config.get_settings for the duration of the build
+    patcher = patch('app.core.config.get_settings', new=patched_get_settings)
+    patcher.start()
+    # Ensure patcher stops when Sphinx build is done
+    app.connect('build-finished', lambda app, exception: patcher.stop())
