@@ -6,6 +6,8 @@ _Powering a comprehensive repository of climate and health research_
 
 [Documentation](https://destiny-evidence.github.io/destiny-repository/)
 
+[SDK](/libs/sdk/README.md)
+
 ## Setup
 
 ### Requirements
