@@ -23,7 +23,7 @@ release = 'v0.1'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ['sphinxcontrib.autodoc_pydantic', 'sphinx.ext.autodoc', 'sphinxcontrib.mermaid', 'sphinx.ext.graphviz', 'sphinx.ext.linkcode', 'sphinx_exec_code']
+extensions = ['sphinxcontrib.autodoc_pydantic', 'sphinx.ext.autodoc', 'sphinxcontrib.mermaid', 'sphinx.ext.graphviz', 'sphinx.ext.linkcode']
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
