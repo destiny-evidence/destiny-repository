@@ -101,6 +101,7 @@ class EnhancementDocument(InnerDoc):
     """Persistence model for enhancements in Elasticsearch."""
 
     visibility: Visibility = mapped_field(Keyword(required=True))
+    reference_id: UUID4 = mapped_field(Keyword(required=True, index=False))
     source: str = mapped_field(Keyword(required=True))
     robot_version: str | None = mapped_field(Keyword())
     content: EnhancementContentDocument = mapped_field(
@@ -111,6 +112,7 @@ class EnhancementDocument(InnerDoc):
     async def from_domain(cls, domain_obj: Enhancement) -> Self:
         """Create a persistence model from a domain model."""
         return cls(
+            reference_id=domain_obj.reference_id,
             visibility=domain_obj.visibility,
             source=domain_obj.source,
             robot_version=domain_obj.robot_version,
@@ -139,6 +141,7 @@ class ReferenceDocument(GenericESPersistence[Reference]):
 
         name = f"{INDEX_PREFIX}-reference"
 
+    id: UUID4 = mapped_field(Keyword(required=True, index=False))
     visibility: Visibility = mapped_field(Keyword(required=True))
     identifiers: list[ExternalIdentifierDocument] = mapped_field(
         Nested(ExternalIdentifierDocument)
@@ -152,6 +155,7 @@ class ReferenceDocument(GenericESPersistence[Reference]):
             # Parent's parent does accept meta, but mypy doesn't like it here.
             # Ignoring easier than chaining __init__ methods IMO.
             meta={"id": domain_obj.id},  # type: ignore[call-arg]
+            id=domain_obj.id,
             visibility=domain_obj.visibility,
             identifiers=await asyncio.gather(
                 *(
@@ -276,10 +280,14 @@ class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
         return cls(
             query=None,
             robot_id=None,
-            reference=await ReferenceInnerDocument.from_domain(percolatable)
-            if isinstance(percolatable, Reference)
-            else None,
-            enhancement=await EnhancementDocument.from_domain(percolatable)
-            if isinstance(percolatable, Enhancement)
-            else None,
+            reference=(
+                await ReferenceInnerDocument.from_domain(percolatable)
+                if isinstance(percolatable, Reference)
+                else None
+            ),
+            enhancement=(
+                await EnhancementDocument.from_domain(percolatable)
+                if isinstance(percolatable, Enhancement)
+                else None
+            ),
         )
