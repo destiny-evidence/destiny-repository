@@ -34,7 +34,7 @@ services:
       - .env
     environment:
       DB_CONFIG: '{"DB_URL": "postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
-      ENV: "test"
+      ENV: "e2e"
       AZURE_APPLICATION_ID: "dummy"
       AZURE_TENANT_ID: "dummy"
       APP_NAME: "dummy"
@@ -64,6 +64,7 @@ services:
       - .env
     environment:
       # Overwrite with docker network hostname
+      ENV: e2e
       MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
       MINIO_CONFIG: '{"HOST":"fs:9000", "ACCESS_KEY": "localuser", "SECRET_KEY": "localpass"}'
@@ -96,32 +97,31 @@ services:
     env_file:
       - .env
     environment:
+      ENV: e2e
       MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
       MINIO_CONFIG: '{"HOST":"fs:9000", "ACCESS_KEY": "localuser", "SECRET_KEY": "localpass"}'
       ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
     entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover
   # Excluded by default until open sourced
-  # toy-robot:
-  #   build:
-  #     context: git@github.com:destiny-evidence/toy-robot.git
-  #     ssh: [default]
-  #   environment:
-  #     DESTINY_REPOSITORY_URL: "http://repository:8000"
-  #     ENV: "test"
-  #     ROBOT_ID: "1ee5aa1f-3248-4d21-9fee-718d4ff0ba5f" # Just a dummy, won't be used.
-  #     ROBOT_SECRET: "dummy"
-  #   healthcheck:
-  #     test:
-  #       [
-  #         "CMD",
-  #         "python",
-  #         "-c",
-  #         "import socket; sock = socket.create_connection(('localhost',8001), 2); sock.close()",
-  #       ]
-  #     interval: 10s
-  #     timeout: 10s
-  #     retries: 5
+  toy-robot:
+    build: https://github.com/destiny-evidence/toy-robot.git
+    environment:
+      DESTINY_REPOSITORY_URL: "http://repository:8000"
+      ENV: "test"
+      ROBOT_ID: "1ee5aa1f-3248-4d21-9fee-718d4ff0ba5f" # Just a dummy, won't be used.
+      ROBOT_SECRET: "dummy"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import socket; sock = socket.create_connection(('localhost',8001), 2); sock.close()",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
   e2e:
     container_name: e2e
     build:
@@ -138,8 +138,8 @@ services:
         condition: service_healthy
       e2e-task-worker:
         condition: service_started
-      # toy-robot:
-      #   condition: service_healthy
+      toy-robot:
+        condition: service_healthy
     environment:
       DB_URL: "postgresql+psycopg://localuser:localpass@db:5432/destiny_dev"
       REPO_URL: "http://repository:8000"
@@ -151,7 +151,7 @@ services:
       ES_USER: "elastic"
       ES_PASS: "destiny"
       TOY_ROBOT_URL: "http://toy-robot:8001/toy/enhancement/"
-      ENV: "test"
+      ENV: "e2e"
       MINIO_PRESIGNED_URL_FILEPATH: /shared-minio/presigned_urls.json
     entrypoint: poetry run pytest /e2e
 

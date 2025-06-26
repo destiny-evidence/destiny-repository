@@ -1,7 +1,6 @@
 """Objects used to interface with SQL implementations."""
 
 import asyncio
-import json
 import uuid
 from typing import Any, Self
 
@@ -31,6 +30,9 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.models import (
     Reference as DomainReference,
+)
+from app.domain.references.models.models import (
+    RobotAutomation as DomainRobotAutomation,
 )
 from app.persistence.blob.models import BlobStorageFile
 from app.persistence.sql.persistence import GenericSQLPersistence
@@ -270,7 +272,11 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
         )
     )
 
-    enhancement_parameters: Mapped[str | None] = mapped_column(JSONB, nullable=True)
+    source: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    enhancement_parameters: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
 
     error: Mapped[str | None] = mapped_column(String, nullable=True)
 
@@ -284,7 +290,8 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             reference_id=domain_obj.reference_id,
             robot_id=domain_obj.robot_id,
             request_status=domain_obj.request_status,
-            enhancement_parameters=json.dumps(domain_obj.enhancement_parameters)
+            source=domain_obj.source,
+            enhancement_parameters=domain_obj.enhancement_parameters
             if domain_obj.enhancement_parameters
             else None,
             error=domain_obj.error,
@@ -299,7 +306,8 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             reference_id=self.reference_id,
             robot_id=self.robot_id,
             request_status=self.request_status,
-            enhancement_parameters=json.loads(self.enhancement_parameters)
+            source=self.source,
+            enhancement_parameters=self.enhancement_parameters
             if self.enhancement_parameters
             else {},
             error=self.error,
@@ -330,7 +338,11 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
         )
     )
 
-    enhancement_parameters: Mapped[str | None] = mapped_column(JSONB, nullable=True)
+    source: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    enhancement_parameters: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
 
     reference_data_file: Mapped[str | None] = mapped_column(String, nullable=True)
     result_file: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -346,7 +358,8 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             reference_ids=domain_obj.reference_ids,
             robot_id=domain_obj.robot_id,
             request_status=domain_obj.request_status,
-            enhancement_parameters=json.dumps(domain_obj.enhancement_parameters)
+            source=domain_obj.source,
+            enhancement_parameters=domain_obj.enhancement_parameters
             if domain_obj.enhancement_parameters
             else None,
             error=domain_obj.error,
@@ -371,7 +384,8 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             reference_ids=self.reference_ids,
             robot_id=self.robot_id,
             request_status=self.request_status,
-            enhancement_parameters=json.loads(self.enhancement_parameters)
+            source=self.source,
+            enhancement_parameters=self.enhancement_parameters
             if self.enhancement_parameters
             else {},
             error=self.error,
@@ -386,4 +400,49 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             )
             if self.validation_result_file
             else None,
+        )
+
+
+class RobotAutomation(GenericSQLPersistence[DomainRobotAutomation]):
+    """
+    SQL Persistence model for a Robot Automation.
+
+    This is used in the repository layer to pass data between the domain and the
+    database.
+    """
+
+    __tablename__ = "robot_automation"
+
+    robot_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("robot.id"), nullable=False
+    )
+
+    query: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "robot_id",
+            "query",
+            name="uix_robot_automation",
+        ),
+    )
+
+    @classmethod
+    async def from_domain(cls, domain_obj: DomainRobotAutomation) -> Self:
+        """Create a persistence model from a domain RobotAutomation object."""
+        return cls(
+            id=domain_obj.id,
+            robot_id=domain_obj.robot_id,
+            query=domain_obj.query,
+        )
+
+    async def to_domain(
+        self,
+        preload: list[str] | None = None,  # noqa: ARG002
+    ) -> DomainRobotAutomation:
+        """Convert the persistence model into a Domain RobotAutomation object."""
+        return DomainRobotAutomation(
+            id=self.id,
+            robot_id=self.robot_id,
+            query=self.query,
         )

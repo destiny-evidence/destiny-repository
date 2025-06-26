@@ -39,6 +39,24 @@ class FakeRepository:
             )
         return self.repository[pk]
 
+    async def get_by_pks(
+        self, pks: list[UUID], preload: list[str] | None = None
+    ) -> list[DummyDomainSQLModel]:
+        # Currently just ignoring preloading in favour of creating
+        # models with the data needed.
+        if not pks:
+            return []
+        records = [self.repository[pk] for pk in pks if pk in self.repository]
+        if len(records) != len(pks):
+            missing_pks = set(pks) - set(self.repository.keys())
+            raise SQLNotFoundError(
+                detail=f"{missing_pks} not in repository",
+                lookup_value=missing_pks,
+                lookup_type="id",
+                lookup_model="dummy-sql-model",
+            )
+        return records
+
     async def update_by_pk(self, pk: UUID, **kwargs: object) -> DummyDomainSQLModel:
         if pk not in self.repository:
             raise SQLNotFoundError(
@@ -125,6 +143,7 @@ class FakeUnitOfWork:
         enhancement_requests=None,
         batch_enhancement_requests=None,
         robots=None,
+        robot_automations=None,
     ):
         self.batches = batches
         self.imports = imports
@@ -135,6 +154,7 @@ class FakeUnitOfWork:
         self.enhancement_requests = enhancement_requests
         self.batch_enhancement_requests = batch_enhancement_requests
         self.robots = robots
+        self.robot_automations = robot_automations
         self.committed = False
 
     async def __aenter__(self):

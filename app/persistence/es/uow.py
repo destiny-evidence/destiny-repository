@@ -8,7 +8,10 @@ from typing import TYPE_CHECKING, ParamSpec, Self, TypeVar, cast
 from elasticsearch import AsyncElasticsearch
 
 from app.core.exceptions import UOWError
-from app.domain.references.repository import ReferenceESRepository
+from app.domain.references.repository import (
+    ReferenceESRepository,
+    RobotAutomationESRepository,
+)
 from app.persistence.uow import AsyncUnitOfWorkBase
 
 if TYPE_CHECKING:
@@ -26,6 +29,7 @@ class AsyncESUnitOfWork(AsyncUnitOfWorkBase):
     client: AsyncElasticsearch
 
     references: ReferenceESRepository
+    robot_automations: RobotAutomationESRepository
 
     def __init__(self, client: AsyncElasticsearch) -> None:
         """Initialize the unit of work with a client."""
@@ -35,6 +39,7 @@ class AsyncESUnitOfWork(AsyncUnitOfWorkBase):
     async def __aenter__(self) -> Self:
         """Set up the Elasticsearch repositories and open the session."""
         self.references = ReferenceESRepository(self.client)
+        self.robot_automations = RobotAutomationESRepository(self.client)
 
         return await super().__aenter__()
 

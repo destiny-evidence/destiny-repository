@@ -18,7 +18,8 @@ from app.domain.imports.models.models import (
 )
 from app.domain.references.service import ReferenceService
 from app.domain.service import GenericService
-from app.persistence.sql.uow import AsyncSqlUnitOfWork, unit_of_work
+from app.persistence.sql.uow import AsyncSqlUnitOfWork
+from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
 
 logger = get_logger()
 
@@ -34,22 +35,22 @@ class ImportService(GenericService):
         """Get a single import by id."""
         return await self.sql_uow.imports.get_by_pk(import_record_id)
 
-    @unit_of_work
+    @sql_unit_of_work
     async def get_import_record(self, import_record_id: UUID4) -> ImportRecord:
         """Get a single import by id."""
         return await self._get_import_record(import_record_id)
 
-    @unit_of_work
+    @sql_unit_of_work
     async def get_import_record_with_batches(self, pk: UUID4) -> ImportRecord:
         """Get a single import, eager loading its batches."""
         return await self.sql_uow.imports.get_by_pk(pk, preload=["batches"])
 
-    @unit_of_work
+    @sql_unit_of_work
     async def get_import_batch(self, import_batch_id: UUID4) -> ImportBatch:
         """Get a single import by id."""
         return await self.sql_uow.batches.get_by_pk(import_batch_id)
 
-    @unit_of_work
+    @sql_unit_of_work
     async def get_imported_references_from_batch(
         self, import_batch_id: UUID4
     ) -> set[UUID4]:
@@ -65,7 +66,7 @@ class ImportService(GenericService):
             in (ImportResultStatus.COMPLETED, ImportResultStatus.PARTIALLY_FAILED)
         }
 
-    @unit_of_work
+    @sql_unit_of_work
     async def get_import_batch_with_results(
         self, import_batch_id: UUID4
     ) -> ImportBatch:
@@ -74,12 +75,12 @@ class ImportService(GenericService):
             import_batch_id, preload=["import_results"]
         )
 
-    @unit_of_work
+    @sql_unit_of_work
     async def register_import(self, import_record: ImportRecord) -> ImportRecord:
         """Register an import, persisting it to the database."""
         return await self.sql_uow.imports.add(import_record)
 
-    @unit_of_work
+    @sql_unit_of_work
     async def register_batch(self, batch: ImportBatch) -> ImportBatch:
         """Register an import batch, persisting it to the database."""
         # Errors if the import record does not exist
@@ -92,7 +93,7 @@ class ImportService(GenericService):
         """Update the status of an import batch."""
         return await self.sql_uow.batches.update_by_pk(import_batch_id, status=status)
 
-    @unit_of_work
+    @sql_unit_of_work
     async def update_import_batch_status(
         self, import_batch_id: UUID4, status: ImportBatchStatus
     ) -> ImportBatch:
@@ -148,7 +149,7 @@ This should not happen.
                 reference_id=reference_result.reference_id,
             )
 
-    @unit_of_work
+    @sql_unit_of_work
     async def process_import_batch_file(
         self, import_batch: ImportBatch, reference_service: ReferenceService
     ) -> ImportBatchStatus:
@@ -249,43 +250,9 @@ This should not happen.
         )
         await self.update_import_batch_status(import_batch.id, import_batch_status)
 
-        if import_batch_status != ImportBatchStatus.INDEXING:
-            logger.error(
-                "Import batch processing stopped, "
-                "elasticsearch indexing will not proceed.",
-                extra={
-                    "import_batch_id": import_batch.id,
-                    "import_batch_status": import_batch.status,
-                },
-            )
-            return import_batch_status
-
-        # Update elasticsearch index
-        try:
-            imported_references = await self.get_imported_references_from_batch(
-                import_batch_id=import_batch.id
-            )
-            await reference_service.index_references(
-                reference_ids=imported_references,
-            )
-
-        except Exception:
-            logger.exception(
-                "Error indexing references in Elasticsearch",
-                extra={
-                    "import_batch_id": import_batch.id,
-                },
-            )
-            import_batch_status = ImportBatchStatus.INDEXING_FAILED
-
-        else:
-            import_batch_status = ImportBatchStatus.COMPLETED
-
-        await self.update_import_batch_status(import_batch.id, import_batch_status)
-        await self.dispatch_import_batch_callback(import_batch)
         return import_batch_status
 
-    @unit_of_work
+    @sql_unit_of_work
     async def add_batch_result(
         self,
         import_result: ImportResult,
@@ -294,7 +261,7 @@ This should not happen.
         db_import_result = ImportResult(**import_result.model_dump())
         return await self.sql_uow.results.add(db_import_result)
 
-    @unit_of_work
+    @sql_unit_of_work
     async def get_import_results(
         self,
         import_batch_id: UUID4,
@@ -306,7 +273,7 @@ This should not happen.
             status=result_status,
         )
 
-    @unit_of_work
+    @sql_unit_of_work
     async def finalise_record(self, import_record_id: UUID4) -> None:
         """Finalise an import record."""
         await self.sql_uow.imports.update_by_pk(

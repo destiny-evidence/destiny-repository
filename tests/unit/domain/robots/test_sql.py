@@ -4,7 +4,7 @@ import uuid
 import pytest
 from pydantic import HttpUrl, SecretStr
 
-from app.domain.robots.sql import Robot
+from app.domain.robots.models.sql import Robot
 
 
 class DummyDomainRobot:

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
 from app.core.exceptions import (
+    ESMalformedDocumentError,
     NotFoundError,
     SDKToDomainError,
     WrongReferenceError,
@@ -29,9 +30,10 @@ from app.domain.references.models.models import (
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.service import ReferenceService
-from app.domain.robots.sql import Robot as SQLRobot
+from app.domain.robots.models.sql import Robot as SQLRobot
 from app.main import (
     enhance_wrong_reference_exception_handler,
+    es_malformed_exception_handler,
     not_found_exception_handler,
     sdk_to_domain_exception_handler,
 )
@@ -55,6 +57,7 @@ def app() -> FastAPI:
             NotFoundError: not_found_exception_handler,
             SDKToDomainError: sdk_to_domain_exception_handler,
             WrongReferenceError: enhance_wrong_reference_exception_handler,
+            ESMalformedDocumentError: es_malformed_exception_handler,
         }
     )
 
@@ -399,3 +402,76 @@ async def test_request_batch_enhancement_happy_path(
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()
     mock_process.assert_awaited_once()
+
+
+async def test_add_robot_automation_happy_path(
+    session: AsyncSession,
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> None:
+    """Test adding a robot automation."""
+    robot = await add_robot(session)
+
+    robot_automation_create = {
+        "query": {"match": {"robot_id": str(robot.id)}},
+    }
+
+    response = await client.post(
+        f"/robot/{robot.id}/automation/", json=robot_automation_create
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    response_data = response.json()
+    assert uuid.UUID(response_data["robot_id"]) == robot.id
+    assert response_data["query"] == robot_automation_create["query"]
+
+
+async def test_add_robot_automation_missing_robot(
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> None:
+    """Test adding a robot automation with a missing robot."""
+    robot_automation_create = {
+        "query": {"match": {"robot_id": "some-robot-id"}},
+    }
+
+    response = await client.post(
+        f"/robot/{uuid.uuid4()}/automation/", json=robot_automation_create
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert "robot" in response.json()["detail"].casefold()
+
+
+async def test_add_robot_automation_invalid_query(
+    session: AsyncSession,
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> None:
+    """Test adding a robot automation with an invalid query."""
+    robot = await add_robot(session)
+
+    robot_automation_create = {
+        "robot_id": str(robot.id),
+        "query": {"invalid": "query"},
+    }
+
+    response = await client.post(
+        f"/robot/{robot.id}/automation/", json=robot_automation_create
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "DSL class `invalid` does not exist in query" in response.json()["detail"]
+
+    robot_automation_create = {
+        "query": {"match": {"invalid": "value"}},
+    }
+
+    response = await client.post(
+        f"/robot/{robot.id}/automation/", json=robot_automation_create
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert (
+        "No field mapping can be found for the field with name [invalid]"
+        in response.json()["detail"]
+    )

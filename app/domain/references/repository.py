@@ -1,6 +1,7 @@
 """Repositories for references and associated models."""
 
 from abc import ABC
+from collections.abc import Sequence
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
@@ -9,22 +10,33 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.core.exceptions import SQLNotFoundError
-from app.domain.references.models.es import ReferenceDocument
+from app.domain.references.models.es import (
+    ReferenceDocument,
+    RobotAutomationPercolationDocument,
+)
 from app.domain.references.models.models import (
     BatchEnhancementRequest as DomainBatchEnhancementRequest,
 )
-from app.domain.references.models.models import Enhancement as DomainEnhancement
+from app.domain.references.models.models import (
+    Enhancement as DomainEnhancement,
+)
 from app.domain.references.models.models import (
     EnhancementRequest as DomainEnhancementRequest,
 )
 from app.domain.references.models.models import (
     ExternalIdentifierType,
     GenericExternalIdentifier,
+    RobotAutomationPercolationResult,
 )
 from app.domain.references.models.models import (
     LinkedExternalIdentifier as DomainExternalIdentifier,
 )
-from app.domain.references.models.models import Reference as DomainReference
+from app.domain.references.models.models import (
+    Reference as DomainReference,
+)
+from app.domain.references.models.models import (
+    RobotAutomation as DomainRobotAutomation,
+)
 from app.domain.references.models.sql import (
     BatchEnhancementRequest as SQLBatchEnhancementRequest,
 )
@@ -32,6 +44,7 @@ from app.domain.references.models.sql import Enhancement as SQLEnhancement
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import ExternalIdentifier as SQLExternalIdentifier
 from app.domain.references.models.sql import Reference as SQLReference
+from app.domain.references.models.sql import RobotAutomation as SQLRobotAutomation
 from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
@@ -290,3 +303,94 @@ class BatchEnhancementRequestSQLRepository(
             DomainBatchEnhancementRequest,
             SQLBatchEnhancementRequest,
         )
+
+
+class RobotAutomationRepositoryBase(
+    GenericAsyncRepository[DomainRobotAutomation, GenericPersistenceType],
+    ABC,
+):
+    """Abstract implementation of a repository for Robot Automations."""
+
+
+class RobotAutomationSQLRepository(
+    GenericAsyncSqlRepository[DomainRobotAutomation, SQLRobotAutomation],
+    RobotAutomationRepositoryBase,
+):
+    """Concrete implementation of a repository for robot automations using SQL."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Initialize the repository with the database session."""
+        super().__init__(
+            session,
+            DomainRobotAutomation,
+            SQLRobotAutomation,
+        )
+
+
+class RobotAutomationESRepository(
+    GenericAsyncESRepository[DomainRobotAutomation, RobotAutomationPercolationDocument],
+    RobotAutomationRepositoryBase,
+):
+    """Concrete implementation for robot automations using Elasticsearch."""
+
+    def __init__(self, client: AsyncElasticsearch) -> None:
+        """Initialize the repository with the Elasticsearch client."""
+        super().__init__(
+            client,
+            DomainRobotAutomation,
+            RobotAutomationPercolationDocument,
+        )
+
+    async def percolate(
+        self,
+        percolatables: Sequence[DomainReference | DomainEnhancement],
+    ) -> list[RobotAutomationPercolationResult]:
+        """
+        Percolate documents against the percolation queries in Elasticsearch.
+
+        :param percolatables: A list of percolatable domain objects.
+        :type percolatables: list[DomainReference | DomainEnhancement]
+        :return: The results of the percolation.
+        :rtype: list[RobotAutomationPercolationResult]
+        """
+        documents = [
+            (
+                await self._persistence_cls.percolatable_document_from_domain(
+                    percolatable
+                )
+            ).to_dict()
+            for percolatable in percolatables
+        ]
+        results = await (
+            self._persistence_cls.search()
+            .using(self._client)
+            .query(
+                {
+                    "percolate": {
+                        "field": "query",
+                        "documents": documents,
+                    }
+                }
+            )
+            .execute()
+        )
+
+        robot_automation_percolation_results: list[
+            RobotAutomationPercolationResult
+        ] = []
+        for result in results:
+            matches: list[DomainReference | DomainEnhancement] = [
+                percolatables[slot]
+                for slot in result.meta.fields["_percolator_document_slot"]
+            ]
+            reference_ids = {
+                match.id if isinstance(match, DomainReference) else match.reference_id
+                for match in matches
+            }
+            robot_automation_percolation_results.append(
+                RobotAutomationPercolationResult(
+                    robot_id=result.robot_id, reference_ids=reference_ids
+                )
+            )
+
+        return robot_automation_percolation_results

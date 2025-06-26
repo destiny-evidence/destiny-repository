@@ -1,7 +1,7 @@
 """Schemas that define inputs/outputs for robots."""
 
 from enum import StrEnum, auto
-from typing import Annotated, Self
+from typing import Annotated, Any, Self
 
 from pydantic import UUID4, BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
@@ -174,6 +174,10 @@ class _EnhancementRequestBase(BaseModel):
     robot_id: UUID4 = Field(
         description="The robot to be used to create the enhancement."
     )
+    source: str | None = Field(
+        default=None,
+        description="The source of the batch enhancement request.",
+    )
 
     enhancement_parameters: dict | None = Field(
         default=None, description="Information needed to create the enhancement. TBC."
@@ -232,6 +236,10 @@ class _BatchEnhancementRequestBase(BaseModel):
     )
     reference_ids: list[UUID4] = Field(
         description="The IDs of the references to be enhanced."
+    )
+    source: str | None = Field(
+        default=None,
+        description="The source of the batch enhancement request.",
     )
 
 
@@ -334,4 +342,40 @@ class ProvisionedRobot(Robot):
     client_secret: str = Field(
         description="The client secret of the robot, used as the secret key "
         "when sending HMAC authenticated requests."
+    )
+
+
+class _RobotAutomationBase(BaseModel):
+    """Base Robot Automation class."""
+
+    query: dict[str, Any] = Field(
+        description="The percolator query that will be used to match references "
+        " or enhancements against."
+    )
+
+
+class RobotAutomationIn(_RobotAutomationBase):
+    """
+    Automation model for a robot.
+
+    This is used as a source of truth for an Elasticsearch index that percolates
+    references or enhancements against the queries. If a query matches, a request
+    is sent to the specified robot to perform the enhancement.
+    """
+
+
+class RobotAutomation(_RobotAutomationBase):
+    """
+    Core Robot Automation class.
+
+    This is used as a source of truth for an Elasticsearch index that percolates
+    references or enhancements against the queries. If a query matches, a request
+    is sent to the specified robot to perform the enhancement.
+    """
+
+    id: UUID4 = Field(
+        description="The ID of the robot automation.",
+    )
+    robot_id: UUID4 = Field(
+        description="The ID of the robot that will be used to enhance the reference."
     )

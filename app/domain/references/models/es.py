@@ -1,9 +1,19 @@
 """Objects used to interface with Elasticsearch implementations."""
 
 import asyncio
-from typing import Self
+import uuid
+from typing import Any, Self
 
-from elasticsearch.dsl import InnerDoc, Keyword, Nested, Object, Text, mapped_field
+from elasticsearch.dsl import (
+    Boolean,
+    InnerDoc,
+    Keyword,
+    Nested,
+    Object,
+    Percolator,
+    Text,
+    mapped_field,
+)
 from pydantic import UUID4
 
 from app.domain.references.models.models import (
@@ -13,9 +23,13 @@ from app.domain.references.models.models import (
     ExternalIdentifierType,
     LinkedExternalIdentifier,
     Reference,
+    RobotAutomation,
     Visibility,
 )
-from app.persistence.es.persistence import INDEX_PREFIX, GenericESPersistence
+from app.persistence.es.persistence import (
+    INDEX_PREFIX,
+    GenericESPersistence,
+)
 
 
 class ExternalIdentifierDocument(InnerDoc):
@@ -53,8 +67,10 @@ class ExternalIdentifierDocument(InnerDoc):
 class AnnotationDocument(InnerDoc):
     """Persistence model for useful annotation fields in Elasticsearch."""
 
-    scheme: str | None = mapped_field(Keyword())
-    label: str | None = mapped_field(Keyword())
+    scheme: str = mapped_field(Keyword())
+    label: str = mapped_field(Keyword())
+    annotation_type: str = mapped_field(Keyword())
+    value: bool | None = mapped_field(Boolean(required=False))
 
     class Meta:
         """Allow unmapped fields in the document."""
@@ -118,6 +134,11 @@ class EnhancementDocument(InnerDoc):
 class ReferenceDocument(GenericESPersistence[Reference]):
     """Persistence model for references in Elasticsearch."""
 
+    class Index:
+        """Index metadata for the persistence model."""
+
+        name = f"{INDEX_PREFIX}-reference"
+
     visibility: Visibility = mapped_field(Keyword(required=True))
     identifiers: list[ExternalIdentifierDocument] = mapped_field(
         Nested(ExternalIdentifierDocument)
@@ -153,19 +174,112 @@ class ReferenceDocument(GenericESPersistence[Reference]):
             visibility=self.visibility,
             identifiers=await asyncio.gather(
                 *(
-                    identifier.to_domain(reference_id=self.id)
+                    identifier.to_domain(reference_id=uuid.UUID(self.meta.id))
                     for identifier in self.identifiers
                 )
             ),
             enhancements=await asyncio.gather(
                 *(
-                    enhancement.to_domain(reference_id=self.id)
+                    enhancement.to_domain(reference_id=uuid.UUID(self.meta.id))
                     for enhancement in self.enhancements
                 )
             ),
         )
 
+
+class ReferenceInnerDocument(InnerDoc):
+    """InnerDoc for references in Elasticsearch."""
+
+    visibility: Visibility = mapped_field(Keyword(required=True))
+    identifiers: list[ExternalIdentifierDocument] = mapped_field(
+        Nested(ExternalIdentifierDocument)
+    )
+    enhancements: list[EnhancementDocument] = mapped_field(Nested(EnhancementDocument))
+
+    @classmethod
+    async def from_domain(cls, domain_obj: Reference) -> Self:
+        """Create a ReferenceInnerDocument from a domain Reference object."""
+        return cls(
+            visibility=domain_obj.visibility,
+            identifiers=await asyncio.gather(
+                *(
+                    ExternalIdentifierDocument.from_domain(identifier)
+                    for identifier in domain_obj.identifiers or []
+                )
+            ),
+            enhancements=await asyncio.gather(
+                *(
+                    EnhancementDocument.from_domain(enhancement)
+                    for enhancement in domain_obj.enhancements or []
+                )
+            ),
+        )
+
+
+class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
+    """
+    Persistence model for robot automation percolation in Elasticsearch.
+
+    This model serves two purposes in order to fully define the index: a persistence
+    layer for queries that dictate robot automation, and a percolator layer to convert
+    domain models to queryable documents that run against said queries.
+    """
+
     class Index:
         """Index metadata for the persistence model."""
 
-        name = f"{INDEX_PREFIX}-reference"
+        name = f"{INDEX_PREFIX}-robot-automation-percolation"
+
+    query: dict[str, Any] | None = mapped_field(
+        Percolator(required=False),
+    )
+    robot_id: uuid.UUID | None = mapped_field(
+        Keyword(required=False),
+    )
+    reference: ReferenceInnerDocument | None = mapped_field(
+        Object(ReferenceInnerDocument, required=False),
+    )
+    enhancement: EnhancementDocument | None = mapped_field(
+        Object(EnhancementDocument, required=False),
+    )
+
+    @classmethod
+    async def from_domain(cls, domain_obj: RobotAutomation) -> Self:
+        """Create a percolator query from a domain model."""
+        return cls(
+            # Parent's parent does accept meta, but mypy doesn't like it here.
+            # Ignoring easier than chaining __init__ methods IMO.
+            meta={"id": domain_obj.id},  # type: ignore[call-arg]
+            query=domain_obj.query,
+            robot_id=domain_obj.robot_id,
+        )
+
+    async def to_domain(self) -> RobotAutomation:
+        """Create a domain model from this persistence model."""
+        return RobotAutomation(
+            id=self.meta.id, robot_id=self.robot_id, query=self.query
+        )
+
+    @classmethod
+    async def percolatable_document_from_domain(
+        cls,
+        percolatable: Reference | Enhancement,
+    ) -> Self:
+        """
+        Create a percolatable document from a domain model.
+
+        :param percolatable: The percolatable document to convert.
+        :type percolatable: Reference | Enhancement
+        :return: The persistence model.
+        :rtype: RobotAutomationPercolationDocument
+        """
+        return cls(
+            query=None,
+            robot_id=None,
+            reference=await ReferenceInnerDocument.from_domain(percolatable)
+            if isinstance(percolatable, Reference)
+            else None,
+            enhancement=await EnhancementDocument.from_domain(percolatable)
+            if isinstance(percolatable, Enhancement)
+            else None,
+        )

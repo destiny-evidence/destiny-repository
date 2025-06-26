@@ -4,13 +4,17 @@ import contextlib
 from collections.abc import AsyncIterator
 
 from elasticsearch import AsyncElasticsearch
+from elasticsearch.exceptions import BadRequestError
 
 from app.core.config import ESConfig
 from app.core.logger import get_logger
-from app.domain.references.models.es import ReferenceDocument
+from app.domain.references.models.es import (
+    ReferenceDocument,
+    RobotAutomationPercolationDocument,
+)
 
 logger = get_logger()
-indices = [ReferenceDocument]
+indices = (ReferenceDocument, RobotAutomationPercolationDocument)
 
 
 class AsyncESClientManager:
@@ -47,7 +51,15 @@ class AsyncESClientManager:
             if not exists:
                 msg = f"Creating index {index.Index.name}"
                 logger.info(msg)
-                await index.init(using=self._client)
+                try:
+                    await index.init(using=self._client)
+                except BadRequestError as e:
+                    # Handle race condition where index was created between check/init
+                    if "resource_already_exists_exception" in str(e):
+                        msg = f"Index {index.Index.name} already exists, skipping"
+                        logger.info(msg)
+                    else:
+                        raise
 
     async def close(self) -> None:
         """Close the Elasticsearch client."""

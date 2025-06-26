@@ -1,12 +1,17 @@
 """Import tasks module for the DESTINY Climate and Health Repository API."""
 
+from collections.abc import Iterable
+
 from elasticsearch import AsyncElasticsearch
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import get_logger
 from app.domain.references.models.es import ReferenceDocument
-from app.domain.references.models.models import BatchEnhancementRequestStatus
+from app.domain.references.models.models import (
+    BatchEnhancementRequest,
+    BatchEnhancementRequestStatus,
+)
 from app.domain.references.service import ReferenceService
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
@@ -116,11 +121,12 @@ async def validate_and_import_batch_enhancement_result(
     )
 
     try:
-        terminal_status = (
-            await reference_service.validate_and_import_batch_enhancement_result(
-                batch_enhancement_request,
-                blob_repository,
-            )
+        (
+            terminal_status,
+            imported_enhancement_ids,
+        ) = await reference_service.validate_and_import_batch_enhancement_result(
+            batch_enhancement_request,
+            blob_repository,
         )
     except Exception as e:
         logger.exception(
@@ -145,6 +151,10 @@ async def validate_and_import_batch_enhancement_result(
         await reference_service.index_references(
             reference_ids=batch_enhancement_request.reference_ids,
         )
+        await reference_service.update_batch_enhancement_request_status(
+            batch_enhancement_request.id,
+            terminal_status,
+        )
     except Exception:
         logger.exception(
             "Error indexing references in Elasticsearch",
@@ -156,11 +166,14 @@ async def validate_and_import_batch_enhancement_result(
             batch_enhancement_request.id,
             BatchEnhancementRequestStatus.INDEXING_FAILED,
         )
-    else:
-        await reference_service.update_batch_enhancement_request_status(
-            batch_enhancement_request.id,
-            terminal_status,
-        )
+
+    # Perform robot automations
+    await detect_and_dispatch_robot_automations(
+        reference_service,
+        enhancement_ids=imported_enhancement_ids,
+        source_str=f"BatchEnhancementRequest:{batch_enhancement_request.id}",
+        skip_robot_id=batch_enhancement_request.robot_id,
+    )
 
 
 @broker.task
@@ -175,3 +188,55 @@ async def rebuild_reference_index() -> None:
         await ReferenceDocument.init(using=client)
 
     await reference_service.repopulate_reference_index()
+
+
+async def detect_and_dispatch_robot_automations(
+    reference_service: ReferenceService,
+    reference_ids: Iterable[UUID4] | None = None,
+    enhancement_ids: Iterable[UUID4] | None = None,
+    source_str: str | None = None,
+    skip_robot_id: UUID4 | None = None,
+) -> list[BatchEnhancementRequest]:
+    """
+    Request default enhancements for a set of references.
+
+    Technically this is a task distributor, not a task - may live in a higher layer
+    later in life.
+    """
+    requests: list[BatchEnhancementRequest] = []
+    robot_automations = await reference_service.detect_robot_automations(
+        reference_ids=reference_ids,
+        enhancement_ids=enhancement_ids,
+    )
+    for robot_automation in robot_automations:
+        if robot_automation.robot_id == skip_robot_id:
+            logger.warning(
+                "Detected robot automation loop, skipping."
+                " This is likely a problem in the percolation query.",
+                extra={
+                    "robot_id": robot_automation.robot_id,
+                    "source": source_str,
+                },
+            )
+            continue
+        enhancement_request = (
+            await reference_service.register_batch_reference_enhancement_request(
+                enhancement_request=BatchEnhancementRequest(
+                    reference_ids=robot_automation.reference_ids,
+                    robot_id=robot_automation.robot_id,
+                    source=source_str,
+                ),
+            )
+        )
+        requests.append(enhancement_request)
+        logger.info(
+            "Enqueueing enhancement batch for imported references",
+            extra={
+                "batch_enhancement_request_id": enhancement_request.id,
+                "robot_id": robot_automation.robot_id,
+            },
+        )
+        await collect_and_dispatch_references_for_batch_enhancement.kiq(
+            batch_enhancement_request_id=enhancement_request.id,
+        )
+    return requests

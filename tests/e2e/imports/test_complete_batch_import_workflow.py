@@ -36,6 +36,8 @@ callback_payload: dict = {}
 db_url = os.environ["DB_URL"]
 engine = create_engine(db_url)
 
+toy_robot_url = os.environ["TOY_ROBOT_URL"]
+
 
 # e2e tests are ordered for easier seeding of downstream tests
 @pytest.mark.order(1)
@@ -404,6 +406,9 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         assert len(reference["identifiers"]) == 2
 
         # 7: Subset of duplicates, aggressive merge
+        # Set up the robot here so we can test if imported references trigger
+        # enhancement creation
+        register_toy_robot(client)
         url = PRESIGNED_URLS[f"{BKT}6_file_with_duplicates_to_right_merge.jsonl"]
         import_batch_f = submit_happy_batch(
             import_record["id"],
@@ -428,7 +433,9 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         )
         assert response.status_code == 200
         reference = response.json()
-        assert len(reference["enhancements"]) == 1
+        assert (  # Toy robot may add an enhancement before we get here, we'll check it in the next test
+            1 <= len(reference["enhancements"]) <= 2
+        )
         assert len(reference["identifiers"]) == 3
         for identifier in reference["identifiers"]:
             if identifier["identifier_type"] == "doi":
@@ -460,7 +467,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             basic_auth=(os.environ["ES_USER"], os.environ["ES_PASS"]),
             ca_certs=os.environ["ES_CA_PATH"],
         )
-        es_index = "destiny-repository-reference"
+        es_index = "destiny-repository-e2e-reference"
         assert es.indices.exists(index=es_index)
         es_response = es.search(
             index=es_index,
@@ -488,3 +495,64 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
                 assert (
                     enhancement["content"]["authorship"][0]["display_name"] == "Wynstan"
                 )
+
+
+def register_toy_robot(client: httpx.Client) -> None:
+    """Register the toy robot and set up automation."""
+    # Register the toy robot
+    response = client.post(
+        "/robot/",
+        json={
+            "name": "Toy Robot 1",
+            "base_url": toy_robot_url,
+            "description": "Provides toy annotation enhancements",
+            "owner": "Future Evidence Foundation",
+        },
+    )
+
+    assert response.status_code == 201
+    toy_robot_id = response.json()["id"]
+
+    # Send an enhancement request if a new reference doesn't have a toy enhancement,
+    # or if a new toy enhancement is added to a reference (we do some fancy stuff in
+    # the next test to do this once and stop the cycle).
+    response = client.post(
+        f"/robot/{toy_robot_id}/automation/",
+        json={
+            "query": {
+                "bool": {
+                    "should": [
+                        {
+                            "bool": {
+                                "must_not": [
+                                    {
+                                        "nested": {
+                                            "path": "reference.enhancements.content.annotations",
+                                            "query": {
+                                                "term": {
+                                                    "reference.enhancements.content.annotations.label": "toy"
+                                                }
+                                            },
+                                        }
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "nested": {
+                                "path": "enhancement.content.annotations",
+                                "query": {
+                                    "term": {
+                                        "enhancement.content.annotations.label": "toy"
+                                    }
+                                },
+                            }
+                        },
+                    ],
+                    "minimum_should_match": 1,
+                }
+            },
+        },
+    )
+
+    time.sleep(1)  # Wait for the index to refresh

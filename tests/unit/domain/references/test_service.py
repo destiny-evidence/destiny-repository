@@ -7,6 +7,7 @@ import httpx
 import pytest
 from fastapi import status
 
+from app.core.config import ESPercolationOperation
 from app.core.exceptions import (
     InvalidParentEnhancementError,
     RobotEnhancementError,
@@ -20,10 +21,11 @@ from app.domain.references.models.models import (
     EnhancementRequestStatus,
     ExternalIdentifierAdapter,
     Reference,
+    RobotAutomationPercolationResult,
     Visibility,
 )
 from app.domain.references.service import ReferenceService
-from app.domain.robots.models import Robot
+from app.domain.robots.models.models import Robot
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 
@@ -323,52 +325,10 @@ async def test_create_reference_enhancement_from_request_happy_path(
 ):
     enhancement_request_id = uuid.uuid4()
     reference_id = uuid.uuid4()
+    enhancement = Enhancement(reference_id=reference_id, **fake_enhancement_data)
     fake_reference_repo = fake_repository([Reference(id=reference_id)])
+    fake_enhancements_repo = fake_repository([enhancement])
     fake_reference_repo_es = fake_repository()
-
-    existing_enhancement_request = EnhancementRequest(
-        id=enhancement_request_id,
-        reference_id=reference_id,
-        robot_id=uuid.uuid4(),
-        request_status=EnhancementRequestStatus.ACCEPTED,
-    )
-
-    fake_enhancement_requests = fake_repository([existing_enhancement_request])
-    uow = fake_uow(
-        enhancement_requests=fake_enhancement_requests,
-        references=fake_reference_repo,
-    )
-    es_uow = fake_uow(references=fake_reference_repo_es)
-
-    service = ReferenceService(sql_uow=uow, es_uow=es_uow)
-    enhancement_request = await service.create_reference_enhancement_from_request(
-        enhancement_request_id=existing_enhancement_request.id,
-        enhancement=Enhancement(reference_id=reference_id, **fake_enhancement_data),
-    )
-
-    reference = fake_reference_repo.get_first_record()
-
-    assert enhancement_request.request_status == EnhancementRequestStatus.COMPLETED
-    assert reference.enhancements[0]["source"] == fake_enhancement_data.get("source")
-
-    es_reference = fake_reference_repo_es.get_first_record()
-    assert es_reference == reference
-
-
-@pytest.mark.asyncio
-async def test_create_valid_derived_reference_enhancement_from_request(
-    fake_repository, fake_uow, fake_enhancement_data
-):
-    enhancement_request_id = uuid.uuid4()
-    reference_id = uuid.uuid4()
-    existing_enhancement = Enhancement(
-        reference_id=reference_id, **fake_enhancement_data
-    )
-    fake_reference_repo = fake_repository(
-        [Reference(id=reference_id, enhancements=[existing_enhancement])]
-    )
-    fake_reference_repo_es = fake_repository()
-    fake_enhancements_repo = fake_repository([existing_enhancement])
 
     existing_enhancement_request = EnhancementRequest(
         id=enhancement_request_id,
@@ -385,13 +345,68 @@ async def test_create_valid_derived_reference_enhancement_from_request(
     )
     es_uow = fake_uow(references=fake_reference_repo_es)
 
-    derived_enhancement = fake_enhancement_data.copy()
-    derived_enhancement["derived_from"] = [existing_enhancement.id]
-
-    service = ReferenceService(uow, es_uow)
+    service = ReferenceService(sql_uow=uow, es_uow=es_uow)
+    robot_automation_mock = AsyncMock()
+    service._detect_robot_automations = robot_automation_mock  # noqa: SLF001
     enhancement_request = await service.create_reference_enhancement_from_request(
         enhancement_request_id=existing_enhancement_request.id,
-        enhancement=Enhancement(reference_id=reference_id, **derived_enhancement),
+        enhancement=enhancement,
+        robot_service=RobotService(uow),
+        robot_request_dispatcher=RobotRequestDispatcher(),
+    )
+
+    reference = fake_reference_repo.get_first_record()
+
+    assert enhancement_request.request_status == EnhancementRequestStatus.COMPLETED
+    assert reference.enhancements[0]["source"] == fake_enhancement_data.get("source")
+
+    es_reference = fake_reference_repo_es.get_first_record()
+    assert es_reference == reference
+
+    robot_automation_mock.assert_awaited_once_with(enhancement_ids=[enhancement.id])
+
+
+@pytest.mark.asyncio
+async def test_create_valid_derived_reference_enhancement_from_request(
+    fake_repository, fake_uow, fake_enhancement_data
+):
+    enhancement_request_id = uuid.uuid4()
+    reference_id = uuid.uuid4()
+    existing_enhancement = Enhancement(
+        reference_id=reference_id, **fake_enhancement_data
+    )
+    derived_enhancement = fake_enhancement_data.copy()
+    derived_enhancement["derived_from"] = [existing_enhancement.id]
+    new_enhancement = Enhancement(reference_id=reference_id, **derived_enhancement)
+    fake_reference_repo = fake_repository(
+        [Reference(id=reference_id, enhancements=[existing_enhancement])]
+    )
+    fake_reference_repo_es = fake_repository()
+    fake_enhancements_repo = fake_repository([existing_enhancement, new_enhancement])
+
+    existing_enhancement_request = EnhancementRequest(
+        id=enhancement_request_id,
+        reference_id=reference_id,
+        robot_id=uuid.uuid4(),
+        request_status=EnhancementRequestStatus.ACCEPTED,
+    )
+
+    fake_enhancement_requests = fake_repository([existing_enhancement_request])
+    uow = fake_uow(
+        enhancement_requests=fake_enhancement_requests,
+        references=fake_reference_repo,
+        enhancements=fake_enhancements_repo,
+    )
+    es_uow = fake_uow(references=fake_reference_repo_es)
+
+    service = ReferenceService(uow, es_uow)
+    robot_automation_mock = AsyncMock()
+    service._detect_robot_automations = robot_automation_mock  # noqa: SLF001
+    enhancement_request = await service.create_reference_enhancement_from_request(
+        enhancement_request_id=existing_enhancement_request.id,
+        enhancement=new_enhancement,
+        robot_service=RobotService(uow),
+        robot_request_dispatcher=RobotRequestDispatcher(),
     )
 
     reference = fake_reference_repo.get_first_record()
@@ -401,6 +416,8 @@ async def test_create_valid_derived_reference_enhancement_from_request(
 
     es_reference = fake_reference_repo_es.get_first_record()
     assert es_reference == reference
+
+    robot_automation_mock.assert_awaited_once_with(enhancement_ids=[new_enhancement.id])
 
 
 @pytest.mark.asyncio
@@ -440,6 +457,8 @@ async def test_create_invalid_derived_reference_enhancement_from_request(
         await service.create_reference_enhancement_from_request(
             enhancement_request_id=existing_enhancement_request.id,
             enhancement=Enhancement(reference_id=reference_id, **derived_enhancement),
+            robot_service=RobotService(uow),
+            robot_request_dispatcher=RobotRequestDispatcher(),
         )
 
 
@@ -473,6 +492,8 @@ async def test_create_reference_enhancement_from_request_reference_not_found(
             enhancement=Enhancement(
                 reference_id=non_existent_reference_id, **fake_enhancement_data
             ),
+            robot_service=RobotService(uow),
+            robot_request_dispatcher=RobotRequestDispatcher(),
         )
 
 
@@ -494,6 +515,8 @@ async def test_create_reference_enhancement_from_request_enhancement_request_not
         await service.create_reference_enhancement_from_request(
             enhancement_request_id=uuid.uuid4(),
             enhancement=Enhancement(reference_id=reference_id, **fake_enhancement_data),
+            robot_service=RobotService(uow),
+            robot_request_dispatcher=RobotRequestDispatcher(),
         )
 
 
@@ -530,6 +553,8 @@ async def test_create_reference_enhancement_from_request_enhancement_for_wrong_r
             enhancement=Enhancement(
                 reference_id=different_reference_id, **fake_enhancement_data
             ),
+            robot_service=RobotService(uow),
+            robot_request_dispatcher=RobotRequestDispatcher(),
         )
 
 
@@ -649,3 +674,72 @@ async def test_register_batch_reference_enhancement_request_missing_pk(
         await service.register_batch_reference_enhancement_request(
             enhancement_request=batch_enhancement_request
         )
+
+
+@pytest.mark.asyncio
+async def test_detect_robot_automations(
+    fake_repository, fake_uow, fake_enhancement_data, monkeypatch
+):
+    """Test the detection of robot automations for references."""
+    # Patch settings to test chunking
+    monkeypatch.setattr(
+        "app.domain.references.service.settings.es_percolation_chunk_size_override",
+        {ESPercolationOperation.ROBOT_AUTOMATION: 2},
+    )
+
+    reference_id = uuid.uuid4()
+    robot_id = uuid.uuid4()
+
+    enhancement = Enhancement(reference_id=reference_id, **fake_enhancement_data)
+    hydrated_references = [
+        Reference(id=reference_id, visibility="public", enhancements=[enhancement]),
+        Reference(id=uuid.uuid4(), visibility="public", enhancements=[enhancement]),
+        Reference(id=uuid.uuid4(), visibility="public", enhancements=[enhancement]),
+    ]
+
+    # Extend the fake repository with get_hydrated and percolation
+    class FakeRepo(fake_repository):
+        def __init__(self, init_entries=None):
+            super().__init__(init_entries=init_entries)
+            self.hydrated_references = init_entries
+
+        async def get_hydrated(
+            self,
+            reference_ids,
+            enhancement_types=None,
+            external_identifier_types=None,
+        ):
+            return await self.get_by_pks(reference_ids)
+
+        async def percolate(self, documents):
+            # Returns a match on all documents against one robot
+            return [
+                RobotAutomationPercolationResult(
+                    robot_id=robot_id,
+                    reference_ids={
+                        getattr(document, "reference_id", getattr(document, "id", None))
+                        for document in documents
+                    },
+                )
+            ]
+
+    fake_enhancements_repo = fake_repository([enhancement])
+    fake_references_repo = FakeRepo(hydrated_references)
+    fake_robot_automations_repo = FakeRepo()
+
+    sql_uow = fake_uow(
+        references=fake_references_repo,
+        enhancements=fake_enhancements_repo,
+    )
+    es_uow = fake_uow(robot_automations=fake_robot_automations_repo)
+
+    service = ReferenceService(sql_uow=sql_uow, es_uow=es_uow)
+    results = await service.detect_robot_automations(
+        reference_ids=[r.id for r in hydrated_references],
+        enhancement_ids=[enhancement.id],
+    )
+    assert len(results) == 1
+    assert results[0].robot_id == robot_id
+    # Checks that the robot automations were marged (shared reference id on the
+    # enhancement and a reference)
+    assert len(results[0].reference_ids) == 3

@@ -16,7 +16,7 @@ from app.domain.references.models.models import EnhancementRequestStatus
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.routes import robot_router
-from app.domain.robots.sql import Robot as SQLRobot
+from app.domain.robots.models.sql import Robot as SQLRobot
 
 
 @pytest.fixture

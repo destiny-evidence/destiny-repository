@@ -15,7 +15,7 @@ from app.core.auth import (
 )
 from app.core.config import get_settings
 from app.core.logger import get_logger
-from app.domain.robots.models import Robot
+from app.domain.robots.models.models import Robot
 from app.domain.robots.service import RobotService
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -24,15 +24,15 @@ settings = get_settings()
 logger = get_logger()
 
 
-def unit_of_work(
+def sql_unit_of_work(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> AsyncSqlUnitOfWork:
-    """Return the unit of work for operating on references."""
+    """Return the unit of work for operating on robots in SQL."""
     return AsyncSqlUnitOfWork(session=session)
 
 
 def robot_service(
-    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
 ) -> RobotService:
     """Return the robot service using the provided unit of work dependencies."""
     return RobotService(sql_uow=sql_uow)
@@ -41,10 +41,10 @@ def robot_service(
 def choose_auth_strategy_robot_writer() -> AuthMethod:
     """Choose robot writer for our authorization strategy."""
     return choose_auth_strategy(
-        environment=settings.env,
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScopes.ROBOT_WRITER,
+        bypass_auth=settings.running_locally,
     )
 
 

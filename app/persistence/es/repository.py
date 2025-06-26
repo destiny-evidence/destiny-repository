@@ -1,13 +1,16 @@
 """Generic repositories define expected functionality."""
 
+import contextlib
 from abc import ABC
 from collections.abc import AsyncGenerator
 from typing import Generic
 
-from elasticsearch import AsyncElasticsearch
+from elasticsearch import AsyncElasticsearch, NotFoundError
+from elasticsearch.dsl.exceptions import UnknownDslObject
+from elasticsearch.exceptions import BadRequestError
 from pydantic import UUID4
 
-from app.core.exceptions import ESError, ESNotFoundError
+from app.core.exceptions import ESError, ESMalformedDocumentError, ESNotFoundError
 from app.persistence.es.generics import GenericESPersistenceType
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
@@ -59,10 +62,13 @@ class GenericAsyncESRepository(
             msg = "Preloading is not supported in Elasticsearch repositories."
             raise ESError(msg)
 
-        result = await self._persistence_cls.get(
-            id=str(pk),
-            using=self._client,
-        )
+        result = None
+        with contextlib.suppress(NotFoundError):
+            result = await self._persistence_cls.get(
+                id=str(pk),
+                using=self._client,
+            )
+
         if not result:
             detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
             raise ESNotFoundError(
@@ -83,7 +89,13 @@ class GenericAsyncESRepository(
         :rtype: GenericDomainModelType
         """
         es_record = await self._persistence_cls.from_domain(record)
-        _created = await es_record.save(using=self._client)
+        try:
+            await es_record.save(using=self._client)
+        except (BadRequestError, UnknownDslObject) as exc:
+            # This is usually raised on incorrect percolation queries but
+            # we raise it more generally.
+            msg = f"Malformed Elasticsearch document: {record}. Error: {exc}."
+            raise ESMalformedDocumentError(msg) from exc
         return record
 
     async def add_bulk(

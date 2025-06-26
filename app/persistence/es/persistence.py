@@ -5,9 +5,12 @@ from typing import Generic, Self
 
 from elasticsearch.dsl import AsyncDocument
 
+from app.core.config import get_settings
 from app.persistence.generics import GenericDomainModelType
 
-INDEX_PREFIX = "destiny-repository"
+settings = get_settings()
+
+INDEX_PREFIX = f"destiny-repository-{settings.env}"
 
 
 # NB does not inherit ABC due to metadata mixing issues.

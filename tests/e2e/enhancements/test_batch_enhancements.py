@@ -1,6 +1,8 @@
 """
 Test batch enhancements with robots.
 
+This test sends
+
 Consider reducing number of assertions, particularly string-sensitive, once
 unit and integration test coverage is sound.
 """
@@ -25,8 +27,7 @@ engine = create_engine(db_url)
 # e2e tests are ordered for easier seeding of downstream tests
 @pytest.mark.order(2)
 # Remove the below if you want to run e2e tests locally with the toy robot.
-@pytest.mark.skip(reason="Skipped in GH action, requires toy robot access.")
-def test_complete_batch_enhancement_workflow():
+def test_complete_batch_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
     """Test complete batch enhancement workflow, happy-ish path."""
     with (
         httpx.Client(base_url=repo_url) as repo_client,
@@ -49,17 +50,23 @@ def test_complete_batch_enhancement_workflow():
             reference_ids.append(response.json()["id"])
         assert len(reference_ids) == 3
 
-        # Register the toy robot
+        # Add a second toy robot
+        # We do this so that we can test automatic robots on enhancements:
+        # 1. request batch enhancement on robot number 2
+        # 2. robot number 2 imports the enhancements
+        # 3. repo sends automatic request to robot number 1
+        # 4. robot number 1 imports the enhancements
+        # 5. repo considers sending automatic request to robot number 1,
+        #    notices that request_robot == automatic_robot, stops
         response = repo_client.post(
             "/robot/",
-            json=destiny_sdk.robots.RobotIn(
-                name="Toy Robot",
-                base_url=toy_robot_url,
-                description="Provides toy annotation enhancements",
-                owner="Future Evidence Foundation",
-            ).model_dump(mode="json"),
+            json={
+                "name": "Toy Robot 2 but really it's just Toy Robot 1",
+                "base_url": toy_robot_url,
+                "description": "Provides toy annotation enhancements",
+                "owner": "Future Evidence Foundation",
+            },
         )
-
         assert response.status_code == 201
         toy_robot_id = response.json()["id"]
 
@@ -76,7 +83,6 @@ def test_complete_batch_enhancement_workflow():
 
         while True:
             time.sleep(1)
-            # Wait for completion
             response = repo_client.get(
                 f"/references/enhancement/batch/request/{batch_id}/",
             )
@@ -88,6 +94,7 @@ def test_complete_batch_enhancement_workflow():
             ):
                 break
 
+        # Check the ad-hoc request
         assert request["request_status"] == "completed"
         result = destiny_sdk.robots.BatchEnhancementRequestRead.model_validate(request)
         validation_file = httpx.get(str(result.validation_result_url))
@@ -104,6 +111,36 @@ def test_complete_batch_enhancement_workflow():
             reference = destiny_sdk.references.Reference.model_validate_json(line)
             assert str(reference.id) in reference_ids
 
+        # Check the automatic requests from the import
+        with engine.connect() as conn:
+            result = list(
+                conn.execute(
+                    text(
+                        f"""
+                    SELECT id FROM batch_enhancement_request
+                    WHERE robot_id <> '{toy_robot_id}';
+                    """  # noqa: S608
+                    ),
+                ).scalars()
+            )
+            assert len(result) == 2
+            import_auto_request_found = False
+            batch_auto_request_found = False
+            for request_id in result:
+                response = repo_client.get(
+                    f"/references/enhancement/batch/request/{request_id}/",
+                )
+                request = response.json()
+                if request["source"].startswith("ImportBatch"):
+                    assert request["request_status"] == "completed"
+                    import_auto_request_found = True
+                if request["source"].startswith("BatchEnhancementRequest"):
+                    assert request["request_status"] == "completed"
+                    batch_auto_request_found = True
+
+            assert batch_auto_request_found
+            assert import_auto_request_found
+
     # Finally check we got some toys themselves
     with engine.connect() as conn:
         result = conn.execute(
@@ -115,14 +152,13 @@ def test_complete_batch_enhancement_workflow():
             """  # noqa: S608
             ),
         )
-        toy_found = dict.fromkeys(reference_ids, False)
+        toys_found = dict.fromkeys(reference_ids, 0)
         for row in result:
             assert str(row.reference_id) in reference_ids
             if row.enhancement_type == "annotation" and row.source == "Toy Robot":
-                toy_found[str(row.reference_id)] = True
-
-        if not all(toy_found.values()):
-            msg = "Expected toy robot enhancement not found in reference."
+                toys_found[str(row.reference_id)] += 1
+        if not all(count == 2 for count in toys_found.values()):
+            msg = "Expected toy robot enhancements not found in reference."
             raise AssertionError(msg)
 
     time.sleep(1)
@@ -131,17 +167,57 @@ def test_complete_batch_enhancement_workflow():
         basic_auth=(os.environ["ES_USER"], os.environ["ES_PASS"]),
         ca_certs=os.environ["ES_CA_PATH"],
     )
-    es_index = "destiny-repository-reference"
+    es_index = "destiny-repository-e2e-reference"
     for reference_id in reference_ids:
         response = es.get(index=es_index, id=reference_id)
-        toy_found = False
+        toys_found = 0
         for row in response["_source"]["enhancements"]:
             if (
                 row["content"]["enhancement_type"] == "annotation"
                 and row["source"] == "Toy Robot"
             ):
-                toy_found = True
+                toys_found += 1
 
+        if toys_found != 2:
+            msg = (
+                "Expected toy robot enhancements not found in elasticsearch reference."
+            )
+            raise AssertionError(msg)
+
+    # Finally, check the import batch's automated enhancements
+    es_response = es.search(
+        index=es_index,
+        query={
+            "nested": {
+                "path": "identifiers",
+                "query": {
+                    "bool": {
+                        "should": [
+                            {
+                                "match": {
+                                    "identifiers.identifier": "10.1235/sampledoitwoelectricboogaloo"  # noqa: E501
+                                }
+                            },
+                            {"match": {"identifiers.identifier": "W123456790"}},
+                        ],
+                        "minimum_should_match": 1,
+                    }
+                },
+            }
+        },
+    )
+    assert es_response["hits"]["total"]["value"] == 2
+    for hit in es_response["hits"]["hits"]:
+        es_reference = hit["_source"]
+        toy_found = False
+        for enhancement in es_reference["enhancements"]:
+            if (
+                enhancement["content"]["enhancement_type"] == "annotation"
+                and enhancement["source"] == "Toy Robot"
+            ):
+                toy_found = True
         if not toy_found:
-            msg = "Expected toy robot enhancement not found in elasticsearch reference."
+            msg = (
+                "Expected toy robot enhancements not found in elasticsearch reference."
+            )
             raise AssertionError(msg)

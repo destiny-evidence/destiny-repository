@@ -1,6 +1,7 @@
 """Defines tests for the example router."""
 
 import datetime
+import uuid
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock
 
@@ -14,8 +15,10 @@ from taskiq import InMemoryBroker
 from app.core.config import Environment
 from app.core.exceptions import NotFoundError
 from app.domain.imports import routes as imports
+from app.domain.imports import tasks as import_tasks
 from app.domain.imports.models.models import (
     CollisionStrategy,
+    ImportBatch,
     ImportBatchStatus,
     ImportRecordStatus,
     ImportResultStatus,
@@ -30,6 +33,8 @@ from app.domain.imports.models.sql import (
     ImportResult as SQLImportResult,
 )
 from app.domain.imports.service import ImportService
+from app.domain.references.models.sql import Reference as SQLReference
+from app.domain.references.service import ReferenceService
 from app.main import not_found_exception_handler
 from app.tasks import broker
 
@@ -142,13 +147,24 @@ async def test_create_batch_for_import(
     valid_import: SQLImportRecord,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test that we can create a batch for an import that exists."""
+    """
+    Test that we can create a batch for an import that exists.
+
+    Also verifies the call arguments of the procedure:
+    - The importing of the batch
+    - The indexing in elasticsearch
+    - The default enhancement generation
+    """
     session.add(valid_import)
     await session.commit()
 
     # Mock the ImportService.process_batch call
     mock_process = AsyncMock(return_value=None)
     monkeypatch.setattr(ImportService, "process_batch", mock_process)
+
+    # Mock the task call (we'll call it ourselves later)
+    mock_kiq = AsyncMock()
+    monkeypatch.setattr(import_tasks.process_import_batch, "kiq", mock_kiq)
 
     batch_params = {"storage_url": "https://example.com/batch_data.json"}
     response = await client.post(
@@ -158,10 +174,97 @@ async def test_create_batch_for_import(
     assert response.json()["import_record_id"] == str(valid_import.id)
     assert response.json()["status"] == ImportBatchStatus.CREATED
     assert response.json().items() >= batch_params.items()
+    mock_kiq.assert_awaited_once_with(
+        import_batch_id=uuid.UUID(response.json()["id"]), remaining_retries=3
+    )
 
+    # Mock the results of the process_batch call
+    session.add(r1 := SQLReference(id=uuid.uuid4(), visibility="public"))
+    session.add(r2 := SQLReference(id=uuid.uuid4(), visibility="public"))
+    session.add(r3 := SQLReference(id=uuid.uuid4(), visibility="public"))
+    session.add(r4 := SQLReference(id=uuid.uuid4(), visibility="public"))
+    session.add(
+        SQLImportResult(
+            import_batch_id=response.json()["id"],
+            status=ImportResultStatus.COMPLETED,
+            reference_id=r1.id,
+        )
+    )
+    session.add(
+        SQLImportResult(
+            import_batch_id=response.json()["id"],
+            status=ImportResultStatus.PARTIALLY_FAILED,
+            reference_id=r2.id,
+        )
+    )
+    session.add(
+        SQLImportResult(
+            import_batch_id=response.json()["id"],
+            status=ImportResultStatus.FAILED,
+            reference_id=r3.id,
+        )
+    )
+    session.add(
+        SQLImportBatch(
+            id=(b2 := uuid.uuid4()),
+            import_record_id=valid_import.id,
+            collision_strategy=CollisionStrategy.FAIL,
+            status=ImportBatchStatus.COMPLETED,
+            storage_url="https://example.com/batch_data2.json",
+        )
+    )
+    session.add(
+        SQLImportResult(
+            import_batch_id=b2,
+            status=ImportResultStatus.COMPLETED,
+            reference_id=r4.id,
+        )
+    )
+    await session.commit()
+
+    # Call the task and check its steps now we've handled some side-effects
+    monkeypatch.undo()
+
+    # Mock the ImportService.process_batch call
+    mock_process = AsyncMock(return_value=ImportBatchStatus.INDEXING)
+    monkeypatch.setattr(ImportService, "process_batch", mock_process)
+
+    mock_index = AsyncMock()
+    monkeypatch.setattr(
+        ReferenceService,
+        "index_references",
+        mock_index,
+    )
+
+    mock_robot_automation = AsyncMock()
+    monkeypatch.setattr(
+        import_tasks,
+        "detect_and_dispatch_robot_automations",
+        mock_robot_automation,
+    )
+
+    await import_tasks.process_import_batch.kiq(
+        import_batch_id=response.json()["id"], remaining_retries=3
+    )
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()  # Wait for all async tasks to complete
     mock_process.assert_awaited_once()
+    mock_process.assert_awaited_once()
+    assert mock_process.call_args[0][0] == ImportBatch(
+        id=uuid.UUID(response.json()["id"]),
+        import_record_id=valid_import.id,
+        collision_strategy=CollisionStrategy.FAIL,
+        status=ImportBatchStatus.CREATED,
+        storage_url="https://example.com/batch_data.json",
+    )
+    mock_index.assert_awaited_once_with(
+        reference_ids={r1.id, r2.id},
+    )
+    mock_robot_automation.assert_awaited_once()
+    assert mock_robot_automation.call_args[1]["reference_ids"] == {
+        r1.id,
+        r2.id,
+    }
 
 
 async def test_get_batches(

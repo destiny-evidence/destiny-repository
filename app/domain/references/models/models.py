@@ -3,7 +3,7 @@
 import uuid
 from collections.abc import Awaitable, Callable
 from enum import StrEnum, auto
-from typing import Self
+from typing import Any, Self
 
 import destiny_sdk
 
@@ -11,6 +11,8 @@ import destiny_sdk
 from destiny_sdk.enhancements import EnhancementContent, EnhancementType  # noqa: F401
 from destiny_sdk.identifiers import ExternalIdentifier, ExternalIdentifierType
 from pydantic import (
+    UUID4,
+    BaseModel,
     Field,
     HttpUrl,
     TypeAdapter,
@@ -434,6 +436,10 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
     robot_id: uuid.UUID = Field(
         description="The robot to request the enhancement from."
     )
+    source: str | None = Field(
+        default=None,
+        description="The source of the batch enhancement request.",
+    )
     enhancement_parameters: dict | None = Field(
         default=None,
         description="Additional optional parameters to pass through to the robot.",
@@ -490,6 +496,10 @@ class BatchEnhancementRequest(DomainBaseModel, SQLAttributeMixin):
     request_status: BatchEnhancementRequestStatus = Field(
         default=BatchEnhancementRequestStatus.RECEIVED,
         description="The status of the request to create an enhancement.",
+    )
+    source: str | None = Field(
+        default=None,
+        description="The source of the batch enhancement request.",
     )
     enhancement_parameters: dict | None = Field(
         default=None,
@@ -618,3 +628,47 @@ class BatchRobotResultValidationEntry(DomainBaseModel, SDKJsonlMixin):
             )
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
+
+
+class RobotAutomation(DomainBaseModel, SQLAttributeMixin):
+    """
+    Automation model for a robot.
+
+    This is used as a source of truth for an Elasticsearch index that percolates
+    references or enhancements against the queries. If a query matches, a request
+    is sent to the specified robot to perform the enhancement.
+    """
+
+    robot_id: UUID4 = Field(
+        description="The ID of the robot that will be used to enhance the reference."
+    )
+    query: dict[str, Any] = Field(
+        description="The query that will be used to match references against."
+    )
+
+    @classmethod
+    async def from_sdk(
+        cls, data: destiny_sdk.robots.RobotAutomationIn, robot_id: uuid.UUID
+    ) -> Self:
+        """Create a RobotAutomation from the SDK input model."""
+        try:
+            c = cls.model_validate(data.model_dump() | {"robot_id": robot_id})
+            c.check_serializability()
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
+        else:
+            return c
+
+    async def to_sdk(self) -> destiny_sdk.robots.RobotAutomation:
+        """Convert the RobotAutomation to a RobotAutomation SDK model."""
+        try:
+            return destiny_sdk.robots.RobotAutomation.model_validate(self.model_dump())
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
+
+
+class RobotAutomationPercolationResult(BaseModel):
+    """Result of a percolation query against RobotAutomations."""
+
+    robot_id: UUID4
+    reference_ids: set[UUID4]

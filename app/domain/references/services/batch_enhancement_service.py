@@ -103,6 +103,8 @@ class BatchEnhancementService(GenericService):
         blob_repository: BlobRepository,
         batch_enhancement_request: BatchEnhancementRequest,
         add_enhancement: Callable[[Enhancement], Awaitable[tuple[bool, str]]],
+        # Mutable argument to give caller visibility of imported enhancements
+        imported_enhancement_ids: set[UUID4],
     ) -> AsyncGenerator[BatchRobotResultValidationEntry, None]:
         """
         Validate the result of a batch enhancement request.
@@ -150,13 +152,17 @@ class BatchEnhancementService(GenericService):
                     attempted_reference_ids.add(
                         validated_result.enhancement_to_add.reference_id
                     )
-                    success, message = await add_enhancement(
-                        await Enhancement.from_sdk(validated_result.enhancement_to_add)
+                    # NB this generates the UUID that we import into the database,
+                    # which is handy!
+                    enhancement = await Enhancement.from_sdk(
+                        validated_result.enhancement_to_add
                     )
+                    success, message = await add_enhancement(enhancement)
                     if success:
                         yield BatchRobotResultValidationEntry(
                             reference_id=validated_result.enhancement_to_add.reference_id,
                         )
+                        imported_enhancement_ids.add(enhancement.id)
                         at_least_one_succeeded = True
                     else:
                         yield BatchRobotResultValidationEntry(

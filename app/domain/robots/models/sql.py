@@ -5,7 +5,9 @@ from typing import Self
 from sqlalchemy import String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.domain.robots.models import Robot as DomainRobot
+from app.domain.robots.models.models import (
+    Robot as DomainRobot,
+)
 from app.persistence.sql.persistence import GenericSQLPersistence
 
 

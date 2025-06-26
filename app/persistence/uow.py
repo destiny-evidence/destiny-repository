@@ -17,8 +17,11 @@ from app.domain.references.repository import (
     EnhancementRequestRepositoryBase,
     ExternalIdentifierRepositoryBase,
     ReferenceRepositoryBase,
+    RobotAutomationRepositoryBase,
 )
-from app.domain.robots.repository import RobotRepositoryBase
+from app.domain.robots.repository import (
+    RobotRepositoryBase,
+)
 from app.persistence.repository import GenericAsyncRepository
 
 logger = get_logger()
@@ -36,6 +39,7 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
     enhancement_requests: EnhancementRequestRepositoryBase
     batch_enhancement_requests: BatchEnhancementRequestRepositoryBase
     robots: RobotRepositoryBase
+    robot_automations: RobotAutomationRepositoryBase
 
     _protected_attrs: Final[set[str]] = {
         "imports",
@@ -47,6 +51,7 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
         "enhancement_requests",
         "batch_enhancement_requests",
         "robots",
+        "robot_automations",
     }
 
     def __init__(self) -> None:

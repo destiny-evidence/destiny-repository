@@ -1,4 +1,3 @@
-import json
 import uuid
 
 import destiny_sdk
@@ -99,6 +98,7 @@ class DummyDomainEnhancementRequest:
         robot_id,
         request_status,
         enhancement_parameters,
+        source=None,
         error=None,
     ):
         self.id = id
@@ -106,6 +106,7 @@ class DummyDomainEnhancementRequest:
         self.robot_id = robot_id
         self.request_status = request_status
         self.enhancement_parameters = enhancement_parameters
+        self.source = source
         self.error = error
 
 
@@ -229,9 +230,8 @@ async def test_enhancement_request_from_and_to_domain():
     assert sql_enh_req.reference_id == dummy_enh_req.reference_id
     assert sql_enh_req.robot_id == dummy_enh_req.robot_id
     assert sql_enh_req.request_status == dummy_enh_req.request_status
-    assert sql_enh_req.enhancement_parameters == json.dumps(
-        dummy_enh_req.enhancement_parameters
-    )
+    assert sql_enh_req.enhancement_parameters == dummy_enh_req.enhancement_parameters
+
     assert sql_enh_req.error == dummy_enh_req.error
 
     # For preload test, assign a dummy SQL Reference to the relationship
