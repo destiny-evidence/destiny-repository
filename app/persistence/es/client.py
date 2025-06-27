@@ -30,17 +30,23 @@ class AsyncESClientManager:
             if es_config.es_insecure_url:
                 self._client = AsyncElasticsearch(
                     str(es_config.es_insecure_url),
+                    retry_on_timeout=es_config.retry_on_timeout,
+                    max_retries=es_config.max_retries,
                 )
             elif es_config.uses_api_key:
                 self._client = AsyncElasticsearch(
                     cloud_id=es_config.cloud_id,
                     api_key=es_config.api_key,
+                    retry_on_timeout=es_config.retry_on_timeout,
+                    max_retries=es_config.max_retries,
                 )
             elif es_config.es_user and es_config.es_pass and es_config.es_ca_path:
                 self._client = AsyncElasticsearch(
                     hosts=es_config.es_hosts,
                     ca_certs=str(es_config.es_ca_path),
                     basic_auth=(es_config.es_user, es_config.es_pass),
+                    retry_on_timeout=es_config.retry_on_timeout,
+                    max_retries=es_config.max_retries,
                 )
             else:
                 msg = "No valid Elasticsearch configuration provided."
