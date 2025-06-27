@@ -50,6 +50,11 @@ class AsyncDatabaseSessionManager:
             # This is (more or less) as recommended in SQLAlchemy docs
             # https://docs.sqlalchemy.org/en/20/core/engines.html#generating-dynamic-authentication-tokens
             # https://docs.sqlalchemy.org/en/20/dialects/mssql.html#mssql-pyodbc-access-tokens
+
+            # Cold boot appears to be slow - here we kick off the first token retrieval
+            # so that the first request is not delayed by it.
+            self._azure_credentials.get_token(str(db_config.azure_db_resource_url))
+
             @event.listens_for(self._engine.sync_engine, "do_connect")
             def provide_token(
                 _dialect: Dialect,
