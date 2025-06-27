@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 from io import BytesIO
 
 from azure.identity.aio import DefaultAzureCredential
-from azure.storage.blob import BlobSasPermissions, generate_blob_sas
+from azure.storage.blob import BlobSasPermissions, UserDelegationKey, generate_blob_sas
 from azure.storage.blob.aio import BlobServiceClient
 from cachetools import TTLCache
 
@@ -39,6 +39,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
         Raises BlobStorageError if configuration is missing.
         """
         self.account_url = config.account_url
+        self.account_name = config.storage_account_name
         self.container = config.container
         self.credential = config.credential
         self.presigned_url_expiry_seconds = presigned_url_expiry_seconds
@@ -105,7 +106,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             msg = f"Failed to stream file from Azure Blob Storage: {e}"
             raise AzureBlobStorageError(msg) from e
 
-    async def _get_user_delegation_key(self) -> str:
+    async def _get_user_delegation_key(self) -> UserDelegationKey:
         """Get a user delegation key from managed identity."""
         user_delegation_key = await self.blob_service_client.get_user_delegation_key(
             datetime.datetime.now(datetime.UTC),
@@ -115,7 +116,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
         if not user_delegation_key.value:
             msg = "Failed to get user delegation key from Azure Blob Storage."
             raise AzureBlobStorageError(msg)
-        return user_delegation_key.value
+        return user_delegation_key
 
     async def generate_signed_url(
         self,
@@ -128,21 +129,19 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
         try:
             blob_name = f"{file.path}/{file.filename}"
 
-            account_key = (
-                await self._get_user_delegation_key()
-                if self.uses_managed_identity
-                else self.credential
-            )
             permission = (
                 BlobSasPermissions(read=True)
                 if interaction_type == BlobSignedUrlType.DOWNLOAD
                 else BlobSasPermissions(write=True)
             )
             sas_token = generate_blob_sas(
-                account_name=self.account_url.split("//")[1].split(".")[0],
+                account_name=self.account_name,
                 container_name=self.container,
                 blob_name=blob_name,
-                account_key=account_key,
+                account_key=self.credential if not self.uses_managed_identity else None,
+                user_delegation_key=await self._get_user_delegation_key()
+                if self.uses_managed_identity
+                else None,
                 permission=permission,
                 expiry=datetime.datetime.now(datetime.UTC)
                 + datetime.timedelta(seconds=self.presigned_url_expiry_seconds),
