@@ -407,6 +407,7 @@ resource "elasticstack_elasticsearch_security_api_key" "read_only" {
   name = "${var.app_name}-${var.environment}-read-only"
   role_descriptors = jsonencode({
     app_access = {
+      cluster = ["monitor"]
       indices = [
         {
           names      = ["${var.app_name}-*"]
