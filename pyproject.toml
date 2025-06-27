@@ -21,7 +21,7 @@ package-mode = false
 readme = "README.md"
 
 [tool.poetry.dependencies]
-aiohttp = "^3.11.16"
+aiohttp = "3.12.3" # version locked per https://github.com/Azure/azure-sdk-for-python/issues/41363
 alembic = "^1.14.1"
 asyncpg = "^0.30.0"
 azure-identity = "^1.21.0"
@@ -52,7 +52,7 @@ mypy = "^1.14.1"
 pre-commit = "^4.2.0"
 psycopg = "^3.2.6"
 pytest = "^8.3.4"
-pytest-asyncio = "^0.25.3"
+pytest-asyncio = "^1.0.0"
 pytest-httpx = "^0.35.0"
 ruff = "^0.8.6"
 types-cachetools = "^5.5.0.20240820"

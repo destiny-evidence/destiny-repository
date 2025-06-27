@@ -99,6 +99,10 @@ class ESConfig(BaseModel):
     cloud_id: str | None = None
     api_key: str | None = None
 
+    # Other configuration
+    retry_on_timeout: bool = True
+    max_retries: int = 3
+
     @property
     def uses_api_key(self) -> bool:
         """Return True if using API key authentication."""
