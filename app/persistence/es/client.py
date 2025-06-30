@@ -56,7 +56,7 @@ class AsyncESClientManager:
             exists = await self._client.indices.exists(index=index.Index.name)
             if not exists:
                 msg = f"Creating index {index.Index.name}"
-
+                logger.info(msg)
                 try:
                     await index.init(using=self._client)
                 except BadRequestError as e:
