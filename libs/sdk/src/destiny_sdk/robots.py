@@ -98,10 +98,15 @@ class RobotRequest(BaseModel):
     """An enhancement request from the repo to a robot."""
 
     id: UUID4
-    reference: Reference  # Reference with selected enhancements
-    extra_fields: (
-        dict | None
-    )  # We need something to pass through the signed url for uploads
+    reference: Reference = Field(
+        description=(
+            "Reference to be enhanced, includes identifiers and existing enhancments."
+        )
+    )
+    extra_fields: dict | None = Field(
+        default=None,
+        description="Extra fields to pass to the robot. TBC.",
+    )
 
 
 #: The result for a single reference when processed by a batch enhancement request.
