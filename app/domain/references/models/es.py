@@ -90,6 +90,7 @@ class EnhancementContentDocument(InnerDoc):
     annotations: list[AnnotationDocument] | None = mapped_field(
         Nested(AnnotationDocument, required=False)
     )
+    abstract: str | None = mapped_field(Text(required=False, ignore_above=8192))
 
     class Meta:
         """Allow unmapped fields in the document."""
