@@ -17,6 +17,7 @@ def test_bibliographic_metadata_enhancement_valid():
         title="Test Title",
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
+        id=uuid.uuid4(),
         source="test_source",
         visibility="public",
         robot_version="1.0",
@@ -38,6 +39,7 @@ def test_abstract_content_enhancement_valid():
         abstract="This is a test abstract.",
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
+        id=uuid.uuid4(),
         source="test_source",
         visibility="public",
         robot_version="2.0",
@@ -63,6 +65,7 @@ def test_annotation_enhancement_valid():
         annotations=[annotation1],
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
+        id=uuid.uuid4(),
         source="test_source",
         visibility="public",
         robot_version="1.5",
@@ -88,6 +91,7 @@ def test_location_enhancement_valid():
         locations=[location],
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
+        id=uuid.uuid4(),
         source="test_source",
         visibility="public",
         robot_version="1.2",
