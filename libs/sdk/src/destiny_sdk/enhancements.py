@@ -317,6 +317,14 @@ EnhancementContent = Annotated[
 class Enhancement(_JsonlFileInputMixIn, BaseModel):
     """Core enhancement class."""
 
+    id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "The ID of the enhancement. "
+            "Populated by the repository when sending enhancements with references."
+        ),
+    )
+
     reference_id: uuid.UUID = Field(
         description="The ID of the reference this enhancement is associated with."
     )

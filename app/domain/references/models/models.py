@@ -407,8 +407,13 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     ) -> Self:
         """Create an enhancement from the SDK model."""
         try:
+            enhancement_model = enhancement.model_dump()
+
+            ## The SDK isn't allowed to pass in ids, so ignore this.
+            enhancement_model.pop("id", None)
+
             c = cls.model_validate(
-                enhancement.model_dump()
+                enhancement_model
                 | ({"reference_id": reference_id} if reference_id else {})
             )
             c.check_serializability()
