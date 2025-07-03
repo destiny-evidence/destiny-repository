@@ -203,8 +203,7 @@ class ReferenceService(GenericService):
             record_str, entry_ref, collision_strategy
         )
 
-    @sql_unit_of_work
-    async def request_reference_enhancement(
+    async def _request_reference_enhancement(
         self,
         enhancement_request: EnhancementRequest,
         robot_service: RobotService,
@@ -247,6 +246,20 @@ class ReferenceService(GenericService):
         return await self.sql_uow.enhancement_requests.update_by_pk(
             enhancement_request.id,
             request_status=EnhancementRequestStatus.ACCEPTED,
+        )
+
+    @sql_unit_of_work
+    async def request_reference_enhancement(
+        self,
+        enhancement_request: EnhancementRequest,
+        robot_service: RobotService,
+        robot_request_dispatcher: RobotRequestDispatcher,
+    ) -> EnhancementRequest:
+        """Wrap the requesting of an enhancement in an sql unit of work."""
+        return await self._request_reference_enhancement(
+            enhancement_request=enhancement_request,
+            robot_service=robot_service,
+            robot_request_dispatcher=robot_request_dispatcher,
         )
 
     @sql_unit_of_work
@@ -320,7 +333,7 @@ class ReferenceService(GenericService):
                     "reference_ids": robot_automation.reference_ids,
                 },
             )
-            await self.request_reference_enhancement(
+            await self._request_reference_enhancement(
                 EnhancementRequest(
                     reference_id=enhancement_request.reference_id,
                     robot_id=robot_automation.robot_id,
