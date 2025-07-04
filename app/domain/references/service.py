@@ -181,7 +181,7 @@ class ReferenceService(GenericService):
     async def add_identifier(
         self, reference_id: UUID4, identifier: ExternalIdentifier
     ) -> LinkedExternalIdentifier:
-        """Register an import, persisting it to the database."""
+        """Register an identifier, persisting it to the database."""
         reference = await self.sql_uow.references.get_by_pk(reference_id)
         db_identifier = LinkedExternalIdentifier(
             reference_id=reference.id,
