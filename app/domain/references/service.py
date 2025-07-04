@@ -45,6 +45,7 @@ from app.domain.references.services.batch_enhancement_service import (
 from app.domain.references.services.ingestion_service import (
     IngestionService,
 )
+from app.domain.robots.models.models import Robot
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
@@ -204,13 +205,12 @@ class ReferenceService(GenericService):
         )
 
     @sql_unit_of_work
-    async def request_reference_enhancement(
+    async def register_enhancement_request(
         self,
         enhancement_request: EnhancementRequest,
         robot_service: RobotService,
-        robot_request_dispatcher: RobotRequestDispatcher,
-    ) -> EnhancementRequest:
-        """Create an enhancement request and send it to robot."""
+    ) -> tuple[Reference, Robot]:
+        """Create a new enhancement request."""
         reference = await self.sql_uow.references.get_by_pk(
             enhancement_request.reference_id, preload=["identifiers", "enhancements"]
         )
@@ -221,6 +221,17 @@ class ReferenceService(GenericService):
             enhancement_request
         )
 
+        return reference, robot
+
+    @sql_unit_of_work
+    async def dispatch_enhancement_request(
+        self,
+        enhancement_request: EnhancementRequest,
+        reference: Reference,
+        robot: Robot,
+        robot_request_dispatcher: RobotRequestDispatcher,
+    ) -> EnhancementRequest:
+        """Dispatch an enhancement request to a robot."""
         robot_request = destiny_sdk.robots.RobotRequest(
             id=enhancement_request.id,
             reference=await reference.to_sdk(),
@@ -247,6 +258,25 @@ class ReferenceService(GenericService):
         return await self.sql_uow.enhancement_requests.update_by_pk(
             enhancement_request.id,
             request_status=EnhancementRequestStatus.ACCEPTED,
+        )
+
+    async def request_reference_enhancement(
+        self,
+        enhancement_request: EnhancementRequest,
+        robot_service: RobotService,
+        robot_request_dispatcher: RobotRequestDispatcher,
+    ) -> EnhancementRequest:
+        """Create an enhancement request and send it to robot."""
+        reference, robot = await self.register_enhancement_request(
+            enhancement_request=enhancement_request,
+            robot_service=robot_service,
+        )
+
+        return await self.dispatch_enhancement_request(
+            enhancement_request=enhancement_request,
+            reference=reference,
+            robot=robot,
+            robot_request_dispatcher=robot_request_dispatcher,
         )
 
     @sql_unit_of_work
