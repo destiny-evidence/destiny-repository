@@ -305,7 +305,6 @@ class ReferenceService(GenericService):
             robot_request_dispatcher=robot_request_dispatcher,
         )
 
-    @sql_unit_of_work
     async def request_reference_enhancement(
         self,
         enhancement_request: EnhancementRequest,
@@ -313,9 +312,15 @@ class ReferenceService(GenericService):
         robot_request_dispatcher: RobotRequestDispatcher,
     ) -> EnhancementRequest:
         """Wrap the requesting of an enhancement in an sql unit of work."""
-        return await self._request_reference_enhancement(
+        reference, robot = await self.register_enhancement_request(
             enhancement_request=enhancement_request,
             robot_service=robot_service,
+        )
+
+        return await self.dispatch_enhancement_request(
+            enhancement_request=enhancement_request,
+            reference=reference,
+            robot=robot,
             robot_request_dispatcher=robot_request_dispatcher,
         )
 
