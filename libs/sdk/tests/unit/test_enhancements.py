@@ -113,3 +113,14 @@ def test_empty_annotation_enhancement_errors():
             enhancement_type=destiny_sdk.enhancements.EnhancementType.ANNOTATION,
             annotations=[],
         )
+
+
+def test_empty_location_enhancement_errors():
+    # Test that an empty locations list raises a validation error
+    with pytest.raises(
+        ValidationError, match="List should have at least 1 item after validation"
+    ):
+        destiny_sdk.enhancements.LocationEnhancement(
+            enhancement_type=destiny_sdk.enhancements.EnhancementType.LOCATION,
+            locations=[],
+        )
