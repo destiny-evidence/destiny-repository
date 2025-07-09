@@ -352,7 +352,7 @@ class DenseEmbeddingsEnhancement(BaseModel):
     enhancement_type: Literal[EnhancementType.DENSE_EMBEDDINGS] = (
         EnhancementType.DENSE_EMBEDDINGS
     )
-    embedding: list[DenseEmbedding] = Field(
+    embeddings: list[DenseEmbedding] = Field(
         description="A list of embeddings for the reference."
     )
     model_version: str = Field(
