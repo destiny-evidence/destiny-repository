@@ -29,6 +29,7 @@ class EnhancementType(StrEnum):
     ANNOTATION = auto()
     LOCATION = auto()
     FULL_TEXT = auto()
+    DENSE_EMBEDDINGS = auto()
 
 
 class AuthorPosition(StrEnum):
@@ -303,12 +304,69 @@ class LocationEnhancement(BaseModel):
     )
 
 
+class DenseEmbedding(BaseModel):
+    """
+    A dense embedding of some part or parts of a reference.
+
+    These may be use for semantic search, classification, or other applications.
+
+    The `identifier` is free text and should be used to group like embeddings across
+    references. For example, if you have an embedding for the title of a reference,
+    you might use `title_embedding` as the identifier. You do not need to include model
+    details in the identifier, as these are captured in the `model_version` field of the
+    enhancement.
+    """
+
+    embedding: list[float] = Field(
+        description="A list of floats representing the dense embedding."
+    )
+    num_dimensions: int = Field(
+        description="The number of dimensions in the dense embedding."
+    )
+    identifier: str = Field(
+        description="""
+An arbitrary identifier for the embedding to collect like embeddings across references
+""",
+    )
+    description: str | None = Field(
+        default=None,
+        description="""
+A description of the embedding, such as the part of the reference it represents.
+""",
+    )
+
+
+class DenseEmbeddingsEnhancement(BaseModel):
+    """
+    An enhancement which contains a dense embedding of the reference.
+
+    This is used for semantic search and other applications.
+
+    A single enhancement may contain multiple embeddings, which may be derived
+    from different parts of the reference, such as the title, abstract, or full text
+    (or even parts of the full text to support RAG approaches).
+
+    All embeddings included should be from a single model version.
+    """
+
+    enhancement_type: Literal[EnhancementType.DENSE_EMBEDDINGS] = (
+        EnhancementType.DENSE_EMBEDDINGS
+    )
+    embedding: list[DenseEmbedding] = Field(
+        description="A list of embeddings for the reference."
+    )
+    model_version: str = Field(
+        description="The version of the model used to generate the embedding."
+    )
+
+
 #: Union type for all enhancement content types.
 EnhancementContent = Annotated[
     BibliographicMetadataEnhancement
     | AbstractContentEnhancement
     | AnnotationEnhancement
-    | LocationEnhancement,
+    | LocationEnhancement
+    | DenseEmbeddingsEnhancement,
     Field(discriminator="enhancement_type"),
 ]
 
