@@ -33,7 +33,7 @@ class RobotService(GenericService):
         # Secret to be stored in the azure keyvault
         # Currently just using secret name while testing
         robot = await self.get_robot(robot_id)
-        return await robot.get_client_secret()
+        return robot.get_client_secret()
 
     @sql_unit_of_work
     async def get_robot_secret_standalone(self, robot_id: UUID4) -> str:

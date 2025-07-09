@@ -1,11 +1,7 @@
 """Domain model for robots."""
 
-from typing import Self
+from pydantic import ConfigDict, Field, HttpUrl, SecretStr
 
-import destiny_sdk
-from pydantic import ConfigDict, Field, HttpUrl, SecretStr, ValidationError
-
-from app.core.exceptions import SDKToDomainError
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 
 
@@ -27,39 +23,7 @@ class Robot(DomainBaseModel, SQLAttributeMixin):
         description="The secret key used for communicating with this robot.",
     )
 
-    @classmethod
-    async def from_sdk(
-        cls, data: destiny_sdk.robots.RobotIn | destiny_sdk.robots.Robot
-    ) -> Self:
-        """Create a Robot from the SDK input model."""
-        try:
-            c = cls.model_validate(data.model_dump())
-            c.check_serializability()
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-        else:
-            return c
-
-    async def to_sdk(self) -> destiny_sdk.robots.Robot:
-        """Convert the robot to a Robot SDK model."""
-        try:
-            model = self.model_dump()
-            model.pop("client_secret", None)
-            return destiny_sdk.robots.Robot.model_validate(model)
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-
-    async def to_sdk_provisioned(self) -> destiny_sdk.robots.ProvisionedRobot:
-        """Convert the robot to a ProvisionedRobot SDK model."""
-        try:
-            model = self.model_dump()
-            if self.client_secret:
-                model["client_secret"] = self.client_secret.get_secret_value()
-            return destiny_sdk.robots.ProvisionedRobot.model_validate(model)
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-
-    async def get_client_secret(self) -> str:
+    def get_client_secret(self) -> str:
         """Return the client secret for the robot."""
         if not self.client_secret:
             msg = f"Robot {self.id} has no client secret."
