@@ -1,0 +1,95 @@
+"""Router for system utility endpoints."""
+
+from collections.abc import Coroutine
+from typing import Annotated, Any
+
+from elasticsearch import AsyncElasticsearch
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from taskiq import AsyncTaskiqDecoratedTask
+
+from app.core.exceptions import ESNotFoundError
+from app.core.logger import get_logger
+from app.domain.references.models.es import (
+    ReferenceDocument,
+    RobotAutomationPercolationDocument,
+)
+from app.domain.references.tasks import (
+    repair_reference_index,
+    repair_robot_automation_percolation_index,
+)
+from app.persistence.es.client import get_client
+from app.persistence.es.persistence import GenericESPersistence
+from app.persistence.sql.session import get_session
+from app.utils.healthcheck import HealthCheckOptions, healthcheck
+
+logger = get_logger()
+
+router = APIRouter(prefix="/system", tags=["system utilities"])
+
+# Registry of repairable indices
+_indices: dict[
+    str,
+    tuple[
+        type[GenericESPersistence],
+        AsyncTaskiqDecoratedTask[..., Coroutine[Any, Any, None]],
+    ],
+] = {
+    ReferenceDocument.Index.name: (ReferenceDocument, repair_reference_index),
+    RobotAutomationPercolationDocument.Index.name: (
+        RobotAutomationPercolationDocument,
+        repair_robot_automation_percolation_index,
+    ),
+}
+
+
+@router.get("/healthcheck/", status_code=status.HTTP_200_OK)
+async def get_healthcheck(
+    healthcheck_options: Annotated[HealthCheckOptions, Depends()],
+    db_session: Annotated[AsyncSession, Depends(get_session)],
+    es_client: Annotated[AsyncElasticsearch, Depends(get_client)],
+) -> JSONResponse:
+    """Verify we are able to connect to auxiliary services."""
+    result = await healthcheck(db_session, es_client, healthcheck_options)
+    if result:
+        raise HTTPException(status_code=500, detail=result)
+    return JSONResponse(content={"status": "ok"})
+
+
+@router.post(
+    "/elastic/indices/{index_name}/repair/", status_code=status.HTTP_202_ACCEPTED
+)
+async def repair_elasticsearch_index(
+    index_name: str,
+    es_client: Annotated[AsyncElasticsearch, Depends(get_client)],
+    *,
+    rebuild: bool = False,
+) -> JSONResponse:
+    """Repair Elasticsearch indices."""
+    try:
+        index, repair_task = _indices[index_name]
+    except KeyError as exc:
+        raise ESNotFoundError(
+            detail=f"Index {index_name} not found.",
+            lookup_model="meta:index",
+            lookup_value=index_name,
+            lookup_type="index_name",
+        ) from exc
+
+    if rebuild:
+        msg = f"Destroying index {index_name}"
+        logger.info(msg)
+        await index._index.delete(using=es_client)  # noqa: SLF001
+        msg = f"Recreating index {index_name}"
+        logger.info(msg)
+        await index.init(using=es_client)
+
+    await repair_task.kiq()
+    return JSONResponse(
+        content={
+            "status": "ok",
+            "message": f"Repair task for index {index_name} has been initiated.",
+        },
+        status_code=status.HTTP_202_ACCEPTED,
+    )
