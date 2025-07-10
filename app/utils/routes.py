@@ -4,7 +4,7 @@ from collections.abc import Coroutine
 from typing import Annotated, Any
 
 from elasticsearch import AsyncElasticsearch
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import AsyncTaskiqDecoratedTask
@@ -61,12 +61,21 @@ async def get_healthcheck(
     "/elastic/indices/{index_name}/repair/", status_code=status.HTTP_202_ACCEPTED
 )
 async def repair_elasticsearch_index(
-    index_name: str,
     es_client: Annotated[AsyncElasticsearch, Depends(get_client)],
+    index_name: Annotated[str, Path(..., description="Name of the index to repair.")],
     *,
-    rebuild: bool = False,
+    rebuild: Annotated[
+        bool,
+        Query(
+            description="If true, the index will be destroyed and rebuilt before being "
+            "repaired. This involves downtime but is generally useful for updating "
+            "index mappings or persisting a bulk delete at the SQL level. If false, "
+            "the existing index will be updated in place without downtime, but removed"
+            " documents in SQL will not be removed from the index.",
+        ),
+    ] = False,
 ) -> JSONResponse:
-    """Repair Elasticsearch indices."""
+    """Repair an ES index (update all ES documents per their SQL counterparts)."""
     try:
         index, repair_task = _indices[index_name]
     except KeyError as exc:

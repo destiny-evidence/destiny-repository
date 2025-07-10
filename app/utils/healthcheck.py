@@ -17,7 +17,6 @@ settings = get_settings()
 class HealthCheckOptions(BaseModel):
     """Optional flags to toggle what to health check."""
 
-    worker: bool = True
     database: bool = True
     elasticsearch: bool = True
     azure_blob_storage: bool = True
