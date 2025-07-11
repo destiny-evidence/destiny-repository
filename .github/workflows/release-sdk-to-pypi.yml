@@ -11,11 +11,6 @@ on:
         options:
           - staging
           - production
-      branch:
-        description: "Branch to deploy from"
-        required: true
-        default: "main"
-        type: string
 
 jobs:
   release:
