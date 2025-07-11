@@ -1,0 +1,85 @@
+name: Release SDK to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      pypi_registry:
+        description: "PyPI Registry"
+        required: true
+        default: "test-pypi"
+        type: choice
+        options:
+          - test-pypi
+          - pypi
+      branch:
+        description: "Branch to deploy from"
+        required: true
+        default: "main"
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.pypi_registry }}
+      url: ${{ inputs.pypi_registry == 'test-pypi' && 'https://test.pypi.org' || 'https://pypi.org' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Extract version from pyproject.toml
+        id: extract-version
+        run: |
+          cd libs/sdk
+          VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          PACKAGE_NAME=$(grep '^name = ' pyproject.toml | sed 's/name = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "📦 Package: $PACKAGE_NAME v$VERSION"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: false
+
+      - name: Build and publish package
+        env:
+          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_API_TOKEN }}
+          POETRY_PYPI_TOKEN_TESTPYPI: ${{ secrets.TEST_PYPI_API_TOKEN }}
+        run: |
+          cd libs/sdk
+          poetry build
+          if [ "${{ inputs.pypi_registry }}" = "test-pypi" ]; then
+            poetry config repositories.testpypi https://test.pypi.org/legacy/
+            poetry publish --repository testpypi
+          else
+            poetry publish
+          fi
+
+      - name: Create GitHub Release
+        if: ${{ inputs.pypi_registry == 'pypi' }}
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: sdk-v${{ steps.extract-version.outputs.version }}
+          release_name: SDK Release v${{ steps.extract-version.outputs.version }}
+          body: |
+            Released ${{ steps.extract-version.outputs.package_name }} v${{ steps.extract-version.outputs.version }} from `${{ inputs.branch }}`
+
+            ## 📦 Package
+            - [View on PyPI](https://pypi.org/project/${{ steps.extract-version.outputs.package_name }}/${{ steps.extract-version.outputs.version }}/)
+
+            ## 🚀 Installation
+            ```bash
+            pip install ${{ steps.extract-version.outputs.package_name }}==${{ steps.extract-version.outputs.version }}
+            ```
+          draft: false
+          prerelease: false
