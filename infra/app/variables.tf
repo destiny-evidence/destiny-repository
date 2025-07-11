@@ -186,3 +186,16 @@ variable "elastic_cloud_apikey" {
   type        = string
   sensitive   = true
 }
+
+
+variable "pypi_token" {
+  description = "API token for PyPI"
+  type        = string
+  sensitive   = true
+}
+
+
+variable "pypi_repository" {
+  description = "PyPI repository to publish to, either 'pypi' or 'testpypi'"
+  type        = string
+}

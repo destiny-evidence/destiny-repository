@@ -161,7 +161,7 @@ def test_complete_batch_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
             msg = "Expected toy robot enhancements not found in reference."
             raise AssertionError(msg)
 
-    time.sleep(1)
+    time.sleep(3)
     es = Elasticsearch(
         os.environ["ES_URL"],
         basic_auth=(os.environ["ES_USER"], os.environ["ES_PASS"]),
