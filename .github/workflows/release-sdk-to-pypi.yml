@@ -3,14 +3,14 @@ name: Release SDK to PyPI
 on:
   workflow_dispatch:
     inputs:
-      pypi_registry:
-        description: "PyPI Registry"
+      environment:
+        description: "Deployment Environment"
         required: true
-        default: "test-pypi"
+        default: "staging"
         type: choice
         options:
-          - test-pypi
-          - pypi
+          - staging
+          - production
       branch:
         description: "Branch to deploy from"
         required: true
@@ -21,8 +21,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     environment:
-      name: ${{ inputs.pypi_registry }}
-      url: ${{ inputs.pypi_registry == 'test-pypi' && 'https://test.pypi.org' || 'https://pypi.org' }}
+      name: ${{ inputs.environment }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -49,22 +48,21 @@ jobs:
         with:
           virtualenvs-create: false
 
-      - name: Build and publish package
-        env:
-          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_API_TOKEN }}
-          POETRY_PYPI_TOKEN_TESTPYPI: ${{ secrets.TEST_PYPI_API_TOKEN }}
+      - name: Configure PyPI repositories
+        if: ${{ vars.PYPI_REPOSITORY == 'testpypi' }}
         run: |
           cd libs/sdk
+          poetry config repositories.testpypi https://test.pypi.org/legacy/
+
+      - name: Build and publish package
+        run: |
+          cd libs/sdk
+          export POETRY_PYPI_TOKEN_$(echo "${{ vars.PYPI_REPOSITORY }}" | tr '[:lower:]' '[:upper:]')="${{ secrets.PYPI_TOKEN }}"
           poetry build
-          if [ "${{ inputs.pypi_registry }}" = "test-pypi" ]; then
-            poetry config repositories.testpypi https://test.pypi.org/legacy/
-            poetry publish --repository testpypi
-          else
-            poetry publish
-          fi
+          poetry publish --repository ${{ vars.PYPI_REPOSITORY }}
 
       - name: Create GitHub Release
-        if: ${{ inputs.pypi_registry == 'pypi' }}
+        if: ${{ vars.PYPI_REPOSITORY == 'pypi' }}
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
