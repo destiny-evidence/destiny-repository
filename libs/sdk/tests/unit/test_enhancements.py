@@ -2,6 +2,7 @@ import uuid
 from datetime import date
 
 import destiny_sdk
+from destiny_sdk.visibility import Visibility
 
 
 def test_bibliographic_metadata_enhancement_valid():
@@ -100,3 +101,26 @@ def test_location_enhancement_valid():
         reference_id=uuid.uuid4(),
     )
     assert enhancement.content.locations[0].license == "cc-by"
+
+
+def test_dense_embeddings_enhancement_valid():
+    embedding1 = destiny_sdk.enhancements.DenseEmbedding(
+        embedding=[0.1, 0.2, 0.3],
+        num_dimensions=3,
+        identifier="title_embedding",
+        description="Title embedding",
+    )
+    dense_embeddings_content = destiny_sdk.enhancements.DenseEmbeddingsEnhancement(
+        enhancement_type=destiny_sdk.enhancements.EnhancementType.DENSE_EMBEDDINGS,
+        embeddings=[embedding1],
+        model_version="My Great Model 2025-07-09",
+    )
+    enhancement = destiny_sdk.enhancements.Enhancement(
+        id=uuid.uuid4(),
+        source="test_source",
+        visibility=Visibility.PUBLIC,
+        robot_version="1.3",
+        content=dense_embeddings_content,
+        reference_id=uuid.uuid4(),
+    )
+    assert enhancement.content.embeddings[0].identifier == "title_embedding"
