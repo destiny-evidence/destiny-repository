@@ -3,7 +3,7 @@
 import destiny_sdk
 from pydantic import ValidationError
 
-from app.core.exceptions import SDKToDomainError
+from app.core.exceptions import DomainToSDKError, SDKToDomainError
 from app.domain.robots.models.models import Robot
 from app.domain.service import AntiCorruptionService
 
@@ -30,7 +30,7 @@ class RobotAntiCorruptionService(AntiCorruptionService):
             model.pop("client_secret", None)
             return destiny_sdk.robots.Robot.model_validate(model)
         except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
+            raise DomainToSDKError(errors=exception.errors()) from exception
 
     def robot_to_sdk_provisioned(
         self, robot: Robot
@@ -42,4 +42,4 @@ class RobotAntiCorruptionService(AntiCorruptionService):
                 model["client_secret"] = robot.client_secret.get_secret_value()
             return destiny_sdk.robots.ProvisionedRobot.model_validate(model)
         except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
+            raise DomainToSDKError(errors=exception.errors()) from exception

@@ -4,8 +4,9 @@ import uuid
 
 import destiny_sdk
 import pytest
-from pydantic import HttpUrl, SecretStr
+from pydantic import BaseModel, HttpUrl, SecretStr
 
+from app.core.exceptions import DomainToSDKError, SDKToDomainError
 from app.domain.robots.models.models import Robot
 from app.domain.robots.services.anti_corruption_service import (
     RobotAntiCorruptionService,
@@ -92,3 +93,21 @@ class TestRobotAntiCorruptionService:
         assert domain_robot.base_url == sdk_provisioned.base_url
         assert domain_robot.description == sdk_provisioned.description
         assert domain_robot.owner == sdk_provisioned.owner
+
+    def test_invalid_robot_in(self, service):
+        """Test conversion failure for invalid RobotIn data."""
+
+        class BrokenRobotIn(BaseModel):
+            name: str
+
+        with pytest.raises(SDKToDomainError):
+            service.robot_from_sdk(BrokenRobotIn(name="Invalid Robot"))
+
+    def test_invalid_robot(self, service):
+        """Test conversion failure for invalid Robot data."""
+
+        class BrokenRobot(BaseModel):
+            name: str
+
+        with pytest.raises(DomainToSDKError):
+            service.robot_to_sdk(BrokenRobot(name="Invalid Robot"))
