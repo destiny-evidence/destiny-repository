@@ -219,7 +219,7 @@ class AnnotationEnhancement(BaseModel):
     """An enhancement which is composed of a list of Annotations."""
 
     enhancement_type: Literal[EnhancementType.ANNOTATION] = EnhancementType.ANNOTATION
-    annotations: list[Annotation]
+    annotations: list[Annotation] = Field(min_length=1)
 
 
 class DriverVersion(StrEnum):
@@ -299,7 +299,8 @@ class LocationEnhancement(BaseModel):
 
     enhancement_type: Literal[EnhancementType.LOCATION] = EnhancementType.LOCATION
     locations: list[Location] = Field(
-        description="A list of locations where this reference can be found."
+        min_length=1,
+        description="A list of locations where this reference can be found.",
     )
 
 
