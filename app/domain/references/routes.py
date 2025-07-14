@@ -18,14 +18,13 @@ from app.core.auth import (
 from app.core.config import get_settings
 from app.core.logger import get_logger
 from app.domain.references.models.models import (
-    BatchEnhancementRequest,
     BatchEnhancementRequestStatus,
-    Enhancement,
-    EnhancementRequest,
     ExternalIdentifierSearch,
-    RobotAutomation,
 )
 from app.domain.references.service import ReferenceService
+from app.domain.references.services.anti_corruption_service import (
+    ReferenceAntiCorruptionService,
+)
 from app.domain.references.tasks import (
     collect_and_dispatch_references_for_batch_enhancement,
     rebuild_reference_index,
@@ -60,9 +59,16 @@ def es_unit_of_work(
 def reference_service(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
     es_uow: Annotated[AsyncESUnitOfWork, Depends(es_unit_of_work)],
+    reference_anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(ReferenceAntiCorruptionService)
+    ],
 ) -> ReferenceService:
     """Return the reference service using the provided unit of work dependencies."""
-    return ReferenceService(sql_uow=sql_uow, es_uow=es_uow)
+    return ReferenceService(
+        sql_uow=sql_uow,
+        es_uow=es_uow,
+        anti_corruption_service=reference_anti_corruption_service,
+    )
 
 
 def robot_service(
@@ -80,6 +86,13 @@ def robot_request_dispatcher() -> RobotRequestDispatcher:
 def blob_repository() -> BlobRepository:
     """Return the blob storage service."""
     return BlobRepository()
+
+
+def reference_anti_corruption_service(
+    blob_repository: Annotated[BlobRepository, Depends(blob_repository)],
+) -> ReferenceAntiCorruptionService:
+    """Return the reference anti-corruption service."""
+    return ReferenceAntiCorruptionService(blob_repository=blob_repository)
 
 
 def choose_auth_strategy_reader() -> AuthMethod:
@@ -131,10 +144,13 @@ robot_router = APIRouter(
 async def get_reference(
     reference_id: Annotated[uuid.UUID, Path(description="The ID of the reference.")],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
 ) -> destiny_sdk.references.Reference:
     """Get a reference by id."""
     reference = await reference_service.get_reference(reference_id)
-    return await reference.to_sdk()
+    return anti_corruption_service.reference_to_sdk(reference)
 
 
 @router.get("/", dependencies=[Depends(reference_reader_auth)])
@@ -142,6 +158,9 @@ async def get_reference_from_identifier(
     identifier: str,
     identifier_type: destiny_sdk.identifiers.ExternalIdentifierType,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
     other_identifier_name: str | None = None,
 ) -> destiny_sdk.references.Reference:
     """Get a reference given an external identifier."""
@@ -153,7 +172,7 @@ async def get_reference_from_identifier(
     reference = await reference_service.get_reference_from_identifier(
         external_identifier
     )
-    return await reference.to_sdk()
+    return anti_corruption_service.reference_to_sdk(reference)
 
 
 @router.post(
@@ -163,10 +182,13 @@ async def get_reference_from_identifier(
 )
 async def register_reference(
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
 ) -> destiny_sdk.references.Reference:
     """Create a reference."""
     reference = await reference_service.register_reference()
-    return await reference.to_sdk()
+    return anti_corruption_service.reference_to_sdk(reference)
 
 
 @router.post(
@@ -177,13 +199,16 @@ async def register_reference(
 async def add_identifier(
     reference_id: Annotated[uuid.UUID, Path(description="The ID of the reference.")],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
     external_identifier: destiny_sdk.identifiers.ExternalIdentifier,
 ) -> destiny_sdk.identifiers.LinkedExternalIdentifier:
     """Add an identifier to a reference."""
     identifier = await reference_service.add_identifier(
         reference_id, external_identifier
     )
-    return await identifier.to_sdk()
+    return anti_corruption_service.external_identifier_to_sdk(identifier)
 
 
 @router.post(
@@ -198,15 +223,20 @@ async def request_enhancement(
     robot_request_dispatcher: Annotated[
         RobotRequestDispatcher, Depends(robot_request_dispatcher)
     ],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
 ) -> destiny_sdk.robots.EnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""
     enhancement_request = await reference_service.request_reference_enhancement(
-        enhancement_request=await EnhancementRequest.from_sdk(enhancement_request_in),
+        enhancement_request=anti_corruption_service.enhancement_request_from_sdk(
+            enhancement_request_in
+        ),
         robot_service=robot_service,
         robot_request_dispatcher=robot_request_dispatcher,
     )
 
-    return await enhancement_request.to_sdk()
+    return anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
 
 
 @router.post(
@@ -217,15 +247,15 @@ async def request_enhancement(
 async def request_batch_enhancement(
     enhancement_request_in: destiny_sdk.robots.BatchEnhancementRequestIn,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    blob_repository: Annotated[BlobRepository, Depends(blob_repository)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
 ) -> destiny_sdk.robots.BatchEnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""
-    enhancement_request = (
-        await reference_service.register_batch_reference_enhancement_request(
-            enhancement_request=await BatchEnhancementRequest.from_sdk(
-                enhancement_request_in
-            ),
-        )
+    enhancement_request = await reference_service.register_batch_reference_enhancement_request(
+        enhancement_request=anti_corruption_service.batch_enhancement_request_from_sdk(
+            enhancement_request_in
+        ),
     )
 
     logger.info(
@@ -235,7 +265,9 @@ async def request_batch_enhancement(
     await collect_and_dispatch_references_for_batch_enhancement.kiq(
         batch_enhancement_request_id=enhancement_request.id,
     )
-    return await enhancement_request.to_sdk(blob_repository.get_signed_url)
+    return await anti_corruption_service.batch_enhancement_request_to_sdk(
+        enhancement_request
+    )
 
 
 @router.get(
@@ -247,13 +279,16 @@ async def check_enhancement_request_status(
         uuid.UUID, Path(description="The ID of the enhancement request.")
     ],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
 ) -> destiny_sdk.robots.EnhancementRequestRead:
     """Check the status of an enhancement request."""
     enhancement_request = await reference_service.get_enhancement_request(
         enhancement_request_id
     )
 
-    return await enhancement_request.to_sdk()
+    return anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
 
 
 @router.get(
@@ -265,14 +300,18 @@ async def check_batch_enhancement_request_status(
         uuid.UUID, Path(description="The ID of the batch enhancement request.")
     ],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    blob_repository: Annotated[BlobRepository, Depends(blob_repository)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
 ) -> destiny_sdk.robots.BatchEnhancementRequestRead:
     """Check the status of a batch enhancement request."""
     batch_enhancement_request = await reference_service.get_batch_enhancement_request(
         batch_enhancement_request_id
     )
 
-    return await batch_enhancement_request.to_sdk(blob_repository.get_signed_url)
+    return await anti_corruption_service.batch_enhancement_request_to_sdk(
+        batch_enhancement_request
+    )
 
 
 @router.post("/index/rebuild/")
@@ -289,6 +328,9 @@ async def fulfill_enhancement_request(
     robot_request_dispatcher: Annotated[
         RobotRequestDispatcher, Depends(robot_request_dispatcher)
     ],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
 ) -> destiny_sdk.robots.EnhancementRequestRead:
     """Create an enhancement against an existing enhancement request."""
     if robot_result.error:
@@ -296,24 +338,30 @@ async def fulfill_enhancement_request(
             enhancement_request_id=robot_result.request_id,
             error=robot_result.error.message,
         )
-        return await enhancement_request.to_sdk()
+        return anti_corruption_service.enhancement_request_to_sdk(
+            enhancement_request=enhancement_request
+        )
     if not robot_result.enhancement:
         enhancement_request = await reference_service.mark_enhancement_request_failed(
             enhancement_request_id=robot_result.request_id,
             error="No enhancement received.",
         )
-        return await enhancement_request.to_sdk()
+        return anti_corruption_service.enhancement_request_to_sdk(
+            enhancement_request=enhancement_request
+        )
 
     enhancement_request = (
         await reference_service.create_reference_enhancement_from_request(
             enhancement_request_id=robot_result.request_id,
-            enhancement=await Enhancement.from_sdk(robot_result.enhancement),
+            enhancement=anti_corruption_service.enhancement_from_sdk(
+                robot_result.enhancement
+            ),
             robot_service=robot_service,
             robot_request_dispatcher=robot_request_dispatcher,
         )
     )
 
-    return await enhancement_request.to_sdk()
+    return anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
 
 
 @robot_router.post(
@@ -323,7 +371,9 @@ async def fulfill_enhancement_request(
 async def fulfill_batch_enhancement_request(
     robot_result: destiny_sdk.robots.BatchRobotResult,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    blob_repository: Annotated[BlobRepository, Depends(blob_repository)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
 ) -> destiny_sdk.robots.BatchEnhancementRequestRead:
     """Receive the robot result and kick off importing the enhancements."""
     logger.info(
@@ -337,7 +387,9 @@ async def fulfill_batch_enhancement_request(
                 error=robot_result.error.message,
             )
         )
-        return await batch_enhancement_request.to_sdk(blob_repository.get_signed_url)
+        return await anti_corruption_service.batch_enhancement_request_to_sdk(
+            batch_enhancement_request
+        )
 
     batch_enhancement_request = (
         await reference_service.update_batch_enhancement_request_status(
@@ -350,7 +402,9 @@ async def fulfill_batch_enhancement_request(
         batch_enhancement_request_id=robot_result.request_id,
     )
 
-    return await batch_enhancement_request.to_sdk(blob_repository.get_signed_url)
+    return await anti_corruption_service.batch_enhancement_request_to_sdk(
+        batch_enhancement_request
+    )
 
 
 @robot_router.post(path="/{robot_id}/automation/", status_code=status.HTTP_201_CREATED)
@@ -359,10 +413,15 @@ async def add_robot_automation(
     robot_automation: destiny_sdk.robots.RobotAutomationIn,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     robot_service: Annotated[RobotService, Depends(robot_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
 ) -> destiny_sdk.robots.RobotAutomation:
     """Add a robot automation."""
-    automation = await RobotAutomation.from_sdk(robot_automation, robot_id)
+    automation = anti_corruption_service.robot_automation_from_sdk(
+        robot_automation, robot_id
+    )
     added_automation = await reference_service.add_robot_automation(
         robot_service=robot_service, automation=automation
     )
-    return await added_automation.to_sdk()
+    return anti_corruption_service.robot_automation_to_sdk(added_automation)

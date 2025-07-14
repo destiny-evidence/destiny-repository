@@ -21,6 +21,7 @@ from app.core.exceptions import (
     WrongReferenceError,
 )
 from app.core.logger import get_logger
+from app.domain.base import SDKJsonlMixin
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
@@ -38,6 +39,9 @@ from app.domain.references.models.models import (
     RobotAutomationPercolationResult,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
+from app.domain.references.services.anti_corruption_service import (
+    ReferenceAntiCorruptionService,
+)
 from app.domain.references.services.batch_enhancement_service import (
     BatchEnhancementService,
 )
@@ -64,12 +68,16 @@ class ReferenceService(GenericService):
     """The service which manages our references."""
 
     def __init__(
-        self, sql_uow: AsyncSqlUnitOfWork, es_uow: AsyncESUnitOfWork | None = None
+        self,
+        anti_corruption_service: ReferenceAntiCorruptionService,
+        sql_uow: AsyncSqlUnitOfWork,
+        es_uow: AsyncESUnitOfWork | None = None,
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(sql_uow, es_uow)
         self._ingestion_service = IngestionService(sql_uow)
         self._batch_enhancement_service = BatchEnhancementService(sql_uow)
+        self._anti_corruption_service = anti_corruption_service
 
     @sql_unit_of_work
     async def get_reference(self, reference_id: UUID4) -> Reference:
@@ -243,7 +251,7 @@ class ReferenceService(GenericService):
         """Dispatch an enhancement request to a robot."""
         robot_request = destiny_sdk.robots.RobotRequest(
             id=enhancement_request.id,
-            reference=await reference.to_sdk(),
+            reference=self._anti_corruption_service.reference_to_sdk(reference),
             extra_fields=enhancement_request.enhancement_parameters,
         )
 

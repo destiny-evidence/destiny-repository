@@ -16,16 +16,16 @@ from app.domain.references.models.models import (
     RobotAutomation,
 )
 from app.domain.service import AntiCorruptionService
-from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.models import BlobSignedUrlType
+from app.persistence.blob.repository import BlobRepository
 
 
 class ReferenceAntiCorruptionService(AntiCorruptionService):
     """Anti-corruption service for translating between Reference domain and SDK."""
 
-    def __init__(self, blob_client: GenericBlobStorageClient) -> None:
+    def __init__(self, blob_repository: BlobRepository) -> None:
         """Initialize the anti-corruption service."""
-        self._blob_client = blob_client
+        self._blob_repository = blob_repository
         super().__init__()
 
     def reference_from_file_input(
@@ -173,18 +173,18 @@ class ReferenceAntiCorruptionService(AntiCorruptionService):
             return destiny_sdk.robots.BatchEnhancementRequestRead.model_validate(
                 enhancement_request.model_dump()
                 | {
-                    "reference_data_url": await self._blob_client.generate_signed_url(
+                    "reference_data_url": await self._blob_repository.get_signed_url(
                         enhancement_request.reference_data_file,
                         BlobSignedUrlType.DOWNLOAD,
                     )
                     if enhancement_request.reference_data_file
                     else None,
-                    "result_storage_url": await self._blob_client.generate_signed_url(
+                    "result_storage_url": await self._blob_repository.get_signed_url(
                         enhancement_request.result_file, BlobSignedUrlType.UPLOAD
                     )
                     if enhancement_request.result_file
                     else None,
-                    "validation_result_url": await self._blob_client.generate_signed_url(
+                    "validation_result_url": await self._blob_repository.get_signed_url(
                         enhancement_request.validation_result_file,
                         BlobSignedUrlType.DOWNLOAD,
                     )
@@ -203,12 +203,12 @@ class ReferenceAntiCorruptionService(AntiCorruptionService):
         try:
             return destiny_sdk.robots.BatchRobotRequest(
                 id=enhancement_request.id,
-                reference_storage_url=await self._blob_client.generate_signed_url(
+                reference_storage_url=await self._blob_repository.get_signed_url(
                     enhancement_request.reference_data_file, BlobSignedUrlType.DOWNLOAD
                 )
                 if enhancement_request.reference_data_file
                 else None,
-                result_storage_url=await self._blob_client.generate_signed_url(
+                result_storage_url=await self._blob_repository.get_signed_url(
                     enhancement_request.result_file, BlobSignedUrlType.UPLOAD
                 )
                 if enhancement_request.result_file
@@ -231,10 +231,13 @@ class ReferenceAntiCorruptionService(AntiCorruptionService):
     def robot_automation_from_sdk(
         self,
         data: destiny_sdk.robots.RobotAutomationIn,
+        robot_id: uuid.UUID,
     ) -> RobotAutomation:
         """Create a RobotAutomation from the SDK model."""
         try:
-            robot_automation = RobotAutomation.model_validate(data.model_dump())
+            robot_automation = RobotAutomation.model_validate(
+                data.model_dump() | {"robot_id": robot_id}
+            )
             robot_automation.check_serializability()
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
