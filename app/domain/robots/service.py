@@ -5,6 +5,9 @@ import secrets
 from pydantic import UUID4, SecretStr
 
 from app.domain.robots.models.models import Robot
+from app.domain.robots.services.anti_corruption_service import (
+    RobotAntiCorruptionService,
+)
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
@@ -12,11 +15,16 @@ from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
 ENOUGH_BYTES_FOR_SAFETY = 32
 
 
-class RobotService(GenericService):
+class RobotService(GenericService[RobotAntiCorruptionService]):
     """Service for creating and managing robots."""
 
-    def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:
+    def __init__(
+        self,
+        anti_corruption_service: RobotAntiCorruptionService,
+        sql_uow: AsyncSqlUnitOfWork,
+    ) -> None:
         """Initialize the robots."""
+        self._anti_corruption_service = anti_corruption_service
         self.sql_uow = sql_uow
 
     async def get_robot(self, robot_id: UUID4) -> Robot:

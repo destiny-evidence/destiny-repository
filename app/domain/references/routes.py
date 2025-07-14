@@ -32,6 +32,9 @@ from app.domain.references.tasks import (
 )
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
+from app.domain.robots.services.anti_corruption_service import (
+    RobotAntiCorruptionService,
+)
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.es.client import get_client
 from app.persistence.es.uow import AsyncESUnitOfWork
@@ -73,9 +76,15 @@ def reference_service(
 
 def robot_service(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
+    robot_anti_corruption_service: Annotated[
+        RobotAntiCorruptionService, Depends(RobotAntiCorruptionService)
+    ],
 ) -> RobotService:
     """Return the robot service using the provided unit of work dependencies."""
-    return RobotService(sql_uow=sql_uow)
+    return RobotService(
+        sql_uow=sql_uow,
+        anti_corruption_service=robot_anti_corruption_service,
+    )
 
 
 def robot_request_dispatcher() -> RobotRequestDispatcher:

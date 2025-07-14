@@ -5,10 +5,10 @@ from pydantic import ValidationError
 
 from app.core.exceptions import DomainToSDKError, SDKToDomainError
 from app.domain.robots.models.models import Robot
-from app.domain.service import AntiCorruptionService
+from app.domain.service import GenericAntiCorruptionService
 
 
-class RobotAntiCorruptionService(AntiCorruptionService):
+class RobotAntiCorruptionService(GenericAntiCorruptionService):
     """Anti-corruption service for translating between Robot domain and SDK models."""
 
     def robot_from_sdk(

@@ -15,12 +15,12 @@ from app.domain.references.models.models import (
     Reference,
     RobotAutomation,
 )
-from app.domain.service import AntiCorruptionService
+from app.domain.service import GenericAntiCorruptionService
 from app.persistence.blob.models import BlobSignedUrlType
 from app.persistence.blob.repository import BlobRepository
 
 
-class ReferenceAntiCorruptionService(AntiCorruptionService):
+class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     """Anti-corruption service for translating between Reference domain and SDK."""
 
     def __init__(self, blob_repository: BlobRepository) -> None:

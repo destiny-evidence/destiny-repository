@@ -16,6 +16,9 @@ from app.domain.references.models.models import (
 from app.domain.references.models.validators import (
     BatchEnhancementResultValidator,
 )
+from app.domain.references.services.anti_corruption_service import (
+    ReferenceAntiCorruptionService,
+)
 from app.domain.service import GenericService
 from app.persistence.blob.models import (
     BlobStorageFile,
@@ -28,12 +31,16 @@ logger = get_logger()
 settings = get_settings()
 
 
-class BatchEnhancementService(GenericService):
+class BatchEnhancementService(GenericService[ReferenceAntiCorruptionService]):
     """Service for managing batch enhancements."""
 
-    def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:
+    def __init__(
+        self,
+        anti_corruption_service: ReferenceAntiCorruptionService,
+        sql_uow: AsyncSqlUnitOfWork,
+    ) -> None:
         """Initialize the service with a unit of work."""
-        super().__init__(sql_uow)
+        super().__init__(anti_corruption_service, sql_uow)
 
     async def mark_batch_enhancement_request_failed(
         self, batch_enhancement_request_id: UUID4, error: str
@@ -94,8 +101,8 @@ class BatchEnhancementService(GenericService):
             result_file=await batch_enhancement_request.result_file.to_sql(),
         )
 
-        return await batch_enhancement_request.to_batch_robot_request_sdk(
-            blob_repository.get_signed_url
+        return await self._anti_corruption_service.batch_robot_request_to_sdk(
+            batch_enhancement_request
         )
 
     async def process_batch_enhancement_result(
@@ -154,8 +161,10 @@ class BatchEnhancementService(GenericService):
                     )
                     # NB this generates the UUID that we import into the database,
                     # which is handy!
-                    enhancement = await Enhancement.from_sdk(
-                        validated_result.enhancement_to_add
+                    enhancement = (
+                        self._anti_corruption_service.enhancement_from_robot_result(
+                            validated_result.enhancement_to_add
+                        )
                     )
                     success, message = await add_enhancement(enhancement)
                     if success:

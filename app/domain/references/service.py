@@ -64,7 +64,7 @@ logger = get_logger()
 settings = get_settings()
 
 
-class ReferenceService(GenericService):
+class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     """The service which manages our references."""
 
     def __init__(
@@ -74,10 +74,11 @@ class ReferenceService(GenericService):
         es_uow: AsyncESUnitOfWork | None = None,
     ) -> None:
         """Initialize the service with a unit of work."""
-        super().__init__(sql_uow, es_uow)
-        self._ingestion_service = IngestionService(sql_uow)
-        self._batch_enhancement_service = BatchEnhancementService(sql_uow)
-        self._anti_corruption_service = anti_corruption_service
+        super().__init__(anti_corruption_service, sql_uow, es_uow)
+        self._ingestion_service = IngestionService(anti_corruption_service, sql_uow)
+        self._batch_enhancement_service = BatchEnhancementService(
+            anti_corruption_service, sql_uow
+        )
 
     @sql_unit_of_work
     async def get_reference(self, reference_id: UUID4) -> Reference:

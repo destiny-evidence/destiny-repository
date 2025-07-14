@@ -10,18 +10,25 @@ from app.domain.references.models.models import (
     Reference,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
+from app.domain.references.services.anti_corruption_service import (
+    ReferenceAntiCorruptionService,
+)
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 logger = get_logger()
 
 
-class IngestionService(GenericService):
+class IngestionService(GenericService[ReferenceAntiCorruptionService]):
     """Service for managing reference ingestion."""
 
-    def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:
+    def __init__(
+        self,
+        anti_corruption_service: ReferenceAntiCorruptionService,
+        sql_uow: AsyncSqlUnitOfWork,
+    ) -> None:
         """Initialize the service with a unit of work."""
-        super().__init__(sql_uow)
+        super().__init__(anti_corruption_service, sql_uow)
 
     async def fetch_collided_identifiers(
         self,
@@ -63,14 +70,14 @@ class IngestionService(GenericService):
 
         collided_identifiers = await self.fetch_collided_identifiers(
             [
-                await GenericExternalIdentifier.from_specific(identifier)
+                GenericExternalIdentifier.from_specific(identifier)
                 for identifier in reference.identifiers
             ],
         )
 
         if not collided_identifiers:
             # No collision detected
-            return await Reference.from_file_input(reference)
+            return self._anti_corruption_service.reference_from_file_input(reference)
 
         if collision_strategy == CollisionStrategy.DISCARD:
             return None
@@ -92,7 +99,7 @@ Identifier(s) are already mapped on an existing reference:
             msg = "Existing reference not found in database. This should not happen."
             raise RuntimeError(msg)
 
-        incoming_reference = await Reference.from_file_input(
+        incoming_reference = self._anti_corruption_service.reference_from_file_input(
             reference, existing_reference.id
         )
 

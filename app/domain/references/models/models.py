@@ -1,7 +1,6 @@
 """Models associated with references."""
 
 import uuid
-from collections.abc import Awaitable, Callable
 from enum import StrEnum, auto
 from typing import Any, Self
 
@@ -14,16 +13,13 @@ from pydantic import (
     UUID4,
     BaseModel,
     Field,
-    HttpUrl,
     TypeAdapter,
-    ValidationError,
 )
 
-from app.core.exceptions import SDKToDomainError
 from app.core.logger import get_logger
 from app.domain.base import DomainBaseModel, SDKJsonlMixin, SQLAttributeMixin
 from app.domain.imports.models.models import CollisionStrategy
-from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
+from app.persistence.blob.models import BlobStorageFile
 
 logger = get_logger()
 
