@@ -21,7 +21,6 @@ from app.core.exceptions import (
     WrongReferenceError,
 )
 from app.core.logger import get_logger
-from app.domain.base import SDKJsonlMixin
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
