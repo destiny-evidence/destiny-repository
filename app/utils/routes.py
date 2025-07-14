@@ -9,6 +9,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import AsyncTaskiqDecoratedTask
 
+from app.core.auth import (
+    AuthMethod,
+    AuthScopes,
+    CachingStrategyAuth,
+    choose_auth_strategy,
+)
+from app.core.config import get_settings
 from app.core.exceptions import ESNotFoundError
 from app.core.logger import get_logger
 from app.domain.references.models.es import (
@@ -25,6 +32,7 @@ from app.persistence.sql.session import get_session
 from app.utils.healthcheck import HealthCheckOptions, healthcheck
 
 logger = get_logger()
+settings = get_settings()
 
 router = APIRouter(prefix="/system", tags=["system utilities"])
 
@@ -44,6 +52,21 @@ _indices: dict[
 }
 
 
+def choose_auth_strategy_administrator() -> AuthMethod:
+    """Choose administrator for our authorization strategy."""
+    return choose_auth_strategy(
+        tenant_id=settings.azure_tenant_id,
+        application_id=settings.azure_application_id,
+        auth_scope=AuthScopes.ADMINISTRATOR,
+        bypass_auth=settings.running_locally,
+    )
+
+
+system_utility_auth = CachingStrategyAuth(
+    selector=choose_auth_strategy_administrator,
+)
+
+
 @router.get("/healthcheck/", status_code=status.HTTP_200_OK)
 async def get_healthcheck(
     healthcheck_options: Annotated[HealthCheckOptions, Depends()],
@@ -58,12 +81,18 @@ async def get_healthcheck(
 
 
 @router.post(
-    "/elastic/indices/{index_name}/repair/", status_code=status.HTTP_202_ACCEPTED
+    "/indices/{index_name}/repair/",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(system_utility_auth)],
 )
 async def repair_elasticsearch_index(
     es_client: Annotated[AsyncElasticsearch, Depends(get_client)],
     index_name: Annotated[str, Path(..., description="Name of the index to repair.")],
     *,
+    service: Annotated[
+        str,
+        Query(description="Service name for the persistence implementation."),
+    ] = "elastic",
     rebuild: Annotated[
         bool,
         Query(
@@ -75,7 +104,14 @@ async def repair_elasticsearch_index(
         ),
     ] = False,
 ) -> JSONResponse:
-    """Repair an ES index (update all ES documents per their SQL counterparts)."""
+    """Repair an index (update all documents per their SQL counterparts)."""
+    if service != "elastic":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only 'elastic' service is supported for index repair.",
+        )
+
+    # If we add another persistence service, move this to a function.
     try:
         index, repair_task = _indices[index_name]
     except KeyError as exc:
