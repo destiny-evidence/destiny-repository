@@ -1,0 +1,76 @@
+name: Release SDK to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deployment Environment. Staging deploys to testpypi."
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version from pyproject.toml
+        id: extract-version
+        run: |
+          cd libs/sdk
+          VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          PACKAGE_NAME=$(grep '^name = ' pyproject.toml | sed 's/name = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "📦 Package: $PACKAGE_NAME v$VERSION"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: false
+
+      - name: Configure PyPI repositories
+        if: ${{ vars.PYPI_REPOSITORY == 'testpypi' }}
+        run: |
+          cd libs/sdk
+          poetry config repositories.testpypi https://test.pypi.org/legacy/
+
+      - name: Build and publish package
+        run: |
+          cd libs/sdk
+          export POETRY_PYPI_TOKEN_$(echo "${{ vars.PYPI_REPOSITORY }}" | tr '[:lower:]' '[:upper:]')="${{ secrets.PYPI_TOKEN }}"
+          poetry build
+          poetry publish --repository ${{ vars.PYPI_REPOSITORY }}
+
+      - name: Create GitHub Release
+        if: ${{ vars.PYPI_REPOSITORY == 'pypi' }}
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: sdk-v${{ steps.extract-version.outputs.version }}
+          release_name: SDK Release v${{ steps.extract-version.outputs.version }}
+          body: |
+            Released ${{ steps.extract-version.outputs.package_name }} v${{ steps.extract-version.outputs.version }} from `${{ inputs.branch }}`
+
+            ## 📦 Package
+            - [View on PyPI](https://pypi.org/project/${{ steps.extract-version.outputs.package_name }}/${{ steps.extract-version.outputs.version }}/)
+
+            ## 🚀 Installation
+            ```bash
+            pip install ${{ steps.extract-version.outputs.package_name }}==${{ steps.extract-version.outputs.version }}
+            ```
+          draft: false
+          prerelease: false

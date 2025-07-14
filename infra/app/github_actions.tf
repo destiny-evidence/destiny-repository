@@ -87,3 +87,17 @@ resource "github_actions_environment_variable" "resource_group" {
   variable_name = "RESOURCE_GROUP"
   value         = azurerm_resource_group.this.name
 }
+
+resource "github_actions_environment_variable" "pypi_repository" {
+  repository    = github_repository_environment.environment.repository
+  environment   = github_repository_environment.environment.environment
+  variable_name = "PYPI_REPOSITORY"
+  value         = var.pypi_repository
+}
+
+resource "github_actions_environment_secret" "pypi_token" {
+  repository      = github_repository_environment.environment.repository
+  environment     = github_repository_environment.environment.environment
+  secret_name     = "PYPI_TOKEN"
+  plaintext_value = var.pypi_token
+}
