@@ -8,7 +8,6 @@ from unittest.mock import patch
 
 import pytest
 
-from app.domain.base import SDKJsonlMixin
 from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.models import (
     BlobSignedUrlType,
@@ -70,16 +69,8 @@ async def test_get_signed_url():
 
 @pytest.mark.asyncio
 async def test_filestream_stream_and_read_fn():
-    class DummySDK:
-        def to_jsonl(self):
-            return '{"foo": "bar"}'
-
-    class Dummy(SDKJsonlMixin):
-        async def to_sdk(self):
-            return DummySDK()
-
     async def fake_fn(_dummy):
-        return Dummy()
+        return "dummy"
 
     fs = FileStream(
         fn=fake_fn,
@@ -92,17 +83,9 @@ async def test_filestream_stream_and_read_fn():
 
 @pytest.mark.asyncio
 async def test_filestream_stream_and_read_gen():
-    class DummySDK:
-        def to_jsonl(self):
-            return '{"foo": "bar"}'
-
-    class Dummy(SDKJsonlMixin):
-        async def to_sdk(self):
-            return DummySDK()
-
     async def fake_gen():
-        yield Dummy()
-        yield Dummy()
+        yield "dummy1"
+        yield "dummy2"
 
     fs = FileStream(
         generator=fake_gen(),

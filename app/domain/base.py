@@ -2,9 +2,7 @@
 
 import datetime
 import uuid
-from abc import ABC, abstractmethod
 
-from destiny_sdk.core import _JsonlFileInputMixIn
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -65,16 +63,3 @@ class SQLTimestampMixin(SQLAttributeMixin):
         default_factory=utc_now,
         description="The timestamp at which the object was last updated.",
     )
-
-
-class SDKJsonlMixin(BaseModel, ABC):
-    """
-    Mixin for SDK JSONL attributes.
-
-    This flags that the model is used by the SDK to marshal
-    data in and out of JSONL files.
-    """
-
-    @abstractmethod
-    async def to_sdk(self) -> _JsonlFileInputMixIn:
-        """Convert the model to an SDK JSONL input mixin."""

@@ -1,8 +1,7 @@
 """The service for interacting with and managing references."""
 
 from collections import defaultdict
-from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
-from typing import cast
+from collections.abc import AsyncGenerator, Iterable
 
 import destiny_sdk
 from pydantic import UUID4
@@ -21,7 +20,6 @@ from app.core.exceptions import (
     WrongReferenceError,
 )
 from app.core.logger import get_logger
-from app.domain.base import SDKJsonlMixin
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
@@ -146,6 +144,16 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             if external_identifier_types
             else None,
         )
+
+    async def _get_jsonl_hydrated_references(
+        self,
+        reference_ids: list[UUID4],
+    ) -> list[str]:
+        """Get a list of JSONL strings for hydrated references by id."""
+        return [
+            self._anti_corruption_service.reference_to_sdk(ref).to_jsonl()
+            for ref in await self._get_hydrated_references(reference_ids)
+        ]
 
     @sql_unit_of_work
     async def get_hydrated_references(
@@ -440,12 +448,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Collect and dispatch references for batch enhancement."""
         robot = await robot_service.get_robot(batch_enhancement_request.robot_id)
         file_stream = FileStream(
-            # Handle Python's type invariance by casting the function type. We know
-            # Reference is a subclass of SDKJsonlMixin.
-            cast(
-                Callable[..., Awaitable[list[SDKJsonlMixin]]],
-                self._get_hydrated_references,
-            ),
+            self._get_jsonl_hydrated_references,
             [
                 {
                     "reference_ids": reference_id_chunk,

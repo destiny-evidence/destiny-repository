@@ -52,9 +52,6 @@ When getting, the file content is streamed line-by-line to the caller, allowing 
 
 When putting, files can either be streamed with the :class:`FileStream <app.persistence.blob.stream.FileStream>` class or compiled into an in-memory ``BytesIO`` object for simpler cases.
 
-.. autoclass:: app.domain.base.SDKJsonlMixin
-    :members:
-
 .. autoclass:: app.persistence.blob.stream.FileStream
     :members:
 

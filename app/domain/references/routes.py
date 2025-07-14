@@ -261,7 +261,7 @@ async def request_batch_enhancement(
     ],
 ) -> destiny_sdk.robots.BatchEnhancementRequestRead:
     """Request the creation of an enhancement against a provided reference id."""
-    enhancement_request = await reference_service.register_batch_reference_enhancement_request(
+    enhancement_request = await reference_service.register_batch_reference_enhancement_request(  # noqa: E501
         enhancement_request=anti_corruption_service.batch_enhancement_request_from_sdk(
             enhancement_request_in
         ),

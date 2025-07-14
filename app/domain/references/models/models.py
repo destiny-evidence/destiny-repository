@@ -17,7 +17,7 @@ from pydantic import (
 )
 
 from app.core.logger import get_logger
-from app.domain.base import DomainBaseModel, SDKJsonlMixin, SQLAttributeMixin
+from app.domain.base import DomainBaseModel, SQLAttributeMixin
 from app.domain.imports.models.models import CollisionStrategy
 from app.persistence.blob.models import BlobStorageFile
 
@@ -399,7 +399,7 @@ Errors for individual references are provided <TBC>.
         return len(self.reference_ids)
 
 
-class BatchRobotResultValidationEntry(DomainBaseModel, SDKJsonlMixin):
+class BatchRobotResultValidationEntry(DomainBaseModel):
     """A single entry in the validation result file for a batch enhancement request."""
 
     reference_id: uuid.UUID | None = Field(

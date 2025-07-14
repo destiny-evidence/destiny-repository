@@ -6,31 +6,23 @@ from io import BytesIO
 from typing import Any, TypeVar
 
 from app.core.exceptions import BlobStorageError
-from app.domain.base import SDKJsonlMixin
 
-Streamable = TypeVar(
-    "Streamable", bound=SDKJsonlMixin | str | list[SDKJsonlMixin] | list[str]
-)
+Streamable = TypeVar("Streamable", bound=str | list[str])
 
 
 class FileStream:
     """
     A helper class to convert a service function or generator into an async file stream.
 
-    This allows memory-efficient streaming of data from a function that returns a list
-    of objects that inherit from :class:`app.domain.base.SDKJsonlMixin`, which
-    identifies domain models that can be converted to JSONL format, or from an async
-    generator that yields strings.
+    This allows memory-efficient streaming of data from a function that returns a string
+    or list of strings.
 
     Example usage:
 
     .. code-block:: python
 
-        class DomainModel(SDKJsonlMixin):
-            ...
-
         async def get_chunk(ids: list[UUID4], other_arg: str) -> list[DomainModel]:
-            return repository.get_domain_models(ids, other_arg)
+            return repository.get_strings(ids, other_arg)
 
         file_stream = FileStream(fn=get_chunk, fn_kwargs=[
             {"ids": [id1, id2], "other_arg": "value"},
@@ -80,11 +72,7 @@ class FileStream:
         """
         if isinstance(data, list):
             return "".join(await gather(*(self._to_str(item) for item in data)))
-        return (
-            (await data.to_sdk()).to_jsonl()
-            if isinstance(data, SDKJsonlMixin)
-            else data
-        ) + "\n"
+        return data + "\n"
 
     async def _to_bytes(self, data: Streamable) -> bytes:
         """
