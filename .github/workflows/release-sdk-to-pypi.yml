@@ -41,18 +41,18 @@ jobs:
         with:
           virtualenvs-create: false
 
-      - name: Configure PyPI repositories
-        if: ${{ vars.PYPI_REPOSITORY == 'testpypi' }}
-        run: |
-          cd libs/sdk
-          poetry config repositories.testpypi https://test.pypi.org/legacy/
-
       - name: Build and publish package
         run: |
           cd libs/sdk
-          export POETRY_PYPI_TOKEN_$(echo "${{ vars.PYPI_REPOSITORY }}" | tr '[:lower:]' '[:upper:]')="${{ secrets.PYPI_TOKEN }}"
           poetry build
-          poetry publish --repository ${{ vars.PYPI_REPOSITORY }}
+          if [ "${{ vars.PYPI_REPOSITORY }}" = "testpypi" ]; then
+            poetry config repositories.testpypi https://test.pypi.org/legacy/
+            poetry config pypi-token.testpypi ${{ secrets.PYPI_TOKEN }}
+            poetry publish --repository testpypi
+          else
+            poetry config pypi-token.pypi ${{ secrets.PYPI_TOKEN }}
+            poetry publish
+          fi
 
       - name: Create GitHub Release
         if: ${{ vars.PYPI_REPOSITORY == 'pypi' }}
