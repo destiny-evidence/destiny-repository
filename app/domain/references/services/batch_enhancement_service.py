@@ -101,8 +101,10 @@ class BatchEnhancementService(GenericService[ReferenceAntiCorruptionService]):
             result_file=await batch_enhancement_request.result_file.to_sql(),
         )
 
-        return await self._anti_corruption_service.batch_robot_request_to_sdk(
-            batch_enhancement_request
+        return (
+            await self._anti_corruption_service.batch_enhancement_request_to_sdk_robot(
+                batch_enhancement_request
+            )
         )
 
     async def process_batch_enhancement_result(

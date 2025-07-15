@@ -195,7 +195,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
 
-    async def batch_robot_request_to_sdk(
+    async def batch_enhancement_request_to_sdk_robot(
         self,
         enhancement_request: BatchEnhancementRequest,
     ) -> destiny_sdk.robots.BatchRobotRequest:
