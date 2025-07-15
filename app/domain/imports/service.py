@@ -16,6 +16,9 @@ from app.domain.imports.models.models import (
     ImportResult,
     ImportResultStatus,
 )
+from app.domain.imports.services.anti_corruption_service import (
+    ImportAntiCorruptionService,
+)
 from app.domain.references.service import ReferenceService
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -24,12 +27,16 @@ from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
 logger = get_logger()
 
 
-class ImportService(GenericService):
+class ImportService(GenericService[ImportAntiCorruptionService]):
     """The service which manages our imports and their processing."""
 
-    def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:
+    def __init__(
+        self,
+        anti_corruption_service: ImportAntiCorruptionService,
+        sql_uow: AsyncSqlUnitOfWork,
+    ) -> None:
         """Initialize the service with a unit of work."""
-        super().__init__(sql_uow)
+        super().__init__(anti_corruption_service, sql_uow)
 
     async def _get_import_record(self, import_record_id: UUID4) -> ImportRecord:
         """Get a single import by id."""
@@ -226,9 +233,11 @@ This should not happen.
                     )
                     response = await client.post(
                         str(import_batch.callback_url),
-                        json=(await import_batch.to_sdk_summary()).model_dump(
-                            mode="json"
-                        ),
+                        json=(
+                            self._anti_corruption_service.import_batch_to_sdk_summary(
+                                import_batch
+                            )
+                        ).model_dump(mode="json"),
                     )
                     response.raise_for_status()
             except Exception:

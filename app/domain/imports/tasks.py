@@ -8,6 +8,9 @@ from app.core.exceptions import ESError, TaskError
 from app.core.logger import get_logger
 from app.domain.imports.models.models import ImportBatchStatus
 from app.domain.imports.service import ImportService
+from app.domain.imports.services.anti_corruption_service import (
+    ImportAntiCorruptionService,
+)
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -48,12 +51,18 @@ async def get_es_unit_of_work(
 
 
 async def get_import_service(
+    import_anti_corruption_service: ImportAntiCorruptionService | None = None,
     sql_uow: AsyncSqlUnitOfWork | None = None,
 ) -> ImportService:
     """Return the import service using the provided unit of work dependencies."""
     if sql_uow is None:
         sql_uow = await get_sql_unit_of_work()
-    return ImportService(sql_uow=sql_uow)
+
+    if import_anti_corruption_service is None:
+        import_anti_corruption_service = ImportAntiCorruptionService()
+    return ImportService(
+        sql_uow=sql_uow, anti_corruption_service=import_anti_corruption_service
+    )
 
 
 async def get_reference_service(
