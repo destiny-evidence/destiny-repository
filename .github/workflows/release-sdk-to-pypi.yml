@@ -12,6 +12,8 @@ on:
           - staging
           - production
 
+permissions:
+  contents: write
 jobs:
   release:
     runs-on: ubuntu-latest
