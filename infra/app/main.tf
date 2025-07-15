@@ -239,6 +239,14 @@ resource "azurerm_postgresql_flexible_server" "this" {
   administrator_login           = var.admin_login
   administrator_password        = var.admin_password
   zone                          = "1"
+  backup_retention_days        = var.environment == "prod" ? 35 : 7
+
+  dynamic "high_availability" {
+    for_each = var.environment == "prod" ? [1] : []
+    content {
+      mode = "ZoneRedundant"
+    }
+  }
 
   storage_mb   = 32768
   storage_tier = "P4"
