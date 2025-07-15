@@ -8,7 +8,11 @@ from pydantic import UUID4
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
     BatchEnhancementRequestStatus,
+    BatchRobotResultValidationEntry,
     Reference,
+)
+from app.domain.references.services.anti_corruption_service import (
+    ReferenceAntiCorruptionService,
 )
 from app.domain.references.services.batch_enhancement_service import (
     BatchEnhancementService,
@@ -26,8 +30,10 @@ async def test_build_robot_request_happy_path(fake_uow, fake_repository):
         request_status=BatchEnhancementRequestStatus.RECEIVED,
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
-    service = BatchEnhancementService(uow)
     mock_blob_repo = MagicMock()
+    service = BatchEnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow
+    )
     mock_blob_repo.upload_file_to_blob_storage = AsyncMock(
         return_value=BlobStorageFile(
             location="minio",
@@ -64,8 +70,10 @@ async def test_process_batch_enhancement_result_happy_path(fake_uow, fake_reposi
         ),
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
-    service = BatchEnhancementService(uow)
     mock_blob_repo = MagicMock()
+    service = BatchEnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow
+    )
 
     class FakeStream:
         def __init__(self, _):
@@ -91,7 +99,7 @@ async def test_process_batch_enhancement_result_happy_path(fake_uow, fake_reposi
     inserted_enhancement_ids = set()
     # Collect all yielded messages
     messages = [
-        msg
+        BatchRobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_batch_enhancement_result(
             mock_blob_repo,
             batch_request,
@@ -163,8 +171,10 @@ async def test_process_batch_enhancement_result_handles_both_entry_types(
         ),
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
-    service = BatchEnhancementService(uow)
     mock_blob_repo = MagicMock()
+    service = BatchEnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow
+    )
 
     class FakeStream:
         def __init__(self, _):
@@ -188,7 +198,7 @@ async def test_process_batch_enhancement_result_handles_both_entry_types(
 
     inserted_enhancement_ids = set()
     messages = [
-        msg
+        BatchRobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_batch_enhancement_result(
             mock_blob_repo,
             batch_request,
@@ -227,8 +237,10 @@ async def test_process_batch_enhancement_result_missing_reference_id(
         ),
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
-    service = BatchEnhancementService(uow)
     mock_blob_repo = MagicMock()
+    service = BatchEnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow
+    )
 
     class FakeStream:
         def __init__(self, _):
@@ -253,7 +265,7 @@ async def test_process_batch_enhancement_result_missing_reference_id(
 
     inserted_enhancement_ids = set()
     messages = [
-        msg
+        BatchRobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_batch_enhancement_result(
             mock_blob_repo,
             batch_request,
@@ -293,9 +305,11 @@ async def test_process_batch_enhancement_result_surplus_reference_id(
         ),
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
-    service = BatchEnhancementService(uow)
     surplus_reference_id = uuid.uuid4()
     mock_blob_repo = MagicMock()
+    service = BatchEnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow
+    )
 
     class FakeStream:
         def __init__(self, _):
@@ -321,7 +335,7 @@ async def test_process_batch_enhancement_result_surplus_reference_id(
 
     inserted_enhancement_ids = set()
     messages = [
-        msg
+        BatchRobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_batch_enhancement_result(
             mock_blob_repo,
             batch_request,
@@ -362,8 +376,10 @@ async def test_process_batch_enhancement_result_parse_failure(
         ),
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
-    service = BatchEnhancementService(uow)
     mock_blob_repo = MagicMock()
+    service = BatchEnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow
+    )
 
     class FakeStream:
         def __init__(self, _):
@@ -386,7 +402,7 @@ async def test_process_batch_enhancement_result_parse_failure(
 
     inserted_enhancement_ids = set()
     messages = [
-        msg
+        BatchRobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_batch_enhancement_result(
             mock_blob_repo,
             batch_request,
@@ -423,8 +439,10 @@ async def test_process_batch_enhancement_result_add_enhancement_fails(
         ),
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
-    service = BatchEnhancementService(uow)
     mock_blob_repo = MagicMock()
+    service = BatchEnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow
+    )
 
     class FakeStream:
         def __init__(self, _):
@@ -446,7 +464,7 @@ async def test_process_batch_enhancement_result_add_enhancement_fails(
 
     inserted_enhancement_ids = set()
     messages = [
-        msg
+        BatchRobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_batch_enhancement_result(
             mock_blob_repo,
             batch_request,
@@ -484,8 +502,10 @@ async def test_process_batch_enhancement_result_all_enhancements_fail(
         ),
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
-    service = BatchEnhancementService(uow)
     mock_blob_repo = MagicMock()
+    service = BatchEnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow
+    )
 
     class FakeStream:
         def __init__(self, _):
@@ -507,7 +527,7 @@ async def test_process_batch_enhancement_result_all_enhancements_fail(
 
     inserted_enhancement_ids = set()
     messages = [
-        msg
+        BatchRobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_batch_enhancement_result(
             mock_blob_repo,
             batch_request,
@@ -546,8 +566,10 @@ async def test_process_batch_enhancement_result_empty_result_file(
         ),
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
-    service = BatchEnhancementService(uow)
     mock_blob_repo = MagicMock()
+    service = BatchEnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow
+    )
 
     class FakeStream:
         def __init__(self, _):
@@ -570,7 +592,7 @@ async def test_process_batch_enhancement_result_empty_result_file(
 
     inserted_enhancement_ids = set()
     messages = [
-        msg
+        BatchRobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_batch_enhancement_result(
             mock_blob_repo,
             batch_request,
@@ -608,8 +630,10 @@ async def test_process_batch_enhancement_result_duplicate_reference_ids(
         ),
     )
     uow = fake_uow(batch_enhancement_requests=fake_repository([batch_request]))
-    service = BatchEnhancementService(uow)
     mock_blob_repo = MagicMock()
+    service = BatchEnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow
+    )
 
     class FakeStream:
         def __init__(self, _):
@@ -634,7 +658,7 @@ async def test_process_batch_enhancement_result_duplicate_reference_ids(
 
     inserted_enhancement_ids = set()
     messages = [
-        msg
+        BatchRobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_batch_enhancement_result(
             mock_blob_repo,
             batch_request,
