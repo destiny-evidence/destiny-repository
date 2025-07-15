@@ -51,5 +51,5 @@ async def test_create_and_read_import_record(client: AsyncClient) -> None:
     assert create_response.status_code == status.HTTP_201_CREATED
 
     import_id = create_response.json()["id"]
-    read_response = await client.get(f"/v1/imports/record/{import_id}/")
+    read_response = await client.get(f"/v1/imports/records/{import_id}/")
     assert read_response.json().items() >= valid_import_record_params.items()

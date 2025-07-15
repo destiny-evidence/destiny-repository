@@ -43,6 +43,14 @@ def import_service(
     return ImportService(sql_uow=sql_uow)
 
 
+async def validate_import_record(
+    import_record_id: Annotated[UUID4, Path(title="The id of the import")],
+    import_service: Annotated[ImportService, Depends(import_service)],
+) -> None:
+    """Validate that the import record exists."""
+    await import_service.get_import_record(import_record_id)
+
+
 def choose_auth_strategy_imports() -> AuthMethod:
     """Choose import scope auth strategy for our imports authorization."""
     return choose_auth_strategy(
@@ -56,23 +64,19 @@ def choose_auth_strategy_imports() -> AuthMethod:
 import_auth = CachingStrategyAuth(selector=choose_auth_strategy_imports)
 
 
-router = APIRouter(
-    prefix="/imports", tags=["imports"], dependencies=[Depends(import_auth)]
-)
+router = APIRouter(prefix="/imports", tags=["imports"])
 
 import_record_router = APIRouter(
     prefix="/records",
     tags=["import-records"],
     dependencies=[Depends(import_auth)],
 )
-router.include_router(import_record_router)
 
 import_batch_router = APIRouter(
     prefix="/{import_record_id}/batches",
     tags=["import-batches"],
-    dependencies=[Depends(import_auth)],
+    dependencies=[Depends(import_auth), Depends(validate_import_record)],
 )
-import_record_router.include_router(import_batch_router)
 
 
 @import_record_router.post("/", status_code=status.HTTP_201_CREATED)
@@ -141,7 +145,6 @@ async def get_batches(
 
 @import_batch_router.get("/{import_batch_id}/")
 async def get_batch(
-    import_record_id: Annotated[UUID4, Path(title="The id of the associated import")],
     import_batch_id: Annotated[UUID4, Path(title="The id of the import batch")],
     import_service: Annotated[ImportService, Depends(import_service)],
 ) -> destiny_sdk.imports.ImportBatchRead:
@@ -152,7 +155,6 @@ async def get_batch(
 
 @import_batch_router.get("/{import_batch_id}/summary/")
 async def get_import_batch_summary(
-    import_record_id: Annotated[UUID4, Path(title="The id of the associated import")],
     import_batch_id: Annotated[UUID4, Path(title="The id of the import batch")],
     import_service: Annotated[ImportService, Depends(import_service)],
 ) -> destiny_sdk.imports.ImportBatchSummary:
@@ -163,7 +165,6 @@ async def get_import_batch_summary(
 
 @import_batch_router.get("/{import_batch_id}/results/")
 async def get_import_results(
-    import_record_id: Annotated[UUID4, Path(title="The id of the associated import")],
     import_batch_id: Annotated[UUID4, Path(title="The id of the import batch")],
     import_service: Annotated[ImportService, Depends(import_service)],
     result_status: ImportResultStatus | None = None,
@@ -176,3 +177,8 @@ async def get_import_results(
         await import_batch_result.to_sdk()
         for import_batch_result in import_batch_results
     ]
+
+
+# Must be done after routes defined
+import_record_router.include_router(import_batch_router)
+router.include_router(import_record_router)
