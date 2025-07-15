@@ -46,7 +46,7 @@ async def client(app: FastAPI = app) -> AsyncIterator[AsyncClient]:
 async def test_create_and_read_import_record(client: AsyncClient) -> None:
     """Test creating an import record then reading it."""
     create_response = await client.post(
-        "/v1/imports/record/", json=valid_import_record_params
+        "/v1/imports/records/", json=valid_import_record_params
     )
     assert create_response.status_code == status.HTTP_201_CREATED
 
