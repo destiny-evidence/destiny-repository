@@ -42,7 +42,7 @@ def test_verify_hmac_headers_sent(httpx_mock: HTTPXMock, frozen_time) -> None:  
     )
 
     httpx_mock.add_response(
-        url=fake_destiny_repository_url + "/v1/robot/enhancement/single/",
+        url=fake_destiny_repository_url + "/robot/enhancement/single/",
         method="POST",
         match_headers={
             "Authorization": f"Signature {expected_signature}",
