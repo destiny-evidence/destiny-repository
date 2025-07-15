@@ -371,14 +371,22 @@ resource "azurerm_role_assignment" "blob_storage_rw" {
 }
 
 resource "ec_deployment" "cluster" {
-  name = "${var.app_name}-${substr(var.environment, 0, 4)}-es"
+  name                   = "${var.app_name}-${substr(var.environment, 0, 4)}-es"
   region                 = var.elasticsearch_region
   version                = var.elastic_stack_version
   deployment_template_id = "azure-general-purpose"
 
   elasticsearch = {
     hot = {
-      autoscaling = {}
+      size          = "8g"
+      size_resource = "memory"
+      zone_count    = var.environment == "prod" ? 2 : 1
+      autoscaling = {
+        min_size          = "1g"
+        max_size          = "8g"
+        min_storage_in_gb = 35
+        max_storage_in_gb = 280
+      }
     }
   }
 
@@ -386,8 +394,8 @@ resource "ec_deployment" "cluster" {
 
   observability = {
     deployment_id = "self"
-    logs = true
-    metrics = true
+    logs          = true
+    metrics       = true
   }
 
   lifecycle {
@@ -425,4 +433,16 @@ resource "elasticstack_elasticsearch_security_api_key" "read_only" {
       ]
     }
   })
+}
+
+resource "elasticstack_elasticsearch_snapshot_lifecycle" "snapshots" {
+  name  = "snapshot-policy"
+
+  # Every 30 minutes for production, once a day at 01:30 AM otherwise
+  schedule   = var.environment == "prod" ? "0 */30 * * * ?" : "0 30 1 * * ?"
+  repository = "found-snapshots" # Default Elastic Cloud repository
+
+  expire_after = "30d"
+  min_count    = 30
+  max_count    = 60
 }
