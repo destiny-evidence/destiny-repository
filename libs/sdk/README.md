@@ -53,20 +53,9 @@ poetry build
 poetry add ./PATH/TO/WHEEL.whl
 ```
 
-### Publishing to test pypi
+### Publishing
 
-```sh
-poetry config repositories.testpypi https://test.pypi.org/legacy/
-poetry config pypi-token.testpypi [YOUR_TESTPYPI_TOKEN]
-poetry publish --repository testpypi
-```
-
-## Publishing
-
-```sh
-poetry config pypi-token.pypi [YOUR_PYPI_TOKEN]
-poetry publish
-```
+Once the package change is merged to main with an iterated `libs/sdk/pyproject.toml` version number, you can run the [github action](https://github.com/destiny-evidence/destiny-repository/actions/workflows/release-sdk-to-pypi.yml) to publish to the test pypi and then production pypi registries.
 
 ### Versioning
 
