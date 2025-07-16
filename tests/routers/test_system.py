@@ -61,7 +61,7 @@ async def test_healthcheck_success(app: FastAPI, client: AsyncClient) -> None:
     app.dependency_overrides[get_session] = mock_get_session
     app.dependency_overrides[get_client] = mock_get_es_client
     response = await client.get(
-        "/v1/system/healthcheck/",
+        "/system/healthcheck/",
         params={"database": True, "worker": False, "azure_blob_storage": False},
     )
 
@@ -86,7 +86,7 @@ async def test_healthcheck_db_failure(app: FastAPI, client: AsyncClient) -> None
     app.dependency_overrides[get_session] = mock_get_session
     app.dependency_overrides[get_client] = mock_get_es_client
     response = await client.get(
-        "/v1/system/healthcheck/",
+        "/system/healthcheck/",
         params={"database": True, "worker": False, "azure_blob_storage": False},
     )
 
@@ -111,7 +111,7 @@ async def test_healthcheck_es_failure(app: FastAPI, client: AsyncClient) -> None
     app.dependency_overrides[get_session] = mock_get_session
     app.dependency_overrides[get_client] = mock_get_es_client
     response = await client.get(
-        "/v1/system/healthcheck/",
+        "/system/healthcheck/",
         params={"database": True, "worker": False, "azure_blob_storage": False},
     )
 
