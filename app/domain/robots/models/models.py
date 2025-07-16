@@ -1,5 +1,6 @@
 """Domain model for robots."""
 
+import uuid
 from typing import Self
 
 import destiny_sdk
@@ -29,11 +30,13 @@ class Robot(DomainBaseModel, SQLAttributeMixin):
 
     @classmethod
     async def from_sdk(
-        cls, data: destiny_sdk.robots.RobotIn | destiny_sdk.robots.Robot
+        cls, data: destiny_sdk.robots.RobotIn, robot_id: uuid.UUID | None = None
     ) -> Self:
         """Create a Robot from the SDK input model."""
         try:
-            c = cls.model_validate(data.model_dump())
+            c = cls.model_validate(
+                data.model_dump() | {"id": robot_id} if robot_id else {}
+            )
             c.check_serializability()
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception

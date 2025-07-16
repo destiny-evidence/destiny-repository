@@ -53,19 +53,20 @@ robot_writer_auth = CachingStrategyAuth(
 )
 
 router = APIRouter(
-    prefix="/robot",
+    prefix="/robots",
     tags=["robot-management"],
     dependencies=[Depends(robot_writer_auth)],
 )
 
 
-@router.put(path="/", status_code=status.HTTP_200_OK)
+@router.put(path="/{robot_id}/", status_code=status.HTTP_200_OK)
 async def update_robot(
-    robot_update: destiny_sdk.robots.Robot,
+    robot_id: Annotated[uuid.UUID, Path(description="The id of the robot.")],
+    robot_update: destiny_sdk.robots.RobotIn,
     robot_service: Annotated[RobotService, Depends(robot_service)],
 ) -> destiny_sdk.robots.Robot:
     """Update an existing robot."""
-    robot = await Robot.from_sdk(robot_update)
+    robot = await Robot.from_sdk(robot_update, robot_id=robot_id)
     updated_robot = await robot_service.update_robot(robot=robot)
     return await updated_robot.to_sdk()
 
@@ -89,6 +90,15 @@ async def get_robot(
     """Get an existing Robot."""
     robot = await robot_service.get_robot_standalone(robot_id=robot_id)
     return await robot.to_sdk()
+
+
+@router.get(path="/", status_code=status.HTTP_200_OK)
+async def get_all_robots(
+    robot_service: Annotated[RobotService, Depends(robot_service)],
+) -> list[destiny_sdk.robots.Robot]:
+    """Get all robots."""
+    robots = await robot_service.get_all_robots()
+    return [await robot.to_sdk() for robot in robots]
 
 
 @router.post(path="/{robot_id}/secret/", status_code=status.HTTP_201_CREATED)
