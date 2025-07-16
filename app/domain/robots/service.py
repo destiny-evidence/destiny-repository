@@ -23,6 +23,7 @@ class RobotService(GenericService):
         """Return a given robot."""
         return await self.sql_uow.robots.get_by_pk(robot_id)
 
+    @sql_unit_of_work
     async def get_all_robots(self) -> list[Robot]:
         """Return all robots."""
         return await self.sql_uow.robots.get_all()

@@ -34,9 +34,9 @@ class Robot(DomainBaseModel, SQLAttributeMixin):
     ) -> Self:
         """Create a Robot from the SDK input model."""
         try:
-            c = cls.model_validate(
-                data.model_dump() | {"id": robot_id} if robot_id else {}
-            )
+            c = cls.model_validate(data.model_dump())
+            if robot_id:
+                c.id = robot_id
             c.check_serializability()
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
