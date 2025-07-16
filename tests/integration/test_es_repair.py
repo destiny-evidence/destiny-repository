@@ -30,8 +30,8 @@ from app.domain.references.models.sql import (
 )
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.main import not_found_exception_handler
+from app.system import routes as system_routes
 from app.tasks import broker
-from app.utils import routes as utils_routes
 
 
 async def sub_test_reference_index_initial_rebuild(
@@ -255,7 +255,7 @@ def app() -> FastAPI:
             NotFoundError: not_found_exception_handler,
         }
     )
-    app.include_router(utils_routes.router)
+    app.include_router(system_routes.router)
     return app
 
 
@@ -407,13 +407,12 @@ async def test_repair_auth_failure(
 ) -> None:
     """Test attempting to repair an index with missing and incorrect auth fails."""
     from app.core.config import Environment
-    from app.utils import routes as utils_routes
 
     # Set up production environment and auth settings
-    utils_routes.settings.env = Environment.PRODUCTION
-    utils_routes.settings.azure_application_id = fake_application_id
-    utils_routes.settings.azure_tenant_id = fake_tenant_id
-    utils_routes.system_utility_auth.reset()
+    system_routes.settings.env = Environment.PRODUCTION
+    system_routes.settings.azure_application_id = fake_application_id
+    system_routes.settings.azure_tenant_id = fake_tenant_id
+    system_routes.system_utility_auth.reset()
 
     test_index_name = "test-index"
 
@@ -434,5 +433,5 @@ async def test_repair_auth_failure(
     assert response.text == '{"detail":"Authorization HTTPBearer header missing."}'
 
     # Clean up
-    utils_routes.system_utility_auth.reset()
-    utils_routes.settings.__init__()  # type: ignore[call-args, misc]
+    system_routes.system_utility_auth.reset()
+    system_routes.settings.__init__()  # type: ignore[call-args, misc]
