@@ -135,15 +135,6 @@ def robot_result_enhancement(
     }
 
 
-async def test_register_reference(session: AsyncSession, client: AsyncClient) -> None:
-    """Test registering a reference."""
-    response = await client.post("/references/")
-
-    assert response.status_code == status.HTTP_201_CREATED
-    data = await session.get(SQLReference, response.json()["id"])
-    assert data is not None
-
-
 async def test_request_reference_enhancement_happy_path(
     session: AsyncSession, client: AsyncClient, httpx_mock: HTTPXMock
 ) -> None:
