@@ -269,16 +269,16 @@ class TaskError(Exception):
         super().__init__(detail, *args)
 
 
-class SDKToDomainError(Exception):
+class SDKTranslationError(Exception):
     """
-    An exeption for when we fail to convert an sdk model to a domain model.
+    An exception thrown when we fail to translate a SDK model.
 
-    Exists to that we can capture a subset of pydantic validation errors.
+    Exists so that we can capture a subset of pydantic validation errors.
     """
 
     def __init__(self, errors: list[Any]) -> None:
         """
-        Initialize the SDKToDomainError exception.
+        Initialize the SDKTranslationError exception.
 
         Args:
             errors (str): A sequence of errors, likely copied from ValidationError
@@ -288,11 +288,19 @@ class SDKToDomainError(Exception):
         self.errors = errors
 
     def __str__(self) -> str:
-        """Convert exception errors to string."""
+        """Convert pydantic exception errors to string."""
         message = f"{len(self.errors)} errors:\n"
         for error in self.errors:
             message += f"  {error}\n"
         return message
+
+
+class SDKToDomainError(SDKTranslationError):
+    """An exception for when we fail to convert a sdk model to a domain model."""
+
+
+class DomainToSDKError(SDKTranslationError):
+    """An exception for when we fail to convert a domain model to a sdk model."""
 
 
 class RobotUnreachableError(Exception):

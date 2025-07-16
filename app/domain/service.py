@@ -25,3 +25,12 @@ class GenericService:
         # we access it.
         if es_uow:
             self.es_uow: AsyncESUnitOfWork = es_uow
+
+
+class AntiCorruptionService:
+    """
+    Base class for anti-corruption services that handle external system translations.
+
+    This service acts as a boundary between the domain and external systems (like SDKs),
+    ensuring that external concerns don't leak into the domain models.
+    """
