@@ -26,8 +26,8 @@ from app.domain.references.routes import router as reference_router
 from app.domain.robots.routes import router as robot_management_router
 from app.persistence.es.client import es_manager
 from app.persistence.sql.session import db_manager
+from app.system.routes import router as system_utilities_router
 from app.tasks import broker
-from app.utils.routes import router as system_utilities_router
 
 settings = get_settings()
 logger = get_logger()

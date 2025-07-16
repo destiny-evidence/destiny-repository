@@ -9,7 +9,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.persistence.es.client import get_client
 from app.persistence.sql.session import get_session
-from app.utils import routes
+from app.system import routes
 
 
 @pytest.fixture

@@ -29,7 +29,7 @@ from app.domain.references.tasks import (
 from app.persistence.es.client import get_client
 from app.persistence.es.persistence import GenericESPersistence
 from app.persistence.sql.session import get_session
-from app.utils.healthcheck import HealthCheckOptions, healthcheck
+from app.system.healthcheck import HealthCheckOptions, healthcheck
 
 logger = get_logger()
 settings = get_settings()
