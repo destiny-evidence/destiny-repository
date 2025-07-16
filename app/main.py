@@ -26,8 +26,8 @@ from app.domain.references.routes import router as reference_router_v1
 from app.domain.robots.routes import router as robot_management_router_v1
 from app.persistence.es.client import es_manager
 from app.persistence.sql.session import db_manager
+from app.system.routes import router as system_utilities_router_v1
 from app.tasks import broker
-from app.utils.healthcheck import router as healthcheck_router_v1
 
 settings = get_settings()
 logger = get_logger()
@@ -55,7 +55,7 @@ api_v1.include_router(import_router_v1)
 api_v1.include_router(reference_router_v1)
 api_v1.include_router(robot_router_v1)
 api_v1.include_router(robot_management_router_v1)
-api_v1.include_router(healthcheck_router_v1)
+api_v1.include_router(system_utilities_router_v1)
 app.include_router(api_v1)
 
 configure_logger(rich_rendering=settings.running_locally)
