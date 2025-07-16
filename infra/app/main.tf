@@ -104,7 +104,7 @@ locals {
       value = azurerm_servicebus_namespace.this.default_primary_connection_string
     },
     {
-      name  = "es-config"
+      name = "es-config"
       value = jsonencode({
         cloud_id = ec_deployment.cluster.elasticsearch.cloud_id
         api_key  = elasticstack_elasticsearch_security_api_key.app.encoded
@@ -239,7 +239,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
   administrator_login           = var.admin_login
   administrator_password        = var.admin_password
   zone                          = "1"
-  backup_retention_days        = var.environment == "prod" ? 35 : 7
+  backup_retention_days         = var.environment == "prod" ? 35 : 7
 
   dynamic "high_availability" {
     for_each = var.environment == "prod" ? [1] : []
@@ -261,6 +261,14 @@ resource "azurerm_postgresql_flexible_server" "this" {
 
   depends_on = [azurerm_private_dns_zone_virtual_network_link.db]
   tags       = local.minimum_resource_tags
+
+  # avoid migrating back to the primary availability zone after failover
+  lifecycle {
+    ignore_changes = [
+      zone,
+      high_availability[0].standby_availability_zone
+    ]
+  }
 }
 
 resource "azurerm_postgresql_flexible_server_database" "this" {
@@ -380,7 +388,7 @@ resource "ec_deployment" "cluster" {
     hot = {
       size          = "8g"
       size_resource = "memory"
-      zone_count    = var.environment == "prod" ? 2 : 1
+      zone_count    = 3
       autoscaling = {
         min_size          = "1g"
         max_size          = "8g"
@@ -410,8 +418,8 @@ resource "elasticstack_elasticsearch_security_api_key" "app" {
       cluster = ["monitor"]
       indices = [
         {
-          names      = ["${var.app_name}-*"]
-          privileges = ["read", "write", "create_index", "manage"]
+          names                    = ["${var.app_name}-*"]
+          privileges               = ["read", "write", "create_index", "manage"]
           allow_restricted_indices = false
         }
       ]
@@ -426,8 +434,8 @@ resource "elasticstack_elasticsearch_security_api_key" "read_only" {
       cluster = ["monitor"]
       indices = [
         {
-          names      = ["${var.app_name}-*"]
-          privileges = ["read"]
+          names                    = ["${var.app_name}-*"]
+          privileges               = ["read"]
           allow_restricted_indices = false
         }
       ]
@@ -436,7 +444,7 @@ resource "elasticstack_elasticsearch_security_api_key" "read_only" {
 }
 
 resource "elasticstack_elasticsearch_snapshot_lifecycle" "snapshots" {
-  name  = "snapshot-policy"
+  name = "snapshot-policy"
 
   # Every 30 minutes for production, once a day at 01:30 AM otherwise
   schedule   = var.environment == "prod" ? "0 */30 * * * ?" : "0 30 1 * * ?"
