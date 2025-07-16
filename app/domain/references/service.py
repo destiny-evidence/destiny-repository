@@ -157,11 +157,6 @@ class ReferenceService(GenericService):
         return await self.sql_uow.references.get_all_pks()
 
     @sql_unit_of_work
-    async def get_all_robot_automation_ids(self) -> list[UUID4]:
-        """Get all robot automation IDs from the database."""
-        return await self.sql_uow.robot_automations.get_all_pks()
-
-    @sql_unit_of_work
     async def get_reference_from_identifier(
         self, identifier: ExternalIdentifierSearch
     ) -> Reference:
@@ -723,7 +718,5 @@ class ReferenceService(GenericService):
 
         We assume the scale is small enough that we can do this naively.
         """
-        for robot_automation in await self.sql_uow.robot_automations.get_by_pks(
-            await self.sql_uow.robot_automations.get_all_pks()
-        ):
+        for robot_automation in await self.sql_uow.robot_automations.get_all():
             await self.es_uow.robot_automations.add(robot_automation)
