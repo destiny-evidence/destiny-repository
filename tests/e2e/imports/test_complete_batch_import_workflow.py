@@ -501,7 +501,7 @@ def register_toy_robot(client: httpx.Client) -> None:
     """Register the toy robot and set up automation."""
     # Register the toy robot
     response = client.post(
-        "/robot/",
+        "/robots/",
         json={
             "name": "Toy Robot 1",
             "base_url": toy_robot_url,
@@ -517,7 +517,7 @@ def register_toy_robot(client: httpx.Client) -> None:
     # or if a new toy enhancement is added to a reference (we do some fancy stuff in
     # the next test to do this once and stop the cycle).
     response = client.post(
-        f"/robot/{toy_robot_id}/automation/",
+        f"/robots/{toy_robot_id}/automation/",
         json={
             "query": {
                 "bool": {
