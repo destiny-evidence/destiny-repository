@@ -149,9 +149,9 @@ async def test_blobstoragefile_to_sql_and_from_sql():
         path="some/path",
         filename="file.txt",
     )
-    sql = await file.to_sql()
+    sql = file.to_sql()
     assert sql == "azure://cont/some/path/file.txt"
-    new_file = await BlobStorageFile.from_sql(sql)
+    new_file = BlobStorageFile.from_sql(sql)
     assert new_file.location == "azure"
     assert new_file.container == "cont"
     assert new_file.path == "some/path"

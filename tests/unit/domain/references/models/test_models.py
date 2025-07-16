@@ -20,7 +20,7 @@ async def test_generic_external_identifier_from_specific_without_other():
     doi = destiny_sdk.identifiers.DOIIdentifier(
         identifier="10.1000/abc123", identifier_type="doi"
     )
-    gen = await GenericExternalIdentifier.from_specific(doi)
+    gen = GenericExternalIdentifier.from_specific(doi)
     assert gen.identifier == "10.1000/abc123"
     assert gen.identifier_type == "doi"
     assert gen.other_identifier_name is None
@@ -30,7 +30,7 @@ async def test_generic_external_identifier_from_specific_with_other():
     other = destiny_sdk.identifiers.OtherIdentifier(
         identifier="123", identifier_type="other", other_identifier_name="isbn"
     )
-    gen = await GenericExternalIdentifier.from_specific(other)
+    gen = GenericExternalIdentifier.from_specific(other)
     assert gen.identifier == "123"
     assert gen.identifier_type == "other"
     assert gen.other_identifier_name == "isbn"

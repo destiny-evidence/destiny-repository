@@ -117,12 +117,12 @@ async def test_reference_from_and_to_domain_without_preload():
     dummy_ref = DummyDomainReference(id=ref_id, visibility=Visibility.PUBLIC)
 
     # Convert from domain to SQL model
-    sql_ref = await Reference.from_domain(dummy_ref)
+    sql_ref = Reference.from_domain(dummy_ref)
     assert sql_ref.id == dummy_ref.id
     assert sql_ref.visibility == dummy_ref.visibility
 
     # When no preload is requested, to_domain should yield None for relationships
-    domain_ref = await sql_ref.to_domain(preload=[])
+    domain_ref = sql_ref.to_domain(preload=[])
     assert domain_ref.id == dummy_ref.id
     assert domain_ref.visibility == dummy_ref.visibility
     assert domain_ref.identifiers is None
@@ -143,7 +143,7 @@ async def test_external_identifier_from_and_to_domain():
     )
 
     # Convert from domain to SQL model
-    sql_ext = await ExternalIdentifier.from_domain(dummy_ext)
+    sql_ext = ExternalIdentifier.from_domain(dummy_ext)
     assert sql_ext.id == dummy_ext.id
     assert sql_ext.reference_id == dummy_ext.reference_id
     assert sql_ext.identifier_type == dummy_ext.identifier.identifier_type
@@ -154,7 +154,7 @@ async def test_external_identifier_from_and_to_domain():
     sql_ext.reference = dummy_sql_ref
 
     # Convert back to domain with preload reference
-    domain_ext = await sql_ext.to_domain(preload=["reference"])
+    domain_ext = sql_ext.to_domain(preload=["reference"])
     assert domain_ext.id == dummy_ext.id
     assert domain_ext.reference_id == dummy_ext.reference_id
     assert domain_ext.identifier.identifier_type == dummy_ext.identifier.identifier_type
@@ -180,7 +180,7 @@ async def test_enhancement_from_and_to_domain():
     )
 
     # Convert from domain to SQL model
-    sql_enh = await Enhancement.from_domain(dummy_enh)
+    sql_enh = Enhancement.from_domain(dummy_enh)
     assert sql_enh.id == dummy_enh.id
     assert sql_enh.reference_id == dummy_enh.reference_id
     assert sql_enh.enhancement_type == dummy_enh.content.enhancement_type
@@ -196,7 +196,7 @@ async def test_enhancement_from_and_to_domain():
     sql_enh.reference = dummy_sql_ref
 
     # Convert back to domain with preload reference
-    domain_enh = await sql_enh.to_domain(preload=["reference"])
+    domain_enh = sql_enh.to_domain(preload=["reference"])
     assert domain_enh.id == dummy_enh.id
     assert domain_enh.reference_id == dummy_enh.reference_id
     assert domain_enh.content.enhancement_type == dummy_enh.content.enhancement_type
@@ -225,7 +225,7 @@ async def test_enhancement_request_from_and_to_domain():
     )
 
     # # Convert from domain to SQL model
-    sql_enh_req = await EnhancementRequest.from_domain(dummy_enh_req)
+    sql_enh_req = EnhancementRequest.from_domain(dummy_enh_req)
     assert sql_enh_req.id == dummy_enh_req.id
     assert sql_enh_req.reference_id == dummy_enh_req.reference_id
     assert sql_enh_req.robot_id == dummy_enh_req.robot_id
@@ -240,7 +240,7 @@ async def test_enhancement_request_from_and_to_domain():
     )
 
     # # Convert back to domain with preload reference
-    domain_enh_req = await sql_enh_req.to_domain(preload=["reference"])
+    domain_enh_req = sql_enh_req.to_domain(preload=["reference"])
     assert domain_enh_req.id == dummy_enh_req.id
     assert domain_enh_req.reference_id == dummy_enh_req.reference_id
     assert domain_enh_req.robot_id == dummy_enh_req.robot_id
@@ -277,15 +277,15 @@ async def test_reference_with_relationships():
         enhancements=[dummy_enh],
     )
     # Convert the reference from domain
-    sql_ref = await Reference.from_domain(dummy_ref)
+    sql_ref = Reference.from_domain(dummy_ref)
     # Manually assign SQL models for relationships
-    sql_ext = await ExternalIdentifier.from_domain(dummy_ext)
-    sql_enh = await Enhancement.from_domain(dummy_enh)
+    sql_ext = ExternalIdentifier.from_domain(dummy_ext)
+    sql_enh = Enhancement.from_domain(dummy_enh)
     sql_ref.identifiers = [sql_ext]
     sql_ref.enhancements = [sql_enh]
 
     # Convert back to domain with preload relationships
-    domain_ref = await sql_ref.to_domain(preload=["identifiers", "enhancements"])
+    domain_ref = sql_ref.to_domain(preload=["identifiers", "enhancements"])
     assert domain_ref.id == dummy_ref.id
     assert domain_ref.visibility == dummy_ref.visibility
     # Check identifiers conversion

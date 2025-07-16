@@ -22,9 +22,9 @@ class GenericPersistence(Generic[GenericDomainModelType], ABC):
 
     @classmethod
     @abstractmethod
-    async def from_domain(cls, domain_obj: GenericDomainModelType) -> Self:
+    def from_domain(cls, domain_obj: GenericDomainModelType) -> Self:
         """Create a persistence model from a domain model."""
 
     @abstractmethod
-    async def to_domain(self) -> GenericDomainModelType:
+    def to_domain(self) -> GenericDomainModelType:
         """Create a domain model from this persistence model."""

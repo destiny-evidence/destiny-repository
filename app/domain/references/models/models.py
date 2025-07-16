@@ -351,7 +351,7 @@ class GenericExternalIdentifier(DomainBaseModel):
     )
 
     @classmethod
-    async def from_specific(
+    def from_specific(
         cls,
         external_identifier: ExternalIdentifier,
     ) -> Self:

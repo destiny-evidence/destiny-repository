@@ -111,7 +111,7 @@ class ReferenceSQLRepository(
         result = await self._session.execute(query)
         db_references = result.unique().scalars().all()
         return [
-            await db_reference.to_domain(preload=["enhancements", "identifiers"])
+            db_reference.to_domain(preload=["enhancements", "identifiers"])
             for db_reference in db_references
         ]
 
@@ -199,7 +199,7 @@ class ExternalIdentifierSQLRepository(
                 lookup_value=(identifier_type, identifier, other_identifier_name),
             )
 
-        return await db_identifier.to_domain(preload=preload)
+        return db_identifier.to_domain(preload=preload)
 
     async def get_by_identifiers(
         self,
@@ -234,7 +234,7 @@ class ExternalIdentifierSQLRepository(
         result = await self._session.execute(query)
         db_identifiers = result.unique().scalars().all()
 
-        return [await db_identifier.to_domain() for db_identifier in db_identifiers]
+        return [db_identifier.to_domain() for db_identifier in db_identifiers]
 
 
 class EnhancementRepositoryBase(
@@ -355,9 +355,7 @@ class RobotAutomationESRepository(
         """
         documents = [
             (
-                await self._persistence_cls.percolatable_document_from_domain(
-                    percolatable
-                )
+                self._persistence_cls.percolatable_document_from_domain(percolatable)
             ).to_dict()
             for percolatable in percolatables
         ]

@@ -39,7 +39,7 @@ class Robot(GenericSQLPersistence[DomainRobot]):
     )
 
     @classmethod
-    async def from_domain(cls, domain_obj: DomainRobot) -> Self:
+    def from_domain(cls, domain_obj: DomainRobot) -> Self:
         """Create a persistence model from a domain Robot object."""
         if not domain_obj.client_secret:
             msg = "Cannot convert domain robot without client secret for persistence."
@@ -53,7 +53,7 @@ class Robot(GenericSQLPersistence[DomainRobot]):
             owner=domain_obj.owner,
         )
 
-    async def to_domain(
+    def to_domain(
         self,
         preload: list[str] | None = None,  # noqa: ARG002
     ) -> DomainRobot:
