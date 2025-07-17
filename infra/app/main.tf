@@ -451,6 +451,5 @@ resource "elasticstack_elasticsearch_snapshot_lifecycle" "snapshots" {
   repository = "found-snapshots" # Default Elastic Cloud repository
 
   expire_after = "30d"
-  min_count    = 30
-  max_count    = 60
+  min_count    = var.environment == "prod" ? 336 : 7 # 7 days worth
 }
