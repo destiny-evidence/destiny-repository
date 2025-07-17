@@ -104,7 +104,7 @@ locals {
       value = azurerm_servicebus_namespace.this.default_primary_connection_string
     },
     {
-      name = "es-config"
+      name  = "es-config"
       value = jsonencode({
         cloud_id = ec_deployment.cluster.elasticsearch.cloud_id
         api_key  = elasticstack_elasticsearch_security_api_key.app.encoded
@@ -239,10 +239,10 @@ resource "azurerm_postgresql_flexible_server" "this" {
   administrator_login           = var.admin_login
   administrator_password        = var.admin_password
   zone                          = "1"
-  backup_retention_days         = var.environment == "prod" ? 35 : 7
+  backup_retention_days         = local.is_production ? 35 : 7
 
   dynamic "high_availability" {
-    for_each = var.environment == "prod" ? [1] : []
+    for_each = local.is_production ? [1] : []
     content {
       mode = "ZoneRedundant"
     }
@@ -451,9 +451,9 @@ resource "elasticstack_elasticsearch_snapshot_lifecycle" "snapshots" {
   name = "snapshot-policy"
 
   # Every 30 minutes for production, once a day at 01:30 AM otherwise
-  schedule   = var.environment == "prod" ? "0 */30 * * * ?" : "0 30 1 * * ?"
+  schedule   = local.is_production ? "0 */30 * * * ?" : "0 30 1 * * ?"
   repository = "found-snapshots" # Default Elastic Cloud repository
 
   expire_after = "30d"
-  min_count    = var.environment == "prod" ? 336 : 7 # 7 days worth
+  min_count    = local.is_production ? 336 : 7 # 7 days worth
 }
