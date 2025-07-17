@@ -30,7 +30,7 @@ async def test_robot_to_and_from_domain():
     )
 
     # Convert from domain to SQL model
-    sql_robot = await Robot.from_domain(dummy_robot)
+    sql_robot = Robot.from_domain(dummy_robot)
     assert sql_robot.id == dummy_robot.id
     assert sql_robot.base_url == str(dummy_robot.base_url)
     assert sql_robot.client_secret == dummy_robot.client_secret.get_secret_value()
@@ -39,7 +39,7 @@ async def test_robot_to_and_from_domain():
     assert sql_robot.owner == dummy_robot.owner
 
     # Convert from SQL model to domain
-    domain_ref = await sql_robot.to_domain()
+    domain_ref = sql_robot.to_domain()
     assert domain_ref.id == dummy_robot.id
     assert domain_ref.base_url == dummy_robot.base_url
     assert domain_ref.client_secret == dummy_robot.client_secret

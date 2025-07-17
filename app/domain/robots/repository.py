@@ -84,4 +84,4 @@ class RobotSQLRepository(
             ) from e
 
         await self._session.refresh(persistence)
-        return await persistence.to_domain()
+        return persistence.to_domain()
