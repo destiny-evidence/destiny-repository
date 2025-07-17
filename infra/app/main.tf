@@ -386,13 +386,13 @@ resource "ec_deployment" "cluster" {
 
   elasticsearch = {
     hot = {
-      size          = "8g"
+      size          = "2g"
       size_resource = "memory"
-      zone_count    = 3
+      zone_count    = 2
       autoscaling = {
-        min_size          = "1g"
-        max_size          = "8g"
-        min_storage_in_gb = 35
+        min_size          = "2g"
+        max_size          = "30g"
+        min_storage_in_gb = 70
         max_storage_in_gb = 280
       }
     }
@@ -408,6 +408,10 @@ resource "ec_deployment" "cluster" {
 
   lifecycle {
     prevent_destroy = true
+    # ignore future modifications that can be made by the autoscaler
+    ignore_changes = [
+      elasticsearch.hot.size
+    ]
   }
 }
 
