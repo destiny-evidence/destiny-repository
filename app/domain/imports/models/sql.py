@@ -1,6 +1,5 @@
 """Objects used to interface with SQL implementations."""
 
-import asyncio
 import datetime
 import uuid
 from typing import Self
@@ -83,7 +82,7 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
     )
 
     @classmethod
-    async def from_domain(cls, domain_obj: DomainImportBatch) -> Self:
+    def from_domain(cls, domain_obj: DomainImportBatch) -> Self:
         """Create a persistence model from a domain ImportBatch object."""
         return cls(
             id=domain_obj.id,
@@ -96,7 +95,7 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
             else None,
         )
 
-    async def to_domain(self, preload: list[str] | None = None) -> DomainImportBatch:
+    def to_domain(self, preload: list[str] | None = None) -> DomainImportBatch:
         """Convert the persistence model into an Domain ImportBatch object."""
         return DomainImportBatch(
             id=self.id,
@@ -105,12 +104,10 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
             status=self.status,
             storage_url=HttpUrl(self.storage_url),
             callback_url=HttpUrl(self.callback_url) if self.callback_url else None,
-            import_record=await self.import_record.to_domain()
+            import_record=self.import_record.to_domain()
             if "import_record" in (preload or [])
             else None,
-            import_results=await asyncio.gather(
-                *(result.to_domain() for result in self.import_results)
-            )
+            import_results=[result.to_domain() for result in self.import_results]
             if "import_results" in (preload or [])
             else None,
         )
@@ -150,7 +147,7 @@ class ImportRecord(GenericSQLPersistence[DomainImportRecord]):
     )
 
     @classmethod
-    async def from_domain(cls, domain_obj: DomainImportRecord) -> Self:
+    def from_domain(cls, domain_obj: DomainImportRecord) -> Self:
         """Create a persistence model from a domain ImportRecord object."""
         return cls(
             id=domain_obj.id,
@@ -164,7 +161,7 @@ class ImportRecord(GenericSQLPersistence[DomainImportRecord]):
             status=domain_obj.status,
         )
 
-    async def to_domain(self, preload: list[str] | None = None) -> DomainImportRecord:
+    def to_domain(self, preload: list[str] | None = None) -> DomainImportRecord:
         """Convert the persistence model into an Domain ImportRecord object."""
         return DomainImportRecord(
             id=self.id,
@@ -176,7 +173,7 @@ class ImportRecord(GenericSQLPersistence[DomainImportRecord]):
             expected_reference_count=self.expected_reference_count,
             source_name=self.source_name,
             status=self.status,
-            batches=await asyncio.gather(*(batch.to_domain() for batch in self.batches))
+            batches=[batch.to_domain() for batch in self.batches]
             if "batches" in (preload or [])
             else None,
         )
@@ -208,7 +205,7 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
     __table_args__ = (Index("ix_import_result_import_batch_id", "import_batch_id"),)
 
     @classmethod
-    async def from_domain(cls, domain_obj: DomainImportResult) -> Self:
+    def from_domain(cls, domain_obj: DomainImportResult) -> Self:
         """Create a persistence model from a domain ImportResult object."""
         return cls(
             id=domain_obj.id,
@@ -218,7 +215,7 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
             failure_details=domain_obj.failure_details,
         )
 
-    async def to_domain(self, preload: list[str] | None = None) -> DomainImportResult:
+    def to_domain(self, preload: list[str] | None = None) -> DomainImportResult:
         """Convert the persistence model into an Domain ImportResult object."""
         return DomainImportResult(
             id=self.id,
@@ -226,7 +223,7 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
             status=self.status,
             reference_id=self.reference_id,
             failure_details=self.failure_details,
-            import_batch=await self.import_batch.to_domain()
+            import_batch=self.import_batch.to_domain()
             if "import_batch" in (preload or [])
             else None,
         )

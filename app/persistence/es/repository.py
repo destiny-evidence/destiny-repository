@@ -77,7 +77,7 @@ class GenericAsyncESRepository(
                 lookup_type="id",
                 lookup_value=pk,
             )
-        return await result.to_domain()
+        return result.to_domain()
 
     async def add(self, record: GenericDomainModelType) -> GenericDomainModelType:
         """
@@ -88,7 +88,7 @@ class GenericAsyncESRepository(
         :return: The persisted record.
         :rtype: GenericDomainModelType
         """
-        es_record = await self._persistence_cls.from_domain(record)
+        es_record = self._persistence_cls.from_domain(record)
         try:
             await es_record.save(using=self._client)
         except (BadRequestError, UnknownDslObject) as exc:
@@ -114,7 +114,7 @@ class GenericAsyncESRepository(
         ):
             """Translate domain records to Elasticsearch records."""
             async for record in get_records:
-                yield await self._persistence_cls.from_domain(record)
+                yield self._persistence_cls.from_domain(record)
 
         await self._persistence_cls.bulk(
             es_record_translation_generator(), using=self._client

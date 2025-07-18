@@ -1,6 +1,5 @@
 """Objects used to interface with Elasticsearch implementations."""
 
-import asyncio
 import uuid
 from typing import Any, Self
 
@@ -40,7 +39,7 @@ class ExternalIdentifierDocument(InnerDoc):
     other_identifier_name: str | None = mapped_field(Keyword())
 
     @classmethod
-    async def from_domain(cls, domain_obj: LinkedExternalIdentifier) -> Self:
+    def from_domain(cls, domain_obj: LinkedExternalIdentifier) -> Self:
         """Create a persistence model from a domain ExternalIdentifier object."""
         return cls(
             identifier_type=domain_obj.identifier.identifier_type,
@@ -50,7 +49,7 @@ class ExternalIdentifierDocument(InnerDoc):
             ),
         )
 
-    async def to_domain(self, reference_id: UUID4) -> LinkedExternalIdentifier:
+    def to_domain(self, reference_id: UUID4) -> LinkedExternalIdentifier:
         """Convert the persistence model into a Domain ExternalIdentifier object."""
         return LinkedExternalIdentifier(
             reference_id=reference_id,
@@ -108,7 +107,7 @@ class EnhancementDocument(InnerDoc):
     )
 
     @classmethod
-    async def from_domain(cls, domain_obj: Enhancement) -> Self:
+    def from_domain(cls, domain_obj: Enhancement) -> Self:
         """Create a persistence model from a domain model."""
         return cls(
             visibility=domain_obj.visibility,
@@ -119,7 +118,7 @@ class EnhancementDocument(InnerDoc):
             ),
         )
 
-    async def to_domain(self, reference_id: UUID4) -> Enhancement:
+    def to_domain(self, reference_id: UUID4) -> Enhancement:
         """Create a domain model from this persistence model."""
         return Enhancement(
             reference_id=reference_id,
@@ -146,44 +145,36 @@ class ReferenceDocument(GenericESPersistence[Reference]):
     enhancements: list[EnhancementDocument] = mapped_field(Nested(EnhancementDocument))
 
     @classmethod
-    async def from_domain(cls, domain_obj: Reference) -> Self:
+    def from_domain(cls, domain_obj: Reference) -> Self:
         """Create a persistence model from a domain model."""
         return cls(
             # Parent's parent does accept meta, but mypy doesn't like it here.
             # Ignoring easier than chaining __init__ methods IMO.
             meta={"id": domain_obj.id},  # type: ignore[call-arg]
             visibility=domain_obj.visibility,
-            identifiers=await asyncio.gather(
-                *(
-                    ExternalIdentifierDocument.from_domain(identifier)
-                    for identifier in domain_obj.identifiers or []
-                )
-            ),
-            enhancements=await asyncio.gather(
-                *(
-                    EnhancementDocument.from_domain(enhancement)
-                    for enhancement in domain_obj.enhancements or []
-                )
-            ),
+            identifiers=[
+                ExternalIdentifierDocument.from_domain(identifier)
+                for identifier in domain_obj.identifiers or []
+            ],
+            enhancements=[
+                EnhancementDocument.from_domain(enhancement)
+                for enhancement in domain_obj.enhancements or []
+            ],
         )
 
-    async def to_domain(self) -> Reference:
+    def to_domain(self) -> Reference:
         """Create a domain model from this persistence model."""
         return Reference(
             id=self.meta.id,
             visibility=self.visibility,
-            identifiers=await asyncio.gather(
-                *(
-                    identifier.to_domain(reference_id=uuid.UUID(self.meta.id))
-                    for identifier in self.identifiers
-                )
-            ),
-            enhancements=await asyncio.gather(
-                *(
-                    enhancement.to_domain(reference_id=uuid.UUID(self.meta.id))
-                    for enhancement in self.enhancements
-                )
-            ),
+            identifiers=[
+                identifier.to_domain(reference_id=uuid.UUID(self.meta.id))
+                for identifier in self.identifiers
+            ],
+            enhancements=[
+                enhancement.to_domain(reference_id=uuid.UUID(self.meta.id))
+                for enhancement in self.enhancements
+            ],
         )
 
 
@@ -197,22 +188,18 @@ class ReferenceInnerDocument(InnerDoc):
     enhancements: list[EnhancementDocument] = mapped_field(Nested(EnhancementDocument))
 
     @classmethod
-    async def from_domain(cls, domain_obj: Reference) -> Self:
+    def from_domain(cls, domain_obj: Reference) -> Self:
         """Create a ReferenceInnerDocument from a domain Reference object."""
         return cls(
             visibility=domain_obj.visibility,
-            identifiers=await asyncio.gather(
-                *(
-                    ExternalIdentifierDocument.from_domain(identifier)
-                    for identifier in domain_obj.identifiers or []
-                )
-            ),
-            enhancements=await asyncio.gather(
-                *(
-                    EnhancementDocument.from_domain(enhancement)
-                    for enhancement in domain_obj.enhancements or []
-                )
-            ),
+            identifiers=[
+                ExternalIdentifierDocument.from_domain(identifier)
+                for identifier in domain_obj.identifiers or []
+            ],
+            enhancements=[
+                EnhancementDocument.from_domain(enhancement)
+                for enhancement in domain_obj.enhancements or []
+            ],
         )
 
 
@@ -244,7 +231,7 @@ class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
     )
 
     @classmethod
-    async def from_domain(cls, domain_obj: RobotAutomation) -> Self:
+    def from_domain(cls, domain_obj: RobotAutomation) -> Self:
         """Create a percolator query from a domain model."""
         return cls(
             # Parent's parent does accept meta, but mypy doesn't like it here.
@@ -254,14 +241,14 @@ class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
             robot_id=domain_obj.robot_id,
         )
 
-    async def to_domain(self) -> RobotAutomation:
+    def to_domain(self) -> RobotAutomation:
         """Create a domain model from this persistence model."""
         return RobotAutomation(
             id=self.meta.id, robot_id=self.robot_id, query=self.query
         )
 
     @classmethod
-    async def percolatable_document_from_domain(
+    def percolatable_document_from_domain(
         cls,
         percolatable: Reference | Enhancement,
     ) -> Self:
@@ -276,10 +263,10 @@ class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
         return cls(
             query=None,
             robot_id=None,
-            reference=await ReferenceInnerDocument.from_domain(percolatable)
+            reference=ReferenceInnerDocument.from_domain(percolatable)
             if isinstance(percolatable, Reference)
             else None,
-            enhancement=await EnhancementDocument.from_domain(percolatable)
+            enhancement=EnhancementDocument.from_domain(percolatable)
             if isinstance(percolatable, Enhancement)
             else None,
         )

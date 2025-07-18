@@ -1,6 +1,5 @@
 """Repositories for imports and associated models."""
 
-import asyncio
 import uuid
 from abc import ABC
 
@@ -100,6 +99,4 @@ class ImportResultSQLRepository(
         if status:
             query = query.where(SQLImportResult.status == status)
         results = await self._session.execute(query)
-        return await asyncio.gather(
-            *(result.to_domain() for result in results.scalars().all())
-        )
+        return [result.to_domain() for result in results.scalars().all()]

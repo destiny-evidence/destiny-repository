@@ -63,7 +63,7 @@ class IngestionService(GenericService):
 
         collided_identifiers = await self.fetch_collided_identifiers(
             [
-                await GenericExternalIdentifier.from_specific(identifier)
+                GenericExternalIdentifier.from_specific(identifier)
                 for identifier in reference.identifiers
             ],
         )

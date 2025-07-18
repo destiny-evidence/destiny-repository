@@ -1,6 +1,5 @@
 """Objects used to interface with SQL implementations."""
 
-import asyncio
 import uuid
 from typing import Any, Self
 
@@ -66,38 +65,30 @@ class Reference(GenericSQLPersistence[DomainReference]):
     )
 
     @classmethod
-    async def from_domain(cls, domain_obj: DomainReference) -> Self:
+    def from_domain(cls, domain_obj: DomainReference) -> Self:
         """Create a persistence model from a domain Reference object."""
         return cls(
             id=domain_obj.id,
             visibility=domain_obj.visibility,
-            identifiers=await asyncio.gather(
-                *(
-                    ExternalIdentifier.from_domain(identifier)
-                    for identifier in domain_obj.identifiers or []
-                )
-            ),
-            enhancements=await asyncio.gather(
-                *(
-                    Enhancement.from_domain(enhancement)
-                    for enhancement in domain_obj.enhancements or []
-                )
-            ),
+            identifiers=[
+                ExternalIdentifier.from_domain(identifier)
+                for identifier in domain_obj.identifiers or []
+            ],
+            enhancements=[
+                Enhancement.from_domain(enhancement)
+                for enhancement in domain_obj.enhancements or []
+            ],
         )
 
-    async def to_domain(self, preload: list[str] | None = None) -> DomainReference:
+    def to_domain(self, preload: list[str] | None = None) -> DomainReference:
         """Convert the persistence model into a Domain Reference object."""
         return DomainReference(
             id=self.id,
             visibility=self.visibility,
-            identifiers=await asyncio.gather(
-                *(identifier.to_domain() for identifier in self.identifiers)
-            )
+            identifiers=[identifier.to_domain() for identifier in self.identifiers]
             if "identifiers" in (preload or [])
             else None,
-            enhancements=await asyncio.gather(
-                *(enhancement.to_domain() for enhancement in self.enhancements)
-            )
+            enhancements=[enhancement.to_domain() for enhancement in self.enhancements]
             if "enhancements" in (preload or [])
             else None,
         )
@@ -144,7 +135,7 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
     )
 
     @classmethod
-    async def from_domain(cls, domain_obj: DomainExternalIdentifier) -> Self:
+    def from_domain(cls, domain_obj: DomainExternalIdentifier) -> Self:
         """Create a persistence model from a domain ExternalIdentifier object."""
         return cls(
             id=domain_obj.id,
@@ -156,9 +147,7 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
             else None,
         )
 
-    async def to_domain(
-        self, preload: list[str] | None = None
-    ) -> DomainExternalIdentifier:
+    def to_domain(self, preload: list[str] | None = None) -> DomainExternalIdentifier:
         """Convert the persistence model into a Domain ExternalIdentifier object."""
         return DomainExternalIdentifier(
             id=self.id,
@@ -170,7 +159,7 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
                     "other_identifier_name": self.other_identifier_name,
                 }
             ),
-            reference=await self.reference.to_domain()
+            reference=self.reference.to_domain()
             if "reference" in (preload or [])
             else None,
         )
@@ -220,7 +209,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
     )
 
     @classmethod
-    async def from_domain(cls, domain_obj: DomainEnhancement) -> Self:
+    def from_domain(cls, domain_obj: DomainEnhancement) -> Self:
         """Create a persistence model from a domain Enhancement object."""
         return cls(
             id=domain_obj.id,
@@ -233,7 +222,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             content=domain_obj.content.model_dump(mode="json"),
         )
 
-    async def to_domain(self, preload: list[str] | None = None) -> DomainEnhancement:
+    def to_domain(self, preload: list[str] | None = None) -> DomainEnhancement:
         """Convert the persistence model into a Domain Enhancement object."""
         return DomainEnhancement(
             id=self.id,
@@ -243,7 +232,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             robot_version=self.robot_version,
             derived_from=self.derived_from,
             content=self.content,
-            reference=await self.reference.to_domain()
+            reference=self.reference.to_domain()
             if "reference" in (preload or [])
             else None,
         )
@@ -283,7 +272,7 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
     reference: Mapped["Reference"] = relationship("Reference")
 
     @classmethod
-    async def from_domain(cls, domain_obj: DomainEnhancementRequest) -> Self:
+    def from_domain(cls, domain_obj: DomainEnhancementRequest) -> Self:
         """Create a persistence model from a domain Enhancement object."""
         return cls(
             id=domain_obj.id,
@@ -297,9 +286,7 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             error=domain_obj.error,
         )
 
-    async def to_domain(
-        self, preload: list[str] | None = None
-    ) -> DomainEnhancementRequest:
+    def to_domain(self, preload: list[str] | None = None) -> DomainEnhancementRequest:
         """Convert the persistence model into a Domain Enhancement object."""
         return DomainEnhancementRequest(
             id=self.id,
@@ -311,7 +298,7 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             if self.enhancement_parameters
             else {},
             error=self.error,
-            reference=await self.reference.to_domain()
+            reference=self.reference.to_domain()
             if "reference" in (preload or [])
             else None,
         )
@@ -351,7 +338,7 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
     error: Mapped[str | None] = mapped_column(String, nullable=True)
 
     @classmethod
-    async def from_domain(cls, domain_obj: DomainBatchEnhancementRequest) -> Self:
+    def from_domain(cls, domain_obj: DomainBatchEnhancementRequest) -> Self:
         """Create a persistence model from a domain Enhancement object."""
         return cls(
             id=domain_obj.id,
@@ -363,18 +350,18 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             if domain_obj.enhancement_parameters
             else None,
             error=domain_obj.error,
-            reference_data_file=await domain_obj.reference_data_file.to_sql()
+            reference_data_file=domain_obj.reference_data_file.to_sql()
             if domain_obj.reference_data_file
             else None,
-            result_file=await domain_obj.result_file.to_sql()
+            result_file=domain_obj.result_file.to_sql()
             if domain_obj.result_file
             else None,
-            validation_result_file=await domain_obj.validation_result_file.to_sql()
+            validation_result_file=domain_obj.validation_result_file.to_sql()
             if domain_obj.validation_result_file
             else None,
         )
 
-    async def to_domain(
+    def to_domain(
         self,
         preload: list[str] | None = None,  # noqa: ARG002
     ) -> DomainBatchEnhancementRequest:
@@ -389,15 +376,13 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             if self.enhancement_parameters
             else {},
             error=self.error,
-            reference_data_file=await BlobStorageFile.from_sql(self.reference_data_file)
+            reference_data_file=BlobStorageFile.from_sql(self.reference_data_file)
             if self.reference_data_file
             else None,
-            result_file=await BlobStorageFile.from_sql(self.result_file)
+            result_file=BlobStorageFile.from_sql(self.result_file)
             if self.result_file
             else None,
-            validation_result_file=await BlobStorageFile.from_sql(
-                self.validation_result_file
-            )
+            validation_result_file=BlobStorageFile.from_sql(self.validation_result_file)
             if self.validation_result_file
             else None,
         )
@@ -428,7 +413,7 @@ class RobotAutomation(GenericSQLPersistence[DomainRobotAutomation]):
     )
 
     @classmethod
-    async def from_domain(cls, domain_obj: DomainRobotAutomation) -> Self:
+    def from_domain(cls, domain_obj: DomainRobotAutomation) -> Self:
         """Create a persistence model from a domain RobotAutomation object."""
         return cls(
             id=domain_obj.id,
@@ -436,7 +421,7 @@ class RobotAutomation(GenericSQLPersistence[DomainRobotAutomation]):
             query=domain_obj.query,
         )
 
-    async def to_domain(
+    def to_domain(
         self,
         preload: list[str] | None = None,  # noqa: ARG002
     ) -> DomainRobotAutomation:

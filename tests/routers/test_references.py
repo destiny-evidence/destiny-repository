@@ -274,9 +274,7 @@ async def test_fulfill_enhancement_request_happy_path(
 ) -> None:
     """Test creating an enhancement from a robot."""
     reference = await add_reference(session)
-    await (await ReferenceDocument.from_domain(await reference.to_domain())).save(
-        using=es_client
-    )
+    await (ReferenceDocument.from_domain(reference.to_domain())).save(using=es_client)
     robot = await add_robot(session)
 
     enhancement_request = SQLEnhancementRequest(

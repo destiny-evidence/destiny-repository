@@ -73,7 +73,7 @@ class GenericAsyncSqlRepository(
                 lookup_type="id",
                 lookup_value=pk,
             )
-        return await result.to_domain(preload=preload)
+        return result.to_domain(preload=preload)
 
     async def get_by_pks(
         self, pks: list[UUID4], preload: list[str] | None = None
@@ -119,7 +119,7 @@ class GenericAsyncSqlRepository(
                 lookup_value=missing_pks,
             )
 
-        return [await ref.to_domain(preload=preload) for ref in db_references]
+        return [ref.to_domain(preload=preload) for ref in db_references]
 
     async def get_all(
         self, preload: list[str] | None = None
@@ -208,7 +208,7 @@ class GenericAsyncSqlRepository(
             ) from e
 
         await self._session.refresh(persistence)
-        return await persistence.to_domain()
+        return persistence.to_domain()
 
     async def delete_by_pk(self, pk: UUID4) -> None:
         """
@@ -248,7 +248,7 @@ class GenericAsyncSqlRepository(
         instead of added. Consider renaming to upsert().
 
         """
-        persistence = await self._persistence_cls.from_domain(record)
+        persistence = self._persistence_cls.from_domain(record)
         try:
             self._session.add(persistence)
             await self._session.flush()
@@ -258,7 +258,7 @@ class GenericAsyncSqlRepository(
             ) from e
 
         await self._session.refresh(persistence)
-        return await persistence.to_domain()
+        return persistence.to_domain()
 
     async def merge(self, record: GenericDomainModelType) -> GenericDomainModelType:
         """
@@ -276,7 +276,7 @@ class GenericAsyncSqlRepository(
         database and violate a unique constraint.
 
         """
-        persistence = await self._persistence_cls.from_domain(record)
+        persistence = self._persistence_cls.from_domain(record)
         try:
             persistence = await self._session.merge(persistence)
             await self._session.flush()
@@ -286,7 +286,7 @@ class GenericAsyncSqlRepository(
             ) from e
 
         await self._session.refresh(persistence)
-        return await persistence.to_domain()
+        return persistence.to_domain()
 
     async def get_all_pks(self) -> list[UUID4]:
         """

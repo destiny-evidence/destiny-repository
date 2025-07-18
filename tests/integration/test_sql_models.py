@@ -18,7 +18,7 @@ async def test_enhancement_interface(
     session: AsyncSession,
 ):
     """Test that the enhancement content type is set correctly."""
-    reference = await SQLReference.from_domain(
+    reference = SQLReference.from_domain(
         Reference(
             id=uuid.uuid4(),
         )
@@ -42,7 +42,7 @@ async def test_enhancement_interface(
             ],
         },
     )
-    sql_enhancement = await SQLEnhancement.from_domain(enhancement_in)
+    sql_enhancement = SQLEnhancement.from_domain(enhancement_in)
     session.add(sql_enhancement)
     await session.commit()
 
@@ -66,5 +66,5 @@ async def test_enhancement_interface(
         sql_enhancement.id,
     )
     assert loaded_enhancement
-    enhancement = await loaded_enhancement.to_domain()
+    enhancement = loaded_enhancement.to_domain()
     assert enhancement == enhancement_in
