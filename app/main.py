@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI, Request, Response, status
+from fastapi import APIRouter, FastAPI, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
@@ -20,13 +20,13 @@ from app.core.exceptions import (
     SQLNotFoundError,
 )
 from app.core.logger import configure_logger, get_logger
-from app.domain.imports.routes import router as import_router
-from app.domain.references.routes import robot_router
-from app.domain.references.routes import router as reference_router
-from app.domain.robots.routes import router as robot_management_router
+from app.domain.imports.routes import router as import_router_v1
+from app.domain.references.routes import robot_router as robot_router_v1
+from app.domain.references.routes import router as reference_router_v1
+from app.domain.robots.routes import router as robot_management_router_v1
 from app.persistence.es.client import es_manager
 from app.persistence.sql.session import db_manager
-from app.system.routes import router as system_utilities_router
+from app.system.routes import router as system_utilities_router_v1
 from app.tasks import broker
 
 settings = get_settings()
@@ -50,11 +50,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="DESTINY Climate and Health Repository", lifespan=lifespan)
 
-app.include_router(import_router)
-app.include_router(reference_router)
-app.include_router(robot_router)
-app.include_router(robot_management_router)
-app.include_router(system_utilities_router)
+api_v1 = APIRouter(prefix="/v1", tags=["v1"])
+api_v1.include_router(import_router_v1)
+api_v1.include_router(reference_router_v1)
+api_v1.include_router(robot_router_v1)
+api_v1.include_router(robot_management_router_v1)
+api_v1.include_router(system_utilities_router_v1)
+app.include_router(api_v1)
 
 configure_logger(rich_rendering=settings.running_locally)
 
