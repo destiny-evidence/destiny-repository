@@ -239,6 +239,14 @@ resource "azurerm_postgresql_flexible_server" "this" {
   administrator_login           = var.admin_login
   administrator_password        = var.admin_password
   zone                          = "1"
+  backup_retention_days         = local.is_production ? 35 : 7
+
+  dynamic "high_availability" {
+    for_each = local.is_production ? [1] : []
+    content {
+      mode = "ZoneRedundant"
+    }
+  }
 
   storage_mb   = 32768
   storage_tier = "P4"
@@ -253,6 +261,14 @@ resource "azurerm_postgresql_flexible_server" "this" {
 
   depends_on = [azurerm_private_dns_zone_virtual_network_link.db]
   tags       = local.minimum_resource_tags
+
+  # avoid migrating back to the primary availability zone after failover
+  lifecycle {
+    ignore_changes = [
+      zone,
+      high_availability[0].standby_availability_zone
+    ]
+  }
 }
 
 resource "azurerm_postgresql_flexible_server_database" "this" {
@@ -363,14 +379,22 @@ resource "azurerm_role_assignment" "blob_storage_rw" {
 }
 
 resource "ec_deployment" "cluster" {
-  name = "${var.app_name}-${substr(var.environment, 0, 4)}-es"
+  name                   = "${var.app_name}-${substr(var.environment, 0, 4)}-es"
   region                 = var.elasticsearch_region
   version                = var.elastic_stack_version
   deployment_template_id = "azure-general-purpose"
 
   elasticsearch = {
     hot = {
-      autoscaling = {}
+      size          = "2g"
+      size_resource = "memory"
+      zone_count    = 2
+      autoscaling = {
+        min_size          = "2g"
+        max_size          = "30g"
+        min_storage_in_gb = 70
+        max_storage_in_gb = 280
+      }
     }
   }
 
@@ -378,12 +402,16 @@ resource "ec_deployment" "cluster" {
 
   observability = {
     deployment_id = "self"
-    logs = true
-    metrics = true
+    logs          = true
+    metrics       = true
   }
 
   lifecycle {
     prevent_destroy = true
+    # ignore future modifications that can be made by the autoscaler
+    ignore_changes = [
+      elasticsearch.hot.size
+    ]
   }
 }
 
@@ -394,8 +422,8 @@ resource "elasticstack_elasticsearch_security_api_key" "app" {
       cluster = ["monitor"]
       indices = [
         {
-          names      = ["${var.app_name}-*"]
-          privileges = ["read", "write", "create_index", "manage"]
+          names                    = ["${var.app_name}-*"]
+          privileges               = ["read", "write", "create_index", "manage"]
           allow_restricted_indices = false
         }
       ]
@@ -410,11 +438,22 @@ resource "elasticstack_elasticsearch_security_api_key" "read_only" {
       cluster = ["monitor"]
       indices = [
         {
-          names      = ["${var.app_name}-*"]
-          privileges = ["read"]
+          names                    = ["${var.app_name}-*"]
+          privileges               = ["read"]
           allow_restricted_indices = false
         }
       ]
     }
   })
+}
+
+resource "elasticstack_elasticsearch_snapshot_lifecycle" "snapshots" {
+  name = "snapshot-policy"
+
+  # Every 30 minutes for production, once a day at 01:30 AM otherwise
+  schedule   = local.is_production ? "0 */30 * * * ?" : "0 30 1 * * ?"
+  repository = "found-snapshots" # Default Elastic Cloud repository
+
+  expire_after = "30d"
+  min_count    = local.is_production ? 336 : 7 # 7 days worth
 }
