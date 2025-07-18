@@ -146,11 +146,12 @@ async def integrity_exception_handler(
 
 
 @app.exception_handler(SDKToDomainError)
+# NB we don't handle DomainToSDKError as the default 500 is most appropriate.
 async def sdk_to_domain_exception_handler(
     _request: Request,
     exception: SDKToDomainError,
 ) -> JSONResponse:
-    """Return unprocessable entity response when sdk -> domain converstion fails."""
+    """Return unprocessable entity response when sdk -> domain conversion fails."""
     # Probably want to reduce the amount of information we're giving back here.
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
