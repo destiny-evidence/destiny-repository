@@ -31,13 +31,13 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
 
     def reference_from_sdk_file_input(
         self,
-        data: destiny_sdk.references.ReferenceFileInput,
+        reference_in: destiny_sdk.references.ReferenceFileInput,
         reference_id: uuid.UUID | None = None,
     ) -> Reference:
         """Create a reference from a file input including id hydration."""
         try:
             reference = Reference(
-                visibility=data.visibility,
+                visibility=reference_in.visibility,
             )
             if reference_id:
                 reference.id = reference_id
@@ -45,13 +45,13 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                 LinkedExternalIdentifier(
                     reference_id=reference.id, identifier=identifier
                 )
-                for identifier in data.identifiers or []
+                for identifier in reference_in.identifiers or []
             ]
             reference.enhancements = [
                 Enhancement.model_validate(
                     enhancement.model_dump() | {"reference_id": reference.id}
                 )
-                for enhancement in data.enhancements or []
+                for enhancement in reference_in.enhancements or []
             ]
             reference.check_serializability()
         except ValidationError as exception:
@@ -94,11 +94,13 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             raise DomainToSDKError(errors=exception.errors()) from exception
 
     def external_identifier_from_sdk(
-        self, data: destiny_sdk.identifiers.LinkedExternalIdentifier
+        self, identifier_in: destiny_sdk.identifiers.LinkedExternalIdentifier
     ) -> LinkedExternalIdentifier:
         """Create a LinkedExternalIdentifier from the SDK model."""
         try:
-            identifier = LinkedExternalIdentifier.model_validate(data.model_dump())
+            identifier = LinkedExternalIdentifier.model_validate(
+                identifier_in.model_dump()
+            )
             identifier.check_serializability()
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
@@ -118,12 +120,12 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
 
     def enhancement_from_sdk(
         self,
-        data: destiny_sdk.references.Enhancement,
+        enhancement_in: destiny_sdk.references.Enhancement,
         reference_id: uuid.UUID | None = None,
     ) -> Enhancement:
         """Create an Enhancement from the SDK model with optional ID grafting."""
         try:
-            enhancement_model = data.model_dump()
+            enhancement_model = enhancement_in.model_dump()
 
             ## The SDK isn't allowed to pass in ids, so ignore this.
             enhancement_model.pop("id", None)
@@ -141,7 +143,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     def enhancement_request_to_sdk(
         self, enhancement_request: EnhancementRequest
     ) -> destiny_sdk.robots.EnhancementRequestRead:
-        """Convert the enhancement request to a BatchEnhancementRequest SDK model."""
+        """Convert the enhancement request to a EnhancementRequest SDK model."""
         try:
             return destiny_sdk.robots.EnhancementRequestRead.model_validate(
                 enhancement_request.model_dump()
@@ -151,11 +153,13 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
 
     def enhancement_request_from_sdk(
         self,
-        data: destiny_sdk.robots.EnhancementRequestIn,
+        enhancement_request_in: destiny_sdk.robots.EnhancementRequestIn,
     ) -> EnhancementRequest:
-        """Create a BatchEnhancementRequest from the SDK model."""
+        """Create a EnhancementRequest from the SDK model."""
         try:
-            enhancement_request = EnhancementRequest.model_validate(data.model_dump())
+            enhancement_request = EnhancementRequest.model_validate(
+                enhancement_request_in.model_dump()
+            )
             enhancement_request.check_serializability()
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
@@ -164,12 +168,12 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
 
     def batch_enhancement_request_from_sdk(
         self,
-        data: destiny_sdk.robots.BatchEnhancementRequestIn,
+        enhancement_request_in: destiny_sdk.robots.BatchEnhancementRequestIn,
     ) -> BatchEnhancementRequest:
         """Create a BatchEnhancementRequest from the SDK model."""
         try:
             enhancement_request = BatchEnhancementRequest.model_validate(
-                data.model_dump()
+                enhancement_request_in.model_dump()
             )
             enhancement_request.check_serializability()
         except ValidationError as exception:
@@ -243,13 +247,13 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
 
     def robot_automation_from_sdk(
         self,
-        data: destiny_sdk.robots.RobotAutomationIn,
+        robot_automation_in: destiny_sdk.robots.RobotAutomationIn,
         robot_id: uuid.UUID,
     ) -> RobotAutomation:
         """Create a RobotAutomation from the SDK model."""
         try:
             robot_automation = RobotAutomation.model_validate(
-                data.model_dump() | {"robot_id": robot_id}
+                robot_automation_in.model_dump() | {"robot_id": robot_id}
             )
             robot_automation.check_serializability()
         except ValidationError as exception:

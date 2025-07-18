@@ -25,7 +25,7 @@ class ImportAntiCorruptionService(GenericAntiCorruptionService):
     def import_record_to_sdk(
         self, import_record: ImportRecord
     ) -> destiny_sdk.imports.ImportRecordRead:
-        """Convert the import record to an SDK model."""
+        """Convert the ImportRecord to an SDK model."""
         try:
             return destiny_sdk.imports.ImportRecordRead.model_validate(
                 import_record.model_dump()
@@ -34,11 +34,11 @@ class ImportAntiCorruptionService(GenericAntiCorruptionService):
             raise DomainToSDKError(errors=exception.errors()) from exception
 
     def import_record_from_sdk(
-        self, data: destiny_sdk.imports.ImportRecordIn
+        self, import_in: destiny_sdk.imports.ImportRecordIn
     ) -> ImportRecord:
         """Create an ImportRecord from the SDK input model."""
         try:
-            import_record = ImportRecord.model_validate(data.model_dump())
+            import_record = ImportRecord.model_validate(import_in.model_dump())
             import_record.check_serializability()
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
@@ -48,7 +48,7 @@ class ImportAntiCorruptionService(GenericAntiCorruptionService):
     def import_batch_to_sdk(
         self, import_batch: ImportBatch
     ) -> destiny_sdk.imports.ImportBatchRead:
-        """Convert the import batch to an SDK model."""
+        """Convert the ImportBatch to an SDK model."""
         try:
             return destiny_sdk.imports.ImportBatchRead.model_validate(
                 import_batch.model_dump()
@@ -59,7 +59,7 @@ class ImportAntiCorruptionService(GenericAntiCorruptionService):
     def import_batch_to_sdk_summary(
         self, import_batch: ImportBatch
     ) -> destiny_sdk.imports.ImportBatchSummary:
-        """Convert the import batch to an SDK summary model."""
+        """Convert the ImportBatch to an SDK summary model."""
         try:
             result_summary: dict[ImportResultStatus, int] = dict.fromkeys(
                 ImportResultStatus, 0
@@ -89,12 +89,14 @@ class ImportAntiCorruptionService(GenericAntiCorruptionService):
             raise SDKToDomainError(errors=exception.errors()) from exception
 
     def import_batch_from_sdk(
-        self, data: destiny_sdk.imports.ImportBatchIn, import_record_id: uuid.UUID
+        self,
+        import_batch_in: destiny_sdk.imports.ImportBatchIn,
+        import_record_id: uuid.UUID,
     ) -> ImportBatch:
         """Create an ImportBatch from the SDK input model."""
         try:
             import_batch = ImportBatch.model_validate(
-                data.model_dump() | {"import_record_id": import_record_id}
+                import_batch_in.model_dump() | {"import_record_id": import_record_id}
             )
             import_batch.check_serializability()
         except ValidationError as exception:
@@ -105,7 +107,7 @@ class ImportAntiCorruptionService(GenericAntiCorruptionService):
     def import_result_to_sdk(
         self, import_result: ImportResult
     ) -> destiny_sdk.imports.ImportResultRead:
-        """Convert the import result to an SDK model."""
+        """Convert the ImportResult to an SDK model."""
         try:
             return destiny_sdk.imports.ImportResultRead.model_validate(
                 import_result.model_dump()
