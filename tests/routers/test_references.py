@@ -61,8 +61,8 @@ def app() -> FastAPI:
         }
     )
 
-    app.include_router(references.router)
-    app.include_router(references.robot_router)
+    app.include_router(references.router, prefix="/v1")
+    app.include_router(references.robot_router, prefix="/v1")
 
     return app
 
@@ -157,7 +157,7 @@ async def test_request_reference_enhancement_happy_path(
     }
 
     response = await client.post(
-        "/references/enhancement/single/", json=enhancement_request_create
+        "/v1/references/enhancement/single/", json=enhancement_request_create
     )
 
     assert response.status_code == status.HTTP_202_ACCEPTED
@@ -188,7 +188,7 @@ async def test_request_reference_enhancement_robot_rejects_request(
     }
 
     response = await client.post(
-        "/references/enhancement/single/", json=enhancement_request_create
+        "/v1/references/enhancement/single/", json=enhancement_request_create
     )
 
     data = await session.get(SQLEnhancementRequest, response.json()["id"])
@@ -214,7 +214,7 @@ async def test_not_found_exception_handler_returns_response_with_404(
     }
 
     response = await client.post(
-        "/references/enhancement/single/", json=enhancement_request_create
+        "/v1/references/enhancement/single/", json=enhancement_request_create
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
@@ -236,7 +236,7 @@ async def test_request_reference_enhancement_nonexistent_reference(
     }
 
     response = await client.post(
-        "/references/enhancement/single/", json=enhancement_request_create
+        "/v1/references/enhancement/single/", json=enhancement_request_create
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
@@ -260,7 +260,7 @@ async def test_check_enhancement_request_status_happy_path(
     await session.commit()
 
     response = await client.get(
-        f"/references/enhancement/single/request/{enhancement_request.id}/"
+        f"/v1/references/enhancement/single/request/{enhancement_request.id}/"
     )
 
     assert response.status_code == status.HTTP_200_OK
@@ -290,7 +290,7 @@ async def test_fulfill_enhancement_request_happy_path(
 
     robot_result = robot_result_enhancement(enhancement_request.id, reference.id)
 
-    response = await client.post("/robot/enhancement/single/", json=robot_result)
+    response = await client.post("/v1/robot/enhancement/single/", json=robot_result)
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["request_status"] == EnhancementRequestStatus.COMPLETED
@@ -323,7 +323,7 @@ async def test_fulfill_enhancement_request_robot_has_errors(
         "error": {"message": "Could not fulfill this enhancement request."},
     }
 
-    response = await client.post("/robot/enhancement/single/", json=robot_result)
+    response = await client.post("/v1/robot/enhancement/single/", json=robot_result)
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["request_status"] == EnhancementRequestStatus.FAILED
@@ -351,7 +351,7 @@ async def test_wrong_reference_exception_handler_returns_response_with_400(
         enhancement_request.id, different_reference.id
     )
 
-    response = await client.post("/robot/enhancement/single/", json=robot_result)
+    response = await client.post("/v1/robot/enhancement/single/", json=robot_result)
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
@@ -374,7 +374,7 @@ async def test_request_batch_enhancement_happy_path(
     }
 
     response = await client.post(
-        "/references/enhancement/batch/", json=batch_request_create
+        "/v1/references/enhancement/batch/", json=batch_request_create
     )
 
     mock_process = AsyncMock(return_value=None)
@@ -408,7 +408,7 @@ async def test_add_robot_automation_happy_path(
     }
 
     response = await client.post(
-        f"/robot/{robot.id}/automation/", json=robot_automation_create
+        f"/v1/robot/{robot.id}/automation/", json=robot_automation_create
     )
 
     assert response.status_code == status.HTTP_201_CREATED
@@ -427,7 +427,7 @@ async def test_add_robot_automation_missing_robot(
     }
 
     response = await client.post(
-        f"/robot/{uuid.uuid4()}/automation/", json=robot_automation_create
+        f"/v1/robot/{uuid.uuid4()}/automation/", json=robot_automation_create
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
@@ -448,7 +448,7 @@ async def test_add_robot_automation_invalid_query(
     }
 
     response = await client.post(
-        f"/robot/{robot.id}/automation/", json=robot_automation_create
+        f"/v1/robot/{robot.id}/automation/", json=robot_automation_create
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert "DSL class `invalid` does not exist in query" in response.json()["detail"]
@@ -458,7 +458,7 @@ async def test_add_robot_automation_invalid_query(
     }
 
     response = await client.post(
-        f"/robot/{robot.id}/automation/", json=robot_automation_create
+        f"/v1/robot/{robot.id}/automation/", json=robot_automation_create
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
