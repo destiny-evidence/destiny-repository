@@ -70,7 +70,7 @@ async def test_get_signed_url():
 @pytest.mark.asyncio
 async def test_filestream_stream_and_read_fn():
     async def fake_fn(_dummy):
-        return "dummy"
+        return '{"foo": "bar"}\n{"foo": "bar"}\n{"foo": "bar"}'
 
     fs = FileStream(
         fn=fake_fn,
@@ -84,15 +84,15 @@ async def test_filestream_stream_and_read_fn():
 @pytest.mark.asyncio
 async def test_filestream_stream_and_read_gen():
     async def fake_gen():
-        yield "dummy1"
-        yield "dummy2"
+        yield '{"foo": "bar"}'
+        yield '{"foo": "bar2"}'
 
     fs = FileStream(
         generator=fake_gen(),
     )
     # Test read (implicitly tests stream also)
     result = await fs.read()
-    assert b'{"foo": "bar"}\n{"foo": "bar"}' in result.getvalue()
+    assert b'{"foo": "bar"}\n{"foo": "bar2"}' in result.getvalue()
 
 
 @pytest.mark.parametrize(

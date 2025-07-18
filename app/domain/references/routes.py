@@ -59,11 +59,23 @@ def es_unit_of_work(
     return AsyncESUnitOfWork(client=client)
 
 
+def blob_repository() -> BlobRepository:
+    """Return the blob storage service."""
+    return BlobRepository()
+
+
+def reference_anti_corruption_service(
+    blob_repository: Annotated[BlobRepository, Depends(blob_repository)],
+) -> ReferenceAntiCorruptionService:
+    """Return the reference anti-corruption service."""
+    return ReferenceAntiCorruptionService(blob_repository=blob_repository)
+
+
 def reference_service(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
     es_uow: Annotated[AsyncESUnitOfWork, Depends(es_unit_of_work)],
     reference_anti_corruption_service: Annotated[
-        ReferenceAntiCorruptionService, Depends(ReferenceAntiCorruptionService)
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
 ) -> ReferenceService:
     """Return the reference service using the provided unit of work dependencies."""
@@ -90,18 +102,6 @@ def robot_service(
 def robot_request_dispatcher() -> RobotRequestDispatcher:
     """Return the robot request dispatcher."""
     return RobotRequestDispatcher()
-
-
-def blob_repository() -> BlobRepository:
-    """Return the blob storage service."""
-    return BlobRepository()
-
-
-def reference_anti_corruption_service(
-    blob_repository: Annotated[BlobRepository, Depends(blob_repository)],
-) -> ReferenceAntiCorruptionService:
-    """Return the reference anti-corruption service."""
-    return ReferenceAntiCorruptionService(blob_repository=blob_repository)
 
 
 def choose_auth_strategy_reader() -> AuthMethod:
