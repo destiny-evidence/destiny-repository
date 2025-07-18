@@ -77,7 +77,9 @@ class IngestionService(GenericService[ReferenceAntiCorruptionService]):
 
         if not collided_identifiers:
             # No collision detected
-            return self._anti_corruption_service.reference_from_file_input(reference)
+            return self._anti_corruption_service.reference_from_sdk_file_input(
+                reference
+            )
 
         if collision_strategy == CollisionStrategy.DISCARD:
             return None
@@ -99,8 +101,10 @@ Identifier(s) are already mapped on an existing reference:
             msg = "Existing reference not found in database. This should not happen."
             raise RuntimeError(msg)
 
-        incoming_reference = self._anti_corruption_service.reference_from_file_input(
-            reference, existing_reference.id
+        incoming_reference = (
+            self._anti_corruption_service.reference_from_sdk_file_input(
+                reference, existing_reference.id
+            )
         )
 
         # Merge collision strategies

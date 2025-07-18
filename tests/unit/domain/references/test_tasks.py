@@ -8,13 +8,16 @@ from app.domain.references.models.models import (
     RobotAutomationPercolationResult,
 )
 from app.domain.references.service import ReferenceService
+from app.domain.references.services.anti_corruption_service import (
+    ReferenceAntiCorruptionService,
+)
 from app.domain.references.tasks import (
     collect_and_dispatch_references_for_batch_enhancement,
     detect_and_dispatch_robot_automations,
 )
 
 
-async def test_robot_automations(monkeypatch, fake_uow):
+async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
     """
     Test the detect_and_dispatch_robot_automations task distributor.
     Only tests function signatures, functionality itself is tested in the service layer.
@@ -58,7 +61,9 @@ async def test_robot_automations(monkeypatch, fake_uow):
     )
 
     requests = await detect_and_dispatch_robot_automations(
-        reference_service=ReferenceService(fake_uow()),
+        reference_service=ReferenceService(
+            ReferenceAntiCorruptionService(fake_repository), fake_uow()
+        ),
         reference_ids=in_reference_ids,
         enhancement_ids=in_enhancement_ids,
         source_str="test_source",
