@@ -1,7 +1,6 @@
 """Models associated with references."""
 
 import uuid
-from collections.abc import Awaitable, Callable
 from enum import StrEnum, auto
 from typing import Any, Self
 
@@ -14,16 +13,13 @@ from pydantic import (
     UUID4,
     BaseModel,
     Field,
-    HttpUrl,
     TypeAdapter,
-    ValidationError,
 )
 
-from app.core.exceptions import SDKToDomainError
 from app.core.logger import get_logger
-from app.domain.base import DomainBaseModel, SDKJsonlMixin, SQLAttributeMixin
+from app.domain.base import DomainBaseModel, SQLAttributeMixin
 from app.domain.imports.models.models import CollisionStrategy
-from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
+from app.persistence.blob.models import BlobStorageFile
 
 logger = get_logger()
 
@@ -101,7 +97,6 @@ class Visibility(StrEnum):
 
 class Reference(
     DomainBaseModel,
-    SDKJsonlMixin,
     SQLAttributeMixin,
 ):
     """Core reference model with database attributes included."""
@@ -118,55 +113,6 @@ class Reference(
         default=None,
         description="A list of enhancements for the reference",
     )
-
-    async def to_sdk(self) -> destiny_sdk.references.Reference:
-        """Convert the reference to the SDK model."""
-        try:
-            return destiny_sdk.references.Reference(
-                id=self.id,
-                visibility=self.visibility,
-                identifiers=[
-                    (await identifier.to_sdk()).identifier
-                    for identifier in self.identifiers or []
-                ],
-                enhancements=[
-                    await enhancement.to_sdk()
-                    for enhancement in self.enhancements or []
-                ],
-            )
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-
-    @classmethod
-    async def from_file_input(
-        cls,
-        reference_in: destiny_sdk.references.ReferenceFileInput,
-        reference_id: uuid.UUID | None = None,
-    ) -> Self:
-        """Create a reference including id hydration."""
-        try:
-            reference = cls(
-                visibility=reference_in.visibility,
-            )
-            if reference_id:
-                reference.id = reference_id
-            reference.identifiers = [
-                LinkedExternalIdentifier(
-                    reference_id=reference.id, identifier=identifier
-                )
-                for identifier in reference_in.identifiers or []
-            ]
-            reference.enhancements = [
-                Enhancement.model_validate(
-                    enhancement.model_dump() | {"reference_id": reference.id}
-                )
-                for enhancement in reference_in.enhancements or []
-            ]
-            reference.check_serializability()
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-        else:
-            return reference
 
     async def merge(  # noqa: PLR0912
         self,
@@ -305,32 +251,6 @@ class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
         description="The reference this identifier identifies.",
     )
 
-    @classmethod
-    async def from_sdk(
-        cls,
-        external_identifier: destiny_sdk.identifiers.LinkedExternalIdentifier,
-    ) -> Self:
-        """Create an external identifier from the SDK model."""
-        try:
-            c = cls.model_validate(
-                external_identifier.model_dump(),
-            )
-            c.check_serializability()
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-        else:
-            return c
-
-    async def to_sdk(self) -> destiny_sdk.identifiers.LinkedExternalIdentifier:
-        """Convert the external identifier to the SDK model."""
-        try:
-            return destiny_sdk.identifiers.LinkedExternalIdentifier(
-                identifier=ExternalIdentifierAdapter.validate_python(self.identifier),
-                reference_id=self.reference_id,
-            )
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-
 
 class GenericExternalIdentifier(DomainBaseModel):
     """
@@ -399,38 +319,6 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
         description="The reference this enhancement is associated with.",
     )
 
-    @classmethod
-    async def from_sdk(
-        cls,
-        enhancement: destiny_sdk.enhancements.Enhancement,
-        reference_id: uuid.UUID | None = None,
-    ) -> Self:
-        """Create an enhancement from the SDK model."""
-        try:
-            enhancement_model = enhancement.model_dump()
-
-            ## The SDK isn't allowed to pass in ids, so ignore this.
-            enhancement_model.pop("id", None)
-
-            c = cls.model_validate(
-                enhancement_model
-                | ({"reference_id": reference_id} if reference_id else {})
-            )
-            c.check_serializability()
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-        else:
-            return c
-
-    async def to_sdk(self) -> destiny_sdk.enhancements.Enhancement:
-        """Convert the enhancement to the SDK model."""
-        try:
-            return destiny_sdk.enhancements.Enhancement.model_validate(
-                self.model_dump(),
-            )
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-
 
 class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
     """Request to add an enhancement to a specific reference."""
@@ -462,31 +350,6 @@ class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
         None,
         description="The reference this enhancement is associated with.",
     )
-
-    @classmethod
-    async def from_sdk(
-        cls,
-        enhancement_request: destiny_sdk.robots.EnhancementRequestIn,
-    ) -> Self:
-        """Create an enhancement request from the SDK model."""
-        try:
-            c = cls.model_validate(
-                enhancement_request.model_dump(),
-            )
-            c.check_serializability()
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-        else:
-            return c
-
-    async def to_sdk(self) -> destiny_sdk.robots.EnhancementRequestRead:
-        """Convert the enhancement request to the SDK model."""
-        try:
-            return destiny_sdk.robots.EnhancementRequestRead.model_validate(
-                self.model_dump(),
-            )
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
 
 
 class BatchEnhancementRequest(DomainBaseModel, SQLAttributeMixin):
@@ -535,77 +398,8 @@ Errors for individual references are provided <TBC>.
         """The number of references in the request."""
         return len(self.reference_ids)
 
-    @classmethod
-    async def from_sdk(
-        cls,
-        enhancement_request: destiny_sdk.robots.BatchEnhancementRequestIn,
-    ) -> Self:
-        """Create an enhancement request from the SDK model."""
-        try:
-            c = cls.model_validate(enhancement_request.model_dump())
-            c.check_serializability()
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-        else:
-            return c
 
-    async def to_sdk(
-        self,
-        to_signed_url: Callable[
-            [BlobStorageFile, BlobSignedUrlType], Awaitable[HttpUrl]
-        ],
-    ) -> destiny_sdk.robots.BatchEnhancementRequestRead:
-        """Convert the enhancement request to the SDK model."""
-        try:
-            return destiny_sdk.robots.BatchEnhancementRequestRead.model_validate(
-                self.model_dump()
-                | {
-                    "reference_data_url": await to_signed_url(
-                        self.reference_data_file, BlobSignedUrlType.DOWNLOAD
-                    )
-                    if self.reference_data_file
-                    else None,
-                    "result_storage_url": await to_signed_url(
-                        self.result_file, BlobSignedUrlType.UPLOAD
-                    )
-                    if self.result_file
-                    else None,
-                    "validation_result_url": await to_signed_url(
-                        self.validation_result_file, BlobSignedUrlType.DOWNLOAD
-                    )
-                    if self.validation_result_file
-                    else None,
-                },
-            )
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-
-    async def to_batch_robot_request_sdk(
-        self,
-        to_signed_url: Callable[
-            [BlobStorageFile, BlobSignedUrlType], Awaitable[HttpUrl]
-        ],
-    ) -> destiny_sdk.robots.BatchRobotRequest:
-        """Convert the enhancement request to the SDK robot request model."""
-        try:
-            return destiny_sdk.robots.BatchRobotRequest(
-                id=self.id,
-                reference_storage_url=await to_signed_url(
-                    self.reference_data_file, BlobSignedUrlType.DOWNLOAD
-                )
-                if self.reference_data_file
-                else None,
-                result_storage_url=await to_signed_url(
-                    self.result_file, BlobSignedUrlType.UPLOAD
-                )
-                if self.result_file
-                else None,
-            )
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-
-
-class BatchRobotResultValidationEntry(DomainBaseModel, SDKJsonlMixin):
+class BatchRobotResultValidationEntry(DomainBaseModel):
     """A single entry in the validation result file for a batch enhancement request."""
 
     reference_id: uuid.UUID | None = Field(
@@ -623,17 +417,6 @@ class BatchRobotResultValidationEntry(DomainBaseModel, SDKJsonlMixin):
         ),
     )
 
-    async def to_sdk(
-        self,
-    ) -> destiny_sdk.robots.BatchRobotResultValidationEntry:
-        """Convert the validation entry to the SDK model."""
-        try:
-            return destiny_sdk.robots.BatchRobotResultValidationEntry.model_validate(
-                self.model_dump(),
-            )
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-
 
 class RobotAutomation(DomainBaseModel, SQLAttributeMixin):
     """
@@ -650,26 +433,6 @@ class RobotAutomation(DomainBaseModel, SQLAttributeMixin):
     query: dict[str, Any] = Field(
         description="The query that will be used to match references against."
     )
-
-    @classmethod
-    async def from_sdk(
-        cls, data: destiny_sdk.robots.RobotAutomationIn, robot_id: uuid.UUID
-    ) -> Self:
-        """Create a RobotAutomation from the SDK input model."""
-        try:
-            c = cls.model_validate(data.model_dump() | {"robot_id": robot_id})
-            c.check_serializability()
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-        else:
-            return c
-
-    async def to_sdk(self) -> destiny_sdk.robots.RobotAutomation:
-        """Convert the RobotAutomation to a RobotAutomation SDK model."""
-        try:
-            return destiny_sdk.robots.RobotAutomation.model_validate(self.model_dump())
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
 
 
 class RobotAutomationPercolationResult(BaseModel):

@@ -8,8 +8,17 @@ from app.core.exceptions import ESError, TaskError
 from app.core.logger import get_logger
 from app.domain.imports.models.models import ImportBatchStatus
 from app.domain.imports.service import ImportService
+from app.domain.imports.services.anti_corruption_service import (
+    ImportAntiCorruptionService,
+)
 from app.domain.references.service import ReferenceService
-from app.domain.references.tasks import detect_and_dispatch_robot_automations
+from app.domain.references.services.anti_corruption_service import (
+    ReferenceAntiCorruptionService,
+)
+from app.domain.references.tasks import (
+    detect_and_dispatch_robot_automations,
+    get_blob_repository,
+)
 from app.persistence.es.client import es_manager
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.session import db_manager
@@ -42,15 +51,22 @@ async def get_es_unit_of_work(
 
 
 async def get_import_service(
+    import_anti_corruption_service: ImportAntiCorruptionService | None = None,
     sql_uow: AsyncSqlUnitOfWork | None = None,
 ) -> ImportService:
     """Return the import service using the provided unit of work dependencies."""
     if sql_uow is None:
         sql_uow = await get_sql_unit_of_work()
-    return ImportService(sql_uow=sql_uow)
+
+    if import_anti_corruption_service is None:
+        import_anti_corruption_service = ImportAntiCorruptionService()
+    return ImportService(
+        sql_uow=sql_uow, anti_corruption_service=import_anti_corruption_service
+    )
 
 
 async def get_reference_service(
+    reference_anti_corruption_service: ReferenceAntiCorruptionService | None = None,
     sql_uow: AsyncSqlUnitOfWork | None = None,
     es_uow: AsyncESUnitOfWork | None = None,
 ) -> ReferenceService:
@@ -59,7 +75,16 @@ async def get_reference_service(
         sql_uow = await get_sql_unit_of_work()
     if es_uow is None:
         es_uow = await get_es_unit_of_work()
-    return ReferenceService(sql_uow=sql_uow, es_uow=es_uow)
+    if reference_anti_corruption_service is None:
+        blob_repository = await get_blob_repository()
+        reference_anti_corruption_service = ReferenceAntiCorruptionService(
+            blob_repository=blob_repository
+        )
+    return ReferenceService(
+        sql_uow=sql_uow,
+        es_uow=es_uow,
+        anti_corruption_service=reference_anti_corruption_service,
+    )
 
 
 @broker.task

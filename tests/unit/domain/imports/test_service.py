@@ -16,6 +16,9 @@ from app.domain.imports.models.models import (
     ImportResultStatus,
 )
 from app.domain.imports.service import ImportService
+from app.domain.imports.services.anti_corruption_service import (
+    ImportAntiCorruptionService,
+)
 from app.domain.references.models.validators import ReferenceCreateResult
 
 RECORD_ID = uuid.uuid4()
@@ -28,7 +31,7 @@ BATCH_ID = uuid.uuid4()
 async def test_register_import(fake_repository, fake_uow):
     repo_imports = fake_repository()
     uow = fake_uow(imports=repo_imports)
-    service = ImportService(uow)
+    service = ImportService(ImportAntiCorruptionService(), uow)
 
     import_to_register = ImportRecord(
         search_string="climate AND health",
@@ -53,7 +56,7 @@ async def test_register_batch(fake_repository, fake_uow, fake_import_record):
     repo_imports = fake_repository(init_entries=[fake_import_record(RECORD_ID)])
     repo_batches = fake_repository()
     uow = fake_uow(imports=repo_imports, batches=repo_batches)
-    service = ImportService(uow)
+    service = ImportService(ImportAntiCorruptionService(), uow)
 
     batch_to_register = ImportBatch(
         import_record_id=RECORD_ID, storage_url="https://www.totallyrealstorage.com"
@@ -72,7 +75,7 @@ async def test_register_batch(fake_repository, fake_uow, fake_import_record):
 async def test_import_reference_happy_path(fake_repository, fake_uow):
     repo_results = fake_repository()
     uow = fake_uow(results=repo_results)
-    service = ImportService(uow)
+    service = ImportService(ImportAntiCorruptionService(), uow)
 
     fake_reference_service = AsyncMock()
     fake_reference_service.ingest_reference.return_value = ReferenceCreateResult(
@@ -92,7 +95,7 @@ async def test_import_reference_happy_path(fake_repository, fake_uow):
 async def test_import_reference_reference_not_created(fake_repository, fake_uow):
     repo_results = fake_repository()
     uow = fake_uow(results=repo_results)
-    service = ImportService(uow)
+    service = ImportService(ImportAntiCorruptionService(), uow)
 
     import_reference_error = "it bronked"
 
@@ -117,7 +120,7 @@ async def test_import_reference_reference_created_with_errors(
 ):
     repo_results = fake_repository()
     uow = fake_uow(results=repo_results)
-    service = ImportService(uow)
+    service = ImportService(ImportAntiCorruptionService(), uow)
 
     import_reference_error = "it's a bit bronked"
 
@@ -140,7 +143,7 @@ async def test_import_reference_reference_created_with_errors(
 async def test_add_batch_result(fake_repository, fake_uow):
     repo_results = fake_repository()
     uow = fake_uow(results=repo_results)
-    service = ImportService(uow)
+    service = ImportService(ImportAntiCorruptionService(), uow)
 
     import_result_create = ImportResult(
         import_batch_id=BATCH_ID, status=ImportResultStatus.CREATED
@@ -171,10 +174,10 @@ async def test_get_import_batch_summary_batch_completed_no_failures(
     repo_batches = fake_repository(init_entries=[fake_completed_batch])
 
     uow = fake_uow(batches=repo_batches)
-    service = ImportService(uow)
+    service = ImportService(ImportAntiCorruptionService(), uow)
 
     batch = await service.get_import_batch_with_results(BATCH_ID)
-    summary = await batch.to_sdk_summary()
+    summary = ImportAntiCorruptionService().import_batch_to_sdk_summary(batch)
 
     assert summary.results.get(ImportResultStatus.COMPLETED) == 1
     assert summary.results.get(ImportResultStatus.FAILED) == 0
@@ -210,10 +213,10 @@ async def test_get_import_batch_summary_batch_completed_with_failures(
     repo_batches = fake_repository(init_entries=[fake_batch])
 
     uow = fake_uow(batches=repo_batches)
-    service = ImportService(uow)
+    service = ImportService(ImportAntiCorruptionService(), uow)
 
     batch = await service.get_import_batch_with_results(BATCH_ID)
-    summary = await batch.to_sdk_summary()
+    summary = ImportAntiCorruptionService().import_batch_to_sdk_summary(batch)
 
     assert summary.results.get(ImportResultStatus.FAILED) == 1
     assert summary.results.get(ImportResultStatus.PARTIALLY_FAILED) == 1
@@ -247,10 +250,10 @@ async def test_get_import_batch_summary_batch_in_progress(
     repo_batches = fake_repository(init_entries=[fake_batch])
 
     uow = fake_uow(batches=repo_batches)
-    service = ImportService(uow)
+    service = ImportService(ImportAntiCorruptionService(), uow)
 
     batch = await service.get_import_batch_with_results(BATCH_ID)
-    summary = await batch.to_sdk_summary()
+    summary = ImportAntiCorruptionService().import_batch_to_sdk_summary(batch)
 
     assert summary.results.get(ImportResultStatus.COMPLETED) == 1
     assert summary.results.get(ImportResultStatus.STARTED) == 1
