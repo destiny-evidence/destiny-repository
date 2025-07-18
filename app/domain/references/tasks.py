@@ -12,8 +12,14 @@ from app.domain.references.models.models import (
     BatchEnhancementRequestStatus,
 )
 from app.domain.references.service import ReferenceService
+from app.domain.references.services.anti_corruption_service import (
+    ReferenceAntiCorruptionService,
+)
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
+from app.domain.robots.services.anti_corruption_service import (
+    RobotAntiCorruptionService,
+)
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.es.client import es_manager
 from app.persistence.es.uow import AsyncESUnitOfWork
@@ -47,15 +53,27 @@ async def get_es_unit_of_work(
 
 
 async def get_reference_service(
-    sql_uow: AsyncSqlUnitOfWork, es_uow: AsyncESUnitOfWork
+    anti_corruption_service: ReferenceAntiCorruptionService,
+    sql_uow: AsyncSqlUnitOfWork,
+    es_uow: AsyncESUnitOfWork,
 ) -> ReferenceService:
     """Return the reference service using the provided unit of work dependencies."""
-    return ReferenceService(sql_uow=sql_uow, es_uow=es_uow)
+    return ReferenceService(
+        sql_uow=sql_uow,
+        es_uow=es_uow,
+        anti_corruption_service=anti_corruption_service,
+    )
 
 
-async def get_robot_service(sql_uow: AsyncSqlUnitOfWork) -> RobotService:
-    """Return the rebot service using the provided unit of work dependencies."""
-    return RobotService(sql_uow=sql_uow)
+async def get_robot_service(
+    robot_anti_corruption_service: RobotAntiCorruptionService,
+    sql_uow: AsyncSqlUnitOfWork,
+) -> RobotService:
+    """Return the robot service using the provided unit of work dependencies."""
+    return RobotService(
+        sql_uow=sql_uow,
+        anti_corruption_service=robot_anti_corruption_service,
+    )
 
 
 async def get_blob_repository() -> BlobRepository:
@@ -79,8 +97,13 @@ async def collect_and_dispatch_references_for_batch_enhancement(
     )
     sql_uow = await get_sql_unit_of_work()
     es_uow = await get_es_unit_of_work()
-    reference_service = await get_reference_service(sql_uow, es_uow)
-    robot_service = await get_robot_service(sql_uow)
+    blob_repository = await get_blob_repository()
+    reference_anti_corruption_service = ReferenceAntiCorruptionService(blob_repository)
+    robot_anti_corruption_service = RobotAntiCorruptionService()
+    reference_service = await get_reference_service(
+        reference_anti_corruption_service, sql_uow, es_uow
+    )
+    robot_service = await get_robot_service(robot_anti_corruption_service, sql_uow)
     robot_request_dispatcher = await get_robot_request_dispatcher()
     blob_repository = await get_blob_repository()
     batch_enhancement_request = await reference_service.get_batch_enhancement_request(
@@ -113,7 +136,11 @@ async def validate_and_import_batch_enhancement_result(
     )
     sql_uow = await get_sql_unit_of_work()
     es_uow = await get_es_unit_of_work()
-    reference_service = await get_reference_service(sql_uow, es_uow)
+    blob_repository = await get_blob_repository()
+    reference_anti_corruption_service = ReferenceAntiCorruptionService(blob_repository)
+    reference_service = await get_reference_service(
+        reference_anti_corruption_service, sql_uow, es_uow
+    )
     blob_repository = await get_blob_repository()
     batch_enhancement_request = await reference_service.get_batch_enhancement_request(
         batch_enhancement_request_id
@@ -181,8 +208,11 @@ async def repair_reference_index() -> None:
     logger.info("Repairing reference index")
     sql_uow = await get_sql_unit_of_work()
     es_uow = await get_es_unit_of_work()
-    reference_service = await get_reference_service(sql_uow, es_uow)
-
+    blob_repository = await get_blob_repository()
+    reference_anti_corruption_service = ReferenceAntiCorruptionService(blob_repository)
+    reference_service = await get_reference_service(
+        reference_anti_corruption_service, sql_uow, es_uow
+    )
     await reference_service.repopulate_reference_index()
 
 
@@ -192,7 +222,11 @@ async def repair_robot_automation_percolation_index() -> None:
     logger.info("Repairing robot automation percolation index")
     sql_uow = await get_sql_unit_of_work()
     es_uow = await get_es_unit_of_work()
-    reference_service = await get_reference_service(sql_uow, es_uow)
+    blob_repository = await get_blob_repository()
+    reference_anti_corruption_service = ReferenceAntiCorruptionService(blob_repository)
+    reference_service = await get_reference_service(
+        reference_anti_corruption_service, sql_uow, es_uow
+    )
 
     await reference_service.repopulate_robot_automation_percolation_index()
 

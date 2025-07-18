@@ -16,11 +16,12 @@ from app.core.auth import (
 from app.core.config import get_settings
 from app.core.logger import get_logger
 from app.domain.imports.models.models import (
-    ImportBatch,
-    ImportRecord,
     ImportResultStatus,
 )
 from app.domain.imports.service import ImportService
+from app.domain.imports.services.anti_corruption_service import (
+    ImportAntiCorruptionService,
+)
 from app.domain.imports.tasks import process_import_batch
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -36,11 +37,21 @@ def unit_of_work(
     return AsyncSqlUnitOfWork(session=session)
 
 
+def import_anti_corruption_service() -> ImportAntiCorruptionService:
+    """Return the anti-corruption service for imports."""
+    return ImportAntiCorruptionService()
+
+
 def import_service(
+    anti_corruption_service: Annotated[
+        ImportAntiCorruptionService, Depends(import_anti_corruption_service)
+    ],
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(unit_of_work)],
 ) -> ImportService:
     """Return the import service using the provided unit of work dependencies."""
-    return ImportService(sql_uow=sql_uow)
+    return ImportService(
+        anti_corruption_service=anti_corruption_service, sql_uow=sql_uow
+    )
 
 
 async def validate_import_record(
@@ -83,22 +94,28 @@ import_batch_router = APIRouter(
 async def create_record(
     import_record: destiny_sdk.imports.ImportRecordIn,
     import_service: Annotated[ImportService, Depends(import_service)],
+    import_anti_corruption_service: Annotated[
+        ImportAntiCorruptionService, Depends(import_anti_corruption_service)
+    ],
 ) -> destiny_sdk.imports.ImportRecordRead:
     """Create a record for an import process."""
     record = await import_service.register_import(
-        await ImportRecord.from_sdk(import_record)
+        import_anti_corruption_service.import_record_from_sdk(import_record)
     )
-    return await record.to_sdk()
+    return import_anti_corruption_service.import_record_to_sdk(record)
 
 
 @import_record_router.get("/{import_record_id}/")
 async def get_record(
     import_record_id: Annotated[UUID4, Path(description="The id of the import")],
     import_service: Annotated[ImportService, Depends(import_service)],
+    import_anti_corruption_service: Annotated[
+        ImportAntiCorruptionService, Depends(import_anti_corruption_service)
+    ],
 ) -> destiny_sdk.imports.ImportRecordRead:
     """Get an import from the database."""
     import_record = await import_service.get_import_record(import_record_id)
-    return await import_record.to_sdk()
+    return import_anti_corruption_service.import_record_to_sdk(import_record)
 
 
 @import_record_router.patch(
@@ -122,17 +139,22 @@ async def enqueue_batch(
     ],
     batch: destiny_sdk.imports.ImportBatchIn,
     import_service: Annotated[ImportService, Depends(import_service)],
+    import_anti_corruption_service: Annotated[
+        ImportAntiCorruptionService, Depends(import_anti_corruption_service)
+    ],
 ) -> destiny_sdk.imports.ImportBatchRead:
     """Register an import batch for a given import."""
     import_batch = await import_service.register_batch(
-        await ImportBatch.from_sdk(batch, import_record_id)
+        import_anti_corruption_service.import_batch_from_sdk(
+            batch, import_record_id=import_record_id
+        )
     )
     logger.info("Enqueueing import batch", extra={"import_batch_id": import_batch.id})
     await process_import_batch.kiq(
         import_batch_id=import_batch.id,
         remaining_retries=settings.import_batch_retry_count,
     )
-    return await import_batch.to_sdk()
+    return import_anti_corruption_service.import_batch_to_sdk(import_batch)
 
 
 @import_batch_router.get("/")
@@ -141,38 +163,53 @@ async def get_batches(
         UUID4, Path(description="The id of the associated import")
     ],
     import_service: Annotated[ImportService, Depends(import_service)],
+    import_anti_corruption_service: Annotated[
+        ImportAntiCorruptionService, Depends(import_anti_corruption_service)
+    ],
 ) -> list[destiny_sdk.imports.ImportBatchRead]:
     """Get batches associated to an import."""
     import_record = await import_service.get_import_record_with_batches(
         import_record_id
     )
-    return [await batch.to_sdk() for batch in import_record.batches or []]
+    return [
+        import_anti_corruption_service.import_batch_to_sdk(batch)
+        for batch in import_record.batches or []
+    ]
 
 
 @import_batch_router.get("/{import_batch_id}/")
 async def get_batch(
     import_batch_id: Annotated[UUID4, Path(description="The id of the import batch")],
     import_service: Annotated[ImportService, Depends(import_service)],
+    import_anti_corruption_service: Annotated[
+        ImportAntiCorruptionService, Depends(import_anti_corruption_service)
+    ],
 ) -> destiny_sdk.imports.ImportBatchRead:
     """Get a particular batch."""
     import_batch = await import_service.get_import_batch(import_batch_id)
-    return await import_batch.to_sdk()
+    return import_anti_corruption_service.import_batch_to_sdk(import_batch)
 
 
 @import_batch_router.get("/{import_batch_id}/summary/")
 async def get_import_batch_summary(
     import_batch_id: Annotated[UUID4, Path(description="The id of the import batch")],
     import_service: Annotated[ImportService, Depends(import_service)],
+    import_anti_corruption_service: Annotated[
+        ImportAntiCorruptionService, Depends(import_anti_corruption_service)
+    ],
 ) -> destiny_sdk.imports.ImportBatchSummary:
     """Get a summary of an import batch's results."""
     import_batch = await import_service.get_import_batch_with_results(import_batch_id)
-    return await import_batch.to_sdk_summary()
+    return import_anti_corruption_service.import_batch_to_sdk_summary(import_batch)
 
 
 @import_batch_router.get("/{import_batch_id}/results/")
 async def get_import_results(
     import_batch_id: Annotated[UUID4, Path(description="The id of the import batch")],
     import_service: Annotated[ImportService, Depends(import_service)],
+    import_anti_corruption_service: Annotated[
+        ImportAntiCorruptionService, Depends(import_anti_corruption_service)
+    ],
     result_status: ImportResultStatus | None = None,
 ) -> list[destiny_sdk.imports.ImportResultRead]:
     """Get a list of results for an import batch."""
@@ -180,7 +217,7 @@ async def get_import_results(
         import_batch_id, result_status
     )
     return [
-        await import_batch_result.to_sdk()
+        import_anti_corruption_service.import_result_to_sdk(import_batch_result)
         for import_batch_result in import_batch_results
     ]
 

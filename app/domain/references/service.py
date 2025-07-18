@@ -1,8 +1,7 @@
 """The service for interacting with and managing references."""
 
 from collections import defaultdict
-from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
-from typing import cast
+from collections.abc import AsyncGenerator, Iterable
 
 import destiny_sdk
 from pydantic import UUID4
@@ -21,7 +20,6 @@ from app.core.exceptions import (
     WrongReferenceError,
 )
 from app.core.logger import get_logger
-from app.domain.base import SDKJsonlMixin
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
@@ -39,6 +37,9 @@ from app.domain.references.models.models import (
     RobotAutomationPercolationResult,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
+from app.domain.references.services.anti_corruption_service import (
+    ReferenceAntiCorruptionService,
+)
 from app.domain.references.services.batch_enhancement_service import (
     BatchEnhancementService,
 )
@@ -61,16 +62,21 @@ logger = get_logger()
 settings = get_settings()
 
 
-class ReferenceService(GenericService):
+class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     """The service which manages our references."""
 
     def __init__(
-        self, sql_uow: AsyncSqlUnitOfWork, es_uow: AsyncESUnitOfWork | None = None
+        self,
+        anti_corruption_service: ReferenceAntiCorruptionService,
+        sql_uow: AsyncSqlUnitOfWork,
+        es_uow: AsyncESUnitOfWork | None = None,
     ) -> None:
         """Initialize the service with a unit of work."""
-        super().__init__(sql_uow, es_uow)
-        self._ingestion_service = IngestionService(sql_uow)
-        self._batch_enhancement_service = BatchEnhancementService(sql_uow)
+        super().__init__(anti_corruption_service, sql_uow, es_uow)
+        self._ingestion_service = IngestionService(anti_corruption_service, sql_uow)
+        self._batch_enhancement_service = BatchEnhancementService(
+            anti_corruption_service, sql_uow
+        )
 
     @sql_unit_of_work
     async def get_reference(self, reference_id: UUID4) -> Reference:
@@ -138,6 +144,16 @@ class ReferenceService(GenericService):
             if external_identifier_types
             else None,
         )
+
+    async def _get_jsonl_hydrated_references(
+        self,
+        reference_ids: list[UUID4],
+    ) -> list[str]:
+        """Get a list of JSONL strings for hydrated references by id."""
+        return [
+            self._anti_corruption_service.reference_to_sdk(ref).to_jsonl()
+            for ref in await self._get_hydrated_references(reference_ids)
+        ]
 
     @sql_unit_of_work
     async def get_hydrated_references(
@@ -244,7 +260,7 @@ class ReferenceService(GenericService):
         """Dispatch an enhancement request to a robot."""
         robot_request = destiny_sdk.robots.RobotRequest(
             id=enhancement_request.id,
-            reference=await reference.to_sdk(),
+            reference=self._anti_corruption_service.reference_to_sdk(reference),
             extra_fields=enhancement_request.enhancement_parameters,
         )
 
@@ -311,7 +327,7 @@ class ReferenceService(GenericService):
         robot_service: RobotService,
         robot_request_dispatcher: RobotRequestDispatcher,
     ) -> EnhancementRequest:
-        """Wrap the requesting of an enhancement in an sql unit of work."""
+        """Create an enhancement request and send it to the robot."""
         reference, robot = await self.register_enhancement_request(
             enhancement_request=enhancement_request,
             robot_service=robot_service,
@@ -432,12 +448,7 @@ class ReferenceService(GenericService):
         """Collect and dispatch references for batch enhancement."""
         robot = await robot_service.get_robot(batch_enhancement_request.robot_id)
         file_stream = FileStream(
-            # Handle Python's type invariance by casting the function type. We know
-            # Reference is a subclass of SDKJsonlMixin.
-            cast(
-                Callable[..., Awaitable[list[SDKJsonlMixin]]],
-                self._get_hydrated_references,
-            ),
+            self._get_jsonl_hydrated_references,
             [
                 {
                     "reference_ids": reference_id_chunk,

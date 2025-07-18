@@ -25,9 +25,15 @@ from app.domain.references.models.models import (
     Visibility,
 )
 from app.domain.references.service import ReferenceService
+from app.domain.references.services.anti_corruption_service import (
+    ReferenceAntiCorruptionService,
+)
 from app.domain.robots.models.models import Robot
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
+from app.domain.robots.services.anti_corruption_service import (
+    RobotAntiCorruptionService,
+)
 
 
 @pytest.mark.asyncio
@@ -36,7 +42,7 @@ async def test_get_reference_happy_path(fake_repository, fake_uow):
     dummy_reference = Reference(id=dummy_id)
     repo = fake_repository(init_entries=[dummy_reference])
     uow = fake_uow(references=repo)
-    service = ReferenceService(uow)
+    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
     result = await service.get_reference(dummy_id)
     assert result.id == dummy_reference.id
 
@@ -45,7 +51,7 @@ async def test_get_reference_happy_path(fake_repository, fake_uow):
 async def test_get_reference_not_found(fake_repository, fake_uow):
     repo = fake_repository()
     uow = fake_uow(references=repo)
-    service = ReferenceService(uow)
+    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
     dummy_id = uuid.uuid4()
     with pytest.raises(SQLNotFoundError):
         await service.get_reference(dummy_id)
@@ -55,7 +61,7 @@ async def test_get_reference_not_found(fake_repository, fake_uow):
 async def test_register_reference_happy_path(fake_repository, fake_uow):
     repo = fake_repository()
     uow = fake_uow(references=repo)
-    service = ReferenceService(uow)
+    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
     created = await service.register_reference()
     # Verify that an id was assigned during registration.
     assert hasattr(created, "id")
@@ -69,7 +75,7 @@ async def test_add_identifier_happy_path(fake_repository, fake_uow):
     repo_refs = fake_repository(init_entries=[dummy_reference])
     repo_ids = fake_repository()
     uow = fake_uow(references=repo_refs, external_identifiers=repo_ids)
-    service = ReferenceService(uow)
+    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
     identifier_data = {"identifier": "W1234", "identifier_type": "open_alex"}
     fake_identifier_create = ExternalIdentifierAdapter.validate_python(identifier_data)
     returned_identifier = await service.add_identifier(dummy_id, fake_identifier_create)
@@ -83,7 +89,7 @@ async def test_add_identifier_reference_not_found(fake_repository, fake_uow):
     repo_refs = fake_repository()
     repo_ids = fake_repository()
     uow = fake_uow(references=repo_refs, external_identifiers=repo_ids)
-    service = ReferenceService(uow)
+    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
     dummy_id = uuid.uuid4()
     fake_identifier_create = ExternalIdentifierAdapter.validate_python(
         {"identifier": "W1234", "identifier_type": "open_alex"}
@@ -134,8 +140,10 @@ async def test_trigger_reference_enhancement_request_happy_path(
         robots=fake_robots,
     )
 
-    referece_service = ReferenceService(uow)
-    robot_service = RobotService(uow)
+    referece_service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow
+    )
+    robot_service = RobotService(RobotAntiCorruptionService(), uow)
 
     received_enhancement_request = EnhancementRequest(
         reference_id=reference_id, robot_id=robot_id, enhancement_parameters={}
@@ -194,8 +202,10 @@ async def test_trigger_reference_enhancement_request_rejected(
         robots=fake_robots,
     )
 
-    reference_service = ReferenceService(uow)
-    robot_service = RobotService(uow)
+    reference_service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow
+    )
+    robot_service = RobotService(RobotAntiCorruptionService(), uow)
 
     received_enhancement_request = EnhancementRequest(
         reference_id=reference_id, robot_id=robot_id, enhancement_parameters={}
@@ -230,7 +240,9 @@ async def test_trigger_reference_enhancement_nonexistent_reference(
         robots=fake_repository(),
     )
 
-    reference_service = ReferenceService(uow)
+    reference_service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow
+    )
 
     received_enhancement_request = EnhancementRequest(
         reference_id=unknown_reference_id,
@@ -241,7 +253,7 @@ async def test_trigger_reference_enhancement_nonexistent_reference(
     with pytest.raises(SQLNotFoundError):
         await reference_service.request_reference_enhancement(
             enhancement_request=received_enhancement_request,
-            robot_service=RobotService(uow),
+            robot_service=RobotService(RobotAntiCorruptionService(), uow),
             robot_request_dispatcher=RobotRequestDispatcher(),
         )
 
@@ -268,7 +280,9 @@ async def test_trigger_reference_enhancement_nonexistent_robot(
         robots=fake_repository(),
     )
 
-    reference_service = ReferenceService(uow)
+    reference_service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow
+    )
 
     received_enhancement_request = EnhancementRequest(
         reference_id=reference_id, robot_id=uuid.uuid4(), enhancement_parameters={}
@@ -277,7 +291,7 @@ async def test_trigger_reference_enhancement_nonexistent_robot(
     with pytest.raises(SQLNotFoundError):
         await reference_service.request_reference_enhancement(
             enhancement_request=received_enhancement_request,
-            robot_service=RobotService(uow),
+            robot_service=RobotService(RobotAntiCorruptionService(), uow),
             robot_request_dispatcher=RobotRequestDispatcher(),
         )
 
@@ -295,7 +309,7 @@ async def test_get_enhancement_request_happy_path(fake_repository, fake_uow):
 
     fake_enhancement_requests = fake_repository([existing_enhancement_request])
     uow = fake_uow(enhancement_requests=fake_enhancement_requests)
-    service = ReferenceService(uow)
+    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
 
     returned_enhancement_request = await service.get_enhancement_request(
         enhancement_request_id
@@ -310,7 +324,7 @@ async def test_get_enhancement_request_doesnt_exist(fake_repository, fake_uow):
 
     fake_enhancement_requests = fake_repository()
     uow = fake_uow(enhancement_requests=fake_enhancement_requests)
-    service = ReferenceService(uow)
+    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
 
     with pytest.raises(
         SQLNotFoundError,
@@ -345,13 +359,15 @@ async def test_create_reference_enhancement_from_request_happy_path(
     )
     es_uow = fake_uow(references=fake_reference_repo_es)
 
-    service = ReferenceService(sql_uow=uow, es_uow=es_uow)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository), sql_uow=uow, es_uow=es_uow
+    )
     robot_automation_mock = AsyncMock()
     service._detect_robot_automations = robot_automation_mock  # noqa: SLF001
     enhancement_request = await service.create_reference_enhancement_from_request(
         enhancement_request_id=existing_enhancement_request.id,
         enhancement=enhancement,
-        robot_service=RobotService(uow),
+        robot_service=RobotService(RobotAntiCorruptionService(), uow),
         robot_request_dispatcher=RobotRequestDispatcher(),
     )
 
@@ -399,13 +415,15 @@ async def test_create_valid_derived_reference_enhancement_from_request(
     )
     es_uow = fake_uow(references=fake_reference_repo_es)
 
-    service = ReferenceService(uow, es_uow)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, es_uow
+    )
     robot_automation_mock = AsyncMock()
     service._detect_robot_automations = robot_automation_mock  # noqa: SLF001
     enhancement_request = await service.create_reference_enhancement_from_request(
         enhancement_request_id=existing_enhancement_request.id,
         enhancement=new_enhancement,
-        robot_service=RobotService(uow),
+        robot_service=RobotService(RobotAntiCorruptionService(), uow),
         robot_request_dispatcher=RobotRequestDispatcher(),
     )
 
@@ -448,7 +466,7 @@ async def test_create_invalid_derived_reference_enhancement_from_request(
     derived_from2 = uuid.uuid4()
     derived_enhancement["derived_from"] = [derived_from1, derived_from2]
 
-    service = ReferenceService(uow)
+    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
     with pytest.raises(
         InvalidParentEnhancementError,
         match=rf"Enhancements with ids {{'({derived_from1}|{derived_from2})', "
@@ -457,7 +475,7 @@ async def test_create_invalid_derived_reference_enhancement_from_request(
         await service.create_reference_enhancement_from_request(
             enhancement_request_id=existing_enhancement_request.id,
             enhancement=Enhancement(reference_id=reference_id, **derived_enhancement),
-            robot_service=RobotService(uow),
+            robot_service=RobotService(RobotAntiCorruptionService(), uow),
             robot_request_dispatcher=RobotRequestDispatcher(),
         )
 
@@ -484,7 +502,7 @@ async def test_create_reference_enhancement_from_request_reference_not_found(
         enhancements=fake_enhancement_repo,
     )
 
-    service = ReferenceService(uow)
+    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
 
     with pytest.raises(SQLNotFoundError):
         await service.create_reference_enhancement_from_request(
@@ -492,7 +510,7 @@ async def test_create_reference_enhancement_from_request_reference_not_found(
             enhancement=Enhancement(
                 reference_id=non_existent_reference_id, **fake_enhancement_data
             ),
-            robot_service=RobotService(uow),
+            robot_service=RobotService(RobotAntiCorruptionService(), uow),
             robot_request_dispatcher=RobotRequestDispatcher(),
         )
 
@@ -509,13 +527,13 @@ async def test_create_reference_enhancement_from_request_enhancement_request_not
         enhancements=fake_repository(),
     )
 
-    service = ReferenceService(uow)
+    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
 
     with pytest.raises(SQLNotFoundError):
         await service.create_reference_enhancement_from_request(
             enhancement_request_id=uuid.uuid4(),
             enhancement=Enhancement(reference_id=reference_id, **fake_enhancement_data),
-            robot_service=RobotService(uow),
+            robot_service=RobotService(RobotAntiCorruptionService(), uow),
             robot_request_dispatcher=RobotRequestDispatcher(),
         )
 
@@ -545,7 +563,7 @@ async def test_create_reference_enhancement_from_request_enhancement_for_wrong_r
         enhancements=fake_enhancement_repo,
     )
 
-    service = ReferenceService(uow)
+    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
 
     with pytest.raises(WrongReferenceError):
         await service.create_reference_enhancement_from_request(
@@ -553,7 +571,7 @@ async def test_create_reference_enhancement_from_request_enhancement_for_wrong_r
             enhancement=Enhancement(
                 reference_id=different_reference_id, **fake_enhancement_data
             ),
-            robot_service=RobotService(uow),
+            robot_service=RobotService(RobotAntiCorruptionService(), uow),
             robot_request_dispatcher=RobotRequestDispatcher(),
         )
 
@@ -573,7 +591,7 @@ async def test_mark_enhancement_request_as_failed(fake_repository, fake_uow):
     uow = fake_uow(
         enhancement_requests=fake_enhancement_requests,
     )
-    service = ReferenceService(uow)
+    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
 
     returned_enhancement_request = await service.mark_enhancement_request_failed(
         enhancement_request_id=enhancement_request_id, error="it broke"
@@ -594,7 +612,7 @@ async def test_mark_enhancement_request_as_failed_request_non_existent(
     uow = fake_uow(
         enhancement_requests=fake_repository(),
     )
-    service = ReferenceService(uow)
+    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
 
     with pytest.raises(SQLNotFoundError):
         await service.mark_enhancement_request_failed(
@@ -626,7 +644,7 @@ async def test_register_batch_reference_enhancement_request(fake_repository, fak
         batch_enhancement_requests=fake_batch_requests,
         references=fake_references,
     )
-    service = ReferenceService(uow)
+    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
 
     created_request = await service.register_batch_reference_enhancement_request(
         enhancement_request=batch_enhancement_request
@@ -666,7 +684,7 @@ async def test_register_batch_reference_enhancement_request_missing_pk(
         batch_enhancement_requests=fake_batch_requests,
         references=fake_references,
     )
-    service = ReferenceService(uow)
+    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
 
     with pytest.raises(
         SQLNotFoundError, match=f"{{'{missing_reference_id}'}} not in repository"
@@ -733,7 +751,9 @@ async def test_detect_robot_automations(
     )
     es_uow = fake_uow(robot_automations=fake_robot_automations_repo)
 
-    service = ReferenceService(sql_uow=sql_uow, es_uow=es_uow)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository), sql_uow=sql_uow, es_uow=es_uow
+    )
     results = await service.detect_robot_automations(
         reference_ids=[r.id for r in hydrated_references],
         enhancement_ids=[enhancement.id],

@@ -16,6 +16,9 @@ from app.domain.references.models.models import (
 from app.domain.references.models.validators import (
     BatchEnhancementResultValidator,
 )
+from app.domain.references.services.anti_corruption_service import (
+    ReferenceAntiCorruptionService,
+)
 from app.domain.service import GenericService
 from app.persistence.blob.models import (
     BlobStorageFile,
@@ -28,12 +31,16 @@ logger = get_logger()
 settings = get_settings()
 
 
-class BatchEnhancementService(GenericService):
+class BatchEnhancementService(GenericService[ReferenceAntiCorruptionService]):
     """Service for managing batch enhancements."""
 
-    def __init__(self, sql_uow: AsyncSqlUnitOfWork) -> None:
+    def __init__(
+        self,
+        anti_corruption_service: ReferenceAntiCorruptionService,
+        sql_uow: AsyncSqlUnitOfWork,
+    ) -> None:
         """Initialize the service with a unit of work."""
-        super().__init__(sql_uow)
+        super().__init__(anti_corruption_service, sql_uow)
 
     async def mark_batch_enhancement_request_failed(
         self, batch_enhancement_request_id: UUID4, error: str
@@ -94,8 +101,10 @@ class BatchEnhancementService(GenericService):
             result_file=batch_enhancement_request.result_file.to_sql(),
         )
 
-        return await batch_enhancement_request.to_batch_robot_request_sdk(
-            blob_repository.get_signed_url
+        return (
+            await self._anti_corruption_service.batch_enhancement_request_to_sdk_robot(
+                batch_enhancement_request
+            )
         )
 
     async def process_batch_enhancement_result(
@@ -105,7 +114,7 @@ class BatchEnhancementService(GenericService):
         add_enhancement: Callable[[Enhancement], Awaitable[tuple[bool, str]]],
         # Mutable argument to give caller visibility of imported enhancements
         imported_enhancement_ids: set[UUID4],
-    ) -> AsyncGenerator[BatchRobotResultValidationEntry, None]:
+    ) -> AsyncGenerator[str, None]:
         """
         Validate the result of a batch enhancement request.
 
@@ -139,45 +148,55 @@ class BatchEnhancementService(GenericService):
                         validated_result.robot_error.reference_id
                     )
                     at_least_one_failed = True
-                    yield BatchRobotResultValidationEntry(
-                        reference_id=validated_result.robot_error.reference_id,
-                        error=validated_result.robot_error.message,
-                    )
+                    yield self._anti_corruption_service.batch_robot_result_validation_entry_to_sdk(  # noqa: E501
+                        BatchRobotResultValidationEntry(
+                            reference_id=validated_result.robot_error.reference_id,
+                            error=validated_result.robot_error.message,
+                        )
+                    ).to_jsonl()
                 elif validated_result.parse_failure:
                     at_least_one_failed = True
-                    yield BatchRobotResultValidationEntry(
-                        error=validated_result.parse_failure,
-                    )
+                    yield self._anti_corruption_service.batch_robot_result_validation_entry_to_sdk(  # noqa: E501
+                        BatchRobotResultValidationEntry(
+                            error=validated_result.parse_failure,
+                        )
+                    ).to_jsonl()
                 elif validated_result.enhancement_to_add:
                     attempted_reference_ids.add(
                         validated_result.enhancement_to_add.reference_id
                     )
                     # NB this generates the UUID that we import into the database,
                     # which is handy!
-                    enhancement = await Enhancement.from_sdk(
+                    enhancement = self._anti_corruption_service.enhancement_from_sdk(
                         validated_result.enhancement_to_add
                     )
                     success, message = await add_enhancement(enhancement)
                     if success:
-                        yield BatchRobotResultValidationEntry(
-                            reference_id=validated_result.enhancement_to_add.reference_id,
-                        )
+                        yield self._anti_corruption_service.batch_robot_result_validation_entry_to_sdk(  # noqa: E501
+                            BatchRobotResultValidationEntry(
+                                reference_id=validated_result.enhancement_to_add.reference_id,
+                            )
+                        ).to_jsonl()
                         imported_enhancement_ids.add(enhancement.id)
                         at_least_one_succeeded = True
                     else:
-                        yield BatchRobotResultValidationEntry(
-                            reference_id=validated_result.enhancement_to_add.reference_id,
-                            error=message,
-                        )
+                        yield self._anti_corruption_service.batch_robot_result_validation_entry_to_sdk(  # noqa: E501
+                            BatchRobotResultValidationEntry(
+                                reference_id=validated_result.enhancement_to_add.reference_id,
+                                error=message,
+                            )
+                        ).to_jsonl()
                         at_least_one_failed = True
 
         if missing_reference_ids := (expected_reference_ids - attempted_reference_ids):
             for missing_reference_id in missing_reference_ids:
                 at_least_one_failed = True
-                yield BatchRobotResultValidationEntry(
-                    reference_id=missing_reference_id,
-                    error="Requested reference not in batch enhancement result.",
-                )
+                yield self._anti_corruption_service.batch_robot_result_validation_entry_to_sdk(  # noqa: E501
+                    BatchRobotResultValidationEntry(
+                        reference_id=missing_reference_id,
+                        error="Requested reference not in batch enhancement result.",
+                    )
+                ).to_jsonl()
 
         await self.finalize_batch_enhancement_request(
             batch_enhancement_request,

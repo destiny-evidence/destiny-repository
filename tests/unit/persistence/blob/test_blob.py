@@ -8,7 +8,6 @@ from unittest.mock import patch
 
 import pytest
 
-from app.domain.base import SDKJsonlMixin
 from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.models import (
     BlobSignedUrlType,
@@ -70,16 +69,8 @@ async def test_get_signed_url():
 
 @pytest.mark.asyncio
 async def test_filestream_stream_and_read_fn():
-    class DummySDK:
-        def to_jsonl(self):
-            return '{"foo": "bar"}'
-
-    class Dummy(SDKJsonlMixin):
-        async def to_sdk(self):
-            return DummySDK()
-
     async def fake_fn(_dummy):
-        return Dummy()
+        return '{"foo": "bar"}\n{"foo": "bar"}\n{"foo": "bar"}'
 
     fs = FileStream(
         fn=fake_fn,
@@ -92,24 +83,16 @@ async def test_filestream_stream_and_read_fn():
 
 @pytest.mark.asyncio
 async def test_filestream_stream_and_read_gen():
-    class DummySDK:
-        def to_jsonl(self):
-            return '{"foo": "bar"}'
-
-    class Dummy(SDKJsonlMixin):
-        async def to_sdk(self):
-            return DummySDK()
-
     async def fake_gen():
-        yield Dummy()
-        yield Dummy()
+        yield '{"foo": "bar"}'
+        yield '{"foo": "bar2"}'
 
     fs = FileStream(
         generator=fake_gen(),
     )
     # Test read (implicitly tests stream also)
     result = await fs.read()
-    assert b'{"foo": "bar"}\n{"foo": "bar"}' in result.getvalue()
+    assert b'{"foo": "bar"}\n{"foo": "bar2"}' in result.getvalue()
 
 
 @pytest.mark.parametrize(

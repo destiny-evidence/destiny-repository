@@ -33,16 +33,21 @@ def sql_unit_of_work(
     return AsyncSqlUnitOfWork(session=session)
 
 
-def robot_service(
-    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
-) -> RobotService:
-    """Return the robot service using the provided unit of work dependencies."""
-    return RobotService(sql_uow=sql_uow)
-
-
 def robot_anti_corruption_service() -> RobotAntiCorruptionService:
     """Return the robot anti-corruption service."""
     return RobotAntiCorruptionService()
+
+
+def robot_service(
+    anti_corruption_service: Annotated[
+        RobotAntiCorruptionService, Depends(robot_anti_corruption_service)
+    ],
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
+) -> RobotService:
+    """Return the robot service using the provided unit of work dependencies."""
+    return RobotService(
+        anti_corruption_service=anti_corruption_service, sql_uow=sql_uow
+    )
 
 
 def choose_auth_strategy_robot_writer() -> AuthMethod:
