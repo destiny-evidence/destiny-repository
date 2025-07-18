@@ -16,4 +16,4 @@ DESTINY Climate and Health Repository
    codebase/codebase
    sdk/sdk
    cli/cli
-   API <https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/docs>
+   API <https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc>

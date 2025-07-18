@@ -1,3 +1,5 @@
+resource "random_uuid" "administrator_role" {}
+
 resource "random_uuid" "importer_role" {}
 
 resource "random_uuid" "reference_reader_role" {}
@@ -12,6 +14,15 @@ resource "azuread_application_registration" "destiny_repository" {
   display_name                   = local.name
   sign_in_audience               = "AzureADMyOrg"
   requested_access_token_version = 1
+}
+
+resource "azuread_application_app_role" "administrator" {
+  application_id       = azuread_application_registration.destiny_repository.id
+  allowed_member_types = ["User", "Application"]
+  description          = "Can manage the repository itself"
+  display_name         = "Administrator"
+  role_id              = random_uuid.administrator_role.result
+  value                = "administrator"
 }
 
 resource "azuread_application_app_role" "importer" {
@@ -99,6 +110,7 @@ resource "azuread_application_api_access" "destiny_repository_auth" {
   api_client_id  = azuread_application_registration.destiny_repository.client_id
 
   role_ids = [
+    azuread_application_app_role.administrator.role_id,
     azuread_application_app_role.importer.role_id,
     azuread_application_app_role.reference_reader.role_id,
     azuread_application_app_role.reference_writer.role_id,

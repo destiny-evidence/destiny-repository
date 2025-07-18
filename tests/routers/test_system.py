@@ -9,7 +9,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.persistence.es.client import get_client
 from app.persistence.sql.session import get_session
-from app.utils import healthcheck
+from app.system import routes
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def app() -> FastAPI:
 
     """
     app = FastAPI(title="Test Healthcheck")
-    app.include_router(healthcheck.router)
+    app.include_router(routes.router)
     return app
 
 
@@ -61,7 +61,7 @@ async def test_healthcheck_success(app: FastAPI, client: AsyncClient) -> None:
     app.dependency_overrides[get_session] = mock_get_session
     app.dependency_overrides[get_client] = mock_get_es_client
     response = await client.get(
-        "/healthcheck/",
+        "/system/healthcheck/",
         params={"database": True, "worker": False, "azure_blob_storage": False},
     )
 
@@ -86,7 +86,7 @@ async def test_healthcheck_db_failure(app: FastAPI, client: AsyncClient) -> None
     app.dependency_overrides[get_session] = mock_get_session
     app.dependency_overrides[get_client] = mock_get_es_client
     response = await client.get(
-        "/healthcheck/",
+        "/system/healthcheck/",
         params={"database": True, "worker": False, "azure_blob_storage": False},
     )
 
@@ -111,7 +111,7 @@ async def test_healthcheck_es_failure(app: FastAPI, client: AsyncClient) -> None
     app.dependency_overrides[get_session] = mock_get_session
     app.dependency_overrides[get_client] = mock_get_es_client
     response = await client.get(
-        "/healthcheck/",
+        "/system/healthcheck/",
         params={"database": True, "worker": False, "azure_blob_storage": False},
     )
 

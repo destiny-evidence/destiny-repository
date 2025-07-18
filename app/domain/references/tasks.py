@@ -7,7 +7,6 @@ from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import get_logger
-from app.domain.references.models.es import ReferenceDocument
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
     BatchEnhancementRequestStatus,
@@ -204,9 +203,9 @@ async def validate_and_import_batch_enhancement_result(
 
 
 @broker.task
-async def rebuild_reference_index() -> None:
+async def repair_reference_index() -> None:
     """Async logic for rebuilding the reference index."""
-    logger.info("Rebuilding reference index")
+    logger.info("Repairing reference index")
     sql_uow = await get_sql_unit_of_work()
     es_uow = await get_es_unit_of_work()
     blob_repository = await get_blob_repository()
@@ -214,11 +213,22 @@ async def rebuild_reference_index() -> None:
     reference_service = await get_reference_service(
         reference_anti_corruption_service, sql_uow, es_uow
     )
-    async with es_manager.client() as client:
-        await ReferenceDocument._index.delete(using=client)  # noqa: SLF001
-        await ReferenceDocument.init(using=client)
-
     await reference_service.repopulate_reference_index()
+
+
+@broker.task
+async def repair_robot_automation_percolation_index() -> None:
+    """Async logic for rebuilding the robot automation percolation index."""
+    logger.info("Repairing robot automation percolation index")
+    sql_uow = await get_sql_unit_of_work()
+    es_uow = await get_es_unit_of_work()
+    blob_repository = await get_blob_repository()
+    reference_anti_corruption_service = ReferenceAntiCorruptionService(blob_repository)
+    reference_service = await get_reference_service(
+        reference_anti_corruption_service, sql_uow, es_uow
+    )
+
+    await reference_service.repopulate_robot_automation_percolation_index()
 
 
 async def detect_and_dispatch_robot_automations(

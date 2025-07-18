@@ -121,6 +121,31 @@ class GenericAsyncSqlRepository(
 
         return [ref.to_domain(preload=preload) for ref in db_references]
 
+    async def get_all(
+        self, preload: list[str] | None = None
+    ) -> list[GenericDomainModelType]:
+        """
+        Get all records in the repository.
+
+        This method should be used sparingly!
+
+        Args:
+        - preload (list[str]): A list of attributes to preload using a join.
+
+        Returns:
+        - list[GenericDomainModelType]: A list of domain models.
+
+        """
+        options = []
+        if preload:
+            for p in preload:
+                relationship = getattr(self._persistence_cls, p)
+                options.append(joinedload(relationship))
+
+        query = select(self._persistence_cls).options(*options)
+        result = await self._session.execute(query)
+        return [ref.to_domain(preload=preload) for ref in result.scalars().all()]
+
     async def verify_pk_existence(self, pks: list[UUID4]) -> None:
         """
         Check if every pk exists in the database.

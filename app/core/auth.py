@@ -42,6 +42,7 @@ security = HTTPBearer(auto_error=False)
 class AuthScopes(StrEnum):
     """Enum describing the available auth scopes that we understand."""
 
+    ADMINISTRATOR = "administrator"
     IMPORT = "import"
     REFERENCE_READER = "reference.reader"
     REFERENCE_WRITER = "reference.writer"
