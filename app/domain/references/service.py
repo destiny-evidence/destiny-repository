@@ -327,7 +327,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         robot_service: RobotService,
         robot_request_dispatcher: RobotRequestDispatcher,
     ) -> EnhancementRequest:
-        """Wrap the requesting of an enhancement in an sql unit of work."""
+        """Create an enhancement request and send it to the robot."""
         reference, robot = await self.register_enhancement_request(
             enhancement_request=enhancement_request,
             robot_service=robot_service,

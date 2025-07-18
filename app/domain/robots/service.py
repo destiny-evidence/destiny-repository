@@ -24,8 +24,7 @@ class RobotService(GenericService[RobotAntiCorruptionService]):
         sql_uow: AsyncSqlUnitOfWork,
     ) -> None:
         """Initialize the robots."""
-        self._anti_corruption_service = anti_corruption_service
-        self.sql_uow = sql_uow
+        super().__init__(anti_corruption_service, sql_uow)
 
     async def get_robot(self, robot_id: UUID4) -> Robot:
         """Return a given robot."""
