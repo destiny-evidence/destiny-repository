@@ -156,36 +156,6 @@ async def get_reference_from_identifier(
 
 
 @router.post(
-    "/",
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(reference_writer_auth)],
-)
-async def register_reference(
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-) -> destiny_sdk.references.Reference:
-    """Create a reference."""
-    reference = await reference_service.register_reference()
-    return await reference.to_sdk()
-
-
-@router.post(
-    "/{reference_id}/identifier/",
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(reference_writer_auth)],
-)
-async def add_identifier(
-    reference_id: Annotated[uuid.UUID, Path(description="The ID of the reference.")],
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    external_identifier: destiny_sdk.identifiers.ExternalIdentifier,
-) -> destiny_sdk.identifiers.LinkedExternalIdentifier:
-    """Add an identifier to a reference."""
-    identifier = await reference_service.add_identifier(
-        reference_id, external_identifier
-    )
-    return await identifier.to_sdk()
-
-
-@router.post(
     "/enhancement/single/",
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(reference_writer_auth)],
