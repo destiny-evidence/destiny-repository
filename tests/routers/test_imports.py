@@ -96,7 +96,7 @@ async def test_create_import(session: AsyncSession, client: AsyncClient) -> None
         "source_name": "OpenAlex",
     }
 
-    response = await client.post("/v1/imports/record/", json=import_params)
+    response = await client.post("/v1/imports/records/", json=import_params)
 
     assert response.status_code == status.HTTP_201_CREATED
     assert response.json().items() >= {**import_params}.items()
@@ -126,14 +126,14 @@ async def test_get_import(
     """Test that we can read an import from the database."""
     session.add(valid_import)
     await session.commit()
-    response = await client.get(f"/v1/imports/record/{valid_import.id}/")
+    response = await client.get(f"/v1/imports/records/{valid_import.id}/")
     assert response.json()["id"] == str(valid_import.id)
 
 
 async def test_get_missing_import(client: AsyncClient) -> None:
     """Test that we return a 404 when we can't find an import record."""
     response = await client.get(
-        "/v1/imports/record/2526e938-b27c-44c2-887e-3bbe1c8e898a/"
+        "/v1/imports/records/2526e938-b27c-44c2-887e-3bbe1c8e898a/"
     )
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert (
@@ -170,7 +170,7 @@ async def test_create_batch_for_import(
 
     batch_params = {"storage_url": "https://example.com/batch_data.json"}
     response = await client.post(
-        f"/v1/imports/record/{valid_import.id}/batch/", json=batch_params
+        f"/v1/imports/records/{valid_import.id}/batches/", json=batch_params
     )
     assert response.status_code == status.HTTP_202_ACCEPTED
     assert response.json()["import_record_id"] == str(valid_import.id)
@@ -291,7 +291,7 @@ async def test_get_batches(
     session.add(batch2)
     await session.commit()
 
-    response = await client.get(f"/v1/imports/record/{valid_import.id}/batch/")
+    response = await client.get(f"/v1/imports/records/{valid_import.id}/batches/")
     assert response.status_code == status.HTTP_200_OK
     assert len(response.json()) == 2
 
@@ -329,7 +329,9 @@ async def test_get_import_batch_summary(
     session.add(result3)
     await session.commit()
 
-    response = await client.get(f"/v1/imports/batch/{batch.id}/summary/")
+    response = await client.get(
+        f"/v1/imports/records/{valid_import.id}/batches/{batch.id}/summary/"
+    )
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["id"] == str(batch.id)
     assert response.json()["results"] == {
@@ -379,11 +381,13 @@ async def test_get_import_results(
     session.add(result3)
     await session.commit()
 
-    response = await client.get(f"/v1/imports/batch/{batch.id}/results/")
+    response = await client.get(
+        f"/v1/imports/records/{valid_import.id}/batches/{batch.id}/results/"
+    )
     assert response.status_code == status.HTTP_200_OK
     assert len(response.json()) == 3
     response = await client.get(
-        f"/v1/imports/batch/{batch.id}/results/?result_status=failed"
+        f"/v1/imports/records/{valid_import.id}/batches/{batch.id}/results/?result_status=failed"
     )
     assert response.status_code == status.HTTP_200_OK
     assert len(response.json()) == 1
@@ -411,7 +415,7 @@ async def test_auth_failure(
     }
 
     response = await client.post(
-        "/v1/imports/record/",
+        "/v1/imports/records/",
         json=import_params,
         headers={"Authorization": "Bearer Nonsense-token"},
     )
@@ -444,7 +448,7 @@ async def test_missing_auth(
     }
 
     response = await client.post(
-        "/v1/imports/record/",
+        "/v1/imports/records/",
         json=import_params,
     )
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -452,3 +456,15 @@ async def test_missing_auth(
 
     imports.import_auth.reset()
     imports.settings.__init__()  # type: ignore[call-args, misc]
+
+
+async def test_missing_import_record(
+    client: AsyncClient, session: AsyncSession, valid_import: SQLImportRecord
+) -> None:
+    """Test that we return a 404 when we try to access batches for a missing record."""
+    session.add(valid_import)
+    await session.commit()
+
+    response = await client.get(f"/v1/imports/records/{(_id:=uuid.uuid4())}/batches/")
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["detail"] == f"ImportRecord with id {_id} does not exist."
