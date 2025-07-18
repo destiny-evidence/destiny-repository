@@ -7,20 +7,19 @@ import pytest
 
 from app.core.exceptions import SDKToDomainError
 from app.domain.references.models.models import (
-    Enhancement,
-    EnhancementRequest,
     GenericExternalIdentifier,
-    LinkedExternalIdentifier,
-    Reference,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
+from app.domain.references.services.anti_corruption_service import (
+    ReferenceAntiCorruptionService,
+)
 
 
 async def test_generic_external_identifier_from_specific_without_other():
     doi = destiny_sdk.identifiers.DOIIdentifier(
         identifier="10.1000/abc123", identifier_type="doi"
     )
-    gen = await GenericExternalIdentifier.from_specific(doi)
+    gen = GenericExternalIdentifier.from_specific(doi)
     assert gen.identifier == "10.1000/abc123"
     assert gen.identifier_type == "doi"
     assert gen.other_identifier_name is None
@@ -30,7 +29,7 @@ async def test_generic_external_identifier_from_specific_with_other():
     other = destiny_sdk.identifiers.OtherIdentifier(
         identifier="123", identifier_type="other", other_identifier_name="isbn"
     )
-    gen = await GenericExternalIdentifier.from_specific(other)
+    gen = GenericExternalIdentifier.from_specific(other)
     assert gen.identifier == "123"
     assert gen.identifier_type == "other"
     assert gen.other_identifier_name == "isbn"
@@ -47,41 +46,52 @@ def test_reference_create_result_error_str_multiple():
     assert result.error_str == "first error\n\nsecond error"
 
 
-async def test_linked_external_identifier_roundtrip():
+@pytest.fixture
+def anti_corruption_service(fake_repository) -> ReferenceAntiCorruptionService:
+    return ReferenceAntiCorruptionService(fake_repository)
+
+
+async def test_linked_external_identifier_roundtrip(
+    anti_corruption_service,
+):
     sdk_id = destiny_sdk.identifiers.PubMedIdentifier(
         identifier=1234, identifier_type="pm_id"
     )
     sdk_linked = destiny_sdk.identifiers.LinkedExternalIdentifier(
         identifier=sdk_id, reference_id=(u := uuid.uuid4())
     )
-    domain = await LinkedExternalIdentifier.from_sdk(sdk_linked)
+    domain = anti_corruption_service.external_identifier_from_sdk(sdk_linked)
     assert domain.identifier == sdk_id
     assert domain.reference_id == u
 
-    back = await domain.to_sdk()
+    back = anti_corruption_service.external_identifier_to_sdk(domain)
     assert isinstance(back, destiny_sdk.identifiers.LinkedExternalIdentifier)
     assert back.reference_id == sdk_linked.reference_id
     assert back.identifier == sdk_id
 
 
-async def test_enhancement_request_roundtrip():
+async def test_enhancement_request_roundtrip(
+    anti_corruption_service: ReferenceAntiCorruptionService,
+):
     rid = uuid.uuid4()
     req_in = destiny_sdk.robots.EnhancementRequestIn(
         reference_id=rid, robot_id=rid, enhancement_parameters={"param": 42}
     )
-    domain = await EnhancementRequest.from_sdk(req_in)
+    domain = anti_corruption_service.enhancement_request_from_sdk(req_in)
     assert domain.reference_id == rid
     assert domain.robot_id == rid
     assert domain.enhancement_parameters == {"param": 42}
 
-    sdk_read = await domain.to_sdk()
+    sdk_read = anti_corruption_service.enhancement_request_to_sdk(domain)
     assert isinstance(sdk_read, destiny_sdk.robots.EnhancementRequestRead)
     assert sdk_read.reference_id == rid
     assert sdk_read.robot_id == rid
     assert sdk_read.enhancement_parameters == {"param": 42}
 
 
-async def test_enhancement_unserializable_failure():
+async def test_enhancement_unserializable_failure(
+    anti_corruption_service: ReferenceAntiCorruptionService,
+):
     """Test that an enhancement with unserializable parameters raises an error."""
     dodgy_enhancement = destiny_sdk.enhancements.LocationEnhancement(
         locations=[
@@ -94,7 +104,7 @@ async def test_enhancement_unserializable_failure():
         ],
     )
     with pytest.raises(SDKToDomainError):
-        await Enhancement.from_sdk(
+        anti_corruption_service.enhancement_from_sdk(
             destiny_sdk.enhancements.Enhancement(
                 reference_id=uuid.uuid4(),
                 source="dummy",
@@ -104,7 +114,7 @@ async def test_enhancement_unserializable_failure():
         )
 
     with pytest.raises(SDKToDomainError):
-        await Reference.from_file_input(
+        anti_corruption_service.reference_from_sdk_file_input(
             destiny_sdk.references.ReferenceFileInput(
                 identifiers=[
                     destiny_sdk.identifiers.DOIIdentifier(

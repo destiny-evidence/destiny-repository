@@ -1,4 +1,9 @@
-"""Pydantic models and adapters used to validate reference data."""
+"""
+Pydantic models and adapters used to validate reference data.
+
+A validator differs from an anti-corruption service in that it returns
+information about the parsing process as well as the converted data.
+"""
 
 import json
 from typing import Self

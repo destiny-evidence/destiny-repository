@@ -11,6 +11,7 @@ from app.domain.references.models.models import (
     BatchRobotResultValidationEntry,
     Enhancement,
     EnhancementRequest,
+    ExternalIdentifierAdapter,
     LinkedExternalIdentifier,
     Reference,
     RobotAutomation,
@@ -28,7 +29,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         self._blob_repository = blob_repository
         super().__init__()
 
-    def reference_from_file_input(
+    def reference_from_sdk_file_input(
         self,
         data: destiny_sdk.references.ReferenceFileInput,
         reference_id: uuid.UUID | None = None,
@@ -63,8 +64,17 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     ) -> destiny_sdk.references.Reference:
         """Convert the reference to a Reference SDK model."""
         try:
-            return destiny_sdk.references.Reference.model_validate(
-                reference.model_dump()
+            return destiny_sdk.references.Reference(
+                id=reference.id,
+                visibility=reference.visibility,
+                identifiers=[
+                    self.external_identifier_to_sdk(identifier).identifier
+                    for identifier in reference.identifiers or []
+                ],
+                enhancements=[
+                    self.enhancement_to_sdk(enhancement)
+                    for enhancement in reference.enhancements or []
+                ],
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
@@ -74,8 +84,11 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     ) -> destiny_sdk.identifiers.LinkedExternalIdentifier:
         """Convert the external identifier to a LinkedExternalIdentifier SDK model."""
         try:
-            return destiny_sdk.identifiers.LinkedExternalIdentifier.model_validate(
-                identifier.model_dump()
+            return destiny_sdk.identifiers.LinkedExternalIdentifier(
+                identifier=ExternalIdentifierAdapter.validate_python(
+                    identifier.identifier
+                ),
+                reference_id=identifier.reference_id,
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
