@@ -223,7 +223,7 @@ async def test_get_all_robots_happy_path(
     session.add(robot_2)
     await session.commit()
 
-    response = await client.get("/robots/")
+    response = await client.get("/v1/robots/")
 
     assert response.status_code == status.HTTP_200_OK
     assert len(response.json()) == 2
