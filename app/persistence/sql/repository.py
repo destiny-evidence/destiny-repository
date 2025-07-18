@@ -144,7 +144,7 @@ class GenericAsyncSqlRepository(
 
         query = select(self._persistence_cls).options(*options)
         result = await self._session.execute(query)
-        return [await ref.to_domain(preload=preload) for ref in result.scalars().all()]
+        return [ref.to_domain(preload=preload) for ref in result.scalars().all()]
 
     async def verify_pk_existence(self, pks: list[UUID4]) -> None:
         """
