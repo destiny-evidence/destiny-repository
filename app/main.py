@@ -21,6 +21,9 @@ from app.core.exceptions import (
 )
 from app.core.logger import configure_logger, get_logger
 from app.domain.imports.routes import router as import_router_v1
+from app.domain.references.routes import (
+    enhancement_request_router as enhancement_request_router_v1,
+)
 from app.domain.references.routes import reference_router as reference_router_v1
 from app.domain.robots.routes import router as robot_management_router_v1
 from app.persistence.es.client import es_manager
@@ -51,6 +54,7 @@ app = FastAPI(title="DESTINY Climate and Health Repository", lifespan=lifespan)
 
 api_v1 = APIRouter(prefix="/v1", tags=["v1"])
 api_v1.include_router(import_router_v1)
+api_v1.include_router(enhancement_request_router_v1)
 api_v1.include_router(reference_router_v1)
 api_v1.include_router(robot_management_router_v1)
 api_v1.include_router(system_utilities_router_v1)

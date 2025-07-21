@@ -163,22 +163,22 @@ async def robot_auth(
 
 reference_router = APIRouter(prefix="/references", tags=["references"])
 enhancement_request_router = APIRouter(
-    prefix="/enhancement-requests/",
+    prefix="/enhancement-requests",
     tags=["enhancement-requests"],
     dependencies=[Depends(enhancement_request_writer_auth)],
 )
 single_enhancement_request_router = APIRouter(
-    prefix="/single-requests/",
+    prefix="/single-requests",
     tags=["single-enhancement-requests"],
     dependencies=[Depends(enhancement_request_writer_auth)],
 )
 batch_enhancement_request_router = APIRouter(
-    prefix="/batch-requests/",
+    prefix="/batch-requests",
     tags=["batch-enhancement-requests"],
     dependencies=[Depends(enhancement_request_writer_auth)],
 )
 enhancement_request_automation_router = APIRouter(
-    prefix="/automations/",
+    prefix="/automations",
     tags=["automated-enhancement-requests"],
     dependencies=[Depends(enhancement_request_writer_auth)],
 )
@@ -416,7 +416,6 @@ async def fulfill_batch_enhancement_request(
     path="/", status_code=status.HTTP_201_CREATED
 )
 async def add_robot_automation(
-    robot_id: uuid.UUID,
     robot_automation: destiny_sdk.robots.RobotAutomationIn,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     robot_service: Annotated[RobotService, Depends(robot_service)],
@@ -425,9 +424,7 @@ async def add_robot_automation(
     ],
 ) -> destiny_sdk.robots.RobotAutomation:
     """Add a robot automation."""
-    automation = anti_corruption_service.robot_automation_from_sdk(
-        robot_automation, robot_id
-    )
+    automation = anti_corruption_service.robot_automation_from_sdk(robot_automation)
     added_automation = await reference_service.add_robot_automation(
         robot_service=robot_service, automation=automation
     )

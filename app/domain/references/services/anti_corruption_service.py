@@ -248,12 +248,11 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     def robot_automation_from_sdk(
         self,
         robot_automation_in: destiny_sdk.robots.RobotAutomationIn,
-        robot_id: uuid.UUID,
     ) -> RobotAutomation:
         """Create a RobotAutomation from the SDK model."""
         try:
             robot_automation = RobotAutomation.model_validate(
-                robot_automation_in.model_dump() | {"robot_id": robot_id}
+                robot_automation_in.model_dump()
             )
             robot_automation.check_serializability()
         except ValidationError as exception:
