@@ -391,6 +391,7 @@ resource "ec_deployment" "cluster" {
       zone_count    = 2
       autoscaling = {
         min_size          = "2g"
+        min_size_resource = "memory"
         max_size          = "30g"
         min_storage_in_gb = 70
         max_storage_in_gb = 280
