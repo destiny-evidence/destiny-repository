@@ -46,6 +46,7 @@ class AuthScopes(StrEnum):
     IMPORT = "import"
     REFERENCE_READER = "reference.reader"
     REFERENCE_WRITER = "reference.writer"
+    ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer"
     ROBOT_WRITER = "robot.writer"
 
 

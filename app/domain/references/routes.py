@@ -1,11 +1,11 @@
-"""Router for handling management of references."""
+"""reference_router for handling management of references."""
 
 import uuid
 from typing import Annotated
 
 import destiny_sdk
 from elasticsearch import AsyncElasticsearch
-from fastapi import APIRouter, Depends, Path, Request, status
+from fastapi import APIRouter, Depends, Path, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import (
@@ -128,12 +128,26 @@ def choose_auth_strategy_writer() -> AuthMethod:
     )
 
 
+def choose_auth_strategy_enhancement_request_writer() -> AuthMethod:
+    """Choose enhancement request writer scope auth strategy for our authorization."""
+    return choose_auth_strategy(
+        tenant_id=settings.azure_tenant_id,
+        application_id=settings.azure_application_id,
+        auth_scope=AuthScopes.ENHANCEMENT_REQUEST_WRITER,
+        bypass_auth=settings.running_locally,
+    )
+
+
 reference_reader_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_reader,
 )
 
 reference_writer_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_writer,
+)
+
+enhancement_request_writer_auth = CachingStrategyAuth(
+    selector=choose_auth_strategy_enhancement_request_writer
 )
 
 
@@ -147,13 +161,30 @@ async def robot_auth(
     )(request)
 
 
-router = APIRouter(prefix="/references", tags=["references"])
-robot_router = APIRouter(
-    prefix="/robot", tags=["robots"], dependencies=[Depends(robot_auth)]
+reference_router = APIRouter(prefix="/references", tags=["references"])
+enhancement_request_router = APIRouter(
+    prefix="/enhancement-requests/",
+    tags=["enhancement-requests"],
+    dependencies=[Depends(enhancement_request_writer_auth)],
+)
+single_enhancement_request_router = APIRouter(
+    prefix="/single-requests/",
+    tags=["single-enhancement-requests"],
+    dependencies=[Depends(enhancement_request_writer_auth)],
+)
+batch_enhancement_request_router = APIRouter(
+    prefix="/batch-requests/",
+    tags=["batch-enhancement-requests"],
+    dependencies=[Depends(enhancement_request_writer_auth)],
+)
+enhancement_request_automation_router = APIRouter(
+    prefix="/automations/",
+    tags=["automated-enhancement-requests"],
+    dependencies=[Depends(enhancement_request_writer_auth)],
 )
 
 
-@router.get("/{reference_id}/", dependencies=[Depends(reference_reader_auth)])
+@reference_router.get("/{reference_id}/", dependencies=[Depends(reference_reader_auth)])
 async def get_reference(
     reference_id: Annotated[uuid.UUID, Path(description="The ID of the reference.")],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
@@ -166,7 +197,7 @@ async def get_reference(
     return anti_corruption_service.reference_to_sdk(reference)
 
 
-@router.get("/", dependencies=[Depends(reference_reader_auth)])
+@reference_router.get("/", dependencies=[Depends(reference_reader_auth)])
 async def get_reference_from_identifier(
     identifier: str,
     identifier_type: destiny_sdk.identifiers.ExternalIdentifierType,
@@ -188,10 +219,9 @@ async def get_reference_from_identifier(
     return anti_corruption_service.reference_to_sdk(reference)
 
 
-@router.post(
-    "/enhancement/single/",
+@single_enhancement_request_router.post(
+    "/",
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(reference_writer_auth)],
 )
 async def request_enhancement(
     enhancement_request_in: destiny_sdk.robots.EnhancementRequestIn,
@@ -216,10 +246,9 @@ async def request_enhancement(
     return anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
 
 
-@router.post(
-    "/enhancement/batch/",
+@batch_enhancement_request_router.post(
+    "/",
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(reference_writer_auth)],
 )
 async def request_batch_enhancement(
     enhancement_request_in: destiny_sdk.robots.BatchEnhancementRequestIn,
@@ -247,9 +276,8 @@ async def request_batch_enhancement(
     )
 
 
-@router.get(
-    "/enhancement/single/request/{enhancement_request_id}/",
-    dependencies=[Depends(reference_writer_auth)],
+@single_enhancement_request_router.get(
+    "/{enhancement_request_id}/",
 )
 async def check_enhancement_request_status(
     enhancement_request_id: Annotated[
@@ -268,9 +296,8 @@ async def check_enhancement_request_status(
     return anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
 
 
-@router.get(
-    "/enhancement/batch/request/{batch_enhancement_request_id}/",
-    dependencies=[Depends(reference_writer_auth)],
+@batch_enhancement_request_router.get(
+    "/{batch_enhancement_request_id}/",
 )
 async def check_batch_enhancement_request_status(
     batch_enhancement_request_id: Annotated[
@@ -291,7 +318,9 @@ async def check_batch_enhancement_request_status(
     )
 
 
-@robot_router.post("/enhancement/single/", status_code=status.HTTP_200_OK)
+@single_enhancement_request_router.post(
+    "/{enhancement_request_id}/results/", status_code=status.HTTP_201_CREATED
+)
 async def fulfill_enhancement_request(
     robot_result: destiny_sdk.robots.RobotResult,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
@@ -302,6 +331,7 @@ async def fulfill_enhancement_request(
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
+    response: Response,
 ) -> destiny_sdk.robots.EnhancementRequestRead:
     """Create an enhancement against an existing enhancement request."""
     if robot_result.error:
@@ -309,6 +339,7 @@ async def fulfill_enhancement_request(
             enhancement_request_id=robot_result.request_id,
             error=robot_result.error.message,
         )
+        response.status_code = status.HTTP_200_OK
         return anti_corruption_service.enhancement_request_to_sdk(
             enhancement_request=enhancement_request
         )
@@ -317,6 +348,7 @@ async def fulfill_enhancement_request(
             enhancement_request_id=robot_result.request_id,
             error="No enhancement received.",
         )
+        response.status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
         return anti_corruption_service.enhancement_request_to_sdk(
             enhancement_request=enhancement_request
         )
@@ -335,9 +367,9 @@ async def fulfill_enhancement_request(
     return anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
 
 
-@robot_router.post(
-    "/enhancement/batch/",
-    status_code=status.HTTP_200_OK,
+@batch_enhancement_request_router.post(
+    "/{batch_enhancement_request_id}/results/",
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def fulfill_batch_enhancement_request(
     robot_result: destiny_sdk.robots.BatchRobotResult,
@@ -345,6 +377,7 @@ async def fulfill_batch_enhancement_request(
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
+    response: Response,
 ) -> destiny_sdk.robots.BatchEnhancementRequestRead:
     """Receive the robot result and kick off importing the enhancements."""
     logger.info(
@@ -358,6 +391,7 @@ async def fulfill_batch_enhancement_request(
                 error=robot_result.error.message,
             )
         )
+        response.status_code = status.HTTP_200_OK
         return await anti_corruption_service.batch_enhancement_request_to_sdk(
             batch_enhancement_request
         )
@@ -378,7 +412,9 @@ async def fulfill_batch_enhancement_request(
     )
 
 
-@robot_router.post(path="/{robot_id}/automation/", status_code=status.HTTP_201_CREATED)
+@enhancement_request_automation_router.post(
+    path="/", status_code=status.HTTP_201_CREATED
+)
 async def add_robot_automation(
     robot_id: uuid.UUID,
     robot_automation: destiny_sdk.robots.RobotAutomationIn,
@@ -396,3 +432,8 @@ async def add_robot_automation(
         robot_service=robot_service, automation=automation
     )
     return anti_corruption_service.robot_automation_to_sdk(added_automation)
+
+
+enhancement_request_router.include_router(single_enhancement_request_router)
+enhancement_request_router.include_router(batch_enhancement_request_router)
+enhancement_request_router.include_router(enhancement_request_automation_router)

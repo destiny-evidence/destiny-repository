@@ -8,6 +8,8 @@ resource "random_uuid" "reference_writer_role" {}
 
 resource "random_uuid" "robot_writer_role" {}
 
+resource "random_uuid" "enhancement_request_writer_role" {}
+
 # App registration for destiny repository
 # App roles to allow various functions (i.e. imports) should be added as app role resources here
 resource "azuread_application_registration" "destiny_repository" {
@@ -61,6 +63,15 @@ resource "azuread_application_app_role" "robot_writer" {
   value                = "robot.writer"
 }
 
+resource "azuread_application_app_role" "enhancement_request_writer" {
+  application_id       = azuread_application_registration.destiny_repository.id
+  allowed_member_types = ["User", "Application"]
+  description          = "Can request enhancements"
+  display_name         = "Enhancement Request Writer"
+  role_id              = random_uuid.enhancement_request_writer_role.result
+  value                = "enhancement-request.writer"
+}
+
 resource "azuread_service_principal" "destiny_repository" {
   client_id                    = azuread_application_registration.destiny_repository.client_id
   app_role_assignment_required = true
@@ -98,6 +109,13 @@ resource "azuread_app_role_assignment" "developer_to_robot_writer" {
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
 }
 
+resource "azuread_app_role_assignment" "developer_to_enhancement_request_writer" {
+  app_role_id         = azuread_application_app_role.enhancement_request_writer.role_id
+  principal_object_id = var.developers_group_id
+  resource_object_id  = azuread_service_principal.destiny_repository.object_id
+}
+
+
 # Create an application that we can use to authenticate with the Destiny Repository
 resource "azuread_application_registration" "destiny_repository_auth" {
   display_name                   = "${local.name}-auth-client"
@@ -114,6 +132,7 @@ resource "azuread_application_api_access" "destiny_repository_auth" {
     azuread_application_app_role.importer.role_id,
     azuread_application_app_role.reference_reader.role_id,
     azuread_application_app_role.reference_writer.role_id,
+    azuread_application_app_role.enhancement_request_writer.role_id,
     azuread_application_app_role.robot_writer.role_id
   ]
 }
