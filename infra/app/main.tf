@@ -385,16 +385,15 @@ resource "ec_deployment" "cluster" {
   deployment_template_id = "azure-general-purpose"
 
   elasticsearch = {
+    autoscale = false
+
     hot = {
-      size          = "2g"
-      size_resource = "memory"
-      zone_count    = 2
+      size = "2g"
       autoscaling = {
-        min_size          = "2g"
+        max_size = "30g"
+        max_size_resource = "memory"
+        min_size = "2g"
         min_size_resource = "memory"
-        max_size          = "30g"
-        min_storage_in_gb = 70
-        max_storage_in_gb = 280
       }
     }
   }
@@ -409,10 +408,6 @@ resource "ec_deployment" "cluster" {
 
   lifecycle {
     prevent_destroy = true
-    # ignore future modifications that can be made by the autoscaler
-    ignore_changes = [
-      elasticsearch.hot.size
-    ]
   }
 }
 
