@@ -1,4 +1,4 @@
-"""Routes for handling management of references."""
+"""Router for handling management of references."""
 
 import uuid
 from typing import Annotated
@@ -6,6 +6,7 @@ from typing import Annotated
 import destiny_sdk
 from elasticsearch import AsyncElasticsearch
 from fastapi import APIRouter, Depends, Path, Request, Response, status
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import (
@@ -13,7 +14,8 @@ from app.core.auth import (
     AuthScopes,
     CachingStrategyAuth,
     choose_auth_strategy,
-    choose_hmac_auth_strategy,
+    choose_hybrid_auth_strategy,
+    security,
 )
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -108,7 +110,7 @@ def robot_request_dispatcher() -> RobotRequestDispatcher:
     return RobotRequestDispatcher()
 
 
-def choose_auth_strategy_reader() -> AuthMethod:
+def choose_auth_strategy_reference_reader() -> AuthMethod:
     """Choose reader scope auth strategy for our authorization."""
     return choose_auth_strategy(
         tenant_id=settings.azure_tenant_id,
@@ -118,7 +120,7 @@ def choose_auth_strategy_reader() -> AuthMethod:
     )
 
 
-def choose_auth_strategy_writer() -> AuthMethod:
+def choose_auth_strategy_reference_writer() -> AuthMethod:
     """Choose writer scope auth strategy for our authorization."""
     return choose_auth_strategy(
         tenant_id=settings.azure_tenant_id,
@@ -128,63 +130,61 @@ def choose_auth_strategy_writer() -> AuthMethod:
     )
 
 
-def choose_auth_strategy_enhancement_request_writer() -> AuthMethod:
+# NB hybrid_auth is not easily wrapped in CachingStrategyAuth because of the robot
+# service dependency.
+# May be revisited with https://github.com/destiny-evidence/destiny-repository/issues/199
+async def enhancement_request_hybrid_auth(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+    robot_service: Annotated[RobotService, Depends(robot_service)],
+) -> bool:
     """Choose enhancement request writer scope auth strategy for our authorization."""
-    return choose_auth_strategy(
+    return await choose_hybrid_auth_strategy(
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
-        auth_scope=AuthScopes.ENHANCEMENT_REQUEST_WRITER,
+        jwt_scope=AuthScopes.ENHANCEMENT_REQUEST_WRITER,
+        get_client_secret=robot_service.get_robot_secret_standalone,
         bypass_auth=settings.running_locally,
-    )
+    )(request=request, credentials=credentials)
 
 
 reference_reader_auth = CachingStrategyAuth(
-    selector=choose_auth_strategy_reader,
+    selector=choose_auth_strategy_reference_reader,
 )
 
 reference_writer_auth = CachingStrategyAuth(
-    selector=choose_auth_strategy_writer,
-)
-
-enhancement_request_writer_auth = CachingStrategyAuth(
-    selector=choose_auth_strategy_enhancement_request_writer
+    selector=choose_auth_strategy_reference_writer,
 )
 
 
-async def robot_auth(
-    request: Request,
-    robot_service: Annotated[RobotService, Depends(robot_service)],
-) -> bool:
-    """Choose robot auth strategy for our authorization."""
-    return await choose_hmac_auth_strategy(
-        get_client_secret=robot_service.get_robot_secret_standalone,
-    )(request)
-
-
-reference_router = APIRouter(prefix="/references", tags=["references"])
+reference_router = APIRouter(
+    prefix="/references",
+    tags=["references"],
+    dependencies=[Depends(reference_reader_auth)],
+)
 enhancement_request_router = APIRouter(
     prefix="/enhancement-requests",
     tags=["enhancement-requests"],
-    dependencies=[Depends(enhancement_request_writer_auth)],
+    dependencies=[Depends(enhancement_request_hybrid_auth)],
 )
 single_enhancement_request_router = APIRouter(
     prefix="/single-requests",
     tags=["single-enhancement-requests"],
-    dependencies=[Depends(enhancement_request_writer_auth)],
+    dependencies=[Depends(enhancement_request_hybrid_auth)],
 )
 batch_enhancement_request_router = APIRouter(
     prefix="/batch-requests",
     tags=["batch-enhancement-requests"],
-    dependencies=[Depends(enhancement_request_writer_auth)],
+    dependencies=[Depends(enhancement_request_hybrid_auth)],
 )
 enhancement_request_automation_router = APIRouter(
     prefix="/automations",
     tags=["automated-enhancement-requests"],
-    dependencies=[Depends(enhancement_request_writer_auth)],
+    dependencies=[Depends(enhancement_request_hybrid_auth)],
 )
 
 
-@reference_router.get("/{reference_id}/", dependencies=[Depends(reference_reader_auth)])
+@reference_router.get("/{reference_id}/")
 async def get_reference(
     reference_id: Annotated[uuid.UUID, Path(description="The ID of the reference.")],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
@@ -197,7 +197,7 @@ async def get_reference(
     return anti_corruption_service.reference_to_sdk(reference)
 
 
-@reference_router.get("/", dependencies=[Depends(reference_reader_auth)])
+@reference_router.get("/")
 async def get_reference_from_identifier(
     identifier: str,
     identifier_type: destiny_sdk.identifiers.ExternalIdentifierType,
@@ -319,7 +319,8 @@ async def check_batch_enhancement_request_status(
 
 
 @single_enhancement_request_router.post(
-    "/{enhancement_request_id}/results/", status_code=status.HTTP_201_CREATED
+    "/{enhancement_request_id}/results/",
+    status_code=status.HTTP_201_CREATED,
 )
 async def fulfill_enhancement_request(
     robot_result: destiny_sdk.robots.RobotResult,
