@@ -1,4 +1,4 @@
-"""reference_router for handling management of references."""
+"""Routes for handling management of references."""
 
 import uuid
 from typing import Annotated

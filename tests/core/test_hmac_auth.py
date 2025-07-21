@@ -15,7 +15,7 @@ from app.core.config import Environment
 from app.domain.references.models.models import EnhancementRequestStatus
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import Reference as SQLReference
-from app.domain.references.routes import robot_router
+from app.domain.references.routes import enhancement_request_router
 from app.domain.robots.models.sql import Robot as SQLRobot
 
 
@@ -29,7 +29,7 @@ def hmac_app() -> FastAPI:
 
     """
     app = FastAPI(title="Test HMAC Auth")
-    app.include_router(robot_router)
+    app.include_router(enhancement_request_router, prefix="/v1")
     return app
 
 
@@ -97,7 +97,7 @@ async def test_hmac_multi_client_authentication_happy_path(
     )
 
     response = await client.post(
-        "robot/enhancement/single/",
+        "/v1/enhancement-requests/single-requests/",
         json=robot_result.model_dump(mode="json"),
         auth=auth,
     )
@@ -125,7 +125,7 @@ async def test_hmac_multi_client_authentication_robot_does_not_exist(
     )
 
     response = await client.post(
-        "robot/enhancement/single/",
+        "/v1/enhancement-requests/single-requests/",
         json=robot_result.model_dump(mode="json"),
         auth=auth,
     )
