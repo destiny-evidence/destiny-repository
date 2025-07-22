@@ -13,6 +13,12 @@ from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
+from app.api.exception_handlers import (
+    es_malformed_exception_handler,
+    invalid_payload_exception_handler,
+    not_found_exception_handler,
+    sdk_to_domain_exception_handler,
+)
 from app.core.exceptions import (
     ESMalformedDocumentError,
     NotFoundError,
@@ -31,12 +37,6 @@ from app.domain.references.models.sql import EnhancementRequest as SQLEnhancemen
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.service import ReferenceService
 from app.domain.robots.models.sql import Robot as SQLRobot
-from app.main import (
-    enhance_wrong_reference_exception_handler,
-    es_malformed_exception_handler,
-    not_found_exception_handler,
-    sdk_to_domain_exception_handler,
-)
 from app.tasks import broker
 
 # Use the database session in all tests to set up the database manager.
@@ -56,7 +56,7 @@ def app() -> FastAPI:
         exception_handlers={
             NotFoundError: not_found_exception_handler,
             SDKToDomainError: sdk_to_domain_exception_handler,
-            WrongReferenceError: enhance_wrong_reference_exception_handler,
+            WrongReferenceError: invalid_payload_exception_handler,
             ESMalformedDocumentError: es_malformed_exception_handler,
         }
     )
