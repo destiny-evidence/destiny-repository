@@ -478,3 +478,159 @@ async def test_add_robot_automation_invalid_query(
         "No field mapping can be found for the field with name [invalid]"
         in response.json()["detail"]
     )
+
+
+async def test_update_robot_automation_happy_path(
+    session: AsyncSession,
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> None:
+    """Test updating a robot automation."""
+    robot = await add_robot(session)
+
+    # First create an automation
+    robot_automation_create = {
+        "robot_id": str(robot.id),
+        "query": {"match": {"robot_id": str(robot.id)}},
+    }
+
+    create_response = await client.post(
+        "/v1/enhancement-requests/automations/", json=robot_automation_create
+    )
+    assert create_response.status_code == status.HTTP_201_CREATED
+    automation_id = create_response.json()["id"]
+
+    # Now update the automation
+    robot_automation_update = {
+        "robot_id": str(robot.id),
+        "query": {"match": {"robot_id": "updated_query"}},
+    }
+
+    response = await client.put(
+        f"/v1/enhancement-requests/automations/{automation_id}/",
+        json=robot_automation_update,
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    response_data = response.json()
+    assert uuid.UUID(response_data["robot_id"]) == robot.id
+    assert response_data["query"] == robot_automation_update["query"]
+    assert uuid.UUID(response_data["id"]) == uuid.UUID(automation_id)
+
+
+async def test_update_robot_automation_nonexistent_automation(
+    session: AsyncSession,
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> None:
+    """Test updating a nonexistent robot automation."""
+    robot = await add_robot(session)
+    fake_automation_id = uuid.uuid4()
+
+    robot_automation_update = {
+        "robot_id": str(robot.id),
+        "query": {"match": {"name": "updated_query"}},
+    }
+
+    response = await client.put(
+        f"/v1/enhancement-requests/automations/{fake_automation_id}/",
+        json=robot_automation_update,
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert "automation" in response.json()["detail"].casefold()
+
+
+async def test_update_robot_automation_missing_robot(
+    session: AsyncSession,
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> None:
+    """Test updating a robot automation with a missing robot."""
+    robot = await add_robot(session)
+
+    # First create an automation
+    robot_automation_create = {
+        "robot_id": str(robot.id),
+        "query": {"match": {"robot_id": str(robot.id)}},
+    }
+
+    create_response = await client.post(
+        "/v1/enhancement-requests/automations/", json=robot_automation_create
+    )
+    assert create_response.status_code == status.HTTP_201_CREATED
+    automation_id = create_response.json()["id"]
+
+    # Now try to update with a nonexistent robot
+    fake_robot_id = uuid.uuid4()
+    robot_automation_update = {
+        "robot_id": str(fake_robot_id),
+        "query": {"match": {"name": "updated_query"}},
+    }
+
+    response = await client.put(
+        f"/v1/enhancement-requests/automations/{automation_id}/",
+        json=robot_automation_update,
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert "robot" in response.json()["detail"].casefold()
+
+
+async def test_get_robot_automations_empty_list(
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> None:
+    """Test getting robot automations when there are none."""
+    response = await client.get("/v1/enhancement-requests/automations/")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == []
+
+
+async def test_get_robot_automations_with_automations(
+    session: AsyncSession,
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> None:
+    """Test getting robot automations when there are some."""
+    robot = await add_robot(session)
+
+    # Create first automation
+    robot_automation_create_1 = {
+        "robot_id": str(robot.id),
+        "query": {"match": {"robot_id": "robot uno"}},
+    }
+
+    create_response_1 = await client.post(
+        "/v1/enhancement-requests/automations/", json=robot_automation_create_1
+    )
+    assert create_response_1.status_code == status.HTTP_201_CREATED
+
+    # Create second automation
+    robot_automation_create_2 = {
+        "robot_id": str(robot.id),
+        "query": {"match": {"robot_id": "robot dos"}},
+    }
+
+    create_response_2 = await client.post(
+        "/v1/enhancement-requests/automations/", json=robot_automation_create_2
+    )
+    assert create_response_2.status_code == status.HTTP_201_CREATED
+
+    # Get all automations
+    response = await client.get("/v1/enhancement-requests/automations/")
+
+    assert response.status_code == status.HTTP_200_OK
+    response_data = response.json()
+    assert len(response_data) == 2
+
+    # Check that both automations are returned
+    automation_ids = {automation["id"] for automation in response_data}
+    expected_ids = {create_response_1.json()["id"], create_response_2.json()["id"]}
+    assert automation_ids == expected_ids
+
+    # Check robot IDs are correct
+    robot_ids = {uuid.UUID(automation["robot_id"]) for automation in response_data}
+    expected_robot_ids = {robot.id, robot.id}
+    assert robot_ids == expected_robot_ids
