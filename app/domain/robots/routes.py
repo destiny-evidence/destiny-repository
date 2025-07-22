@@ -7,7 +7,7 @@ import destiny_sdk
 from fastapi import APIRouter, Depends, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import (
+from app.api.auth import (
     AuthMethod,
     AuthScopes,
     CachingStrategyAuth,

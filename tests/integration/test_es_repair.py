@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
+from app.api.exception_handlers import not_found_exception_handler
 from app.core.exceptions import NotFoundError
 from app.domain.references.models.es import (
     ReferenceDocument,
@@ -29,7 +30,6 @@ from app.domain.references.models.sql import (
     RobotAutomation as SQLRobotAutomation,
 )
 from app.domain.robots.models.sql import Robot as SQLRobot
-from app.main import not_found_exception_handler
 from app.system import routes as system_routes
 from app.tasks import broker
 
@@ -396,7 +396,10 @@ async def test_repair_nonexistent_index(
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     response_data = response.json()
-    assert "Index non-existent-index not found" in response_data["detail"]
+    assert (
+        response_data["detail"]
+        == "meta:index with index_name non-existent-index does not exist."
+    )
 
 
 @pytest.mark.usefixtures("stubbed_jwks_response")

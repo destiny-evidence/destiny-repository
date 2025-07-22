@@ -12,6 +12,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
+from app.api.exception_handlers import not_found_exception_handler
 from app.core.config import Environment
 from app.core.exceptions import NotFoundError
 from app.domain.imports import routes as imports
@@ -35,7 +36,6 @@ from app.domain.imports.models.sql import (
 from app.domain.imports.service import ImportService
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.service import ReferenceService
-from app.main import not_found_exception_handler
 from app.tasks import broker
 
 # Use the database session in all tests to set up the database manager.

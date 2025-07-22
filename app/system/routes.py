@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import AsyncTaskiqDecoratedTask
 
-from app.core.auth import (
+from app.api.auth import (
     AuthMethod,
     AuthScopes,
     CachingStrategyAuth,

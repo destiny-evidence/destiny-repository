@@ -10,7 +10,7 @@ from fastapi import HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
 from pytest_httpx import HTTPXMock
 
-from app.core.auth import AuthMethod, AzureJwtAuth, StrategyAuth, SuccessAuth
+from app.api.auth import AuthMethod, AzureJwtAuth, StrategyAuth, SuccessAuth
 
 
 class FakeAuthScopes(StrEnum):

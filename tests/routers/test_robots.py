@@ -8,10 +8,13 @@ from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.exception_handlers import (
+    integrity_exception_handler,
+    not_found_exception_handler,
+)
 from app.core.exceptions import IntegrityError, NotFoundError
 from app.domain.robots import routes as robots
 from app.domain.robots.models.sql import Robot as SQLRobot
-from app.main import integrity_exception_handler, not_found_exception_handler
 
 
 @pytest.fixture

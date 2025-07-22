@@ -10,7 +10,7 @@ from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import settings as auth_settings
+from app.api.auth import settings as auth_settings
 from app.core.config import Environment
 from app.domain.references.models.models import EnhancementRequestStatus
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
