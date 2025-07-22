@@ -432,6 +432,43 @@ async def add_robot_automation(
     return anti_corruption_service.robot_automation_to_sdk(added_automation)
 
 
+@enhancement_request_automation_router.put(
+    path="/{automation_id}/", status_code=status.HTTP_201_CREATED
+)
+async def update_robot_automation(
+    automation_id: Annotated[uuid.UUID, Path(description="The ID of the automation.")],
+    robot_automation: destiny_sdk.robots.RobotAutomationIn,
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    robot_service: Annotated[RobotService, Depends(robot_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+) -> destiny_sdk.robots.RobotAutomation:
+    """Update a robot automation."""
+    automation = anti_corruption_service.robot_automation_from_sdk(
+        robot_automation, automation_id=automation_id
+    )
+    updated_automation = await reference_service.update_robot_automation(
+        automation=automation, robot_service=robot_service
+    )
+    return anti_corruption_service.robot_automation_to_sdk(updated_automation)
+
+
+@enhancement_request_automation_router.get(path="/", status_code=status.HTTP_200_OK)
+async def get_robot_automations(
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+) -> list[destiny_sdk.robots.RobotAutomation]:
+    """Get all robot automations."""
+    automations = await reference_service.get_robot_automations()
+    return [
+        anti_corruption_service.robot_automation_to_sdk(automation)
+        for automation in automations
+    ]
+
+
 enhancement_request_router.include_router(single_enhancement_request_router)
 enhancement_request_router.include_router(batch_enhancement_request_router)
 enhancement_request_router.include_router(enhancement_request_automation_router)
