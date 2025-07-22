@@ -118,16 +118,6 @@ def choose_auth_strategy_reader() -> AuthMethod:
     )
 
 
-def choose_auth_strategy_writer() -> AuthMethod:
-    """Choose writer scope auth strategy for our authorization."""
-    return choose_auth_strategy(
-        tenant_id=settings.azure_tenant_id,
-        application_id=settings.azure_application_id,
-        auth_scope=AuthScopes.REFERENCE_WRITER,
-        bypass_auth=settings.running_locally,
-    )
-
-
 def choose_auth_strategy_enhancement_request_writer() -> AuthMethod:
     """Choose enhancement request writer scope auth strategy for our authorization."""
     return choose_auth_strategy(
@@ -140,10 +130,6 @@ def choose_auth_strategy_enhancement_request_writer() -> AuthMethod:
 
 reference_reader_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_reader,
-)
-
-reference_writer_auth = CachingStrategyAuth(
-    selector=choose_auth_strategy_writer,
 )
 
 enhancement_request_writer_auth = CachingStrategyAuth(
