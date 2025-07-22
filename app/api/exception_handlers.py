@@ -1,11 +1,15 @@
 """Exception handlers for the repository API."""
 
+from collections.abc import Sequence
+from uuid import UUID
+
 from fastapi import Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 from app.core.exceptions import (
     ESMalformedDocumentError,
+    ESNotFoundError,
     IntegrityError,
     InvalidPayloadError,
     NotFoundError,
@@ -16,22 +20,46 @@ from app.core.exceptions import (
 
 
 async def not_found_exception_handler(
-    _request: Request,
+    request: Request,
     exception: NotFoundError,
 ) -> JSONResponse:
-    """Exception handler to return 404 responses when NotFoundError is thrown."""
-    if isinstance(exception, SQLNotFoundError):
+    """
+    Exception handler for when an object cannot be found.
+
+    If the object is part of the API resource (eg, the lookup ID was in the URL),
+    it returns a 404.
+    Otherwise, it returns a 422.
+    """
+    if isinstance(exception, SQLNotFoundError | ESNotFoundError):
         content = {
             "detail": (
                 f"{exception.lookup_model} with "
                 f"{exception.lookup_type} {exception.lookup_value} does not exist."
             )
         }
+        status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+        if (
+            isinstance(exception.lookup_value, UUID | str | int)
+            and str(exception.lookup_value) in request.url.path
+        ):
+            status_code = status.HTTP_404_NOT_FOUND
+        elif isinstance(exception.lookup_value, Sequence) and request.method == "GET":
+            # Best-efforts attempt on search lookups
+            # We don't really know how these will look so this may need revisiting
+            query_params = {
+                param.casefold() for param in request.query_params.values() if param
+            }
+            lookup_params = {
+                str(param).casefold() for param in exception.lookup_value if param
+            }
+            if query_params == lookup_params:
+                status_code = status.HTTP_404_NOT_FOUND
     else:
+        status_code = status.HTTP_404_NOT_FOUND
         content = {"detail": exception.detail}
 
     return JSONResponse(
-        status_code=status.HTTP_404_NOT_FOUND,
+        status_code=status_code,
         content=content,
     )
 

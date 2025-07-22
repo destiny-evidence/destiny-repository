@@ -396,7 +396,10 @@ async def test_repair_nonexistent_index(
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     response_data = response.json()
-    assert "Index non-existent-index not found" in response_data["detail"]
+    assert (
+        response_data["detail"]
+        == "meta:index with index_name non-existent-index does not exist."
+    )
 
 
 @pytest.mark.usefixtures("stubbed_jwks_response")

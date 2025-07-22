@@ -33,7 +33,12 @@ from app.domain.references.models.models import (
     EnhancementType,
     Visibility,
 )
-from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
+from app.domain.references.models.sql import (
+    EnhancementRequest as SQLEnhancementRequest,
+)
+from app.domain.references.models.sql import (
+    ExternalIdentifier,
+)
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.service import ReferenceService
 from app.domain.robots.models.sql import Robot as SQLRobot
@@ -196,7 +201,7 @@ async def test_request_reference_enhancement_robot_rejects_request(
     assert data.error == '{"message":"broken"}'
 
 
-async def test_not_found_exception_handler_returns_response_with_404(
+async def test_not_found_exception_handler_returns_response_with_422(
     session: AsyncSession, client: AsyncClient
 ) -> None:
     """
@@ -217,7 +222,7 @@ async def test_not_found_exception_handler_returns_response_with_404(
         "/v1/references/enhancement/single/", json=enhancement_request_create
     )
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert "robot".casefold() in response.json()["detail"].casefold()
 
 
@@ -239,7 +244,7 @@ async def test_request_reference_enhancement_nonexistent_reference(
         "/v1/references/enhancement/single/", json=enhancement_request_create
     )
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert "reference".casefold() in response.json()["detail"].casefold()
 
 
@@ -463,4 +468,31 @@ async def test_add_robot_automation_invalid_query(
     assert (
         "No field mapping can be found for the field with name [invalid]"
         in response.json()["detail"]
+    )
+
+
+async def test_get_reference_by_identifier_fails_with_404(
+    session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """Test retrieving a reference by its identifier."""
+    reference = await add_reference(session)
+    session.add(
+        ExternalIdentifier(
+            reference_id=reference.id,
+            identifier="10.1234/example",
+            identifier_type="doi",
+        )
+    )
+
+    response = await client.get(
+        "/v1/references/",
+        params={"identifier": "10.1234/example", "identifier_type": "doi"},
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    response_data = response.json()
+    assert (
+        response_data["detail"] == "ExternalIdentifier with external_identifier ("
+        "<ExternalIdentifierType.DOI: 'doi'>, '10.1234/example', None) does not exist."
     )
