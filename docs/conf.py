@@ -37,6 +37,7 @@ autodoc_pydantic_model_erdantic_figure = True
 
 html_theme = 'pydata_sphinx_theme'
 html_static_path = ['_static']
+html_css_files = ['custom.css']
 html_show_sourcelink = False
 html_theme_options = {
   "show_toc_level": 2 # can increase, e.g., if there are nested classes

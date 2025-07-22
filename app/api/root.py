@@ -1,10 +1,12 @@
 """Root API router for the repository API."""
 
+import pathlib
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware import Middleware
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.exception_handlers import (
     es_malformed_exception_handler,
@@ -48,8 +50,30 @@ def register_api(
     """Register the API routers and configure the FastAPI application."""
     app = FastAPI(
         title="DESTINY Climate and Health Repository",
+        summary=(
+            "Powering a comprehensive repository of climate and health research.<br/>"
+            "[Documentation](https://destiny-evidence.github.io/destiny-repository/).<br/>"
+            "[GitHub](https://github.com/destiny-evidence/destiny-repository).<br/>"
+            "[Project Homepage](https://destiny-evidence.github.io/website/)."
+        ),
+        description=pathlib.Path(
+            pathlib.Path(__file__).parent, "description.md"
+        ).read_text(encoding="utf-8"),
+        version="1.0.0",
         lifespan=lifespan,
-        middleware=[Middleware(LoggerMiddleware)],
+        middleware=[
+            Middleware(LoggerMiddleware),
+            Middleware(
+                CORSMiddleware,
+                allow_origins=[
+                    "https://destiny-evidence.github.io",
+                    "null",
+                ],
+                allow_credentials=True,
+                allow_methods=["*"],
+                allow_headers=["*"],
+            ),
+        ],
         exception_handlers={
             NotFoundError: not_found_exception_handler,
             IntegrityError: integrity_exception_handler,
