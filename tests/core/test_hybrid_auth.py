@@ -123,20 +123,12 @@ async def test_hmac_multi_client_authentication_happy_path(
     enhancement_request: SQLEnhancementRequest,
 ) -> None:
     """Test authentication is successful when signature is correct."""
-    robot_result = destiny_sdk.robots.RobotResult(
-        request_id=enhancement_request.id,
-        error=destiny_sdk.robots.RobotError(
-            message="Robot couldn't create enhancement"
-        ),
-    )
-
     auth = destiny_sdk.client.HMACSigningAuth(
         client_id=registered_robot.id, secret_key=registered_robot.client_secret
     )
 
-    response = await client.post(
-        f"/v1/enhancement-requests/single-requests/{enhancement_request.id}/results/",
-        json=robot_result.model_dump(mode="json"),
+    response = await client.get(
+        f"/v1/enhancement-requests/single-requests/{enhancement_request.id}/",
         auth=auth,
     )
 
@@ -149,20 +141,14 @@ async def test_hmac_multi_client_authentication_robot_does_not_exist(
     auth_settings_production: None,  # noqa: ARG001
 ) -> None:
     """Test authentication fails when robot does not exist."""
-    robot_result = destiny_sdk.robots.RobotResult(
-        request_id=uuid.uuid4(),
-        error=destiny_sdk.robots.RobotError(
-            message="Robot couldn't create enhancement"
-        ),
-    )
+    random_enhancement_id = uuid.uuid4()
 
     auth = destiny_sdk.client.HMACSigningAuth(
         client_id=uuid.uuid4(), secret_key="nonsense"
     )
 
-    response = await client.post(
-        f"/v1/enhancement-requests/single-requests/{robot_result.request_id}/results/",
-        json=robot_result.model_dump(mode="json"),
+    response = await client.get(
+        f"/v1/enhancement-requests/single-requests/{random_enhancement_id}/",
         auth=auth,
     )
 
@@ -173,22 +159,15 @@ async def test_hmac_multi_client_authentication_robot_secret_mismatch(
     client: AsyncClient,
     auth_settings_production: None,  # noqa: ARG001
     registered_robot: SQLRobot,
+    enhancement_request: SQLEnhancementRequest,
 ) -> None:
     """Test authentication fails when signature is correct but secret is wrong."""
-    robot_result = destiny_sdk.robots.RobotResult(
-        request_id=uuid.uuid4(),
-        error=destiny_sdk.robots.RobotError(
-            message="Robot couldn't create enhancement"
-        ),
-    )
-
     auth = destiny_sdk.client.HMACSigningAuth(
         client_id=registered_robot.id, secret_key="wrong-secret"
     )
 
-    response = await client.post(
-        f"/v1/enhancement-requests/single-requests/{robot_result.request_id}/results/",
-        json=robot_result.model_dump(mode="json"),
+    response = await client.get(
+        f"/v1/enhancement-requests/single-requests/{enhancement_request.id}/",
         auth=auth,
     )
 
@@ -204,19 +183,11 @@ async def test_jwt_authentication_happy_path(  # noqa: PLR0913
     enhancement_request: SQLEnhancementRequest,
 ) -> None:
     """Test authentication is successful when JWT token is valid."""
-    robot_result = destiny_sdk.robots.RobotResult(
-        request_id=enhancement_request.id,
-        error=destiny_sdk.robots.RobotError(
-            message="Robot couldn't create enhancement"
-        ),
-    )
-
     # Generate JWT token with appropriate scope
     token = generate_fake_token({"sub": "test_user"}, "enhancement_request.writer")
 
-    response = await client.post(
-        f"/v1/enhancement-requests/single-requests/{enhancement_request.id}/results/",
-        json=robot_result.model_dump(mode="json"),
+    response = await client.get(
+        f"/v1/enhancement-requests/single-requests/{enhancement_request.id}/",
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -231,19 +202,11 @@ async def test_jwt_authentication_failed_jwks_key_lookup(
     enhancement_request: SQLEnhancementRequest,
 ) -> None:
     """Test authentication fails when JWKS key lookup fails."""
-    robot_result = destiny_sdk.robots.RobotResult(
-        request_id=enhancement_request.id,
-        error=destiny_sdk.robots.RobotError(
-            message="Robot couldn't create enhancement"
-        ),
-    )
-
     # Generate JWT token with appropriate scope
     token = generate_fake_token({"sub": "test_user"}, "enhancement_request.writer")
 
-    response = await client.post(
-        f"/v1/enhancement-requests/single-requests/{enhancement_request.id}/results/",
-        json=robot_result.model_dump(mode="json"),
+    response = await client.get(
+        f"/v1/enhancement-requests/single-requests/{enhancement_request.id}/",
         headers={"Authorization": f"Bearer {token}"},
     )
 
