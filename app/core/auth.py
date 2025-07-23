@@ -42,20 +42,22 @@ security = HTTPBearer(auto_error=False)
 class AuthScopes(StrEnum):
     """Enum describing the available auth scopes that we understand."""
 
+    ADMINISTRATOR = "administrator"
     IMPORT = "import"
     REFERENCE_READER = "reference.reader"
     REFERENCE_WRITER = "reference.writer"
+    ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer"
     ROBOT_WRITER = "robot.writer"
 
 
 class AuthMethod(Protocol):
     """
 
-    Protocol for auth methods, enforcing the implmentation of __call__().
+    Protocol for auth methods, enforcing the implementation of __call__().
 
     Inherit from this class when adding an auth implementation.
 
-    This allows FastAPI to call class instances as depenedencies in FastAPI routes,
+    This allows FastAPI to call class instances as dependencies in FastAPI routes,
     see https://fastapi.tiangolo.com/advanced/advanced-dependencies
 
         .. code-block:: python
@@ -70,13 +72,14 @@ class AuthMethod(Protocol):
 
     async def __call__(
         self,
-        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+        request: Request,
+        credentials: HTTPAuthorizationCredentials | None,
     ) -> bool:
         """
         Callable interface to allow use as a dependency.
 
         :param credentials: The bearer token provided in the request (as a dependency)
-        :type credentials: Annotated[HTTPAuthorizationCredentials  |  None]
+        :type credentials: HTTPAuthorizationCredentials | None
         :raises NotImplementedError: __call__() method has not been implemented.
         :return: True if authorization is successful.
         :rtype: bool
@@ -129,10 +132,11 @@ class StrategyAuth(AuthMethod):
 
     async def __call__(
         self,
+        request: Request,
         credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
     ) -> bool:
         """Callable interface to allow use as a dependency."""
-        return await self._get_strategy()(credentials=credentials)
+        return await self._get_strategy()(request=request, credentials=credentials)
 
 
 class CachingStrategyAuth(StrategyAuth):
@@ -278,8 +282,7 @@ class AzureJwtAuth(AuthMethod):
                     rsa_key,
                     algorithms=["RS256"],
                     audience=self.api_audience,
-                    issuer=f"https://sts.windows.net/{
-                        self.tenant_id}/",
+                    issuer=f"https://sts.windows.net/{self.tenant_id}/",
                 )
             except exceptions.ExpiredSignatureError as exc:
                 raise destiny_sdk.auth.AuthException(
@@ -331,7 +334,8 @@ class AzureJwtAuth(AuthMethod):
 
     async def __call__(
         self,
-        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+        request: Request,  # noqa: ARG002
+        credentials: HTTPAuthorizationCredentials | None,
     ) -> bool:
         """Authenticate the request."""
         if not credentials:
@@ -359,6 +363,7 @@ class SuccessAuth(AuthMethod):
 
     async def __call__(
         self,
+        request: Request,  # noqa: ARG002
         credentials: Annotated[  # noqa: ARG002
             HTTPAuthorizationCredentials | None,
             Depends(security),
@@ -386,7 +391,7 @@ def choose_auth_strategy(
     )
 
 
-class HMACMultiClientAuth(destiny_sdk.auth.HMACAuthMethod):
+class HMACMultiClientAuth(AuthMethod):
     """
     Adds HMAC auth that supports authenticating with multiple clients.
 
@@ -403,7 +408,11 @@ class HMACMultiClientAuth(destiny_sdk.auth.HMACAuthMethod):
         """
         self.get_secret = get_client_secret
 
-    async def __call__(self, request: Request) -> bool:
+    async def __call__(
+        self,
+        request: Request,
+        credentials: HTTPAuthorizationCredentials | None = None,  # noqa: ARG002
+    ) -> bool:
         """Perform Authorization check."""
         auth_headers = destiny_sdk.auth.HMACAuthorizationHeaders.from_request(request)
         request_body = await request.body()
@@ -433,9 +442,105 @@ class HMACMultiClientAuth(destiny_sdk.auth.HMACAuthMethod):
 
 def choose_hmac_auth_strategy(
     get_client_secret: Callable[[UUID], Awaitable[str]],
-) -> destiny_sdk.auth.HMACAuthMethod:
+) -> AuthMethod:
     """Choose an HMAC auth method."""
     if settings.running_locally:
-        return destiny_sdk.auth.BypassHMACAuth()
+        return SuccessAuth()
 
     return HMACMultiClientAuth(get_client_secret=get_client_secret)
+
+
+class HybridAuth(AuthMethod):
+    """
+    An auth method that accepts both JWT (Bearer token) and HMAC authentication.
+
+    This class tries JWT authentication first (if Bearer token is present),
+    then falls back to HMAC authentication if no Bearer token or JWT fails.
+
+    Example:
+        .. code-block:: python
+
+            def hybrid_auth_dependency(
+                request: Request,
+                robot_service: Annotated[RobotService, Depends(robot_service)],
+                credentials: Annotated[
+                    HTTPAuthorizationCredentials | None,
+                    Depends(security)
+                ],
+            ) -> bool:
+                hybrid_auth = HybridAuth(
+                    jwt_auth=AzureJwtAuth(
+                        tenant_id=settings.tenant_id,
+                        application_id=settings.application_id,
+                        scope=AuthScopes.READ,
+                    ),
+                    hmac_auth=HMACMultiClientAuth(
+                        get_client_secret=robot_service.get_robot_secret_standalone
+                    ),
+                )
+                return await hybrid_auth.authenticate(request, credentials)
+
+            @router.get("/", dependencies=[Depends(hybrid_auth_dependency)])
+            async def get_data():
+                pass
+
+    """
+
+    def __init__(
+        self,
+        jwt_auth: AzureJwtAuth,
+        hmac_auth: HMACMultiClientAuth,
+    ) -> None:
+        """
+        Initialize hybrid auth with both JWT and HMAC auth methods.
+
+        Note both methods use the Authentication header, so we will never
+        attempt to use both at the same time.
+
+        :param jwt_auth: The JWT authentication method to use
+        :param hmac_auth: The HMAC authentication method to use
+        """
+        self._jwt_auth = jwt_auth
+        self._hmac_auth = hmac_auth
+
+    async def __call__(
+        self,
+        request: Request,
+        credentials: HTTPAuthorizationCredentials | None,
+    ) -> bool:
+        """Authenticate using either JWT or HMAC."""
+        if credentials and credentials.credentials:
+            return await self._jwt_auth(request=request, credentials=credentials)
+
+        return await self._hmac_auth(request=request, credentials=credentials)
+
+
+def choose_hybrid_auth_strategy(
+    tenant_id: str,
+    application_id: str,
+    jwt_scope: AuthScopes,
+    get_client_secret: Callable[[UUID], Awaitable[str]],
+    *,
+    bypass_auth: bool,
+) -> AuthMethod:
+    """
+    Create a hybrid auth dependency function.
+
+    :param tenant_id: Azure tenant ID for JWT validation
+    :param application_id: Azure application ID for JWT validation
+    :param jwt_scope: The required JWT scope/role
+    :param get_client_secret: Function to get HMAC client secrets
+    :param bypass_auth: Whether to bypass auth (for local development)
+    :return: FastAPI dependency function
+    """
+    if bypass_auth:
+        return SuccessAuth()
+
+    return HybridAuth(
+        jwt_auth=AzureJwtAuth(
+            tenant_id=tenant_id,
+            application_id=application_id,
+            scope=jwt_scope,
+        ),
+        hmac_auth=HMACMultiClientAuth(get_client_secret=get_client_secret),
+    )

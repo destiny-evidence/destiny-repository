@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath('..'))
 project = 'DESTINY Repository'
 copyright = '2025, DESTINY Team'
 author = 'DESTINY Team'
-release = 'v0.1'
+release = 'v1.0'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

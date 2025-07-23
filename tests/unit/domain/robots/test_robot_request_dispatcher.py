@@ -106,7 +106,7 @@ async def test_send_enhancement_request_to_robot_request_error(httpx_mock, robot
 
     with pytest.raises(RobotUnreachableError):
         await dispatcher.send_enhancement_request_to_robot(
-            endpoint="/single/", robot=robot, robot_request=robot_request
+            endpoint="/v1/single/", robot=robot, robot_request=robot_request
         )
 
 
@@ -133,7 +133,7 @@ async def test_send_enhancement_request_to_robot_503_response(httpx_mock, robot)
 
     with pytest.raises(RobotUnreachableError):
         await dispatcher.send_enhancement_request_to_robot(
-            endpoint="/single/", robot=robot, robot_request=robot_request
+            endpoint="/v1/single/", robot=robot, robot_request=robot_request
         )
 
 
@@ -162,5 +162,5 @@ async def test_send_enhancement_request_to_robot_400_response(httpx_mock, robot)
 
     with pytest.raises(RobotEnhancementError):
         await dispatcher.send_enhancement_request_to_robot(
-            endpoint="/single/", robot=robot, robot_request=robot_request
+            endpoint="/v1/single/", robot=robot, robot_request=robot_request
         )

@@ -21,7 +21,7 @@ def test_verify_hmac_headers_sent(httpx_mock: HTTPXMock, frozen_time) -> None:  
     """Test that request is authorized with a signature."""
     fake_secret_key = "asdfhjgji94523q0uflsjf349wjilsfjd9q23"
     fake_robot_id = uuid.uuid4()
-    fake_destiny_repository_url = "https://www.destiny-repository-lives-here.co.au"
+    fake_destiny_repository_url = "https://www.destiny-repository-lives-here.co.au/v1"
 
     fake_robot_result = RobotResult(
         request_id=uuid.uuid4(), error=RobotError(message="I can't fulfil this request")
@@ -42,7 +42,9 @@ def test_verify_hmac_headers_sent(httpx_mock: HTTPXMock, frozen_time) -> None:  
     )
 
     httpx_mock.add_response(
-        url=fake_destiny_repository_url + "/robot/enhancement/single/",
+        url=fake_destiny_repository_url
+        + "/enhancement-requests/single-requests/"
+        + f"{fake_robot_result.request_id}/results/",
         method="POST",
         match_headers={
             "Authorization": f"Signature {expected_signature}",
