@@ -643,17 +643,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference_ids = await self.get_all_reference_ids()
         await self.index_references(reference_ids)
 
-    @sql_unit_of_work
     @es_unit_of_work
-    async def add_robot_automation(
-        self, robot_service: RobotService, automation: RobotAutomation
+    async def save_robot_automation(
+        self, automation: RobotAutomation
     ) -> RobotAutomation:
         """Add an automation to a robot."""
-        await robot_service.get_robot(automation.robot_id)
-        automation = await self.sql_uow.robot_automations.add(automation)
-        # We do the indexing inside the SQL UoW as the ES indexing actually provides
-        # some handy validation against the index itself. This is caught with an API-
-        # level exception handler, so we don't need to handle it here.
         await self.es_uow.robot_automations.add(automation)
         return automation
 
@@ -731,3 +725,44 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """
         for robot_automation in await self.sql_uow.robot_automations.get_all():
             await self.es_uow.robot_automations.add(robot_automation)
+
+    @sql_unit_of_work
+    async def get_robot_automations(self) -> list[RobotAutomation]:
+        """Get all robot automations."""
+        return await self.sql_uow.robot_automations.get_all()
+
+    @sql_unit_of_work
+    async def get_robot_automation(self, automation_id: UUID4) -> RobotAutomation:
+        """Get a robot automation by id."""
+        return await self.sql_uow.robot_automations.get_by_pk(automation_id)
+
+    @sql_unit_of_work
+    async def add_robot_automation(
+        self, robot_service: RobotService, automation: RobotAutomation
+    ) -> RobotAutomation:
+        """Add a robot automation."""
+        # Check existence first
+        await robot_service.get_robot(automation.robot_id)
+
+        # We do the indexing inside the SQL UoW as the ES indexing actually provides
+        # some handy validation against the index itself. This is caught with an API-
+        # level exception handler, so we don't need to handle it here.
+        await self.sql_uow.robot_automations.add(automation)
+        return await self.save_robot_automation(automation)
+
+    @sql_unit_of_work
+    async def update_robot_automation(
+        self,
+        automation: RobotAutomation,
+        robot_service: RobotService,
+    ) -> RobotAutomation:
+        """Update a robot automation."""
+        # Check existence first
+        await self.sql_uow.robot_automations.get_by_pk(automation.id)
+        await robot_service.get_robot(automation.robot_id)
+
+        # We do the indexing inside the SQL UoW as the ES indexing actually provides
+        # some handy validation against the index itself. This is caught with an API-
+        # level exception handler, so we don't need to handle it here.
+        automation = await self.sql_uow.robot_automations.merge(automation)
+        return await self.save_robot_automation(automation)
