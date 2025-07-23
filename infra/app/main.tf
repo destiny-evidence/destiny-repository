@@ -392,8 +392,6 @@ resource "ec_deployment" "cluster" {
       autoscaling = {
         max_size = "30g"
         max_size_resource = "memory"
-        min_size = "2g"
-        min_size_resource = "memory"
       }
     }
   }
