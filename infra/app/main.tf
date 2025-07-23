@@ -385,7 +385,7 @@ resource "ec_deployment" "cluster" {
   deployment_template_id = "azure-general-purpose"
 
   elasticsearch = {
-    autoscale = false
+    autoscale = true
 
     hot = {
       size = "2g"
