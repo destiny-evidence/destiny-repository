@@ -13,6 +13,7 @@ from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExp
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.trace import TracerProvider
@@ -64,7 +65,7 @@ tracer_provider.add_span_processor(
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Lifespan hook for FastAPI."""
     # TODO(Adam): implement similar pattern for blob storage  # noqa: TD003
-    db_manager.init(settings.db_config, settings.app_name, tracer_provider)
+    db_manager.init(settings.db_config, settings.app_name)
     await es_manager.init(settings.es_config)
     await broker.startup()
 
@@ -226,3 +227,6 @@ async def root() -> dict[str, str]:
 
 FastAPIInstrumentor.instrument_app(app)
 HTTPXClientInstrumentor().instrument()
+
+# Instrument Python logging to correlate logs with traces
+LoggingInstrumentor().instrument(set_logging_format=True)
