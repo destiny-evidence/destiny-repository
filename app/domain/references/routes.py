@@ -120,16 +120,6 @@ def choose_auth_strategy_reference_reader() -> AuthMethod:
     )
 
 
-def choose_auth_strategy_reference_writer() -> AuthMethod:
-    """Choose writer scope auth strategy for our authorization."""
-    return choose_auth_strategy(
-        tenant_id=settings.azure_tenant_id,
-        application_id=settings.azure_application_id,
-        auth_scope=AuthScopes.REFERENCE_WRITER,
-        bypass_auth=settings.running_locally,
-    )
-
-
 # NB hybrid_auth is not easily wrapped in CachingStrategyAuth because of the robot
 # service dependency.
 # May be revisited with https://github.com/destiny-evidence/destiny-repository/issues/199
@@ -150,10 +140,6 @@ async def enhancement_request_hybrid_auth(
 
 reference_reader_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_reference_reader,
-)
-
-reference_writer_auth = CachingStrategyAuth(
-    selector=choose_auth_strategy_reference_writer,
 )
 
 

@@ -4,8 +4,6 @@ resource "random_uuid" "importer_role" {}
 
 resource "random_uuid" "reference_reader_role" {}
 
-resource "random_uuid" "reference_writer_role" {}
-
 resource "random_uuid" "robot_writer_role" {}
 
 resource "random_uuid" "enhancement_request_writer_role" {}
@@ -45,14 +43,6 @@ resource "azuread_application_app_role" "reference_reader" {
   value                = "reference.reader"
 }
 
-resource "azuread_application_app_role" "reference_writer" {
-  application_id       = azuread_application_registration.destiny_repository.id
-  allowed_member_types = ["User", "Application"]
-  description          = "Can create and enhance references"
-  display_name         = "Reference Writer"
-  role_id              = random_uuid.reference_writer_role.result
-  value                = "reference.writer"
-}
 
 resource "azuread_application_app_role" "robot_writer" {
   application_id       = azuread_application_registration.destiny_repository.id
@@ -97,12 +87,6 @@ resource "azuread_app_role_assignment" "developer_to_reference_reader" {
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
 }
 
-resource "azuread_app_role_assignment" "developer_to_reference_writer" {
-  app_role_id         = azuread_application_app_role.reference_writer.role_id
-  principal_object_id = var.developers_group_id
-  resource_object_id  = azuread_service_principal.destiny_repository.object_id
-}
-
 resource "azuread_app_role_assignment" "developer_to_robot_writer" {
   app_role_id         = azuread_application_app_role.robot_writer.role_id
   principal_object_id = var.developers_group_id
@@ -131,7 +115,6 @@ resource "azuread_application_api_access" "destiny_repository_auth" {
     azuread_application_app_role.administrator.role_id,
     azuread_application_app_role.importer.role_id,
     azuread_application_app_role.reference_reader.role_id,
-    azuread_application_app_role.reference_writer.role_id,
     azuread_application_app_role.enhancement_request_writer.role_id,
     azuread_application_app_role.robot_writer.role_id
   ]
