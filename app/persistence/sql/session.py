@@ -7,6 +7,7 @@ from typing import Any
 
 from azure.identity import DefaultAzureCredential
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+from opentelemetry.sdk.trace import TracerProvider
 from sqlalchemy import event
 from sqlalchemy.engine import Dialect
 from sqlalchemy.ext.asyncio import (
@@ -34,7 +35,7 @@ class AsyncDatabaseSessionManager:
         self._sessionmaker: async_sessionmaker[AsyncSession] | None = None
         self._azure_credentials = DefaultAzureCredential()
 
-    def init(self, db_config: DatabaseConfig, app_name: str, t) -> None:
+    def init(self, db_config: DatabaseConfig, app_name: str, t: TracerProvider) -> None:
         """Initialize the database manager."""
         connect_args: dict[str, Any] = {
             "server_settings": {
@@ -46,9 +47,7 @@ class AsyncDatabaseSessionManager:
             pool_pre_ping=True,
             connect_args=connect_args,
         )
-        SQLAlchemyInstrumentor().instrument(
-            engine=self._engine.sync_engine, tracer_provider=t
-        )
+        SQLAlchemyInstrumentor().instrument(engine=self._engine.sync_engine)
 
         if db_config.passwordless:
             # This is (more or less) as recommended in SQLAlchemy docs

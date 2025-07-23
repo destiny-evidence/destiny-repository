@@ -8,6 +8,7 @@ import structlog
 from fastapi import FastAPI, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
+from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -39,15 +40,22 @@ from app.utils.healthcheck import router as healthcheck_router
 
 settings = get_settings()
 logger = get_logger()
-tracer = TracerProvider()
-meter = MeterProvider(
+
+# Create and register OpenTelemetry providers globally
+tracer_provider = TracerProvider()
+trace.set_tracer_provider(tracer_provider)
+
+meter_provider = MeterProvider(
     [
         PeriodicExportingMetricReader(
             OTLPMetricExporter(endpoint="http://jaeger:4318/v1/metrics")
         )
     ]
 )
-tracer.add_span_processor(
+metrics.set_meter_provider(meter_provider)
+
+# Configure trace exporter
+tracer_provider.add_span_processor(
     BatchSpanProcessor(OTLPSpanExporter(endpoint="http://jaeger:4318/v1/traces"))
 )
 
@@ -56,7 +64,7 @@ tracer.add_span_processor(
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Lifespan hook for FastAPI."""
     # TODO(Adam): implement similar pattern for blob storage  # noqa: TD003
-    db_manager.init(settings.db_config, settings.app_name, tracer)
+    db_manager.init(settings.db_config, settings.app_name, tracer_provider)
     await es_manager.init(settings.es_config)
     await broker.startup()
 
@@ -216,5 +224,5 @@ async def root() -> dict[str, str]:
     return {"message": "Hello World"}
 
 
-FastAPIInstrumentor.instrument_app(app, tracer_provider=tracer, meter_provider=meter)
-HTTPXClientInstrumentor().instrument(tracer_provider=tracer, meter_provider=meter)
+FastAPIInstrumentor.instrument_app(app)
+HTTPXClientInstrumentor().instrument()
