@@ -3,6 +3,7 @@ build-backend = "poetry.core.masonry.api"
 requires = ["poetry-core"]
 
 [tool.mypy]
+namespace_packages = true
 explicit_package_bases = true
 plugins = ["pydantic.mypy"]
 
@@ -43,6 +44,12 @@ structlog = "^25.1.0"
 taskiq = {extras = ["reload"], version = "^0.11.16"}
 taskiq-aio-pika = "^0.4.1"
 uvloop = "^0.21.0"
+opentelemetry-instrumentation-fastapi = "^0.56b0"
+opentelemetry-instrumentation-httpx = "^0.56b0"
+opentelemetry-instrumentation-sqlalchemy = "^0.56b0"
+opentelemetry-instrumentation-logging = "^0.56b0"
+opentelemetry-distro = "^0.56b0"
+opentelemetry-exporter-otlp = "^1.35.0"
 
 [tool.poetry.group.dev.dependencies]
 destiny-sdk = {develop = true, path = "libs/sdk"}

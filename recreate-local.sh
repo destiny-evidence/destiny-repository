@@ -2,9 +2,9 @@
 
 # Convenience script to recreate the local environment.
 
-docker compose down -v
+docker compose --profile instrumentation --profile search --profile app down -v
 
-docker compose --profile search up -d
+docker compose --profile instrumentation --profile search --profile app up -d
 
 poetry run alembic upgrade head
 

@@ -52,8 +52,7 @@ services:
       retries: 5
 
   app:
-    profiles:
-      - optional
+    profiles: ["app"]
     build:
       context: .
       args:
@@ -74,12 +73,12 @@ services:
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
       MINIO_CONFIG: '{"HOST":"fs:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass"}'
       ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
 
     entrypoint: fastapi dev app/main.py --host 0.0.0.0 --port 8000
 
   worker:
-    profiles:
-      - optional
+    profiles: ["app"]
     build:
       context: .
       args:
@@ -91,7 +90,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-      es_setup:
+      elasticsearch:
         condition: service_healthy
     volumes:
       - ./app:/app/app
@@ -104,6 +103,11 @@ services:
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
       MINIO_CONFIG: '{"HOST":"fs:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass"}'
       ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
+      # OpenTelemetry configuration
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_SERVICE_NAME: destiny-worker
+      OTEL_RESOURCE_ATTRIBUTES: service.name=destiny-worker,service.version=1.0.0
     entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover --reload
   es_setup:
     image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_STACK_VERSION}
@@ -227,6 +231,28 @@ services:
       interval: 10s
       timeout: 10s
       retries: 120
+
+  jaeger:
+    profiles: ["instrumentation"]
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "14268:14268" # Jaeger HTTP collector
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:14269/",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
 
 volumes:
   certs:
