@@ -390,6 +390,48 @@ resource "ec_deployment" "cluster" {
     hot = {
       size = "2g"
       autoscaling = {
+        min_size = "0g"
+        min_size_resource = "memory"
+        max_size = "30g"
+        max_size_resource = "memory"
+      }
+    }
+
+    warm = {
+      size = "0g"
+      autoscaling = {
+        min_size = "0g"
+        min_size_resource = "memory"
+        max_size = "30g"
+        max_size_resource = "memory"
+      }
+    }
+
+    cold = {
+      size = "0g"
+      autoscaling = {
+        min_size = "0g"
+        min_size_resource = "memory"
+        max_size = "60g"
+        max_size_resource = "memory"
+      }
+    }
+
+    frozen = {
+      size = "0g"
+      autoscaling = {
+        min_size = "0g"
+        min_size_resource = "memory"
+        max_size = "60g"
+        max_size_resource = "memory"
+      }
+    }
+
+    ml = {
+      size = "0g"
+      autoscaling = {
+        min_size = "0g"
+        min_size_resource = "memory"
         max_size = "30g"
         max_size_resource = "memory"
       }
@@ -406,6 +448,13 @@ resource "ec_deployment" "cluster" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes = [
+      elasticsearch.hot.size,
+      elasticsearch.warm.size,
+      elasticsearch.cold.size,
+      elasticsearch.frozen.size,
+      elasticsearch.ml.size
+    ]
   }
 }
 
