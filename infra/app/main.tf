@@ -390,8 +390,6 @@ resource "ec_deployment" "cluster" {
     hot = {
       size = "2g"
       autoscaling = {
-        min_size = "0g"
-        min_size_resource = "memory"
         max_size = "30g"
         max_size_resource = "memory"
       }
@@ -400,8 +398,6 @@ resource "ec_deployment" "cluster" {
     warm = {
       size = "0g"
       autoscaling = {
-        min_size = "0g"
-        min_size_resource = "memory"
         max_size = "30g"
         max_size_resource = "memory"
       }
@@ -410,8 +406,6 @@ resource "ec_deployment" "cluster" {
     cold = {
       size = "0g"
       autoscaling = {
-        min_size = "0g"
-        min_size_resource = "memory"
         max_size = "60g"
         max_size_resource = "memory"
       }
@@ -420,8 +414,6 @@ resource "ec_deployment" "cluster" {
     frozen = {
       size = "0g"
       autoscaling = {
-        min_size = "0g"
-        min_size_resource = "memory"
         max_size = "60g"
         max_size_resource = "memory"
       }
@@ -430,8 +422,6 @@ resource "ec_deployment" "cluster" {
     ml = {
       size = "0g"
       autoscaling = {
-        min_size = "0g"
-        min_size_resource = "memory"
         max_size = "30g"
         max_size_resource = "memory"
       }
