@@ -1,5 +1,6 @@
 """Tasks module for the DESTINY Climate and Health Repository API."""
 
+from opentelemetry.instrumentation.aio_pika import AioPikaInstrumentor
 from taskiq import AsyncBroker, InMemoryBroker, TaskiqEvents, TaskiqState
 from taskiq_aio_pika import AioPikaBroker
 
@@ -18,7 +19,9 @@ broker: AsyncBroker = AzureServiceBusBroker(
 )
 
 if settings.env in (Environment.LOCAL, Environment.E2E):
+    AioPikaInstrumentor().instrument()
     broker = AioPikaBroker(settings.message_broker_url)
+
 elif settings.env == "test":
     broker = InMemoryBroker()
 
