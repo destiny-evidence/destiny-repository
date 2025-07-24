@@ -59,7 +59,7 @@ def test_complete_batch_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
         # 5. repo considers sending automatic request to robot number 1,
         #    notices that request_robot == automatic_robot, stops
         response = repo_client.post(
-            "/robot/",
+            "/robots/",
             json={
                 "name": "Toy Robot 2 but really it's just Toy Robot 1",
                 "base_url": toy_robot_url,

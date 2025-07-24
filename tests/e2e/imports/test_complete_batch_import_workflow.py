@@ -119,7 +119,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         ##########################
         # 1.a: Missing source name
         response = client.post(
-            "/imports/record/",
+            "/imports/records/",
             json={
                 "processor_name": "test_robot",
                 "processor_version": "0.0.1",
@@ -128,7 +128,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         assert response.status_code == 422
         # 1.b: Wrong data type on reference count
         response = client.post(
-            "/imports/record/",
+            "/imports/records/",
             json={
                 "processor_name": "test_robot",
                 "processor_version": "0.0.1",
@@ -139,7 +139,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         assert response.status_code == 422
         # 1.c: Correct record (with minimal fields)
         response = client.post(
-            "/imports/record/",
+            "/imports/records/",
             json={
                 "processor_name": "test_robot",
                 "processor_version": "0.0.1",
@@ -167,7 +167,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             import_record_id: str, url: str, **kwargs: object
         ) -> dict:
             response = client.post(
-                f"/imports/record/{import_record_id}/batch/",
+                f"/imports/records/{import_record_id}/batches/",
                 json={"storage_url": url, **kwargs},
             )
             assert (
@@ -179,7 +179,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         url = PRESIGNED_URLS[f"{BKT}1_completely_valid_file.jsonl"]
         # 2.a: Missing import record id
         response = client.post(
-            "/imports/record/batch/",
+            "/imports/records/batches/",
             json={
                 "storage_url": url,
             },
@@ -187,7 +187,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         assert response.status_code == 405
         # 2.b: Invalid enum
         response = client.post(
-            f"/imports/record/{import_record['id']}/batch/",
+            f"/imports/records/{import_record['id']}/batches/",
             json={
                 "collision_strategy": "https://www.reddit.com/r/ProgrammerHumor/comments/cgf0b8/git_merge/",
             },
@@ -195,7 +195,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         assert response.status_code == 422
         # 2.c: Wrong import record
         response = client.post(
-            f"/imports/record/{(u := uuid.uuid4())}/batch/",
+            f"/imports/records/{(u := uuid.uuid4())}/batches/",
             json={
                 "storage_url": url,
             },
@@ -234,7 +234,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
 
         # 2.e: Duplicate URL
         response = client.post(
-            f"/imports/record/{import_record['id']}/batch/",
+            f"/imports/records/{import_record['id']}/batches/",
             json={
                 "storage_url": url,
                 "callback_url": f"{CALLBACK_URL}/callback/",
@@ -450,11 +450,11 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
 
         # 8: Mark import record as completed
         response = client.patch(
-            f"/imports/record/{import_record['id']}/finalise/",
+            f"/imports/records/{import_record['id']}/finalise/",
         )
         assert response.status_code == 204
         response = client.get(
-            f"/imports/record/{import_record['id']}/",
+            f"/imports/records/{import_record['id']}/",
         )
         assert response.status_code == 200
         import_record = response.json()
@@ -501,7 +501,7 @@ def register_toy_robot(client: httpx.Client) -> None:
     """Register the toy robot and set up automation."""
     # Register the toy robot
     response = client.post(
-        "/robot/",
+        "/robots/",
         json={
             "name": "Toy Robot 1",
             "base_url": toy_robot_url,

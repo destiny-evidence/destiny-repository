@@ -8,7 +8,7 @@ from elasticsearch import AsyncElasticsearch
 from fastapi import APIRouter, Depends, Path, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import (
+from app.api.auth import (
     AuthMethod,
     AuthScopes,
     CachingStrategyAuth,
@@ -27,7 +27,6 @@ from app.domain.references.services.anti_corruption_service import (
 )
 from app.domain.references.tasks import (
     collect_and_dispatch_references_for_batch_enhancement,
-    rebuild_reference_index,
     validate_and_import_batch_enhancement_result,
 )
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
@@ -190,42 +189,6 @@ async def get_reference_from_identifier(
 
 
 @router.post(
-    "/",
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(reference_writer_auth)],
-)
-async def register_reference(
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    anti_corruption_service: Annotated[
-        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
-    ],
-) -> destiny_sdk.references.Reference:
-    """Create a reference."""
-    reference = await reference_service.register_reference()
-    return anti_corruption_service.reference_to_sdk(reference)
-
-
-@router.post(
-    "/{reference_id}/identifier/",
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(reference_writer_auth)],
-)
-async def add_identifier(
-    reference_id: Annotated[uuid.UUID, Path(description="The ID of the reference.")],
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    anti_corruption_service: Annotated[
-        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
-    ],
-    external_identifier: destiny_sdk.identifiers.ExternalIdentifier,
-) -> destiny_sdk.identifiers.LinkedExternalIdentifier:
-    """Add an identifier to a reference."""
-    identifier = await reference_service.add_identifier(
-        reference_id, external_identifier
-    )
-    return anti_corruption_service.external_identifier_to_sdk(identifier)
-
-
-@router.post(
     "/enhancement/single/",
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(reference_writer_auth)],
@@ -326,12 +289,6 @@ async def check_batch_enhancement_request_status(
     return await anti_corruption_service.batch_enhancement_request_to_sdk(
         batch_enhancement_request
     )
-
-
-@router.post("/index/rebuild/")
-async def rebuild_index() -> None:
-    """Delete, recreate and repopulate the Elasticsearch index."""
-    await rebuild_reference_index.kiq()
 
 
 @robot_router.post("/enhancement/single/", status_code=status.HTTP_200_OK)

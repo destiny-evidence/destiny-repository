@@ -721,3 +721,16 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self._detect_robot_automations(
             reference_ids=reference_ids, enhancement_ids=enhancement_ids
         )
+
+    @sql_unit_of_work
+    @es_unit_of_work
+    async def repopulate_robot_automation_percolation_index(
+        self,
+    ) -> None:
+        """
+        Repopulate the robot automation percolation index.
+
+        We assume the scale is small enough that we can do this naively.
+        """
+        for robot_automation in await self.sql_uow.robot_automations.get_all():
+            await self.es_uow.robot_automations.add(robot_automation)
