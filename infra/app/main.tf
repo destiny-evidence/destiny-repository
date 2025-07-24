@@ -113,6 +113,13 @@ locals {
   ]
 }
 
+data "azurerm_container_app" "this" {
+  # This data source is used to get the latest revision FQDN for the container app
+  # so that we can use it in the eppi-import GitHub Action.
+  name                = module.container_app.container_app_name
+  resource_group_name = azurerm_resource_group.this.name
+}
+
 module "container_app" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
   version                         = "1.6.2"
