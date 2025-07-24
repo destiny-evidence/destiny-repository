@@ -1,9 +1,10 @@
 """API config parsing and model."""
 
+import tomllib
 from enum import StrEnum, auto
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, Field, FilePath, HttpUrl, PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -175,6 +176,13 @@ class AzureBlobConfig(BaseModel):
         return f"https://{self.storage_account_name}.blob.core.windows.net"
 
 
+class OTelConfig(BaseModel):
+    """OpenTelemetry configuration."""
+
+    trace_endpoint: HttpUrl
+    meter_endpoint: HttpUrl
+
+
 class Environment(StrEnum):
     """Environment enum."""
 
@@ -217,6 +225,7 @@ class Settings(BaseSettings):
     es_config: ESConfig
     minio_config: MinioConfig | None = None
     azure_blob_config: AzureBlobConfig | None = None
+    otel_config: OTelConfig | None = None
 
     azure_application_id: str
     azure_login_url: HttpUrl = HttpUrl("https://login.microsoftonline.com")
@@ -335,6 +344,16 @@ class Settings(BaseSettings):
             msg = "Azure Blob Storage configuration is not given."
             raise ValueError(msg)
         return self.azure_blob_config.container
+
+    @property
+    def pyproject_toml(self) -> dict[str, Any]:
+        """Get the contents of pyproject.toml."""
+        return tomllib.load((self.project_root / "pyproject.toml").open("rb"))
+
+    @property
+    def app_version(self) -> str:
+        """Get the application version from pyproject.toml."""
+        return self.pyproject_toml["tool"]["poetry"]["version"]
 
 
 @lru_cache(maxsize=1)

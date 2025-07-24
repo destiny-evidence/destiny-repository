@@ -204,8 +204,8 @@ End-to-end testing is run separately in a containerised context:
 
 ```sh
 docker compose down -v \
-&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --force-recreate --remove-orphans \
-&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs -f --tail=0 e2e repository e2e-task-worker
+&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile e2e up -d --force-recreate --remove-orphans \
+&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs -f --tail=0 e2e app worker
 ```
 
 Note if you get unexpected `destiny_sdk` errors, you may need to add the `--build` flag to the `up` command above.

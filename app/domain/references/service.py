@@ -191,7 +191,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def register_reference(self) -> Reference:
         """Create a new reference."""
-        return await self.sql_uow.references.add(Reference())
+        logger.info("Registering new reference.")
+        reference = await self.sql_uow.references.add(Reference())
+        await self.index_reference(reference)
+        return reference
 
     @sql_unit_of_work
     async def add_identifier(

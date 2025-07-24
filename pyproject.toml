@@ -20,6 +20,7 @@ license = "AGPL-3.0-or-later"
 name = "destiny-repository"
 package-mode = false
 readme = "README.md"
+version = "1.0.0"
 
 [tool.poetry.dependencies]
 aiohttp = "3.12.3" # version locked per https://github.com/Azure/azure-sdk-for-python/issues/41363

@@ -5,6 +5,7 @@ from collections.abc import MutableMapping
 
 import structlog
 from opentelemetry import trace
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
 
 class Logger:
@@ -91,6 +92,17 @@ def configure_logger(*, rich_rendering: bool) -> None:
     setting exception info, timestamping logs in ISO format with UTC,
     and rendering logs to the console.
     """
+    # Configure OpenTelemetry logging instrumentation FIRST
+    LoggingInstrumentor().instrument(set_logging_format=True)
+
+    # Configure the root logger to ensure proper integration
+    root_logger = logging.getLogger()
+    if not root_logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        root_logger.addHandler(handler)
+        root_logger.setLevel(logging.INFO)
+
     # Disable uvicorn logging
     logging.getLogger("uvicorn.error").disabled = True
     logging.getLogger("uvicorn.access").disabled = True
@@ -119,7 +131,9 @@ def configure_logger(*, rich_rendering: bool) -> None:
 
     structlog.configure(
         processors=processors,  # type: ignore[arg-type]
-        logger_factory=structlog.PrintLoggerFactory(),
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
     )
 
 

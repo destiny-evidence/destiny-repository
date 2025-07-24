@@ -8,16 +8,7 @@ import structlog
 from fastapi import FastAPI, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from opentelemetry import metrics, trace
-from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from opentelemetry.instrumentation.logging import LoggingInstrumentor
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from app.core.config import get_settings
 from app.core.exceptions import (
@@ -30,6 +21,7 @@ from app.core.exceptions import (
     SQLNotFoundError,
 )
 from app.core.logger import configure_logger, get_logger
+from app.core.telemetry import configure_otel
 from app.domain.imports.routes import router as import_router
 from app.domain.references.routes import robot_router
 from app.domain.references.routes import router as reference_router
@@ -40,25 +32,11 @@ from app.tasks import broker
 from app.utils.healthcheck import router as healthcheck_router
 
 settings = get_settings()
+if settings.otel_config:
+    configure_otel(settings.otel_config, settings.app_name, settings.app_version)
+
+configure_logger(rich_rendering=settings.running_locally)
 logger = get_logger()
-
-# Create and register OpenTelemetry providers globally
-tracer_provider = TracerProvider()
-trace.set_tracer_provider(tracer_provider)
-
-meter_provider = MeterProvider(
-    [
-        PeriodicExportingMetricReader(
-            OTLPMetricExporter(endpoint="http://jaeger:4318/v1/metrics")
-        )
-    ]
-)
-metrics.set_meter_provider(meter_provider)
-
-# Configure trace exporter
-tracer_provider.add_span_processor(
-    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://jaeger:4318/v1/traces"))
-)
 
 
 @asynccontextmanager
@@ -83,8 +61,6 @@ app.include_router(reference_router)
 app.include_router(robot_router)
 app.include_router(robot_management_router)
 app.include_router(healthcheck_router)
-
-configure_logger(rich_rendering=settings.running_locally)
 
 
 @app.middleware("http")
@@ -226,7 +202,3 @@ async def root() -> dict[str, str]:
 
 
 FastAPIInstrumentor.instrument_app(app)
-HTTPXClientInstrumentor().instrument()
-
-# Instrument Python logging to correlate logs with traces
-LoggingInstrumentor().instrument(set_logging_format=True)

@@ -73,7 +73,7 @@ services:
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
       MINIO_CONFIG: '{"HOST":"fs:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass"}'
       ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_CONFIG: '{"trace_endpoint": "http://jaeger:4318/v1/traces", "meter_endpoint": "http://jaeger:4318/v1/metrics"}'
 
     entrypoint: fastapi dev app/main.py --host 0.0.0.0 --port 8000
 
@@ -103,11 +103,7 @@ services:
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
       MINIO_CONFIG: '{"HOST":"fs:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass"}'
       ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
-      # OpenTelemetry configuration
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
-      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-      OTEL_SERVICE_NAME: destiny-worker
-      OTEL_RESOURCE_ATTRIBUTES: service.name=destiny-worker,service.version=1.0.0
+      OTEL_CONFIG: '{"trace_endpoint": "http://jaeger:4318/v1/traces", "meter_endpoint": "http://jaeger:4318/v1/metrics"}'
     entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover --reload
   es_setup:
     image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_STACK_VERSION}
