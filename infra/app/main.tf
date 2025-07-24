@@ -366,6 +366,68 @@ resource "azurerm_storage_management_policy" "operations" {
   }
 }
 
+resource "azurerm_storage_container" "file_uploads" {
+  # This is a container designed for storing user-uploaded files, such as reference files to be imported into the DESTINY repository.
+  name                  = "file-uploads"
+  storage_account_id    = azurerm_storage_account.this.id
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_management_policy" "file_uploads" {
+  storage_account_id = azurerm_storage_account.this.id
+
+  rule {
+    name    = "delete-old-${azurerm_storage_container.file_uploads.name}-blobs"
+    enabled = true
+    filters {
+      blob_types   = ["blockBlob"]
+      prefix_match = [azurerm_storage_container.file_uploads.name]
+    }
+    actions {
+      base_blob {
+        delete_after_days_since_modification_greater_than = 30
+      }
+      snapshot {
+        delete_after_days_since_creation_greater_than = 30
+      }
+      version {
+        delete_after_days_since_creation = 30
+      }
+    }
+  }
+}
+
+resource "azurerm_storage_container" "import_files" {
+  # This is a container designed for storing pre-processed jsonl files to be imported into the DESTINY repository.
+  name                  = "import-files"
+  storage_account_id    = azurerm_storage_account.this.id
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_management_policy" "import_files" {
+  storage_account_id = azurerm_storage_account.this.id
+
+  rule {
+    name    = "delete-old-${azurerm_storage_container.import_files.name}-blobs"
+    enabled = true
+    filters {
+      blob_types   = ["blockBlob"]
+      prefix_match = [azurerm_storage_container.import_files.name]
+    }
+    actions {
+      base_blob {
+        delete_after_days_since_modification_greater_than = 30
+      }
+      snapshot {
+        delete_after_days_since_creation_greater_than = 30
+      }
+      version {
+        delete_after_days_since_creation = 30
+      }
+    }
+  }
+}
+
 resource "azurerm_role_assignment" "blob_storage_rw" {
   # TODO: granularise permissions per container
   for_each = {
