@@ -74,17 +74,20 @@ jobs:
             --auth-mode login \
             --as-user \
             --output tsv)
-          echo "url=https://${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}.blob.core.windows.net/import-files/references-${{ github.run_id }}.jsonl?$sas_token" >> $GITHUB_OUTPUT
+          echo "::add-mask::$sas_token"
+          url="https://${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}.blob.core.windows.net/import-files/references-${{ github.run_id }}.jsonl?$sas_token"
+          echo "url=$url" >> $GITHUB_OUTPUT
 
       - name: Get access token for Destiny API
         id: get_token
         run: |
           access_token=$(az account get-access-token --resource ${{ vars.DESTINY_API_IDENTIFIER_URI }} --query accessToken --output tsv)
+          echo "::add-mask::$access_token"
           echo "token=$access_token" >> $GITHUB_OUTPUT
 
-      - name: Post file to Destiny API
-        run: |
-          python libs/eppi_importer/post_to_destiny.py \
-            --api-endpoint "${{ secrets.DESTINY_API_ENDPOINT }}" \
-            --access-token "${{ steps.get_token.outputs.token }}" \
-            --file-url "${{ steps.generate_sas.outputs.url }}"
+    #   - name: Post file to Destiny API
+    #     run: |
+    #       python libs/eppi_importer/post_to_destiny.py \
+    #         --api-endpoint "${{ secrets.DESTINY_API_ENDPOINT }}" \
+    #         --access-token "${{ steps.get_token.outputs.token }}" \
+    #         --file-url "${{ steps.generate_sas.outputs.url }}"
