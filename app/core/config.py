@@ -226,6 +226,7 @@ class Settings(BaseSettings):
     minio_config: MinioConfig | None = None
     azure_blob_config: AzureBlobConfig | None = None
     otel_config: OTelConfig | None = None
+    otel_enabled: bool = False
 
     azure_application_id: str
     azure_login_url: HttpUrl = HttpUrl("https://login.microsoftonline.com")

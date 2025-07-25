@@ -90,6 +90,16 @@ Alternatively, you can run the development server and taskiq worker via docker:
 docker compose --profile optional up --build
 ```
 
+#### Observability
+
+The below command spins up a `SigNoz` deployment for local observability of traces and metrics. This exactly mimics our production setup, except for the observability platform itself.
+
+```sh
+COMPOSE_EXPERIMENTAL_GIT_REMOTE=1 docker compose -f docker-compose.signoz.yml up -d
+```
+
+Then, set `env.OTEL_ENABLED` to true, go to `http://localhost:8080`, and create a mock account to observe the instrumentation.
+
 ## Organisation
 
 The initial project includes some folders to organise the code.
@@ -204,7 +214,7 @@ End-to-end testing is run separately in a containerised context:
 
 ```sh
 docker compose down -v \
-&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile e2e up -d --force-recreate --remove-orphans \
+&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile e2e up -d --force-recreate \
 && docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs -f --tail=0 e2e app worker
 ```
 

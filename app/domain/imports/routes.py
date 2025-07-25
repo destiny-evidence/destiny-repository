@@ -15,6 +15,7 @@ from app.api.auth import (
 )
 from app.core.config import get_settings
 from app.core.logger import get_logger
+from app.core.telemetry import TaskiqTracingMiddleware
 from app.domain.imports.models.models import (
     ImportResultStatus,
 )
@@ -150,7 +151,8 @@ async def enqueue_batch(
         )
     )
     logger.info("Enqueueing import batch", extra={"import_batch_id": import_batch.id})
-    await process_import_batch.kiq(
+    await TaskiqTracingMiddleware.kiq(
+        process_import_batch,
         import_batch_id=import_batch.id,
         remaining_retries=settings.import_batch_retry_count,
     )

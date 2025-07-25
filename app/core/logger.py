@@ -5,7 +5,6 @@ from collections.abc import MutableMapping
 
 import structlog
 from opentelemetry import trace
-from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
 
 class Logger:
@@ -92,9 +91,6 @@ def configure_logger(*, rich_rendering: bool) -> None:
     setting exception info, timestamping logs in ISO format with UTC,
     and rendering logs to the console.
     """
-    # Configure OpenTelemetry logging instrumentation FIRST
-    LoggingInstrumentor().instrument(set_logging_format=True)
-
     # Configure the root logger to ensure proper integration
     root_logger = logging.getLogger()
     if not root_logger.handlers:

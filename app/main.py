@@ -14,8 +14,10 @@ from app.persistence.sql.session import db_manager
 from app.tasks import broker
 
 settings = get_settings()
-if settings.otel_config:
-    configure_otel(settings.otel_config, settings.app_name, settings.app_version)
+if settings.otel_config and settings.otel_enabled:
+    configure_otel(
+        settings.otel_config, settings.app_name, settings.app_version, settings.env
+    )
 
 logger = get_logger()
 
