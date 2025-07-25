@@ -17,6 +17,7 @@ from app.api.auth import (
 )
 from app.core.config import get_settings
 from app.core.logger import get_logger
+from app.core.telemetry import TaskiqTracingMiddleware
 from app.domain.references.models.models import (
     BatchEnhancementRequestStatus,
     ExternalIdentifierSearch,
@@ -239,7 +240,8 @@ async def request_batch_enhancement(
         "Enqueueing enhancement batch",
         extra={"batch_enhancement_request_id": enhancement_request.id},
     )
-    await collect_and_dispatch_references_for_batch_enhancement.kiq(
+    await TaskiqTracingMiddleware.kiq(
+        collect_and_dispatch_references_for_batch_enhancement,
         batch_enhancement_request_id=enhancement_request.id,
     )
     return await anti_corruption_service.batch_enhancement_request_to_sdk(
@@ -369,7 +371,8 @@ async def fulfill_batch_enhancement_request(
         )
     )
 
-    await validate_and_import_batch_enhancement_result.kiq(
+    await TaskiqTracingMiddleware.kiq(
+        validate_and_import_batch_enhancement_result,
         batch_enhancement_request_id=robot_result.request_id,
     )
 
