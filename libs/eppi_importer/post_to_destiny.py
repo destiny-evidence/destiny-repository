@@ -18,7 +18,7 @@ import httpx
 
 
 def register_import_record(
-    client: httpx.Client,
+    client: httpx.Client, expected_reference_count: int
 ) -> destiny_sdk.imports.ImportRecordRead:
     """Register a new import record."""
     print("Registering a new import record...")
@@ -28,7 +28,7 @@ def register_import_record(
             processor_name="EPPI Importer GitHub Action",
             processor_version="0.0.1",
             source_name="EPPI",
-            expected_reference_count=1,  # This is a placeholder
+            expected_reference_count=expected_reference_count,
         ),
     )
     response.raise_for_status()
@@ -102,13 +102,19 @@ def main() -> None:
         "--access-token", required=True, help="Destiny API access token"
     )
     parser.add_argument("--file-url", required=True, help="URL of the file to import")
+    parser.add_argument(
+        "--expected-reference-count",
+        type=int,
+        required=True,
+        help="Expected number of references in the import file",
+    )
     args = parser.parse_args()
 
     with httpx.Client(
         base_url=args.api_endpoint,
         headers={"Authorization": f"Bearer {args.access_token}"},
     ) as client:
-        import_record = register_import_record(client)
+        import_record = register_import_record(client, args.expected_reference_count)
         import_batch = register_import_batch(client, import_record.id, args.file_url)
         finalise_import_record(client, import_record.id)
         poll_and_summarise(client, import_batch.id)

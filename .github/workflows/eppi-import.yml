@@ -42,8 +42,12 @@ jobs:
       - name: Install dependencies
         run: pip install httpx
 
-      - name: Download input file
-        run: curl -o eppi_report.json "${{ github.event.inputs.eppi_file_url }}"
+      - name: Download input file and count references
+        id: download_and_count
+        run: |
+          curl -o eppi_report.json "${{ github.event.inputs.eppi_file_url }}"
+          count=$(jq '.References | length' eppi_report.json)
+          echo "count=$count" >> $GITHUB_OUTPUT
 
       - name: Convert JSON to JSONL
         run: |
@@ -96,4 +100,5 @@ jobs:
           python libs/eppi_importer/post_to_destiny.py \
             --api-endpoint "${{ secrets.DESTINY_API_ENDPOINT }}" \
             --access-token "${{ steps.get_token.outputs.token }}" \
-            --file-url "${{ steps.generate_sas.outputs.url }}"
+            --file-url "${{ steps.generate_sas.outputs.url }}" \
+            --expected-reference-count "${{ steps.download_and_count.outputs.count }}"
