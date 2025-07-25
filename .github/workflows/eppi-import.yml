@@ -110,7 +110,7 @@ jobs:
           EXPECTED_REFERENCE_COUNT: ${{ steps.download_and_count.outputs.count }}
         run: |
           python libs/eppi_importer/post_to_destiny.py \
-            --api-endpoint "$API_ENDPOINT" \
+            --api-endpoint "${{ secrets.DESTINY_API_ENDPOINT }}" \
             --access-token "$ACCESS_TOKEN" \
             --file-url "$FILE_URL" \
             --expected-reference-count "$EXPECTED_REFERENCE_COUNT"
