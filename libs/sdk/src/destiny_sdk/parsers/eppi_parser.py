@@ -7,9 +7,12 @@ from typing import Any
 from destiny_sdk.enhancements import (
     AbstractContentEnhancement,
     AbstractProcessType,
+    AnnotationEnhancement,
+    AnnotationType,
     AuthorPosition,
     Authorship,
     BibliographicMetadataEnhancement,
+    BooleanAnnotation,
     EnhancementContent,
     EnhancementFileInput,
 )
@@ -115,17 +118,53 @@ def _parse_bibliographic_enhancement(
     )
 
 
-def parse_file(file_path: Path) -> list[ReferenceFileInput]:
+def _create_annotation_enhancement(
+    tags: list[str],
+) -> EnhancementContent | None:
+    """
+    Create an annotation enhancement from a list of tags.
+
+    Args:
+        tags: The tags to add as annotations.
+
+    Returns:
+        An EnhancementContent object or None.
+
+    """
+    if not tags:
+        return None
+
+    annotations = [
+        BooleanAnnotation(
+            annotation_type=AnnotationType.BOOLEAN,
+            scheme="eppi_importer",
+            label=tag,
+            value=True,
+        )
+        for tag in tags
+    ]
+
+    return AnnotationEnhancement(
+        annotations=annotations,
+    )
+
+
+def parse_file(
+    file_path: Path, tags: list[str] | None = None
+) -> list[ReferenceFileInput]:
     """
     Parse a EPPI JSON export file and return a list of references.
 
     Args:
         file_path: The path to the EPPI JSON export file.
+        tags: A list of tags to add as annotation enhancements.
 
     Returns:
         A list of ReferenceFileInput objects.
 
     """
+    if tags is None:
+        tags = []
     with file_path.open() as f:
         data = json.load(f)
 
@@ -136,6 +175,7 @@ def parse_file(file_path: Path) -> list[ReferenceFileInput]:
             for content in [
                 _parse_abstract_enhancement(ref_to_import),
                 _parse_bibliographic_enhancement(ref_to_import),
+                _create_annotation_enhancement(tags),
             ]
             if content
         ]

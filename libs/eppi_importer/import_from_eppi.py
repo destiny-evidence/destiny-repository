@@ -17,9 +17,15 @@ def main() -> None:
     parser.add_argument(
         "--output", "-o", type=str, required=True, help="Output .jsonl filename"
     )
+    parser.add_argument(
+        "--tags",
+        nargs="+",
+        default=[],
+        help="A list of tags to add as annotation enhancements.",
+    )
     args = parser.parse_args()
 
-    references = parse_file(Path(args.input))
+    references = parse_file(Path(args.input), tags=args.tags)
 
     with Path(args.output).open("w") as f:
         for ref in references:
