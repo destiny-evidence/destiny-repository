@@ -338,13 +338,26 @@ resource "azurerm_storage_account" "this" {
   }
 }
 
-
 resource "azurerm_storage_container" "operations" {
   # This is a container designed for storing operational repository files such as
   # batch enhancement results and reference data for robots. These are transient.
   # We should segregate this from permanent data (such as full texts) at the container
   # level to easily apply different storage management policies.
   name                  = "${local.name}-ops"
+  storage_account_id    = azurerm_storage_account.this.id
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_container" "file_uploads" {
+  # This is a container designed for storing user-uploaded files, such as reference files to be imported into the DESTINY repository.
+  name                  = "file-uploads"
+  storage_account_id    = azurerm_storage_account.this.id
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_container" "import_files" {
+  # This is a container designed for storing pre-processed jsonl files to be imported into the DESTINY repository.
+  name                  = "import-files"
   storage_account_id    = azurerm_storage_account.this.id
   container_access_type = "private"
 }
@@ -371,17 +384,6 @@ resource "azurerm_storage_management_policy" "operations" {
       }
     }
   }
-}
-
-resource "azurerm_storage_container" "file_uploads" {
-  # This is a container designed for storing user-uploaded files, such as reference files to be imported into the DESTINY repository.
-  name                  = "file-uploads"
-  storage_account_id    = azurerm_storage_account.this.id
-  container_access_type = "private"
-}
-
-resource "azurerm_storage_management_policy" "file_uploads" {
-  storage_account_id = azurerm_storage_account.this.id
 
   rule {
     name    = "delete-old-${azurerm_storage_container.file_uploads.name}-blobs"
@@ -402,17 +404,6 @@ resource "azurerm_storage_management_policy" "file_uploads" {
       }
     }
   }
-}
-
-resource "azurerm_storage_container" "import_files" {
-  # This is a container designed for storing pre-processed jsonl files to be imported into the DESTINY repository.
-  name                  = "import-files"
-  storage_account_id    = azurerm_storage_account.this.id
-  container_access_type = "private"
-}
-
-resource "azurerm_storage_management_policy" "import_files" {
-  storage_account_id = azurerm_storage_account.this.id
 
   rule {
     name    = "delete-old-${azurerm_storage_container.import_files.name}-blobs"
