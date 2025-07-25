@@ -25,9 +25,6 @@ jobs:
     environment: ${{ github.event.inputs.environment }}
 
     steps:
-      - name: Mask signed URL
-        run: echo "::add-mask::${{ github.event.inputs.eppi_file_url }}"
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -44,8 +41,11 @@ jobs:
 
       - name: Download input file and count references
         id: download_and_count
+        env:
+          SIGNED_URL: ${{ github.event.inputs.eppi_file_url }}
         run: |
-          curl -o eppi_report.json "${{ github.event.inputs.eppi_file_url }}"
+          echo "::add-mask::$SIGNED_URL"
+          curl -o eppi_report.json "$SIGNED_URL"
           count=$(jq '.References | length' eppi_report.json)
           echo "count=$count" >> $GITHUB_OUTPUT
 
@@ -74,32 +74,43 @@ jobs:
 
       - name: Generate SAS Token for JSONL file
         id: generate_sas
+        env:
+          STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           end_date=$(date -u -d "1 hour" '+%Y-%m-%dT%H:%MZ')
           sas_token=$(az storage blob generate-sas \
-            --account-name ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }} \
+            --account-name $STORAGE_ACCOUNT_NAME \
             --container-name "import-files" \
-            --name "references-${{ github.run_id }}.jsonl" \
+            --name "references-$RUN_ID.jsonl" \
             --permissions r \
             --expiry $end_date \
             --auth-mode login \
             --as-user \
             --output tsv)
           echo "::add-mask::$sas_token"
-          url="https://${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}.blob.core.windows.net/import-files/references-${{ github.run_id }}.jsonl?$sas_token"
+          url="https://$STORAGE_ACCOUNT_NAME.blob.core.windows.net/import-files/references-$RUN_ID.jsonl?$sas_token"
+          echo "::add-mask::$url"
           echo "url=$url" >> $GITHUB_OUTPUT
 
       - name: Get access token for Destiny API
         id: get_token
+        env:
+          API_IDENTIFIER_URI: ${{ vars.DESTINY_API_IDENTIFIER_URI }}
         run: |
-          access_token=$(az account get-access-token --resource ${{ vars.DESTINY_API_IDENTIFIER_URI }} --query accessToken --output tsv)
+          access_token=$(az account get-access-token --resource $API_IDENTIFIER_URI --query accessToken --output tsv)
           echo "::add-mask::$access_token"
           echo "token=$access_token" >> $GITHUB_OUTPUT
 
       - name: Post file to Destiny API
+        env:
+          API_ENDPOINT: ${{ secrets.DESTINY_API_ENDPOINT }}
+          ACCESS_TOKEN: ${{ steps.get_token.outputs.token }}
+          FILE_URL: ${{ steps.generate_sas.outputs.url }}
+          EXPECTED_REFERENCE_COUNT: ${{ steps.download_and_count.outputs.count }}
         run: |
           python libs/eppi_importer/post_to_destiny.py \
-            --api-endpoint "${{ secrets.DESTINY_API_ENDPOINT }}" \
-            --access-token "${{ steps.get_token.outputs.token }}" \
-            --file-url "${{ steps.generate_sas.outputs.url }}" \
-            --expected-reference-count "${{ steps.download_and_count.outputs.count }}"
+            --api-endpoint "$API_ENDPOINT" \
+            --access-token "$ACCESS_TOKEN" \
+            --file-url "$FILE_URL" \
+            --expected-reference-count "$EXPECTED_REFERENCE_COUNT"
