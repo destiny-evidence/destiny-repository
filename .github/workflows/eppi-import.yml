@@ -91,9 +91,9 @@ jobs:
           echo "::add-mask::$access_token"
           echo "token=$access_token" >> $GITHUB_OUTPUT
 
-    #   - name: Post file to Destiny API
-    #     run: |
-    #       python libs/eppi_importer/post_to_destiny.py \
-    #         --api-endpoint "${{ secrets.DESTINY_API_ENDPOINT }}" \
-    #         --access-token "${{ steps.get_token.outputs.token }}" \
-    #         --file-url "${{ steps.generate_sas.outputs.url }}"
+      - name: Post file to Destiny API
+        run: |
+          python libs/eppi_importer/post_to_destiny.py \
+            --api-endpoint "${{ secrets.DESTINY_API_ENDPOINT }}" \
+            --access-token "${{ steps.get_token.outputs.token }}" \
+            --file-url "${{ steps.generate_sas.outputs.url }}"
