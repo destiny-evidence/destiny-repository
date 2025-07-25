@@ -52,7 +52,7 @@ if __name__ == "__main__":
                 processor_version="0.0.1",
                 source_name="OpenAlex",
                 expected_reference_count=6,
-            ).model_dump(),
+            ).model_dump(mode="json"),
         )
         response.raise_for_status()
         import_record = destiny_sdk.imports.ImportRecordRead.model_validate(
@@ -89,7 +89,7 @@ if __name__ == "__main__":
                 json=destiny_sdk.imports.ImportBatchIn(
                     storage_url=sas_url,
                     callback_url=None,
-                ).model_dump(),
+                ).model_dump(mode="json"),
             )
             response.raise_for_status()
             import_batch = destiny_sdk.imports.ImportBatchRead.model_validate(
