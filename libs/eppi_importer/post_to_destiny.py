@@ -29,7 +29,7 @@ def register_import_record(
             processor_version="0.0.1",
             source_name="EPPI",
             expected_reference_count=expected_reference_count,
-        ),
+        ).model_dump(),
     )
     response.raise_for_status()
     import_record = destiny_sdk.imports.ImportRecordRead.model_validate(response.json())
@@ -47,7 +47,7 @@ def register_import_batch(
         json=destiny_sdk.imports.ImportBatchIn(
             storage_url=file_url,
             callback_url=None,
-        ),
+        ).model_dump(),
     )
     response.raise_for_status()
     import_batch = destiny_sdk.imports.ImportBatchRead.model_validate(response.json())
