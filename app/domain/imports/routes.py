@@ -81,13 +81,18 @@ router = APIRouter(prefix="/imports", tags=["imports"])
 import_record_router = APIRouter(
     prefix="/records",
     tags=["import-records"],
-    dependencies=[Depends(import_auth)],
+    dependencies=[
+        Depends(import_auth),
+    ],
 )
 
 import_batch_router = APIRouter(
     prefix="/{import_record_id}/batches",
     tags=["import-batches"],
-    dependencies=[Depends(import_auth), Depends(validate_import_record)],
+    dependencies=[
+        Depends(import_auth),
+        Depends(validate_import_record),
+    ],
 )
 
 

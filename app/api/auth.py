@@ -23,6 +23,7 @@ from fastapi import Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from httpx import AsyncClient
 from jose import exceptions, jwt
+from opentelemetry import trace
 
 from app.core.config import get_settings
 from app.core.exceptions import NotFoundError
@@ -341,7 +342,42 @@ class AzureJwtAuth(AuthMethod):
                 detail="Authorization HTTPBearer header missing.",
             )
         verified_claims = await self.verify_token(credentials.credentials)
+
+        # Add user information to the current OpenTelemetry span
+        self._add_user_to_span(verified_claims)
+
         return self._require_scope(self.scope, verified_claims)
+
+    def _add_user_to_span(self, claims: dict[str, Any]) -> None:
+        """
+        Add user information from the JWT claims to the current OpenTelemetry span.
+
+        Args:
+            claims: The verified claims from the JWT token.
+
+        """
+        span = trace.get_current_span()
+        if not span or not span.is_recording():
+            return
+
+        # Extract user ID from common JWT claim fields
+        user_id = (
+            claims.get("oid")  # Object ID (Azure AD)
+            or claims.get("sub")  # Subject (standard JWT)
+            or claims.get("upn")  # User Principal Name (Azure AD)
+        )
+
+        if user_id:
+            span.set_attribute("user.id", user_id)
+
+            # Add additional user attributes if available
+            if "name" in claims:
+                span.set_attribute("user.name", claims["name"])
+
+            if "email" in claims:
+                span.set_attribute("user.email", claims["email"])
+            elif "preferred_username" in claims:
+                span.set_attribute("user.email", claims["preferred_username"])
 
 
 class SuccessAuth(AuthMethod):
