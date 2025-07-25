@@ -125,5 +125,5 @@ resource "github_actions_environment_secret" "destiny_api_endpoint" {
   repository      = github_repository_environment.environment.repository
   environment     = github_repository_environment.environment.environment
   secret_name     = "DESTINY_API_ENDPOINT"
-  plaintext_value = "https://${data.azurerm_container_app.this.latest_revision_fqdn}"
+  plaintext_value = "https://${data.azurerm_container_app.this.ingress[0].fqdn}"
 }

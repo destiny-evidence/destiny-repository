@@ -107,10 +107,9 @@ jobs:
           API_ENDPOINT: ${{ secrets.DESTINY_API_ENDPOINT }}
           ACCESS_TOKEN: ${{ steps.get_token.outputs.token }}
           FILE_URL: ${{ steps.generate_sas.outputs.url }}
-          EXPECTED_REFERENCE_COUNT: ${{ steps.download_and_count.outputs.count }}
         run: |
           python libs/eppi_importer/post_to_destiny.py \
-            --api-endpoint "${{ secrets.DESTINY_API_ENDPOINT }}" \
+            --api-endpoint "$API_ENDPOINT" \
             --access-token "$ACCESS_TOKEN" \
             --file-url "$FILE_URL" \
-            --expected-reference-count "$EXPECTED_REFERENCE_COUNT"
+            --expected-reference-count ${{ steps.download_and_count.outputs.count }}
