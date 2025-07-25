@@ -19,3 +19,19 @@ def test_parse_file():
     actual_output = "".join([ref.to_jsonl() + "\n" for ref in references])
 
     assert actual_output == expected_output
+
+
+def test_parse_file_with_annotations():
+    """Test that the parse_file function returns the output with annotations."""
+    test_data_path = Path(__file__).parent.parent / "test_data"
+    input_path = test_data_path / "eppi_report.json"
+    output_path = test_data_path / "eppi_import_with_annotations.jsonl"
+
+    references = parse_file(input_path, tags=["test-tag", "another-tag"])
+
+    with output_path.open() as f:
+        expected_output = f.read()
+
+    actual_output = "".join([ref.to_jsonl() + "\n" for ref in references])
+
+    assert actual_output == expected_output
