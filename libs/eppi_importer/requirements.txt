@@ -1,4 +1,0 @@
--e ../sdk
-httpx
-azure-identity
-azure-storage-blob

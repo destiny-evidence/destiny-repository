@@ -14,8 +14,6 @@ on:
           - staging
           - production
         required: true
-  push:
-    branches: ["218-file-imports"]
 
 permissions:
   id-token: write
@@ -35,8 +33,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install local SDK
+        run: pip install -e libs/sdk
+
       - name: Install dependencies
-        run: pip install -r libs/eppi_importer/requirements.txt
+        run: pip install httpx
 
       - name: Download input file
         run: curl -o eppi_report.json "${{ github.event.inputs.eppi_file_url }}"
