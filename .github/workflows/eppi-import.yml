@@ -25,6 +25,9 @@ jobs:
     environment: ${{ github.event.inputs.environment }}
 
     steps:
+      - name: Mask signed URL
+        run: echo "::add-mask::${{ github.event.inputs.eppi_file_url }}"
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
