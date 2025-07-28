@@ -40,3 +40,12 @@ class SemConv(StrEnum):
     USER_FULL_NAME = _user_attributes.USER_FULL_NAME
     USER_ROLES = _user_attributes.USER_ROLES
     USER_AUTH_METHOD = "user.auth.method"
+
+    # Application attributes
+    IMPORT_RECORD_ID = "import.record.id"
+    IMPORT_BATCH_ID = "import.batch.id"
+
+    REFERENCE_ID = "reference.id"
+
+    SINGLE_ENHANCEMENT_REQUEST_ID = "enhancement_request.single.id"
+    BATCH_ENHANCEMENT_REQUEST_ID = "enhancement_request.batch.id"
