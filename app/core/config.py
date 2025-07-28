@@ -181,6 +181,7 @@ class OTelConfig(BaseModel):
 
     trace_endpoint: HttpUrl
     meter_endpoint: HttpUrl
+    api_key: str | None = None
 
 
 class Environment(StrEnum):
