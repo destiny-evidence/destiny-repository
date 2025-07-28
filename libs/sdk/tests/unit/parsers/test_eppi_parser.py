@@ -2,16 +2,21 @@
 
 from pathlib import Path
 
-from destiny_sdk.parsers.eppi_parser import parse_file
+from destiny_sdk.parsers.eppi_parser import EPPIParser
 
 
-def test_parse_file():
-    """Test that the parse_file function returns the expected output."""
+def test_parse_data():
+    """Test that the parse_data method returns the expected output."""
     test_data_path = Path(__file__).parent.parent / "test_data"
     input_path = test_data_path / "eppi_report.json"
     output_path = test_data_path / "eppi_import.jsonl"
 
-    references = parse_file(input_path)
+    import json
+
+    parser = EPPIParser()
+    with input_path.open() as f:
+        data = json.load(f)
+    references = parser.parse_data(data)
 
     with output_path.open() as f:
         expected_output = f.read()
@@ -21,13 +26,18 @@ def test_parse_file():
     assert actual_output == expected_output
 
 
-def test_parse_file_with_annotations():
-    """Test that the parse_file function returns the output with annotations."""
+def test_parse_data_with_annotations():
+    """Test that the parse_data method returns the output with annotations."""
     test_data_path = Path(__file__).parent.parent / "test_data"
     input_path = test_data_path / "eppi_report.json"
     output_path = test_data_path / "eppi_import_with_annotations.jsonl"
 
-    references = parse_file(input_path, tags=["test-tag", "another-tag"])
+    import json
+
+    parser = EPPIParser(tags=["test-tag", "another-tag"])
+    with input_path.open() as f:
+        data = json.load(f)
+    references = parser.parse_data(data)
 
     with output_path.open() as f:
         expected_output = f.read()
