@@ -6,7 +6,6 @@ from contextlib import AbstractAsyncContextManager
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware import Middleware
-from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.exception_handlers import (
     es_malformed_exception_handler,
@@ -63,16 +62,6 @@ def register_api(
         lifespan=lifespan,
         middleware=[
             Middleware(LoggerMiddleware),
-            Middleware(
-                CORSMiddleware,
-                allow_origins=[
-                    "https://destiny-evidence.github.io",
-                    "null",
-                ],
-                allow_credentials=True,
-                allow_methods=["*"],
-                allow_headers=["*"],
-            ),
         ],
         exception_handlers={
             NotFoundError: not_found_exception_handler,
