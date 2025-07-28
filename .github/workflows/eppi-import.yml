@@ -115,4 +115,4 @@ jobs:
             --expected-reference-count ${{ steps.download_and_count.outputs.count }} \
             --processor-name "EPPI Importer GitHub Action" \
             --processor-version "1.0.0" \
-            --source-name "hpv_data@$(date -u +%Y-%m-%d)"
+            --source-name "hpv-eppi-reviewer-json-export@$(date -u +%Y-%m-%dT%H:%M:%SZ)"
