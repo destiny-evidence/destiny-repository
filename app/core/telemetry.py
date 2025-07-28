@@ -16,6 +16,9 @@ from opentelemetry.semconv._incubating.attributes import (
     deployment_attributes as _deployment_attributes,
 )
 from opentelemetry.semconv._incubating.attributes import (
+    messaging_attributes as _messaging_attributes,
+)
+from opentelemetry.semconv._incubating.attributes import (
     service_attributes as _service_attributes,
 )
 from opentelemetry.semconv.attributes import service_attributes
@@ -110,9 +113,9 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
             f"queue.{task.task_name}",
             kind=SpanKind.PRODUCER,
             attributes={
-                "task.name": task.task_name,
-                "messaging.operation": "send",
-                "messaging.system": "taskiq",
+                _messaging_attributes.MESSAGING_DESTINATION_NAME: task.task_name,
+                _messaging_attributes.MESSAGING_OPERATION: "send",
+                _messaging_attributes.MESSAGING_SYSTEM: "taskiq",
             },
         ):
             # Inject the current trace context into the message carrier
@@ -164,10 +167,10 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
             context=ctx,
             kind=SpanKind.CONSUMER,
             attributes={
-                "task.name": message.task_name,
-                "task.id": message.task_id,
-                "messaging.operation": "receive",
-                "messaging.system": "taskiq",
+                _messaging_attributes.MESSAGING_DESTINATION_NAME: message.task_name,
+                _messaging_attributes.MESSAGING_MESSAGE_ID: message.task_id,
+                _messaging_attributes.MESSAGING_OPERATION: "receive",
+                _messaging_attributes.MESSAGING_SYSTEM: "taskiq",
             },
         )
         # Activate the context for this span during task execution

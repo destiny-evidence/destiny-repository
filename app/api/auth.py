@@ -13,7 +13,7 @@ This module is based on the following references :
 
 import hmac
 from collections.abc import Awaitable, Callable
-from enum import StrEnum
+from enum import StrEnum, auto
 from typing import Annotated, Any, Protocol
 from uuid import UUID
 
@@ -24,6 +24,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from httpx import AsyncClient
 from jose import exceptions, jwt
 from opentelemetry import trace
+from opentelemetry.semconv._incubating.attributes import (
+    user_attributes as _user_attributes,
+)
 
 from app.core.config import get_settings
 from app.core.exceptions import NotFoundError
@@ -48,6 +51,16 @@ class AuthScopes(StrEnum):
     REFERENCE_READER = "reference.reader"
     REFERENCE_WRITER = "reference.writer"
     ROBOT_WRITER = "robot.writer"
+
+
+class HMACClientType(StrEnum):
+    """
+    Enum describing the type of HMAC client.
+
+    This is only used for telemetry purposes.
+    """
+
+    ROBOT = auto()
 
 
 class AuthMethod(Protocol):
@@ -343,41 +356,18 @@ class AzureJwtAuth(AuthMethod):
             )
         verified_claims = await self.verify_token(credentials.credentials)
 
-        # Add user information to the current OpenTelemetry span
-        self._add_user_to_span(verified_claims)
+        span = trace.get_current_span()
+        span.set_attribute("user.auth.method", "azure-jwt")
+        if oid := verified_claims.get("oid"):
+            span.set_attribute(_user_attributes.USER_ID, oid)
+        if name := verified_claims.get("name"):
+            span.set_attribute(_user_attributes.USER_FULL_NAME, name)
+        if roles := verified_claims.get("roles"):
+            span.set_attribute(_user_attributes.USER_ROLES, ",".join(roles))
+        if email := verified_claims.get("email"):
+            span.set_attribute(_user_attributes.USER_EMAIL, email)
 
         return self._require_scope(self.scope, verified_claims)
-
-    def _add_user_to_span(self, claims: dict[str, Any]) -> None:
-        """
-        Add user information from the JWT claims to the current OpenTelemetry span.
-
-        Args:
-            claims: The verified claims from the JWT token.
-
-        """
-        span = trace.get_current_span()
-        if not span or not span.is_recording():
-            return
-
-        # Extract user ID from common JWT claim fields
-        user_id = (
-            claims.get("oid")  # Object ID (Azure AD)
-            or claims.get("sub")  # Subject (standard JWT)
-            or claims.get("upn")  # User Principal Name (Azure AD)
-        )
-
-        if user_id:
-            span.set_attribute("user.id", user_id)
-
-            # Add additional user attributes if available
-            if "name" in claims:
-                span.set_attribute("user.name", claims["name"])
-
-            if "email" in claims:
-                span.set_attribute("user.email", claims["email"])
-            elif "preferred_username" in claims:
-                span.set_attribute("user.email", claims["preferred_username"])
 
 
 class SuccessAuth(AuthMethod):
@@ -402,6 +392,9 @@ class SuccessAuth(AuthMethod):
         ],
     ) -> bool:
         """Return true."""
+        span = trace.get_current_span()
+        span.set_attribute("user.auth.method", "bypass")
+
         return True
 
 
@@ -431,18 +424,33 @@ class HMACMultiClientAuth(destiny_sdk.auth.HMACAuthMethod):
     which is then called with the client_id provided in the request header.
     """
 
-    def __init__(self, get_client_secret: Callable[[UUID], Awaitable[str]]) -> None:
+    def __init__(
+        self,
+        get_client_secret: Callable[[UUID], Awaitable[str]],
+        client_type: HMACClientType,
+    ) -> None:
         """
         Initialize with a client secret lookup callable.
 
         :param get_client_secret: Callable that will return the client secret an id.
         :type get_client_secret: Callable[[UUID], Awaitable[str]]
+        :param client_type: The type of client this auth method is for.
+            Only used for telemetry.
+        :type client_type: HMACClientType
         """
         self.get_secret = get_client_secret
+        self._type = client_type
 
     async def __call__(self, request: Request) -> bool:
         """Perform Authorization check."""
         auth_headers = destiny_sdk.auth.HMACAuthorizationHeaders.from_request(request)
+
+        span = trace.get_current_span()
+        span.set_attribute(
+            _user_attributes.USER_ID, f"{self._type}:{auth_headers.client_id}"
+        )
+        span.set_attribute("user.auth.method", "hmac")
+
         request_body = await request.body()
 
         try:
@@ -450,7 +458,9 @@ class HMACMultiClientAuth(destiny_sdk.auth.HMACAuthMethod):
         except NotFoundError as exc:
             raise destiny_sdk.auth.AuthException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Client {auth_headers.client_id} does not exist.",
+                detail=(
+                    f"{self._type} client {auth_headers.client_id} does not exist."
+                ),
             ) from exc
 
         expected_signature = destiny_sdk.client.create_signature(
@@ -470,9 +480,12 @@ class HMACMultiClientAuth(destiny_sdk.auth.HMACAuthMethod):
 
 def choose_hmac_auth_strategy(
     get_client_secret: Callable[[UUID], Awaitable[str]],
+    client_type: HMACClientType,
 ) -> destiny_sdk.auth.HMACAuthMethod:
     """Choose an HMAC auth method."""
     if settings.running_locally:
         return destiny_sdk.auth.BypassHMACAuth()
 
-    return HMACMultiClientAuth(get_client_secret=get_client_secret)
+    return HMACMultiClientAuth(
+        get_client_secret=get_client_secret, client_type=client_type
+    )
