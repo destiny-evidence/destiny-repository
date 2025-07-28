@@ -24,7 +24,11 @@ from destiny_sdk.visibility import Visibility
 
 
 class EPPIParser:
-    """Parser for an EPPI JSON export file."""
+    """
+    Parser for an EPPI JSON export file.
+
+    See example here: https://eppi.ioe.ac.uk/cms/Portals/35/Maps/Examples/example_orignal.json
+    """
 
     version = "1.0"
 
