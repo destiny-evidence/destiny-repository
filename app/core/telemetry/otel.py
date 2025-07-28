@@ -14,7 +14,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from app.core.logger import get_logger
-from app.core.telemetry.attributes import SemConv
+from app.core.telemetry.attributes import Attributes
 
 if TYPE_CHECKING:
     from app.core.config import Environment, OTelConfig
@@ -39,10 +39,10 @@ def configure_otel(
 
     resource = Resource.create(
         {
-            SemConv.SERVICE_NAMESPACE: "destiny",
-            SemConv.SERVICE_NAME: app_name,
-            SemConv.SERVICE_VERSION: app_version,
-            SemConv.DEPLOYMENT_ENVIRONMENT: env.value,
+            Attributes.SERVICE_NAMESPACE: "destiny",
+            Attributes.SERVICE_NAME: app_name,
+            Attributes.SERVICE_VERSION: app_version,
+            Attributes.DEPLOYMENT_ENVIRONMENT: env.value,
         }
     )
 

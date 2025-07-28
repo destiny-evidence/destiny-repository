@@ -14,7 +14,7 @@ from taskiq import (
 )
 
 from app.core.logger import get_logger
-from app.core.telemetry.attributes import SemConv
+from app.core.telemetry.attributes import Attributes
 
 if TYPE_CHECKING:
     from opentelemetry.context import Context
@@ -54,9 +54,9 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
             f"queue.{task.task_name}",
             kind=SpanKind.PRODUCER,
             attributes={
-                SemConv.MESSAGING_DESTINATION_NAME: task.task_name,
-                SemConv.MESSAGING_OPERATION: "send",
-                SemConv.MESSAGING_SYSTEM: "taskiq",
+                Attributes.MESSAGING_DESTINATION_NAME: task.task_name,
+                Attributes.MESSAGING_OPERATION: "send",
+                Attributes.MESSAGING_SYSTEM: "taskiq",
             },
         ):
             # Inject the current trace context into the message carrier
@@ -108,10 +108,10 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
             context=ctx,
             kind=SpanKind.CONSUMER,
             attributes={
-                SemConv.MESSAGING_DESTINATION_NAME: message.task_name,
-                SemConv.MESSAGING_MESSAGE_ID: message.task_id,
-                SemConv.MESSAGING_OPERATION: "receive",
-                SemConv.MESSAGING_SYSTEM: "taskiq",
+                Attributes.MESSAGING_DESTINATION_NAME: message.task_name,
+                Attributes.MESSAGING_MESSAGE_ID: message.task_id,
+                Attributes.MESSAGING_OPERATION: "receive",
+                Attributes.MESSAGING_SYSTEM: "taskiq",
             },
         )
         # Activate the context for this span during task execution
