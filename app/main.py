@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from app.api.root import register_api
 from app.core.config import get_settings
 from app.core.logger import configure_logger, get_logger
-from app.core.telemetry import configure_otel
+from app.core.telemetry.otel import configure_otel
 from app.persistence.es.client import es_manager
 from app.persistence.sql.session import db_manager
 from app.tasks import broker

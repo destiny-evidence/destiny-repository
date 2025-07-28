@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ESError, TaskError
 from app.core.logger import get_logger
-from app.core.telemetry import TaskiqTracingMiddleware
+from app.core.telemetry.taskiq import TaskiqTracingMiddleware
 from app.domain.imports.models.models import ImportBatchStatus
 from app.domain.imports.service import ImportService
 from app.domain.imports.services.anti_corruption_service import (
