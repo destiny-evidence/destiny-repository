@@ -86,7 +86,7 @@ class Client:
         :rtype: EnhancementRequestRead
         """
         response = self.session.post(
-            "/robot/enhancement/single/",
+            f"/enhancement-requests/single-requests/{robot_result.request_id}/results/",
             json=robot_result.model_dump(mode="json"),
         )
         response.raise_for_status()
@@ -106,7 +106,7 @@ class Client:
         :rtype: BatchEnhancementRequestRead
         """
         response = self.session.post(
-            "/robot/enhancement/batch/",
+            f"/enhancement-requests/batch-requests/{batch_robot_result.request_id}/results/",
             json=batch_robot_result.model_dump(mode="json"),
         )
         response.raise_for_status()
