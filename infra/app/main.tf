@@ -385,15 +385,45 @@ resource "ec_deployment" "cluster" {
   deployment_template_id = "azure-general-purpose"
 
   elasticsearch = {
+    autoscale = true
+
     hot = {
-      size          = "2g"
-      size_resource = "memory"
-      zone_count    = 2
+      size = "2g"
       autoscaling = {
-        min_size          = "2g"
-        max_size          = "30g"
-        min_storage_in_gb = 70
-        max_storage_in_gb = 280
+        max_size = "30g"
+        max_size_resource = "memory"
+      }
+    }
+
+    warm = {
+      size = "0g"
+      autoscaling = {
+        max_size = "30g"
+        max_size_resource = "memory"
+      }
+    }
+
+    cold = {
+      size = "0g"
+      autoscaling = {
+        max_size = "60g"
+        max_size_resource = "memory"
+      }
+    }
+
+    frozen = {
+      size = "0g"
+      autoscaling = {
+        max_size = "60g"
+        max_size_resource = "memory"
+      }
+    }
+
+    ml = {
+      size = "0g"
+      autoscaling = {
+        max_size = "30g"
+        max_size_resource = "memory"
       }
     }
   }
@@ -408,9 +438,12 @@ resource "ec_deployment" "cluster" {
 
   lifecycle {
     prevent_destroy = true
-    # ignore future modifications that can be made by the autoscaler
     ignore_changes = [
-      elasticsearch.hot.size
+      elasticsearch.hot.size,
+      elasticsearch.warm.size,
+      elasticsearch.cold.size,
+      elasticsearch.frozen.size,
+      elasticsearch.ml.size
     ]
   }
 }
