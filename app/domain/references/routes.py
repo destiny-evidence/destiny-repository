@@ -12,6 +12,7 @@ from app.api.auth import (
     AuthMethod,
     AuthScopes,
     CachingStrategyAuth,
+    HMACClientType,
     choose_auth_strategy,
     choose_hmac_auth_strategy,
 )
@@ -145,6 +146,7 @@ async def robot_auth(
     """Choose robot auth strategy for our authorization."""
     return await choose_hmac_auth_strategy(
         get_client_secret=robot_service.get_robot_secret_standalone,
+        client_type=HMACClientType.ROBOT,
     )(request)
 
 
