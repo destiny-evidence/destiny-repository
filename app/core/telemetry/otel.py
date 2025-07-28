@@ -37,19 +37,25 @@ def configure_otel(
     if trace._TRACER_PROVIDER_SET_ONCE._done:  # noqa: SLF001
         return
 
+    headers = {}
+    if config.api_key:
+        headers["x-honeycomb-team"] = config.api_key
+
     resource = Resource.create(
         {
             Attributes.SERVICE_NAMESPACE: "destiny",
-            Attributes.SERVICE_NAME: app_name,
+            Attributes.SERVICE_NAME: f"{app_name}-{env.value}",
             Attributes.SERVICE_VERSION: app_version,
             Attributes.DEPLOYMENT_ENVIRONMENT: env.value,
         }
     )
 
     tracer_provider = TracerProvider(resource=resource)
-    # Configure trace exporter
+
     tracer_provider.add_span_processor(
-        BatchSpanProcessor(OTLPSpanExporter(endpoint=str(config.trace_endpoint)))
+        BatchSpanProcessor(
+            OTLPSpanExporter(endpoint=str(config.trace_endpoint), headers=headers)
+        )
     )
     trace.set_tracer_provider(tracer_provider)
 
@@ -57,7 +63,7 @@ def configure_otel(
         resource=resource,
         metric_readers=[
             PeriodicExportingMetricReader(
-                OTLPMetricExporter(endpoint=str(config.meter_endpoint))
+                OTLPMetricExporter(endpoint=str(config.meter_endpoint), headers=headers)
             )
         ],
     )

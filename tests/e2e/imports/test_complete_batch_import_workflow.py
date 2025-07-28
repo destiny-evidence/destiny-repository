@@ -517,8 +517,9 @@ def register_toy_robot(client: httpx.Client) -> None:
     # or if a new toy enhancement is added to a reference (we do some fancy stuff in
     # the next test to do this once and stop the cycle).
     response = client.post(
-        f"/robot/{toy_robot_id}/automation/",
+        "/enhancement-requests/automations/",
         json={
+            "robot_id": toy_robot_id,
             "query": {
                 "bool": {
                     "should": [

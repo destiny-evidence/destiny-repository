@@ -866,7 +866,7 @@ groups = ["dev", "main"]
 name = "destiny-sdk"
 optional = false
 python-versions = "^3.12"
-version = "0.1.3"
+version = "0.2.0"
 
 [package.dependencies]
 cachetools = "^5.5.2"
