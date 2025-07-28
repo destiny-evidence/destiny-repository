@@ -144,7 +144,7 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
                     self._current_span.set_status(trace.Status(trace.StatusCode.OK))
 
                 # End the span
-                self._current_span.__exit__(None, None, None)
+                self._current_span.end()
 
                 logger.debug(
                     "Completed OpenTelemetry span for task",

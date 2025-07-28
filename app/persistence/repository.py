@@ -3,9 +3,13 @@
 from abc import ABC, abstractmethod
 from typing import Generic
 
+from opentelemetry import trace
 from pydantic import UUID4
 
+from app.core.telemetry.repository import trace_repository_method
 from app.persistence.generics import GenericDomainModelType, GenericPersistenceType
+
+tracer = trace.get_tracer(__name__)
 
 
 class GenericAsyncRepository(
@@ -15,8 +19,10 @@ class GenericAsyncRepository(
 
     _domain_cls: type[GenericDomainModelType]
     _persistence_cls: type[GenericPersistenceType]
+    system: str
 
     @abstractmethod
+    @trace_repository_method(tracer)
     async def get_by_pk(
         self, pk: UUID4, preload: list[str] | None = None
     ) -> GenericDomainModelType | None:
@@ -31,6 +37,7 @@ class GenericAsyncRepository(
         raise NotImplementedError
 
     @abstractmethod
+    @trace_repository_method(tracer)
     async def add(self, record: GenericDomainModelType) -> GenericDomainModelType:
         """
         Add a record to the repository.
