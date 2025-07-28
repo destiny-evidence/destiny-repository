@@ -444,7 +444,9 @@ class HMACMultiClientAuth(destiny_sdk.auth.HMACAuthMethod):
         auth_headers = destiny_sdk.auth.HMACAuthorizationHeaders.from_request(request)
 
         span = trace.get_current_span()
-        span.set_attribute(Attributes.USER_ID, f"{self._type}:{auth_headers.client_id}")
+        span.set_attribute(
+            Attributes.USER_ID, f"{self._type.value}:{auth_headers.client_id}"
+        )
         span.set_attribute(Attributes.USER_AUTH_METHOD, "hmac")
 
         request_body = await request.body()
