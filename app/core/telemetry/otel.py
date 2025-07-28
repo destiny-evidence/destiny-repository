@@ -14,7 +14,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from app.core.logger import get_logger
-from app.core.telemetry.semconv import SemConv
+from app.core.telemetry.attributes import SemConv
 
 if TYPE_CHECKING:
     from app.core.config import Environment, OTelConfig

@@ -14,7 +14,7 @@ from taskiq import (
 )
 
 from app.core.logger import get_logger
-from app.core.telemetry.semconv import SemConv
+from app.core.telemetry.attributes import SemConv
 
 if TYPE_CHECKING:
     from opentelemetry.context import Context

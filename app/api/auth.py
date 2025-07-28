@@ -27,7 +27,7 @@ from opentelemetry import trace
 
 from app.core.config import get_settings
 from app.core.exceptions import NotFoundError
-from app.core.telemetry.semconv import SemConv
+from app.core.telemetry.attributes import SemConv
 
 CACHE_TTL = 60 * 60 * 24  # 24 hours
 
