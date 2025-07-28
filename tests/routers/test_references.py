@@ -446,7 +446,7 @@ async def test_add_robot_automation_missing_robot(
         "/v1/enhancement-requests/automations/", json=robot_automation_create
     )
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert "robot" in response.json()["detail"].casefold()
 
 
@@ -605,7 +605,7 @@ async def test_update_robot_automation_missing_robot(
         json=robot_automation_update,
     )
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert "robot" in response.json()["detail"].casefold()
 
 
