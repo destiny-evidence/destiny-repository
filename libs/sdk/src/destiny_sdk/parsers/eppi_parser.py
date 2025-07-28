@@ -37,7 +37,7 @@ class EPPIParser:
 
         """
         self.tags = tags or []
-        self.parser_source = f"eppi_parser@{self.version}"
+        self.parser_source = f"destiny_sdk.eppi_parser@{self.version}"
 
     def _parse_identifiers(
         self, ref_to_import: dict[str, Any]
