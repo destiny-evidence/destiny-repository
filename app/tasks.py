@@ -7,7 +7,8 @@ from taskiq_aio_pika import AioPikaBroker
 from app.core.azure_service_bus_broker import AzureServiceBusBroker
 from app.core.config import Environment, get_settings
 from app.core.logger import configure_logger
-from app.core.telemetry import TaskiqTracingMiddleware, configure_otel
+from app.core.telemetry.otel import configure_otel
+from app.core.telemetry.taskiq import TaskiqTracingMiddleware
 from app.persistence.es.client import es_manager
 from app.persistence.sql.session import db_manager
 

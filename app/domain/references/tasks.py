@@ -7,7 +7,7 @@ from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import get_logger
-from app.core.telemetry import TaskiqTracingMiddleware
+from app.core.telemetry.taskiq import TaskiqTracingMiddleware
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
     BatchEnhancementRequestStatus,

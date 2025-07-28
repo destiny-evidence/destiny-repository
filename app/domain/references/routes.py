@@ -18,7 +18,7 @@ from app.api.auth import (
 )
 from app.core.config import get_settings
 from app.core.logger import get_logger
-from app.core.telemetry import TaskiqTracingMiddleware
+from app.core.telemetry.taskiq import TaskiqTracingMiddleware
 from app.domain.references.models.models import (
     BatchEnhancementRequestStatus,
     ExternalIdentifierSearch,
