@@ -20,8 +20,6 @@ from azure.servicebus.aio import (
     ServiceBusSender,
 )
 from azure.servicebus.amqp import AmqpAnnotatedMessage, AmqpMessageBodyType
-from opentelemetry import propagate, trace
-from opentelemetry.trace import SpanKind
 from taskiq import AckableMessage, AsyncBroker, BrokerMessage
 
 from app.core.config import get_settings
@@ -32,7 +30,6 @@ _T = TypeVar("_T")
 
 settings = get_settings()
 logger = get_logger()
-tracer = trace.get_tracer(__name__)
 
 
 def parse_val(
@@ -151,67 +148,35 @@ class AzureServiceBusBroker(AsyncBroker):
         if self.sender is None or self.service_bus_client is None:
             raise MessageBrokerError(detail="Please run startup before kicking.")
 
-        with tracer.start_as_current_span(
-            "servicebus.send",
-            kind=SpanKind.PRODUCER,
-            attributes={
-                "messaging.system": "servicebus",
-                "messaging.destination.name": self._queue_name,
-                "messaging.operation": "send",
-                "messaging.message.id": message.task_id,
+        headers = {}
+        priority = parse_val(int, message.labels.get("priority"))
+        if priority is not None:
+            headers["priority"] = priority
+
+        # Create service bus message
+        service_bus_message = AmqpAnnotatedMessage(
+            data_body=message.message,
+            header=headers,
+            properties={
+                "message_id": message.task_id,
+                "correlation_id": message.task_id,
             },
-        ) as span:
-            headers = {}
-            priority = parse_val(int, message.labels.get("priority"))
-            if priority is not None:
-                headers["priority"] = priority
+        )
 
-            # Inject current trace context into message properties
-            carrier: dict[str, str] = {}
-            propagate.inject(carrier)
+        # Handle delay
+        delay = parse_val(int, message.labels.get("delay"))
 
-            # Create service bus message with trace context
-            service_bus_message = AmqpAnnotatedMessage(
-                data_body=message.message,
-                header=headers,
-                properties={
-                    "message_id": message.task_id,
-                    "correlation_id": message.task_id,
-                    **carrier,  # Add trace context to properties
-                },
-            )
+        logger.debug(
+            "Sending message...", extra={"task_id": message.task_id, "delay": delay}
+        )
 
-            # Handle delay
-            delay = parse_val(int, message.labels.get("delay"))
-            if delay is not None:
-                span.set_attribute("messaging.servicebus.scheduled_enqueue_time", delay)
-
-            logger.debug(
-                "Sending message...", extra={"task_id": message.task_id, "delay": delay}
-            )
-
-            try:
-                if delay is None:
-                    # Send message directly to main queue
-                    await self.sender.send_messages(service_bus_message)
-                    span.set_attribute("messaging.operation", "send")
-                else:
-                    # Use Azure's built-in scheduled messages feature
-                    scheduled_time = datetime.now(UTC) + timedelta(seconds=delay)
-                    await self.sender.schedule_messages(
-                        service_bus_message, scheduled_time
-                    )
-                    span.set_attribute("messaging.operation", "schedule")
-                    span.set_attribute(
-                        "messaging.servicebus.scheduled_time",
-                        scheduled_time.isoformat(),
-                    )
-
-                span.set_status(trace.Status(trace.StatusCode.OK))
-            except Exception as e:
-                span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
-                span.record_exception(e)
-                raise
+        if delay is None:
+            # Send message directly to main queue
+            await self.sender.send_messages(service_bus_message)
+        else:
+            # Use Azure's built-in scheduled messages feature
+            scheduled_time = datetime.now(UTC) + timedelta(seconds=delay)
+            await self.sender.schedule_messages(service_bus_message, scheduled_time)
 
     async def listen(self) -> AsyncGenerator[AckableMessage, None]:
         """
@@ -225,91 +190,45 @@ class AzureServiceBusBroker(AsyncBroker):
         if self.receiver is None or self.auto_lock_renewer is None:
             raise MessageBrokerError(detail="Call startup before starting listening.")
 
-        with tracer.start_as_current_span(
-            "servicebus.receive",
-            kind=SpanKind.CONSUMER,
-            attributes={
-                "messaging.system": "servicebus",
-                "messaging.source.name": self._queue_name,
-                "messaging.operation": "receive",
-            },
-        ):
-            while True:
-                try:
-                    # Receive a batch of messages
-                    batch_messages = await self.receiver.receive_messages()
+        while True:
+            try:
+                # Receive a batch of messages
+                batch_messages = await self.receiver.receive_messages()
 
-                    # Process each message
-                    for sb_message in batch_messages:
-                        self.auto_lock_renewer.register(self.receiver, sb_message)
+                # Process each message
+                for sb_message in batch_messages:
+                    self.auto_lock_renewer.register(self.receiver, sb_message)
 
-                        # Extract trace context from message properties
-                        carrier = {}
-                        if (
-                            hasattr(sb_message, "application_properties")
-                            and sb_message.application_properties
-                        ):
-                            # Azure Service Bus stores custom properties in
-                            # application_properties
-                            carrier = dict(sb_message.application_properties)
-
-                        # Extract context and create a child span for processing
-                        # this message
-                        extracted_context = propagate.extract(carrier)
-
-                        with tracer.start_as_current_span(
-                            "servicebus.process",
-                            kind=SpanKind.CONSUMER,
-                            context=extracted_context,
-                            attributes={
-                                "messaging.system": "servicebus",
-                                "messaging.source.name": self._queue_name,
-                                "messaging.operation": "process",
-                                "messaging.message.id": (
-                                    sb_message.message_id or "unknown"
-                                ),
-                            },
-                        ) as process_span:
-
-                            async def ack_message(
-                                sb_message: ServiceBusReceivedMessage = sb_message,
-                            ) -> None:
-                                if self.receiver is not None:
-                                    await self.receiver.complete_message(sb_message)
-                                    process_span.set_status(
-                                        trace.Status(trace.StatusCode.OK)
-                                    )
-                                else:
-                                    logger.error(
-                                        "Receiver is None. Cannot complete the message."
-                                    )
-                                    process_span.set_status(
-                                        trace.Status(
-                                            trace.StatusCode.ERROR, "Receiver is None"
-                                        )
-                                    )
-
-                            body_type = sb_message.body_type
-                            raw_body = sb_message.body
-
-                            if body_type == AmqpMessageBodyType.DATA:
-                                # Join all byte chunks together
-                                data = b"".join(raw_body)
-                            else:
-                                logger.warning(
-                                    "Unsupported body type, defaulting to string "
-                                    "encoding",
-                                    extra={body_type: body_type},
-                                )
-                                data = str(raw_body).encode("utf-8")
-
-                            ackable = AckableMessage(
-                                data=data,
-                                ack=ack_message,
+                    async def ack_message(
+                        sb_message: ServiceBusReceivedMessage = sb_message,
+                    ) -> None:
+                        if self.receiver is not None:
+                            await self.receiver.complete_message(sb_message)
+                        else:
+                            logger.error(
+                                "Receiver is None. Cannot complete the message."
                             )
 
-                            yield ackable
-                except Exception:
-                    logger.exception("Error receiving messages")
-                    # Wait a bit before retrying
-                    await asyncio.sleep(1)
+                    body_type = sb_message.body_type
+                    raw_body = sb_message.body
+
+                    if body_type == AmqpMessageBodyType.DATA:
+                        # Join all byte chunks together
+                        data = b"".join(raw_body)
+                    else:
+                        logger.warning(
+                            "Unsupported body type, defaulting to string encoding",
+                            extra={body_type: body_type},
+                        )
+                        data = str(raw_body).encode("utf-8")
+
+                    ackable = AckableMessage(
+                        data=data,
+                        ack=ack_message,
+                    )
+
+                    yield ackable
+            except Exception:
+                logger.exception("Error receiving messages")
+                # Wait a bit before retrying
+                await asyncio.sleep(1)
