@@ -113,7 +113,7 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
             f"queue.{task.task_name}",
             kind=SpanKind.PRODUCER,
             attributes={
-                "task.name": task.task_name,
+                _messaging_attributes.MESSAGING_DESTINATION_NAME: task.task_name,
                 _messaging_attributes.MESSAGING_OPERATION: "send",
                 _messaging_attributes.MESSAGING_SYSTEM: "taskiq",
             },
@@ -167,8 +167,8 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
             context=ctx,
             kind=SpanKind.CONSUMER,
             attributes={
-                "task.name": message.task_name,
-                "task.id": message.task_id,
+                _messaging_attributes.MESSAGING_DESTINATION_NAME: message.task_name,
+                _messaging_attributes.MESSAGING_MESSAGE_ID: message.task_id,
                 _messaging_attributes.MESSAGING_OPERATION: "receive",
                 _messaging_attributes.MESSAGING_SYSTEM: "taskiq",
             },
