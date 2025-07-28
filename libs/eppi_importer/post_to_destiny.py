@@ -10,6 +10,7 @@ Actions:
 """
 
 import argparse
+import sys
 import time
 from uuid import UUID
 
@@ -92,6 +93,7 @@ def poll_and_summarise(client: httpx.Client, import_batch_id: UUID) -> None:
         time.sleep(5)
     else:
         print("Import batch did not complete in time.")
+        sys.exit(1)
 
     response = client.get(f"/imports/batch/{import_batch_id}/summary/")
     response.raise_for_status()
