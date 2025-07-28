@@ -24,8 +24,7 @@ from app.core.exceptions import (
 )
 from app.core.logger import get_logger
 from app.domain.imports.routes import router as import_router_v1
-from app.domain.references.routes import robot_router as robot_router_v1
-from app.domain.references.routes import router as reference_router_v1
+from app.domain.references.routes import reference_router as reference_router_v1
 from app.domain.robots.routes import router as robot_management_router_v1
 from app.system.routes import router as system_utilities_router_v1
 
@@ -37,7 +36,6 @@ def create_v1_router() -> APIRouter:
     api_v1 = APIRouter(prefix="/v1", tags=["v1"])
     api_v1.include_router(import_router_v1)
     api_v1.include_router(reference_router_v1)
-    api_v1.include_router(robot_router_v1)
     api_v1.include_router(robot_management_router_v1)
     api_v1.include_router(system_utilities_router_v1)
     return api_v1

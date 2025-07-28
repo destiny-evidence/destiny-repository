@@ -114,6 +114,8 @@ lint.per-file-ignores = {"*tests*" = [
     "ARG002", # Unused arguments sometimes required for mocking
     "D", # Relax documentation constraints in unit tests
     "PLR0913", # Mocking pydantic classes can require many arguments
+], "app/domain/*/routes.py" = [
+    "PLR0913", # Dependencies create large function signatures
 ], "app/migrations/env.py" = [
     "F401", # imported but not used
 ], "libs/samples*" = [
