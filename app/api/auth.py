@@ -27,7 +27,7 @@ from opentelemetry import trace
 
 from app.core.config import get_settings
 from app.core.exceptions import NotFoundError
-from app.core.telemetry.semconv import SemConv
+from app.core.telemetry.attributes import Attributes
 
 CACHE_TTL = 60 * 60 * 24  # 24 hours
 
@@ -355,15 +355,15 @@ class AzureJwtAuth(AuthMethod):
         verified_claims = await self.verify_token(credentials.credentials)
 
         span = trace.get_current_span()
-        span.set_attribute(SemConv.USER_AUTH_METHOD, "azure-jwt")
+        span.set_attribute(Attributes.USER_AUTH_METHOD, "azure-jwt")
         if oid := verified_claims.get("oid"):
-            span.set_attribute(SemConv.USER_ID, oid)
+            span.set_attribute(Attributes.USER_ID, oid)
         if name := verified_claims.get("name"):
-            span.set_attribute(SemConv.USER_FULL_NAME, name)
+            span.set_attribute(Attributes.USER_FULL_NAME, name)
         if roles := verified_claims.get("roles"):
-            span.set_attribute(SemConv.USER_ROLES, ",".join(roles))
+            span.set_attribute(Attributes.USER_ROLES, ",".join(roles))
         if email := verified_claims.get("email"):
-            span.set_attribute(SemConv.USER_EMAIL, email)
+            span.set_attribute(Attributes.USER_EMAIL, email)
 
         return self._require_scope(self.scope, verified_claims)
 
@@ -391,7 +391,7 @@ class SuccessAuth(AuthMethod):
     ) -> bool:
         """Return true."""
         span = trace.get_current_span()
-        span.set_attribute(SemConv.USER_AUTH_METHOD, "bypass")
+        span.set_attribute(Attributes.USER_AUTH_METHOD, "bypass")
 
         return True
 
@@ -444,8 +444,8 @@ class HMACMultiClientAuth(destiny_sdk.auth.HMACAuthMethod):
         auth_headers = destiny_sdk.auth.HMACAuthorizationHeaders.from_request(request)
 
         span = trace.get_current_span()
-        span.set_attribute(SemConv.USER_ID, f"{self._type}:{auth_headers.client_id}")
-        span.set_attribute(SemConv.USER_AUTH_METHOD, "hmac")
+        span.set_attribute(Attributes.USER_ID, f"{self._type}:{auth_headers.client_id}")
+        span.set_attribute(Attributes.USER_AUTH_METHOD, "hmac")
 
         request_body = await request.body()
 

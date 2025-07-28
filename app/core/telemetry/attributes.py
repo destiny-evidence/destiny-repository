@@ -17,7 +17,7 @@ from opentelemetry.semconv._incubating.attributes import (
 from opentelemetry.semconv.attributes import service_attributes
 
 
-class SemConv(StrEnum):
+class Attributes(StrEnum):
     """OpenTelemetry semantic conventions for the application."""
 
     # Deployment attributes
