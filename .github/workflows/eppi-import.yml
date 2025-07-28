@@ -112,4 +112,7 @@ jobs:
             --api-endpoint "$API_ENDPOINT" \
             --access-token "$ACCESS_TOKEN" \
             --file-url "$FILE_URL" \
-            --expected-reference-count ${{ steps.download_and_count.outputs.count }}
+            --expected-reference-count ${{ steps.download_and_count.outputs.count }} \
+            --processor-name "EPPI Importer GitHub Action" \
+            --processor-version "1.0.0" \
+            --source-name "hpv_data@$(date -u +%Y-%m-%d)"

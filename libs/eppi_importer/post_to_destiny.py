@@ -25,16 +25,20 @@ from destiny_sdk.imports import (
 
 
 def register_import_record(
-    client: httpx.Client, expected_reference_count: int
+    client: httpx.Client,
+    expected_reference_count: int,
+    processor_name: str,
+    processor_version: str,
+    source_name: str,
 ) -> ImportRecordRead:
     """Register a new import record."""
     print("Registering a new import record...")
     response = client.post(
         "/imports/record/",
         json=ImportRecordIn(
-            processor_name="EPPI Importer GitHub Action",
-            processor_version="0.0.1",
-            source_name="EPPI",
+            processor_name=processor_name,
+            processor_version=processor_version,
+            source_name=source_name,
             expected_reference_count=expected_reference_count,
         ).model_dump(mode="json"),
     )
@@ -112,13 +116,34 @@ def main() -> None:
         required=True,
         help="Expected number of references in the import file",
     )
+    parser.add_argument(
+        "--processor-name",
+        required=True,
+        help="Name of the processor (e.g., workflow or script)",
+    )
+    parser.add_argument(
+        "--processor-version",
+        required=True,
+        help="Version of the processor (e.g., workflow or script version)",
+    )
+    parser.add_argument(
+        "--source-name",
+        required=True,
+        help="Source name for the import (e.g., EPPI)",
+    )
     args = parser.parse_args()
 
     with httpx.Client(
         base_url=args.api_endpoint,
         headers={"Authorization": f"Bearer {args.access_token}"},
     ) as client:
-        import_record = register_import_record(client, args.expected_reference_count)
+        import_record = register_import_record(
+            client,
+            args.expected_reference_count,
+            args.processor_name,
+            args.processor_version,
+            args.source_name,
+        )
         import_batch = register_import_batch(client, import_record.id, args.file_url)
         finalise_import_record(client, import_record.id)
         poll_and_summarise(client, import_batch.id)
