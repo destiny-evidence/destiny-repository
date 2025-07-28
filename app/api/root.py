@@ -5,6 +5,7 @@ from contextlib import AbstractAsyncContextManager
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware import Middleware
+from fastapi.responses import RedirectResponse
 
 from app.api.exception_handlers import (
     es_malformed_exception_handler,
@@ -62,8 +63,8 @@ def register_api(
     )
 
     @app.get("/")
-    async def root() -> dict[str, str]:
-        return {"message": "Hello World"}
+    async def root() -> RedirectResponse:
+        return RedirectResponse(url="/redoc")
 
     app.include_router(create_v1_router())
 
