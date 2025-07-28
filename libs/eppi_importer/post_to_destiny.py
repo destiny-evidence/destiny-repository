@@ -13,18 +13,25 @@ import argparse
 import time
 from uuid import UUID
 
-import destiny_sdk
 import httpx
+from destiny_sdk.imports import (
+    CollisionStrategy,
+    ImportBatchIn,
+    ImportBatchRead,
+    ImportBatchSummary,
+    ImportRecordIn,
+    ImportRecordRead,
+)
 
 
 def register_import_record(
     client: httpx.Client, expected_reference_count: int
-) -> destiny_sdk.imports.ImportRecordRead:
+) -> ImportRecordRead:
     """Register a new import record."""
     print("Registering a new import record...")
     response = client.post(
         "/imports/record/",
-        json=destiny_sdk.imports.ImportRecordIn(
+        json=ImportRecordIn(
             processor_name="EPPI Importer GitHub Action",
             processor_version="0.0.1",
             source_name="EPPI",
@@ -32,25 +39,26 @@ def register_import_record(
         ).model_dump(mode="json"),
     )
     response.raise_for_status()
-    import_record = destiny_sdk.imports.ImportRecordRead.model_validate(response.json())
+    import_record = ImportRecordRead.model_validate(response.json())
     print(f"Import record {import_record.id} registered.")
     return import_record
 
 
 def register_import_batch(
     client: httpx.Client, import_record_id: UUID, file_url: str
-) -> destiny_sdk.imports.ImportBatchRead:
+) -> ImportBatchRead:
     """Register an import batch for the given file URL."""
     print(f"Registering import batch for file: {file_url}")
     response = client.post(
         f"/imports/record/{import_record_id}/batch/",
-        json=destiny_sdk.imports.ImportBatchIn(
+        json=ImportBatchIn(
+            collision_strategy=CollisionStrategy.MERGE_DEFENSIVE,
             storage_url=file_url,
             callback_url=None,
         ).model_dump(mode="json"),
     )
     response.raise_for_status()
-    import_batch = destiny_sdk.imports.ImportBatchRead.model_validate(response.json())
+    import_batch = ImportBatchRead.model_validate(response.json())
     print(f"Import batch {import_batch.id} registered for file {file_url}")
     return import_batch
 
@@ -71,9 +79,7 @@ def poll_and_summarise(client: httpx.Client, import_batch_id: UUID) -> None:
     for _ in range(5):
         response = client.get(f"/imports/batch/{import_batch_id}/")
         response.raise_for_status()
-        import_batch = destiny_sdk.imports.ImportBatchRead.model_validate(
-            response.json()
-        )
+        import_batch = ImportBatchRead.model_validate(response.json())
         print(import_batch)
         if import_batch.status == "completed":
             print("Import batch complete.")
@@ -85,9 +91,7 @@ def poll_and_summarise(client: httpx.Client, import_batch_id: UUID) -> None:
 
     response = client.get(f"/imports/batch/{import_batch_id}/summary/")
     response.raise_for_status()
-    import_batch_summary = destiny_sdk.imports.ImportBatchSummary.model_validate(
-        response.json()
-    )
+    import_batch_summary = ImportBatchSummary.model_validate(response.json())
     print(f"Import batch {import_batch_id} summary:")
     print(import_batch_summary)
 
