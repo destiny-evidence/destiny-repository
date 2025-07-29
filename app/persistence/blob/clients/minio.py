@@ -7,15 +7,22 @@ from io import BytesIO
 from cachetools import TTLCache
 from minio import Minio
 from minio.error import S3Error
+from opentelemetry import trace
 
 from app.core.config import MinioConfig
 from app.core.exceptions import MinioBlobStorageError
+from app.core.telemetry.blob import (
+    trace_blob_client_generator,
+    trace_blob_client_method,
+)
 from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.models import (
     BlobSignedUrlType,
     BlobStorageFile,
 )
 from app.persistence.blob.stream import FileStream
+
+tracer = trace.get_tracer(__name__)
 
 
 class MinioBlobStorageClient(GenericBlobStorageClient):
@@ -49,6 +56,7 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
             ttl=self.presigned_url_expiry_seconds / 2,
         )
 
+    @trace_blob_client_method(tracer)
     async def upload_file(
         self,
         content: FileStream | BytesIO,
@@ -69,6 +77,7 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
             msg = f"Failed to upload file to MinIO: {e}"
             raise MinioBlobStorageError(msg) from e
 
+    @trace_blob_client_generator(tracer)
     async def stream_file(
         self,
         file: BlobStorageFile,
@@ -96,6 +105,7 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
             msg = f"Failed to get file from MinIO: {e}"
             raise MinioBlobStorageError(msg) from e
 
+    @trace_blob_client_method(tracer)
     async def generate_signed_url(
         self,
         file: BlobStorageFile,

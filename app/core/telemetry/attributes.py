@@ -4,6 +4,9 @@ from enum import StrEnum
 
 from opentelemetry import trace
 from opentelemetry.semconv._incubating.attributes import (
+    db_attributes as _db_attributes,
+)
+from opentelemetry.semconv._incubating.attributes import (
     deployment_attributes as _deployment_attributes,
 )
 from opentelemetry.semconv._incubating.attributes import (
@@ -33,8 +36,8 @@ class Attributes(StrEnum):
     DB_SYSTEM_NAME = db_attributes.DB_SYSTEM_NAME
     DB_COLLECTION_NAME = db_attributes.DB_COLLECTION_NAME
     DB_OPERATION_NAME = db_attributes.DB_OPERATION_NAME
-    DB_PK = "db.query.pk"
-    DB_PARAMS = "db.query.params"
+    DB_PK = _db_attributes.DB_QUERY_PARAMETER_TEMPLATE + ".pk"
+    DB_PARAMS = _db_attributes.DB_QUERY_PARAMETER_TEMPLATE
 
     # Deployment attributes
     DEPLOYMENT_ENVIRONMENT = _deployment_attributes.DEPLOYMENT_ENVIRONMENT

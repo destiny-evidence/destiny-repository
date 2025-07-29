@@ -25,13 +25,16 @@ def trace_repository_method(
 
         @functools.wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            self = cast("GenericAsyncRepository", args[0])
+            repository = cast("GenericAsyncRepository", args[0])
+
             method_parts = func.__name__.split("_")
+            repository_implementation = repository._persistence_cls.__name__  # noqa: SLF001
 
             verb = method_parts[0]
 
             span_name = (
-                f"{self.system}: {verb.capitalize()} {self._persistence_cls.__name__}"
+                f"{repository.system}: {verb.capitalize()} "
+                f"{repository_implementation}"
             )
 
             if len(method_parts) > 1:
@@ -43,9 +46,9 @@ def trace_repository_method(
                 span_name,
                 attributes={
                     Attributes.CODE_FUNCTION_NAME: func.__qualname__,
-                    Attributes.DB_COLLECTION_NAME: self._persistence_cls.__name__,
+                    Attributes.DB_COLLECTION_NAME: repository_implementation,
                     Attributes.DB_OPERATION_NAME: verb,
-                    Attributes.DB_SYSTEM_NAME: self.system,
+                    Attributes.DB_SYSTEM_NAME: repository.system,
                 },
             ):
                 return await func(*args, **kwargs)
