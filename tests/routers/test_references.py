@@ -13,6 +13,12 @@ from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
+from app.api.exception_handlers import (
+    es_malformed_exception_handler,
+    invalid_payload_exception_handler,
+    not_found_exception_handler,
+    sdk_to_domain_exception_handler,
+)
 from app.core.exceptions import (
     ESMalformedDocumentError,
     NotFoundError,
@@ -27,16 +33,15 @@ from app.domain.references.models.models import (
     EnhancementType,
     Visibility,
 )
-from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
+from app.domain.references.models.sql import (
+    EnhancementRequest as SQLEnhancementRequest,
+)
+from app.domain.references.models.sql import (
+    ExternalIdentifier,
+)
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.service import ReferenceService
 from app.domain.robots.models.sql import Robot as SQLRobot
-from app.main import (
-    enhance_wrong_reference_exception_handler,
-    es_malformed_exception_handler,
-    not_found_exception_handler,
-    sdk_to_domain_exception_handler,
-)
 from app.tasks import broker
 
 # Use the database session in all tests to set up the database manager.
@@ -56,7 +61,7 @@ def app() -> FastAPI:
         exception_handlers={
             NotFoundError: not_found_exception_handler,
             SDKToDomainError: sdk_to_domain_exception_handler,
-            WrongReferenceError: enhance_wrong_reference_exception_handler,
+            WrongReferenceError: invalid_payload_exception_handler,
             ESMalformedDocumentError: es_malformed_exception_handler,
         }
     )
@@ -199,7 +204,7 @@ async def test_request_reference_enhancement_robot_rejects_request(
     assert data.error == '{"message":"broken"}'
 
 
-async def test_not_found_exception_handler_returns_response_with_404(
+async def test_not_found_exception_handler_returns_response_with_422(
     session: AsyncSession, client: AsyncClient
 ) -> None:
     """
@@ -220,7 +225,7 @@ async def test_not_found_exception_handler_returns_response_with_404(
         "/v1/enhancement-requests/single-requests/", json=enhancement_request_create
     )
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert "robot".casefold() in response.json()["detail"].casefold()
 
 
@@ -242,7 +247,7 @@ async def test_request_reference_enhancement_nonexistent_reference(
         "/v1/enhancement-requests/single-requests/", json=enhancement_request_create
     )
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert "reference".casefold() in response.json()["detail"].casefold()
 
 
@@ -441,7 +446,7 @@ async def test_add_robot_automation_missing_robot(
         "/v1/enhancement-requests/automations/", json=robot_automation_create
     )
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert "robot" in response.json()["detail"].casefold()
 
 
@@ -477,6 +482,33 @@ async def test_add_robot_automation_invalid_query(
     assert (
         "No field mapping can be found for the field with name [invalid]"
         in response.json()["detail"]
+    )
+
+
+async def test_get_reference_by_identifier_fails_with_404(
+    session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """Test retrieving a reference by its identifier."""
+    reference = await add_reference(session)
+    session.add(
+        ExternalIdentifier(
+            reference_id=reference.id,
+            identifier="10.1234/example",
+            identifier_type="doi",
+        )
+    )
+
+    response = await client.get(
+        "/v1/references/",
+        params={"identifier": "10.1234/example", "identifier_type": "doi"},
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    response_data = response.json()
+    assert (
+        response_data["detail"] == "ExternalIdentifier with external_identifier ("
+        "<ExternalIdentifierType.DOI: 'doi'>, '10.1234/example', None) does not exist."
     )
 
 
@@ -573,7 +605,7 @@ async def test_update_robot_automation_missing_robot(
         json=robot_automation_update,
     )
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert "robot" in response.json()["detail"].casefold()
 
 
