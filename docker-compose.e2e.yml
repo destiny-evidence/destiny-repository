@@ -105,7 +105,7 @@ services:
     entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover
   # Excluded by default until open sourced
   toy-robot:
-    build: https://github.com/destiny-evidence/toy-robot.git
+    build: https://github.com/destiny-evidence/toy-robot.git#destiny-api-upgrade
     environment:
       DESTINY_REPOSITORY_URL: "http://repository:8000/v1"
       ENV: "test"
