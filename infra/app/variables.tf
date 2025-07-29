@@ -216,9 +216,11 @@ variable "honeycombio_api_key_secret" {
 variable "honeycombio_trace_endpoint" {
   description = "Trace endpoint for Honeycomb.io"
   type        = string
+  default     = "https://api.honeycomb.io/v1/traces"
 }
 
 variable "honeycombio_meter_endpoint" {
   description = "Meter endpoint for Honeycomb.io"
   type        = string
+  default     = "https://api.honeycomb.io/v1/metrics"
 }
