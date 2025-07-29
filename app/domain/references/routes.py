@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Path, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import (
+from app.api.auth import (
     AuthMethod,
     AuthScopes,
     CachingStrategyAuth,
