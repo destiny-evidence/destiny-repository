@@ -18,7 +18,7 @@ from app.api.auth import (
 from app.core.config import get_settings
 from app.core.exceptions import ESNotFoundError
 from app.core.logger import get_logger
-from app.core.telemetry.taskiq import TaskiqTracingMiddleware
+from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.es import (
     ReferenceDocument,
     RobotAutomationPercolationDocument,
@@ -131,7 +131,7 @@ async def repair_elasticsearch_index(
         logger.info(msg)
         await index.init(using=es_client)
 
-    await TaskiqTracingMiddleware.kiq(repair_task)
+    await queue_task_with_trace(repair_task)
     return JSONResponse(
         content={
             "status": "ok",

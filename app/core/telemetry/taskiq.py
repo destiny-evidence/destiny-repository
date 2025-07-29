@@ -23,6 +23,39 @@ tracer = trace.get_tracer(__name__)
 logger = get_logger()
 
 
+async def queue_task_with_trace(
+    task: AsyncTaskiqDecoratedTask,
+    *args: object,
+    **kwargs: object,
+) -> None:
+    """
+    Wrap around taskiq queueing to inject OpenTelemetry trace context.
+
+    All tasks should be queued through this function to ensure
+    that the OpenTelemetry trace context is automatically injected.
+    """
+    with tracer.start_as_current_span(
+        f"queue.{task.task_name}",
+        kind=SpanKind.PRODUCER,
+        attributes={
+            Attributes.MESSAGING_DESTINATION_NAME: task.task_name,
+            Attributes.MESSAGING_OPERATION: "send",
+            Attributes.MESSAGING_SYSTEM: "taskiq",
+        },
+    ):
+        # Inject the current trace context into the message carrier
+        # for distributed tracing
+        carrier: dict[str, Any] = {}
+        propagate.inject(carrier)
+
+        # Queue the task with the trace context
+        await task.kiq(
+            *args,
+            **kwargs,
+            trace_context=carrier,
+        )
+
+
 class TaskiqTracingMiddleware(TaskiqMiddleware):
     """
     Custom TaskIQ middleware for OpenTelemetry tracing.
@@ -37,39 +70,6 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
         super().__init__()
         self._current_span: Span | None = None
         self._token: context.Token[Context] | None = None
-
-    @staticmethod
-    async def kiq(
-        task: AsyncTaskiqDecoratedTask,
-        *args: object,
-        **kwargs: object,
-    ) -> None:
-        """
-        Wrap around taskiq queueing to inject OpenTelemetry trace context.
-
-        All tasks should be queued through this function to ensure
-        that the OpenTelemetry trace context is automatically injected.
-        """
-        with tracer.start_as_current_span(
-            f"queue.{task.task_name}",
-            kind=SpanKind.PRODUCER,
-            attributes={
-                Attributes.MESSAGING_DESTINATION_NAME: task.task_name,
-                Attributes.MESSAGING_OPERATION: "send",
-                Attributes.MESSAGING_SYSTEM: "taskiq",
-            },
-        ):
-            # Inject the current trace context into the message carrier
-            # for distributed tracing
-            carrier: dict[str, Any] = {}
-            propagate.inject(carrier)
-
-            # Queue the task with the trace context
-            await task.kiq(
-                *args,
-                **kwargs,
-                trace_context=carrier,
-            )
 
     async def pre_execute(self, message: TaskiqMessage) -> TaskiqMessage:
         """
