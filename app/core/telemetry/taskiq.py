@@ -14,6 +14,7 @@ from taskiq import (
     TaskiqResult,
 )
 
+from app.core.config import get_settings
 from app.core.logger import get_logger
 from app.core.telemetry.attributes import Attributes
 
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
 
 tracer = trace.get_tracer(__name__)
 logger = get_logger()
+settings = get_settings()
 
 
 async def queue_task_with_trace(
@@ -35,6 +37,10 @@ async def queue_task_with_trace(
     All tasks should be queued through this function to ensure
     that the OpenTelemetry trace context is automatically injected.
     """
+    if not settings.otel_enabled:
+        # If OpenTelemetry is not enabled, just queue the task normally
+        await task.kiq(*args, **kwargs)
+        return
     with tracer.start_as_current_span(
         f"queue.{task.task_name}",
         kind=SpanKind.PRODUCER,
