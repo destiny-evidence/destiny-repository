@@ -381,21 +381,20 @@ async def test_request_batch_enhancement_happy_path(
     reference_1 = await add_reference(session)
     reference_2 = await add_reference(session)
     robot = await add_robot(session)
-
     batch_request_create = {
         "reference_ids": [str(reference_1.id), str(reference_2.id)],
         "robot_id": f"{robot.id}",
     }
-
-    response = await client.post(
-        "/v1/enhancement-requests/batch-requests/", json=batch_request_create
-    )
 
     mock_process = AsyncMock(return_value=None)
     monkeypatch.setattr(
         ReferenceService,
         "collect_and_dispatch_references_for_batch_enhancement",
         mock_process,
+    )
+
+    response = await client.post(
+        "/v1/enhancement-requests/batch-requests/", json=batch_request_create
     )
 
     assert response.status_code == status.HTTP_202_ACCEPTED
