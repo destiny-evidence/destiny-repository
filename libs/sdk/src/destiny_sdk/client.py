@@ -69,7 +69,7 @@ class Client:
         :type auth_method: str
         """
         self.session = httpx.Client(
-            base_url=str(base_url).removesuffix("/v1/").removesuffix("/v1") + "/v1/",
+            base_url=str(base_url).removesuffix("/").removesuffix("/v1") + "/v1",
             headers={"Content-Type": "application/json"},
             auth=HMACSigningAuth(secret_key=secret_key, client_id=client_id),
         )
