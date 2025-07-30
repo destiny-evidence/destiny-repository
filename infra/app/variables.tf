@@ -224,3 +224,9 @@ variable "honeycombio_meter_endpoint" {
   type        = string
   default     = "https://api.honeycomb.io/v1/metrics"
 }
+
+variable "telemetry_enabled" {
+  description = "Whether telemetry is enabled for the application"
+  type        = bool
+  default     = true
+}
