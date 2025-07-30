@@ -257,12 +257,16 @@ async def test_es_repository_cycle(
     """Test saving and getting a reference by primary key from Elasticsearch."""
     await es_reference_repository.add(reference)
 
-    reference = await es_reference_repository.get_by_pk(reference.id)
+    es_reference = await es_reference_repository.get_by_pk(reference.id)
 
-    assert reference.id == reference.id
-    assert reference.visibility == "public"
-    assert len(reference.identifiers or []) == 3
-    assert len(reference.enhancements or []) == 2
+    assert es_reference.id == reference.id
+    assert es_reference.visibility == "public"
+    assert len(es_reference.identifiers or []) == 3
+    assert len(es_reference.enhancements or []) == 2
+    # Check that ids are preserved
+    assert {enhancement.id for enhancement in es_reference.enhancements or []} == {
+        enhancement.id for enhancement in reference.enhancements or []
+    }
 
 
 async def test_es_repository_not_found(
