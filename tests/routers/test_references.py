@@ -13,6 +13,12 @@ from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
+from app.api.exception_handlers import (
+    es_malformed_exception_handler,
+    invalid_payload_exception_handler,
+    not_found_exception_handler,
+    sdk_to_domain_exception_handler,
+)
 from app.core.exceptions import (
     ESMalformedDocumentError,
     NotFoundError,
@@ -27,16 +33,15 @@ from app.domain.references.models.models import (
     EnhancementType,
     Visibility,
 )
-from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
+from app.domain.references.models.sql import (
+    EnhancementRequest as SQLEnhancementRequest,
+)
+from app.domain.references.models.sql import (
+    ExternalIdentifier,
+)
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.service import ReferenceService
 from app.domain.robots.models.sql import Robot as SQLRobot
-from app.main import (
-    enhance_wrong_reference_exception_handler,
-    es_malformed_exception_handler,
-    not_found_exception_handler,
-    sdk_to_domain_exception_handler,
-)
 from app.tasks import broker
 
 # Use the database session in all tests to set up the database manager.
@@ -56,19 +61,22 @@ def app() -> FastAPI:
         exception_handlers={
             NotFoundError: not_found_exception_handler,
             SDKToDomainError: sdk_to_domain_exception_handler,
-            WrongReferenceError: enhance_wrong_reference_exception_handler,
+            WrongReferenceError: invalid_payload_exception_handler,
             ESMalformedDocumentError: es_malformed_exception_handler,
         }
     )
 
-    app.include_router(references.router)
-    app.include_router(references.robot_router)
+    app.include_router(references.reference_router, prefix="/v1")
+    app.include_router(references.enhancement_request_router, prefix="/v1")
 
     return app
 
 
 @pytest.fixture
-async def client(app: FastAPI) -> AsyncGenerator[AsyncClient]:
+async def client(
+    app: FastAPI,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> AsyncGenerator[AsyncClient]:
     """
     Create a test client for the FastAPI application.
 
@@ -135,15 +143,6 @@ def robot_result_enhancement(
     }
 
 
-async def test_register_reference(session: AsyncSession, client: AsyncClient) -> None:
-    """Test registering a reference."""
-    response = await client.post("/references/")
-
-    assert response.status_code == status.HTTP_201_CREATED
-    data = await session.get(SQLReference, response.json()["id"])
-    assert data is not None
-
-
 async def test_request_reference_enhancement_happy_path(
     session: AsyncSession, client: AsyncClient, httpx_mock: HTTPXMock
 ) -> None:
@@ -166,7 +165,7 @@ async def test_request_reference_enhancement_happy_path(
     }
 
     response = await client.post(
-        "/references/enhancement/single/", json=enhancement_request_create
+        "/v1/enhancement-requests/single-requests/", json=enhancement_request_create
     )
 
     assert response.status_code == status.HTTP_202_ACCEPTED
@@ -197,7 +196,7 @@ async def test_request_reference_enhancement_robot_rejects_request(
     }
 
     response = await client.post(
-        "/references/enhancement/single/", json=enhancement_request_create
+        "/v1/enhancement-requests/single-requests/", json=enhancement_request_create
     )
 
     data = await session.get(SQLEnhancementRequest, response.json()["id"])
@@ -205,7 +204,7 @@ async def test_request_reference_enhancement_robot_rejects_request(
     assert data.error == '{"message":"broken"}'
 
 
-async def test_not_found_exception_handler_returns_response_with_404(
+async def test_not_found_exception_handler_returns_response_with_422(
     session: AsyncSession, client: AsyncClient
 ) -> None:
     """
@@ -223,10 +222,10 @@ async def test_not_found_exception_handler_returns_response_with_404(
     }
 
     response = await client.post(
-        "/references/enhancement/single/", json=enhancement_request_create
+        "/v1/enhancement-requests/single-requests/", json=enhancement_request_create
     )
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert "robot".casefold() in response.json()["detail"].casefold()
 
 
@@ -245,10 +244,10 @@ async def test_request_reference_enhancement_nonexistent_reference(
     }
 
     response = await client.post(
-        "/references/enhancement/single/", json=enhancement_request_create
+        "/v1/enhancement-requests/single-requests/", json=enhancement_request_create
     )
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert "reference".casefold() in response.json()["detail"].casefold()
 
 
@@ -269,7 +268,7 @@ async def test_check_enhancement_request_status_happy_path(
     await session.commit()
 
     response = await client.get(
-        f"/references/enhancement/single/request/{enhancement_request.id}/"
+        f"/v1/enhancement-requests/single-requests/{enhancement_request.id}/"
     )
 
     assert response.status_code == status.HTTP_200_OK
@@ -297,9 +296,12 @@ async def test_fulfill_enhancement_request_happy_path(
 
     robot_result = robot_result_enhancement(enhancement_request.id, reference.id)
 
-    response = await client.post("/robot/enhancement/single/", json=robot_result)
+    response = await client.post(
+        "/v1/enhancement-requests/single-requests/{enhancement_request.id}/results/",
+        json=robot_result,
+    )
 
-    assert response.status_code == status.HTTP_200_OK
+    assert response.status_code == status.HTTP_201_CREATED
     assert response.json()["request_status"] == EnhancementRequestStatus.COMPLETED
 
     es_reference = await ReferenceDocument.get(str(reference.id), using=es_client)
@@ -330,7 +332,10 @@ async def test_fulfill_enhancement_request_robot_has_errors(
         "error": {"message": "Could not fulfill this enhancement request."},
     }
 
-    response = await client.post("/robot/enhancement/single/", json=robot_result)
+    response = await client.post(
+        "/v1/enhancement-requests/single-requests/{enhancement_request.id}/results/",
+        json=robot_result,
+    )
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["request_status"] == EnhancementRequestStatus.FAILED
@@ -358,7 +363,10 @@ async def test_wrong_reference_exception_handler_returns_response_with_400(
         enhancement_request.id, different_reference.id
     )
 
-    response = await client.post("/robot/enhancement/single/", json=robot_result)
+    response = await client.post(
+        "/v1/enhancement-requests/single-requests/{enhancement_request.id}/results/",
+        json=robot_result,
+    )
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
@@ -367,7 +375,6 @@ async def test_request_batch_enhancement_happy_path(
     session: AsyncSession,
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
-    es_client: AsyncElasticsearch,  # noqa: ARG001
 ) -> None:
     """Test requesting a batch enhancement for multiple references."""
     # Add references to the database
@@ -381,7 +388,7 @@ async def test_request_batch_enhancement_happy_path(
     }
 
     response = await client.post(
-        "/references/enhancement/batch/", json=batch_request_create
+        "/v1/enhancement-requests/batch-requests/", json=batch_request_create
     )
 
     mock_process = AsyncMock(return_value=None)
@@ -411,11 +418,12 @@ async def test_add_robot_automation_happy_path(
     robot = await add_robot(session)
 
     robot_automation_create = {
+        "robot_id": str(robot.id),
         "query": {"match": {"robot_id": str(robot.id)}},
     }
 
     response = await client.post(
-        f"/robot/{robot.id}/automation/", json=robot_automation_create
+        "/v1/enhancement-requests/automations/", json=robot_automation_create
     )
 
     assert response.status_code == status.HTTP_201_CREATED
@@ -430,14 +438,15 @@ async def test_add_robot_automation_missing_robot(
 ) -> None:
     """Test adding a robot automation with a missing robot."""
     robot_automation_create = {
+        "robot_id": str(uuid.uuid4()),
         "query": {"match": {"robot_id": "some-robot-id"}},
     }
 
     response = await client.post(
-        f"/robot/{uuid.uuid4()}/automation/", json=robot_automation_create
+        "/v1/enhancement-requests/automations/", json=robot_automation_create
     )
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert "robot" in response.json()["detail"].casefold()
 
 
@@ -455,17 +464,18 @@ async def test_add_robot_automation_invalid_query(
     }
 
     response = await client.post(
-        f"/robot/{robot.id}/automation/", json=robot_automation_create
+        "/v1/enhancement-requests/automations/", json=robot_automation_create
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert "DSL class `invalid` does not exist in query" in response.json()["detail"]
 
     robot_automation_create = {
+        "robot_id": str(robot.id),
         "query": {"match": {"invalid": "value"}},
     }
 
     response = await client.post(
-        f"/robot/{robot.id}/automation/", json=robot_automation_create
+        "/v1/enhancement-requests/automations/", json=robot_automation_create
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -473,3 +483,186 @@ async def test_add_robot_automation_invalid_query(
         "No field mapping can be found for the field with name [invalid]"
         in response.json()["detail"]
     )
+
+
+async def test_get_reference_by_identifier_fails_with_404(
+    session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """Test retrieving a reference by its identifier."""
+    reference = await add_reference(session)
+    session.add(
+        ExternalIdentifier(
+            reference_id=reference.id,
+            identifier="10.1234/example",
+            identifier_type="doi",
+        )
+    )
+
+    response = await client.get(
+        "/v1/references/",
+        params={"identifier": "10.1234/example", "identifier_type": "doi"},
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    response_data = response.json()
+    assert (
+        response_data["detail"] == "ExternalIdentifier with external_identifier ("
+        "<ExternalIdentifierType.DOI: 'doi'>, '10.1234/example', None) does not exist."
+    )
+
+
+async def test_update_robot_automation_happy_path(
+    session: AsyncSession,
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> None:
+    """Test updating a robot automation."""
+    robot = await add_robot(session)
+
+    # First create an automation
+    robot_automation_create = {
+        "robot_id": str(robot.id),
+        "query": {"match": {"robot_id": str(robot.id)}},
+    }
+
+    create_response = await client.post(
+        "/v1/enhancement-requests/automations/", json=robot_automation_create
+    )
+    assert create_response.status_code == status.HTTP_201_CREATED
+    automation_id = create_response.json()["id"]
+
+    # Now update the automation
+    robot_automation_update = {
+        "robot_id": str(robot.id),
+        "query": {"match": {"robot_id": "updated_query"}},
+    }
+
+    response = await client.put(
+        f"/v1/enhancement-requests/automations/{automation_id}/",
+        json=robot_automation_update,
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    response_data = response.json()
+    assert uuid.UUID(response_data["robot_id"]) == robot.id
+    assert response_data["query"] == robot_automation_update["query"]
+    assert uuid.UUID(response_data["id"]) == uuid.UUID(automation_id)
+
+
+async def test_update_robot_automation_nonexistent_automation(
+    session: AsyncSession,
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> None:
+    """Test updating a nonexistent robot automation."""
+    robot = await add_robot(session)
+    fake_automation_id = uuid.uuid4()
+
+    robot_automation_update = {
+        "robot_id": str(robot.id),
+        "query": {"match": {"name": "updated_query"}},
+    }
+
+    response = await client.put(
+        f"/v1/enhancement-requests/automations/{fake_automation_id}/",
+        json=robot_automation_update,
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert "automation" in response.json()["detail"].casefold()
+
+
+async def test_update_robot_automation_missing_robot(
+    session: AsyncSession,
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> None:
+    """Test updating a robot automation with a missing robot."""
+    robot = await add_robot(session)
+
+    # First create an automation
+    robot_automation_create = {
+        "robot_id": str(robot.id),
+        "query": {"match": {"robot_id": str(robot.id)}},
+    }
+
+    create_response = await client.post(
+        "/v1/enhancement-requests/automations/", json=robot_automation_create
+    )
+    assert create_response.status_code == status.HTTP_201_CREATED
+    automation_id = create_response.json()["id"]
+
+    # Now try to update with a nonexistent robot
+    fake_robot_id = uuid.uuid4()
+    robot_automation_update = {
+        "robot_id": str(fake_robot_id),
+        "query": {"match": {"name": "updated_query"}},
+    }
+
+    response = await client.put(
+        f"/v1/enhancement-requests/automations/{automation_id}/",
+        json=robot_automation_update,
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert "robot" in response.json()["detail"].casefold()
+
+
+async def test_get_robot_automations_empty_list(
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> None:
+    """Test getting robot automations when there are none."""
+    response = await client.get("/v1/enhancement-requests/automations/")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == []
+
+
+async def test_get_robot_automations_with_automations(
+    session: AsyncSession,
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> None:
+    """Test getting robot automations when there are some."""
+    robot = await add_robot(session)
+
+    # Create first automation
+    robot_automation_create_1 = {
+        "robot_id": str(robot.id),
+        "query": {"match": {"robot_id": "robot uno"}},
+    }
+
+    create_response_1 = await client.post(
+        "/v1/enhancement-requests/automations/", json=robot_automation_create_1
+    )
+    assert create_response_1.status_code == status.HTTP_201_CREATED
+
+    # Create second automation
+    robot_automation_create_2 = {
+        "robot_id": str(robot.id),
+        "query": {"match": {"robot_id": "robot dos"}},
+    }
+
+    create_response_2 = await client.post(
+        "/v1/enhancement-requests/automations/", json=robot_automation_create_2
+    )
+    assert create_response_2.status_code == status.HTTP_201_CREATED
+
+    # Get all automations
+    response = await client.get("/v1/enhancement-requests/automations/")
+
+    assert response.status_code == status.HTTP_200_OK
+    response_data = response.json()
+    assert len(response_data) == 2
+
+    # Check that both automations are returned
+    automation_ids = {automation["id"] for automation in response_data}
+    expected_ids = {create_response_1.json()["id"], create_response_2.json()["id"]}
+    assert automation_ids == expected_ids
+
+    # Check robot IDs are correct
+    robot_ids = {uuid.UUID(automation["robot_id"]) for automation in response_data}
+    expected_robot_ids = {robot.id, robot.id}
+    assert robot_ids == expected_robot_ids

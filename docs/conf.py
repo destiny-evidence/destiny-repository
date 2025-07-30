@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath('..'))
 project = 'DESTINY Repository'
 copyright = '2025, DESTINY Team'
 author = 'DESTINY Team'
-release = 'v0.1'
+release = 'v1.0'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -37,6 +37,7 @@ autodoc_pydantic_model_erdantic_figure = True
 
 html_theme = 'pydata_sphinx_theme'
 html_static_path = ['_static']
+html_css_files = ['custom.css']
 html_show_sourcelink = False
 html_theme_options = {
   "show_toc_level": 2 # can increase, e.g., if there are nested classes
