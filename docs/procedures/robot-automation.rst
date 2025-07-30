@@ -13,7 +13,7 @@ Robot Automations
         participant DR as Data Repository
         participant ES as Elasticsearch
 
-        RO->>+DR: POST /robot/<robot_id>/automation/ : percolator query
+        RO->>+DR: POST /enhancement-requests/automations/ : percolator query
         DR->>-ES: Register percolator query
 
         alt On Import Batch
@@ -53,7 +53,7 @@ Robot Automations
 Context
 -------
 
-Robot automations allow :doc:`Batch Enhancement Requests <requesting-batch-enhancements>` to be automatically dispatched based on criteria on incoming references or enhancements. This is achieved through a :attr:`percolator query <libs.sdk.src.destiny_sdk.robots.RobotAutomation.query>` registered by the robot owner in the data repository using the `/robot/<robot_id>/automation/` endpoint.
+Robot automations allow :doc:`Batch Enhancement Requests <requesting-batch-enhancements>` to be automatically dispatched based on criteria on incoming references or enhancements. This is achieved through a :attr:`percolator query <libs.sdk.src.destiny_sdk.robots.RobotAutomation.query>` registered by the robot owner in the data repository using the `/enhancement-requests/automations/` endpoint.
 
 A batch of imports or enhancements will be processed together, meaning that automated robots will receive a single batch request containing all references or enhancements that matched the automation criteria.
 
