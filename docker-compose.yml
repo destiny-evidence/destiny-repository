@@ -52,8 +52,7 @@ services:
       retries: 5
 
   app:
-    profiles:
-      - optional
+    profiles: ["app"]
     build:
       context: .
       args:
@@ -74,12 +73,15 @@ services:
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
       MINIO_CONFIG: '{"HOST":"fs:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass"}'
       ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
-
+      OTEL_CONFIG: '{"trace_endpoint": "http://signoz-otel-collector:4318/v1/traces", "meter_endpoint": "http://signoz-otel-collector:4318/v1/metrics"}'
+      APP_NAME: destiny-app
+    networks:
+      - default
+      - signoz-net
     entrypoint: fastapi dev app/main.py --host 0.0.0.0 --port 8000
 
   worker:
-    profiles:
-      - optional
+    profiles: ["app"]
     build:
       context: .
       args:
@@ -91,7 +93,7 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-      es_setup:
+      elasticsearch:
         condition: service_healthy
     volumes:
       - ./app:/app/app
@@ -104,6 +106,11 @@ services:
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
       MINIO_CONFIG: '{"HOST":"fs:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass"}'
       ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
+      OTEL_CONFIG: '{"trace_endpoint": "http://signoz-otel-collector:4318/v1/traces", "meter_endpoint": "http://signoz-otel-collector:4318/v1/metrics"}'
+      APP_NAME: destiny-worker
+    networks:
+      - default
+      - signoz-net
     entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover --reload
   es_setup:
     image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_STACK_VERSION}
@@ -238,3 +245,7 @@ volumes:
   db_data:
   rabbitmq_data:
   fs_data:
+
+networks:
+  signoz-net:
+    external: true

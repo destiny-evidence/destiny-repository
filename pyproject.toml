@@ -4,6 +4,7 @@ requires = ["poetry-core"]
 
 [tool.mypy]
 explicit_package_bases = true
+namespace_packages = true
 plugins = ["pydantic.mypy"]
 
 [tool.poetry]
@@ -19,6 +20,7 @@ license = "AGPL-3.0-or-later"
 name = "destiny-repository"
 package-mode = false
 readme = "README.md"
+version = "1.0.0"
 
 [tool.poetry.dependencies]
 aiohttp = "3.12.3" # version locked per https://github.com/Azure/azure-sdk-for-python/issues/41363
@@ -34,6 +36,13 @@ fastapi = {extras = ["standard"], version = "^0.115.6"}
 frozenlist = "1.6.0"
 greenlet = "^3.1.1"
 minio = "^7.2.15"
+opentelemetry-distro = "^0.56b0"
+opentelemetry-exporter-otlp = "^1.35.0"
+opentelemetry-instrumentation-asyncio = "^0.56b0"
+opentelemetry-instrumentation-fastapi = "^0.56b0"
+opentelemetry-instrumentation-httpx = "^0.56b0"
+opentelemetry-instrumentation-logging = "^0.56b0"
+opentelemetry-instrumentation-sqlalchemy = "^0.56b0"
 pydantic-settings = "^2.7.1"
 pytest-env = "^1.1.5"
 python = "^3.12"
@@ -49,6 +58,7 @@ destiny-sdk = {develop = true, path = "libs/sdk"}
 faker = "^37.3.0"
 msal = "^1.31.1"
 mypy = "^1.14.1"
+opentelemetry-instrumentation-aio-pika = "^0.56b0"
 pre-commit = "^4.2.0"
 psycopg = "^3.2.6"
 pytest = "^8.3.4"

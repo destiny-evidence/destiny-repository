@@ -176,9 +176,9 @@ async def test_create_batch_for_import(
     assert response.json()["import_record_id"] == str(valid_import.id)
     assert response.json()["status"] == ImportBatchStatus.CREATED
     assert response.json().items() >= batch_params.items()
-    mock_kiq.assert_awaited_once_with(
-        import_batch_id=uuid.UUID(response.json()["id"]), remaining_retries=3
-    )
+    mock_kiq.assert_awaited_once()
+    assert mock_kiq.call_args[1]["import_batch_id"] == uuid.UUID(response.json()["id"])
+    assert mock_kiq.call_args[1]["remaining_retries"] == 3
 
     # Mock the results of the process_batch call
     session.add(r1 := SQLReference(id=uuid.uuid4(), visibility="public"))
@@ -250,7 +250,6 @@ async def test_create_batch_for_import(
     )
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()  # Wait for all async tasks to complete
-    mock_process.assert_awaited_once()
     mock_process.assert_awaited_once()
     assert mock_process.call_args[0][0] == ImportBatch(
         id=uuid.UUID(response.json()["id"]),

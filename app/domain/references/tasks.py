@@ -7,6 +7,7 @@ from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import get_logger
+from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
     BatchEnhancementRequestStatus,
@@ -277,7 +278,8 @@ async def detect_and_dispatch_robot_automations(
                 "robot_id": robot_automation.robot_id,
             },
         )
-        await collect_and_dispatch_references_for_batch_enhancement.kiq(
+        await queue_task_with_trace(
+            collect_and_dispatch_references_for_batch_enhancement,
             batch_enhancement_request_id=enhancement_request.id,
         )
     return requests

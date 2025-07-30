@@ -7,6 +7,7 @@ from contextlib import AbstractAsyncContextManager
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware import Middleware
 from fastapi.responses import RedirectResponse
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from app.api.exception_handlers import (
     es_malformed_exception_handler,
@@ -80,5 +81,7 @@ def register_api(
         return RedirectResponse(url="/redoc")
 
     app.include_router(create_v1_router())
+
+    FastAPIInstrumentor().instrument_app(app)
 
     return app
