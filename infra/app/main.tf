@@ -91,6 +91,10 @@ locals {
       name        = "OTEL_CONFIG"
       secret_name = "otel-config"
     },
+    {
+      name  = "OTEL_ENABLED",
+      value = var.telemetry_enabled
+    }
   ]
 
   secrets = [
