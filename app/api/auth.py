@@ -44,12 +44,12 @@ security = HTTPBearer(auto_error=False)
 class AuthScopes(StrEnum):
     """Enum describing the available auth scopes that we understand."""
 
-    ADMINISTRATOR = "administrator"
-    IMPORT = "import"
-    REFERENCE_READER = "reference.reader"
-    REFERENCE_WRITER = "reference.writer"
-    ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer"
-    ROBOT_WRITER = "robot.writer"
+    ADMINISTRATOR = "administrator.all"
+    IMPORT = "import.all"
+    REFERENCE_READER = "reference.reader.all"
+    REFERENCE_WRITER = "reference.writer.all"
+    ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer.all"
+    ROBOT_WRITER = "robot.writer.all"
 
 
 class HMACClientType(StrEnum):
@@ -330,18 +330,14 @@ class AzureJwtAuth(AuthMethod):
     def _require_scope(
         self, required_scope: StrEnum, verified_claims: dict[str, Any]
     ) -> bool:
-        if verified_claims.get("roles"):
-            for scope in verified_claims["roles"]:
-                if scope.lower() == required_scope.value.lower():
-                    return True
-
-            raise destiny_sdk.auth.AuthException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"IDW10203: The app permissions (role) claim does not contain the scope {required_scope.value}",  # noqa: E501
-            )
+        # Check OAuth2 delegated scopes
+        if verified_claims.get("scp"):
+            scopes = verified_claims["scp"].split()
+            if required_scope.value in scopes:
+                return True
         raise destiny_sdk.auth.AuthException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="IDW10201: No app permissions (role) claim was found in the bearer token",  # noqa: E501
+            detail=f"Required scope or role '{required_scope.value}' not present in token.",  # noqa: E501
         )
 
     async def __call__(
