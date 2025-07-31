@@ -46,6 +46,7 @@ services:
       service: app
     # Have to redefine a profile otherwise the e2e->app dependency gets confused
     profiles: ["e2e"]
+    image: destiny-repository
     depends_on:
       db-seed:
         condition: service_completed_successfully
@@ -64,10 +65,6 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
-    networks:
-      - default
-      # Uncomment if you're running e2e locally and want to use Signoz for tracing
-      # - signoz-net
   worker:
     extends:
       file: docker-compose.yml
@@ -76,10 +73,6 @@ services:
     environment:
       ENV: e2e
     entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover
-    networks:
-      - default
-      # Uncomment if you're running e2e locally and want to use Signoz for tracing
-      # - signoz-net
   toy-robot:
     build: https://github.com/destiny-evidence/toy-robot.git
     environment:
