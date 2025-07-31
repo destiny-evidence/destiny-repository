@@ -57,6 +57,7 @@ services:
       context: .
       args:
         POETRY_INSTALL_DEV: "true"
+    image: destiny-repository
     ports:
       - "8000:8000"
     volumes:
