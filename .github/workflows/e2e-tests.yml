@@ -61,6 +61,7 @@ jobs:
           timeout=60
           elapsed=0
           while [ "$(docker inspect -f '{{.State.Status}}' e2e 2>/dev/null)" != "exited" ]; do
+            docker ps -a
             sleep 5
             elapsed=$((elapsed + 5))
             if [ $elapsed -ge $timeout ]; then
@@ -74,7 +75,7 @@ jobs:
         run: |
           sleep 5
           # Save full logs from all services
-          docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs > logs.txt
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile e2e logs > logs.txt
 
       - name: Save logs to artifact
         if: always()
