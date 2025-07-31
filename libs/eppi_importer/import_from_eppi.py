@@ -36,7 +36,9 @@ def main() -> None:
     data = json.loads(file_bytes.decode("utf-8"))
     eppi_parser = EPPIParser(tags=args.tags)
     references = eppi_parser.parse_data(
-        data, source=f"eppi-reviewer-json-export@{checksum}"
+        data,
+        source="alive-hpv-partnership",
+        robot_version=checksum,
     )
 
     with Path(args.output).open("w") as f:

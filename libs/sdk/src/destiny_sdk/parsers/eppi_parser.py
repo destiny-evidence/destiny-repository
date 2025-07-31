@@ -124,7 +124,7 @@ class EPPIParser:
         )
 
     def parse_data(
-        self, data: dict, source: str | None = None
+        self, data: dict, source: str | None = None, robot_version: str | None = None
     ) -> list[ReferenceFileInput]:
         """
         Parse an EPPI JSON export dict and return a list of ReferenceFileInput objects.
@@ -132,6 +132,7 @@ class EPPIParser:
         Args:
             data (dict): Parsed EPPI JSON export data.
             source (str | None): Optional source string for deduplication/provenance.
+            robot_version (str | None): Optional robot version string for provenance.
             Defaults to parser version.
 
         Returns:
@@ -157,6 +158,7 @@ class EPPIParser:
                     visibility=Visibility.PUBLIC,
                     content=content,
                     enhancement_type=content.enhancement_type,
+                    robot_version=robot_version,
                 )
                 for content in enhancement_contents
             ]
