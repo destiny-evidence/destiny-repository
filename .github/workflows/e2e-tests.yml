@@ -58,8 +58,15 @@ jobs:
 
       - name: Wait for e2e container to finish
         run: |
+          timeout=60
+          elapsed=0
           while [ "$(docker inspect -f '{{.State.Status}}' e2e 2>/dev/null)" != "exited" ]; do
             sleep 5
+            elapsed=$((elapsed + 5))
+            if [ $elapsed -ge $timeout ]; then
+              echo "E2E container did not finish within 1 minute, timing out"
+              exit 1
+            fi
           done
 
       - name: Collect all logs
