@@ -199,3 +199,34 @@ variable "pypi_repository" {
   description = "PyPI repository to publish to, either 'pypi' or 'testpypi'"
   type        = string
 }
+
+
+variable "honeycombio_api_key_id" {
+  description = "API key id for Honeycomb.io"
+  type        = string
+  sensitive   = true
+}
+
+variable "honeycombio_api_key_secret" {
+  description = "API key secret for Honeycomb.io"
+  type        = string
+  sensitive   = true
+}
+
+variable "honeycombio_trace_endpoint" {
+  description = "Trace endpoint for Honeycomb.io"
+  type        = string
+  default     = "https://api.honeycomb.io/v1/traces"
+}
+
+variable "honeycombio_meter_endpoint" {
+  description = "Meter endpoint for Honeycomb.io"
+  type        = string
+  default     = "https://api.honeycomb.io/v1/metrics"
+}
+
+variable "telemetry_enabled" {
+  description = "Whether telemetry is enabled for the application"
+  type        = bool
+  default     = true
+}

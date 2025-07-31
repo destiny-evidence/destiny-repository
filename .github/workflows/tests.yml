@@ -84,4 +84,5 @@ jobs:
           MESSAGE_BROKER_URL: amqp://guest:guest@localhost:5672
           APP_NAME: destiny-repository-tests
           ENV: test
+          OTEL_ENABLED: false
         run: poetry run pytest

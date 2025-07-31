@@ -19,6 +19,7 @@ COPY --from=builder /app/.venv /app/.venv
 
 COPY app/ ./app
 COPY alembic.ini .
+COPY pyproject.toml .
 ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8000

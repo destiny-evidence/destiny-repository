@@ -1,5 +1,7 @@
 """Anti-corruption service for robots domain."""
 
+import uuid
+
 import destiny_sdk
 from pydantic import ValidationError
 
@@ -12,11 +14,13 @@ class RobotAntiCorruptionService(GenericAntiCorruptionService):
     """Anti-corruption service for translating between Robot domain and SDK models."""
 
     def robot_from_sdk(
-        self, robot_in: destiny_sdk.robots.RobotIn | destiny_sdk.robots.Robot
+        self, robot_in: destiny_sdk.robots.RobotIn, robot_id: uuid.UUID | None = None
     ) -> Robot:
         """Create a Robot from the SDK input model."""
         try:
             robot = Robot.model_validate(robot_in.model_dump())
+            if robot_id:
+                robot.id = robot_id
             robot.check_serializability()
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception

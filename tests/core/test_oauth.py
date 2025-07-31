@@ -6,11 +6,11 @@ from enum import StrEnum
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from fastapi import HTTPException, status
+from fastapi import HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
 from pytest_httpx import HTTPXMock
 
-from app.core.auth import AuthMethod, AzureJwtAuth, StrategyAuth, SuccessAuth
+from app.api.auth import AuthMethod, AzureJwtAuth, StrategyAuth, SuccessAuth
 
 
 class FakeAuthScopes(StrEnum):
@@ -23,6 +23,12 @@ class FakeAuthScopes(StrEnum):
 def auth(fake_tenant_id: str, fake_application_id: str) -> AzureJwtAuth:
     """Create fixure AzureJwtAuth instance for testing."""
     return AzureJwtAuth(fake_tenant_id, fake_application_id, FakeAuthScopes.READ_ALL)
+
+
+@pytest.fixture
+def fake_request() -> Request:
+    """Create a fake request for testing."""
+    return Request(scope={"type": "http", "path": "/test"})
 
 
 async def test_verify_token_success(
@@ -177,6 +183,7 @@ async def test_requires_read_all_success(
     auth: AzureJwtAuth,
     fake_public_key: dict,
     generate_fake_token: Callable[..., str],
+    fake_request: Request,
 ):
     """Test that we successfully validate a token with the requested scope."""
     httpx_mock.add_response(json={"keys": [fake_public_key]})
@@ -184,7 +191,7 @@ async def test_requires_read_all_success(
     token = generate_fake_token(scope=FakeAuthScopes.READ_ALL.value)
     credentials = Mock()
     credentials.credentials = token
-    assert await auth(credentials) is True
+    assert await auth(fake_request, credentials) is True
 
 
 async def test_requires_read_all_scope_not_found(
@@ -192,6 +199,7 @@ async def test_requires_read_all_scope_not_found(
     auth: AzureJwtAuth,
     fake_public_key: dict,
     generate_fake_token: Callable[..., str],
+    fake_request: Request,
 ):
     """Test that we raise an exception with a token without the appropriate scope."""
     httpx_mock.add_response(json={"keys": [fake_public_key]})
@@ -200,7 +208,7 @@ async def test_requires_read_all_scope_not_found(
     credentials = Mock()
     credentials.credentials = token
     with pytest.raises(HTTPException) as excinfo:
-        await auth(credentials)
+        await auth(fake_request, credentials)
     assert excinfo.value.status_code == status.HTTP_403_FORBIDDEN
     assert (
         excinfo.value.detail
@@ -213,6 +221,7 @@ async def test_requires_read_all_scope_not_present(
     auth: AzureJwtAuth,
     fake_public_key: dict,
     generate_fake_token: Callable[..., str],
+    fake_request: Request,
 ):
     """Test that we raise an exception when no scope is present."""
     httpx_mock.add_response(json={"keys": [fake_public_key]})
@@ -221,7 +230,7 @@ async def test_requires_read_all_scope_not_present(
     credentials = Mock()
     credentials.credentials = token
     with pytest.raises(HTTPException) as excinfo:
-        await auth(credentials)
+        await auth(fake_request, credentials)
     assert excinfo.value.status_code == status.HTTP_403_FORBIDDEN
     assert (
         excinfo.value.detail
@@ -229,21 +238,23 @@ async def test_requires_read_all_scope_not_present(
     )
 
 
-async def test_strategy_auth_selection():
+async def test_strategy_auth_selection(fake_request: Request):
     """Test that we can use a strategy."""
     mock_auth_method = AsyncMock(AuthMethod)
     strategy_auth = StrategyAuth(selector=lambda: mock_auth_method)
 
     await strategy_auth(
-        HTTPAuthorizationCredentials(scheme="Bearer", credentials="foo")
+        fake_request, HTTPAuthorizationCredentials(scheme="Bearer", credentials="foo")
     )
     assert mock_auth_method.called
 
 
-async def test_fake_auth_success(generate_fake_token: Callable[..., str]):
+async def test_fake_auth_success(
+    generate_fake_token: Callable[..., str], fake_request: Request
+):
     """Test that our fake auth method succeeds on demand, with and without tokens."""
     auth = SuccessAuth()
     creds = Mock(credentials=generate_fake_token())
 
-    assert await auth(creds)
-    assert await auth(None)
+    assert await auth(fake_request, creds)
+    assert await auth(fake_request, None)

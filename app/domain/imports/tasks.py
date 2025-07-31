@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ESError, TaskError
 from app.core.logger import get_logger
+from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.imports.models.models import ImportBatchStatus
 from app.domain.imports.service import ImportService
 from app.domain.imports.services.anti_corruption_service import (
@@ -128,7 +129,9 @@ async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -
                     "remaining_retries": remaining_retries,
                 },
             )
-            await process_import_batch.kiq(import_batch.id, remaining_retries - 1)
+            await queue_task_with_trace(
+                process_import_batch, import_batch.id, remaining_retries - 1
+            )
         else:
             logger.info(
                 "No remaining retries for import batch, marking as failed.",

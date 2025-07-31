@@ -7,7 +7,7 @@ import destiny_sdk
 from fastapi import APIRouter, Depends, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import (
+from app.api.auth import (
     AuthMethod,
     AuthScopes,
     CachingStrategyAuth,
@@ -65,22 +65,23 @@ robot_writer_auth = CachingStrategyAuth(
 )
 
 router = APIRouter(
-    prefix="/robot",
+    prefix="/robots",
     tags=["robot-management"],
     dependencies=[Depends(robot_writer_auth)],
 )
 
 
-@router.put(path="/", status_code=status.HTTP_200_OK)
+@router.put(path="/{robot_id}/", status_code=status.HTTP_200_OK)
 async def update_robot(
-    robot_update: destiny_sdk.robots.Robot,
+    robot_id: Annotated[uuid.UUID, Path(description="The id of the robot.")],
+    robot_update: destiny_sdk.robots.RobotIn,
     robot_service: Annotated[RobotService, Depends(robot_service)],
     anti_corruption_service: Annotated[
         RobotAntiCorruptionService, Depends(robot_anti_corruption_service)
     ],
 ) -> destiny_sdk.robots.Robot:
     """Update an existing robot."""
-    robot = anti_corruption_service.robot_from_sdk(robot_update)
+    robot = anti_corruption_service.robot_from_sdk(robot_update, robot_id=robot_id)
     updated_robot = await robot_service.update_robot(robot=robot)
     return anti_corruption_service.robot_to_sdk(updated_robot)
 
@@ -110,6 +111,18 @@ async def get_robot(
     """Get an existing Robot."""
     robot = await robot_service.get_robot_standalone(robot_id=robot_id)
     return anti_corruption_service.robot_to_sdk(robot)
+
+
+@router.get(path="/", status_code=status.HTTP_200_OK)
+async def get_all_robots(
+    robot_service: Annotated[RobotService, Depends(robot_service)],
+    anti_corruption_service: Annotated[
+        RobotAntiCorruptionService, Depends(robot_anti_corruption_service)
+    ],
+) -> list[destiny_sdk.robots.Robot]:
+    """Get all robots."""
+    robots = await robot_service.get_all_robots()
+    return [anti_corruption_service.robot_to_sdk(robot) for robot in robots]
 
 
 @router.post(path="/{robot_id}/secret/", status_code=status.HTTP_201_CREATED)

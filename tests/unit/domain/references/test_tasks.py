@@ -79,8 +79,12 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
     assert (
         mock_register_request.call_args[1]["enhancement_request"].robot_id == robot_id
     )
-    mock_collect_and_dispatch_request_to_robot.assert_awaited_once_with(
-        batch_enhancement_request_id=expected_request.id,
+    mock_collect_and_dispatch_request_to_robot.assert_awaited_once()
+    assert (
+        mock_collect_and_dispatch_request_to_robot.call_args[1][
+            "batch_enhancement_request_id"
+        ]
+        == expected_request.id
     )
     mock_detect_robot_automations.assert_awaited_once_with(
         reference_ids=in_reference_ids, enhancement_ids=in_enhancement_ids

@@ -99,6 +99,7 @@ class EnhancementContentDocument(InnerDoc):
 class EnhancementDocument(InnerDoc):
     """Persistence model for enhancements in Elasticsearch."""
 
+    id: UUID4 = mapped_field(Keyword(required=True, index=True))
     visibility: Visibility = mapped_field(Keyword(required=True))
     source: str = mapped_field(Keyword(required=True))
     robot_version: str | None = mapped_field(Keyword())
@@ -110,6 +111,7 @@ class EnhancementDocument(InnerDoc):
     def from_domain(cls, domain_obj: Enhancement) -> Self:
         """Create a persistence model from a domain model."""
         return cls(
+            id=domain_obj.id,
             visibility=domain_obj.visibility,
             source=domain_obj.source,
             robot_version=domain_obj.robot_version,
@@ -121,6 +123,7 @@ class EnhancementDocument(InnerDoc):
     def to_domain(self, reference_id: UUID4) -> Enhancement:
         """Create a domain model from this persistence model."""
         return Enhancement(
+            id=self.id,
             reference_id=reference_id,
             visibility=self.visibility,
             source=self.source,
