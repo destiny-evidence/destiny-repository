@@ -60,8 +60,7 @@ jobs:
         run: |
           timeout=60
           elapsed=0
-          while [ "$(docker inspect -f '{{.State.Status}}' e2e 2>/dev/null)" != "exited" ]; do
-            docker ps -a
+          while [ "$(docker inspect -f '{{.State.Status}}' destiny-repository-e2e-1 2>/dev/null)" != "exited" ]; do
             sleep 5
             elapsed=$((elapsed + 5))
             if [ $elapsed -ge $timeout ]; then
@@ -86,7 +85,7 @@ jobs:
 
       - name: Check e2e container exit code
         run: |
-          EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' e2e)
+          EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' destiny-repository-e2e-1)
           grep -E "e2e|repository|e2e-task-worker" logs.txt
           if [ "$EXIT_CODE" -ne 0 ]; then
             echo "E2E tests failed with exit code $EXIT_CODE"
