@@ -2,6 +2,7 @@
 
 import httpx
 from asyncpg.exceptions import DeadlockDetectedError  # type: ignore[import-untyped]
+from opentelemetry import trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from pydantic import UUID4
 from sqlalchemy.exc import DBAPIError
@@ -26,6 +27,7 @@ from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
 
 logger = get_logger()
+tracer = trace.get_tracer(__name__)
 
 
 class ImportService(GenericService[ImportAntiCorruptionService]):
@@ -108,6 +110,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         """Update the status of an import batch."""
         return await self._update_import_batch_status(import_batch_id, status=status)
 
+    @tracer.start_as_current_span("Import reference")
     async def import_reference(
         self,
         import_batch_id: UUID4,

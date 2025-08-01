@@ -40,6 +40,7 @@ def configure_otel(
     headers = {}
     if config.api_key:
         headers["x-honeycomb-team"] = config.api_key
+        headers["x-honeycomb-dataset"] = f"{app_name}-{env.value}"
 
     resource = Resource.create(
         {

@@ -3,10 +3,12 @@
 from collections.abc import Iterable
 
 from elasticsearch import AsyncElasticsearch
+from opentelemetry import trace
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import get_logger
+from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
@@ -29,6 +31,7 @@ from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.tasks import broker
 
 logger = get_logger()
+tracer = trace.get_tracer(__name__)
 
 
 async def get_sql_unit_of_work(
@@ -96,6 +99,10 @@ async def collect_and_dispatch_references_for_batch_enhancement(
         "Processing batch enhancement request",
         extra={"batch_enhancement_request_id": batch_enhancement_request_id},
     )
+    trace_attribute(
+        Attributes.BATCH_ENHANCEMENT_REQUEST_ID, str(batch_enhancement_request_id)
+    )
+    name_span(f"Dispatch batch enhancement request {batch_enhancement_request_id}")
     sql_uow = await get_sql_unit_of_work()
     es_uow = await get_es_unit_of_work()
     blob_repository = await get_blob_repository()
@@ -135,6 +142,10 @@ async def validate_and_import_batch_enhancement_result(
         "Processing batch enhancement result",
         extra={"batch_enhancement_request_id": batch_enhancement_request_id},
     )
+    trace_attribute(
+        Attributes.BATCH_ENHANCEMENT_REQUEST_ID, str(batch_enhancement_request_id)
+    )
+    name_span(f"Import batch enhancement result {batch_enhancement_request_id}")
     sql_uow = await get_sql_unit_of_work()
     es_uow = await get_es_unit_of_work()
     blob_repository = await get_blob_repository()
@@ -232,6 +243,7 @@ async def repair_robot_automation_percolation_index() -> None:
     await reference_service.repopulate_robot_automation_percolation_index()
 
 
+@tracer.start_as_current_span("Detect and dispatch robot automations")
 async def detect_and_dispatch_robot_automations(
     reference_service: ReferenceService,
     reference_ids: Iterable[UUID4] | None = None,

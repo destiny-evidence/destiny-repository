@@ -29,6 +29,8 @@ from opentelemetry.util.types import AttributeValue
 class Attributes(StrEnum):
     """OpenTelemetry semantic conventions for the application."""
 
+    ### OTEL attributes (with a few extensions)
+
     # Application attributes
     CODE_FUNCTION_NAME = code_attributes.CODE_FUNCTION_NAME
 
@@ -51,6 +53,7 @@ class Attributes(StrEnum):
     MESSAGING_DESTINATION_NAME = _messaging_attributes.MESSAGING_DESTINATION_NAME
     MESSAGING_OPERATION = _messaging_attributes.MESSAGING_OPERATION
     MESSAGING_MESSAGE_ID = _messaging_attributes.MESSAGING_MESSAGE_ID
+    MESSAGING_RETRIES_REMAINING = "messaging.retries_remaining"
 
     # Service attributes
     SERVICE_NAME = service_attributes.SERVICE_NAME
@@ -64,16 +67,29 @@ class Attributes(StrEnum):
     USER_ROLES = _user_attributes.USER_ROLES
     USER_AUTH_METHOD = "user.auth.method"
 
-    # Application attributes
-    IMPORT_RECORD_ID = "import.record.id"
-    IMPORT_BATCH_ID = "import.batch.id"
+    ### Application attributes
 
-    REFERENCE_ID = "reference.id"
-
-    SINGLE_ENHANCEMENT_REQUEST_ID = "enhancement_request.single.id"
-    BATCH_ENHANCEMENT_REQUEST_ID = "enhancement_request.batch.id"
+    # IDs. These must map to the camel_case version of the domain model class names.
+    IMPORT_RECORD_ID = "app.import_record.id"
+    IMPORT_BATCH_ID = "app.import_batch.id"
+    IMPORT_RESULT_ID = "app.import_result.id"
+    ROBOT_ID = "app.robot.id"
+    REFERENCE_ID = "app.reference.id"
+    ENHANCEMENT_ID = "app.enhancement.id"
+    ENHANCEMENT_REQUEST_ID = "app.enhancement_request.id"
+    BATCH_ENHANCEMENT_REQUEST_ID = "app.batch_enhancement_request.id"
 
 
 def trace_attribute(attribute: Attributes, value: AttributeValue) -> None:
     """Trace an attribute in the current span."""
     trace.get_current_span().set_attribute(attribute.value, value)
+
+
+def name_span(name: str) -> None:
+    """Set the name of the current span."""
+    trace.get_current_span().update_name(name)
+
+
+def set_span_status(status: trace.StatusCode, detail: str | None = None) -> None:
+    """Set the status of the current span."""
+    trace.get_current_span().set_status(trace.Status(status, detail))
