@@ -26,6 +26,12 @@ def main() -> None:
         default=[],
         help="A list of tags to add as annotation enhancements.",
     )
+    arg_parser.add_argument(
+        "--source",
+        type=str,
+        required=True,
+        help="Source identifier for provenance (e.g., alive-hpv-partnership)",
+    )
     args = arg_parser.parse_args()
 
     input_path = Path(args.input)
@@ -37,7 +43,7 @@ def main() -> None:
     eppi_parser = EPPIParser(tags=args.tags)
     references = eppi_parser.parse_data(
         data,
-        source="alive-hpv-partnership",
+        source=args.source,
         robot_version=checksum,
     )
 
