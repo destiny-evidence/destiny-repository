@@ -5,9 +5,13 @@ from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from io import BytesIO
 from typing import Any, TypeVar
 
+from opentelemetry import trace
+
 from app.core.exceptions import BlobStorageError
+from app.core.telemetry.attributes import Attributes, trace_attribute
 
 Streamable = TypeVar("Streamable", bound=str | list[str])
+tracer = trace.get_tracer(__name__)
 
 
 class FileStream:
@@ -86,6 +90,7 @@ class FileStream:
         b = await self._to_str(data)
         return b.encode("utf-8")
 
+    @tracer.start_as_current_span("Stream file to blob storage")
     async def stream(self) -> AsyncGenerator[bytes, None]:
         """
         Stream data from the FileStream's function or generator.
@@ -96,9 +101,11 @@ class FileStream:
         :rtype: Iterator[AsyncGenerator[bytes, None]]
         """
         if self.generator:
+            trace_attribute(Attributes.CODE_FUNCTION_NAME, "Anonymous generator")
             async for chunk in self.generator:
                 yield await self._to_bytes(chunk)
         elif self.fn:
+            trace_attribute(Attributes.CODE_FUNCTION_NAME, self.fn.__qualname__)
             for kwargs in self.fn_kwargs:
                 data = await self.fn(**kwargs)
                 yield await self._to_bytes(data)

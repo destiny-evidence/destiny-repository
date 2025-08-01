@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import SQLIntegrityError, SQLNotFoundError
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.repository import trace_repository_method
 from app.domain.robots.models.models import (
     Robot as DomainRobot,
@@ -64,6 +65,9 @@ class RobotSQLRepository(
         - SQLIntegrityError: If the merge violates a unique constraint.
 
         """
+        trace_attribute(Attributes.DB_PK, str(robot.id))
+        self.trace_domain_object_id(robot)
+
         persistence = await self._session.get(self._persistence_cls, robot.id)
         if not persistence:
             detail = f"Unable to find {self._persistence_cls.__name__} "

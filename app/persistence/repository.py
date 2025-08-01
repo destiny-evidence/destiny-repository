@@ -6,8 +6,10 @@ from typing import Generic
 from opentelemetry import trace
 from pydantic import UUID4
 
+from app.core.telemetry.attributes import Attributes
 from app.core.telemetry.repository import trace_repository_method
 from app.persistence.generics import GenericDomainModelType, GenericPersistenceType
+from app.utils.regex import camel_to_snake
 
 tracer = trace.get_tracer(__name__)
 
@@ -53,3 +55,15 @@ class GenericAsyncRepository(
 
         """
         raise NotImplementedError
+
+    def trace_domain_object_id(self, record: GenericDomainModelType) -> None:
+        """
+        Trace the domain object ID for telemetry, if it is mapped.
+
+        Args:
+        - record (GenericDomainModelType): The domain object to trace.
+
+        """
+        attribute_name = f"app.{camel_to_snake(self._domain_cls.__name__)}.id"
+        if attribute_name in Attributes:
+            trace.get_current_span().set_attribute(attribute_name, str(record.id))

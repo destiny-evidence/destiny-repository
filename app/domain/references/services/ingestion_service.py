@@ -3,6 +3,7 @@
 import destiny_sdk
 
 from app.core.logger import get_logger
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
     GenericExternalIdentifier,
@@ -153,6 +154,7 @@ Identifier(s) are already mapped on an existing reference:
                 errors=[f"Entry {entry_ref}:", collision_result]
             )
 
+        trace_attribute(Attributes.REFERENCE_ID, str(collision_result.id))
         final_reference = await self.sql_uow.references.merge(collision_result)
         reference_create_result.reference_id = final_reference.id
 

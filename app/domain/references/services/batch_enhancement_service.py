@@ -3,10 +3,12 @@
 from collections.abc import AsyncGenerator, Awaitable, Callable
 
 import destiny_sdk
+from opentelemetry import trace
 from pydantic import UUID4
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
     BatchEnhancementRequestStatus,
@@ -29,6 +31,7 @@ from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 logger = get_logger()
 settings = get_settings()
+tracer = trace.get_tracer(__name__)
 
 
 class BatchEnhancementService(GenericService[ReferenceAntiCorruptionService]):
@@ -137,56 +140,71 @@ class BatchEnhancementService(GenericService[ReferenceAntiCorruptionService]):
             # Read the file stream and validate the content
             line_no = 1
             async for line in file_stream:
-                if not line.strip():
-                    continue
-                validated_result = await BatchEnhancementResultValidator.from_raw(
-                    line, line_no, expected_reference_ids
-                )
-                line_no += 1
-                if validated_result.robot_error:
-                    attempted_reference_ids.add(
-                        validated_result.robot_error.reference_id
+                with tracer.start_as_current_span(
+                    "Import enhancement",
+                    attributes={Attributes.FILE_LINE_NO: line_no},
+                ):
+                    if not line.strip():
+                        continue
+                    validated_result = await BatchEnhancementResultValidator.from_raw(
+                        line, line_no, expected_reference_ids
                     )
-                    at_least_one_failed = True
-                    yield self._anti_corruption_service.batch_robot_result_validation_entry_to_sdk(  # noqa: E501
-                        BatchRobotResultValidationEntry(
-                            reference_id=validated_result.robot_error.reference_id,
-                            error=validated_result.robot_error.message,
+                    line_no += 1
+                    if validated_result.robot_error:
+                        trace_attribute(
+                            Attributes.REFERENCE_ID,
+                            str(validated_result.robot_error.reference_id),
                         )
-                    ).to_jsonl()
-                elif validated_result.parse_failure:
-                    at_least_one_failed = True
-                    yield self._anti_corruption_service.batch_robot_result_validation_entry_to_sdk(  # noqa: E501
-                        BatchRobotResultValidationEntry(
-                            error=validated_result.parse_failure,
+                        attempted_reference_ids.add(
+                            validated_result.robot_error.reference_id
                         )
-                    ).to_jsonl()
-                elif validated_result.enhancement_to_add:
-                    attempted_reference_ids.add(
-                        validated_result.enhancement_to_add.reference_id
-                    )
-                    # NB this generates the UUID that we import into the database,
-                    # which is handy!
-                    enhancement = self._anti_corruption_service.enhancement_from_sdk(
-                        validated_result.enhancement_to_add
-                    )
-                    success, message = await add_enhancement(enhancement)
-                    if success:
-                        yield self._anti_corruption_service.batch_robot_result_validation_entry_to_sdk(  # noqa: E501
-                            BatchRobotResultValidationEntry(
-                                reference_id=validated_result.enhancement_to_add.reference_id,
-                            )
-                        ).to_jsonl()
-                        imported_enhancement_ids.add(enhancement.id)
-                        at_least_one_succeeded = True
-                    else:
-                        yield self._anti_corruption_service.batch_robot_result_validation_entry_to_sdk(  # noqa: E501
-                            BatchRobotResultValidationEntry(
-                                reference_id=validated_result.enhancement_to_add.reference_id,
-                                error=message,
-                            )
-                        ).to_jsonl()
                         at_least_one_failed = True
+                        yield self._anti_corruption_service.batch_robot_result_validation_entry_to_sdk(  # noqa: E501
+                            BatchRobotResultValidationEntry(
+                                reference_id=validated_result.robot_error.reference_id,
+                                error=validated_result.robot_error.message,
+                            )
+                        ).to_jsonl()
+                    elif validated_result.parse_failure:
+                        at_least_one_failed = True
+                        yield self._anti_corruption_service.batch_robot_result_validation_entry_to_sdk(  # noqa: E501
+                            BatchRobotResultValidationEntry(
+                                error=validated_result.parse_failure,
+                            )
+                        ).to_jsonl()
+                    elif validated_result.enhancement_to_add:
+                        trace_attribute(
+                            Attributes.REFERENCE_ID,
+                            str(validated_result.enhancement_to_add.reference_id),
+                        )
+                        attempted_reference_ids.add(
+                            validated_result.enhancement_to_add.reference_id
+                        )
+                        # NB this generates the UUID that we import into the database,
+                        # which is handy!
+                        enhancement = (
+                            self._anti_corruption_service.enhancement_from_sdk(
+                                validated_result.enhancement_to_add
+                            )
+                        )
+                        trace_attribute(Attributes.ENHANCEMENT_ID, str(enhancement.id))
+                        success, message = await add_enhancement(enhancement)
+                        if success:
+                            yield self._anti_corruption_service.batch_robot_result_validation_entry_to_sdk(  # noqa: E501
+                                BatchRobotResultValidationEntry(
+                                    reference_id=validated_result.enhancement_to_add.reference_id,
+                                )
+                            ).to_jsonl()
+                            imported_enhancement_ids.add(enhancement.id)
+                            at_least_one_succeeded = True
+                        else:
+                            yield self._anti_corruption_service.batch_robot_result_validation_entry_to_sdk(  # noqa: E501
+                                BatchRobotResultValidationEntry(
+                                    reference_id=validated_result.enhancement_to_add.reference_id,
+                                    error=message,
+                                )
+                            ).to_jsonl()
+                            at_least_one_failed = True
 
         if missing_reference_ids := (expected_reference_ids - attempted_reference_ids):
             for missing_reference_id in missing_reference_ids:

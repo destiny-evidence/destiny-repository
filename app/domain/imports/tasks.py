@@ -6,6 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ESError, TaskError
 from app.core.logger import get_logger
+from app.core.telemetry.attributes import (
+    Attributes,
+    name_span,
+    trace_attribute,
+)
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.imports.models.models import ImportBatchStatus
 from app.domain.imports.service import ImportService
@@ -98,6 +103,9 @@ async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -
             "remaining_retries": remaining_retries,
         },
     )
+    name_span(f"Import Batch {import_batch_id}")
+    trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_batch_id))
+    trace_attribute(Attributes.MESSAGING_RETRIES_REMAINING, remaining_retries)
     sql_uow = await get_sql_unit_of_work()
     import_service = await get_import_service(sql_uow=sql_uow)
     reference_service = await get_reference_service(sql_uow=sql_uow)
