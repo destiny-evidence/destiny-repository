@@ -2,6 +2,7 @@
 
 import httpx
 from asyncpg.exceptions import DeadlockDetectedError  # type: ignore[import-untyped]
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from pydantic import UUID4
 from sqlalchemy.exc import DBAPIError
 
@@ -174,6 +175,7 @@ This should not happen.
                 httpx.AsyncClient() as client,
                 client.stream("GET", str(import_batch.storage_url)) as response,
             ):
+                HTTPXClientInstrumentor().instrument_client(client)
                 response.raise_for_status()
                 entry_ref = 1
                 async for line in response.aiter_lines():

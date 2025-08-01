@@ -5,6 +5,8 @@ from contextlib import AbstractAsyncContextManager
 from types import TracebackType
 from typing import Final, Self
 
+from opentelemetry import trace
+
 from app.core.logger import get_logger
 from app.domain.imports.repository import (
     ImportBatchRepositoryBase,
@@ -99,11 +101,14 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
         traceback: TracebackType | None,
     ) -> None:
         """Clean up any connections and rollback if an exception has been raised."""
-        if exc_type:
+        if exc_value:
             logger.exception(
                 "Rolling back unit of work.",
             )
+            trace.get_current_span().record_exception(exc_value)
+            trace.get_current_span().set_status(trace.StatusCode.ERROR, str(exc_value))
             await self.rollback()
+        trace.get_current_span().set_status(trace.StatusCode.OK)
         self._is_active = False
 
     @abstractmethod

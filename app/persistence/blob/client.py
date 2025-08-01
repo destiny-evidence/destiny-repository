@@ -4,11 +4,18 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from io import BytesIO
 
+from opentelemetry import trace
+
 from app.core.config import get_settings
+from app.core.telemetry.blob import (
+    trace_blob_client_generator,
+    trace_blob_client_method,
+)
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.stream import FileStream
 
 settings = get_settings()
+tracer = trace.get_tracer(__name__)
 
 
 class GenericBlobStorageClient(ABC):
@@ -18,6 +25,7 @@ class GenericBlobStorageClient(ABC):
     This class defines the interface for blob storage operations.
     """
 
+    @trace_blob_client_method(tracer)
     @abstractmethod
     async def upload_file(
         self,
@@ -33,6 +41,7 @@ class GenericBlobStorageClient(ABC):
         :type file: BlobStorageFile
         """
 
+    @trace_blob_client_generator(tracer)
     @abstractmethod
     async def stream_file(
         self,
@@ -51,6 +60,7 @@ class GenericBlobStorageClient(ABC):
         if False:
             yield
 
+    @trace_blob_client_method(tracer)
     @abstractmethod
     async def generate_signed_url(
         self,
