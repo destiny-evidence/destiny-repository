@@ -35,6 +35,11 @@ terraform {
       source  = "elastic/elasticstack"
       version = "0.11.15"
     }
+
+    honeycombio = {
+      source  = "honeycombio/honeycombio"
+      version = "0.37.0"
+    }
   }
 }
 
@@ -64,4 +69,9 @@ provider "elasticstack" {
     username  = ec_deployment.cluster.elasticsearch_username
     password  = ec_deployment.cluster.elasticsearch_password
   }
+}
+
+provider "honeycombio" {
+  api_key_id     = var.honeycombio_api_key_id
+  api_key_secret = var.honeycombio_api_key_secret
 }

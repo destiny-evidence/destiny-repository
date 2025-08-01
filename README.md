@@ -90,6 +90,20 @@ Alternatively, you can run the development server and taskiq worker via docker:
 docker compose --profile optional up --build
 ```
 
+#### Observability
+
+The below command spins up a `SigNoz` deployment for local observability of traces and metrics. This exactly mimics our production setup, except for the observability platform itself.
+
+```sh
+COMPOSE_EXPERIMENTAL_GIT_REMOTE=1 docker compose -f docker-compose.signoz.yml up -d
+```
+
+To then run the application with observability:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.observable.yml --profile app up
+```
+
 ## Organisation
 
 The initial project includes some folders to organise the code.
@@ -204,10 +218,16 @@ End-to-end testing is run separately in a containerised context:
 
 ```sh
 docker compose down -v \
-&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --force-recreate --remove-orphans \
-&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs -f --tail=0 e2e repository e2e-task-worker
+&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile e2e up -d --force-recreate \
+&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs -f --tail=0 e2e app worker
 ```
 
-Note if you get unexpected `destiny_sdk` errors, you may need to add the `--build` flag to the `up` command above.
+Note in some circumstances you may need to add the `--build` flag to the `up` command above.
 
-You also may need to start the ssh agent to pull and build the [toy robot](https://github.com/destiny-evidence/toy-robot/blob/main/README.md) - see the toy robot README for more info.
+If you wish to inspect the E2E tests' instrumentation, you must mix in the observable compose file:
+
+```sh
+docker compose down -v \
+&& docker compose -f docker-compose.yml -f docker-compose.observable.yml -f docker-compose.e2e.yml --profile e2e up -d --force-recreate \
+&& docker compose -f docker-compose.yml -f docker-compose.observable.yml -f docker-compose.e2e.yml logs -f --tail=0 e2e app worker
+```

@@ -54,7 +54,8 @@ jobs:
           python libs/eppi_importer/import_from_eppi.py \
             --input eppi_report.json \
             --output references.jsonl \
-            --tags "HPV Partnership"
+            --tags "HPV Partnership" \
+            --source "alive-hpv-partnership"
 
       - name: "Az CLI login"
         uses: azure/login@v2.1.0

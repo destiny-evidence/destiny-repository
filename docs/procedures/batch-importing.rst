@@ -21,12 +21,12 @@ References are bulk imported using batches per the following process:
         M ->> I: Start Import (processor id, query)
         I ->> S: Search Query
         S -->> I: Search Results
-        I ->>+ R: POST /imports/record/ : Register Import (query, importer metadata, result count)
+        I ->>+ R: POST /imports/records/ : Register Import (query, importer metadata, result count)
         R -->> I: ImportRecord (record id)
         loop Each batch
             I ->> SP: Upload Enriched References File
             SP -->> I: Upload Success (file url)
-            I ->>+ R: POST /imports/<record id>/batch/ : Register Batch (file url, callback url, import id)
+            I ->>+ R: POST /imports/records/<record id>/batches/ : Register Batch (file url, callback url, import id)
             R -->> I: Batch Enqueued(batch id)
             R ->> SP: Download References File (file url)
             SP -->> R: Enriched References
@@ -34,7 +34,7 @@ References are bulk imported using batches per the following process:
             R ->>- I: POST <callback url> : ImportBatchSummary
             I ->> S: Delete Enhancement Batch (file url)
         end
-        I ->> R: POST /imports/<record_id>/finalise/ Finalise Import
+        I ->> R: POST /imports/records/<record_id>/finalise/ Finalise Import
 
 In words, the interaction with the repository is as follows:
 

@@ -69,7 +69,7 @@ class Client:
         :type auth_method: str
         """
         self.session = httpx.Client(
-            base_url=str(base_url),
+            base_url=str(base_url).removesuffix("/").removesuffix("/v1") + "/v1",
             headers={"Content-Type": "application/json"},
             auth=HMACSigningAuth(secret_key=secret_key, client_id=client_id),
         )
@@ -86,7 +86,7 @@ class Client:
         :rtype: EnhancementRequestRead
         """
         response = self.session.post(
-            "/robot/enhancement/single/",
+            f"/enhancement-requests/single-requests/{robot_result.request_id}/results/",
             json=robot_result.model_dump(mode="json"),
         )
         response.raise_for_status()
@@ -106,7 +106,7 @@ class Client:
         :rtype: BatchEnhancementRequestRead
         """
         response = self.session.post(
-            "/robot/enhancement/batch/",
+            f"/enhancement-requests/batch-requests/{batch_robot_result.request_id}/results/",
             json=batch_robot_result.model_dump(mode="json"),
         )
         response.raise_for_status()

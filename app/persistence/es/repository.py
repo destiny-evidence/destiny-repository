@@ -8,12 +8,16 @@ from typing import Generic
 from elasticsearch import AsyncElasticsearch, NotFoundError
 from elasticsearch.dsl.exceptions import UnknownDslObject
 from elasticsearch.exceptions import BadRequestError
+from opentelemetry import trace
 from pydantic import UUID4
 
 from app.core.exceptions import ESError, ESMalformedDocumentError, ESNotFoundError
+from app.core.telemetry.repository import trace_repository_method
 from app.persistence.es.generics import GenericESPersistenceType
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
+
+tracer = trace.get_tracer(__name__)
 
 
 class GenericAsyncESRepository(
@@ -44,7 +48,9 @@ class GenericAsyncESRepository(
         self._client = client
         self._persistence_cls = persistence_cls
         self._domain_cls = domain_cls
+        self.system = "ES"
 
+    @trace_repository_method(tracer)
     async def get_by_pk(
         self,
         pk: UUID4,
@@ -79,6 +85,7 @@ class GenericAsyncESRepository(
             )
         return result.to_domain()
 
+    @trace_repository_method(tracer)
     async def add(self, record: GenericDomainModelType) -> GenericDomainModelType:
         """
         Add a record to the repository. If it already exists, it will be updated.
@@ -98,6 +105,7 @@ class GenericAsyncESRepository(
             raise ESMalformedDocumentError(msg) from exc
         return record
 
+    @trace_repository_method(tracer)
     async def add_bulk(
         self,
         get_records: AsyncGenerator[GenericDomainModelType, None],

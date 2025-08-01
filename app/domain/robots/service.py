@@ -31,6 +31,11 @@ class RobotService(GenericService[RobotAntiCorruptionService]):
         return await self.sql_uow.robots.get_by_pk(robot_id)
 
     @sql_unit_of_work
+    async def get_all_robots(self) -> list[Robot]:
+        """Return all robots."""
+        return await self.sql_uow.robots.get_all()
+
+    @sql_unit_of_work
     async def get_robot_standalone(self, robot_id: UUID4) -> Robot:
         """Return a given robot."""
         return await self.get_robot(robot_id)

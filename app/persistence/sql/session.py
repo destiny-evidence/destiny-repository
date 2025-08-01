@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from azure.identity import DefaultAzureCredential
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from sqlalchemy import event
 from sqlalchemy.engine import Dialect
 from sqlalchemy.ext.asyncio import (
@@ -44,6 +45,9 @@ class AsyncDatabaseSessionManager:
             url=db_config.connection_string,
             pool_pre_ping=True,
             connect_args=connect_args,
+        )
+        SQLAlchemyInstrumentor().instrument(
+            engine=self._engine.sync_engine,
         )
 
         if db_config.passwordless:

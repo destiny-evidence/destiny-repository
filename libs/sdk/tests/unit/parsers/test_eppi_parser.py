@@ -16,7 +16,7 @@ def test_parse_data():
     parser = EPPIParser()
     with input_path.open() as f:
         data = json.load(f)
-    references = parser.parse_data(data)
+    references = parser.parse_data(data, robot_version="test-robot-version")
 
     with output_path.open() as f:
         expected_output = f.read()
@@ -37,7 +37,7 @@ def test_parse_data_with_annotations():
     parser = EPPIParser(tags=["test-tag", "another-tag"])
     with input_path.open() as f:
         data = json.load(f)
-    references = parser.parse_data(data)
+    references = parser.parse_data(data, robot_version="test-robot-version")
 
     with output_path.open() as f:
         expected_output = f.read()

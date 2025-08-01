@@ -5,11 +5,13 @@ from collections.abc import Sequence
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
+from opentelemetry import trace
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.core.exceptions import SQLNotFoundError
+from app.core.telemetry.repository import trace_repository_method
 from app.domain.references.models.es import (
     ReferenceDocument,
     RobotAutomationPercolationDocument,
@@ -50,6 +52,8 @@ from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
 from app.persistence.sql.repository import GenericAsyncSqlRepository
 
+tracer = trace.get_tracer(__name__)
+
 
 class ReferenceRepositoryBase(
     GenericAsyncRepository[DomainReference, GenericPersistenceType],
@@ -72,6 +76,7 @@ class ReferenceSQLRepository(
             SQLReference,
         )
 
+    @trace_repository_method(tracer)
     async def get_hydrated(
         self,
         reference_ids: list[UUID],
@@ -152,6 +157,7 @@ class ExternalIdentifierSQLRepository(
             SQLExternalIdentifier,
         )
 
+    @trace_repository_method(tracer)
     async def get_by_type_and_identifier(
         self,
         identifier_type: ExternalIdentifierType,
@@ -201,6 +207,7 @@ class ExternalIdentifierSQLRepository(
 
         return db_identifier.to_domain(preload=preload)
 
+    @trace_repository_method(tracer)
     async def get_by_identifiers(
         self,
         identifiers: list[GenericExternalIdentifier],
@@ -341,6 +348,7 @@ class RobotAutomationESRepository(
             RobotAutomationPercolationDocument,
         )
 
+    @trace_repository_method(tracer)
     async def percolate(
         self,
         percolatables: Sequence[DomainReference | DomainEnhancement],

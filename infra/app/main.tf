@@ -87,6 +87,14 @@ locals {
       name        = "ES_CONFIG"
       secret_name = "es-config"
     },
+    {
+      name        = "OTEL_CONFIG"
+      secret_name = "otel-config"
+    },
+    {
+      name  = "OTEL_ENABLED",
+      value = var.telemetry_enabled
+    }
   ]
 
   secrets = [
@@ -104,10 +112,18 @@ locals {
       value = azurerm_servicebus_namespace.this.default_primary_connection_string
     },
     {
-      name  = "es-config"
+      name = "es-config"
       value = jsonencode({
         cloud_id = ec_deployment.cluster.elasticsearch.cloud_id
         api_key  = elasticstack_elasticsearch_security_api_key.app.encoded
+      })
+    },
+    {
+      name = "otel-config"
+      value = jsonencode({
+        trace_endpoint = var.honeycombio_trace_endpoint
+        meter_endpoint = var.honeycombio_meter_endpoint
+        api_key        = honeycombio_api_key.this.key
       })
     },
   ]
@@ -450,7 +466,7 @@ resource "ec_deployment" "cluster" {
     hot = {
       size = "2g"
       autoscaling = {
-        max_size = "30g"
+        max_size          = "30g"
         max_size_resource = "memory"
       }
     }
@@ -458,7 +474,7 @@ resource "ec_deployment" "cluster" {
     warm = {
       size = "0g"
       autoscaling = {
-        max_size = "30g"
+        max_size          = "30g"
         max_size_resource = "memory"
       }
     }
@@ -466,7 +482,7 @@ resource "ec_deployment" "cluster" {
     cold = {
       size = "0g"
       autoscaling = {
-        max_size = "60g"
+        max_size          = "60g"
         max_size_resource = "memory"
       }
     }
@@ -474,7 +490,7 @@ resource "ec_deployment" "cluster" {
     frozen = {
       size = "0g"
       autoscaling = {
-        max_size = "60g"
+        max_size          = "60g"
         max_size_resource = "memory"
       }
     }
@@ -482,7 +498,7 @@ resource "ec_deployment" "cluster" {
     ml = {
       size = "0g"
       autoscaling = {
-        max_size = "30g"
+        max_size          = "30g"
         max_size_resource = "memory"
       }
     }
@@ -549,4 +565,20 @@ resource "elasticstack_elasticsearch_snapshot_lifecycle" "snapshots" {
 
   expire_after = "30d"
   min_count    = local.is_production ? 336 : 7 # 7 days worth
+}
+
+
+resource "honeycombio_environment" "this" {
+  name = var.environment
+}
+
+
+resource "honeycombio_api_key" "this" {
+  name           = "${var.app_name}-${var.environment}-ingest-api-key"
+  environment_id = honeycombio_environment.this.id
+  type           = "ingest"
+
+  permissions {
+    create_datasets = true
+  }
 }

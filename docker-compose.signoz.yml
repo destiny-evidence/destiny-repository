@@ -1,0 +1,2 @@
+include:
+  - https://github.com/SigNoz/signoz.git#main:deploy/docker/docker-compose.yaml

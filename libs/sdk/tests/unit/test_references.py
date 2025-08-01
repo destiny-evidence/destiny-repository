@@ -18,6 +18,7 @@ def test_es_parsing():
             ],
             "enhancements": [
                 {
+                    "id": "52f3fc92-db0b-4e65-a18c-31d091242c3a",
                     "visibility": "public",
                     "source": "dummy",
                     "robot_version": "dummy",
@@ -39,6 +40,7 @@ def test_es_parsing():
                     },
                 },
                 {
+                    "id": "df4de714-269e-4d1c-abeb-16e260b029ec",
                     "visibility": "public",
                     "source": "dummy",
                     "robot_version": "dummy",
@@ -49,6 +51,7 @@ def test_es_parsing():
                     },
                 },
                 {
+                    "id": "d4c2d0a0-af3a-4985-bcf6-1a9d58ab06ee",
                     "visibility": "public",
                     "source": "Toy Robot",
                     "robot_version": "0.1.0",
@@ -76,4 +79,7 @@ def test_es_parsing():
     assert len(reference.enhancements) == 3
     assert reference.enhancements[0].reference_id == uuid.UUID(
         "7c54f72e-8833-484f-9000-4f403b13a243"
+    )
+    assert reference.enhancements[0].id == uuid.UUID(
+        "52f3fc92-db0b-4e65-a18c-31d091242c3a"
     )

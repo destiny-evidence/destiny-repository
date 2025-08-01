@@ -40,35 +40,19 @@ services:
       APP_NAME: "dummy"
       ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "dummy", "ES_PASS": "dummy", "ES_CA_PATH": "/.dockerenv"}'
     entrypoint: alembic upgrade head
-  repository:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: destiny-repository
+  app:
+    extends:
+      file: docker-compose.yml
+      service: app
+    # Have to redefine a profile otherwise the e2e->app dependency gets confused
+    profiles: ["e2e"]
     depends_on:
       db-seed:
         condition: service_completed_successfully
       fs-seed:
         condition: service_completed_successfully
-      http:
-        condition: service_started
-      rabbitmq:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
-    volumes:
-      - ./app:/src/app
-      - ./libs/sdk:/app/libs/sdk
-      - certs:/app/certs
-    env_file:
-      - .env
     environment:
-      # Overwrite with docker network hostname
       ENV: e2e
-      MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
-      DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
-      MINIO_CONFIG: '{"HOST":"fs:9000", "ACCESS_KEY": "localuser", "SECRET_KEY": "localpass"}'
-      ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
     healthcheck:
       test:
         [
@@ -80,34 +64,18 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
-  e2e-task-worker:
-    build:
-      context: .
-    depends_on:
-      db:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
-    volumes:
-      - ./app:/app/app
-      - ./libs/sdk:/app/libs/sdk
-      - certs:/app/certs
-    env_file:
-      - .env
+  worker:
+    extends:
+      file: docker-compose.yml
+      service: worker
+    profiles: ["e2e"]
     environment:
       ENV: e2e
-      MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
-      DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
-      MINIO_CONFIG: '{"HOST":"fs:9000", "ACCESS_KEY": "localuser", "SECRET_KEY": "localpass"}'
-      ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
     entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover
-  # Excluded by default until open sourced
   toy-robot:
     build: https://github.com/destiny-evidence/toy-robot.git
     environment:
-      DESTINY_REPOSITORY_URL: "http://repository:8000"
+      DESTINY_REPOSITORY_URL: "http://app:8000/v1"
       ENV: "test"
       ROBOT_ID: "1ee5aa1f-3248-4d21-9fee-718d4ff0ba5f" # Just a dummy, won't be used.
       ROBOT_SECRET: "dummy"
@@ -123,7 +91,7 @@ services:
       timeout: 10s
       retries: 5
   e2e:
-    container_name: e2e
+    profiles: ["e2e"]
     build:
       context: .
       dockerfile: Dockerfile.e2e
@@ -134,15 +102,13 @@ services:
     ports:
       - 8001:8001
     depends_on:
-      repository:
+      app:
         condition: service_healthy
-      e2e-task-worker:
-        condition: service_started
       toy-robot:
         condition: service_healthy
     environment:
       DB_URL: "postgresql+psycopg://localuser:localpass@db:5432/destiny_dev"
-      REPO_URL: "http://repository:8000"
+      REPO_URL: "http://app:8000/v1"
       HTTP_CLIENT_URL: "http://http:5678"
       MINIO_URL: "http://fs:9000"
       CALLBACK_URL: "http://e2e:8001"

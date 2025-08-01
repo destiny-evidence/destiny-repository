@@ -8,10 +8,15 @@ from azure.identity.aio import DefaultAzureCredential
 from azure.storage.blob import BlobSasPermissions, UserDelegationKey, generate_blob_sas
 from azure.storage.blob.aio import BlobServiceClient
 from cachetools import TTLCache
+from opentelemetry import trace
 
 from app.core.config import AzureBlobConfig
 from app.core.exceptions import AzureBlobStorageError
 from app.core.logger import get_logger
+from app.core.telemetry.blob import (
+    trace_blob_client_generator,
+    trace_blob_client_method,
+)
 from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.models import (
     BlobSignedUrlType,
@@ -20,6 +25,7 @@ from app.persistence.blob.models import (
 from app.persistence.blob.stream import FileStream
 
 logger = get_logger()
+tracer = trace.get_tracer(__name__)
 
 
 class AzureBlobStorageClient(GenericBlobStorageClient):
@@ -61,6 +67,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             ttl=self.presigned_url_expiry_seconds / 2,
         )
 
+    @trace_blob_client_method(tracer)
     async def upload_file(
         self,
         content: FileStream | BytesIO,
@@ -79,6 +86,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             msg = f"Failed to upload file to Azure Blob Storage: {e}"
             raise AzureBlobStorageError(msg) from e
 
+    @trace_blob_client_generator(tracer)
     async def stream_file(
         self,
         file: BlobStorageFile,
@@ -118,6 +126,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             raise AzureBlobStorageError(msg)
         return user_delegation_key
 
+    @trace_blob_client_method(tracer)
     async def generate_signed_url(
         self,
         file: BlobStorageFile,
