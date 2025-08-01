@@ -121,7 +121,7 @@ resource "azuread_application_app_role" "enhancement_request_writer" {
   description          = "Can request enhancements"
   display_name         = "Enhancement Request Writer"
   role_id              = random_uuid.enhancement_request_writer_role.result
-  value                = "enhancement-request.writer"
+  value                = "enhancement_request.writer"
 }
 
 resource "azuread_service_principal" "destiny_repository" {
@@ -164,6 +164,13 @@ resource "azuread_app_role_assignment" "developer_to_robot_writer" {
 resource "azuread_app_role_assignment" "developer_to_enhancement_request_writer" {
   app_role_id         = azuread_application_app_role.enhancement_request_writer.role_id
   principal_object_id = var.developers_group_id
+  resource_object_id  = azuread_service_principal.destiny_repository.object_id
+}
+
+# Grant the GitHub Actions service principal the importer role so it can run the eppi-import GitHub Action
+resource "azuread_app_role_assignment" "github_actions_to_importer" {
+  app_role_id         = azuread_application_app_role.importer.role_id
+  principal_object_id = azuread_service_principal.github_actions.object_id
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
 }
 

@@ -3,9 +3,11 @@
 import uuid
 from abc import ABC
 
+from opentelemetry import trace
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.telemetry.repository import trace_repository_method
 from app.domain.imports.models.models import (
     ImportBatch as DomainImportBatch,
 )
@@ -30,6 +32,8 @@ from app.domain.imports.models.sql import (
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
 from app.persistence.sql.repository import GenericAsyncSqlRepository
+
+tracer = trace.get_tracer(__name__)
 
 
 class ImportRecordRepositoryBase(
@@ -87,6 +91,7 @@ class ImportResultSQLRepository(
         """Initialize the repository with the session."""
         super().__init__(session, DomainImportResult, SQLImportResult)
 
+    @trace_repository_method(tracer)
     async def get_by_filter(
         self,
         import_batch_id: uuid.UUID | None = None,

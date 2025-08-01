@@ -116,5 +116,5 @@ async def test_context_isolation_between_tasks():
         assert spans_seen["task-a"] is not spans_seen["task-b"]
 
         # Verify both spans were properly cleaned up
-        span_a.__exit__.assert_called_once()
-        span_b.__exit__.assert_called_once()
+        span_a.end.assert_called_once()
+        span_b.end.assert_called_once()

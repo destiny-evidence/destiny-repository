@@ -77,7 +77,6 @@ services:
       APP_NAME: destiny-app
     networks:
       - default
-      - signoz-net
     entrypoint: fastapi dev app/main.py --host 0.0.0.0 --port 8000
 
   worker:
@@ -110,7 +109,6 @@ services:
       APP_NAME: destiny-worker
     networks:
       - default
-      - signoz-net
     entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover --reload
   es_setup:
     image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_STACK_VERSION}
@@ -245,7 +243,3 @@ volumes:
   db_data:
   rabbitmq_data:
   fs_data:
-
-networks:
-  signoz-net:
-    external: true

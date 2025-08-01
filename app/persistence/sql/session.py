@@ -46,7 +46,9 @@ class AsyncDatabaseSessionManager:
             pool_pre_ping=True,
             connect_args=connect_args,
         )
-        SQLAlchemyInstrumentor().instrument(engine=self._engine.sync_engine)
+        SQLAlchemyInstrumentor().instrument(
+            engine=self._engine.sync_engine,
+        )
 
         if db_config.passwordless:
             # This is (more or less) as recommended in SQLAlchemy docs

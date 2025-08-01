@@ -46,7 +46,6 @@ services:
       service: app
     # Have to redefine a profile otherwise the e2e->app dependency gets confused
     profiles: ["e2e"]
-    image: destiny-repository
     depends_on:
       db-seed:
         condition: service_completed_successfully
