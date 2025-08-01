@@ -99,6 +99,12 @@ resource "azuread_app_role_assignment" "developer_to_enhancement_request_writer"
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
 }
 
+# Grant the GitHub Actions service principal the importer role so it can run the eppi-import GitHub Action
+resource "azuread_app_role_assignment" "github_actions_to_importer" {
+  app_role_id         = azuread_application_app_role.importer.role_id
+  principal_object_id = azuread_service_principal.github_actions.object_id
+  resource_object_id  = azuread_service_principal.destiny_repository.object_id
+}
 
 # Create an application that we can use to authenticate with the Destiny Repository
 resource "azuread_application_registration" "destiny_repository_auth" {

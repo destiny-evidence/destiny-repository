@@ -1,0 +1,119 @@
+name: Import EPPI Report to Destiny
+
+on:
+  workflow_dispatch:
+    inputs:
+      eppi_file_url:
+        description: "Signed URL of the EPPI JSON file to import"
+        required: true
+      environment:
+        description: "Target environment"
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  import-data:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install local SDK
+        run: pip install -e libs/sdk
+
+      - name: Install dependencies
+        run: pip install httpx
+
+      - name: Download input file and count references
+        id: download_and_count
+        env:
+          SIGNED_URL: ${{ github.event.inputs.eppi_file_url }}
+        run: |
+          echo "::add-mask::$SIGNED_URL"
+          curl -o eppi_report.json "$SIGNED_URL"
+          count=$(jq '.References | length' eppi_report.json)
+          echo "count=$count" >> $GITHUB_OUTPUT
+
+      - name: Convert JSON to JSONL
+        run: |
+          python libs/eppi_importer/import_from_eppi.py \
+            --input eppi_report.json \
+            --output references.jsonl \
+            --tags "HPV Partnership" \
+            --source "alive-hpv-partnership"
+
+      - name: "Az CLI login"
+        uses: azure/login@v2.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Upload processed JSONL to Azure Blob Storage
+        run: |
+          az storage blob upload \
+            --account-name ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }} \
+            --container-name "import-files" \
+            --file references.jsonl \
+            --name "references-${{ github.run_id }}.jsonl" \
+            --auth-mode login
+
+      - name: Generate SAS Token for JSONL file
+        id: generate_sas
+        env:
+          STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          end_date=$(date -u -d "1 hour" '+%Y-%m-%dT%H:%MZ')
+          sas_token=$(az storage blob generate-sas \
+            --account-name $STORAGE_ACCOUNT_NAME \
+            --container-name "import-files" \
+            --name "references-$RUN_ID.jsonl" \
+            --permissions r \
+            --expiry $end_date \
+            --auth-mode login \
+            --as-user \
+            --output tsv)
+          echo "::add-mask::$sas_token"
+          url="https://$STORAGE_ACCOUNT_NAME.blob.core.windows.net/import-files/references-$RUN_ID.jsonl?$sas_token"
+          echo "::add-mask::$url"
+          echo "url=$url" >> $GITHUB_OUTPUT
+
+      - name: Get access token for Destiny API
+        id: get_token
+        env:
+          API_IDENTIFIER_URI: ${{ vars.DESTINY_API_IDENTIFIER_URI }}
+        run: |
+          access_token=$(az account get-access-token --resource $API_IDENTIFIER_URI --query accessToken --output tsv)
+          echo "::add-mask::$access_token"
+          echo "token=$access_token" >> $GITHUB_OUTPUT
+
+      - name: Post file to Destiny API
+        env:
+          API_ENDPOINT: ${{ secrets.DESTINY_API_ENDPOINT }}
+          ACCESS_TOKEN: ${{ steps.get_token.outputs.token }}
+          FILE_URL: ${{ steps.generate_sas.outputs.url }}
+        run: |
+          python libs/eppi_importer/post_to_destiny.py \
+            --api-endpoint "$API_ENDPOINT" \
+            --access-token "$ACCESS_TOKEN" \
+            --file-url "$FILE_URL" \
+            --expected-reference-count ${{ steps.download_and_count.outputs.count }} \
+            --processor-name "EPPI Importer GitHub Action" \
+            --processor-version "1.0.0" \
+            --source-name "hpv-eppi-reviewer-json-export@$(date -u +%Y-%m-%dT%H:%M:%SZ)"

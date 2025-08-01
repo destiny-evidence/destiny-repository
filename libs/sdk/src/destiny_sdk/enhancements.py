@@ -58,7 +58,7 @@ class Authorship(BaseModel):
     """
 
     display_name: str = Field(description="The display name of the author.")
-    orcid: str = Field(description="The ORCid of the author.")
+    orcid: str | None = Field(default=None, description="The ORCid of the author.")
     position: AuthorPosition = Field(
         description="The position of the author within the list of authors."
     )
@@ -105,7 +105,7 @@ other works have cited this work
 
 class AbstractProcessType(StrEnum):
     """
-    The process used to acquyire the abstract.
+    The process used to acquire the abstract.
 
     **Allowed values**:
     - `uninverted`
