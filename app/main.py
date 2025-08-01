@@ -37,6 +37,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await es_manager.close()
 
 
-app = register_api(lifespan)
+app = register_api(lifespan, otel_enabled=settings.otel_enabled)
 
 configure_logger(rich_rendering=settings.running_locally)
