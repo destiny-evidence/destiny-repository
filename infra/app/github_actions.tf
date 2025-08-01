@@ -94,7 +94,7 @@ resource "github_actions_environment_variable" "destiny_api_identifier_uri" {
   repository    = github_repository_environment.environment.repository
   environment   = github_repository_environment.environment.environment
   variable_name = "DESTINY_API_IDENTIFIER_URI"
-  value         = azuread_application_identifier_uri.this.identifier_uri
+  value         = "${azuread_application_identifier_uri.this.identifier_uri}/v1/"
 }
 
 resource "github_actions_environment_variable" "pypi_repository" {
