@@ -8,6 +8,7 @@ from typing import Final, Self
 from opentelemetry import trace
 
 from app.core.logger import get_logger
+from app.core.telemetry.attributes import set_span_status
 from app.domain.imports.repository import (
     ImportBatchRepositoryBase,
     ImportRecordRepositoryBase,
@@ -105,10 +106,9 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
             logger.exception(
                 "Rolling back unit of work.",
             )
-            trace.get_current_span().record_exception(exc_value)
-            trace.get_current_span().set_status(trace.StatusCode.ERROR, str(exc_value))
+            set_span_status(trace.StatusCode.ERROR, str(exc_value), exc_value)
             await self.rollback()
-        trace.get_current_span().set_status(trace.StatusCode.OK)
+        set_span_status(trace.StatusCode.OK)
         self._is_active = False
 
     @abstractmethod

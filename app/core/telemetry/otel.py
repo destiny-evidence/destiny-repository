@@ -40,7 +40,6 @@ def configure_otel(
     headers = {}
     if config.api_key:
         headers["x-honeycomb-team"] = config.api_key
-        headers["x-honeycomb-dataset"] = f"{app_name}-{env.value}"
 
     resource = Resource.create(
         {
@@ -55,7 +54,11 @@ def configure_otel(
 
     tracer_provider.add_span_processor(
         BatchSpanProcessor(
-            OTLPSpanExporter(endpoint=str(config.trace_endpoint), headers=headers)
+            OTLPSpanExporter(
+                endpoint=str(config.trace_endpoint),
+                # Dataset is inferred from resource.service_name
+                headers=headers,
+            ),
         )
     )
     trace.set_tracer_provider(tracer_provider)
@@ -64,7 +67,11 @@ def configure_otel(
         resource=resource,
         metric_readers=[
             PeriodicExportingMetricReader(
-                OTLPMetricExporter(endpoint=str(config.meter_endpoint), headers=headers)
+                OTLPMetricExporter(
+                    endpoint=str(config.meter_endpoint),
+                    headers=headers
+                    | {"x-honeycomb-dataset": f"metrics-{app_name}-{env.value}"},
+                )
             )
         ],
     )

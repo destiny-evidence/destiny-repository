@@ -73,11 +73,15 @@ class Attributes(StrEnum):
     IMPORT_RECORD_ID = "app.import_record.id"
     IMPORT_BATCH_ID = "app.import_batch.id"
     IMPORT_RESULT_ID = "app.import_result.id"
-    ROBOT_ID = "app.robot.id"
     REFERENCE_ID = "app.reference.id"
     ENHANCEMENT_ID = "app.enhancement.id"
     ENHANCEMENT_REQUEST_ID = "app.enhancement_request.id"
     BATCH_ENHANCEMENT_REQUEST_ID = "app.batch_enhancement_request.id"
+    ROBOT_ID = "app.robot.id"
+    ROBOT_AUTOMATION_ID = "app.robot_automation.id"
+
+    # Other
+    FILE_LINE_NO = "app.file.line_number"
 
 
 def trace_attribute(attribute: Attributes, value: AttributeValue) -> None:
@@ -90,6 +94,12 @@ def name_span(name: str) -> None:
     trace.get_current_span().update_name(name)
 
 
-def set_span_status(status: trace.StatusCode, detail: str | None = None) -> None:
+def set_span_status(
+    status: trace.StatusCode,
+    detail: str | None = None,
+    exception: BaseException | None = None,
+) -> None:
     """Set the status of the current span."""
     trace.get_current_span().set_status(trace.Status(status, detail))
+    if exception:
+        trace.get_current_span().record_exception(exception)

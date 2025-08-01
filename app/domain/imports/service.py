@@ -9,6 +9,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.core.exceptions import SQLIntegrityError
 from app.core.logger import get_logger
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.domain.imports.models.models import (
     CollisionStrategy,
     ImportBatch,
@@ -120,6 +121,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         entry_ref: int,
     ) -> None:
         """Import a reference and persist it to the database."""
+        trace_attribute(Attributes.FILE_LINE_NO, entry_ref)
         import_result = await self.sql_uow.results.add(
             ImportResult(
                 import_batch_id=import_batch_id, status=ImportResultStatus.STARTED
