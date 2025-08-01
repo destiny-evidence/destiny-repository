@@ -6,10 +6,12 @@ from contextlib import suppress
 from types import TracebackType
 from typing import TYPE_CHECKING, ParamSpec, Self, TypeVar, cast
 
+from opentelemetry import trace
 from sqlalchemy.exc import PendingRollbackError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import get_logger
+from app.core.telemetry.attributes import Attributes
 from app.domain.imports.repository import (
     ImportBatchSQLRepository,
     ImportRecordSQLRepository,
@@ -31,6 +33,7 @@ from app.persistence.uow import AsyncUnitOfWorkBase
 if TYPE_CHECKING:
     from app.domain.service import GenericService
 logger = get_logger()
+tracer = trace.get_tracer(__name__)
 
 
 class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
@@ -110,10 +113,13 @@ def unit_of_work(fn: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
     @functools.wraps(fn)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         svc = cast("GenericService", args[0])
-        async with svc.sql_uow:
-            result: T = await fn(*args, **kwargs)
-            await svc.sql_uow.commit()
-            return result
+        with tracer.start_as_current_span(
+            "SQL Unit of Work", attributes={Attributes.DB_SYSTEM_NAME: "SQL"}
+        ):
+            async with svc.sql_uow:
+                result: T = await fn(*args, **kwargs)
+                await svc.sql_uow.commit()
+                return result
 
     return wrapper
 
@@ -126,9 +132,12 @@ def generator_unit_of_work(
     @functools.wraps(fn)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> AsyncGenerator[T, None]:
         svc = cast("GenericService", args[0])
-        async with svc.sql_uow:
-            async for item in fn(*args, **kwargs):
-                yield item
-            await svc.sql_uow.commit()
+        with tracer.start_as_current_span(
+            "SQL Unit of Work", attributes={Attributes.DB_SYSTEM_NAME: "SQL"}
+        ):
+            async with svc.sql_uow:
+                async for item in fn(*args, **kwargs):
+                    yield item
+                await svc.sql_uow.commit()
 
     return wrapper

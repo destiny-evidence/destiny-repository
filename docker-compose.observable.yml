@@ -1,0 +1,18 @@
+services:
+  app:
+    environment:
+      OTEL_ENABLED: "true"
+    networks:
+      - default
+      - signoz-net
+
+  worker:
+    environment:
+      OTEL_ENABLED: "true"
+    networks:
+      - default
+      - signoz-net
+
+networks:
+  signoz-net:
+    external: true

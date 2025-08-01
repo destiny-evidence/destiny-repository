@@ -6,8 +6,10 @@ from types import TracebackType
 from typing import TYPE_CHECKING, ParamSpec, Self, TypeVar, cast
 
 from elasticsearch import AsyncElasticsearch
+from opentelemetry import trace
 
 from app.core.exceptions import UOWError
+from app.core.telemetry.attributes import Attributes
 from app.domain.references.repository import (
     ReferenceESRepository,
     RobotAutomationESRepository,
@@ -16,6 +18,8 @@ from app.persistence.uow import AsyncUnitOfWorkBase
 
 if TYPE_CHECKING:
     from app.domain.service import GenericService
+
+tracer = trace.get_tracer(__name__)
 
 
 class AsyncESUnitOfWork(AsyncUnitOfWorkBase):
@@ -72,10 +76,13 @@ def unit_of_work(fn: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         if not svc.es_uow:
             msg = "Elasticsearch unit of work is not initialized."
             raise UOWError(msg)
-        async with svc.es_uow:
-            result: T = await fn(*args, **kwargs)
-            await svc.es_uow.commit()
-            return result
+        with tracer.start_as_current_span(
+            "ES Unit of Work", attributes={Attributes.DB_SYSTEM_NAME: "ES"}
+        ):
+            async with svc.es_uow:
+                result: T = await fn(*args, **kwargs)
+                await svc.es_uow.commit()
+                return result
 
     return wrapper
 
@@ -91,9 +98,13 @@ def generator_unit_of_work(
         if not svc.es_uow:
             msg = "Elasticsearch unit of work is not initialized."
             raise UOWError(msg)
-        async with svc.es_uow:
-            async for item in fn(*args, **kwargs):
-                yield item
-            await svc.es_uow.commit()
+
+        with tracer.start_as_current_span(
+            "ES Unit of Work", attributes={Attributes.DB_SYSTEM_NAME: "ES"}
+        ):
+            async with svc.es_uow:
+                async for item in fn(*args, **kwargs):
+                    yield item
+                await svc.es_uow.commit()
 
     return wrapper

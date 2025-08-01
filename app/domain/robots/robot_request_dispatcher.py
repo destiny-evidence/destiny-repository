@@ -3,6 +3,7 @@
 import destiny_sdk
 import httpx
 from fastapi import status
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 
 from app.core.config import get_settings
 from app.core.exceptions import (
@@ -19,6 +20,10 @@ settings = get_settings()
 class RobotRequestDispatcher:
     """Dispatcher for sending enhancement requests to robots."""
 
+    def __init__(self) -> None:
+        """Initialize the RobotRequestDispatcher."""
+        self._httpx_instrumentor = HTTPXClientInstrumentor()
+
     async def send_enhancement_request_to_robot(
         self,
         endpoint: str,
@@ -33,6 +38,7 @@ class RobotRequestDispatcher:
                 secret_key=client_secret, client_id=robot.id
             )
             async with httpx.AsyncClient(auth=auth) as client:
+                self._httpx_instrumentor.instrument_client(client)
                 response = await client.post(
                     str(robot.base_url).rstrip("/") + endpoint,
                     json=robot_request.model_dump(mode="json"),

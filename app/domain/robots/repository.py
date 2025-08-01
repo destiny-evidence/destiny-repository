@@ -2,10 +2,12 @@
 
 from abc import ABC
 
+from opentelemetry import trace
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import SQLIntegrityError, SQLNotFoundError
+from app.core.telemetry.repository import trace_repository_method
 from app.domain.robots.models.models import (
     Robot as DomainRobot,
 )
@@ -15,6 +17,8 @@ from app.domain.robots.models.sql import (
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
 from app.persistence.sql.repository import GenericAsyncSqlRepository
+
+tracer = trace.get_tracer(__name__)
 
 
 class RobotRepositoryBase(
@@ -38,6 +42,7 @@ class RobotSQLRepository(
             SQLRobot,
         )
 
+    @trace_repository_method(tracer)
     async def merge(self, robot: DomainRobot) -> DomainRobot:
         """
         Merge a robot into the repository.
@@ -62,7 +67,7 @@ class RobotSQLRepository(
         persistence = await self._session.get(self._persistence_cls, robot.id)
         if not persistence:
             detail = f"Unable to find {self._persistence_cls.__name__} "
-            "with pk {robot.id}"
+            f"with pk {robot.id}"
 
             raise SQLNotFoundError(
                 detail=detail,
