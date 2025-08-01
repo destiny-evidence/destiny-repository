@@ -3,6 +3,7 @@
 from abc import ABC
 from typing import Generic
 
+from opentelemetry import trace
 from pydantic import UUID4
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -10,9 +11,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.core.exceptions import SQLIntegrityError, SQLNotFoundError
+from app.core.telemetry.attributes import (
+    Attributes,
+    trace_attribute,
+)
+from app.core.telemetry.repository import trace_repository_method
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
 from app.persistence.sql.generics import GenericSQLPersistenceType
+
+tracer = trace.get_tracer(__name__)
 
 
 class GenericAsyncSqlRepository(
@@ -44,7 +52,9 @@ class GenericAsyncSqlRepository(
         self._session = session
         self._persistence_cls = persistence_cls
         self._domain_cls = domain_cls
+        self.system = "SQL"
 
+    @trace_repository_method(tracer)
     async def get_by_pk(
         self, pk: UUID4, preload: list[str] | None = None
     ) -> GenericDomainModelType:
@@ -59,6 +69,7 @@ class GenericAsyncSqlRepository(
         - NotFoundError: If the record is not found.
 
         """
+        trace_attribute(Attributes.DB_PK, str(pk))
         options = []
         if preload:
             for p in preload:
@@ -75,6 +86,7 @@ class GenericAsyncSqlRepository(
             )
         return result.to_domain(preload=preload)
 
+    @trace_repository_method(tracer)
     async def get_by_pks(
         self, pks: list[UUID4], preload: list[str] | None = None
     ) -> list[GenericDomainModelType]:
@@ -121,6 +133,7 @@ class GenericAsyncSqlRepository(
 
         return [ref.to_domain(preload=preload) for ref in db_references]
 
+    @trace_repository_method(tracer)
     async def get_all(
         self, preload: list[str] | None = None
     ) -> list[GenericDomainModelType]:
@@ -146,6 +159,7 @@ class GenericAsyncSqlRepository(
         result = await self._session.execute(query)
         return [ref.to_domain(preload=preload) for ref in result.scalars().all()]
 
+    @trace_repository_method(tracer)
     async def verify_pk_existence(self, pks: list[UUID4]) -> None:
         """
         Check if every pk exists in the database.
@@ -174,6 +188,7 @@ class GenericAsyncSqlRepository(
                 lookup_value=missing_pks,
             )
 
+    @trace_repository_method(tracer)
     async def update_by_pk(self, pk: UUID4, **kwargs: object) -> GenericDomainModelType:
         """
         Update a record using its primary key.
@@ -186,6 +201,9 @@ class GenericAsyncSqlRepository(
         - NotFoundError: If the record is not found.
 
         """
+        trace_attribute(Attributes.DB_PK, str(pk))
+        # Trace keys, not values
+        trace_attribute(Attributes.DB_PARAMS, list(kwargs.keys()))
         persistence = await self._session.get(self._persistence_cls, pk)
         if not persistence:
             detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
@@ -210,6 +228,7 @@ class GenericAsyncSqlRepository(
         await self._session.refresh(persistence)
         return persistence.to_domain()
 
+    @trace_repository_method(tracer)
     async def delete_by_pk(self, pk: UUID4) -> None:
         """
         Delete a record using its primary key.
@@ -218,6 +237,7 @@ class GenericAsyncSqlRepository(
         - pk (UUID4): The primary key to use to look up the record.
 
         """
+        trace_attribute(Attributes.DB_PK, str(pk))
         persistence = await self._session.get(self._persistence_cls, pk)
         if not persistence:
             detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
@@ -231,6 +251,7 @@ class GenericAsyncSqlRepository(
         await self._session.delete(persistence)
         await self._session.flush()
 
+    @trace_repository_method(tracer)
     async def add(self, record: GenericDomainModelType) -> GenericDomainModelType:
         """
         Add a record to the repository.
@@ -248,6 +269,7 @@ class GenericAsyncSqlRepository(
         instead of added. Consider renaming to upsert().
 
         """
+        trace_attribute(Attributes.DB_PK, str(record.id))
         persistence = self._persistence_cls.from_domain(record)
         try:
             self._session.add(persistence)
@@ -260,6 +282,7 @@ class GenericAsyncSqlRepository(
         await self._session.refresh(persistence)
         return persistence.to_domain()
 
+    @trace_repository_method(tracer)
     async def merge(self, record: GenericDomainModelType) -> GenericDomainModelType:
         """
         Merge a record into the repository.
@@ -288,6 +311,7 @@ class GenericAsyncSqlRepository(
         await self._session.refresh(persistence)
         return persistence.to_domain()
 
+    @trace_repository_method(tracer)
     async def get_all_pks(self) -> list[UUID4]:
         """
         Get all primary keys in the repository.

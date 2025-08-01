@@ -98,7 +98,11 @@ The below command spins up a `SigNoz` deployment for local observability of trac
 COMPOSE_EXPERIMENTAL_GIT_REMOTE=1 docker compose -f docker-compose.signoz.yml up -d
 ```
 
-Then, set `env.OTEL_ENABLED` to true, go to `http://localhost:8080`, and create a mock account to observe the instrumentation.
+To then run the application with observability:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.observable.yml --profile app up
+```
 
 ## Organisation
 
@@ -218,6 +222,12 @@ docker compose down -v \
 && docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs -f --tail=0 e2e app worker
 ```
 
-Note if you get unexpected `destiny_sdk` errors, you may need to add the `--build` flag to the `up` command above.
+Note in some circumstances you may need to add the `--build` flag to the `up` command above.
 
-You also may need to start the ssh agent to pull and build the [toy robot](https://github.com/destiny-evidence/toy-robot/blob/main/README.md) - see the toy robot README for more info.
+If you wish to inspect the E2E tests' instrumentation, you must mix in the observable compose file:
+
+```sh
+docker compose down -v \
+&& docker compose -f docker-compose.yml -f docker-compose.observable.yml -f docker-compose.e2e.yml --profile e2e up -d --force-recreate \
+&& docker compose -f docker-compose.yml -f docker-compose.observable.yml -f docker-compose.e2e.yml logs -f --tail=0 e2e app worker
+```
