@@ -94,7 +94,7 @@ resource "github_actions_environment_variable" "destiny_api_identifier_uri" {
   repository    = github_repository_environment.environment.repository
   environment   = github_repository_environment.environment.environment
   variable_name = "DESTINY_API_IDENTIFIER_URI"
-  value         = "${azuread_application_identifier_uri.this.identifier_uri}/v1/"
+  value         = "${azuread_application_identifier_uri.this.identifier_uri}"
 }
 
 resource "github_actions_environment_variable" "pypi_repository" {
@@ -125,5 +125,5 @@ resource "github_actions_environment_secret" "destiny_api_endpoint" {
   repository      = github_repository_environment.environment.repository
   environment     = github_repository_environment.environment.environment
   secret_name     = "DESTINY_API_ENDPOINT"
-  plaintext_value = "https://${data.azurerm_container_app.this.ingress[0].fqdn}"
+  plaintext_value = "https://${data.azurerm_container_app.this.ingress[0].fqdn}/v1/"
 }
