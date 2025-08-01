@@ -59,7 +59,7 @@ resource "azuread_application_app_role" "enhancement_request_writer" {
   description          = "Can request enhancements"
   display_name         = "Enhancement Request Writer"
   role_id              = random_uuid.enhancement_request_writer_role.result
-  value                = "enhancement-request.writer"
+  value                = "enhancement_request.writer"
 }
 
 resource "azuread_service_principal" "destiny_repository" {
