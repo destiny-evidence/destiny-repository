@@ -7,6 +7,7 @@ from elasticsearch import AsyncElasticsearch
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from structlog import get_logger
 from taskiq import AsyncTaskiqDecoratedTask
 
 from app.api.auth import (
@@ -17,7 +18,6 @@ from app.api.auth import (
 )
 from app.core.config import get_settings
 from app.core.exceptions import ESNotFoundError
-from app.core.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.es import (
     ReferenceDocument,
@@ -32,7 +32,7 @@ from app.persistence.es.persistence import GenericESPersistence
 from app.persistence.sql.session import get_session
 from app.system.healthcheck import HealthCheckOptions, healthcheck
 
-logger = get_logger()
+logger = get_logger(__name__)
 settings = get_settings()
 
 router = APIRouter(prefix="/system", tags=["system utilities"])

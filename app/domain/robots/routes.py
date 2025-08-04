@@ -6,6 +6,7 @@ from typing import Annotated
 import destiny_sdk
 from fastapi import APIRouter, Depends, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from structlog import get_logger
 
 from app.api.auth import (
     AuthMethod,
@@ -14,7 +15,6 @@ from app.api.auth import (
     choose_auth_strategy,
 )
 from app.core.config import get_settings
-from app.core.logger import get_logger
 from app.domain.robots.service import RobotService
 from app.domain.robots.services.anti_corruption_service import (
     RobotAntiCorruptionService,
@@ -23,7 +23,7 @@ from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 settings = get_settings()
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 def sql_unit_of_work(

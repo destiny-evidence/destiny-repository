@@ -9,8 +9,7 @@ from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-
-from app.core.logger import get_logger
+from structlog import get_logger
 
 
 class LoggerMiddleware(BaseHTTPMiddleware):
@@ -30,7 +29,7 @@ class LoggerMiddleware(BaseHTTPMiddleware):
 
         """
         super().__init__(app)
-        self.logger = get_logger()
+        self.logger = get_logger(__name__)
 
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]

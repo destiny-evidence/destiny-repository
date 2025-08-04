@@ -2,24 +2,30 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from opentelemetry import metrics, trace
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
+from structlog import get_logger
 
-from app.core.logger import get_logger
+from app.core.logger import configure_otel_logger
 from app.core.telemetry.attributes import Attributes
 from app.core.telemetry.processors import FilteringBatchSpanProcessor
 
 if TYPE_CHECKING:
     from app.core.config import Environment, OTelConfig
 
-logger = get_logger()
+logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 
@@ -41,6 +47,7 @@ def configure_otel(
     if config.api_key:
         headers["x-honeycomb-team"] = config.api_key
 
+    ## Traces
     resource = Resource.create(
         {
             Attributes.SERVICE_NAMESPACE: "destiny",
@@ -74,6 +81,7 @@ def configure_otel(
 
     trace.set_tracer_provider(tracer_provider)
 
+    ## Metrics
     meter_provider = MeterProvider(
         resource=resource,
         metric_readers=[
@@ -87,3 +95,16 @@ def configure_otel(
         ],
     )
     metrics.set_meter_provider(meter_provider)
+
+    ## Logs
+    logger_provider = LoggerProvider(resource=resource)
+    set_logger_provider(logger_provider)
+    logging.info(config.log_endpoint)
+    exporter = OTLPLogExporter(
+        endpoint=str(config.log_endpoint),
+        headers=headers | {"x-honeycomb-dataset": f"logs-{app_name}-{env.value}"},
+    )
+    logger_provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
+
+    handler = LoggingHandler(logger_provider=logger_provider)
+    configure_otel_logger(handler)

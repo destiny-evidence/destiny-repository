@@ -6,6 +6,7 @@ from io import BytesIO
 
 from cachetools import LRUCache
 from pydantic import HttpUrl
+from structlog import get_logger
 
 from app.core.config import get_settings
 from app.core.exceptions import (
@@ -13,7 +14,6 @@ from app.core.exceptions import (
     BlobStorageError,
     MinioBlobStorageError,
 )
-from app.core.logger import get_logger
 from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.clients.azure import AzureBlobStorageClient
 from app.persistence.blob.clients.minio import MinioBlobStorageClient
@@ -25,7 +25,7 @@ from app.persistence.blob.models import (
 from app.persistence.blob.stream import FileStream
 
 settings = get_settings()
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 class BlobRepository:

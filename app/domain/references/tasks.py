@@ -6,8 +6,8 @@ from elasticsearch import AsyncElasticsearch
 from opentelemetry import trace
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
+from structlog import get_logger
 
-from app.core.logger import get_logger
 from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
@@ -30,7 +30,7 @@ from app.persistence.sql.session import db_manager
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.tasks import broker
 
-logger = get_logger()
+logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 

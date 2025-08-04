@@ -1,8 +1,8 @@
 """Service for managing reference ingestion."""
 
 import destiny_sdk
+from structlog import get_logger
 
-from app.core.logger import get_logger
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
@@ -17,7 +17,7 @@ from app.domain.references.services.anti_corruption_service import (
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 class IngestionService(GenericService[ReferenceAntiCorruptionService]):

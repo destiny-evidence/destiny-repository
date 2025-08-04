@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator, Iterable
 
 import destiny_sdk
 from pydantic import UUID4
+from structlog import get_logger
 
 from app.core.config import (
     ESIndexingOperation,
@@ -19,7 +20,6 @@ from app.core.exceptions import (
     SQLNotFoundError,
     WrongReferenceError,
 )
-from app.core.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
@@ -58,7 +58,7 @@ from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
 from app.utils.lists import list_chunker
 
-logger = get_logger()
+logger = get_logger(__name__)
 settings = get_settings()
 
 

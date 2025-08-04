@@ -10,8 +10,8 @@ from typing import Self
 
 import destiny_sdk
 from pydantic import UUID4, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from structlog import get_logger
 
-from app.core.logger import get_logger
 from app.domain.references.models.models import (
     ExternalIdentifier,
     ExternalIdentifierAdapter,
@@ -19,7 +19,7 @@ from app.domain.references.models.models import (
 )
 from app.utils.types import JSON
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 class ReferenceFileInputValidator(BaseModel):

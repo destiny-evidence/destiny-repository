@@ -5,7 +5,7 @@ from taskiq_aio_pika import AioPikaBroker
 
 from app.core.azure_service_bus_broker import AzureServiceBusBroker
 from app.core.config import Environment, get_settings
-from app.core.logger import configure_logger
+from app.core.logger import configure_console_logger
 from app.core.telemetry.otel import configure_otel
 from app.core.telemetry.taskiq import TaskiqTracingMiddleware
 from app.persistence.es.client import es_manager
@@ -35,7 +35,9 @@ if settings.otel_config and settings.otel_enabled:
     )
     broker.add_middlewares(TaskiqTracingMiddleware())
 
-configure_logger(rich_rendering=settings.running_locally)
+configure_console_logger(
+    log_level=settings.log_level, rich_rendering=settings.running_locally
+)
 
 
 @broker.on_event(TaskiqEvents.WORKER_STARTUP)

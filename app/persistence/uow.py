@@ -6,8 +6,8 @@ from types import TracebackType
 from typing import Final, Self
 
 from opentelemetry import trace
+from structlog import get_logger
 
-from app.core.logger import get_logger
 from app.core.telemetry.attributes import set_span_status
 from app.domain.imports.repository import (
     ImportBatchRepositoryBase,
@@ -27,7 +27,7 @@ from app.domain.robots.repository import (
 )
 from app.persistence.repository import GenericAsyncRepository
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):

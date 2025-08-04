@@ -6,9 +6,9 @@ from opentelemetry import trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from pydantic import UUID4
 from sqlalchemy.exc import DBAPIError
+from structlog import get_logger
 
 from app.core.exceptions import SQLIntegrityError
-from app.core.logger import get_logger
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.domain.imports.models.models import (
     CollisionStrategy,
@@ -27,7 +27,7 @@ from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
 
-logger = get_logger()
+logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 

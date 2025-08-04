@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from opentelemetry import context, propagate, trace
 from opentelemetry.trace import Span, SpanKind
+from structlog import get_logger
 from taskiq import (
     AsyncTaskiqDecoratedTask,
     TaskiqMessage,
@@ -15,14 +16,13 @@ from taskiq import (
 )
 
 from app.core.config import get_settings
-from app.core.logger import get_logger
 from app.core.telemetry.attributes import Attributes
 
 if TYPE_CHECKING:
     from opentelemetry.context import Context
 
 tracer = trace.get_tracer(__name__)
-logger = get_logger()
+logger = get_logger(__name__)
 settings = get_settings()
 
 

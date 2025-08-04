@@ -5,9 +5,9 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 import destiny_sdk
 from opentelemetry import trace
 from pydantic import UUID4
+from structlog import get_logger
 
 from app.core.config import get_settings
-from app.core.logger import get_logger
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
@@ -29,7 +29,7 @@ from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
-logger = get_logger()
+logger = get_logger(__name__)
 settings = get_settings()
 tracer = trace.get_tracer(__name__)
 

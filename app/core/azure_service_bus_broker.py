@@ -20,16 +20,16 @@ from azure.servicebus.aio import (
     ServiceBusSender,
 )
 from azure.servicebus.amqp import AmqpAnnotatedMessage, AmqpMessageBodyType
+from structlog import get_logger
 from taskiq import AckableMessage, AsyncBroker, BrokerMessage
 
 from app.core.config import get_settings
 from app.core.exceptions import MessageBrokerError
-from app.core.logger import get_logger
 
 _T = TypeVar("_T")
 
 settings = get_settings()
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 def parse_val(

@@ -8,6 +8,7 @@ from elasticsearch import AsyncElasticsearch
 from fastapi import APIRouter, Depends, Path, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
+from structlog import get_logger
 
 from app.api.auth import (
     AuthMethod,
@@ -19,7 +20,6 @@ from app.api.auth import (
     security,
 )
 from app.core.config import get_settings
-from app.core.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     BatchEnhancementRequestStatus,
@@ -45,7 +45,7 @@ from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 settings = get_settings()
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 def sql_unit_of_work(

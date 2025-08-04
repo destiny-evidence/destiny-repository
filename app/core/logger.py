@@ -1,87 +1,54 @@
 """Structured logging wrapper class."""
 
 import logging
-from collections.abc import MutableMapping
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from opentelemetry import trace
 
+from app.core.config import LogLevel
 
-class Logger:
-    """Structured logging wrapper class."""
+if TYPE_CHECKING:
+    from opentelemetry.sdk._logs import LoggingHandler
 
-    def __init__(self) -> None:
-        """Initialize the logger."""
-        self.logger = structlog.get_logger()
-
-    def debug(self, message: str, **kwargs: dict) -> None:
-        """Log a message with level DEBUG."""
-        self.logger.debug(message, **kwargs)
-
-    def info(self, message: str, **kwargs: dict) -> None:
-        """Log a message with level INFO."""
-        self.logger.info(message, **kwargs)
-
-    def warning(self, message: str, **kwargs: dict) -> None:
-        """Log a message with level WARNING."""
-        self.logger.warning(message, **kwargs)
-
-    def error(self, message: str, **kwargs: dict) -> None:
-        """Log a message with level ERROR."""
-        self.logger.error(message, **kwargs)
-
-    def exception(self, message: str, **kwargs: dict) -> None:
-        """
-        Log a message with level ERROR.
-
-        Exception info is added to the logging message.
-        """
-        self.logger.exception(message, **kwargs)
+_root_logger = logging.root
 
 
-class TraceContextProcessor:
-    """Add OpenTelemetry trace context to log records."""
-
-    def __call__(
-        self,
-        _logger: object,
-        _name: str,
-        event_dict: MutableMapping[str, object],
-    ) -> MutableMapping[str, object]:
-        """Add trace context to the event dictionary."""
-        span = trace.get_current_span()
-        if span and span.is_recording():
-            span_context = span.get_span_context()
-            event_dict["trace_id"] = format(span_context.trace_id, "032x")
-            event_dict["span_id"] = format(span_context.span_id, "016x")
+def add_open_telemetry_spans(
+    _logger: Any,  # noqa: ANN401
+    _method_name: str,
+    event_dict: structlog.typing.EventDict,
+) -> structlog.typing.EventDict:
+    """Add OpenTelemetry span information to the event dictionary."""
+    span = trace.get_current_span()
+    if not span.is_recording():
+        event_dict["span"] = None
         return event_dict
 
+    ctx = span.get_span_context()
+    parent = getattr(span, "parent", None)
 
-class NewlineKeyValueRenderer(structlog.processors.KeyValueRenderer):
-    """
-    Custom renderer to replace escaped newlines with real newlines.
+    event_dict["span"] = {
+        "span_id": format(ctx.span_id, "016x"),
+        "trace_id": format(ctx.trace_id, "032x"),
+        "parent_span_id": None if not parent else format(parent.span_id, "016x"),
+    }
 
-    Enables the proper rendering of raw-text stack traces.
-    """
-
-    def __call__(
-        self,
-        logger: object,
-        name: str,
-        event_dict: MutableMapping[str, object],
-    ) -> str:
-        """Render log entry as key-value pairs."""
-        # Call the base renderer
-        rendered = super().__call__(logger, name, event_dict)
-        # Replace escaped newlines in exception/stack fields with real newlines
-        if isinstance(rendered, str):
-            rendered = (
-                rendered.replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t")
-            )
-        return rendered
+    return event_dict
 
 
-def configure_logger(*, rich_rendering: bool) -> None:
+def _get_hydrating_processors() -> list[structlog.types.Processor]:
+    """Get processors that hydrate the event dictionary."""
+    return [
+        structlog.contextvars.merge_contextvars,
+        add_open_telemetry_spans,
+        structlog.processors.TimeStamper(fmt="iso", utc=True),
+        structlog.processors.add_log_level,
+        structlog.stdlib.add_logger_name,
+    ]
+
+
+def configure_console_logger(log_level: LogLevel, *, rich_rendering: bool) -> None:
     """
     Configure the logging for the application.
 
@@ -91,48 +58,67 @@ def configure_logger(*, rich_rendering: bool) -> None:
     setting exception info, timestamping logs in ISO format with UTC,
     and rendering logs to the console.
     """
-    # Configure the root logger to ensure proper integration
-    root_logger = logging.getLogger()
-    if not root_logger.handlers:
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter("%(message)s"))
-        root_logger.addHandler(handler)
-        root_logger.setLevel(logging.INFO)
-
-    # Disable uvicorn logging
-    logging.getLogger("uvicorn.error").disabled = True
+    for handler in _root_logger.handlers[:]:
+        _root_logger.removeHandler(handler)
     logging.getLogger("uvicorn.access").disabled = True
+    logging.getLogger("uvicorn.error").disabled = False
+    # logging.getLogger("elasticsearch").setLevel(logging.WARNING)
+    # logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    # Structlog configuration
-    if rich_rendering:
-        processors = [
-            structlog.contextvars.merge_contextvars,
-            TraceContextProcessor(),
-            structlog.processors.add_log_level,
-            structlog.processors.StackInfoRenderer(),
-            structlog.dev.set_exc_info,
-            structlog.processors.TimeStamper(fmt="iso", utc=True),
-            structlog.dev.ConsoleRenderer(),
-        ]
-    else:
-        processors = [
-            structlog.contextvars.merge_contextvars,
-            TraceContextProcessor(),
-            structlog.processors.add_log_level,
-            structlog.processors.StackInfoRenderer(),
-            structlog.processors.format_exc_info,
-            structlog.processors.TimeStamper(fmt="iso", utc=True),
-            NewlineKeyValueRenderer(),
-        ]
+    console_render_processors = [
+        structlog.processors.StackInfoRenderer(),
+        structlog.dev.set_exc_info
+        if rich_rendering
+        else structlog.processors.ExceptionRenderer(),
+        structlog.dev.ConsoleRenderer()
+        if rich_rendering
+        else structlog.processors.LogfmtRenderer(),
+    ]
 
+    # Globally configure
     structlog.configure(
-        processors=processors,  # type: ignore[arg-type]
+        wrapper_class=structlog.make_filtering_bound_logger(log_level),
         logger_factory=structlog.stdlib.LoggerFactory(),
-        wrapper_class=structlog.stdlib.BoundLogger,
+        processors=[
+            *_get_hydrating_processors(),
+            *console_render_processors,
+        ],
         cache_logger_on_first_use=True,
     )
 
+    # Override root python logging
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processors=[
+            *_get_hydrating_processors(),
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            *console_render_processors,
+        ]
+    )
 
-def get_logger() -> Logger:
-    """Return a structured logger."""
-    return Logger()
+    # Add our custom handler
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    _root_logger.addHandler(handler)
+    _root_logger.setLevel(getattr(logging, log_level.upper()))
+
+
+def configure_otel_logger(handler: "LoggingHandler") -> None:
+    """Configure the OpenTelemetry logger."""
+    handler.setFormatter(
+        structlog.stdlib.ProcessorFormatter(
+            processors=[
+                *_get_hydrating_processors(),
+                structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                structlog.processors.ExceptionRenderer(
+                    exception_formatter=structlog.tracebacks.ExceptionDictTransformer()
+                ),
+                structlog.processors.JSONRenderer(
+                    sort_keys=True,
+                    ensure_ascii=False,
+                    indent=None,
+                    separators=(",", ":"),
+                ),
+            ],
+        )
+    )
+    _root_logger.addHandler(handler)
