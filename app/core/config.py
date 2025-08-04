@@ -183,6 +183,9 @@ class OTelConfig(BaseModel):
     meter_endpoint: HttpUrl
     api_key: str | None = None
 
+    # Flags to control low-level automatic instrumentation
+    instrument_sql: bool = False
+
 
 class Environment(StrEnum):
     """Environment enum."""
