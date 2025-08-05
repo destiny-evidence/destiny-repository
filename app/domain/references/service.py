@@ -6,6 +6,7 @@ from collections.abc import AsyncGenerator, Iterable
 import destiny_sdk
 from pydantic import UUID4
 from structlog import get_logger
+from structlog.stdlib import BoundLogger
 
 from app.core.config import (
     ESIndexingOperation,
@@ -58,7 +59,7 @@ from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
 from app.utils.lists import list_chunker
 
-logger = get_logger(__name__)
+logger: BoundLogger = get_logger(__name__)
 settings = get_settings()
 
 
@@ -313,7 +314,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             enhancement_request=enhancement_request,
             robot_service=robot_service,
         )
-
+        logger.info(
+            "Dispatching enhancement request",
+            enhancement_request_id=enhancement_request.id,
+            robot_id=robot.id,
+        )
         return await self._dispatch_enhancement_request(
             enhancement_request=enhancement_request,
             reference=reference,
@@ -398,18 +403,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 logger.warning(
                     "Detected robot automation loop, skipping."
                     " This is likely a problem in the percolating query.",
-                    extra={
-                        "robot_id": robot_automation.robot_id,
-                        "source": f"EnhancementRequest:{enhancement_request.id}",
-                    },
+                    robot_id=robot_automation.robot_id,
+                    source=f"EnhancementRequest:{enhancement_request.id}",
                 )
                 continue
             logger.info(
                 "Detected robot automation for enhancement",
-                extra={
-                    "robot_id": robot_automation.robot_id,
-                    "reference_ids": robot_automation.reference_ids,
-                },
+                robot_id=robot_automation.robot_id,
+                n_references=len(robot_automation.reference_ids),
             )
             await self._request_reference_enhancement(
                 EnhancementRequest(
@@ -559,10 +560,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         except Exception:
             logger.exception(
                 "Failed to add enhancement to reference.",
-                extra={
-                    "reference_id": enhancement.reference_id,
-                    "enhancement": enhancement,
-                },
+                reference_id=enhancement.reference_id,
+                enhancement=enhancement,
             )
             return (
                 False,
@@ -612,10 +611,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
         logger.info(
             "Indexing references in Elasticsearch",
-            extra={
-                "n_references": len(ids),
-                "chunk_size": chunk_size,
-            },
+            n_references=len(ids),
+            chunk_size=chunk_size,
         )
 
         async def reference_generator() -> AsyncGenerator[Reference, None]:

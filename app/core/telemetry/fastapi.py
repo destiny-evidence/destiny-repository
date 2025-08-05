@@ -12,10 +12,11 @@ from structlog.contextvars import (
     bind_contextvars,
     clear_contextvars,
 )
+from structlog.stdlib import BoundLogger
 
 from app.core.telemetry.attributes import Attributes
 
-logger = get_logger(__name__)
+logger: BoundLogger = get_logger(__name__)
 
 
 class FastAPITracingMiddleware(BaseHTTPMiddleware):

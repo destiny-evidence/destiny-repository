@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
+from structlog.stdlib import BoundLogger
 from taskiq import AsyncTaskiqDecoratedTask
 
 from app.api.auth import (
@@ -32,7 +33,7 @@ from app.persistence.es.persistence import GenericESPersistence
 from app.persistence.sql.session import get_session
 from app.system.healthcheck import HealthCheckOptions, healthcheck
 
-logger = get_logger(__name__)
+logger: BoundLogger = get_logger(__name__)
 settings = get_settings()
 
 router = APIRouter(prefix="/system", tags=["system utilities"])
@@ -124,11 +125,9 @@ async def repair_elasticsearch_index(
         ) from exc
 
     if rebuild:
-        msg = f"Destroying index {index_name}"
-        logger.info(msg)
+        logger.info("Destroying index", index=index_name)
         await index._index.delete(using=es_client)  # noqa: SLF001
-        msg = f"Recreating index {index_name}"
-        logger.info(msg)
+        logger.info("Recreating index", index=index_name)
         await index.init(using=es_client)
 
     await queue_task_with_trace(repair_task)

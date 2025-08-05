@@ -5,10 +5,11 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field
 from structlog import get_logger
+from structlog.stdlib import BoundLogger
 
 from app.core.exceptions import BlobStorageError
 
-logger = get_logger(__name__)
+logger: BoundLogger = get_logger(__name__)
 
 
 class BlobSignedUrlType(StrEnum):
@@ -58,7 +59,7 @@ class BlobStorageFile(BaseModel):
                 return "text/plain"
             case _:
                 msg = "No content type defined. Defaulting to application/octet-stream."
-                logger.warning(msg, extra={"blob_filename": self.filename})
+                logger.warning(msg, filename=self.filename)
                 return "application/octet-stream"
 
     def to_sql(self) -> str:

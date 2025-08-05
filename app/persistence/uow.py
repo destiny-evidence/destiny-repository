@@ -7,6 +7,7 @@ from typing import Final, Self
 
 from opentelemetry import trace
 from structlog import get_logger
+from structlog.stdlib import BoundLogger
 
 from app.core.telemetry.attributes import set_span_status
 from app.domain.imports.repository import (
@@ -27,7 +28,7 @@ from app.domain.robots.repository import (
 )
 from app.persistence.repository import GenericAsyncRepository
 
-logger = get_logger(__name__)
+logger: BoundLogger = get_logger(__name__)
 
 
 class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
@@ -103,9 +104,7 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
     ) -> None:
         """Clean up any connections and rollback if an exception has been raised."""
         if exc_value:
-            logger.exception(
-                "Rolling back unit of work.",
-            )
+            logger.exception("Rolling back unit of work.")
             set_span_status(trace.StatusCode.ERROR, str(exc_value), exc_value)
             await self.rollback()
         set_span_status(trace.StatusCode.OK)

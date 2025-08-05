@@ -7,10 +7,11 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
+from structlog.stdlib import BoundLogger
 
 from app.core.config import get_settings
 
-logger = get_logger(__name__)
+logger: BoundLogger = get_logger(__name__)
 settings = get_settings()
 
 
@@ -28,7 +29,7 @@ async def healthcheck(
     healthcheck_options: HealthCheckOptions,
 ) -> str | None:
     """Run healthcheck. Returns an error message if failed else None."""
-    logger.info("Running healthcheck", extra={"options": healthcheck_options})
+    logger.info("Running healthcheck", options=healthcheck_options)
 
     if healthcheck_options.database:
         try:

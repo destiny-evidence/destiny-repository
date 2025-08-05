@@ -7,6 +7,7 @@ import destiny_sdk
 from fastapi import APIRouter, Depends, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
+from structlog.stdlib import BoundLogger
 
 from app.api.auth import (
     AuthMethod,
@@ -23,7 +24,7 @@ from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 settings = get_settings()
-logger = get_logger(__name__)
+logger: BoundLogger = get_logger(__name__)
 
 
 def sql_unit_of_work(

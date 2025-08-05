@@ -21,9 +21,10 @@ from app.core.telemetry.attributes import Attributes
 
 if TYPE_CHECKING:
     from opentelemetry.context import Context
+    from structlog.stdlib import BoundLogger
 
 tracer = trace.get_tracer(__name__)
-logger = get_logger(__name__)
+logger: BoundLogger = get_logger(__name__)
 settings = get_settings()
 
 
@@ -108,12 +109,10 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
             carrier = message.kwargs.pop("trace_context", {})
             bind_contextvars(**message.kwargs)
 
+        bind_contextvars(task_name=message.task_name)
         logger.debug(
             "Received task with trace context",
-            extra={
-                "task_name": message.task_name,
-                "carrier_keys": list(carrier.keys()),
-            },
+            carrier_keys=list(carrier.keys()),
         )
 
         # Let OpenTelemetry extract the context
@@ -151,7 +150,6 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
             result: The result of the task execution
 
         """
-        clear_contextvars()
         current_span = self._current_span.get(None)
         if current_span:
             try:
@@ -171,11 +169,8 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
 
                 logger.debug(
                     "Completed OpenTelemetry span for task",
-                    extra={
-                        "task_name": message.task_name,
-                        "task_id": message.task_id,
-                        "success": not result.is_err,
-                    },
+                    task_id=message.task_id,
+                    success=not result.is_err,
                 )
 
             finally:
@@ -187,3 +182,4 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
                 if token:
                     context.detach(token)
                     self._token.set(None)
+        clear_contextvars()

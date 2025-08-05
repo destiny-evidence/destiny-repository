@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from structlog import get_logger
+from structlog.stdlib import BoundLogger
 
 from app.api.root import register_api
 from app.core.config import get_settings
@@ -14,7 +15,7 @@ from app.persistence.es.client import es_manager
 from app.persistence.sql.session import db_manager
 from app.tasks import broker
 
-logger = get_logger(__name__)
+logger: BoundLogger = get_logger(__name__)
 settings = get_settings()
 logger_configurer.configure_console_logger(
     log_level=settings.log_level, rich_rendering=settings.running_locally

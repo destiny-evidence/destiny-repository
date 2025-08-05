@@ -22,9 +22,11 @@ from app.core.telemetry.logger import AttrFilteredLoggingHandler, logger_configu
 from app.core.telemetry.processors import FilteringBatchSpanProcessor
 
 if TYPE_CHECKING:
+    from structlog.stdlib import BoundLogger
+
     from app.core.config import Environment, OTelConfig
 
-logger = get_logger(__name__)
+logger: BoundLogger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 

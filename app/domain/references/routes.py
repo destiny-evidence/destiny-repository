@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Path, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
+from structlog.stdlib import BoundLogger
 
 from app.api.auth import (
     AuthMethod,
@@ -45,7 +46,7 @@ from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 settings = get_settings()
-logger = get_logger(__name__)
+logger: BoundLogger = get_logger(__name__)
 
 
 def sql_unit_of_work(
@@ -255,7 +256,7 @@ async def request_batch_enhancement(
 
     logger.info(
         "Enqueueing enhancement batch",
-        extra={"batch_enhancement_request_id": enhancement_request.id},
+        n_references=len(enhancement_request_in.reference_ids),
     )
     await queue_task_with_trace(
         collect_and_dispatch_references_for_batch_enhancement,
@@ -371,10 +372,7 @@ async def fulfill_batch_enhancement_request(
     response: Response,
 ) -> destiny_sdk.robots.BatchEnhancementRequestRead:
     """Receive the robot result and kick off importing the enhancements."""
-    logger.info(
-        "Received batch enhancement result",
-        extra={"batch_enhancement_request_id": robot_result.request_id},
-    )
+    logger.info("Received batch enhancement result")
     if robot_result.error:
         batch_enhancement_request = (
             await reference_service.mark_batch_enhancement_request_failed(

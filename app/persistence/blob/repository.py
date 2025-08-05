@@ -7,6 +7,7 @@ from io import BytesIO
 from cachetools import LRUCache
 from pydantic import HttpUrl
 from structlog import get_logger
+from structlog.stdlib import BoundLogger
 
 from app.core.config import get_settings
 from app.core.exceptions import (
@@ -25,7 +26,7 @@ from app.persistence.blob.models import (
 from app.persistence.blob.stream import FileStream
 
 settings = get_settings()
-logger = get_logger(__name__)
+logger: BoundLogger = get_logger(__name__)
 
 
 class BlobRepository:

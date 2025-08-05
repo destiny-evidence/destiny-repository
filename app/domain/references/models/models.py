@@ -16,12 +16,13 @@ from pydantic import (
     TypeAdapter,
 )
 from structlog import get_logger
+from structlog.stdlib import BoundLogger
 
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 from app.domain.imports.models.models import CollisionStrategy
 from app.persistence.blob.models import BlobStorageFile
 
-logger = get_logger(__name__)
+logger: BoundLogger = get_logger(__name__)
 
 ExternalIdentifierAdapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
     ExternalIdentifier,

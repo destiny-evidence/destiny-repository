@@ -7,6 +7,7 @@ from opentelemetry import trace
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
+from structlog.stdlib import BoundLogger
 
 from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
 from app.core.telemetry.taskiq import queue_task_with_trace
@@ -30,7 +31,7 @@ from app.persistence.sql.session import db_manager
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.tasks import broker
 
-logger = get_logger(__name__)
+logger: BoundLogger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 
@@ -95,10 +96,7 @@ async def collect_and_dispatch_references_for_batch_enhancement(
     batch_enhancement_request_id: UUID4,
 ) -> None:
     """Async logic for dispatching a batch enhancement request."""
-    logger.info(
-        "Processing batch enhancement request",
-        extra={"batch_enhancement_request_id": batch_enhancement_request_id},
-    )
+    logger.info("Processing batch enhancement request")
     trace_attribute(
         Attributes.BATCH_ENHANCEMENT_REQUEST_ID, str(batch_enhancement_request_id)
     )
@@ -138,10 +136,7 @@ async def validate_and_import_batch_enhancement_result(
     batch_enhancement_request_id: UUID4,
 ) -> None:
     """Async logic for validating and importing a batch enhancement result."""
-    logger.info(
-        "Processing batch enhancement result",
-        extra={"batch_enhancement_request_id": batch_enhancement_request_id},
-    )
+    logger.info("Processing batch enhancement result")
     trace_attribute(
         Attributes.BATCH_ENHANCEMENT_REQUEST_ID, str(batch_enhancement_request_id)
     )
@@ -166,13 +161,13 @@ async def validate_and_import_batch_enhancement_result(
             batch_enhancement_request,
             blob_repository,
         )
-    except Exception as e:
+    except Exception as exc:
         logger.exception(
             "Error occurred while validating and importing batch enhancement result"
         )
         await reference_service.mark_batch_enhancement_request_failed(
             batch_enhancement_request_id,
-            str(e),
+            str(exc),
         )
         return
 
@@ -194,12 +189,7 @@ async def validate_and_import_batch_enhancement_result(
             terminal_status,
         )
     except Exception:
-        logger.exception(
-            "Error indexing references in Elasticsearch",
-            extra={
-                "batch_enhancement_request_id": batch_enhancement_request_id,
-            },
-        )
+        logger.exception("Error indexing references in Elasticsearch")
         await reference_service.update_batch_enhancement_request_status(
             batch_enhancement_request.id,
             BatchEnhancementRequestStatus.INDEXING_FAILED,
@@ -269,10 +259,8 @@ async def detect_and_dispatch_robot_automations(
             logger.warning(
                 "Detected robot automation loop, skipping."
                 " This is likely a problem in the percolation query.",
-                extra={
-                    "robot_id": robot_automation.robot_id,
-                    "source": source_str,
-                },
+                robot_id=robot_automation.robot_id,
+                source=source_str,
             )
             continue
         enhancement_request = (
@@ -287,10 +275,8 @@ async def detect_and_dispatch_robot_automations(
         requests.append(enhancement_request)
         logger.info(
             "Enqueueing enhancement batch for imported references",
-            extra={
-                "batch_enhancement_request_id": enhancement_request.id,
-                "robot_id": robot_automation.robot_id,
-            },
+            batch_enhancement_request_id=enhancement_request.id,
+            robot_id=robot_automation.robot_id,
         )
         await queue_task_with_trace(
             collect_and_dispatch_references_for_batch_enhancement,

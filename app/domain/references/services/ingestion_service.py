@@ -2,6 +2,7 @@
 
 import destiny_sdk
 from structlog import get_logger
+from structlog.stdlib import BoundLogger
 
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.domain.imports.models.models import CollisionStrategy
@@ -17,7 +18,7 @@ from app.domain.references.services.anti_corruption_service import (
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
-logger = get_logger(__name__)
+logger: BoundLogger = get_logger(__name__)
 
 
 class IngestionService(GenericService[ReferenceAntiCorruptionService]):
@@ -111,10 +112,8 @@ Identifier(s) are already mapped on an existing reference:
         # Merge collision strategies
         logger.info(
             "Merging reference",
-            extra={
-                "collision_strategy": collision_strategy,
-                "reference_id": existing_reference.id,
-            },
+            collision_strategy=collision_strategy,
+            existing_reference_id=existing_reference.id,
         )
         await existing_reference.merge(incoming_reference, collision_strategy)
         return existing_reference
@@ -146,9 +145,9 @@ Identifier(s) are already mapped on an existing reference:
             return None
 
         if isinstance(collision_result, str):
-            logger.info(
+            logger.warning(
                 "Reference collision could not be resolved",
-                extra={"error": collision_result},
+                error=collision_result,
             )
             return ReferenceCreateResult(
                 errors=[f"Entry {entry_ref}:", collision_result]
@@ -160,10 +159,8 @@ Identifier(s) are already mapped on an existing reference:
 
         logger.info(
             "Reference ingested",
-            extra={
-                "reference_id": final_reference.id,
-                "n_errors": len(reference_create_result.errors),
-            },
+            reference_id=final_reference.id,
+            n_errors=len(reference_create_result.errors),
         )
 
         if reference_create_result.errors:

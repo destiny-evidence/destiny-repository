@@ -9,6 +9,7 @@ from fastapi.middleware import Middleware
 from fastapi.responses import RedirectResponse
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from structlog import get_logger
+from structlog.stdlib import BoundLogger
 
 from app.api.exception_handlers import (
     es_malformed_exception_handler,
@@ -34,7 +35,7 @@ from app.domain.references.routes import reference_router as reference_router_v1
 from app.domain.robots.routes import router as robot_management_router_v1
 from app.system.routes import router as system_utilities_router_v1
 
-logger = get_logger(__name__)
+logger: BoundLogger = get_logger(__name__)
 
 
 def create_v1_router() -> APIRouter:
