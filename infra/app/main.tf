@@ -129,6 +129,13 @@ locals {
   ]
 }
 
+data "azurerm_container_app" "this" {
+  # This data source is used to get the latest revision FQDN for the container app
+  # so that we can use it in the eppi-import GitHub Action.
+  name                = module.container_app.container_app_name
+  resource_group_name = azurerm_resource_group.this.name
+}
+
 module "container_app" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
   version                         = "1.6.2"
@@ -347,13 +354,26 @@ resource "azurerm_storage_account" "this" {
   }
 }
 
-
 resource "azurerm_storage_container" "operations" {
   # This is a container designed for storing operational repository files such as
   # batch enhancement results and reference data for robots. These are transient.
   # We should segregate this from permanent data (such as full texts) at the container
   # level to easily apply different storage management policies.
   name                  = "${local.name}-ops"
+  storage_account_id    = azurerm_storage_account.this.id
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_container" "file_uploads" {
+  # This is a container designed for storing user-uploaded files, such as reference files to be imported into the DESTINY repository.
+  name                  = "file-uploads"
+  storage_account_id    = azurerm_storage_account.this.id
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_container" "import_files" {
+  # This is a container designed for storing pre-processed jsonl files to be imported into the DESTINY repository.
+  name                  = "import-files"
   storage_account_id    = azurerm_storage_account.this.id
   container_access_type = "private"
 }
@@ -367,6 +387,46 @@ resource "azurerm_storage_management_policy" "operations" {
     filters {
       blob_types   = ["blockBlob"]
       prefix_match = [azurerm_storage_container.operations.name]
+    }
+    actions {
+      base_blob {
+        delete_after_days_since_modification_greater_than = 30
+      }
+      snapshot {
+        delete_after_days_since_creation_greater_than = 30
+      }
+      version {
+        delete_after_days_since_creation = 30
+      }
+    }
+  }
+
+  rule {
+    name    = "delete-old-${azurerm_storage_container.file_uploads.name}-blobs"
+    enabled = true
+    filters {
+      blob_types   = ["blockBlob"]
+      prefix_match = [azurerm_storage_container.file_uploads.name]
+    }
+    actions {
+      base_blob {
+        delete_after_days_since_modification_greater_than = 30
+      }
+      snapshot {
+        delete_after_days_since_creation_greater_than = 30
+      }
+      version {
+        delete_after_days_since_creation = 30
+      }
+    }
+  }
+
+  rule {
+    name    = "delete-old-${azurerm_storage_container.import_files.name}-blobs"
+    enabled = true
+    filters {
+      blob_types   = ["blockBlob"]
+      prefix_match = [azurerm_storage_container.import_files.name]
     }
     actions {
       base_blob {
