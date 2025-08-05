@@ -8,7 +8,7 @@ from structlog import get_logger
 
 from app.api.root import register_api
 from app.core.config import get_settings
-from app.core.logger import configure_console_logger
+from app.core.logger import logger_configurer
 from app.core.telemetry.otel import configure_otel
 from app.persistence.es.client import es_manager
 from app.persistence.sql.session import db_manager
@@ -16,7 +16,7 @@ from app.tasks import broker
 
 logger = get_logger(__name__)
 settings = get_settings()
-configure_console_logger(
+logger_configurer.configure_console_logger(
     log_level=settings.log_level, rich_rendering=settings.running_locally
 )
 

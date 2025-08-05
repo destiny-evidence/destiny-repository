@@ -10,7 +10,7 @@ from opentelemetry._logs import set_logger_provider
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
@@ -18,8 +18,9 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from structlog import get_logger
 
-from app.core.logger import configure_otel_logger
+from app.core.logger import logger_configurer
 from app.core.telemetry.attributes import Attributes
+from app.core.telemetry.logger import AttrFilteredLoggingHandler
 from app.core.telemetry.processors import FilteringBatchSpanProcessor
 
 if TYPE_CHECKING:
@@ -106,5 +107,5 @@ def configure_otel(
     )
     logger_provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
 
-    handler = LoggingHandler(logger_provider=logger_provider)
-    configure_otel_logger(handler)
+    handler = AttrFilteredLoggingHandler(logger_provider=logger_provider)
+    logger_configurer.configure_otel_logger(handler)

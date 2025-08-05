@@ -1,114 +1,106 @@
 """Structured logging wrapper class."""
 
 import logging
-from typing import TYPE_CHECKING, Any
+import sys
+from typing import TYPE_CHECKING, cast
 
 import structlog
-from opentelemetry import trace
 
 from app.core.config import LogLevel
 
 if TYPE_CHECKING:
     from opentelemetry.sdk._logs import LoggingHandler
 
-_root_logger = logging.root
 
-
-def add_open_telemetry_spans(
-    _logger: Any,  # noqa: ANN401
-    _method_name: str,
-    event_dict: structlog.typing.EventDict,
+def filter_otel_attributes(
+    _logger: object, _method_name: str, event_dict: structlog.typing.EventDict
 ) -> structlog.typing.EventDict:
-    """Add OpenTelemetry span information to the event dictionary."""
-    span = trace.get_current_span()
-    if not span.is_recording():
-        event_dict["span"] = None
-        return event_dict
-
-    ctx = span.get_span_context()
-    parent = getattr(span, "parent", None)
-
-    event_dict["span"] = {
-        "span_id": format(ctx.span_id, "016x"),
-        "trace_id": format(ctx.trace_id, "032x"),
-        "parent_span_id": None if not parent else format(parent.span_id, "016x"),
-    }
-
+    """Filter out attributes that are unnecessary for OpenTelemetry."""
+    # Remove timestamp from the event so we can aggregate event bodies
+    # otel will add its own timestamp to the event
+    event_dict.pop("timestamp", None)
     return event_dict
 
 
-def _get_hydrating_processors() -> list[structlog.types.Processor]:
-    """Get processors that hydrate the event dictionary."""
-    return [
-        structlog.contextvars.merge_contextvars,
-        add_open_telemetry_spans,
-        structlog.processors.TimeStamper(fmt="iso", utc=True),
-        structlog.processors.add_log_level,
-        structlog.stdlib.add_logger_name,
-    ]
+class LoggerConfigurer:
+    """Class to configure application logging."""
 
+    def __init__(self) -> None:
+        """Initialize the logger configurer."""
+        self._root_logger = logging.root
+        self._root_logger.handlers.clear()
 
-def configure_console_logger(log_level: LogLevel, *, rich_rendering: bool) -> None:
-    """
-    Configure the logging for the application.
+        logging.getLogger("uvicorn.access").disabled = True
+        logging.getLogger("uvicorn.error").disabled = True
 
-    This function disables the default logging for uvicorn and sets up
-    structlog with a specific configuration. The configuration includes
-    merging context variables, adding log levels, rendering stack info,
-    setting exception info, timestamping logs in ISO format with UTC,
-    and rendering logs to the console.
-    """
-    for handler in _root_logger.handlers[:]:
-        _root_logger.removeHandler(handler)
-    logging.getLogger("uvicorn.access").disabled = True
-    logging.getLogger("uvicorn.error").disabled = False
-    # logging.getLogger("elasticsearch").setLevel(logging.WARNING)
-    # logging.getLogger("httpx").setLevel(logging.WARNING)
+        self._hydrating_processors = cast(
+            list[structlog.types.Processor],
+            [
+                structlog.contextvars.merge_contextvars,
+                structlog.processors.TimeStamper(fmt="iso", utc=True),
+                structlog.processors.add_log_level,
+                structlog.stdlib.add_logger_name,
+            ],
+        )
 
-    console_render_processors = [
-        structlog.processors.StackInfoRenderer(),
-        structlog.dev.set_exc_info
-        if rich_rendering
-        else structlog.processors.ExceptionRenderer(),
-        structlog.dev.ConsoleRenderer()
-        if rich_rendering
-        else structlog.processors.LogfmtRenderer(),
-    ]
+    def configure_console_logger(
+        self, log_level: LogLevel, *, rich_rendering: bool
+    ) -> None:
+        """
+        Configure the logging for the application.
 
-    # Globally configure
-    structlog.configure(
-        wrapper_class=structlog.make_filtering_bound_logger(log_level),
-        logger_factory=structlog.stdlib.LoggerFactory(),
-        processors=[
-            *_get_hydrating_processors(),
-            *console_render_processors,
-        ],
-        cache_logger_on_first_use=True,
-    )
+        This function disables the default logging for uvicorn and sets up
+        structlog with a specific configuration. The configuration includes
+        merging context variables, adding log levels, rendering stack info,
+        setting exception info, timestamping logs in ISO format with UTC,
+        and rendering logs to the console.
+        """
+        if structlog.is_configured():
+            return
 
-    # Override root python logging
-    formatter = structlog.stdlib.ProcessorFormatter(
-        processors=[
-            *_get_hydrating_processors(),
-            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-            *console_render_processors,
+        console_render_processors = [
+            structlog.processors.StackInfoRenderer(),
+            structlog.dev.set_exc_info
+            if rich_rendering
+            else structlog.processors.ExceptionRenderer(),
+            structlog.dev.ConsoleRenderer()
+            if rich_rendering
+            else structlog.processors.LogfmtRenderer(),
         ]
-    )
 
-    # Add our custom handler
-    handler = logging.StreamHandler()
-    handler.setFormatter(formatter)
-    _root_logger.addHandler(handler)
-    _root_logger.setLevel(getattr(logging, log_level.upper()))
-
-
-def configure_otel_logger(handler: "LoggingHandler") -> None:
-    """Configure the OpenTelemetry logger."""
-    handler.setFormatter(
-        structlog.stdlib.ProcessorFormatter(
+        # Configure structlog
+        # This applies to application logging (use structlog.get_logger()!)
+        structlog.configure(
+            wrapper_class=structlog.make_filtering_bound_logger(log_level),
+            logger_factory=structlog.stdlib.LoggerFactory(),
             processors=[
-                *_get_hydrating_processors(),
-                structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                *self._hydrating_processors,
+                structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+            ],
+            cache_logger_on_first_use=True,
+        )
+
+        # Override root python logging
+        # This primarily applies to third-party libraries
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(
+            structlog.stdlib.ProcessorFormatter(
+                processors=[
+                    structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                    *console_render_processors,
+                ],
+                foreign_pre_chain=self._hydrating_processors,
+            )
+        )
+        self._root_logger.addHandler(handler)
+        self._root_logger.setLevel(getattr(logging, log_level.upper()))
+
+    def configure_otel_logger(self, handler: "LoggingHandler") -> None:
+        """Configure the OpenTelemetry logger."""
+        otel_render_processors = cast(
+            list[structlog.types.Processor],
+            [
+                filter_otel_attributes,
                 structlog.processors.ExceptionRenderer(
                     exception_formatter=structlog.tracebacks.ExceptionDictTransformer()
                 ),
@@ -120,5 +112,17 @@ def configure_otel_logger(handler: "LoggingHandler") -> None:
                 ),
             ],
         )
-    )
-    _root_logger.addHandler(handler)
+
+        handler.setFormatter(
+            structlog.stdlib.ProcessorFormatter(
+                processors=[
+                    structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                    *otel_render_processors,
+                ],
+                foreign_pre_chain=self._hydrating_processors,
+            )
+        )
+        self._root_logger.addHandler(handler)
+
+
+logger_configurer = LoggerConfigurer()
