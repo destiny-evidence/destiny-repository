@@ -5,16 +5,15 @@ from collections.abc import AsyncIterator
 
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.exceptions import BadRequestError
-from structlog import get_logger
-from structlog.stdlib import BoundLogger
 
 from app.core.config import ESConfig
+from app.core.telemetry.logger import get_logger
 from app.domain.references.models.es import (
     ReferenceDocument,
     RobotAutomationPercolationDocument,
 )
 
-logger: BoundLogger = get_logger(__name__)
+logger = get_logger(__name__)
 indices = (ReferenceDocument, RobotAutomationPercolationDocument)
 
 

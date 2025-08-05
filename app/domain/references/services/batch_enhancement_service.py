@@ -5,11 +5,10 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 import destiny_sdk
 from opentelemetry import trace
 from pydantic import UUID4
-from structlog import get_logger
-from structlog.stdlib import BoundLogger
 
 from app.core.config import get_settings
 from app.core.telemetry.attributes import Attributes, trace_attribute
+from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
     BatchEnhancementRequestStatus,
@@ -30,7 +29,7 @@ from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
-logger: BoundLogger = get_logger(__name__)
+logger = get_logger(__name__)
 settings = get_settings()
 tracer = trace.get_tracer(__name__)
 
@@ -167,6 +166,11 @@ class BatchEnhancementService(GenericService[ReferenceAntiCorruptionService]):
                             )
                         ).to_jsonl()
                     elif validated_result.parse_failure:
+                        logger.warning(
+                            "Failed to parse enhancement",
+                            line_no=line_no,
+                            error=validated_result.parse_failure,
+                        )
                         at_least_one_failed = True
                         yield self._anti_corruption_service.batch_robot_result_validation_entry_to_sdk(  # noqa: E501
                             BatchRobotResultValidationEntry(
@@ -199,6 +203,13 @@ class BatchEnhancementService(GenericService[ReferenceAntiCorruptionService]):
                             imported_enhancement_ids.add(enhancement.id)
                             at_least_one_succeeded = True
                         else:
+                            logger.warning(
+                                "Failed to add enhancement",
+                                error=message,
+                                line_no=line_no,
+                                reference_id=enhancement.reference_id,
+                                enhancement_id=enhancement.id,
+                            )
                             yield self._anti_corruption_service.batch_robot_result_validation_entry_to_sdk(  # noqa: E501
                                 BatchRobotResultValidationEntry(
                                     reference_id=validated_result.enhancement_to_add.reference_id,

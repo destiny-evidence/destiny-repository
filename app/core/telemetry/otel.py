@@ -15,18 +15,19 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
-from structlog import get_logger
 
 from app.core.telemetry.attributes import Attributes
-from app.core.telemetry.logger import AttrFilteredLoggingHandler, logger_configurer
+from app.core.telemetry.logger import (
+    AttrFilteredLoggingHandler,
+    get_logger,
+    logger_configurer,
+)
 from app.core.telemetry.processors import FilteringBatchSpanProcessor
 
 if TYPE_CHECKING:
-    from structlog.stdlib import BoundLogger
-
     from app.core.config import Environment, OTelConfig
 
-logger: BoundLogger = get_logger(__name__)
+logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 

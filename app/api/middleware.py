@@ -2,18 +2,15 @@
 
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
 
 from fastapi import status
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-from structlog import get_logger
 from structlog.contextvars import bind_contextvars, unbind_contextvars
 
-if TYPE_CHECKING:
-    from structlog.stdlib import BoundLogger
+from app.core.telemetry.logger import get_logger
 
 
 class LoggerMiddleware(BaseHTTPMiddleware):
@@ -33,7 +30,7 @@ class LoggerMiddleware(BaseHTTPMiddleware):
 
         """
         super().__init__(app)
-        self.logger: BoundLogger = get_logger(__name__)
+        self.logger = get_logger(__name__)
 
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]

@@ -6,12 +6,11 @@ from elasticsearch import AsyncElasticsearch
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from structlog import get_logger
-from structlog.stdlib import BoundLogger
 
 from app.core.config import get_settings
+from app.core.telemetry.logger import get_logger
 
-logger: BoundLogger = get_logger(__name__)
+logger = get_logger(__name__)
 settings = get_settings()
 
 

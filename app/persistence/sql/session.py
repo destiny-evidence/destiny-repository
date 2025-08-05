@@ -17,13 +17,12 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import ConnectionPoolEntry
-from structlog import get_logger
-from structlog.stdlib import BoundLogger
 
 from app.core.config import DatabaseConfig
 from app.core.exceptions import UOWError
+from app.core.telemetry.logger import get_logger
 
-logger: BoundLogger = get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class AsyncDatabaseSessionManager:

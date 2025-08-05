@@ -1,10 +1,9 @@
 """Service for managing reference ingestion."""
 
 import destiny_sdk
-from structlog import get_logger
-from structlog.stdlib import BoundLogger
 
 from app.core.telemetry.attributes import Attributes, trace_attribute
+from app.core.telemetry.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
     GenericExternalIdentifier,
@@ -18,7 +17,7 @@ from app.domain.references.services.anti_corruption_service import (
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
-logger: BoundLogger = get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class IngestionService(GenericService[ReferenceAntiCorruptionService]):
@@ -113,7 +112,7 @@ Identifier(s) are already mapped on an existing reference:
         logger.info(
             "Merging reference",
             collision_strategy=collision_strategy,
-            existing_reference_id=existing_reference.id,
+            existing_reference_id=str(existing_reference.id),
         )
         await existing_reference.merge(incoming_reference, collision_strategy)
         return existing_reference
@@ -156,12 +155,6 @@ Identifier(s) are already mapped on an existing reference:
         trace_attribute(Attributes.REFERENCE_ID, str(collision_result.id))
         final_reference = await self.sql_uow.references.merge(collision_result)
         reference_create_result.reference_id = final_reference.id
-
-        logger.info(
-            "Reference ingested",
-            reference_id=final_reference.id,
-            n_errors=len(reference_create_result.errors),
-        )
 
         if reference_create_result.errors:
             reference_create_result.errors = [

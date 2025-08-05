@@ -9,10 +9,9 @@ from typing import TYPE_CHECKING, ParamSpec, Self, TypeVar, cast
 from opentelemetry import trace
 from sqlalchemy.exc import PendingRollbackError
 from sqlalchemy.ext.asyncio import AsyncSession
-from structlog import get_logger
-from structlog.stdlib import BoundLogger
 
 from app.core.telemetry.attributes import Attributes
+from app.core.telemetry.logger import get_logger
 from app.domain.imports.repository import (
     ImportBatchSQLRepository,
     ImportRecordSQLRepository,
@@ -33,7 +32,7 @@ from app.persistence.uow import AsyncUnitOfWorkBase
 
 if TYPE_CHECKING:
     from app.domain.service import GenericService
-logger: BoundLogger = get_logger(__name__)
+logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 

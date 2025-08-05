@@ -4,12 +4,11 @@ from enum import StrEnum, auto
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field
-from structlog import get_logger
-from structlog.stdlib import BoundLogger
 
 from app.core.exceptions import BlobStorageError
+from app.core.telemetry.logger import get_logger
 
-logger: BoundLogger = get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class BlobSignedUrlType(StrEnum):

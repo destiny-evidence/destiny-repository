@@ -2,13 +2,19 @@
 
 import logging
 import sys
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import structlog
 from opentelemetry.sdk._logs import LoggingHandler
 from opentelemetry.util.types import AnyValue
 
-from app.core.config import LogLevel
+if TYPE_CHECKING:
+    from app.core.config import LogLevel
+
+
+def get_logger(name: str) -> structlog.stdlib.BoundLogger:
+    """Get a structured logger with the given name."""
+    return structlog.get_logger(name)
 
 
 # https://github.com/open-telemetry/opentelemetry-python/issues/3649#issuecomment-2295549483
@@ -59,7 +65,7 @@ class LoggerConfigurer:
         )
 
     def configure_console_logger(
-        self, log_level: LogLevel, *, rich_rendering: bool
+        self, log_level: "LogLevel", *, rich_rendering: bool
     ) -> None:
         """
         Configure the logging for the application.

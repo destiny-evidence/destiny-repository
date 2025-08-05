@@ -6,10 +6,10 @@ from elasticsearch import AsyncElasticsearch
 from opentelemetry import trace
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
-from structlog import get_logger
-from structlog.stdlib import BoundLogger
+from structlog.contextvars import bound_contextvars
 
 from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
+from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
@@ -31,7 +31,7 @@ from app.persistence.sql.session import db_manager
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.tasks import broker
 
-logger: BoundLogger = get_logger(__name__)
+logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 
@@ -115,14 +115,21 @@ async def collect_and_dispatch_references_for_batch_enhancement(
     batch_enhancement_request = await reference_service.get_batch_enhancement_request(
         batch_enhancement_request_id
     )
+    trace_attribute(Attributes.ROBOT_ID, str(batch_enhancement_request.robot_id))
 
     try:
-        await reference_service.collect_and_dispatch_references_for_batch_enhancement(
-            batch_enhancement_request,
-            robot_service,
-            robot_request_dispatcher,
-            blob_repository,
-        )
+        with bound_contextvars(
+            robot_id=str(batch_enhancement_request.robot_id),
+        ):
+            # Collect and dispatch references for the batch enhancement request
+            await (
+                reference_service.collect_and_dispatch_references_for_batch_enhancement(
+                    batch_enhancement_request,
+                    robot_service,
+                    robot_request_dispatcher,
+                    blob_repository,
+                )
+            )
     except Exception as e:
         logger.exception("Error occurred while creating batch enhancement request")
         await reference_service.mark_batch_enhancement_request_failed(
@@ -152,15 +159,20 @@ async def validate_and_import_batch_enhancement_result(
     batch_enhancement_request = await reference_service.get_batch_enhancement_request(
         batch_enhancement_request_id
     )
+    trace_attribute(Attributes.ROBOT_ID, str(batch_enhancement_request.robot_id))
 
     try:
-        (
-            terminal_status,
-            imported_enhancement_ids,
-        ) = await reference_service.validate_and_import_batch_enhancement_result(
-            batch_enhancement_request,
-            blob_repository,
-        )
+        with bound_contextvars(
+            robot_id=str(batch_enhancement_request.robot_id),
+        ):
+            # Validate and import the batch enhancement result
+            (
+                terminal_status,
+                imported_enhancement_ids,
+            ) = await reference_service.validate_and_import_batch_enhancement_result(
+                batch_enhancement_request,
+                blob_repository,
+            )
     except Exception as exc:
         logger.exception(
             "Error occurred while validating and importing batch enhancement result"
@@ -259,7 +271,7 @@ async def detect_and_dispatch_robot_automations(
             logger.warning(
                 "Detected robot automation loop, skipping."
                 " This is likely a problem in the percolation query.",
-                robot_id=robot_automation.robot_id,
+                robot_id=str(robot_automation.robot_id),
                 source=source_str,
             )
             continue
@@ -273,11 +285,6 @@ async def detect_and_dispatch_robot_automations(
             )
         )
         requests.append(enhancement_request)
-        logger.info(
-            "Enqueueing enhancement batch for imported references",
-            batch_enhancement_request_id=enhancement_request.id,
-            robot_id=robot_automation.robot_id,
-        )
         await queue_task_with_trace(
             collect_and_dispatch_references_for_batch_enhancement,
             batch_enhancement_request_id=enhancement_request.id,

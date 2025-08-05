@@ -6,8 +6,6 @@ import destiny_sdk
 from fastapi import APIRouter, Depends, Path, status
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
-from structlog import get_logger
-from structlog.stdlib import BoundLogger
 
 from app.api.auth import (
     AuthMethod,
@@ -16,6 +14,7 @@ from app.api.auth import (
     choose_auth_strategy,
 )
 from app.core.config import get_settings
+from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.imports.models.models import (
     ImportResultStatus,
@@ -29,7 +28,7 @@ from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 settings = get_settings()
-logger: BoundLogger = get_logger(__name__)
+logger = get_logger(__name__)
 
 
 def unit_of_work(
@@ -156,7 +155,6 @@ async def enqueue_batch(
             batch, import_record_id=import_record_id
         )
     )
-    logger.info("Enqueueing import batch")
     await queue_task_with_trace(
         process_import_batch,
         import_batch_id=import_batch.id,

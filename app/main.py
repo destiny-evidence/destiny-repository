@@ -4,18 +4,16 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from structlog import get_logger
-from structlog.stdlib import BoundLogger
 
 from app.api.root import register_api
 from app.core.config import get_settings
-from app.core.telemetry.logger import logger_configurer
+from app.core.telemetry.logger import get_logger, logger_configurer
 from app.core.telemetry.otel import configure_otel
 from app.persistence.es.client import es_manager
 from app.persistence.sql.session import db_manager
 from app.tasks import broker
 
-logger: BoundLogger = get_logger(__name__)
+logger = get_logger(__name__)
 settings = get_settings()
 logger_configurer.configure_console_logger(
     log_level=settings.log_level, rich_rendering=settings.running_locally

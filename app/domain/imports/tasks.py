@@ -3,8 +3,6 @@
 from elasticsearch import AsyncElasticsearch
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
-from structlog import get_logger
-from structlog.stdlib import BoundLogger
 
 from app.core.exceptions import ESError, TaskError
 from app.core.telemetry.attributes import (
@@ -12,6 +10,7 @@ from app.core.telemetry.attributes import (
     name_span,
     trace_attribute,
 )
+from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.imports.models.models import ImportBatchStatus
 from app.domain.imports.service import ImportService
@@ -32,7 +31,7 @@ from app.persistence.sql.session import db_manager
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.tasks import broker
 
-logger: BoundLogger = get_logger(__name__)
+logger = get_logger(__name__)
 
 
 async def get_sql_unit_of_work(
@@ -180,5 +179,5 @@ async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -
     for request in requests:
         logger.info(
             "Created automatic enhancement request",
-            batch_enhancement_request_id=request.id,
+            batch_enhancement_request_id=str(request.id),
         )

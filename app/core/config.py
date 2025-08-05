@@ -8,10 +8,10 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, Field, FilePath, HttpUrl, PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from structlog import get_logger
-from structlog.stdlib import BoundLogger
 
-logger: BoundLogger = get_logger(__name__)
+from app.core.telemetry.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class DatabaseConfig(BaseModel):

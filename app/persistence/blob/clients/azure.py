@@ -9,8 +9,6 @@ from azure.storage.blob import BlobSasPermissions, UserDelegationKey, generate_b
 from azure.storage.blob.aio import BlobServiceClient
 from cachetools import TTLCache
 from opentelemetry import trace
-from structlog import get_logger
-from structlog.stdlib import BoundLogger
 
 from app.core.config import AzureBlobConfig
 from app.core.exceptions import AzureBlobStorageError
@@ -18,6 +16,7 @@ from app.core.telemetry.blob import (
     trace_blob_client_generator,
     trace_blob_client_method,
 )
+from app.core.telemetry.logger import get_logger
 from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.models import (
     BlobSignedUrlType,
@@ -25,7 +24,7 @@ from app.persistence.blob.models import (
 )
 from app.persistence.blob.stream import FileStream
 
-logger: BoundLogger = get_logger(__name__)
+logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 

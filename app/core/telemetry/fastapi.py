@@ -1,22 +1,22 @@
 """Middleware for OpenTelemetry tracing in FastAPI applications."""
 
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 
 from fastapi import Request, Response
 from opentelemetry import trace
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Match
-from structlog import get_logger
 from structlog.contextvars import (
     bind_contextvars,
-    clear_contextvars,
+    bound_contextvars,
+    unbind_contextvars,
 )
-from structlog.stdlib import BoundLogger
 
 from app.core.telemetry.attributes import Attributes
+from app.core.telemetry.logger import get_logger
 
-logger: BoundLogger = get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class FastAPITracingMiddleware(BaseHTTPMiddleware):
@@ -47,7 +47,7 @@ class FastAPITracingMiddleware(BaseHTTPMiddleware):
 
         """
         current_span = trace.get_current_span()
-
+        contextvars: set[str] = set()
         if request.url.query:
             # Add individual query parameters as attributes using FastAPI
             if current_span.is_recording():
@@ -55,6 +55,7 @@ class FastAPITracingMiddleware(BaseHTTPMiddleware):
                     current_span.set_attribute(
                         f"{Attributes.HTTP_REQUEST_QUERY_PARAMS}.{key}", value
                     )
+            contextvars |= request.query_params.keys()
             bind_contextvars(**request.query_params)
 
         # Can't access path parameters directly in middleware.
@@ -70,14 +71,56 @@ class FastAPITracingMiddleware(BaseHTTPMiddleware):
                         current_span.set_attribute(
                             f"{Attributes.HTTP_REQUEST_PATH_PARAMS}.{key}", str(value)
                         )
+                contextvars |= scope["path_params"].keys()
                 bind_contextvars(**scope["path_params"])
 
         try:
             result = await call_next(request)
         except Exception:
-            clear_contextvars()
+            unbind_contextvars(*contextvars)
             raise
         else:
-            # This is guaranteed to be the outermost middleware so we clear all context
-            clear_contextvars()
+            unbind_contextvars(*contextvars)
             return result
+
+
+class PayloadAttributeTracer:
+    """Context manager to log and trace an attribute from the request payload."""
+
+    def __init__(self, attribute: str) -> None:
+        """
+        Initialize the tracer with the attribute to trace.
+
+        Args:
+            attribute: The attribute name to trace from the request payload.
+
+        """
+        self.attribute = attribute
+
+    async def __call__(self, request: Request) -> AsyncGenerator[None, None]:
+        """
+        Add the specified payload attribute as an OpenTelemetry span attribute.
+
+        Args:
+            request: The incoming request.
+
+        Yields:
+            None, but sets the attribute on the current span.
+
+        """
+        try:
+            body: dict = await request.json()
+        except ValueError:
+            logger.debug("Failed to parse request body as JSON")
+            yield
+        else:
+            current_span = trace.get_current_span()
+            value = body.get(self.attribute)
+            if value:
+                current_span.set_attribute(
+                    f"{Attributes.HTTP_REQUEST_BODY_PARAMS}.{self.attribute}", value
+                )
+                with bound_contextvars(**{self.attribute: value}):
+                    yield
+            else:
+                yield

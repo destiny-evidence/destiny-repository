@@ -10,9 +10,8 @@ from typing import Self
 
 import destiny_sdk
 from pydantic import UUID4, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
-from structlog import get_logger
-from structlog.stdlib import BoundLogger
 
+from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     ExternalIdentifier,
     ExternalIdentifierAdapter,
@@ -20,7 +19,7 @@ from app.domain.references.models.models import (
 )
 from app.utils.types import JSON
 
-logger: BoundLogger = get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class ReferenceFileInputValidator(BaseModel):
@@ -72,7 +71,7 @@ Error:
             logger.exception(
                 "Failed to create identifier",
                 raw_identifier=raw_identifier,
-                entry_ref=entry_ref,
+                line_no=entry_ref,
             )
             return cls(
                 error=f"""
@@ -119,7 +118,7 @@ Error:
             logger.exception(
                 "Failed to create enhancement",
                 raw_enhancement=raw_enhancement,
-                entry_ref=entry_ref,
+                line_no=entry_ref,
             )
             return cls(
                 error=f"""

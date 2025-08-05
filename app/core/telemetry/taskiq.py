@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 
 from opentelemetry import context, propagate, trace
 from opentelemetry.trace import Span, SpanKind
-from structlog import get_logger
 from structlog.contextvars import bind_contextvars, clear_contextvars
 from taskiq import (
     AsyncTaskiqDecoratedTask,
@@ -18,13 +17,13 @@ from taskiq import (
 
 from app.core.config import get_settings
 from app.core.telemetry.attributes import Attributes
+from app.core.telemetry.logger import get_logger
 
 if TYPE_CHECKING:
     from opentelemetry.context import Context
-    from structlog.stdlib import BoundLogger
 
 tracer = trace.get_tracer(__name__)
-logger: BoundLogger = get_logger(__name__)
+logger = get_logger(__name__)
 settings = get_settings()
 
 
@@ -39,6 +38,11 @@ async def queue_task_with_trace(
     All tasks should be queued through this function to ensure
     that the OpenTelemetry trace context is automatically injected.
     """
+    logger.info(
+        "Queueing task",
+        task_name=task.task_name,
+        **{k: str(v) for k, v in kwargs.items()},
+    )
     if not settings.otel_enabled:
         # If OpenTelemetry is not enabled, just queue the task normally
         await task.kiq(*args, **kwargs)
@@ -107,7 +111,7 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
             and "trace_context" in message.kwargs
         ):
             carrier = message.kwargs.pop("trace_context", {})
-            bind_contextvars(**message.kwargs)
+            bind_contextvars(**{k: str(v) for k, v in message.kwargs.items()})
 
         bind_contextvars(task_name=message.task_name)
         logger.debug(
