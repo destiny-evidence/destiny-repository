@@ -461,13 +461,15 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         assert import_record["status"] == "completed"
 
         # 9: Check Elasticsearch too
-        time.sleep(1)  # Wait for ES indexing to complete
         es = Elasticsearch(
             os.environ["ES_URL"],
             basic_auth=(os.environ["ES_USER"], os.environ["ES_PASS"]),
             ca_certs=os.environ["ES_CA_PATH"],
         )
         es_index = "destiny-repository-e2e-reference"
+        es.indices.refresh(
+            index=es_index
+        )  # Ensure the index is refreshed before searching
         assert es.indices.exists(index=es_index)
         es_response = es.search(
             index=es_index,

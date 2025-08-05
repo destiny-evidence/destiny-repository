@@ -57,6 +57,22 @@ resource "azurerm_role_assignment" "gha-container-app-tasks-contributor" {
   principal_id         = azuread_service_principal.github_actions.object_id
 }
 
+# The eppi-import GitHub Action needs to be able to upload the processed
+# JSONL file to the storage account.
+resource "azurerm_role_assignment" "gha_storage_blob_contributor" {
+  role_definition_name = "Storage Blob Data Contributor"
+  scope                = azurerm_storage_account.this.id
+  principal_id         = azuread_service_principal.github_actions.object_id
+}
+
+# The eppi-import GitHub Action needs to be able to generate a user delegation
+# SAS token for the uploaded blob, so the Destiny API can read it.
+resource "azurerm_role_assignment" "gha_storage_blob_delegator" {
+  role_definition_name = "Storage Blob Delegator"
+  scope                = azurerm_storage_account.this.id
+  principal_id         = azuread_service_principal.github_actions.object_id
+}
+
 resource "azurerm_role_assignment" "service_bus_receiver" {
   role_definition_name = "Azure Service Bus Data Receiver"
   scope                = azurerm_servicebus_namespace.this.id

@@ -88,6 +88,15 @@ resource "github_actions_environment_variable" "resource_group" {
   value         = azurerm_resource_group.this.name
 }
 
+resource "github_actions_environment_variable" "destiny_api_identifier_uri" {
+  # The Destiny API identifier URI is used by the eppi-import GitHub Action
+  # to generate an access token for the Destiny API so it can import references.
+  repository    = github_repository_environment.environment.repository
+  environment   = github_repository_environment.environment.environment
+  variable_name = "DESTINY_API_IDENTIFIER_URI"
+  value         = "${azuread_application_identifier_uri.this.identifier_uri}"
+}
+
 resource "github_actions_environment_variable" "pypi_repository" {
   repository    = github_repository_environment.environment.repository
   environment   = github_repository_environment.environment.environment
@@ -100,4 +109,21 @@ resource "github_actions_environment_secret" "pypi_token" {
   environment     = github_repository_environment.environment.environment
   secret_name     = "PYPI_TOKEN"
   plaintext_value = var.pypi_token
+}
+
+resource "github_actions_environment_secret" "azure_storage_account_name" {
+  # The eppi-import GitHub Action needs to be able to upload the processed
+  # JSONL file to the storage account.
+  repository      = github_repository_environment.environment.repository
+  environment     = github_repository_environment.environment.environment
+  secret_name     = "AZURE_STORAGE_ACCOUNT_NAME"
+  plaintext_value = azurerm_storage_account.this.name
+}
+
+resource "github_actions_environment_secret" "destiny_api_endpoint" {
+  # The eppi-import GitHub Action needs know the url to the Destiny API.
+  repository      = github_repository_environment.environment.repository
+  environment     = github_repository_environment.environment.environment
+  secret_name     = "DESTINY_API_ENDPOINT"
+  plaintext_value = "https://${data.azurerm_container_app.this.ingress[0].fqdn}/v1/"
 }
