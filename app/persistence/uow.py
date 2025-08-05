@@ -7,6 +7,7 @@ from typing import Final, Self
 
 from opentelemetry import trace
 
+from app.core.exceptions import IntegrityError, NotFoundError
 from app.core.telemetry.attributes import set_span_status
 from app.core.telemetry.logger import get_logger
 from app.domain.imports.repository import (
@@ -103,7 +104,16 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
     ) -> None:
         """Clean up any connections and rollback if an exception has been raised."""
         if exc_value:
-            logger.exception("Rolling back unit of work.")
+            if exc_type in (IntegrityError, NotFoundError):
+                # IntegrityError and NotFoundError are relatively expected exceptions
+                # that don't require a full stack trace in the logs. It can still be
+                # seen in the trace span.
+                logger.warning(
+                    "Rolling back unit of work.",
+                    exc_type=exc_type,
+                )
+            else:
+                logger.exception("Rolling back unit of work.")
             set_span_status(trace.StatusCode.ERROR, str(exc_value), exc_value)
             await self.rollback()
         set_span_status(trace.StatusCode.OK)
