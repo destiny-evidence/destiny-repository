@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from opentelemetry import context, propagate, trace
 from opentelemetry.trace import Span, SpanKind
 from structlog import get_logger
+from structlog.contextvars import bind_contextvars, clear_contextvars
 from taskiq import (
     AsyncTaskiqDecoratedTask,
     TaskiqMessage,
@@ -105,6 +106,7 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
             and "trace_context" in message.kwargs
         ):
             carrier = message.kwargs.pop("trace_context", {})
+            bind_contextvars(**message.kwargs)
 
         logger.debug(
             "Received task with trace context",
@@ -149,6 +151,7 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
             result: The result of the task execution
 
         """
+        clear_contextvars()
         current_span = self._current_span.get(None)
         if current_span:
             try:

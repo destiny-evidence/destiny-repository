@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from opentelemetry import metrics, trace
@@ -18,9 +17,8 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from structlog import get_logger
 
-from app.core.logger import logger_configurer
 from app.core.telemetry.attributes import Attributes
-from app.core.telemetry.logger import AttrFilteredLoggingHandler
+from app.core.telemetry.logger import AttrFilteredLoggingHandler, logger_configurer
 from app.core.telemetry.processors import FilteringBatchSpanProcessor
 
 if TYPE_CHECKING:
@@ -100,7 +98,6 @@ def configure_otel(
     ## Logs
     logger_provider = LoggerProvider(resource=resource)
     set_logger_provider(logger_provider)
-    logging.info(config.log_endpoint)
     exporter = OTLPLogExporter(
         endpoint=str(config.log_endpoint),
         headers=headers | {"x-honeycomb-dataset": f"logs-{app_name}-{env.value}"},
