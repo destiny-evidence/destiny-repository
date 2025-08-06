@@ -10,7 +10,7 @@ set up `.env.<ENVIRONMENT>` files for each environment by copying the `.env.exam
 
 ## Development
 
-Environments`local` and `test` environment will skip authentication, expecting to hit a destiny repository deployed at `http://127.0.0.0:8001`.
+Environments`local` and `test` environment will skip authentication, expecting to hit a destiny repository deployed at `http://127.0.0.0:8000`.
 
 You can override this by setting `DESTINY_REPOSITORY_URL` in the `.env.<ENVIRONMENT>` file.
 
