@@ -8,15 +8,14 @@ Over time we will expand this to include formal function documentation.
 
 ## Local
 
-To build the docs:
+To build the docs run the following from the project root directory:
 
 ```sh
-poetry install --with docs
-cd docs
-poetry run sphinx-build -b html . html
+uv sync --group docs
+uv run --directory docs/ sphinx-build -b html . html
 ```
 
-Note: [graphviz](https://www.graphviz.org) is a requirement on the building machine. On my mac I had to do the below before `poetry install --with docs`:
+Note: [graphviz](https://www.graphviz.org) is a requirement on the building machine. On my mac I had to do the below before `uv sync --group docs`:
 
 ```sh
 brew install graphviz
