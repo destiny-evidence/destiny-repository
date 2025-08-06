@@ -17,25 +17,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
+
       - name: Install Graphviz
         run: |
           sudo apt-get update
           sudo apt-get install -y graphviz libgraphviz-dev
-      - name: Install and configure Poetry
-        uses: snok/install-poetry@v1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-          virtualenvs-path: .venv
-          installer-parallel: true
+          version: "0.7.14"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install the project including the docs dependency
+        run: uv sync --locked --group docs
+
       - name: Copy .env.example to .env
         run: cp .env.example .env
-      - name: Install dependencies
-        run: |
-          poetry install --with=docs
+
       - name: Sphinx build
         run: |
-          poetry run sphinx-build -b html docs docs/html
+          uv run sphinx-build -b html docs docs/html
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}

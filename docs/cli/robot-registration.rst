@@ -8,4 +8,4 @@ You will need to be assigned the :code:`robot.writer` role for destiny repositor
 
 .. code:: bash
 
-    poetry run python -m cli.register_robot --name "NAME" --owner "OWNER" --base-url "BASE_URL" --description "DESCRIPTION" --env ENVIRONMENT
+    uv run python -m cli.register_robot --name "NAME" --owner "OWNER" --base-url "BASE_URL" --description "DESCRIPTION" --env ENVIRONMENT

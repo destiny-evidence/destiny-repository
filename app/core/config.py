@@ -355,7 +355,7 @@ class Settings(BaseSettings):
     @property
     def app_version(self) -> str:
         """Get the application version from pyproject.toml."""
-        return self.pyproject_toml["tool"]["poetry"]["version"]
+        return self.pyproject_toml["project"]["version"]
 
 
 @lru_cache(maxsize=1)

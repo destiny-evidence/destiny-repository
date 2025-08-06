@@ -630,14 +630,23 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cachetools", specifier = ">=5.5.2,<6.0.0" },
-    { name = "fastapi", specifier = ">=0.115.12,<0.116.0" },
-    { name = "httpx", specifier = ">=0.28.1,<0.29.0" },
-    { name = "pydantic", specifier = ">=2.11.3,<3.0.0" },
-    { name = "pytest", specifier = ">=8.4.0,<9.0.0" },
-    { name = "pytest-asyncio", specifier = ">=1.0.0,<2.0.0" },
-    { name = "pytest-httpx", specifier = ">=0.35.0,<0.36.0" },
-    { name = "python-jose", specifier = ">=3.4.0,<4.0.0" },
+    { name = "cachetools", specifier = ">=5.5.2,<6" },
+    { name = "fastapi", specifier = ">=0.115.12,<0.116" },
+    { name = "httpx", specifier = ">=0.28.1,<0.29" },
+    { name = "pydantic", specifier = ">=2.11.3,<3" },
+    { name = "pytest", specifier = ">=8.4.0,<9" },
+    { name = "pytest-asyncio", specifier = ">=1.0.0,<2" },
+    { name = "pytest-httpx", specifier = ">=0.35.0,<0.36" },
+    { name = "python-jose", specifier = ">=3.4.0,<4" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.15.0,<2" },
+    { name = "pre-commit", specifier = ">=4.2.0,<5" },
+    { name = "pytest-env", specifier = ">=1.1.5,<2" },
+    { name = "ruff", specifier = ">=0.11.5,<0.12" },
+    { name = "uvloop", specifier = ">=0.21.0,<0.22" },
 ]
 
 [[package]]
