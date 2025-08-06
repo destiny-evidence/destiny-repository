@@ -136,7 +136,6 @@ overrides."tool.coverage.paths.source".inline_arrays = false
 [tool.uv]
 default-groups = [
     "dev",
-    "docs",
     "e2e",
 ]
 package = false

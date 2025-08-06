@@ -12,18 +12,18 @@ _Powering a comprehensive repository of climate and health research_
 
 ### Requirements
 
-[Poetry](https://python-poetry.org) is used for dependency management and managing virtual environments. You can install poetry either using pipx or the poetry installer script:
+[uv](https://docs.astral.sh/uv) is used for dependency management and managing virtual environments. You can install uv either using pipx or the uv installer script:
 
 ```sh
-curl -sSL https://install.python-poetry.org | python3 -
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ### Installing Dependencies
 
-Once Poetry is installed, install dependencies:
+Once uv is installed, install dependencies:
 
 ```sh
-poetry install
+uv sync
 ```
 
 ### Configuration
@@ -50,7 +50,7 @@ docker compose up -d
 Once the database server is running, run the migrations to setup the database.
 
 ```sh
-poetry run alembic upgrade head
+uv run alembic upgrade head
 ```
 
 #### MinIO
@@ -75,19 +75,19 @@ Seeding also creates a configuration file at `.minio/presigned_urls.json` which 
 Run the development server:
 
 ```sh
-poetry run fastapi dev
+uv run fastapi dev
 ```
 
 Run the taskiq worker:
 
 ```sh
-poetry run taskiq worker app.tasks:broker --fs-discover --reload
+uv run taskiq worker app.tasks:broker --fs-discover --reload
 ```
 
 Alternatively, you can run the development server and taskiq worker via docker:
 
 ```sh
-docker compose --profile optional up --build
+docker compose --profile app up --build
 ```
 
 #### Observability
@@ -124,7 +124,7 @@ These are stored in the [app/models](app/models/) directory.
 Changes to the database structure are managed through Alembic migrations. To generate a migration, update a model (eg. add a column) and then auto generate the migration:
 
 ```sh
-poetry run alembic revision --autogenerate -m "Added column to model"
+uv run alembic revision --autogenerate -m "Added column to model"
 ```
 
 Your migration will be added to the [`app/migrations`](app/migrations/) directory.
@@ -185,7 +185,7 @@ In the above example `<CLIENT ID>` should be the client id of the user defined i
 To get a token for use in a development environment, there is a utility module:
 
 ```shell
-poetry run python -m app.utils.get_token
+uv run python -m app.utils.get_token
 ```
 
 ## Development
@@ -195,13 +195,13 @@ Before commiting any changes, please run the pre-commit hooks. This will ensure 
 Install the pre-commit hooks:
 
 ```sh
-poetry run pre-commit install
+uv run pre-commit install
 ```
 
 pre-commit hooks will run automatically when you commit changes. To run them manually, use:
 
 ```sh
-poetry run pre-commit run --all-files
+uv run pre-commit run --all-files
 ```
 
 See [.pre-commit-config.yaml](.pre-commit-config.yaml) for the list of pre-commit hooks and their configuration.
@@ -211,13 +211,13 @@ See [.pre-commit-config.yaml](.pre-commit-config.yaml) for the list of pre-commi
 Tests are in the [tests](/tests) directory. They are run using `pytest`
 
 ```sh
-poetry run pytest
+uv run pytest
 ```
 
 End-to-end testing is run separately in a containerised context:
 
 ```sh
-docker compose down -v \
+docker compose  -f docker-compose.yml -f docker-compose.e2e.yml down -v \
 && docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile e2e up -d --force-recreate \
 && docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs -f --tail=0 e2e app worker
 ```

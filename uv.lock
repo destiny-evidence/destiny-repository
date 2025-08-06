@@ -726,7 +726,7 @@ wheels = [
 
 [[package]]
 name = "erdantic"
-version = "1.1.0.post1"
+version = "1.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
@@ -736,9 +736,9 @@ dependencies = [
     { name = "typenames" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/01/1f/020af6165c4f3a9679b818f563ecf675710d9e84ed2902eec49015fc8b1a/erdantic-1.1.0.post1.tar.gz", hash = "sha256:8ab6fec958f02f3e846c01f2fcbaf01df202b93257cbda6f7daec0588a3337cf", size = 913011, upload-time = "2025-04-13T03:48:09.227Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a5/20/b2b32e785d8c7537ff41f0d3b917a0f67ab6e91e8bcb2247f29880c6946a/erdantic-1.1.1.tar.gz", hash = "sha256:55aff6d192fd541a4d713a3ee1b770ed4a4780f7ad09c9253adb66d63125475c", size = 916183, upload-time = "2025-07-20T02:46:45.845Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/40/5a/4c9e09c02e1948d35e65ebc2b1c6c8be2fb61aa04fe7e765758169aa400f/erdantic-1.1.0.post1-py3-none-any.whl", hash = "sha256:dfff1b0d3282bff8c256a12e8d3ae516a29b395f85d3322bde8617fd7fa31b43", size = 32570, upload-time = "2025-04-13T03:48:07.377Z" },
+    { url = "https://files.pythonhosted.org/packages/47/5b/02da7127b1031126ce160c79eead1fa9da2af06075837651e41da281643e/erdantic-1.1.1-py3-none-any.whl", hash = "sha256:11caab322bac04b4b640a161334ddbe2c12c1bba6a5f3026e3dc1e98201485bb", size = 32533, upload-time = "2025-07-20T02:46:44.443Z" },
 ]
 
 [[package]]

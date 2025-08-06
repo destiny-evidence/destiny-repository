@@ -56,7 +56,7 @@ services:
     build:
       context: .
       args:
-        POETRY_INSTALL_DEV: "true"
+        UV_INSTALL_DEV: "true"
     ports:
       - "8000:8000"
     volumes:
@@ -84,7 +84,7 @@ services:
     build:
       context: .
       args:
-        POETRY_INSTALL_DEV: "true"
+        UV_INSTALL_DEV: "true"
     depends_on:
       db:
         condition: service_healthy
