@@ -103,7 +103,7 @@ def configure_otel(
     set_logger_provider(logger_provider)
     exporter = OTLPLogExporter(
         endpoint=str(config.log_endpoint),
-        headers=headers | {"x-honeycomb-dataset": f"logs-{app_name}-{env.value}"},
+        headers=headers,
     )
     logger_provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
 

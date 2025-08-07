@@ -2,7 +2,7 @@ services:
   app:
     environment:
       OTEL_ENABLED: "true"
-      OTEL_CONFIG: '{"trace_endpoint": "http://signoz-otel-collector:4318/v1/traces", "meter_endpoint": "http://signoz-otel-collector:4318/v1/metrics", "log_endpoint": "http://signoz-otel-collector:4318/v1/logs"}'
+      # OTEL_CONFIG: '{"trace_endpoint": "http://signoz-otel-collector:4318/v1/traces", "meter_endpoint": "http://signoz-otel-collector:4318/v1/metrics", "log_endpoint": "http://signoz-otel-collector:4318/v1/logs"}'
     networks:
       - default
       - signoz-net
@@ -10,7 +10,7 @@ services:
   worker:
     environment:
       OTEL_ENABLED: "true"
-      OTEL_CONFIG: '{"trace_endpoint": "http://signoz-otel-collector:4318/v1/traces", "meter_endpoint": "http://signoz-otel-collector:4318/v1/metrics", "log_endpoint": "http://signoz-otel-collector:4318/v1/logs"}'
+      # OTEL_CONFIG: '{"trace_endpoint": "http://signoz-otel-collector:4318/v1/traces", "meter_endpoint": "http://signoz-otel-collector:4318/v1/metrics", "log_endpoint": "http://signoz-otel-collector:4318/v1/logs"}'
     networks:
       - default
       - signoz-net
@@ -24,7 +24,7 @@ services:
       OTEL_METRICS_EXPORTER: "otlp"
       OTEL_LOGS_EXPORTER: "otlp"
       OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://signoz-otel-collector:4317"
+      # OTEL_EXPORTER_OTLP_ENDPOINT: "http://signoz-otel-collector:4317"
       OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true"
       OTEL_RESOURCE_ATTRIBUTES: "service.name=toy-robot-e2e,service.version=1.0.0"
     networks:
