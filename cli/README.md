@@ -10,7 +10,7 @@ set up `.env.<ENVIRONMENT>` files for each environment by copying the `.env.exam
 
 ## Development
 
-Environments`local` and `test` environment will skip authentication, expecting to hit a destiny repository deployed at `http://127.0.0.0:8001`.
+Environments`local` and `test` environment will skip authentication, expecting to hit a destiny repository deployed at `http://127.0.0.0:8000`.
 
 You can override this by setting `DESTINY_REPOSITORY_URL` in the `.env.<ENVIRONMENT>` file.
 
@@ -27,5 +27,5 @@ Use the following command to register a robot, passing the environment you wish 
 You will need to be assigned the `robot.writer` role for destiny repository to be able to run this command.
 
 ```sh
-poetry run python -m cli.register_robot --name "NAME" --owner "OWNER" --base-url "BASE_URL" --description "DESCRIPTION" --env ENVIRONMENT
+uv run python -m cli.register_robot --name "NAME" --owner "OWNER" --base-url "BASE_URL" --description "DESCRIPTION" --env ENVIRONMENT
 ```

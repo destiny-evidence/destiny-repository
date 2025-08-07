@@ -9,7 +9,7 @@ The SDK is published via PyPI at https://pypi.org/project/destiny_sdk/ and can b
 
 .. code-block:: bash
 
-   poetry add destiny-sdk
+   uv add destiny-sdk
 
 Or whichever python package installation method you prefer.
 

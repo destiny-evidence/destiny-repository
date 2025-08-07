@@ -178,20 +178,22 @@ This should not happen.
             logger.info("Processing batch")
             async with (
                 httpx.AsyncClient() as client,
-                client.stream("GET", str(import_batch.storage_url)) as response,
             ):
                 HTTPXClientInstrumentor().instrument_client(client)
-                response.raise_for_status()
-                entry_ref = 1
-                async for line in response.aiter_lines():
-                    if line.strip():
-                        await self.import_reference(
-                            import_batch.id,
-                            import_batch.collision_strategy,
-                            line,
-                            reference_service,
-                            entry_ref,
-                        )
+                async with client.stream(
+                    "GET", str(import_batch.storage_url)
+                ) as response:
+                    response.raise_for_status()
+                    entry_ref = 1
+                    async for line in response.aiter_lines():
+                        if line.strip():
+                            await self.import_reference(
+                                import_batch.id,
+                                import_batch.collision_strategy,
+                                line,
+                                reference_service,
+                                entry_ref,
+                            )
                         entry_ref += 1
         except SQLIntegrityError as exc:
             # This handles the case where files loaded in parallel cause a conflict at
