@@ -23,7 +23,7 @@ def register_robot(
     with httpx.Client() as client:
         auth = CLIAuth(env=env)
         response = client.post(
-            url=str(settings.destiny_repository_url).rstrip("/") + "/robot/",
+            url=str(settings.destiny_repository_url).rstrip("/") + "/v1/robots/",
             json=robot_to_register.model_dump(mode="json"),
             auth=auth,
         )
