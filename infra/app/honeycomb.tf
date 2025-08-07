@@ -48,9 +48,6 @@ data "honeycombio_query_specification" "application_errors" {
   time_range = 300
 }
 
-resource "honeycombio_query" "application_errors" {
-  query_json = data.honeycombio_query_specification.application_errors.json
-}
 
 resource "honeycombio_slack_recipient" "alerts" {
   channel = var.honeycomb_alert_slack_channel
@@ -62,7 +59,7 @@ resource "honeycombio_trigger" "error_trigger" {
 
   name = "Unhandled Exception"
 
-  query_id = honeycombio_query.application_errors.id
+  query_json = data.honeycombio_query_specification.application_errors.json
 
   frequency = 300
 
