@@ -230,3 +230,9 @@ variable "telemetry_enabled" {
   type        = bool
   default     = true
 }
+
+variable "honeycomb_alert_slack_channel" {
+  description = "Slack channel for Honeycomb alerts"
+  type        = string
+  default     = "#destiny-alerts"
+}
