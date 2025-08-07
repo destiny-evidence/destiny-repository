@@ -60,7 +60,7 @@ resource "honeycombio_trigger" "error_trigger" {
   # Free tier only allows two triggers total, so we only create this in production.
   count = var.environment == "production" ? 1 : 0
 
-  name = "Unhandled Exception"
+  name = "Application Error"
 
   query_id = honeycombio_query.application_errors.id
 
