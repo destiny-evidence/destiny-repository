@@ -2,6 +2,7 @@ services:
   app:
     environment:
       OTEL_ENABLED: "true"
+      # OTEL_CONFIG: '{"trace_endpoint": "http://signoz-otel-collector:4318/v1/traces", "meter_endpoint": "http://signoz-otel-collector:4318/v1/metrics"}'
     networks:
       - default
       - signoz-net
@@ -9,6 +10,7 @@ services:
   worker:
     environment:
       OTEL_ENABLED: "true"
+      # OTEL_CONFIG: '{"trace_endpoint": "http://signoz-otel-collector:4318/v1/traces", "meter_endpoint": "http://signoz-otel-collector:4318/v1/metrics"}'
     networks:
       - default
       - signoz-net

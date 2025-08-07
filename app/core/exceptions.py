@@ -4,14 +4,37 @@ import re
 from typing import Any, Self
 
 from fastapi import HTTPException
+from opentelemetry.trace import StatusCode
 from sqlalchemy.exc import IntegrityError as SQLAlchemyIntegriyError
+
+from app.core.telemetry.attributes import set_span_status
 
 
 class CustomHTTPException(HTTPException):
     """An HTTPException which is defined in our App."""
 
 
-class MessageBrokerError(Exception):
+class DestinyRepositoryError(Exception):
+    """Base class for all exceptions in the Destiny Repository app."""
+
+    def __init__(self, detail: str | None = None, *args: object) -> None:
+        """
+        Initialize the DestinyRepositoryException.
+
+        Args:
+            *args: Additional arguments for the exception.
+            **kwargs: Additional keyword arguments for the exception.
+
+        """
+        set_span_status(
+            StatusCode.ERROR,
+            detail=detail,
+            exception=self,
+        )
+        super().__init__(detail, *args)
+
+
+class MessageBrokerError(DestinyRepositoryError):
     """An exception thrown in a message broker."""
 
     def __init__(self, detail: str, *args: object) -> None:
@@ -26,7 +49,7 @@ class MessageBrokerError(Exception):
         super().__init__(detail, *args)
 
 
-class NotFoundError(Exception):
+class NotFoundError(DestinyRepositoryError):
     """Exception for when we can't find something we expect to find."""
 
     def __init__(self, detail: str, *args: object) -> None:
@@ -70,7 +93,7 @@ class SQLNotFoundError(NotFoundError):
         super().__init__(detail, *args)
 
 
-class IntegrityError(Exception):
+class IntegrityError(DestinyRepositoryError):
     """Exception for when a change would violate data integrity."""
 
     def __init__(self, detail: str, *args: object) -> None:
@@ -146,7 +169,7 @@ class SQLIntegrityError(IntegrityError):
         )
 
 
-class ESError(Exception):
+class ESError(DestinyRepositoryError):
     """An exception thrown in an Elasticsearch operation."""
 
     def __init__(self, detail: str, *args: object) -> None:
@@ -162,7 +185,7 @@ class ESError(Exception):
         super().__init__(detail, *args)
 
 
-class InvalidPayloadError(Exception):
+class InvalidPayloadError(DestinyRepositoryError):
     """Exception for when a payload is invalid."""
 
     def __init__(self, detail: str, *args: object) -> None:
@@ -254,7 +277,7 @@ class InvalidParentEnhancementError(InvalidPayloadError):
         super().__init__(detail, *args)
 
 
-class TaskError(Exception):
+class TaskError(DestinyRepositoryError):
     """An exception thrown in a background task."""
 
     def __init__(self, detail: str, *args: object) -> None:
@@ -269,7 +292,7 @@ class TaskError(Exception):
         super().__init__(detail, *args)
 
 
-class SDKTranslationError(Exception):
+class SDKTranslationError(DestinyRepositoryError):
     """
     An exception thrown when we fail to translate a SDK model.
 
@@ -284,7 +307,7 @@ class SDKTranslationError(Exception):
             errors (str): A sequence of errors, likely copied from ValidationError
 
         """
-        super().__init__()
+        super().__init__(str(errors))
         self.errors = errors
 
     def __str__(self) -> str:
@@ -303,7 +326,7 @@ class DomainToSDKError(SDKTranslationError):
     """An exception for when we fail to convert a domain model to a sdk model."""
 
 
-class RobotUnreachableError(Exception):
+class RobotUnreachableError(DestinyRepositoryError):
     """An exception thrown if we cannot communicate with a robot."""
 
     def __init__(self, detail: str, *args: object) -> None:
@@ -319,7 +342,7 @@ class RobotUnreachableError(Exception):
         super().__init__(detail, *args)
 
 
-class RobotEnhancementError(Exception):
+class RobotEnhancementError(DestinyRepositoryError):
     """An exception thrown if an enhancment request cannot be processed by a robot."""
 
     def __init__(self, detail: str, *args: object) -> None:
@@ -335,7 +358,7 @@ class RobotEnhancementError(Exception):
         super().__init__(detail, *args)
 
 
-class UOWError(Exception):
+class UOWError(DestinyRepositoryError):
     """An exception thrown by improper use of a unit of work."""
 
     def __init__(self, detail: str, *args: object) -> None:
@@ -350,7 +373,7 @@ class UOWError(Exception):
         super().__init__(detail, *args)
 
 
-class BlobStorageError(Exception):
+class BlobStorageError(DestinyRepositoryError):
     """Base class for Blob Storage exceptions."""
 
     def __init__(self, detail: str, *args: object) -> None:
@@ -365,7 +388,7 @@ class BlobStorageError(Exception):
         super().__init__(detail, *args)
 
 
-class AzureError(Exception):
+class AzureError(DestinyRepositoryError):
     """Base class for Azure exceptions."""
 
     def __init__(self, detail: str, *args: object) -> None:
