@@ -27,13 +27,13 @@ data "honeycombio_query_specification" "application_errors" {
 
   filter {
     column = "severity"
-    op     = "equals"
+    op     = "="
     value  = "error"
   }
 
   filter {
     column = "severity"
-    op     = "equals"
+    op     = "="
     value  = "critical"
   }
 
@@ -43,13 +43,13 @@ data "honeycombio_query_specification" "application_errors" {
     value  = 500
   }
 
-  filter_combination = "or"
+  filter_combination = "OR"
 
   time_range = 300
 }
 
 resource "honeycombio_query" "application_errors" {
-  query_json = data.honeycombio_query_specification.application_errors.query_json
+  query_json = data.honeycombio_query_specification.application_errors.json
 }
 
 resource "honeycombio_slack_recipient" "alerts" {
