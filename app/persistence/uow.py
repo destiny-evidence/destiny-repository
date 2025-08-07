@@ -108,7 +108,8 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
             )
             set_span_status(trace.StatusCode.ERROR, str(exc_value), exc_value)
             await self.rollback()
-        set_span_status(trace.StatusCode.OK)
+        else:
+            set_span_status(trace.StatusCode.OK)
         self._is_active = False
 
     @abstractmethod

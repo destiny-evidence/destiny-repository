@@ -307,8 +307,8 @@ class SDKTranslationError(DestinyRepositoryError):
             errors (str): A sequence of errors, likely copied from ValidationError
 
         """
-        super().__init__(str(errors))
         self.errors = errors
+        super().__init__(str(self))
 
     def __str__(self) -> str:
         """Convert pydantic exception errors to string."""
