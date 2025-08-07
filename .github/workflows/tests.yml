@@ -56,26 +56,17 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - name: Install and configure Poetry
-        uses: snok/install-poetry@v1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-          virtualenvs-path: .venv
-          installer-parallel: true
+          version: "0.7.14"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-      - name: Load cached virtual environment
-        id: cached-poetry-dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.venv
-          key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+      - name: Install the project
+        run: uv sync --locked --dev
 
-      - name: Install dependencies if cache was not found
-        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: poetry install --no-interaction --without docs
-
-      - name: Run test with pytest via poetry
+      - name: Run test with pytest via uv
         env:
           DB_CONFIG: '{"DB_URL": "postgresql+asyncpg://postgres:${{ secrets.db_password }}@localhost:5432/destiny_test"}'
           ES_CONFIG: '{"ES_INSECURE_URL": "http://localhost:9200"}'
@@ -85,4 +76,4 @@ jobs:
           APP_NAME: destiny-repository-tests
           ENV: test
           OTEL_ENABLED: false
-        run: poetry run pytest
+        run: uv run pytest

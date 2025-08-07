@@ -27,5 +27,5 @@ Use the following command to register a robot, passing the environment you wish 
 You will need to be assigned the `robot.writer` role for destiny repository to be able to run this command.
 
 ```sh
-poetry run python -m cli.register_robot --name "NAME" --owner "OWNER" --base-url "BASE_URL" --description "DESCRIPTION" --env ENVIRONMENT
+uv run python -m cli.register_robot --name "NAME" --owner "OWNER" --base-url "BASE_URL" --description "DESCRIPTION" --env ENVIRONMENT
 ```

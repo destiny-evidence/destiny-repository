@@ -94,7 +94,7 @@ resource "github_actions_environment_variable" "destiny_api_identifier_uri" {
   repository    = github_repository_environment.environment.repository
   environment   = github_repository_environment.environment.environment
   variable_name = "DESTINY_API_IDENTIFIER_URI"
-  value         = "${azuread_application_identifier_uri.this.identifier_uri}"
+  value         = azuread_application_identifier_uri.this.identifier_uri
 }
 
 resource "github_actions_environment_variable" "pypi_repository" {
@@ -102,13 +102,6 @@ resource "github_actions_environment_variable" "pypi_repository" {
   environment   = github_repository_environment.environment.environment
   variable_name = "PYPI_REPOSITORY"
   value         = var.pypi_repository
-}
-
-resource "github_actions_environment_secret" "pypi_token" {
-  repository      = github_repository_environment.environment.repository
-  environment     = github_repository_environment.environment.environment
-  secret_name     = "PYPI_TOKEN"
-  plaintext_value = var.pypi_token
 }
 
 resource "github_actions_environment_secret" "azure_storage_account_name" {

@@ -1,37 +1,39 @@
 [build-system]
-build-backend = "poetry.core.masonry.api"
-requires = ["poetry-core"]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
 
-[tool.poetry]
+[dependency-groups]
+dev = [
+    "mypy>=1.15.0,<2",
+    "pre-commit>=4.2.0,<5",
+    "pytest-env>=1.1.5,<2",
+    "ruff>=0.11.5,<0.12",
+    "uvloop>=0.21.0,<0.22",
+]
+
+[project]
 authors = [
-    "Adam Hamilton <adam@futureevidence.org>",
-    "Andrew Harvey <andrew@futureevidence.org>",
-    "Daniel Breves <daniel@futureevidence.org>",
-    "Jack Walmisley <jack@futureevidence.org>",
+    {email = "adam@futureevidence.org", name = "Adam Hamilton"},
+    {email = "andrew@futureevidence.org", name = "Andrew Harvey"},
+    {email = "daniel@futureevidence.org", name = "Daniel Breves"},
+    {email = "jack@futureevidence.org", name = "Jack Walmisley"},
+]
+dependencies = [
+    "cachetools>=5.5.2,<6",
+    "fastapi>=0.115.12,<0.116",
+    "httpx>=0.28.1,<0.29",
+    "pydantic>=2.11.3,<3",
+    "pytest-asyncio>=1.0.0,<2",
+    "pytest-httpx>=0.35.0,<0.36",
+    "pytest>=8.4.0,<9",
+    "python-jose>=3.4.0,<4",
 ]
 description = "A software development kit (sdk) to support interaction with the DESTINY repository"
-license = "Apache 2.0"
+license = "Apache-2.0"
 name = "destiny_sdk"
 readme = "README.md"
+requires-python = "~=3.12"
 version = "0.2.1"
-
-[tool.poetry.dependencies]
-cachetools = "^5.5.2"
-fastapi = "^0.115.12"
-httpx = "^0.28.1"
-pydantic = "^2.11.3"
-pytest = "^8.4.0"
-pytest-asyncio = "^1.0.0"
-pytest-httpx = "^0.35.0"
-python = "^3.12"
-python-jose = "^3.4.0"
-
-[tool.poetry.group.dev.dependencies]
-mypy = "^1.15.0"
-pre-commit = "^4.2.0"
-pytest-env = "^1.1.5"
-ruff = "^0.11.5"
-uvloop = "^0.21.0"
 
 [tool.pytest.ini_options]
 addopts = ["--color=yes", "--import-mode=importlib", "--verbose"]
