@@ -228,6 +228,6 @@ If you wish to inspect the E2E tests' instrumentation, you must mix in the obser
 
 ```sh
 docker compose down -v \
-&& docker compose -f docker-compose.yml -f docker-compose.observable.yml -f docker-compose.e2e.yml --profile e2e up -d --force-recreate \
-&& docker compose -f docker-compose.yml -f docker-compose.observable.yml -f docker-compose.e2e.yml logs -f --tail=0 e2e app worker
+&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml -f docker-compose.observable.yml --profile e2e up -d --force-recreate \
+&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml -f docker-compose.observable.yml logs -f --tail=0 e2e app worker
 ```
