@@ -11,7 +11,7 @@ from typing import Self
 import destiny_sdk
 from pydantic import UUID4, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
-from app.core.logger import get_logger
+from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     ExternalIdentifier,
     ExternalIdentifierAdapter,
@@ -19,7 +19,7 @@ from app.domain.references.models.models import (
 )
 from app.utils.types import JSON
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 class ReferenceFileInputValidator(BaseModel):
@@ -69,7 +69,9 @@ Error:
             )
         except Exception as error:
             logger.exception(
-                "Failed to create identifier", extra={"raw_identifier": raw_identifier}
+                "Failed to create identifier",
+                raw_identifier=raw_identifier,
+                line_no=entry_ref,
             )
             return cls(
                 error=f"""
@@ -115,7 +117,8 @@ Error:
         except Exception as error:
             logger.exception(
                 "Failed to create enhancement",
-                extra={"raw_enhancement": raw_enhancement},
+                raw_enhancement=raw_enhancement,
+                line_no=entry_ref,
             )
             return cls(
                 error=f"""

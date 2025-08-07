@@ -9,9 +9,9 @@ from typing import Any, Literal, Self
 from pydantic import BaseModel, Field, FilePath, HttpUrl, PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.core.logger import get_logger
+from app.core.telemetry.logger import get_logger
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 class DatabaseConfig(BaseModel):
@@ -181,6 +181,7 @@ class OTelConfig(BaseModel):
 
     trace_endpoint: HttpUrl
     meter_endpoint: HttpUrl
+    log_endpoint: HttpUrl
     api_key: str | None = None
 
     # Flags to control low-level automatic instrumentation
@@ -196,6 +197,15 @@ class Environment(StrEnum):
     LOCAL = auto()
     TEST = auto()
     E2E = auto()
+
+
+class LogLevel(StrEnum):
+    """Log level enum."""
+
+    DEBUG = auto()
+    INFO = auto()
+    WARNING = auto()
+    ERROR = auto()
 
 
 class ESIndexingOperation(StrEnum):
@@ -311,6 +321,11 @@ class Settings(BaseSettings):
     env: Environment = Field(
         default=Environment.PRODUCTION,
         description="The environment the app is running in.",
+    )
+
+    log_level: LogLevel = Field(
+        default=LogLevel.INFO,
+        description="The log level for the application.",
     )
 
     @property

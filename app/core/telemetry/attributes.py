@@ -47,6 +47,7 @@ class Attributes(StrEnum):
     # HTTP attributes
     HTTP_REQUEST_QUERY_PARAMS = "http.request.query"
     HTTP_REQUEST_PATH_PARAMS = "http.request.path"
+    HTTP_REQUEST_BODY_PARAMS = "http.request.body"
 
     # Messaging attributes
     MESSAGING_SYSTEM = _messaging_attributes.MESSAGING_SYSTEM

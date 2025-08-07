@@ -24,12 +24,12 @@ from taskiq import AckableMessage, AsyncBroker, BrokerMessage
 
 from app.core.config import get_settings
 from app.core.exceptions import MessageBrokerError
-from app.core.logger import get_logger
+from app.core.telemetry.logger import get_logger
 
 _T = TypeVar("_T")
 
 settings = get_settings()
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 def parse_val(
@@ -166,9 +166,7 @@ class AzureServiceBusBroker(AsyncBroker):
         # Handle delay
         delay = parse_val(int, message.labels.get("delay"))
 
-        logger.debug(
-            "Sending message...", extra={"task_id": message.task_id, "delay": delay}
-        )
+        logger.debug("Sending message...", task_id=message.task_id, delay=delay)
 
         if delay is None:
             # Send message directly to main queue
@@ -218,7 +216,7 @@ class AzureServiceBusBroker(AsyncBroker):
                     else:
                         logger.warning(
                             "Unsupported body type, defaulting to string encoding",
-                            extra={body_type: body_type},
+                            body_type=body_type,
                         )
                         data = str(raw_body).encode("utf-8")
 

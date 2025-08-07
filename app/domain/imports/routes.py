@@ -14,7 +14,7 @@ from app.api.auth import (
     choose_auth_strategy,
 )
 from app.core.config import get_settings
-from app.core.logger import get_logger
+from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.imports.models.models import (
     ImportResultStatus,
@@ -28,7 +28,7 @@ from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 settings = get_settings()
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 def unit_of_work(
@@ -155,7 +155,6 @@ async def enqueue_batch(
             batch, import_record_id=import_record_id
         )
     )
-    logger.info("Enqueueing import batch", extra={"import_batch_id": import_batch.id})
     await queue_task_with_trace(
         process_import_batch,
         import_batch_id=import_batch.id,

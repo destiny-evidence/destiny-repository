@@ -17,7 +17,7 @@ from app.api.auth import (
 )
 from app.core.config import get_settings
 from app.core.exceptions import ESNotFoundError
-from app.core.logger import get_logger
+from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.es import (
     ReferenceDocument,
@@ -32,7 +32,7 @@ from app.persistence.es.persistence import GenericESPersistence
 from app.persistence.sql.session import get_session
 from app.system.healthcheck import HealthCheckOptions, healthcheck
 
-logger = get_logger()
+logger = get_logger(__name__)
 settings = get_settings()
 
 router = APIRouter(prefix="/system", tags=["system utilities"])
@@ -124,11 +124,9 @@ async def repair_elasticsearch_index(
         ) from exc
 
     if rebuild:
-        msg = f"Destroying index {index_name}"
-        logger.info(msg)
+        logger.info("Destroying index", index=index_name)
         await index._index.delete(using=es_client)  # noqa: SLF001
-        msg = f"Recreating index {index_name}"
-        logger.info(msg)
+        logger.info("Recreating index", index=index_name)
         await index.init(using=es_client)
 
     await queue_task_with_trace(repair_task)

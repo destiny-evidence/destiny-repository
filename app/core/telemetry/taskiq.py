@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from opentelemetry import context, propagate, trace
 from opentelemetry.trace import Span, SpanKind
+from structlog.contextvars import bind_contextvars, clear_contextvars
 from taskiq import (
     AsyncTaskiqDecoratedTask,
     TaskiqMessage,
@@ -15,14 +16,14 @@ from taskiq import (
 )
 
 from app.core.config import get_settings
-from app.core.logger import get_logger
 from app.core.telemetry.attributes import Attributes
+from app.core.telemetry.logger import get_logger
 
 if TYPE_CHECKING:
     from opentelemetry.context import Context
 
 tracer = trace.get_tracer(__name__)
-logger = get_logger()
+logger = get_logger(__name__)
 settings = get_settings()
 
 
@@ -37,6 +38,11 @@ async def queue_task_with_trace(
     All tasks should be queued through this function to ensure
     that the OpenTelemetry trace context is automatically injected.
     """
+    logger.info(
+        "Queueing task",
+        task_name=task.task_name,
+        **{k: str(v) for k, v in kwargs.items()},
+    )
     if not settings.otel_enabled:
         # If OpenTelemetry is not enabled, just queue the task normally
         await task.kiq(*args, **kwargs)
@@ -105,13 +111,12 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
             and "trace_context" in message.kwargs
         ):
             carrier = message.kwargs.pop("trace_context", {})
+            bind_contextvars(**{k: str(v) for k, v in message.kwargs.items()})
 
+        bind_contextvars(task_name=message.task_name)
         logger.debug(
             "Received task with trace context",
-            extra={
-                "task_name": message.task_name,
-                "carrier_keys": list(carrier.keys()),
-            },
+            carrier_keys=list(carrier.keys()),
         )
 
         # Let OpenTelemetry extract the context
@@ -168,11 +173,8 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
 
                 logger.debug(
                     "Completed OpenTelemetry span for task",
-                    extra={
-                        "task_name": message.task_name,
-                        "task_id": message.task_id,
-                        "success": not result.is_err,
-                    },
+                    task_id=message.task_id,
+                    success=not result.is_err,
                 )
 
             finally:
@@ -184,3 +186,4 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
                 if token:
                     context.detach(token)
                     self._token.set(None)
+        clear_contextvars()

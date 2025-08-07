@@ -8,9 +8,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.logger import get_logger
+from app.core.telemetry.logger import get_logger
 
-logger = get_logger()
+logger = get_logger(__name__)
 settings = get_settings()
 
 
@@ -28,7 +28,7 @@ async def healthcheck(
     healthcheck_options: HealthCheckOptions,
 ) -> str | None:
     """Run healthcheck. Returns an error message if failed else None."""
-    logger.info("Running healthcheck", extra={"options": healthcheck_options})
+    logger.info("Running healthcheck", options=healthcheck_options)
 
     if healthcheck_options.database:
         try:

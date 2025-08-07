@@ -10,8 +10,8 @@ from opentelemetry import trace
 from sqlalchemy.exc import PendingRollbackError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.logger import get_logger
 from app.core.telemetry.attributes import Attributes
+from app.core.telemetry.logger import get_logger
 from app.domain.imports.repository import (
     ImportBatchSQLRepository,
     ImportRecordSQLRepository,
@@ -32,7 +32,7 @@ from app.persistence.uow import AsyncUnitOfWorkBase
 
 if TYPE_CHECKING:
     from app.domain.service import GenericService
-logger = get_logger()
+logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 
