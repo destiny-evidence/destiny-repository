@@ -27,13 +27,6 @@ class ExternalIdentifierType(StrEnum):
     OTHER = auto()
 
 
-def remove_doi_url(value: str) -> str:
-    """Remove the URL part of the DOI if it exists."""
-    return (
-        value.removeprefix("http://doi.org/").removeprefix("https://doi.org/").strip()
-    )
-
-
 class DOIIdentifier(BaseModel):
     """An external identifier representing a DOI."""
 

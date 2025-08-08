@@ -1,9 +1,11 @@
 """Integration tests for references in Elasticsearch."""
 
+import unicodedata
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
 
+import destiny_sdk
 import pytest
 from elasticsearch import AsyncElasticsearch
 
@@ -98,6 +100,35 @@ async def reference() -> Reference:
                             "landing_page_url": "https://example.com",
                         }
                     ],
+                },
+                "source": "test_source",
+                "visibility": "public",
+            },
+            {
+                "id": uuid.uuid4(),
+                "reference_id": r,
+                "content": {
+                    "enhancement_type": "bibliographic",
+                    "title": " Sample reference Title with whitespace and a funny charactér ",
+                    "authorship": [
+                        {
+                            "display_name": "bMiddle author",
+                            "position": destiny_sdk.enhancements.AuthorPosition.MIDDLE,
+                        },
+                        {
+                            "display_name": "aMiddlé author",
+                            "position": destiny_sdk.enhancements.AuthorPosition.MIDDLE,
+                        },
+                        {
+                            "display_name": "Last author",
+                            "position": destiny_sdk.enhancements.AuthorPosition.LAST,
+                        },
+                        {
+                            "display_name": "First author ",
+                            "position": destiny_sdk.enhancements.AuthorPosition.FIRST,
+                        },
+                    ],
+                    "publication_year": 2023,
                 },
                 "source": "test_source",
                 "visibility": "public",
@@ -255,6 +286,15 @@ async def test_es_repository_cycle(
     es_reference_repository: ReferenceESRepository, reference: Reference
 ):
     """Test saving and getting a reference by primary key from Elasticsearch."""
+    bibliographic_enhancement: destiny_sdk.enhancements.BibliographicMetadataEnhancement = reference.enhancements[  # type: ignore[index]
+        2
+    ].content
+    assert not unicodedata.is_normalized("NFC", bibliographic_enhancement.title)
+    assert not unicodedata.is_normalized(
+        "NFC",
+        bibliographic_enhancement.authorship[1].display_name,
+    )
+
     await es_reference_repository.add(reference)
 
     es_reference = await es_reference_repository.get_by_pk(reference.id)
@@ -262,11 +302,40 @@ async def test_es_repository_cycle(
     assert es_reference.id == reference.id
     assert es_reference.visibility == "public"
     assert len(es_reference.identifiers or []) == 3
-    assert len(es_reference.enhancements or []) == 2
+    assert len(es_reference.enhancements or []) == 3
     # Check that ids are preserved
     assert {enhancement.id for enhancement in es_reference.enhancements or []} == {
         enhancement.id for enhancement in reference.enhancements or []
     }
+
+    # Check the ES projections themselves
+    client = es_reference_repository._client  # noqa: SLF001
+    await client.indices.refresh(
+        index=es_reference_repository._persistence_cls.Index.name,  # noqa: SLF001
+    )
+    raw_es_reference = (
+        await client.get(
+            index=es_reference_repository._persistence_cls.Index.name,  # noqa: SLF001
+            id=str(reference.id),
+        )
+    )["_source"]
+
+    assert (
+        raw_es_reference["publication_year"]
+        == bibliographic_enhancement.publication_year  # type: ignore  # noqa: PGH003
+    )
+    assert (
+        raw_es_reference["title"]
+        == "Sample Reference Title With Whitespace And A Funny Charactér"
+    )
+    assert unicodedata.is_normalized("NFC", raw_es_reference["title"])
+    assert raw_es_reference["authors"] == [
+        "First Author",
+        "Amiddlé Author",
+        "Bmiddle Author",
+        "Last Author",
+    ]
+    assert unicodedata.is_normalized("NFC", raw_es_reference["authors"][2])
 
 
 async def test_es_repository_not_found(
@@ -316,7 +385,7 @@ async def test_bulk_add(
         retrieved_ref = await es_reference_repository.get_by_pk(ref_id)
         assert retrieved_ref.visibility == "public"
         assert len(retrieved_ref.identifiers or []) == 3
-        assert len(retrieved_ref.enhancements or []) == 2
+        assert len(retrieved_ref.enhancements or []) == 3
 
 
 async def test_robot_automation_percolation(

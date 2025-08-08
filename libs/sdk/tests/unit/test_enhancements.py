@@ -33,6 +33,119 @@ def test_bibliographic_metadata_enhancement_valid():
     )
 
 
+def test_bibliographic_metadata_enhancement_invalid_authorship():
+    # Create invalid bibliographic content with incorrect authorship
+    with pytest.raises(
+        ValidationError, match="Single authorship must be either first or last author."
+    ):
+        destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+            authorship=[
+                destiny_sdk.enhancements.Authorship(
+                    display_name="Test Author",
+                    position=destiny_sdk.enhancements.AuthorPosition.MIDDLE,
+                )
+            ]
+        )
+
+    destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+        authorship=[
+            destiny_sdk.enhancements.Authorship(
+                display_name="Test Author",
+                position=destiny_sdk.enhancements.AuthorPosition.FIRST,
+            )
+        ]
+    )
+    destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+        authorship=[
+            destiny_sdk.enhancements.Authorship(
+                display_name="Test Author",
+                position=destiny_sdk.enhancements.AuthorPosition.LAST,
+            )
+        ]
+    )
+
+    with pytest.raises(ValidationError, match="There must be one first author."):
+        destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+            authorship=[
+                destiny_sdk.enhancements.Authorship(
+                    display_name="Test Author",
+                    position=destiny_sdk.enhancements.AuthorPosition.MIDDLE,
+                ),
+                destiny_sdk.enhancements.Authorship(
+                    display_name="Test Author",
+                    position=destiny_sdk.enhancements.AuthorPosition.LAST,
+                ),
+            ]
+        )
+    with pytest.raises(ValidationError, match="There must be one first author."):
+        destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+            authorship=[
+                destiny_sdk.enhancements.Authorship(
+                    display_name="Test Author",
+                    position=destiny_sdk.enhancements.AuthorPosition.FIRST,
+                ),
+                destiny_sdk.enhancements.Authorship(
+                    display_name="Test Author",
+                    position=destiny_sdk.enhancements.AuthorPosition.FIRST,
+                ),
+            ]
+        )
+    with pytest.raises(ValidationError, match="There must be one last author."):
+        destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+            authorship=[
+                destiny_sdk.enhancements.Authorship(
+                    display_name="Test Author",
+                    position=destiny_sdk.enhancements.AuthorPosition.FIRST,
+                ),
+                destiny_sdk.enhancements.Authorship(
+                    display_name="Test Author",
+                    position=destiny_sdk.enhancements.AuthorPosition.MIDDLE,
+                ),
+            ]
+        )
+    with pytest.raises(ValidationError, match="There must be one last author."):
+        destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+            authorship=[
+                destiny_sdk.enhancements.Authorship(
+                    display_name="Test Author",
+                    position=destiny_sdk.enhancements.AuthorPosition.FIRST,
+                ),
+                destiny_sdk.enhancements.Authorship(
+                    display_name="Test Author",
+                    position=destiny_sdk.enhancements.AuthorPosition.MIDDLE,
+                ),
+                destiny_sdk.enhancements.Authorship(
+                    display_name="Test Author",
+                    position=destiny_sdk.enhancements.AuthorPosition.LAST,
+                ),
+                destiny_sdk.enhancements.Authorship(
+                    display_name="Test Author",
+                    position=destiny_sdk.enhancements.AuthorPosition.LAST,
+                ),
+            ]
+        )
+    destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+        authorship=[
+            destiny_sdk.enhancements.Authorship(
+                display_name="Test Author",
+                position=destiny_sdk.enhancements.AuthorPosition.FIRST,
+            ),
+            destiny_sdk.enhancements.Authorship(
+                display_name="Test Author",
+                position=destiny_sdk.enhancements.AuthorPosition.MIDDLE,
+            ),
+            destiny_sdk.enhancements.Authorship(
+                display_name="Test Author",
+                position=destiny_sdk.enhancements.AuthorPosition.MIDDLE,
+            ),
+            destiny_sdk.enhancements.Authorship(
+                display_name="Test Author",
+                position=destiny_sdk.enhancements.AuthorPosition.LAST,
+            ),
+        ]
+    )
+
+
 def test_abstract_content_enhancement_valid():
     # Create valid abstract content
     abstract_content = destiny_sdk.enhancements.AbstractContentEnhancement(
