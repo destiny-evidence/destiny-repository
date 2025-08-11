@@ -123,7 +123,7 @@ locals {
       value = jsonencode({
         trace_endpoint = var.honeycombio_trace_endpoint
         meter_endpoint = var.honeycombio_meter_endpoint
-        logs_endpoint  = var.honeycombio_logs_endpoint
+        log_endpoint   = var.honeycombio_log_endpoint
         api_key        = honeycombio_api_key.this.key
       })
     },
