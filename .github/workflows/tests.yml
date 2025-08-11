@@ -76,4 +76,6 @@ jobs:
           APP_NAME: destiny-repository-tests
           ENV: test
           OTEL_ENABLED: false
+          FEATURE_FLAGS: '{"enable_deduplication_projected_es_fields": "true"}'
+
         run: uv run pytest

@@ -8,6 +8,7 @@ import destiny_sdk
 from elasticsearch.dsl import (
     Boolean,
     InnerDoc,
+    Integer,
     Keyword,
     Nested,
     Object,
@@ -17,6 +18,7 @@ from elasticsearch.dsl import (
 )
 from pydantic import UUID4
 
+from app.core.config import get_settings
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementType,
@@ -31,6 +33,8 @@ from app.persistence.es.persistence import (
     INDEX_PREFIX,
     GenericESPersistence,
 )
+
+settings = get_settings()
 
 
 class ExternalIdentifierDocument(InnerDoc):
@@ -177,15 +181,16 @@ class ReferenceMixin(InnerDoc):
 class ReferenceDeduplicationMixin(InnerDoc):
     """Mixin to project Reference fields relevant to deduplication."""
 
-    title: str | None = mapped_field(Text(required=False), default=None)
-    authors: list[str] | None = mapped_field(
-        Text(required=False),
-        default=None,
-    )
-    publication_year: int | None = mapped_field(
-        Keyword(required=False),
-        default=None,
-    )
+    if settings.feature_flags.enable_deduplication_projected_es_fields:
+        title: str | None = mapped_field(Text(required=False), default=None)
+        authors: list[str] | None = mapped_field(
+            Text(required=False),
+            default=None,
+        )
+        publication_year: int | None = mapped_field(
+            Integer(required=False),
+            default=None,
+        )
 
     @classmethod
     def reference_deduplication_mixin_from_domain(
@@ -264,7 +269,11 @@ class ReferenceDocument(
             # Ignoring easier than chaining __init__ methods IMO.
             meta={"id": domain_obj.id},  # type: ignore[call-arg]
             **cls.reference_mixin_from_domain(domain_obj),
-            **cls.reference_deduplication_mixin_from_domain(domain_obj),
+            **(
+                cls.reference_deduplication_mixin_from_domain(domain_obj)
+                if settings.feature_flags.enable_deduplication_projected_es_fields
+                else {}
+            ),
         )
 
     def to_domain(self) -> Reference:
