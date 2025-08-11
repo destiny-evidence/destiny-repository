@@ -231,6 +231,12 @@ variable "honeycombio_meter_endpoint" {
   default     = "https://api.honeycomb.io/v1/metrics"
 }
 
+variable "honeycombio_logs_endpoint" {
+  description = "Meter endpoint for Honeycomb.io"
+  type        = string
+  default     = "https://api.honeycomb.io/v1/logs"
+}
+
 variable "telemetry_enabled" {
   description = "Whether telemetry is enabled for the application"
   type        = bool

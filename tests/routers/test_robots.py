@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import AsyncGenerator
+from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI, status
@@ -83,9 +84,16 @@ async def test_register_robot_happy_path(
     session: AsyncSession, client: AsyncClient, robot_t_1000: dict[str, str]
 ) -> None:
     """Test registering a robot."""
-    response = await client.post("/v1/robots/", json=robot_t_1000)
+    with patch("app.core.telemetry.fastapi.bound_contextvars") as mock_bound:
+        response = await client.post("/v1/robots/", json=robot_t_1000)
+        assert response.status_code == status.HTTP_201_CREATED
+        # Check that 'name' was traced
+        found = any(
+            "name" in call.kwargs and call.kwargs["name"] == robot_t_1000["name"]
+            for call in mock_bound.call_args_list
+        )
+        assert found, "Expected 'name' to be set in structlog contextvars"
 
-    assert response.status_code == status.HTTP_201_CREATED
     data = await session.get(SQLRobot, response.json()["id"])
     assert data is not None
 
@@ -98,8 +106,15 @@ async def test_add_robot_fails_when_name_is_the_same(
     session.add(existing_robot)
     await session.commit()
 
-    response = await client.post("/v1/robots/", json=robot_t_1000)
-    assert response.status_code == status.HTTP_409_CONFLICT
+    with patch("app.core.telemetry.fastapi.bound_contextvars") as mock_bound:
+        response = await client.post("/v1/robots/", json=robot_t_1000)
+        assert response.status_code == status.HTTP_409_CONFLICT
+        # Check that 'name' was traced
+        found = any(
+            "name" in call.kwargs and call.kwargs["name"] == robot_t_1000["name"]
+            for call in mock_bound.call_args_list
+        )
+        assert found, "Expected 'name' to be set in structlog contextvars"
 
 
 async def test_update_robot_happy_path(
