@@ -213,6 +213,12 @@ variable "honeycombio_api_key_secret" {
   sensitive   = true
 }
 
+variable "honeycombio_configuration_api_key" {
+  description = "Configuration API key for Honeycomb.io"
+  type        = string
+  sensitive   = true
+}
+
 variable "honeycombio_trace_endpoint" {
   description = "Trace endpoint for Honeycomb.io"
   type        = string
@@ -229,4 +235,10 @@ variable "telemetry_enabled" {
   description = "Whether telemetry is enabled for the application"
   type        = bool
   default     = true
+}
+
+variable "honeycomb_alert_slack_channel" {
+  description = "Slack channel for Honeycomb alerts"
+  type        = string
+  default     = "#destiny-alerts"
 }

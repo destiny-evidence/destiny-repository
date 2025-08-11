@@ -72,6 +72,12 @@ provider "elasticstack" {
 }
 
 provider "honeycombio" {
+  # Honeycomb requires two different API auth scopes
+
+  # v1: configuration
+  api_key = var.honeycombio_configuration_api_key
+
+  # v2: provisioning
   api_key_id     = var.honeycombio_api_key_id
   api_key_secret = var.honeycombio_api_key_secret
 }
