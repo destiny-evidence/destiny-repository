@@ -2,7 +2,7 @@
 
 import uuid
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from elasticsearch import AsyncElasticsearch
@@ -393,12 +393,17 @@ async def test_request_batch_enhancement_happy_path(
         mock_process,
     )
 
-    response = await client.post(
-        "/v1/enhancement-requests/batch-requests/", json=batch_request_create
-    )
-
-    assert response.status_code == status.HTTP_202_ACCEPTED
-    response_data = response.json()
+    with patch("app.core.telemetry.fastapi.bound_contextvars") as mock_bound:
+        response = await client.post(
+            "/v1/enhancement-requests/batch-requests/", json=batch_request_create
+        )
+        found = any(
+            "robot_id" in call.kwargs and call.kwargs["robot_id"] == str(robot.id)
+            for call in mock_bound.call_args_list
+        )
+        assert found, "Expected 'robot_id' to be set in structlog contextvars"
+        assert response.status_code == status.HTTP_202_ACCEPTED
+        response_data = response.json()
     assert "id" in response_data
     assert response_data["request_status"] == BatchEnhancementRequestStatus.RECEIVED
     assert response_data["reference_ids"] == [str(reference_1.id), str(reference_2.id)]
@@ -421,12 +426,17 @@ async def test_add_robot_automation_happy_path(
         "query": {"match": {"robot_id": str(robot.id)}},
     }
 
-    response = await client.post(
-        "/v1/enhancement-requests/automations/", json=robot_automation_create
-    )
-
-    assert response.status_code == status.HTTP_201_CREATED
-    response_data = response.json()
+    with patch("app.core.telemetry.fastapi.bound_contextvars") as mock_bound:
+        response = await client.post(
+            "/v1/enhancement-requests/automations/", json=robot_automation_create
+        )
+        found = any(
+            "robot_id" in call.kwargs and call.kwargs["robot_id"] == str(robot.id)
+            for call in mock_bound.call_args_list
+        )
+        assert found, "Expected 'robot_id' to be set in structlog contextvars"
+        assert response.status_code == status.HTTP_201_CREATED
+        response_data = response.json()
     assert uuid.UUID(response_data["robot_id"]) == robot.id
     assert response_data["query"] == robot_automation_create["query"]
 
