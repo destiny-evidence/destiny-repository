@@ -181,7 +181,7 @@ class ReferenceMixin(InnerDoc):
 class ReferenceDeduplicationMixin(InnerDoc):
     """Mixin to project Reference fields relevant to deduplication."""
 
-    if settings.feature_flags.enable_deduplication_projected_es_fields:
+    if settings.feature_flags.deduplication:
         title: str | None = mapped_field(Text(required=False), default=None)
         authors: list[str] | None = mapped_field(
             Text(required=False),
@@ -271,7 +271,7 @@ class ReferenceDocument(
             **cls.reference_mixin_from_domain(domain_obj),
             **(
                 cls.reference_deduplication_mixin_from_domain(domain_obj)
-                if settings.feature_flags.enable_deduplication_projected_es_fields
+                if settings.feature_flags.deduplication
                 else {}
             ),
         )

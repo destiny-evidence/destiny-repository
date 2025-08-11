@@ -94,6 +94,12 @@ locals {
     {
       name  = "OTEL_ENABLED",
       value = var.telemetry_enabled
+    },
+    {
+      name = "FEATURE_FLAGS"
+      value = jsonencode({
+        deduplication = var.ff_deduplication
+      })
     }
   ]
 

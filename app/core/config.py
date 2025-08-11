@@ -229,7 +229,7 @@ class UploadFile(StrEnum):
 class FeatureFlags(BaseModel):
     """Feature flags for the application."""
 
-    enable_deduplication_projected_es_fields: bool = False
+    deduplication: bool = False
 
 
 class Settings(BaseSettings):
