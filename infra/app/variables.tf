@@ -232,7 +232,7 @@ variable "honeycombio_meter_endpoint" {
 }
 
 variable "honeycombio_log_endpoint" {
-  description = "Meter endpoint for Honeycomb.io"
+  description = "Logging endpoint for Honeycomb.io"
   type        = string
   default     = "https://api.honeycomb.io/v1/logs"
 }
