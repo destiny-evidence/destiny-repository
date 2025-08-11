@@ -52,10 +52,6 @@ resource "honeycombio_query" "application_errors" {
   query_json = data.honeycombio_query_specification.application_errors.json
 }
 
-resource "honeycombio_slack_recipient" "alerts" {
-  channel = var.honeycomb_alert_slack_channel
-}
-
 resource "honeycombio_trigger" "error_trigger" {
   # Free tier only allows two triggers total, so we only create this in production.
   count = var.environment == "production" ? 1 : 0
@@ -74,6 +70,7 @@ resource "honeycombio_trigger" "error_trigger" {
   }
 
   recipient {
-    id = honeycombio_slack_recipient.alerts.id
+    type   = "slack"
+    target = var.honeycomb_alert_slack_channel
   }
 }
