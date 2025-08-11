@@ -10,11 +10,13 @@ from app.core.exceptions import (
     RobotEnhancementError,
     RobotUnreachableError,
 )
+from app.core.telemetry.logger import get_logger
 from app.domain.robots.models.models import Robot
 
 MIN_FOR_5XX_STATUS_CODES = 500
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 
 class RobotRequestDispatcher:
@@ -44,6 +46,7 @@ class RobotRequestDispatcher:
                     json=robot_request.model_dump(mode="json"),
                 )
         except httpx.RequestError as exception:
+            logger.exception("Cannot reach robot", robot_id=robot.id)
             error = f"Cannot request enhancement from Robot {robot.id}."
             raise RobotUnreachableError(error) from exception
 

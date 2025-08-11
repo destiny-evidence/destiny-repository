@@ -68,6 +68,16 @@ class OpenAlexIdentifier(BaseModel):
         ExternalIdentifierType.OPEN_ALEX, description="The type of identifier used."
     )
 
+    @field_validator("identifier", mode="before")
+    @classmethod
+    def remove_open_alex_url(cls, value: str) -> str:
+        """Remove the OpenAlex URL if it exists."""
+        return (
+            value.removeprefix("http://openalex.org/")
+            .removeprefix("https://openalex.org/")
+            .strip()
+        )
+
 
 class OtherIdentifier(BaseModel):
     """An external identifier not otherwise defined by the repository."""

@@ -8,8 +8,8 @@ from pydantic import UUID4
 from sqlalchemy.exc import DBAPIError
 
 from app.core.exceptions import SQLIntegrityError
-from app.core.logger import get_logger
 from app.core.telemetry.attributes import Attributes, trace_attribute
+from app.core.telemetry.logger import get_logger
 from app.domain.imports.models.models import (
     CollisionStrategy,
     ImportBatch,
@@ -27,7 +27,7 @@ from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
 
-logger = get_logger()
+logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 
@@ -175,7 +175,7 @@ This should not happen.
         - Persist the file via the Reference service.
         """
         try:
-            logger.info("Processing batch", extra={"batch": import_batch})
+            logger.info("Processing batch")
             async with (
                 httpx.AsyncClient() as client,
             ):
@@ -201,7 +201,7 @@ This should not happen.
             logger.warning(
                 "Integrity error processing batch, likely caused by inconsistent state"
                 " being loaded in parallel. Will retry if retries remaining.",
-                extra={"import_batch_id": import_batch.id, "error": str(exc)},
+                exc_info=exc,
             )
             return ImportBatchStatus.RETRYING
         except (DBAPIError, DeadlockDetectedError) as exc:
@@ -209,7 +209,7 @@ This should not happen.
             # update the same record at the same time.
             logger.warning(
                 "Deadlock while processing batch. Will retry if retries remaining.",
-                extra={"import_batch_id": import_batch.id, "error": str(exc)},
+                exc_info=exc,
             )
             return ImportBatchStatus.RETRYING
         except (httpx.NetworkError, httpx.RemoteProtocolError) as exc:
@@ -217,11 +217,11 @@ This should not happen.
             # connection reset by peer, timeouts, etc.
             logger.warning(
                 "Network error processing batch. Will retry if retries remaining.",
-                extra={"import_batch_id": import_batch.id, "error": str(exc)},
+                exc_info=exc,
             )
             return ImportBatchStatus.RETRYING
         except Exception:
-            logger.exception("Failed to process batch", extra={"batch": import_batch})
+            logger.exception("Failed to process batch")
             return ImportBatchStatus.FAILED
         else:
             return ImportBatchStatus.INDEXING
@@ -250,9 +250,7 @@ This should not happen.
                     )
                     response.raise_for_status()
             except Exception:
-                logger.exception(
-                    "Failed to send callback", extra={"batch": import_batch}
-                )
+                logger.exception("Failed to send callback")
 
     async def process_batch(
         self, import_batch: ImportBatch, reference_service: ReferenceService

@@ -19,7 +19,7 @@ def test_invalid_doi():
         )
 
 
-def test_fix_doi():
+def test_doi_url_removed():
     """Test that a DOI with a URL is fixed to just the DOI part."""
     obj = destiny_sdk.identifiers.DOIIdentifier(
         identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.DOI,
@@ -47,12 +47,33 @@ def test_invalid_pmid():
 
 
 def test_valid_open_alex():
-    valid_openalex = "W123456789"
+    valid_open_alex = "W123456789"
     obj = destiny_sdk.identifiers.OpenAlexIdentifier(
         identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.OPEN_ALEX,
-        identifier=valid_openalex,
+        identifier=valid_open_alex,
     )
-    assert obj.identifier == valid_openalex
+    assert obj.identifier == valid_open_alex
+
+
+def test_open_alex_url_removed():
+    identitier = "W123456789"
+    valid_openalex_with_url_https = f"https://openalex.org/{identitier}"
+
+    obj = destiny_sdk.identifiers.OpenAlexIdentifier(
+        identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.OPEN_ALEX,
+        identifier=valid_openalex_with_url_https,
+    )
+
+    assert obj.identifier == identitier
+
+    valid_openalex_with_url_http = f"http://openalex.org/{identitier}"
+
+    obj = destiny_sdk.identifiers.OpenAlexIdentifier(
+        identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.OPEN_ALEX,
+        identifier=valid_openalex_with_url_http,
+    )
+
+    assert obj.identifier == identitier
 
 
 def test_invalid_open_alex():

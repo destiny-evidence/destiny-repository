@@ -26,7 +26,7 @@ from jose import exceptions, jwt
 from opentelemetry import trace
 
 from app.core.config import get_settings
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import AuthError, NotFoundError
 from app.core.telemetry.attributes import Attributes
 
 CACHE_TTL = 60 * 60 * 24  # 24 hours
@@ -282,7 +282,7 @@ class AzureJwtAuth(AuthMethod):
                         "e": key["e"],
                     }
         except Exception as exc:
-            raise destiny_sdk.auth.AuthException(
+            raise AuthError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Unable to parse authentication token.",
             ) from exc
@@ -297,11 +297,11 @@ class AzureJwtAuth(AuthMethod):
                     issuer=f"https://sts.windows.net/{self.tenant_id}/",
                 )
             except exceptions.ExpiredSignatureError as exc:
-                raise destiny_sdk.auth.AuthException(
+                raise AuthError(
                     status_code=status.HTTP_401_UNAUTHORIZED, detail="Token is expired."
                 ) from exc
             except exceptions.JWTClaimsError as exc:
-                raise destiny_sdk.auth.AuthException(
+                raise AuthError(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Incorrect claims, please check the audience and issuer.",
                 ) from exc
@@ -309,13 +309,13 @@ class AzureJwtAuth(AuthMethod):
                 if cached_jwks:
                     self.cache.pop("jwks", None)
                     return await self.verify_token(token)
-                raise destiny_sdk.auth.AuthException(
+                raise AuthError(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Unable to parse authentication token.",
                 ) from exc
             else:
                 return payload
-        raise destiny_sdk.auth.AuthException(
+        raise AuthError(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unable to find appropriate key.",
         )
@@ -335,11 +335,11 @@ class AzureJwtAuth(AuthMethod):
                 if scope.lower() == required_scope.value.lower():
                     return True
 
-            raise destiny_sdk.auth.AuthException(
+            raise AuthError(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"IDW10203: The app permissions (role) claim does not contain the scope {required_scope.value}",  # noqa: E501
             )
-        raise destiny_sdk.auth.AuthException(
+        raise AuthError(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="IDW10201: No app permissions (role) claim was found in the bearer token",  # noqa: E501
         )
@@ -351,7 +351,7 @@ class AzureJwtAuth(AuthMethod):
     ) -> bool:
         """Authenticate the request."""
         if not credentials:
-            raise destiny_sdk.auth.AuthException(
+            raise AuthError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authorization HTTPBearer header missing.",
             )
@@ -462,7 +462,7 @@ class HMACMultiClientAuth(AuthMethod):
         try:
             secret_key = await self.get_secret(auth_headers.client_id)
         except NotFoundError as exc:
-            raise destiny_sdk.auth.AuthException(
+            raise AuthError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=(
                     f"{self._type} client {auth_headers.client_id} does not exist."
@@ -477,7 +477,7 @@ class HMACMultiClientAuth(AuthMethod):
         )
 
         if not hmac.compare_digest(auth_headers.signature, expected_signature):
-            raise destiny_sdk.auth.AuthException(
+            raise AuthError(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Signature is invalid."
             )
 

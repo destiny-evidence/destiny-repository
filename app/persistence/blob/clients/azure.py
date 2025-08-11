@@ -12,11 +12,11 @@ from opentelemetry import trace
 
 from app.core.config import AzureBlobConfig
 from app.core.exceptions import AzureBlobStorageError
-from app.core.logger import get_logger
 from app.core.telemetry.blob import (
     trace_blob_client_generator,
     trace_blob_client_method,
 )
+from app.core.telemetry.logger import get_logger
 from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.models import (
     BlobSignedUrlType,
@@ -24,7 +24,7 @@ from app.persistence.blob.models import (
 )
 from app.persistence.blob.stream import FileStream
 
-logger = get_logger()
+logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 

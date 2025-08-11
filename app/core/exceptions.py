@@ -3,6 +3,7 @@
 import re
 from typing import Any, Self
 
+import destiny_sdk
 from fastapi import HTTPException
 from opentelemetry.trace import StatusCode
 from sqlalchemy.exc import IntegrityError as SQLAlchemyIntegriyError
@@ -307,8 +308,8 @@ class SDKTranslationError(DestinyRepositoryError):
             errors (str): A sequence of errors, likely copied from ValidationError
 
         """
-        super().__init__(str(errors))
         self.errors = errors
+        super().__init__(str(self))
 
     def __str__(self) -> str:
         """Convert pydantic exception errors to string."""
@@ -431,3 +432,27 @@ class MinioBlobStorageError(BlobStorageError):
 
         """
         super().__init__(detail, *args)
+
+
+class AuthError(destiny_sdk.auth.AuthException):
+    """An exception thrown by the authentication system."""
+
+    def __init__(
+        self,
+        status_code: int,
+        detail: str | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        """
+        Initialize the AuthError exception.
+
+        Args:
+            *args: Additional arguments for the exception.
+
+        """
+        set_span_status(
+            StatusCode.ERROR,
+            detail=detail,
+            exception=self,
+        )
+        super().__init__(status_code, detail, headers)
