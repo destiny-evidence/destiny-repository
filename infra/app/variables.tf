@@ -249,7 +249,7 @@ variable "honeycomb_alert_slack_channel" {
   default     = "#destiny-alerts"
 }
 
-variable "ff_deduplication" {
+variable "feature_flag_deduplication" {
   description = "Feature flag for deduplication"
   type        = bool
   default     = false

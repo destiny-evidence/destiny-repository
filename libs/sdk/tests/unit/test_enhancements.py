@@ -64,7 +64,9 @@ def test_bibliographic_metadata_enhancement_invalid_authorship():
         ]
     )
 
-    with pytest.raises(ValidationError, match="There must be one first author."):
+    with pytest.raises(
+        ValidationError, match="There must be exactly one first author."
+    ):
         destiny_sdk.enhancements.BibliographicMetadataEnhancement(
             authorship=[
                 destiny_sdk.enhancements.Authorship(
@@ -77,7 +79,9 @@ def test_bibliographic_metadata_enhancement_invalid_authorship():
                 ),
             ]
         )
-    with pytest.raises(ValidationError, match="There must be one first author."):
+    with pytest.raises(
+        ValidationError, match="There must be exactly one first author."
+    ):
         destiny_sdk.enhancements.BibliographicMetadataEnhancement(
             authorship=[
                 destiny_sdk.enhancements.Authorship(
@@ -90,7 +94,7 @@ def test_bibliographic_metadata_enhancement_invalid_authorship():
                 ),
             ]
         )
-    with pytest.raises(ValidationError, match="There must be one last author."):
+    with pytest.raises(ValidationError, match="There must be exactly one last author."):
         destiny_sdk.enhancements.BibliographicMetadataEnhancement(
             authorship=[
                 destiny_sdk.enhancements.Authorship(
@@ -103,7 +107,7 @@ def test_bibliographic_metadata_enhancement_invalid_authorship():
                 ),
             ]
         )
-    with pytest.raises(ValidationError, match="There must be one last author."):
+    with pytest.raises(ValidationError, match="There must be exactly one last author."):
         destiny_sdk.enhancements.BibliographicMetadataEnhancement(
             authorship=[
                 destiny_sdk.enhancements.Authorship(

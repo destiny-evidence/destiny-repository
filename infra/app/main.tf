@@ -98,7 +98,7 @@ locals {
     {
       name = "FEATURE_FLAGS"
       value = jsonencode({
-        deduplication = var.ff_deduplication
+        deduplication = var.feature_flag_deduplication
       })
     }
   ]

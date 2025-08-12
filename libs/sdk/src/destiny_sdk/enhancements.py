@@ -132,10 +132,10 @@ other works have cited this work
             last_authors = [a for a in authorship if a.position == AuthorPosition.LAST]
 
             if len(first_authors) != 1:
-                msg = "There must be one first author."
+                msg = "There must be exactly one first author."
                 raise ValueError(msg)
             if len(last_authors) != 1:
-                msg = "There must be one last author."
+                msg = "There must be exactly one last author."
                 raise ValueError(msg)
 
         return authorship

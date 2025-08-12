@@ -139,7 +139,7 @@ class EnhancementDocument(InnerDoc):
         )
 
 
-class ReferenceMixin(InnerDoc):
+class ReferenceDomainMixin(InnerDoc):
     """1:1 mapping of Reference domain model to Elasticsearch document."""
 
     visibility: Visibility = mapped_field(Keyword(required=True))
@@ -149,33 +149,33 @@ class ReferenceMixin(InnerDoc):
     enhancements: list[EnhancementDocument] = mapped_field(Nested(EnhancementDocument))
 
     @classmethod
-    def reference_mixin_from_domain(cls, reference: Reference) -> dict[str, Any]:
-        """Create the kwargs for an ES model relevant to ReferenceMixin."""
-        return {
-            "visibility": reference.visibility,
-            "identifiers": [
+    def from_domain(cls, reference: Reference) -> Self:
+        """Create a ReferenceDomainMixin from a Reference domain model."""
+        return cls(
+            visibility=reference.visibility,
+            identifiers=[
                 ExternalIdentifierDocument.from_domain(identifier)
                 for identifier in reference.identifiers or []
             ],
-            "enhancements": [
+            enhancements=[
                 EnhancementDocument.from_domain(enhancement)
                 for enhancement in reference.enhancements or []
             ],
-        }
+        )
 
-    def reference_mixin_to_domain(self, reference_id: str) -> dict[str, Any]:
-        """Create the kwargs for a domain model relevant to ReferenceMixin."""
-        return {
-            "visibility": self.visibility,
-            "identifiers": [
-                identifier.to_domain(reference_id=uuid.UUID(reference_id))
-                for identifier in self.identifiers
+    def to_domain(self) -> Reference:
+        """Create a domain model from a ReferenceDomainMixin."""
+        reference_id = uuid.UUID(self.meta.id)
+        return Reference(
+            id=reference_id,
+            visibility=self.visibility,
+            identifiers=[
+                identifier.to_domain(reference_id) for identifier in self.identifiers
             ],
-            "enhancements": [
-                enhancement.to_domain(reference_id=uuid.UUID(reference_id))
-                for enhancement in self.enhancements
+            enhancements=[
+                enhancement.to_domain(reference_id) for enhancement in self.enhancements
             ],
-        }
+        )
 
 
 class ReferenceDeduplicationMixin(InnerDoc):
@@ -193,12 +193,10 @@ class ReferenceDeduplicationMixin(InnerDoc):
         )
 
     @classmethod
-    def reference_deduplication_mixin_from_domain(
-        cls, reference: Reference
-    ) -> dict[str, Any]:
+    def from_domain(cls, reference: Reference) -> Self:
         """Create the kwargs for an ES model relevant to ReferenceDeduplicationMixin."""
         if not reference.enhancements:
-            return {}
+            return cls()
 
         title, authorship, publication_year = None, None, None
         for enhancement in reference.enhancements:
@@ -244,15 +242,15 @@ class ReferenceDeduplicationMixin(InnerDoc):
                 for author in authorship
             ]
 
-        return {
-            "title": title,
-            "authors": authors,
-            "publication_year": publication_year,
-        }
+        return cls(
+            title=title,
+            authors=authors,
+            publication_year=publication_year,
+        )
 
 
 class ReferenceDocument(
-    GenericESPersistence[Reference], ReferenceMixin, ReferenceDeduplicationMixin
+    GenericESPersistence[Reference], ReferenceDomainMixin, ReferenceDeduplicationMixin
 ):
     """Persistence model for references in Elasticsearch."""
 
@@ -268,9 +266,9 @@ class ReferenceDocument(
             # Parent's parent does accept meta, but mypy doesn't like it here.
             # Ignoring easier than chaining __init__ methods IMO.
             meta={"id": domain_obj.id},  # type: ignore[call-arg]
-            **cls.reference_mixin_from_domain(domain_obj),
+            **ReferenceDomainMixin.from_domain(domain_obj).to_dict(),
             **(
-                cls.reference_deduplication_mixin_from_domain(domain_obj)
+                ReferenceDeduplicationMixin.from_domain(domain_obj).to_dict()
                 if settings.feature_flags.deduplication
                 else {}
             ),
@@ -278,10 +276,7 @@ class ReferenceDocument(
 
     def to_domain(self) -> Reference:
         """Create a domain model from this persistence model."""
-        return Reference(
-            id=self.meta.id,
-            **self.reference_mixin_to_domain(self.meta.id),
-        )
+        return ReferenceDomainMixin.to_domain(self)
 
 
 class ReferenceInnerDocument(InnerDoc):
