@@ -90,8 +90,7 @@ def configure_otel(
             PeriodicExportingMetricReader(
                 OTLPMetricExporter(
                     endpoint=str(config.meter_endpoint),
-                    headers=headers
-                    | {"x-honeycomb-dataset": f"metrics-{app_name}-{env.value}"},
+                    headers=headers | {"x-honeycomb-dataset": "metrics-repository"},
                 )
             )
         ],
