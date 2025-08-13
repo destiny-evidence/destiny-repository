@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING
 
 from opentelemetry import metrics, trace
@@ -49,12 +50,15 @@ def configure_otel(
     if config.api_key:
         headers["x-honeycomb-team"] = config.api_key
 
+    service_instance_id = str(uuid.uuid4())
+
     ## Traces
     resource = Resource.create(
         {
             Attributes.SERVICE_NAMESPACE: "destiny",
             Attributes.SERVICE_NAME: f"{app_name}-{env.value}",
             Attributes.SERVICE_VERSION: app_version,
+            Attributes.SERVICE_INSTANCE_ID: service_instance_id,
             Attributes.DEPLOYMENT_ENVIRONMENT: env.value,
         }
     )
@@ -90,8 +94,7 @@ def configure_otel(
             PeriodicExportingMetricReader(
                 OTLPMetricExporter(
                     endpoint=str(config.meter_endpoint),
-                    headers=headers
-                    | {"x-honeycomb-dataset": f"metrics-{app_name}-{env.value}"},
+                    headers=headers | {"x-honeycomb-dataset": "metrics-repository"},
                 )
             )
         ],
@@ -109,3 +112,5 @@ def configure_otel(
 
     handler = AttrFilteredLoggingHandler(logger_provider=logger_provider)
     logger_configurer.configure_otel_logger(handler)
+
+    logger.info("Opentelemetry configured", service_instance_id=service_instance_id)
