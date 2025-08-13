@@ -20,9 +20,9 @@ from sqlalchemy.pool import ConnectionPoolEntry
 
 from app.core.config import DatabaseConfig
 from app.core.exceptions import UOWError
-from app.core.logger import get_logger
+from app.core.telemetry.logger import get_logger
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 class AsyncDatabaseSessionManager:
@@ -75,11 +75,9 @@ class AsyncDatabaseSessionManager:
                     )
                     logger.info(
                         "DB access token retrieved from Azure",
-                        extra={
-                            "expires_at": datetime.datetime.fromtimestamp(
-                                token.expires_on, tz=datetime.UTC
-                            ).isoformat(),
-                        },
+                        expires_at=datetime.datetime.fromtimestamp(
+                            token.expires_on, tz=datetime.UTC
+                        ).isoformat(),
                     )
                     return token.token
 

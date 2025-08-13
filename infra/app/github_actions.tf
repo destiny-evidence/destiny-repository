@@ -104,13 +104,6 @@ resource "github_actions_environment_variable" "pypi_repository" {
   value         = var.pypi_repository
 }
 
-resource "github_actions_environment_secret" "pypi_token" {
-  repository      = github_repository_environment.environment.repository
-  environment     = github_repository_environment.environment.environment
-  secret_name     = "PYPI_TOKEN"
-  plaintext_value = var.pypi_token
-}
-
 resource "github_actions_environment_secret" "azure_storage_account_name" {
   # The eppi-import GitHub Action needs to be able to upload the processed
   # JSONL file to the storage account.
@@ -125,5 +118,5 @@ resource "github_actions_environment_secret" "destiny_api_endpoint" {
   repository      = github_repository_environment.environment.repository
   environment     = github_repository_environment.environment.environment
   secret_name     = "DESTINY_API_ENDPOINT"
-  plaintext_value = "https://${data.azurerm_container_app.this.ingress[0].fqdn}"
+  plaintext_value = "https://${data.azurerm_container_app.this.ingress[0].fqdn}/v1/"
 }

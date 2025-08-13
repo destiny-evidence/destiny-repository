@@ -270,6 +270,7 @@ class GenericAsyncSqlRepository(
 
         """
         trace_attribute(Attributes.DB_PK, str(record.id))
+        self.trace_domain_object_id(record)
         persistence = self._persistence_cls.from_domain(record)
         try:
             self._session.add(persistence)
@@ -299,6 +300,8 @@ class GenericAsyncSqlRepository(
         database and violate a unique constraint.
 
         """
+        trace_attribute(Attributes.DB_PK, str(record.id))
+        self.trace_domain_object_id(record)
         persistence = self._persistence_cls.from_domain(record)
         try:
             persistence = await self._session.merge(persistence)

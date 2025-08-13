@@ -7,19 +7,22 @@ from fastapi import FastAPI
 
 from app.api.root import register_api
 from app.core.config import get_settings
-from app.core.logger import configure_logger, get_logger
+from app.core.telemetry.logger import get_logger, logger_configurer
 from app.core.telemetry.otel import configure_otel
 from app.persistence.es.client import es_manager
 from app.persistence.sql.session import db_manager
 from app.tasks import broker
 
+logger = get_logger(__name__)
 settings = get_settings()
+logger_configurer.configure_console_logger(
+    log_level=settings.log_level, rich_rendering=settings.running_locally
+)
+
 if settings.otel_config and settings.otel_enabled:
     configure_otel(
         settings.otel_config, settings.app_name, settings.app_version, settings.env
     )
-
-logger = get_logger()
 
 
 @asynccontextmanager
@@ -37,6 +40,4 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await es_manager.close()
 
 
-app = register_api(lifespan)
-
-configure_logger(rich_rendering=settings.running_locally)
+app = register_api(lifespan, otel_enabled=settings.otel_enabled)

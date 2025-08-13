@@ -35,7 +35,7 @@ def register_import_record(
     """Register a new import record."""
     print("Registering a new import record...")
     response = client.post(
-        "/imports/record/",
+        "/imports/records/",
         json=ImportRecordIn(
             processor_name=processor_name,
             processor_version=processor_version,
@@ -55,7 +55,7 @@ def register_import_batch(
     """Register an import batch for the given file URL."""
     print(f"Registering import batch for file: {file_url}")
     response = client.post(
-        f"/imports/record/{import_record_id}/batch/",
+        f"/imports/records/{import_record_id}/batches/",
         json=ImportBatchIn(
             collision_strategy=CollisionStrategy.MERGE_DEFENSIVE,
             storage_url=file_url,
@@ -72,17 +72,21 @@ def finalise_import_record(client: httpx.Client, import_record_id: UUID) -> None
     """Finalise the import record."""
     print("Finalising import record...")
     response = client.patch(
-        f"/imports/record/{import_record_id}/finalise/",
+        f"/imports/records/{import_record_id}/finalise/",
     )
     response.raise_for_status()
     print("Import record finalised.")
 
 
-def poll_and_summarise(client: httpx.Client, import_batch_id: UUID) -> None:
+def poll_and_summarise(
+    client: httpx.Client, import_record_id: UUID, import_batch_id: UUID
+) -> None:
     """Poll for completion and produce a summary of the import."""
     print(f"Polling import batch {import_batch_id} for completion...")
     for _ in range(5):
-        response = client.get(f"/imports/batch/{import_batch_id}/")
+        response = client.get(
+            f"/imports/records/{import_record_id}/batches/{import_batch_id}/"
+        )
         response.raise_for_status()
         import_batch = ImportBatchRead.model_validate(response.json())
         print(import_batch)
@@ -95,7 +99,9 @@ def poll_and_summarise(client: httpx.Client, import_batch_id: UUID) -> None:
         print("Import batch did not complete in time.")
         sys.exit(1)
 
-    response = client.get(f"/imports/batch/{import_batch_id}/summary/")
+    response = client.get(
+        f"/imports/records/{import_record_id}/batches/{import_batch_id}/summary/"
+    )
     response.raise_for_status()
     import_batch_summary = ImportBatchSummary.model_validate(response.json())
     print(f"Import batch {import_batch_id} summary:")
@@ -148,7 +154,7 @@ def main() -> None:
         )
         import_batch = register_import_batch(client, import_record.id, args.file_url)
         finalise_import_record(client, import_record.id)
-        poll_and_summarise(client, import_batch.id)
+        poll_and_summarise(client, import_record.id, import_batch.id)
 
     print("Import process complete.")
 

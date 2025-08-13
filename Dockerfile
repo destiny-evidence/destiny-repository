@@ -1,26 +1,44 @@
-FROM python:3.12-slim-bookworm AS base
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+
 WORKDIR /app
 
-FROM base AS builder
+# Enable bytecode compilation
+ENV UV_COMPILE_BYTECODE=1
 
-RUN pip install poetry poetry-plugin-bundle
-COPY pyproject.toml poetry.lock README.md ./
+# Copy from the cache instead of linking since it's a mounted volume
+ENV UV_LINK_MODE=copy
+
 COPY libs/sdk ./libs/sdk
 
-ARG POETRY_INSTALL_DEV=false
-RUN if [ "$POETRY_INSTALL_DEV" = "true" ]; then \
-    poetry bundle venv --without docs --with dev /app/.venv; \
-    else \
-    poetry bundle venv --only=main /app/.venv; \
-    fi
+# Install the project's dependencies using the lockfile and settings
+ARG UV_INSTALL_DEV=false
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    if [ "$UV_INSTALL_DEV" = "true" ]; then \
+        uv sync --locked --no-install-project --dev; \
+        else \
+        uv sync --locked --no-install-project --no-dev; \
+        fi
 
-FROM base AS final
-COPY --from=builder /app/.venv /app/.venv
-
+# Then, add the rest of the project source code and install it
+# Installing separately from its dependencies allows optimal layer caching
 COPY app/ ./app
-COPY alembic.ini .
-COPY pyproject.toml .
+COPY alembic.ini uv.lock pyproject.toml ./
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    if [ "$UV_INSTALL_DEV" = "true" ]; then \
+        uv sync --locked --dev; \
+        else \
+        uv sync --locked --no-dev; \
+        fi
+
+
+# Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
 
-EXPOSE 8000
-ENTRYPOINT ["fastapi",  "run", "app/main.py", "--port", "8000"]
+# Reset the entrypoint, don't invoke `uv`
+ENTRYPOINT []
+
+EXPOSE 8001
+CMD ["fastapi",  "run", "app/main.py", "--port", "8000"]

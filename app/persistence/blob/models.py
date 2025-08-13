@@ -6,9 +6,9 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.exceptions import BlobStorageError
-from app.core.logger import get_logger
+from app.core.telemetry.logger import get_logger
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 class BlobSignedUrlType(StrEnum):
@@ -58,7 +58,7 @@ class BlobStorageFile(BaseModel):
                 return "text/plain"
             case _:
                 msg = "No content type defined. Defaulting to application/octet-stream."
-                logger.warning(msg, extra={"blob_filename": self.filename})
+                logger.warning(msg, filename=self.filename)
                 return "application/octet-stream"
 
     def to_sql(self) -> str:

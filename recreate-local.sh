@@ -10,6 +10,6 @@ COMPOSE_EXPERIMENTAL_GIT_REMOTE=1 docker compose -f docker-compose.signoz.yml up
 
 docker compose --profile search --profile app up -d
 
-poetry run alembic upgrade head
+uv run alembic upgrade head
 
 ./.minio/seed_fileserver.sh

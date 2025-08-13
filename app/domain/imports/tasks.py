@@ -5,7 +5,12 @@ from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ESError, TaskError
-from app.core.logger import get_logger
+from app.core.telemetry.attributes import (
+    Attributes,
+    name_span,
+    trace_attribute,
+)
+from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.imports.models.models import ImportBatchStatus
 from app.domain.imports.service import ImportService
@@ -26,7 +31,7 @@ from app.persistence.sql.session import db_manager
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.tasks import broker
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 async def get_sql_unit_of_work(
@@ -91,13 +96,10 @@ async def get_reference_service(
 @broker.task
 async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -> None:
     """Async logic for processing an import batch."""
-    logger.info(
-        "Processing import batch",
-        extra={
-            "import_batch_id": import_batch_id,
-            "remaining_retries": remaining_retries,
-        },
-    )
+    logger.info("Processing import batch")
+    name_span(f"Import Batch {import_batch_id}")
+    trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_batch_id))
+    trace_attribute(Attributes.MESSAGING_RETRIES_REMAINING, remaining_retries)
     sql_uow = await get_sql_unit_of_work()
     import_service = await get_import_service(sql_uow=sql_uow)
     reference_service = await get_reference_service(sql_uow=sql_uow)
@@ -113,7 +115,7 @@ async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -
     ):
         logger.info(
             "Terminal task received for import batch, not processing.",
-            extra={"import_batch_id": import_batch_id, "status": import_batch.status},
+            import_batch_status=import_batch.status,
         )
         return
 
@@ -122,24 +124,12 @@ async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -
 
     if status == ImportBatchStatus.RETRYING:
         if remaining_retries:
-            logger.info(
-                "Retrying import batch.",
-                extra={
-                    "import_batch_id": import_batch_id,
-                    "remaining_retries": remaining_retries,
-                },
-            )
+            logger.info("Retrying import batch.")
             await queue_task_with_trace(
                 process_import_batch, import_batch.id, remaining_retries - 1
             )
         else:
-            logger.info(
-                "No remaining retries for import batch, marking as failed.",
-                extra={
-                    "import_batch_id": import_batch_id,
-                    "remaining_retries": remaining_retries,
-                },
-            )
+            logger.info("No remaining retries for import batch, marking as failed.")
             await import_service.update_import_batch_status(
                 import_batch.id, ImportBatchStatus.FAILED
             )
@@ -150,10 +140,7 @@ async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -
         logger.error(
             "Import batch processing stopped, "
             "elasticsearch indexing and automatic enhancements will not proceed.",
-            extra={
-                "import_batch_id": import_batch.id,
-                "import_batch_status": import_batch.status,
-            },
+            import_batch_status=import_batch.status,
         )
         return
 
@@ -165,20 +152,12 @@ async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -
             reference_ids=imported_references,
         )
 
-    except ESError:
-        logger.exception(
-            "Error indexing references in Elasticsearch",
-            extra={
-                "import_batch_id": import_batch.id,
-            },
-        )
+    except ESError as exc:
+        logger.exception("Error indexing references in Elasticsearch", exc_info=exc)
         import_batch_status = ImportBatchStatus.INDEXING_FAILED
-    except Exception:
+    except Exception as exc:
         logger.exception(
-            "Unexpected error indexing references in Elasticsearch",
-            extra={
-                "import_batch_id": import_batch.id,
-            },
+            "Unexpected error indexing references in Elasticsearch", exc_info=exc
         )
         import_batch_status = ImportBatchStatus.INDEXING_FAILED
 
@@ -199,5 +178,6 @@ async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -
     )
     for request in requests:
         logger.info(
-            "Created automatic enhancement request", extra={"request_id": request.id}
+            "Created automatic enhancement request",
+            batch_enhancement_request_id=str(request.id),
         )

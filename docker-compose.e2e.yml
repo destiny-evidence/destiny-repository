@@ -119,7 +119,7 @@ services:
       TOY_ROBOT_URL: "http://toy-robot:8001/toy/enhancement/"
       ENV: "e2e"
       MINIO_PRESIGNED_URL_FILEPATH: /shared-minio/presigned_urls.json
-    entrypoint: poetry run pytest /e2e
+    entrypoint: uv run pytest /e2e
 
 # Use ephemeral volumes for tests
 volumes:

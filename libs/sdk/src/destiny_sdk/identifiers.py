@@ -27,13 +27,6 @@ class ExternalIdentifierType(StrEnum):
     OTHER = auto()
 
 
-def remove_doi_url(value: str) -> str:
-    """Remove the URL part of the DOI if it exists."""
-    return (
-        value.removeprefix("http://doi.org/").removeprefix("https://doi.org/").strip()
-    )
-
-
 class DOIIdentifier(BaseModel):
     """An external identifier representing a DOI."""
 
@@ -74,6 +67,16 @@ class OpenAlexIdentifier(BaseModel):
     identifier_type: Literal[ExternalIdentifierType.OPEN_ALEX] = Field(
         ExternalIdentifierType.OPEN_ALEX, description="The type of identifier used."
     )
+
+    @field_validator("identifier", mode="before")
+    @classmethod
+    def remove_open_alex_url(cls, value: str) -> str:
+        """Remove the OpenAlex URL if it exists."""
+        return (
+            value.removeprefix("http://openalex.org/")
+            .removeprefix("https://openalex.org/")
+            .strip()
+        )
 
 
 class OtherIdentifier(BaseModel):

@@ -13,7 +13,7 @@ pip install destiny-sdk
 ```
 
 ```sh
-poetry add destiny-sdk
+uv add destiny-sdk
 ```
 
 ## Development
@@ -21,21 +21,21 @@ poetry add destiny-sdk
 ### Dependencies
 
 ```sh
-poetry install
+uv install
 ```
 
 ### Tests
 
 ```sh
-poetry run pytest
+uv run pytest
 ```
 
 ### Installing as an editable package of another project
 
-Run the following command in the root folder of the other project (assuming poetry as a packaging framework). Pip also has an `--editable` option that you can use.
+Run the following command in the root folder of the other project (assuming uv as a packaging framework). Pip also has an `--editable` option that you can use.
 
 ```sh
-poetry add --editable ./PATH/TO/sdk/
+uv add --editable ./PATH/TO/sdk/
 ```
 
 or replace the dependency in `pyproject.toml` with
@@ -49,8 +49,8 @@ destiny-sdk = {path = "./PATH/TO/sdk/", develop = true}
 If you want to use a local build of the sdk `z.whl`, do
 
 ```sh
-poetry build
-poetry add ./PATH/TO/WHEEL.whl
+uv build
+uv add ./PATH/TO/WHEEL.whl
 ```
 
 ### Publishing

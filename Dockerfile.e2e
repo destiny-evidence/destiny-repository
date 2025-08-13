@@ -1,11 +1,18 @@
-FROM python:3.12-slim-bookworm AS base
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 WORKDIR /src
 
 RUN apt-get update && apt-get install -y libpq-dev gcc
 
-RUN pip install poetry poetry-plugin-bundle
-COPY pyproject.toml poetry.lock README.md ./
+COPY pyproject.toml uv.lock README.md ./
 COPY libs/sdk ./libs/sdk
-RUN poetry bundle venv --without docs /src/.venv
+
+# Install the project's dependencies using the lockfile and settings
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --locked --no-install-project --dev --group e2e
 
 COPY tests/e2e /e2e
+
+# Place executables in the environment at the front of the path
+ENV PATH="/app/.venv/bin:$PATH"

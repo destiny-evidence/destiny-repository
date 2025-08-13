@@ -19,7 +19,8 @@ from app.api.auth import (
     security,
 )
 from app.core.config import get_settings
-from app.core.logger import get_logger
+from app.core.telemetry.fastapi import PayloadAttributeTracer
+from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     BatchEnhancementRequestStatus,
@@ -45,7 +46,7 @@ from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 settings = get_settings()
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 def sql_unit_of_work(
@@ -154,22 +155,34 @@ reference_router = APIRouter(
 enhancement_request_router = APIRouter(
     prefix="/enhancement-requests",
     tags=["enhancement-requests"],
-    dependencies=[Depends(enhancement_request_hybrid_auth)],
+    dependencies=[
+        Depends(enhancement_request_hybrid_auth),
+        Depends(PayloadAttributeTracer("robot_id")),
+    ],
 )
 single_enhancement_request_router = APIRouter(
     prefix="/single-requests",
     tags=["single-enhancement-requests"],
-    dependencies=[Depends(enhancement_request_hybrid_auth)],
+    dependencies=[
+        Depends(enhancement_request_hybrid_auth),
+        Depends(PayloadAttributeTracer("robot_id")),
+    ],
 )
 batch_enhancement_request_router = APIRouter(
     prefix="/batch-requests",
     tags=["batch-enhancement-requests"],
-    dependencies=[Depends(enhancement_request_hybrid_auth)],
+    dependencies=[
+        Depends(enhancement_request_hybrid_auth),
+        Depends(PayloadAttributeTracer("robot_id")),
+    ],
 )
 enhancement_request_automation_router = APIRouter(
     prefix="/automations",
     tags=["automated-enhancement-requests"],
-    dependencies=[Depends(enhancement_request_hybrid_auth)],
+    dependencies=[
+        Depends(enhancement_request_hybrid_auth),
+        Depends(PayloadAttributeTracer("robot_id")),
+    ],
 )
 
 
@@ -253,10 +266,6 @@ async def request_batch_enhancement(
         ),
     )
 
-    logger.info(
-        "Enqueueing enhancement batch",
-        extra={"batch_enhancement_request_id": enhancement_request.id},
-    )
     await queue_task_with_trace(
         collect_and_dispatch_references_for_batch_enhancement,
         batch_enhancement_request_id=enhancement_request.id,
@@ -371,10 +380,6 @@ async def fulfill_batch_enhancement_request(
     response: Response,
 ) -> destiny_sdk.robots.BatchEnhancementRequestRead:
     """Receive the robot result and kick off importing the enhancements."""
-    logger.info(
-        "Received batch enhancement result",
-        extra={"batch_enhancement_request_id": robot_result.request_id},
-    )
     if robot_result.error:
         batch_enhancement_request = (
             await reference_service.mark_batch_enhancement_request_failed(

@@ -5,21 +5,29 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from opentelemetry import metrics, trace
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk._logs import LoggerProvider
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from app.core.logger import get_logger
 from app.core.telemetry.attributes import Attributes
+from app.core.telemetry.logger import (
+    AttrFilteredLoggingHandler,
+    get_logger,
+    logger_configurer,
+)
+from app.core.telemetry.processors import FilteringBatchSpanProcessor
 
 if TYPE_CHECKING:
     from app.core.config import Environment, OTelConfig
 
-logger = get_logger()
+logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 
@@ -41,6 +49,7 @@ def configure_otel(
     if config.api_key:
         headers["x-honeycomb-team"] = config.api_key
 
+    ## Traces
     resource = Resource.create(
         {
             Attributes.SERVICE_NAMESPACE: "destiny",
@@ -52,19 +61,51 @@ def configure_otel(
 
     tracer_provider = TracerProvider(resource=resource)
 
-    tracer_provider.add_span_processor(
-        BatchSpanProcessor(
-            OTLPSpanExporter(endpoint=str(config.trace_endpoint), headers=headers)
-        )
+    span_processor = FilteringBatchSpanProcessor(
+        OTLPSpanExporter(
+            endpoint=str(config.trace_endpoint),
+            # Dataset is inferred from resource.service_name
+            headers=headers,
+        ),
     )
+    if not config.instrument_sql:
+        # Filter out auto-instrumented SQLAlchemy spans
+        span_processor.add_condition(
+            lambda span: (
+                span.instrumentation_scope.name
+                == "opentelemetry.instrumentation.sqlalchemy"
+                if span.instrumentation_scope
+                else False
+            )
+        )
+
+    tracer_provider.add_span_processor(span_processor)
+
     trace.set_tracer_provider(tracer_provider)
 
+    ## Metrics
     meter_provider = MeterProvider(
         resource=resource,
         metric_readers=[
             PeriodicExportingMetricReader(
-                OTLPMetricExporter(endpoint=str(config.meter_endpoint), headers=headers)
+                OTLPMetricExporter(
+                    endpoint=str(config.meter_endpoint),
+                    headers=headers
+                    | {"x-honeycomb-dataset": f"metrics-{app_name}-{env.value}"},
+                )
             )
         ],
     )
     metrics.set_meter_provider(meter_provider)
+
+    ## Logs
+    logger_provider = LoggerProvider(resource=resource)
+    set_logger_provider(logger_provider)
+    exporter = OTLPLogExporter(
+        endpoint=str(config.log_endpoint),
+        headers=headers,
+    )
+    logger_provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
+
+    handler = AttrFilteredLoggingHandler(logger_provider=logger_provider)
+    logger_configurer.configure_otel_logger(handler)

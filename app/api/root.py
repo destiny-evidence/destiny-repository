@@ -24,7 +24,8 @@ from app.core.exceptions import (
     NotFoundError,
     SDKToDomainError,
 )
-from app.core.logger import get_logger
+from app.core.telemetry.fastapi import FastAPITracingMiddleware
+from app.core.telemetry.logger import get_logger
 from app.domain.imports.routes import router as import_router_v1
 from app.domain.references.routes import (
     enhancement_request_router as enhancement_request_router_v1,
@@ -33,7 +34,7 @@ from app.domain.references.routes import reference_router as reference_router_v1
 from app.domain.robots.routes import router as robot_management_router_v1
 from app.system.routes import router as system_utilities_router_v1
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 def create_v1_router() -> APIRouter:
@@ -48,7 +49,7 @@ def create_v1_router() -> APIRouter:
 
 
 def register_api(
-    lifespan: Callable[[FastAPI], AbstractAsyncContextManager],
+    lifespan: Callable[[FastAPI], AbstractAsyncContextManager], *, otel_enabled: bool
 ) -> FastAPI:
     """Register the API routers and configure the FastAPI application."""
     app = FastAPI(
@@ -82,6 +83,8 @@ def register_api(
 
     app.include_router(create_v1_router())
 
-    FastAPIInstrumentor().instrument_app(app)
+    if otel_enabled:
+        FastAPIInstrumentor().instrument_app(app)
+        app.add_middleware(FastAPITracingMiddleware)
 
     return app
