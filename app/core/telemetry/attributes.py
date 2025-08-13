@@ -60,6 +60,7 @@ class Attributes(StrEnum):
     SERVICE_NAME = service_attributes.SERVICE_NAME
     SERVICE_VERSION = service_attributes.SERVICE_VERSION
     SERVICE_NAMESPACE = _service_attributes.SERVICE_NAMESPACE
+    SERVICE_INSTANCE_ID = _service_attributes.SERVICE_INSTANCE_ID
 
     # User attributes
     USER_ID = _user_attributes.USER_ID
