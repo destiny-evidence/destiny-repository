@@ -126,7 +126,7 @@ resource "azuread_application_app_role" "enhancement_request_writer" {
 
 resource "azuread_service_principal" "destiny_repository" {
   client_id                    = azuread_application.destiny_repository.client_id
-  app_role_assignment_required = true
+  app_role_assignment_required = false
   owners                       = [data.azuread_client_config.current.object_id]
 }
 
@@ -136,35 +136,35 @@ resource "azuread_application_identifier_uri" "this" {
 }
 
 # Assign auth client to all authentication scopes
-# resource "azuread_app_role_assignment" "auth_client_to_administrator" {
-#   app_role_id         = azuread_application_app_role.administrator.role_id
-#   principal_object_id = azuread_service_principal.destiny_repository_auth.object_id
-#   resource_object_id  = azuread_service_principal.destiny_repository.object_id
-# }
+resource "azuread_app_role_assignment" "auth_client_to_administrator" {
+  app_role_id         = azuread_application_app_role.administrator.role_id
+  principal_object_id = azuread_service_principal.destiny_repository_auth.object_id
+  resource_object_id  = azuread_service_principal.destiny_repository.object_id
+}
 
-# resource "azuread_app_role_assignment" "auth_client_to_importer" {
-#   app_role_id         = azuread_application_app_role.importer.role_id
-#   principal_object_id = azuread_service_principal.destiny_repository_auth.object_id
-#   resource_object_id  = azuread_service_principal.destiny_repository.object_id
-# }
+resource "azuread_app_role_assignment" "auth_client_to_importer" {
+  app_role_id         = azuread_application_app_role.importer.role_id
+  principal_object_id = azuread_service_principal.destiny_repository_auth.object_id
+  resource_object_id  = azuread_service_principal.destiny_repository.object_id
+}
 
-# resource "azuread_app_role_assignment" "auth_client_to_reference_reader" {
-#   app_role_id         = azuread_application_app_role.reference_reader.role_id
-#   principal_object_id = azuread_service_principal.destiny_repository_auth.object_id
-#   resource_object_id  = azuread_service_principal.destiny_repository.object_id
-# }
+resource "azuread_app_role_assignment" "auth_client_to_reference_reader" {
+  app_role_id         = azuread_application_app_role.reference_reader.role_id
+  principal_object_id = azuread_service_principal.destiny_repository_auth.object_id
+  resource_object_id  = azuread_service_principal.destiny_repository.object_id
+}
 
-# resource "azuread_app_role_assignment" "auth_client_to_robot_writer" {
-#   app_role_id         = azuread_application_app_role.robot_writer.role_id
-#   principal_object_id = azuread_service_principal.destiny_repository_auth.object_id
-#   resource_object_id  = azuread_service_principal.destiny_repository.object_id
-# }
+resource "azuread_app_role_assignment" "auth_client_to_robot_writer" {
+  app_role_id         = azuread_application_app_role.robot_writer.role_id
+  principal_object_id = azuread_service_principal.destiny_repository_auth.object_id
+  resource_object_id  = azuread_service_principal.destiny_repository.object_id
+}
 
-# resource "azuread_app_role_assignment" "auth_client_to_enhancement_request_writer" {
-#   app_role_id         = azuread_application_app_role.enhancement_request_writer.role_id
-#   principal_object_id = azuread_service_principal.destiny_repository_auth.object_id
-#   resource_object_id  = azuread_service_principal.destiny_repository.object_id
-# }
+resource "azuread_app_role_assignment" "auth_client_to_enhancement_request_writer" {
+  app_role_id         = azuread_application_app_role.enhancement_request_writer.role_id
+  principal_object_id = azuread_service_principal.destiny_repository_auth.object_id
+  resource_object_id  = azuread_service_principal.destiny_repository.object_id
+}
 
 # Grant the GitHub Actions service principal the importer role so it can run the eppi-import GitHub Action
 resource "azuread_app_role_assignment" "github_actions_to_importer" {
@@ -190,6 +190,14 @@ resource "azuread_application_api_access" "destiny_repository_auth" {
     random_uuid.reference_reader_scope.result,
     random_uuid.enhancement_request_writer_scope.result,
     random_uuid.robot_writer_scope.result,
+  ]
+
+  role_ids = [
+    azuread_application_app_role.administrator.role_id,
+    azuread_application_app_role.importer.role_id,
+    azuread_application_app_role.reference_reader.role_id,
+    azuread_application_app_role.enhancement_request_writer.role_id,
+    azuread_application_app_role.robot_writer.role_id,
   ]
 }
 
