@@ -2,10 +2,13 @@
 
 import uuid
 from typing import Any, Self
+from unicodedata import normalize
 
+import destiny_sdk
 from elasticsearch.dsl import (
     Boolean,
     InnerDoc,
+    Integer,
     Keyword,
     Nested,
     Object,
@@ -15,6 +18,7 @@ from elasticsearch.dsl import (
 )
 from pydantic import UUID4
 
+from app.core.config import get_settings
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementType,
@@ -29,6 +33,8 @@ from app.persistence.es.persistence import (
     INDEX_PREFIX,
     GenericESPersistence,
 )
+
+settings = get_settings()
 
 
 class ExternalIdentifierDocument(InnerDoc):
@@ -133,13 +139,8 @@ class EnhancementDocument(InnerDoc):
         )
 
 
-class ReferenceDocument(GenericESPersistence[Reference]):
-    """Persistence model for references in Elasticsearch."""
-
-    class Index:
-        """Index metadata for the persistence model."""
-
-        name = f"{INDEX_PREFIX}-reference"
+class ReferenceDomainMixin(InnerDoc):
+    """1:1 mapping of Reference domain model to Elasticsearch document."""
 
     visibility: Visibility = mapped_field(Keyword(required=True))
     identifiers: list[ExternalIdentifierDocument] = mapped_field(
@@ -148,37 +149,134 @@ class ReferenceDocument(GenericESPersistence[Reference]):
     enhancements: list[EnhancementDocument] = mapped_field(Nested(EnhancementDocument))
 
     @classmethod
+    def from_domain(cls, reference: Reference) -> Self:
+        """Create a ReferenceDomainMixin from a Reference domain model."""
+        return cls(
+            visibility=reference.visibility,
+            identifiers=[
+                ExternalIdentifierDocument.from_domain(identifier)
+                for identifier in reference.identifiers or []
+            ],
+            enhancements=[
+                EnhancementDocument.from_domain(enhancement)
+                for enhancement in reference.enhancements or []
+            ],
+        )
+
+    def to_domain(self) -> Reference:
+        """Create a domain model from a ReferenceDomainMixin."""
+        reference_id = uuid.UUID(self.meta.id)
+        return Reference(
+            id=reference_id,
+            visibility=self.visibility,
+            identifiers=[
+                identifier.to_domain(reference_id) for identifier in self.identifiers
+            ],
+            enhancements=[
+                enhancement.to_domain(reference_id) for enhancement in self.enhancements
+            ],
+        )
+
+
+class ReferenceDeduplicationMixin(InnerDoc):
+    """Mixin to project Reference fields relevant to deduplication."""
+
+    if settings.feature_flags.deduplication:
+        title: str | None = mapped_field(Text(required=False), default=None)
+        authors: list[str] | None = mapped_field(
+            Text(required=False),
+            default=None,
+        )
+        publication_year: int | None = mapped_field(
+            Integer(required=False),
+            default=None,
+        )
+
+    @classmethod
+    def from_domain(cls, reference: Reference) -> Self:
+        """Create the kwargs for an ES model relevant to ReferenceDeduplicationMixin."""
+        if not reference.enhancements:
+            return cls()
+
+        title, authorship, publication_year = None, None, None
+        for enhancement in reference.enhancements:
+            # NB at present we have no way of discriminating between multiple
+            # bibliographic enhancements, nor are they ordered. This takes a
+            # random one (but hydrates in the case of one bibliographic enhancement
+            # missing a field while the other has it present).
+            if enhancement.content.enhancement_type == EnhancementType.BIBLIOGRAPHIC:
+                # Hydrate if exists on enhancement, otherwise use prior value
+                title = enhancement.content.title or title
+                authorship = enhancement.content.authorship or authorship
+                publication_year = (
+                    enhancement.content.publication_year
+                    or (
+                        enhancement.content.publication_date.year
+                        if enhancement.content.publication_date
+                        else None
+                    )
+                    or publication_year
+                )
+
+        # Title normalization: strip whitespace and title case
+        if title:
+            title = normalize("NFC", title.strip()).title()
+
+        # Author normalization:
+        # Maintain first and last author, sort middle authors by name
+        # Then strip whitespace and title case
+        authors = None
+        if authorship:
+            authorship = sorted(
+                authorship,
+                key=lambda author: (
+                    {
+                        destiny_sdk.enhancements.AuthorPosition.FIRST: -1,
+                        destiny_sdk.enhancements.AuthorPosition.LAST: 1,
+                    }.get(author.position, 0),
+                    author.display_name,
+                ),
+            )
+            authors = [
+                normalize("NFC", author.display_name.strip()).title()
+                for author in authorship
+            ]
+
+        return cls(
+            title=title,
+            authors=authors,
+            publication_year=publication_year,
+        )
+
+
+class ReferenceDocument(
+    GenericESPersistence[Reference], ReferenceDomainMixin, ReferenceDeduplicationMixin
+):
+    """Persistence model for references in Elasticsearch."""
+
+    class Index:
+        """Index metadata for the persistence model."""
+
+        name = f"{INDEX_PREFIX}-reference"
+
+    @classmethod
     def from_domain(cls, domain_obj: Reference) -> Self:
         """Create a persistence model from a domain model."""
         return cls(
             # Parent's parent does accept meta, but mypy doesn't like it here.
             # Ignoring easier than chaining __init__ methods IMO.
             meta={"id": domain_obj.id},  # type: ignore[call-arg]
-            visibility=domain_obj.visibility,
-            identifiers=[
-                ExternalIdentifierDocument.from_domain(identifier)
-                for identifier in domain_obj.identifiers or []
-            ],
-            enhancements=[
-                EnhancementDocument.from_domain(enhancement)
-                for enhancement in domain_obj.enhancements or []
-            ],
+            **ReferenceDomainMixin.from_domain(domain_obj).to_dict(),
+            **(
+                ReferenceDeduplicationMixin.from_domain(domain_obj).to_dict()
+                if settings.feature_flags.deduplication
+                else {}
+            ),
         )
 
     def to_domain(self) -> Reference:
         """Create a domain model from this persistence model."""
-        return Reference(
-            id=self.meta.id,
-            visibility=self.visibility,
-            identifiers=[
-                identifier.to_domain(reference_id=uuid.UUID(self.meta.id))
-                for identifier in self.identifiers
-            ],
-            enhancements=[
-                enhancement.to_domain(reference_id=uuid.UUID(self.meta.id))
-                for enhancement in self.enhancements
-            ],
-        )
+        return ReferenceDomainMixin.to_domain(self)
 
 
 class ReferenceInnerDocument(InnerDoc):

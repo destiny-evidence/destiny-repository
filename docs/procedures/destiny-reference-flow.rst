@@ -16,16 +16,16 @@ This document non-exhaustively describes the automated flow experienced by a DES
         R1 --> A{Abstract Automation}
 
         A --> |No abstract, has DOI| ABSTRACT_ROBOT[Abstract Robot]
-        A --> |Has abstract| B{Domain Inclusion Automation}
+        A --> |Has abstract| B{Domain Automation}
         ABSTRACT_ROBOT --> R2[Ingest Abstract]
         R2 --> P
         R2 --> B
 
         B --> IN_OUT_ROBOT[Domain Inclusion Robot]
-        IN_OUT_ROBOT --> R3[Ingest Domain Inclusion Annotation]
+        IN_OUT_ROBOT --> R3[Ingest Domain Annotation]
         R3 --> P
         R3 --> C{Taxonomy Automation}
 
         C -->|Is in domain| TAXONOMY_ROBOT[Taxonomy Robot]
-        TAXONOMY_ROBOT --> R4[Ingest Taxonomy Annotations]
+        TAXONOMY_ROBOT --> R4[Ingest Tax. Annotations]
         R4 --> P

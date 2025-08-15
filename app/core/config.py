@@ -226,6 +226,12 @@ class UploadFile(StrEnum):
     BATCH_ENHANCEMENT_REQUEST_REFERENCE_DATA = auto()
 
 
+class FeatureFlags(BaseModel):
+    """Feature flags for the application."""
+
+    deduplication: bool = False
+
+
 class Settings(BaseSettings):
     """Settings model for API."""
 
@@ -234,6 +240,8 @@ class Settings(BaseSettings):
     )
 
     project_root: Path = Path(__file__).joinpath("../../..").resolve()
+
+    feature_flags: FeatureFlags = FeatureFlags()
 
     db_config: DatabaseConfig
     es_config: ESConfig
