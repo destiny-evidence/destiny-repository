@@ -81,7 +81,7 @@ resource "azuread_application" "destiny_repository" {
 
 resource "azuread_application_app_role" "administrator" {
   application_id       = azuread_application.destiny_repository.id
-  allowed_member_types = ["User", "Application"]
+  allowed_member_types = ["Application"]
   description          = "Can manage the repository itself"
   display_name         = "Administrator"
   role_id              = random_uuid.administrator_role.result
@@ -90,7 +90,7 @@ resource "azuread_application_app_role" "administrator" {
 
 resource "azuread_application_app_role" "importer" {
   application_id       = azuread_application.destiny_repository.id
-  allowed_member_types = ["User", "Application"]
+  allowed_member_types = ["Application"]
   description          = "Importers can import"
   display_name         = "Importers"
   role_id              = random_uuid.importer_role.result
@@ -99,7 +99,7 @@ resource "azuread_application_app_role" "importer" {
 
 resource "azuread_application_app_role" "reference_reader" {
   application_id       = azuread_application.destiny_repository.id
-  allowed_member_types = ["User", "Application"]
+  allowed_member_types = ["Application"]
   description          = "Can view references"
   display_name         = "Reference Reader"
   role_id              = random_uuid.reference_reader_role.result
@@ -108,7 +108,7 @@ resource "azuread_application_app_role" "reference_reader" {
 
 resource "azuread_application_app_role" "robot_writer" {
   application_id       = azuread_application.destiny_repository.id
-  allowed_member_types = ["User", "Application"]
+  allowed_member_types = ["Application"]
   description          = "Can register robots and rotate robot client secrets"
   display_name         = "Robot Writer"
   role_id              = random_uuid.robot_writer_role.result
@@ -117,7 +117,7 @@ resource "azuread_application_app_role" "robot_writer" {
 
 resource "azuread_application_app_role" "enhancement_request_writer" {
   application_id       = azuread_application.destiny_repository.id
-  allowed_member_types = ["User", "Application"]
+  allowed_member_types = ["Application"]
   description          = "Can request enhancements"
   display_name         = "Enhancement Request Writer"
   role_id              = random_uuid.enhancement_request_writer_role.result
@@ -135,35 +135,34 @@ resource "azuread_application_identifier_uri" "this" {
   identifier_uri = "api://${azuread_application.destiny_repository.client_id}"
 }
 
-# Assign developers group all authentication scopes
-# This group is managed by click-ops in Entra Id
-resource "azuread_app_role_assignment" "developer_to_administrator" {
+# Assign auth client to all authentication scopes
+resource "azuread_app_role_assignment" "auth_client_to_administrator" {
   app_role_id         = azuread_application_app_role.administrator.role_id
-  principal_object_id = var.developers_group_id
+  principal_object_id = azuread_service_principal.destiny_repository_auth.object_id
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
 }
 
-resource "azuread_app_role_assignment" "developer_to_importer" {
+resource "azuread_app_role_assignment" "auth_client_to_importer" {
   app_role_id         = azuread_application_app_role.importer.role_id
-  principal_object_id = var.developers_group_id
+  principal_object_id = azuread_service_principal.destiny_repository_auth.object_id
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
 }
 
-resource "azuread_app_role_assignment" "developer_to_reference_reader" {
+resource "azuread_app_role_assignment" "auth_client_to_reference_reader" {
   app_role_id         = azuread_application_app_role.reference_reader.role_id
-  principal_object_id = var.developers_group_id
+  principal_object_id = azuread_service_principal.destiny_repository_auth.object_id
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
 }
 
-resource "azuread_app_role_assignment" "developer_to_robot_writer" {
+resource "azuread_app_role_assignment" "auth_client_to_robot_writer" {
   app_role_id         = azuread_application_app_role.robot_writer.role_id
-  principal_object_id = var.developers_group_id
+  principal_object_id = azuread_service_principal.destiny_repository_auth.object_id
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
 }
 
-resource "azuread_app_role_assignment" "developer_to_enhancement_request_writer" {
+resource "azuread_app_role_assignment" "auth_client_to_enhancement_request_writer" {
   app_role_id         = azuread_application_app_role.enhancement_request_writer.role_id
-  principal_object_id = var.developers_group_id
+  principal_object_id = azuread_service_principal.destiny_repository_auth.object_id
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
 }
 
@@ -191,6 +190,14 @@ resource "azuread_application_api_access" "destiny_repository_auth" {
     random_uuid.reference_reader_scope.result,
     random_uuid.enhancement_request_writer_scope.result,
     random_uuid.robot_writer_scope.result,
+  ]
+
+  role_ids = [
+    azuread_application_app_role.administrator.role_id,
+    azuread_application_app_role.importer.role_id,
+    azuread_application_app_role.reference_reader.role_id,
+    azuread_application_app_role.enhancement_request_writer.role_id,
+    azuread_application_app_role.robot_writer.role_id,
   ]
 }
 
