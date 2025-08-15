@@ -1,0 +1,71 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="destiny_sdk.enhancements.AbstractContentEnhancement
+
+An enhancement which is specific to the abstract of a reference.
+
+This is separate from the `BibliographicMetadata` for two reasons:
+
+1. Abstracts are increasingly missing from sources like OpenAlex, and may be
+backfilled from other sources, without the bibliographic metadata.
+2. They are also subject to copyright limitations in ways which metadata are
+not, and thus need separate visibility controls.
+" alt="" coords="1567,97,2015,209"/>
+<area shape="rect" id="node2" title="destiny_sdk.enhancements.AnnotationEnhancement
+
+An enhancement which is composed of a list of Annotations.
+" alt="" coords="1555,258,2026,342"/>
+<area shape="rect" id="node3" title="destiny_sdk.enhancements.BooleanAnnotation
+
+An annotation is a way of tagging the content with a label of some kind.
+
+This class will probably be broken up in the future, but covers most of our
+initial cases.
+" alt="" coords="2181,71,2584,267"/>
+<area shape="rect" id="node4" title="destiny_sdk.enhancements.ScoreAnnotation
+
+An annotation which represents the score for a label.
+
+This is similar to a BooleanAnnotation, but lacks a boolean determination
+as to the application of the label.
+" alt="" coords="2195,316,2570,484"/>
+<area shape="rect" id="node5" title="destiny_sdk.enhancements.Authorship
+
+Represents a single author and their association with a reference.
+
+This is a simplification of the OpenAlex [Authorship
+object](https://docs.openalex.org/api&#45;entities/works/work&#45;object/authorship&#45;object)
+for our purposes.
+" alt="" coords="2269,532,2497,644"/>
+<area shape="rect" id="node6" title="destiny_sdk.enhancements.BibliographicMetadataEnhancement
+
+An enhancement which is made up of bibliographic metadata.
+
+Generally this will be sourced from a database such as OpenAlex or similar.
+For directly contributed references, these may not be complete.
+" alt="" coords="1544,390,2037,642"/>
+<area shape="rect" id="node7" title="destiny_sdk.enhancements.Enhancement
+
+Core enhancement class.
+" alt="" coords="416,128,1400,352"/>
+<area shape="rect" id="node8" title="destiny_sdk.enhancements.LocationEnhancement
+
+An enhancement which describes locations where this reference can be found.
+
+This maps closely (almost exactly) to OpenAlex&#39;s locations.
+" alt="" coords="1569,690,2013,774"/>
+<area shape="rect" id="node9" title="destiny_sdk.enhancements.Location
+
+A location where a reference can be found.
+
+This maps almost completely to the OpenAlex
+[Location object](https://docs.openalex.org/api&#45;entities/works/work&#45;object/location&#45;object)
+" alt="" coords="2233,747,2532,943"/>
+<area shape="rect" id="node10" title="libs.sdk.src.destiny_sdk.robots.RobotError
+
+A record of something going wrong with the robot.
+" alt="" coords="857,24,959,80"/>
+<area shape="rect" id="node11" title="libs.sdk.src.destiny_sdk.robots.RobotResult
+
+The result of a robot request which is returned to the repo.
+" alt="" coords="5,5,272,117"/>
+</map>
