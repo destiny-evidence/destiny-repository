@@ -20,9 +20,25 @@ class FakeAuthScopes(StrEnum):
 
 
 @pytest.fixture
-def auth(fake_tenant_id: str, fake_application_id: str) -> AzureJwtAuth:
+def auth(
+    fake_tenant_id: str,
+    fake_application_id: str,
+) -> AzureJwtAuth:
     """Create fixure AzureJwtAuth instance for testing."""
-    return AzureJwtAuth(fake_tenant_id, fake_application_id, FakeAuthScopes.READ_ALL)
+    return AzureJwtAuth(
+        fake_tenant_id, fake_application_id, scope=FakeAuthScopes.READ_ALL
+    )
+
+
+@pytest.fixture
+def auth_with_role(
+    fake_tenant_id: str,
+    fake_application_id: str,
+) -> AzureJwtAuth:
+    """Create fixure AzureJwtAuth instance for testing."""
+    return AzureJwtAuth(
+        fake_tenant_id, fake_application_id, role=FakeAuthScopes.READ_ALL
+    )
 
 
 @pytest.fixture
@@ -178,7 +194,7 @@ async def test_verify_token_parse_failure_after_retry(
     assert excinfo.value.detail == "Unable to parse authentication token."
 
 
-async def test_requires_read_all_success(
+async def test_requires_read_all_scope_success(
     httpx_mock: HTTPXMock,
     auth: AzureJwtAuth,
     fake_public_key: dict,
@@ -192,6 +208,22 @@ async def test_requires_read_all_success(
     credentials = Mock()
     credentials.credentials = token
     assert await auth(fake_request, credentials) is True
+
+
+async def test_requires_read_all_role_success(
+    httpx_mock: HTTPXMock,
+    auth_with_role: AzureJwtAuth,
+    fake_public_key: dict,
+    generate_fake_token: Callable[..., str],
+    fake_request: Request,
+):
+    """Test that we successfully validate a token with the requested scope."""
+    httpx_mock.add_response(json={"keys": [fake_public_key]})
+
+    token = generate_fake_token(role=FakeAuthScopes.READ_ALL.value)
+    credentials = Mock()
+    credentials.credentials = token
+    assert await auth_with_role(fake_request, credentials) is True
 
 
 async def test_requires_read_all_scope_not_found(
@@ -212,11 +244,33 @@ async def test_requires_read_all_scope_not_found(
     assert excinfo.value.status_code == status.HTTP_403_FORBIDDEN
     assert (
         excinfo.value.detail
-        == "IDW10203: The app permissions (role) claim does not contain the scope read.all"  # noqa: E501
+        == "IDW10203: The scope permissions (scp) claim does not contain the required scope read.all"  # noqa: E501
     )
 
 
-async def test_requires_read_all_scope_not_present(
+async def test_requires_read_all_role_not_found(
+    httpx_mock: HTTPXMock,
+    auth_with_role: AzureJwtAuth,
+    fake_public_key: dict,
+    generate_fake_token: Callable[..., str],
+    fake_request: Request,
+):
+    """Test that we raise an exception with a token without the appropriate scope."""
+    httpx_mock.add_response(json={"keys": [fake_public_key]})
+
+    token = generate_fake_token(role="not.read.all")
+    credentials = Mock()
+    credentials.credentials = token
+    with pytest.raises(HTTPException) as excinfo:
+        await auth_with_role(fake_request, credentials)
+    assert excinfo.value.status_code == status.HTTP_403_FORBIDDEN
+    assert (
+        excinfo.value.detail
+        == "IDW10203: The role permissions (roles) claim does not contain the required role read.all"  # noqa: E501
+    )
+
+
+async def test_required_scope_and_role_not_present(
     httpx_mock: HTTPXMock,
     auth: AzureJwtAuth,
     fake_public_key: dict,
@@ -234,7 +288,7 @@ async def test_requires_read_all_scope_not_present(
     assert excinfo.value.status_code == status.HTTP_403_FORBIDDEN
     assert (
         excinfo.value.detail
-        == "IDW10201: No app permissions (role) claim was found in the bearer token"
+        == "IDW10201: Neither scope or roles claim was found in the bearer token."
     )
 
 

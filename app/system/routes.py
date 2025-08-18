@@ -11,6 +11,7 @@ from taskiq import AsyncTaskiqDecoratedTask
 
 from app.api.auth import (
     AuthMethod,
+    AuthRoles,
     AuthScopes,
     CachingStrategyAuth,
     choose_auth_strategy,
@@ -59,6 +60,7 @@ def choose_auth_strategy_administrator() -> AuthMethod:
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScopes.ADMINISTRATOR,
+        auth_role=AuthRoles.ADMINISTRATOR,
         bypass_auth=settings.running_locally,
     )
 
