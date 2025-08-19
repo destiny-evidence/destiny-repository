@@ -339,7 +339,6 @@ class AzureJwtAuth(AuthMethod):
             return response.json()
 
     def _require_scope_or_role(self, verified_claims: dict[str, Any]) -> bool:
-        print(verified_claims)  # noqa: T201
         # Delegated (user) token: check scopes
         if self.scope and verified_claims.get("scp"):
             scopes = verified_claims["scp"].split()
