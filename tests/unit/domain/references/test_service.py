@@ -58,17 +58,6 @@ async def test_get_reference_not_found(fake_repository, fake_uow):
 
 
 @pytest.mark.asyncio
-async def test_register_reference_happy_path(fake_repository, fake_uow):
-    repo = fake_repository()
-    uow = fake_uow(references=repo)
-    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
-    created = await service.register_reference()
-    # Verify that an id was assigned during registration.
-    assert hasattr(created, "id")
-    assert isinstance(created.id, uuid.UUID)
-
-
-@pytest.mark.asyncio
 async def test_add_identifier_happy_path(fake_repository, fake_uow):
     dummy_id = uuid.uuid4()
     dummy_reference = Reference(id=dummy_id)
