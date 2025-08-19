@@ -4,7 +4,7 @@ import datetime
 from enum import StrEnum, auto
 from typing import Annotated, Literal
 
-from pydantic import UUID4, BaseModel, Field, HttpUrl, field_validator
+from pydantic import UUID4, BaseModel, Field, HttpUrl
 
 from destiny_sdk.core import _JsonlFileInputMixIn
 from destiny_sdk.visibility import Visibility
@@ -101,44 +101,6 @@ other works have cited this work
         description="The name of the entity which published the version of record.",
     )
     title: str | None = Field(default=None, description="The title of the reference.")
-
-    @field_validator("authorship", mode="after")
-    @classmethod
-    def validate_authorship_order(
-        cls, authorship: list[Authorship] | None
-    ) -> list[Authorship] | None:
-        """
-        Validate the authorship list.
-
-        Ensures that the authorship list has a maximum of one first author,
-        at most one last author, and that all authors have a display name.
-        """
-        if not authorship:
-            return None
-
-        if len(authorship) == 1:
-            # If there's only one author, they are both first and last. Accept either.
-            if authorship[0].position not in (
-                AuthorPosition.FIRST,
-                AuthorPosition.LAST,
-            ):
-                msg = "Single authorship must be either first or last author."
-                raise ValueError(msg)
-        else:
-            # Two or more - ensure exactly one first and one last author.
-            first_authors = [
-                a for a in authorship if a.position == AuthorPosition.FIRST
-            ]
-            last_authors = [a for a in authorship if a.position == AuthorPosition.LAST]
-
-            if len(first_authors) != 1:
-                msg = "There must be exactly one first author."
-                raise ValueError(msg)
-            if len(last_authors) != 1:
-                msg = "There must be exactly one last author."
-                raise ValueError(msg)
-
-        return authorship
 
 
 class AbstractProcessType(StrEnum):

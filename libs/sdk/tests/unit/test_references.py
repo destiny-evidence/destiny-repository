@@ -83,3 +83,32 @@ def test_es_parsing():
     assert reference.enhancements[0].id == uuid.UUID(
         "52f3fc92-db0b-4e65-a18c-31d091242c3a"
     )
+
+
+def test_jsonl_serialization():
+    reference = destiny_sdk.references.Reference(
+        id=(_id := uuid.uuid4()),
+        enhancements=[
+            destiny_sdk.enhancements.Enhancement(
+                reference_id=_id,
+                source="testing",
+                visibility=destiny_sdk.visibility.Visibility.PUBLIC,
+                content=destiny_sdk.enhancements.AbstractContentEnhancement(
+                    process=destiny_sdk.enhancements.AbstractProcessType.UNINVERTED,
+                    abstract="This is a funky paragraph separator: \u2029.",
+                ),
+            )
+        ],
+        identifiers=[
+            destiny_sdk.identifiers.OpenAlexIdentifier(identifier="W12345678")
+        ],
+    )
+
+    reference_jsonl = reference.to_jsonl()
+    assert "This is a funky paragraph separator: \\n." in reference_jsonl
+
+    round_trip_reference = destiny_sdk.references.Reference.from_jsonl(reference_jsonl)
+    assert (
+        reference.enhancements[0].content.abstract.replace("\u2029", "\n")
+        == round_trip_reference.enhancements[0].content.abstract
+    )
