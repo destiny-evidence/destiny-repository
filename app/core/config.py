@@ -101,8 +101,9 @@ class ESConfig(BaseModel):
     api_key: str | None = None
 
     # Other configuration
+    timeout_seconds: int = 30
     retry_on_timeout: bool = True
-    max_retries: int = 3
+    max_retries: int = 5
 
     @property
     def uses_api_key(self) -> bool:
@@ -226,6 +227,12 @@ class UploadFile(StrEnum):
     BATCH_ENHANCEMENT_REQUEST_REFERENCE_DATA = auto()
 
 
+class FeatureFlags(BaseModel):
+    """Feature flags for the application."""
+
+    deduplication: bool = False
+
+
 class Settings(BaseSettings):
     """Settings model for API."""
 
@@ -234,6 +241,8 @@ class Settings(BaseSettings):
     )
 
     project_root: Path = Path(__file__).joinpath("../../..").resolve()
+
+    feature_flags: FeatureFlags = FeatureFlags()
 
     db_config: DatabaseConfig
     es_config: ESConfig

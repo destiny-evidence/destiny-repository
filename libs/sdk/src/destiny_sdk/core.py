@@ -4,6 +4,18 @@ from typing import Self
 
 from pydantic import BaseModel
 
+# These are non-standard newline characters that are not escaped by model_dump_json().
+# We want jsonl files to have empirical new lines so they can be streamed line by line.
+# Hence we replace each occurrence with standard new lines.
+_ESCAPED_NEW_LINE = "\\n"
+_UNSUPPORTED_NEWLINE_TRANSLATION = str.maketrans(
+    {
+        "\u0085": _ESCAPED_NEW_LINE,
+        "\u2028": _ESCAPED_NEW_LINE,
+        "\u2029": _ESCAPED_NEW_LINE,
+    }
+)
+
 
 class _JsonlFileInputMixIn(BaseModel):
     """
@@ -20,7 +32,9 @@ class _JsonlFileInputMixIn(BaseModel):
         :return: The JSONL string representation of the model.
         :rtype: str
         """
-        return self.model_dump_json(exclude_none=True)
+        return self.model_dump_json(exclude_none=True).translate(
+            _UNSUPPORTED_NEWLINE_TRANSLATION
+        )
 
     @classmethod
     def from_jsonl(cls, jsonl: str) -> Self:

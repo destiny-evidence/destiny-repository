@@ -450,9 +450,9 @@ class AuthError(destiny_sdk.auth.AuthException):
             *args: Additional arguments for the exception.
 
         """
+        super().__init__(status_code, detail, headers)
         set_span_status(
             StatusCode.ERROR,
             detail=detail,
             exception=self,
         )
-        super().__init__(status_code, detail, headers)
