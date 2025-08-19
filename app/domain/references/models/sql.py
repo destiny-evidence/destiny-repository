@@ -12,7 +12,6 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.models import (
     BatchEnhancementRequestStatus,
-    EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
@@ -20,9 +19,6 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.models import (
     Enhancement as DomainEnhancement,
-)
-from app.domain.references.models.models import (
-    EnhancementRequest as DomainEnhancementRequest,
 )
 from app.domain.references.models.models import (
     LinkedExternalIdentifier as DomainExternalIdentifier,
@@ -232,72 +228,6 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             robot_version=self.robot_version,
             derived_from=self.derived_from,
             content=self.content,
-            reference=self.reference.to_domain()
-            if "reference" in (preload or [])
-            else None,
-        )
-
-
-class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
-    """
-    SQL Persistence model for an EnhancementRequest.
-
-    This is used in the repository layer to pass data between the domain and the
-    database.
-    """
-
-    __tablename__ = "enhancement_request"
-
-    reference_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("reference.id"), nullable=False
-    )
-
-    robot_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
-
-    request_status: Mapped[EnhancementRequestStatus] = mapped_column(
-        ENUM(
-            *[status.value for status in EnhancementRequestStatus],
-            name="request_status",
-        )
-    )
-
-    source: Mapped[str | None] = mapped_column(String, nullable=True)
-
-    enhancement_parameters: Mapped[dict[str, Any] | None] = mapped_column(
-        JSONB, nullable=True
-    )
-
-    error: Mapped[str | None] = mapped_column(String, nullable=True)
-
-    reference: Mapped["Reference"] = relationship("Reference")
-
-    @classmethod
-    def from_domain(cls, domain_obj: DomainEnhancementRequest) -> Self:
-        """Create a persistence model from a domain Enhancement object."""
-        return cls(
-            id=domain_obj.id,
-            reference_id=domain_obj.reference_id,
-            robot_id=domain_obj.robot_id,
-            request_status=domain_obj.request_status,
-            source=domain_obj.source,
-            enhancement_parameters=domain_obj.enhancement_parameters
-            if domain_obj.enhancement_parameters
-            else None,
-            error=domain_obj.error,
-        )
-
-    def to_domain(self, preload: list[str] | None = None) -> DomainEnhancementRequest:
-        """Convert the persistence model into a Domain Enhancement object."""
-        return DomainEnhancementRequest(
-            id=self.id,
-            reference_id=self.reference_id,
-            robot_id=self.robot_id,
-            request_status=self.request_status,
-            source=self.source,
-            enhancement_parameters=self.enhancement_parameters
-            if self.enhancement_parameters
-            else {},
-            error=self.error,
             reference=self.reference.to_domain()
             if "reference" in (preload or [])
             else None,

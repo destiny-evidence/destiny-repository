@@ -30,8 +30,7 @@ class RobotRequestDispatcher:
         self,
         endpoint: str,
         robot: Robot,
-        robot_request: destiny_sdk.robots.RobotRequest
-        | destiny_sdk.robots.BatchRobotRequest,
+        robot_request: destiny_sdk.robots.BatchRobotRequest,
     ) -> httpx.Response:
         """Send a request to a robot, handling error cases."""
         try:
