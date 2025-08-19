@@ -23,9 +23,6 @@ from app.domain.references.models.models import (
     Enhancement as DomainEnhancement,
 )
 from app.domain.references.models.models import (
-    EnhancementRequest as DomainEnhancementRequest,
-)
-from app.domain.references.models.models import (
     ExternalIdentifierType,
     GenericExternalIdentifier,
     RobotAutomationPercolationResult,
@@ -43,7 +40,6 @@ from app.domain.references.models.sql import (
     BatchEnhancementRequest as SQLBatchEnhancementRequest,
 )
 from app.domain.references.models.sql import Enhancement as SQLEnhancement
-from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import ExternalIdentifier as SQLExternalIdentifier
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.models.sql import RobotAutomation as SQLRobotAutomation
@@ -263,28 +259,6 @@ class EnhancementSQLRepository(
             session,
             DomainEnhancement,
             SQLEnhancement,
-        )
-
-
-class EnhancementRequestRepositoryBase(
-    GenericAsyncRepository[DomainEnhancementRequest, GenericPersistenceType],
-    ABC,
-):
-    """Abstract implementation of a repository for enhancement requests."""
-
-
-class EnhancementRequestSQLRepository(
-    GenericAsyncSqlRepository[DomainEnhancementRequest, SQLEnhancementRequest],
-    EnhancementRequestRepositoryBase,
-):
-    """Concrete implementation of a repository for enhancement requests."""
-
-    def __init__(self, session: AsyncSession) -> None:
-        """Initialize the repository with the database session."""
-        super().__init__(
-            session,
-            DomainEnhancementRequest,
-            SQLEnhancementRequest,
         )
 
 

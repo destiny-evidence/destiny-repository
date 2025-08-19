@@ -160,14 +160,6 @@ enhancement_request_router = APIRouter(
         Depends(PayloadAttributeTracer("robot_id")),
     ],
 )
-single_enhancement_request_router = APIRouter(
-    prefix="/single-requests",
-    tags=["single-enhancement-requests"],
-    dependencies=[
-        Depends(enhancement_request_hybrid_auth),
-        Depends(PayloadAttributeTracer("robot_id")),
-    ],
-)
 batch_enhancement_request_router = APIRouter(
     prefix="/batch-requests",
     tags=["batch-enhancement-requests"],
@@ -221,33 +213,6 @@ async def get_reference_from_identifier(
     return anti_corruption_service.reference_to_sdk(reference)
 
 
-@single_enhancement_request_router.post(
-    "/",
-    status_code=status.HTTP_202_ACCEPTED,
-)
-async def request_enhancement(
-    enhancement_request_in: destiny_sdk.robots.EnhancementRequestIn,
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    robot_service: Annotated[RobotService, Depends(robot_service)],
-    robot_request_dispatcher: Annotated[
-        RobotRequestDispatcher, Depends(robot_request_dispatcher)
-    ],
-    anti_corruption_service: Annotated[
-        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
-    ],
-) -> destiny_sdk.robots.EnhancementRequestRead:
-    """Request the creation of an enhancement against a provided reference id."""
-    enhancement_request = await reference_service.request_reference_enhancement(
-        enhancement_request=anti_corruption_service.enhancement_request_from_sdk(
-            enhancement_request_in
-        ),
-        robot_service=robot_service,
-        robot_request_dispatcher=robot_request_dispatcher,
-    )
-
-    return anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
-
-
 @batch_enhancement_request_router.post(
     "/",
     status_code=status.HTTP_202_ACCEPTED,
@@ -275,26 +240,6 @@ async def request_batch_enhancement(
     )
 
 
-@single_enhancement_request_router.get(
-    "/{enhancement_request_id}/",
-)
-async def check_enhancement_request_status(
-    enhancement_request_id: Annotated[
-        uuid.UUID, Path(description="The ID of the enhancement request.")
-    ],
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    anti_corruption_service: Annotated[
-        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
-    ],
-) -> destiny_sdk.robots.EnhancementRequestRead:
-    """Check the status of an enhancement request."""
-    enhancement_request = await reference_service.get_enhancement_request(
-        enhancement_request_id
-    )
-
-    return anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
-
-
 @batch_enhancement_request_router.get(
     "/{batch_enhancement_request_id}/",
 )
@@ -315,56 +260,6 @@ async def check_batch_enhancement_request_status(
     return await anti_corruption_service.batch_enhancement_request_to_sdk(
         batch_enhancement_request
     )
-
-
-@single_enhancement_request_router.post(
-    "/{enhancement_request_id}/results/",
-    status_code=status.HTTP_201_CREATED,
-)
-async def fulfill_enhancement_request(
-    robot_result: destiny_sdk.robots.RobotResult,
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    robot_service: Annotated[RobotService, Depends(robot_service)],
-    robot_request_dispatcher: Annotated[
-        RobotRequestDispatcher, Depends(robot_request_dispatcher)
-    ],
-    anti_corruption_service: Annotated[
-        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
-    ],
-    response: Response,
-) -> destiny_sdk.robots.EnhancementRequestRead:
-    """Create an enhancement against an existing enhancement request."""
-    if robot_result.error:
-        enhancement_request = await reference_service.mark_enhancement_request_failed(
-            enhancement_request_id=robot_result.request_id,
-            error=robot_result.error.message,
-        )
-        response.status_code = status.HTTP_200_OK
-        return anti_corruption_service.enhancement_request_to_sdk(
-            enhancement_request=enhancement_request
-        )
-    if not robot_result.enhancement:
-        enhancement_request = await reference_service.mark_enhancement_request_failed(
-            enhancement_request_id=robot_result.request_id,
-            error="No enhancement received.",
-        )
-        response.status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
-        return anti_corruption_service.enhancement_request_to_sdk(
-            enhancement_request=enhancement_request
-        )
-
-    enhancement_request = (
-        await reference_service.create_reference_enhancement_from_request(
-            enhancement_request_id=robot_result.request_id,
-            enhancement=anti_corruption_service.enhancement_from_sdk(
-                robot_result.enhancement
-            ),
-            robot_service=robot_service,
-            robot_request_dispatcher=robot_request_dispatcher,
-        )
-    )
-
-    return anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
 
 
 @batch_enhancement_request_router.post(
@@ -465,6 +360,5 @@ async def get_robot_automations(
     ]
 
 
-enhancement_request_router.include_router(single_enhancement_request_router)
 enhancement_request_router.include_router(batch_enhancement_request_router)
 enhancement_request_router.include_router(enhancement_request_automation_router)

@@ -17,8 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import settings as auth_settings
 from app.core.config import Environment
-from app.domain.references.models.models import EnhancementRequestStatus
-from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
+from app.domain.references.models.models import BatchEnhancementRequestStatus
+from app.domain.references.models.sql import (
+    BatchEnhancementRequest as SQLBatchEnhancementRequest,
+)
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.routes import enhancement_request_router
 from app.domain.robots.models.sql import Robot as SQLRobot
@@ -82,14 +84,14 @@ async def reference(session: AsyncSession) -> SQLReference:
 
 
 @pytest.fixture
-async def enhancement_request(
+async def batch_enhancement_request(
     session: AsyncSession, registered_robot: SQLRobot, reference: SQLReference
-) -> SQLEnhancementRequest:
+) -> SQLBatchEnhancementRequest:
     """Create an enhancement request for testing."""
-    request = SQLEnhancementRequest(
-        reference_id=reference.id,
+    request = SQLBatchEnhancementRequest(
+        reference_ids=[reference.id],
         robot_id=registered_robot.id,
-        request_status=EnhancementRequestStatus.ACCEPTED,
+        request_status=BatchEnhancementRequestStatus.ACCEPTED,
         enhancement_parameters={},
     )
     session.add(request)
@@ -120,7 +122,7 @@ async def test_hmac_multi_client_authentication_happy_path(
     es_client: AsyncElasticsearch,  # noqa: ARG001
     auth_settings_production: None,  # noqa: ARG001
     registered_robot: SQLRobot,
-    enhancement_request: SQLEnhancementRequest,
+    batch_enhancement_request: SQLBatchEnhancementRequest,
 ) -> None:
     """Test authentication is successful when signature is correct."""
     auth = destiny_sdk.client.HMACSigningAuth(
@@ -128,7 +130,7 @@ async def test_hmac_multi_client_authentication_happy_path(
     )
 
     response = await client.get(
-        f"/v1/enhancement-requests/single-requests/{enhancement_request.id}/",
+        f"/v1/enhancement-requests/batch-requests/{batch_enhancement_request.id}/",
         auth=auth,
     )
 
@@ -138,17 +140,16 @@ async def test_hmac_multi_client_authentication_happy_path(
 async def test_hmac_multi_client_authentication_robot_does_not_exist(
     client: AsyncClient,
     session: AsyncSession,  # noqa: ARG001
-    auth_settings_production: None,  # noqa: ARG001
+    auth_settings_production: None,  # noqa: ARG001,
+    batch_enhancement_request: SQLBatchEnhancementRequest,
 ) -> None:
     """Test authentication fails when robot does not exist."""
-    random_enhancement_id = uuid.uuid4()
-
     auth = destiny_sdk.client.HMACSigningAuth(
         client_id=uuid.uuid4(), secret_key="nonsense"
     )
 
     response = await client.get(
-        f"/v1/enhancement-requests/single-requests/{random_enhancement_id}/",
+        f"/v1/enhancement-requests/batch-requests/{batch_enhancement_request.id}/",
         auth=auth,
     )
 
@@ -159,7 +160,7 @@ async def test_hmac_multi_client_authentication_robot_secret_mismatch(
     client: AsyncClient,
     auth_settings_production: None,  # noqa: ARG001
     registered_robot: SQLRobot,
-    enhancement_request: SQLEnhancementRequest,
+    batch_enhancement_request: SQLBatchEnhancementRequest,
 ) -> None:
     """Test authentication fails when signature is correct but secret is wrong."""
     auth = destiny_sdk.client.HMACSigningAuth(
@@ -167,7 +168,7 @@ async def test_hmac_multi_client_authentication_robot_secret_mismatch(
     )
 
     response = await client.get(
-        f"/v1/enhancement-requests/single-requests/{enhancement_request.id}/",
+        f"/v1/enhancement-requests/batch-requests/{batch_enhancement_request.id}/",
         auth=auth,
     )
 
@@ -180,14 +181,14 @@ async def test_jwt_authentication_happy_path(  # noqa: PLR0913
     stubbed_jwks_response: None,  # noqa: ARG001
     generate_fake_token: Callable[[dict | None, str | None], str],
     configured_jwt_auth: None,  # noqa: ARG001
-    enhancement_request: SQLEnhancementRequest,
+    batch_enhancement_request: SQLBatchEnhancementRequest,
 ) -> None:
     """Test authentication is successful when JWT token is valid."""
     # Generate JWT token with appropriate scope
     token = generate_fake_token({"sub": "test_user"}, "enhancement_request.writer")
 
     response = await client.get(
-        f"/v1/enhancement-requests/single-requests/{enhancement_request.id}/",
+        f"/v1/enhancement-requests/batch-requests/{batch_enhancement_request.id}/",
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -199,14 +200,14 @@ async def test_jwt_authentication_failed_jwks_key_lookup(
     es_client: AsyncElasticsearch,  # noqa: ARG001
     generate_fake_token: Callable[[dict | None, str | None], str],
     configured_jwt_auth: None,  # noqa: ARG001
-    enhancement_request: SQLEnhancementRequest,
+    batch_enhancement_request: SQLBatchEnhancementRequest,
 ) -> None:
     """Test authentication fails when JWKS key lookup fails."""
     # Generate JWT token with appropriate scope
     token = generate_fake_token({"sub": "test_user"}, "enhancement_request.writer")
 
     response = await client.get(
-        f"/v1/enhancement-requests/single-requests/{enhancement_request.id}/",
+        f"/v1/enhancement-requests/batch-requests/{batch_enhancement_request.id}/",
         headers={"Authorization": f"Bearer {token}"},
     )
 
