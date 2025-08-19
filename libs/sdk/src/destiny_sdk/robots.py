@@ -148,64 +148,6 @@ If the URL expires, a new one can be generated using
     )
 
 
-class EnhancementRequestStatus(StrEnum):
-    """
-    The status of an enhancement request.
-
-    **Allowed values**:
-    - `received`: Enhancement request has been received.
-    - `accepted`: Enhancement request has been accepted.
-    - `rejected`: Enhancement request has been rejected.
-    - `failed`: Enhancement failed to create.
-    - `completed`: Enhancement has been created.
-    """
-
-    RECEIVED = auto()
-    ACCEPTED = auto()
-    REJECTED = auto()
-    FAILED = auto()
-    COMPLETED = auto()
-
-
-class _EnhancementRequestBase(BaseModel):
-    """
-    Base enhancement request class.
-
-    An enhancement request is a request to create an enhancement on a reference.
-    It contains the reference and the robot to be used to create the enhancement.
-    """
-
-    reference_id: UUID4 = Field(description="The ID of the reference to be enhanced.")
-    robot_id: UUID4 = Field(
-        description="The robot to be used to create the enhancement."
-    )
-    source: str | None = Field(
-        default=None,
-        description="The source of the batch enhancement request.",
-    )
-
-    enhancement_parameters: dict | None = Field(
-        default=None, description="Information needed to create the enhancement. TBC."
-    )
-
-
-class EnhancementRequestIn(_EnhancementRequestBase):
-    """The model for requesting an enhancement on specific reference."""
-
-
-class EnhancementRequestRead(_EnhancementRequestBase):
-    """Core enhancement request class."""
-
-    id: UUID4
-    request_status: EnhancementRequestStatus = Field(
-        description="The status of the request to create an enhancement",
-    )
-    error: str | None = Field(
-        default=None,
-        description="Error encountered during the enhancement process",
-    )
-
-
 class BatchEnhancementRequestStatus(StrEnum):
     """
     The status of an enhancement request.
