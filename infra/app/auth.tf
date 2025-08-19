@@ -133,6 +133,15 @@ resource "azuread_app_role_assignment" "github_actions_to_importer" {
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
 }
 
+resource "azuread_application_api_access" "github_actions" {
+  application_id = azuread_application_registration.github_actions.id
+  api_client_id  = azuread_application.destiny_repository.client_id
+
+  role_ids = [
+    azuread_application_app_role.importer.role_id
+  ]
+}
+
 # Create an application that we can use to authenticate with the Destiny Repository
 resource "azuread_application_registration" "destiny_repository_auth" {
   display_name                   = "${local.name}-auth-client"
