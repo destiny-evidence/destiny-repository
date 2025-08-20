@@ -128,6 +128,7 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
             "identifier_type",
             "identifier",
             "other_identifier_name",
+            "reference_id",
             name="uix_external_identifier",
             postgresql_nulls_not_distinct=True,
         ),
