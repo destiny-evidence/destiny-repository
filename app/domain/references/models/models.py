@@ -16,9 +16,9 @@ from pydantic import (
     TypeAdapter,
 )
 
+from app.core.exceptions import UnresolvableReferenceDuplicateError
 from app.core.telemetry.logger import get_logger
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
-from app.domain.imports.models.models import CollisionStrategy
 from app.persistence.blob.models import BlobStorageFile
 
 logger = get_logger(__name__)
@@ -114,127 +114,92 @@ class Reference(
         description="A list of enhancements for the reference",
     )
 
-    async def merge(  # noqa: PLR0912
+    def merge(
         self,
         incoming_reference: Self,
-        collision_strategy: CollisionStrategy,
-    ) -> None:
+    ) -> tuple[list["LinkedExternalIdentifier"], list["Enhancement"]]:
         """
         Merge an incoming reference into this one.
 
+        **Enhancements**
+        Appends any enhancements, unless the incoming enhancement is identical to an
+        existing enhancement.
+
+        **Identifiers**
+        Appends any identifiers, unless the incoming identifier is identical to an
+        existing identifier. If any identifiers are of unique types and clash, then
+        raises a ``UnresolvableReferenceDuplicateError``.
+
+        **Returns**
+        The merge operation is in-place and returns a changeset of appended identifiers
+        and enhancements.
+
         Args:
-            - existing_reference (Reference): The existing reference.
+            - self (Reference): The existing reference.
             - incoming_reference (Reference): The incoming reference.
-            - collision_strategy (CollisionStrategy): The strategy to use for
-                handling collisions.
 
         Returns:
-            - Reference: The final reference to be persisted.
+            - tuple[list["LinkedExternalIdentifier"], list["Enhancement"]]: The
+            changeset of appended identifiers and enhancements.
 
         """
 
-        def _get_identifier_key(
-            identifier: ExternalIdentifier,
-        ) -> tuple[str, str | None]:
+        def _hash_model(obj: Enhancement | LinkedExternalIdentifier) -> str:
             """
-            Get the key for an identifier.
+            Pydantic models are natively hashable if frozen=True is set.
 
-            Args:
-                - identifier (LinkedExternalIdentifier)
+            We cannot do this without downstream implications (all the way to the SDK!)
+            so manually hash in this limited context.
 
-            Returns:
-                - tuple[str, str | None]: The key for the identifier.
-
+            We ignore persistence attributes such as id to only compare relevant fields.
             """
-            return (
-                identifier.identifier_type,
-                identifier.other_identifier_name
-                if hasattr(identifier, "other_identifier_name")
-                else None,
+            return obj.model_dump_json(
+                exclude={"id", "reference_id", "reference"},
+                exclude_none=True,
             )
 
-        # Graft matching IDs from self to incoming
-        for identifier in incoming_reference.identifiers or []:
-            for existing_identifier in self.identifiers or []:
-                if _get_identifier_key(identifier.identifier) == _get_identifier_key(
-                    existing_identifier.identifier
-                ):
-                    identifier.id = existing_identifier.id
-        for enhancement in incoming_reference.enhancements or []:
-            for existing_enhancement in self.enhancements or []:
-                if (enhancement.content.enhancement_type, enhancement.source) == (
-                    existing_enhancement.content.enhancement_type,
-                    existing_enhancement.source,
-                ):
-                    enhancement.id = existing_enhancement.id
+        if not self.enhancements:
+            self.enhancements = []
+        if not self.identifiers:
+            self.identifiers = []
 
-        if not self.identifiers or not incoming_reference.identifiers:
-            msg = "No identifiers found in merge. This should not happen."
-            raise RuntimeError(msg)
+        existing_enhancements = {
+            _hash_model(enhancement) for enhancement in self.enhancements
+        }
+        existing_identifiers = {
+            _hash_model(identifier) for identifier in self.identifiers
+        }
+        existing_unique_identifiers = {
+            identifier.identifier.identifier_type
+            for identifier in self.identifiers
+            if identifier.identifier.unique
+        }
 
-        self.enhancements = self.enhancements or []
-        incoming_reference.enhancements = incoming_reference.enhancements or []
+        delta_enhancements = [
+            incoming_enhancement
+            for incoming_enhancement in incoming_reference.enhancements or []
+            if _hash_model(incoming_enhancement) not in existing_enhancements
+        ]
+        delta_identifiers = [
+            incoming_identifier
+            for incoming_identifier in incoming_reference.identifiers or []
+            if _hash_model(incoming_identifier) not in existing_identifiers
+        ]
+        clashing_identifiers = {
+            incoming_identifier
+            for incoming_identifier in delta_identifiers
+            if incoming_identifier.identifier.identifier_type
+            in existing_unique_identifiers
+        }
 
-        # Merge identifiers
-        if collision_strategy == CollisionStrategy.MERGE_DEFENSIVE:
-            self.identifiers.extend(
-                [
-                    identifier
-                    for identifier in incoming_reference.identifiers
-                    if _get_identifier_key(identifier.identifier)
-                    not in {
-                        _get_identifier_key(identifier.identifier)
-                        for identifier in self.identifiers
-                    }
-                ]
-            )
-        elif collision_strategy in (
-            CollisionStrategy.MERGE_AGGRESSIVE,
-            CollisionStrategy.OVERWRITE,
-            CollisionStrategy.APPEND,
-        ):
-            self.identifiers = [
-                identifier
-                for identifier in self.identifiers
-                if _get_identifier_key(identifier.identifier)
-                not in {
-                    _get_identifier_key(identifier.identifier)
-                    for identifier in incoming_reference.identifiers
-                }
-            ] + incoming_reference.identifiers
+        if clashing_identifiers:
+            msg = f"Clashing identifiers found: {clashing_identifiers}"
+            raise UnresolvableReferenceDuplicateError(msg)
 
-        # On an overwrite, we don't preserve the existing enhancements, only identifiers
-        if collision_strategy == CollisionStrategy.OVERWRITE:
-            self.enhancements = incoming_reference.enhancements.copy()
-            return
+        self.enhancements += delta_enhancements
+        self.identifiers += delta_identifiers
 
-        # Otherwise, merge enhancements
-        if collision_strategy == CollisionStrategy.APPEND:
-            self.enhancements += incoming_reference.enhancements
-        elif collision_strategy == CollisionStrategy.MERGE_DEFENSIVE:
-            self.enhancements.extend(
-                [
-                    enhancement
-                    for enhancement in incoming_reference.enhancements
-                    if (enhancement.content.enhancement_type, enhancement.source)
-                    not in {
-                        (enhancement.content.enhancement_type, enhancement.source)
-                        for enhancement in self.enhancements
-                    }
-                ]
-            )
-        elif collision_strategy == CollisionStrategy.MERGE_AGGRESSIVE:
-            self.enhancements = [
-                enhancement
-                for enhancement in self.enhancements
-                if (enhancement.content.enhancement_type, enhancement.source)
-                not in {
-                    (enhancement.content.enhancement_type, enhancement.source)
-                    for enhancement in incoming_reference.enhancements
-                }
-            ] + incoming_reference.enhancements
-
-        return
+        return delta_identifiers, delta_enhancements
 
 
 class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
