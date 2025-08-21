@@ -113,6 +113,10 @@ class Reference(
         default=None,
         description="A list of enhancements for the reference",
     )
+    duplicate_of: uuid.UUID | None = Field(
+        default=None,
+        description="The ID of the canonical reference that this reference duplicates",
+    )
 
     def merge(
         self,
@@ -145,14 +149,7 @@ class Reference(
         """
 
         def _hash_model(obj: Enhancement | LinkedExternalIdentifier) -> str:
-            """
-            Pydantic models are natively hashable if frozen=True is set.
-
-            We cannot do this without downstream implications (all the way to the SDK!)
-            so manually hash in this limited context.
-
-            We ignore persistence attributes such as id to only compare relevant fields.
-            """
+            """Hash enhancement or identifiers for contentwise comparison."""
             return obj.model_dump_json(
                 exclude={"id", "reference_id", "reference"},
                 exclude_none=True,
@@ -176,12 +173,16 @@ class Reference(
         }
 
         delta_enhancements = [
-            incoming_enhancement
+            incoming_enhancement.model_copy(
+                update={"id": uuid.uuid4(), "reference_id": self.id}
+            )
             for incoming_enhancement in incoming_reference.enhancements or []
             if _hash_model(incoming_enhancement) not in existing_enhancements
         ]
         delta_identifiers = [
-            incoming_identifier
+            incoming_identifier.model_copy(
+                update={"id": uuid.uuid4(), "reference_id": self.id}
+            )
             for incoming_identifier in incoming_reference.identifiers or []
             if _hash_model(incoming_identifier) not in existing_identifiers
         ]
@@ -193,7 +194,7 @@ class Reference(
         }
 
         if clashing_identifiers:
-            msg = f"Clashing identifiers found: {clashing_identifiers}"
+            msg = f"Clashing unique identifiers found: {clashing_identifiers}"
             raise UnresolvableReferenceDuplicateError(msg)
 
         self.enhancements += delta_enhancements

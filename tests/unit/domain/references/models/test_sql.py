@@ -25,6 +25,7 @@ class DummyDomainReference:
         self.visibility = visibility
         self.identifiers = identifiers
         self.enhancements = enhancements
+        self.duplicate_of = None
 
 
 class DummyExternalIdentifier:

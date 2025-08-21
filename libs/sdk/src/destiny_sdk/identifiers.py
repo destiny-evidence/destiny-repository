@@ -37,7 +37,9 @@ class DOIIdentifier(BaseModel):
     identifier_type: Literal[ExternalIdentifierType.DOI] = Field(
         ExternalIdentifierType.DOI, description="The type of identifier used."
     )
-    unique: Literal[False] = Field(description="Whether the identifier is unique.")
+    unique: Literal[False] = Field(
+        default=False, description="Whether the identifier is unique."
+    )
 
     @field_validator("identifier", mode="before")
     @classmethod
@@ -57,7 +59,9 @@ class PubMedIdentifier(BaseModel):
     identifier_type: Literal[ExternalIdentifierType.PM_ID] = Field(
         ExternalIdentifierType.PM_ID, description="The type of identifier used."
     )
-    unique: Literal[True] = Field(description="Whether the identifier is unique.")
+    unique: Literal[True] = Field(
+        default=True, description="Whether the identifier is unique."
+    )
 
 
 class OpenAlexIdentifier(BaseModel):
@@ -69,7 +73,9 @@ class OpenAlexIdentifier(BaseModel):
     identifier_type: Literal[ExternalIdentifierType.OPEN_ALEX] = Field(
         ExternalIdentifierType.OPEN_ALEX, description="The type of identifier used."
     )
-    unique: Literal[True] = Field(description="Whether the identifier is unique.")
+    unique: Literal[True] = Field(
+        default=True, description="Whether the identifier is unique."
+    )
 
     @field_validator("identifier", mode="before")
     @classmethod
@@ -92,7 +98,9 @@ class OtherIdentifier(BaseModel):
     other_identifier_name: str = Field(
         description="The name of the undocumented identifier type."
     )
-    unique: Literal[False] = Field(description="Whether the identifier is unique.")
+    unique: Literal[False] = Field(
+        default=False, description="Whether the identifier is unique."
+    )
 
 
 #: Union type for all external identifiers.

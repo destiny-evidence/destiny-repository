@@ -22,6 +22,11 @@ class Reference(_JsonlFileInputMixIn, BaseModel):
     id: UUID4 = Field(
         description="The ID of the reference",
     )
+    duplicate_of: UUID4 | None = Field(
+        default=None,
+        description="The ID of the canonical reference that this reference duplicates",
+    )
+
     identifiers: list[ExternalIdentifier] | None = Field(
         default=None,
         description="A list of `ExternalIdentifiers` for the Reference",

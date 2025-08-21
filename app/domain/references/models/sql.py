@@ -54,6 +54,9 @@ class Reference(GenericSQLPersistence[DomainReference]):
         ),
         nullable=False,
     )
+    duplicate_of: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("reference.id"), nullable=True
+    )
 
     identifiers: Mapped[list["ExternalIdentifier"]] = relationship(
         "ExternalIdentifier",
@@ -63,6 +66,22 @@ class Reference(GenericSQLPersistence[DomainReference]):
     enhancements: Mapped[list["Enhancement"]] = relationship(
         "Enhancement", back_populates="reference", cascade="all, delete, delete-orphan"
     )
+    # NB no cascading effects on duplicating references, handle each explicitly.
+    # Setup the self-referential relationship for canonical/duplicate references
+    canonical_reference: Mapped["Reference | None"] = relationship(
+        "Reference",
+        remote_side="Reference.id",
+        back_populates="duplicate_references",
+    )
+    duplicate_references: Mapped[list["Reference"]] = relationship(
+        "Reference",
+        back_populates="canonical_reference",
+    )
+
+    __table_args__ = (
+        # Makes sure it's performant to find duplicate_references
+        Index("ix_reference_duplicate_of", "duplicate_of"),
+    )
 
     @classmethod
     def from_domain(cls, domain_obj: DomainReference) -> Self:
@@ -70,6 +89,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
         return cls(
             id=domain_obj.id,
             visibility=domain_obj.visibility,
+            duplicate_of=domain_obj.duplicate_of,
             identifiers=[
                 ExternalIdentifier.from_domain(identifier)
                 for identifier in domain_obj.identifiers or []
@@ -78,6 +98,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
                 Enhancement.from_domain(enhancement)
                 for enhancement in domain_obj.enhancements or []
             ],
+            # No cascading on duplicate references so don't populate from domain
         )
 
     def to_domain(self, preload: list[str] | None = None) -> DomainReference:
@@ -85,11 +106,28 @@ class Reference(GenericSQLPersistence[DomainReference]):
         return DomainReference(
             id=self.id,
             visibility=self.visibility,
+            duplicate_of=self.duplicate_of,
             identifiers=[identifier.to_domain() for identifier in self.identifiers]
             if "identifiers" in (preload or [])
             else None,
             enhancements=[enhancement.to_domain() for enhancement in self.enhancements]
             if "enhancements" in (preload or [])
+            else None,
+            # Note we don't propagate the opposite side of the duplicate self-join to
+            # avoid infinite recursion. Having both sides of the relationship in preload
+            # will still return the tree on both sides but won't attempt to double back.
+            canonical_reference=self.canonical_reference.to_domain(
+                preload=[p for p in preload or [] if p != "duplicate_references"]
+            )
+            if "canonical_reference" in (preload or []) and self.canonical_reference
+            else None,
+            duplicate_references=[
+                reference.to_domain(
+                    preload=[p for p in preload or [] if p != "canonical_reference"]
+                )
+                for reference in self.duplicate_references
+            ]
+            if "duplicate_references" in (preload or [])
             else None,
         )
 
