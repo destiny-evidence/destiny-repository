@@ -5,9 +5,13 @@ import uuid
 import destiny_sdk
 import pytest
 
-from app.core.exceptions import SDKToDomainError
+from app.core.exceptions import SDKToDomainError, UnresolvableReferenceDuplicateError
 from app.domain.references.models.models import (
+    Enhancement,
     GenericExternalIdentifier,
+    LinkedExternalIdentifier,
+    Reference,
+    Visibility,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.services.anti_corruption_service import (
@@ -131,3 +135,227 @@ async def test_enhancement_unserializable_failure(
                 ],
             )
         )
+
+
+class TestReferenceMerge:
+    """Tests for the Reference.merge method."""
+
+    @pytest.fixture
+    def annotation(self) -> Enhancement:
+        """Creates a simple annotation enhancement."""
+        annotation = destiny_sdk.enhancements.BooleanAnnotation(
+            annotation_type=destiny_sdk.enhancements.AnnotationType.BOOLEAN,
+            scheme="test",
+            label="test_label",
+            value=True,
+        )
+        annotation_enhancement = destiny_sdk.enhancements.AnnotationEnhancement(
+            enhancement_type=destiny_sdk.enhancements.EnhancementType.ANNOTATION,
+            annotations=[annotation],
+        )
+        return Enhancement(
+            id=uuid.uuid4(),
+            source="test",
+            visibility=Visibility.PUBLIC,
+            content=annotation_enhancement,
+            reference_id=uuid.uuid4(),
+        )
+
+    @pytest.fixture
+    def abstract(self) -> Enhancement:
+        abstract_enhancement = destiny_sdk.enhancements.AbstractContentEnhancement(
+            abstract="Test abstract content",
+            process=destiny_sdk.enhancements.AbstractProcessType.OTHER,
+        )
+        return Enhancement(
+            id=uuid.uuid4(),
+            source="test",
+            visibility=Visibility.PUBLIC,
+            content=abstract_enhancement,
+            reference_id=uuid.uuid4(),
+        )
+
+    @pytest.fixture
+    def doi_identifier(self) -> LinkedExternalIdentifier:
+        """Creates a DOI identifier."""
+        doi = destiny_sdk.identifiers.DOIIdentifier(
+            identifier="10.1000/abc123", identifier_type="doi"
+        )
+        return LinkedExternalIdentifier(
+            id=uuid.uuid4(),
+            identifier=doi,
+            reference_id=uuid.uuid4(),
+        )
+
+    @pytest.fixture
+    def base_reference(self, doi_identifier, abstract) -> Reference:
+        """Creates a base reference."""
+        ref = Reference(id=uuid.uuid4())
+        abstract.reference_id = ref.id
+        doi_identifier.reference_id = ref.id
+        ref.enhancements = [abstract]
+        ref.identifiers = [doi_identifier]
+        return ref
+
+    @pytest.fixture
+    def pmid_identifier(self) -> LinkedExternalIdentifier:
+        """Creates a PubMed identifier."""
+        pmid = destiny_sdk.identifiers.PubMedIdentifier(
+            identifier=1234, identifier_type="pm_id"
+        )
+        return LinkedExternalIdentifier(
+            id=uuid.uuid4(),
+            identifier=pmid,
+            reference_id=uuid.uuid4(),
+        )
+
+    @pytest.fixture
+    def openalex_identifier(self) -> LinkedExternalIdentifier:
+        """Creates an OpenAlex identifier."""
+        oaid = destiny_sdk.identifiers.OpenAlexIdentifier(
+            identifier="W12345", identifier_type="open_alex"
+        )
+        return LinkedExternalIdentifier(
+            id=uuid.uuid4(),
+            identifier=oaid,
+            reference_id=uuid.uuid4(),
+        )
+
+    async def test_merge_empty_reference(self, base_reference):
+        """Test merging an empty reference into another empty reference."""
+        incoming = Reference(id=uuid.uuid4())
+        incoming.enhancements = []
+        incoming.identifiers = []
+
+        delta_identifiers, delta_enhancements = base_reference.merge(incoming)
+
+        assert len(delta_identifiers) == 0
+        assert len(delta_enhancements) == 0
+        assert len(base_reference.identifiers) == 1
+        assert len(base_reference.enhancements) == 1
+
+    async def test_merge_reference_with_new_identifiers(
+        self, base_reference, doi_identifier, pmid_identifier
+    ):
+        """Test merging a reference with identifiers into an empty reference."""
+        incoming = Reference(id=uuid.uuid4())
+        incoming.enhancements = []
+        incoming.identifiers = [doi_identifier, pmid_identifier]
+
+        delta_identifiers, delta_enhancements = base_reference.merge(incoming)
+
+        assert len(delta_identifiers) == 1
+        assert len(delta_enhancements) == 0
+        assert len(base_reference.identifiers) == 2
+        assert len(base_reference.enhancements) == 1
+
+        # Check that reference_id was updated to match base reference
+        assert all(
+            i.reference_id == base_reference.id for i in base_reference.identifiers
+        )
+        # Check that IDs were regenerated on the new identifier
+        assert all(i.id != pmid_identifier.id for i in base_reference.identifiers)
+
+    async def test_merge_reference_with_new_enhancements(
+        self, base_reference, annotation
+    ):
+        """Test merging a reference with enhancements into an empty reference."""
+        incoming = Reference(id=uuid.uuid4())
+        incoming.identifiers = []
+        incoming.enhancements = [annotation]
+
+        delta_identifiers, delta_enhancements = base_reference.merge(incoming)
+
+        assert len(delta_identifiers) == 0
+        assert len(delta_enhancements) == 1
+        assert len(base_reference.identifiers) == 1
+        assert len(base_reference.enhancements) == 2
+
+        # Check that reference_id was updated to match base reference
+        assert all(
+            e.reference_id == base_reference.id for e in base_reference.enhancements
+        )
+        # Check that IDs were regenerated
+        assert all(e.id != annotation.id for e in base_reference.enhancements)
+
+    async def test_merge_reference_with_duplicate_enhancements(
+        self, base_reference, annotation
+    ):
+        """Test merging a reference with duplicate enhancements is handled correctly."""
+        base_reference.enhancements.append(annotation)
+
+        incoming = Reference(id=uuid.uuid4())
+        incoming.identifiers = []
+        incoming.enhancements = [
+            Enhancement(
+                id=uuid.uuid4(),
+                source=annotation.source,
+                visibility=annotation.visibility,
+                content=annotation.content,
+                reference_id=uuid.uuid4(),
+            )
+        ]
+
+        delta_identifiers, delta_enhancements = base_reference.merge(incoming)
+
+        assert len(delta_identifiers) == 0
+        assert len(delta_enhancements) == 0
+        assert len(base_reference.enhancements) == 2
+
+    async def test_merge_reference_with_duplicate_identifiers(
+        self, base_reference, doi_identifier
+    ):
+        """Test merging a reference with duplicate identifiers is handled correctly."""
+        incoming = Reference(id=uuid.uuid4())
+        incoming.enhancements = []
+        incoming.identifiers = [
+            LinkedExternalIdentifier(
+                id=uuid.uuid4(),
+                identifier=doi_identifier.identifier,
+                reference_id=uuid.uuid4(),
+            )
+        ]
+
+        delta_identifiers, delta_enhancements = base_reference.merge(incoming)
+
+        assert len(delta_identifiers) == 0
+        assert len(delta_enhancements) == 0
+        assert len(base_reference.identifiers) == 1
+
+    async def test_merge_reference_with_clashing_unique_identifiers(
+        self, base_reference, pmid_identifier, openalex_identifier
+    ):
+        """Test merging references with clashing unique identifiers raises an error."""
+        base_reference.identifiers.append(pmid_identifier)
+
+        incoming = Reference(id=uuid.uuid4())
+        incoming.enhancements = []
+
+        different_pmid = destiny_sdk.identifiers.PubMedIdentifier(
+            identifier=5678, identifier_type="pm_id"
+        )
+        incoming.identifiers = [
+            LinkedExternalIdentifier(
+                id=uuid.uuid4(),
+                identifier=different_pmid,
+                reference_id=uuid.uuid4(),
+            )
+        ]
+
+        with pytest.raises(UnresolvableReferenceDuplicateError):
+            base_reference.merge(incoming)
+
+    async def test_merge_different_unique_identifier_types(
+        self, base_reference, pmid_identifier, openalex_identifier
+    ):
+        """Test merging references with different unique identifier types is allowed."""
+        base_reference.identifiers.append(pmid_identifier)
+
+        incoming = Reference(id=uuid.uuid4())
+        incoming.enhancements = []
+        incoming.identifiers = [openalex_identifier]
+
+        delta_identifiers, delta_enhancements = base_reference.merge(incoming)
+
+        assert len(delta_identifiers) == 1
+        assert len(base_reference.identifiers) == 3

@@ -186,12 +186,12 @@ class Reference(
             for incoming_identifier in incoming_reference.identifiers or []
             if _hash_model(incoming_identifier) not in existing_identifiers
         ]
-        clashing_identifiers = {
+        clashing_identifiers = [
             incoming_identifier
             for incoming_identifier in delta_identifiers
             if incoming_identifier.identifier.identifier_type
             in existing_unique_identifiers
-        }
+        ]
 
         if clashing_identifiers:
             msg = f"Clashing unique identifiers found: {clashing_identifiers}"
