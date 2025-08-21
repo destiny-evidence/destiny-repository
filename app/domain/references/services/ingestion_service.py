@@ -52,7 +52,7 @@ class IngestionService(GenericService[ReferenceAntiCorruptionService]):
         self,
         reference: destiny_sdk.references.ReferenceFileInput,
         collision_strategy: CollisionStrategy,
-    ) -> list[Reference] | str | None:
+    ) -> Reference | str | None:
         """
         Detect and handle a collision with an existing reference.
 
@@ -82,49 +82,53 @@ class IngestionService(GenericService[ReferenceAntiCorruptionService]):
             ],
         )
 
-        references_to_upsert = []
         if not collided_identifiers:
             # No collision detected
-            references_to_upsert.append(incoming_reference)
-        elif collision_strategy == CollisionStrategy.DISCARD:
+            return incoming_reference
+
+        if collision_strategy == CollisionStrategy.DISCARD:
             return None
-        elif collision_strategy == CollisionStrategy.FAIL:
+
+        if collision_strategy == CollisionStrategy.FAIL:
             return f"""
 Identifier(s) are already mapped on an existing reference:
 {collided_identifiers}
 """
-        else:
-            # Perform merge
-            existing_reference = await self.sql_uow.references.get_by_pk(
-                collided_identifiers[0].reference_id,
-                preload=["identifiers", "enhancements"],
+
+        # Perform merge
+        existing_reference = await self.sql_uow.references.get_by_pk(
+            collided_identifiers[0].reference_id,
+            preload=["identifiers", "enhancements", "canonical_reference"],
+        )
+
+        try:
+            delta_identifiers, delta_enhancements = existing_reference.merge(
+                incoming_reference.enhancements or [],
+                incoming_reference.identifiers or [],
             )
+            logger.info(
+                "Merging reference",
+                collision_strategy=collision_strategy,
+                existing_reference_id=str(existing_reference.id),
+                incoming_reference_id=str(incoming_reference.id),
+                n_delta_identifiers=len(delta_identifiers),
+                n_delta_enhancements=len(delta_enhancements),
+            )
+        except UnresolvableReferenceDuplicateError as exc:
+            logger.warning(
+                "Merge could not be resolved.", error=exc.detail, exc_info=exc
+            )
+            return exc.detail
 
-            # Merge collision strategies
-            try:
-                delta_identifiers, delta_enhancements = existing_reference.merge(
-                    incoming_reference
-                )
-                logger.info(
-                    "Merging reference",
-                    collision_strategy=collision_strategy,
-                    existing_reference_id=str(existing_reference.id),
-                    incoming_reference_id=str(incoming_reference.id),
-                    n_delta_identifiers=len(delta_identifiers),
-                    n_delta_enhancements=len(delta_enhancements),
-                )
-            except UnresolvableReferenceDuplicateError as exc:
-                logger.warning(
-                    "Merge could not be resolved.", error=exc.detail, exc_info=exc
-                )
-                return exc.detail
+        if delta_identifiers or delta_enhancements:
+            # This reference contained new information, store it as the
+            # leaf of the canonical tree
+            incoming_reference.duplicate_of = existing_reference.id
+            incoming_reference.canonical_reference = existing_reference
+            return incoming_reference
 
-            references_to_upsert.append(existing_reference)
-            if delta_identifiers or delta_enhancements:
-                # This reference contained new information, store it also
-                incoming_reference.duplicate_of = existing_reference.id
-                references_to_upsert.append(incoming_reference)
-        return references_to_upsert
+        # Nothing changed on the merge, incoming reference is discarded
+        return None
 
     async def ingest_reference(
         self, record_str: str, entry_ref: int, collision_strategy: CollisionStrategy
@@ -163,10 +167,9 @@ Identifier(s) are already mapped on an existing reference:
 
         # We trace the first returned reference as it's always the canonical one
         # Looking at the log events or database state can show the full state
-        trace_attribute(Attributes.REFERENCE_ID, str(collision_result[0].id))
-        for reference in collision_result:
-            final_reference = await self.sql_uow.references.merge(reference)
-            reference_create_result.reference_id = final_reference.id
+        trace_attribute(Attributes.REFERENCE_ID, str(collision_result.id))
+        final_reference = await self.sql_uow.references.merge(collision_result)
+        reference_create_result.reference_id = final_reference.id
 
         if reference_create_result.errors:
             reference_create_result.errors = [

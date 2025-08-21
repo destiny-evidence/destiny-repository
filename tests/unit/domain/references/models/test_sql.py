@@ -26,6 +26,7 @@ class DummyDomainReference:
         self.identifiers = identifiers
         self.enhancements = enhancements
         self.duplicate_of = None
+        self.canonical_reference = None
 
 
 class DummyExternalIdentifier:

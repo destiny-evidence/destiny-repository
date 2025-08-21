@@ -66,13 +66,18 @@ class Reference(GenericSQLPersistence[DomainReference]):
     enhancements: Mapped[list["Enhancement"]] = relationship(
         "Enhancement", back_populates="reference", cascade="all, delete, delete-orphan"
     )
-    # NB no cascading effects on duplicating references, handle each explicitly.
-    # Setup the self-referential relationship for canonical/duplicate references
     canonical_reference: Mapped["Reference | None"] = relationship(
         "Reference",
         remote_side="Reference.id",
         back_populates="duplicate_references",
+        # Cascading feels scary on a relationship like this so limiting to the minimal
+        # set of operations. This allows the updating of a canonical
+        # reference's canonical reference and so on up the tree. See domain
+        # Reference.merge() for documentation on that edge case.
+        cascade="merge",
     )
+    # NB no cascading effects on duplicating references, handle each explicitly.
+    # Setup the self-referential relationship for canonical/duplicate references
     duplicate_references: Mapped[list["Reference"]] = relationship(
         "Reference",
         back_populates="canonical_reference",
@@ -98,6 +103,9 @@ class Reference(GenericSQLPersistence[DomainReference]):
                 Enhancement.from_domain(enhancement)
                 for enhancement in domain_obj.enhancements or []
             ],
+            canonical_reference=Reference.from_domain(domain_obj.canonical_reference)
+            if domain_obj.canonical_reference
+            else None,
             # No cascading on duplicate references so don't populate from domain
         )
 

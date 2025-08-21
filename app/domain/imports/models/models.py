@@ -184,7 +184,10 @@ class ImportResult(DomainBaseModel, SQLAttributeMixin):
         default=None, description="The parent import batch."
     )
     reference_id: uuid.UUID | None = Field(
-        default=None, description="The ID of the created reference."
+        default=None,
+        description="The ID of the created reference. If None, with "
+        "collision strategy ``append``, and no failure details, this implies the "
+        "reference was an identical duplicate.",
     )
     failure_details: str | None = Field(
         default=None,

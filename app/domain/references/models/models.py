@@ -117,10 +117,19 @@ class Reference(
         default=None,
         description="The ID of the canonical reference that this reference duplicates",
     )
+    canonical_reference: "Reference | None" = Field(
+        default=None,
+        description="The canonical reference that this reference is a duplicate of",
+    )
+    duplicate_references: list["Reference"] | None = Field(
+        default=None,
+        description="A list of references that this reference duplicates",
+    )
 
     def merge(
         self,
-        incoming_reference: Self,
+        enhancements: list["Enhancement"],
+        identifiers: list["LinkedExternalIdentifier"],
     ) -> tuple[list["LinkedExternalIdentifier"], list["Enhancement"]]:
         """
         Merge an incoming reference into this one.
@@ -174,16 +183,20 @@ class Reference(
 
         delta_enhancements = [
             incoming_enhancement.model_copy(
-                update={"id": uuid.uuid4(), "reference_id": self.id}
+                update={
+                    "id": uuid.uuid4(),
+                    "reference_id": self.id,
+                    "derived_from": incoming_enhancement.id,
+                }
             )
-            for incoming_enhancement in incoming_reference.enhancements or []
+            for incoming_enhancement in enhancements or []
             if _hash_model(incoming_enhancement) not in existing_enhancements
         ]
         delta_identifiers = [
             incoming_identifier.model_copy(
                 update={"id": uuid.uuid4(), "reference_id": self.id}
             )
-            for incoming_identifier in incoming_reference.identifiers or []
+            for incoming_identifier in identifiers or []
             if _hash_model(incoming_identifier) not in existing_identifiers
         ]
         clashing_identifiers = [
@@ -199,6 +212,16 @@ class Reference(
 
         self.enhancements += delta_enhancements
         self.identifiers += delta_identifiers
+
+        # Edge case: our duplicate detection is fuzzy, allowing for small drift
+        # If we have a reference A, duplicated by B, and then import a new reference
+        # C, it's possible that C is detected as a duplicate of B but not A.
+        # In this case, we mark C.duplicate_of=B.id, but we do propagate all of C's
+        # enhancements up to A. And so on through the alphabet :)
+        if self.canonical_reference:
+            # We know that A has at least the same references as B so we can work
+            # on the changeset only.
+            self.canonical_reference.merge(delta_enhancements, delta_identifiers)
 
         return delta_identifiers, delta_enhancements
 
