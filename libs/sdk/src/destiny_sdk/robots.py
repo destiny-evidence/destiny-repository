@@ -259,8 +259,7 @@ class _RobotBase(BaseModel):
 
     name: str = Field(description="The name of the robot, must be unique.")
     base_url: HttpUrl = Field(
-        description="The base url of the robot. The robot must implement endpoints "
-        "base_url/single for the enhancement of single references and "
+        description="The base url of the robot. The robot must implement endpoint"
         "base_url/batch for batch enhancements of references.",
     )
     description: str = Field(
