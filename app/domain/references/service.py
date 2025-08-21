@@ -93,9 +93,22 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
         if enhancement.derived_from:
             try:
-                await self.sql_uow.enhancements.verify_pk_existence(
+                parent_enhancements = await self.sql_uow.enhancements.get_by_pks(
                     enhancement.derived_from
                 )
+
+                invalid_derived_from_ids = [
+                    str(parent.id)
+                    for parent in parent_enhancements
+                    if parent.reference_id != enhancement.reference_id
+                ]
+
+                if invalid_derived_from_ids:
+                    detail = (
+                        f"Parent enhancements {",".join(invalid_derived_from_ids)} "
+                        "are for a different parent reference"
+                    )
+                    raise InvalidParentEnhancementError(detail=detail)
             except SQLNotFoundError as e:
                 detail = f"Enhancements with ids {e.lookup_value} do not exist."
                 raise InvalidParentEnhancementError(detail) from e

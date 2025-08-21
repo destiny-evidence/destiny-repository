@@ -3,10 +3,6 @@
 import uuid
 
 import pytest
-from destiny_sdk.enhancements import (
-    AnnotationEnhancement,
-    BooleanAnnotation,
-)
 
 from app.core.config import ESPercolationOperation
 from app.core.exceptions import (
@@ -19,7 +15,6 @@ from app.domain.references.models.models import (
     ExternalIdentifierAdapter,
     Reference,
     RobotAutomationPercolationResult,
-    Visibility,
 )
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
@@ -79,25 +74,16 @@ async def test_add_identifier_reference_not_found(fake_repository, fake_uow):
 
 
 @pytest.mark.asyncio
-async def test_add_enhancement_happy_path(fake_repository, fake_uow):
-    dummy_id = uuid.uuid4()
-    dummy_reference = Reference(id=dummy_id)
+async def test_add_enhancement_happy_path(
+    fake_repository, fake_uow, fake_enhancement_data
+):
+    dummy_reference = Reference(id=uuid.uuid4())
     repo_refs = fake_repository(init_entries=[dummy_reference])
     uow = fake_uow(references=repo_refs)
     service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
 
     enhancement_to_add = Enhancement(
-        id=uuid.uuid4(),
-        reference_id=dummy_id,
-        source="test",
-        visibility=Visibility.PUBLIC,
-        content=AnnotationEnhancement(
-            annotations=[
-                BooleanAnnotation(
-                    scheme="test", label="test:annotation", value=True, data={}
-                )
-            ]
-        ),
+        reference_id=dummy_reference.id, **fake_enhancement_data
     )
 
     await service.add_enhancement(enhancement_to_add)
@@ -109,22 +95,15 @@ async def test_add_enhancement_happy_path(fake_repository, fake_uow):
 
 
 @pytest.mark.asyncio
-async def test_add_enhancement_reference_does_not_exist(fake_repository, fake_uow):
+async def test_add_enhancement_reference_does_not_exist(
+    fake_repository, fake_uow, fake_enhancement_data
+):
     uow = fake_uow(references=fake_repository())
     service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
 
     enhancement_to_add = Enhancement(
-        id=uuid.uuid4(),
-        reference_id=uuid.uuid4(),
-        source="test",
-        visibility=Visibility.PUBLIC,
-        content=AnnotationEnhancement(
-            annotations=[
-                BooleanAnnotation(
-                    scheme="test", label="test:annotation", value=True, data={}
-                )
-            ]
-        ),
+        reference_id=uuid.uuid4(),  # Doesn't exist
+        **fake_enhancement_data,
     )
 
     with pytest.raises(SQLNotFoundError):
@@ -132,29 +111,49 @@ async def test_add_enhancement_reference_does_not_exist(fake_repository, fake_uo
 
 
 @pytest.mark.asyncio
-async def test_add_enhancement_derived_from_does_not_exist(fake_repository, fake_uow):
-    dummy_id = uuid.uuid4()
-    dummy_reference = Reference(id=dummy_id)
+async def test_add_enhancement_derived_from_does_not_exist(
+    fake_repository, fake_uow, fake_enhancement_data
+):
+    dummy_reference = Reference(id=uuid.uuid4())
     repo_refs = fake_repository(init_entries=[dummy_reference])
     uow = fake_uow(references=repo_refs, enhancements=fake_repository())
     service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
 
     enhancement_to_add = Enhancement(
-        id=uuid.uuid4(),
-        reference_id=dummy_id,
-        source="test",
-        visibility=Visibility.PUBLIC,
+        reference_id=dummy_reference.id,
         derived_from=[uuid.uuid4()],
-        content=AnnotationEnhancement(
-            annotations=[
-                BooleanAnnotation(
-                    scheme="test", label="test:annotation", value=True, data={}
-                )
-            ]
-        ),
+        **fake_enhancement_data,
     )
 
     with pytest.raises(InvalidParentEnhancementError):
+        await service.add_enhancement(enhancement_to_add)
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_derived_from_enhancement_for_different_reference(
+    fake_repository, fake_uow, fake_enhancement_data
+):
+    dummy_reference = Reference(id=uuid.uuid4())
+    repo_refs = fake_repository(init_entries=[dummy_reference])
+
+    dummy_parent_enhancement = Enhancement(
+        reference_id=uuid.uuid4(),  # Not the reference we'll enhance
+        **fake_enhancement_data,
+    )
+
+    repo_enhs = fake_repository(init_entries=[dummy_parent_enhancement])
+    uow = fake_uow(references=repo_refs, enhancements=repo_enhs)
+    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
+
+    enhancement_to_add = Enhancement(
+        reference_id=dummy_reference.id,  # different reference id
+        derived_from=[dummy_parent_enhancement.id],
+        **fake_enhancement_data,
+    )
+
+    with pytest.raises(
+        InvalidParentEnhancementError, match="different parent reference"
+    ):
         await service.add_enhancement(enhancement_to_add)
 
 
