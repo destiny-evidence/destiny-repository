@@ -149,7 +149,8 @@ class Reference(
 
         Args:
             - self (Reference): The existing reference.
-            - incoming_reference (Reference): The incoming reference.
+            - enhancements (list["Enhancement"]): The incoming enhancements.
+            - identifiers (list["LinkedExternalIdentifier"]): The incoming identifiers.
 
         Returns:
             - tuple[list["LinkedExternalIdentifier"], list["Enhancement"]]: The
