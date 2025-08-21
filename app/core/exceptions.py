@@ -246,22 +246,6 @@ class ESMalformedDocumentError(ESError):
         super().__init__(detail, *args)
 
 
-class WrongReferenceError(InvalidPayloadError):
-    """Exception for when enhancement is for a different reference than requested."""
-
-    def __init__(self, detail: str, *args: object) -> None:
-        """
-        Initialize the NotFoundError exception.
-
-        Args:
-            detail (str): The detail message for the exception.
-            *args: Additional arguments for the exception.
-
-        """
-        self.detail = detail
-        super().__init__(detail, *args)
-
-
 class InvalidParentEnhancementError(InvalidPayloadError):
     """Exception for when a derived enhancement references an invalid enhancement."""
 
