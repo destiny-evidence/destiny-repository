@@ -20,9 +20,9 @@ from app.api.exception_handlers import (
 )
 from app.core.exceptions import (
     ESMalformedDocumentError,
+    InvalidPayloadError,
     NotFoundError,
     SDKToDomainError,
-    WrongReferenceError,
 )
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
@@ -55,7 +55,7 @@ def app() -> FastAPI:
         exception_handlers={
             NotFoundError: not_found_exception_handler,
             SDKToDomainError: sdk_to_domain_exception_handler,
-            WrongReferenceError: invalid_payload_exception_handler,
+            InvalidPayloadError: invalid_payload_exception_handler,
             ESMalformedDocumentError: es_malformed_exception_handler,
         }
     )

@@ -16,7 +16,6 @@ from app.core.exceptions import (
     RobotEnhancementError,
     RobotUnreachableError,
     SQLNotFoundError,
-    WrongReferenceError,
 )
 from app.core.telemetry.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
@@ -86,14 +85,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_id, preload=["identifiers", "enhancements"]
         )
 
-    async def _add_enhancement(
-        self, reference_id: UUID4, enhancement: Enhancement
-    ) -> Reference:
+    async def _add_enhancement(self, enhancement: Enhancement) -> Reference:
         """Add an enhancement to a reference."""
-        # This method is used internally and does not use the unit of work.
-        if enhancement.reference_id != reference_id:
-            detail = "Enhancement is for a different reference than requested."
-            raise WrongReferenceError(detail)
+        reference = await self.sql_uow.references.get_by_pk(
+            enhancement.reference_id, preload=["enhancements", "identifiers"]
+        )
 
         if enhancement.derived_from:
             try:
@@ -104,20 +100,15 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 detail = f"Enhancements with ids {e.lookup_value} do not exist."
                 raise InvalidParentEnhancementError(detail) from e
 
-        reference = await self.sql_uow.references.get_by_pk(
-            reference_id, preload=["enhancements", "identifiers"]
-        )
         # This uses SQLAlchemy to treat References as an aggregate of enhancements.
         # All considered this is a naive implementation, but it works for now.
         reference.enhancements = [*(reference.enhancements or []), *[enhancement]]
         return await self.sql_uow.references.merge(reference)
 
     @sql_unit_of_work
-    async def add_enhancement(
-        self, reference_id: UUID4, enhancement: Enhancement
-    ) -> Reference:
+    async def add_enhancement(self, enhancement: Enhancement) -> Reference:
         """Add an enhancement to a reference."""
-        return await self._add_enhancement(reference_id, enhancement)
+        return await self._add_enhancement(enhancement)
 
     async def _get_hydrated_references(
         self,
@@ -339,7 +330,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Handle the import of a single batch enhancement result entry."""
         try:
             await self._add_enhancement(
-                enhancement.reference_id,
                 enhancement,
             )
         except SQLNotFoundError:
