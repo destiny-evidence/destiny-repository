@@ -90,7 +90,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
         # set of operations.
         cascade="merge",
         info=RelationshipInfo(
-            max_recursion_depth=settings.max_reference_duplicate_depth,
+            max_recursion_depth=settings.max_reference_duplicate_depth - 1,
             load_type=RelationshipLoadType.SELECTIN,
         ).model_dump(),
     )
@@ -100,7 +100,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
         "Reference",
         back_populates="canonical_reference",
         info=RelationshipInfo(
-            max_recursion_depth=settings.max_reference_duplicate_depth,
+            max_recursion_depth=settings.max_reference_duplicate_depth - 1,
             load_type=RelationshipLoadType.SELECTIN,
         ).model_dump(),
     )
