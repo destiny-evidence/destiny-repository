@@ -103,8 +103,8 @@ Identifier(s) are already mapped on an existing reference:
 
         try:
             delta_identifiers, delta_enhancements = existing_reference.merge(
-                incoming_reference.enhancements or [],
                 incoming_reference.identifiers or [],
+                incoming_reference.enhancements or [],
             )
             logger.info(
                 "Merging reference",

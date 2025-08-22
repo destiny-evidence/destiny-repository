@@ -92,7 +92,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
     async def _add_enhancement(
         self, reference_id: UUID4, enhancement: Enhancement
-    ) -> Reference:
+    ) -> Enhancement | None:
         """Add an enhancement to a reference."""
         # This method is used internally and does not use the unit of work.
         if enhancement.reference_id != reference_id:
@@ -111,15 +111,17 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference = await self.sql_uow.references.get_by_pk(
             reference_id, preload=["enhancements", "identifiers"]
         )
-        # This uses SQLAlchemy to treat References as an aggregate of enhancements.
-        # All considered this is a naive implementation, but it works for now.
-        reference.enhancements = [*(reference.enhancements or []), *[enhancement]]
-        return await self.sql_uow.references.merge(reference)
+        _, added_enhancement = reference.merge(
+            identifiers=[], enhancements=[enhancement], propagate_upwards=False
+        )
+        if added_enhancement:
+            await self.sql_uow.references.merge(reference)
+        return added_enhancement[0]
 
     @sql_unit_of_work
     async def add_enhancement(
         self, reference_id: UUID4, enhancement: Enhancement
-    ) -> Reference:
+    ) -> Enhancement | None:
         """Add an enhancement to a reference."""
         return await self._add_enhancement(reference_id, enhancement)
 

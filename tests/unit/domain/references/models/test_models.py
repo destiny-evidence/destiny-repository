@@ -227,7 +227,7 @@ class TestReferenceMerge:
         empty_identifiers = []
 
         delta_identifiers, delta_enhancements = base_reference.merge(
-            empty_enhancements, empty_identifiers
+            empty_identifiers, empty_enhancements
         )
 
         assert len(delta_identifiers) == 0
@@ -243,7 +243,7 @@ class TestReferenceMerge:
         new_identifiers = [doi_identifier, pmid_identifier]
 
         delta_identifiers, delta_enhancements = base_reference.merge(
-            empty_enhancements, new_identifiers
+            new_identifiers, empty_enhancements
         )
 
         assert len(delta_identifiers) == 1
@@ -266,7 +266,7 @@ class TestReferenceMerge:
         empty_identifiers = []
 
         delta_identifiers, delta_enhancements = base_reference.merge(
-            new_enhancements, empty_identifiers
+            empty_identifiers, new_enhancements
         )
 
         assert len(delta_identifiers) == 0
@@ -299,7 +299,7 @@ class TestReferenceMerge:
         empty_identifiers = []
 
         delta_identifiers, delta_enhancements = base_reference.merge(
-            new_enhancements, empty_identifiers
+            empty_identifiers, new_enhancements
         )
 
         assert len(delta_identifiers) == 0
@@ -319,7 +319,7 @@ class TestReferenceMerge:
         new_identifiers = [duplicate_identifier]
 
         delta_identifiers, delta_enhancements = base_reference.merge(
-            empty_enhancements, new_identifiers
+            new_identifiers, empty_enhancements
         )
 
         assert len(delta_identifiers) == 0
@@ -344,7 +344,7 @@ class TestReferenceMerge:
         new_identifiers = [clashing_identifier]
 
         with pytest.raises(UnresolvableReferenceDuplicateError):
-            base_reference.merge(empty_enhancements, new_identifiers)
+            base_reference.merge(new_identifiers, empty_enhancements)
 
     async def test_merge_different_unique_identifier_types(
         self, base_reference, pmid_identifier, openalex_identifier
@@ -356,7 +356,7 @@ class TestReferenceMerge:
         new_identifiers = [openalex_identifier]
 
         delta_identifiers, delta_enhancements = base_reference.merge(
-            empty_enhancements, new_identifiers
+            new_identifiers, empty_enhancements
         )
 
         assert len(delta_identifiers) == 1
@@ -377,7 +377,7 @@ class TestReferenceMerge:
         new_identifiers = [openalex_identifier]
 
         delta_identifiers, delta_enhancements = base_reference.merge(
-            new_enhancements, new_identifiers
+            new_identifiers, new_enhancements
         )
 
         # Verify that the base reference was updated
@@ -397,6 +397,34 @@ class TestReferenceMerge:
         # Verify the canonical reference received the new enhancement
         assert canonical_ref.enhancements[0].content == annotation.content
         assert canonical_ref.enhancements[0].reference_id == canonical_ref.id
+
+    async def test_merge_no_propagation(
+        self, base_reference, annotation, openalex_identifier
+    ):
+        """Test that merge does not propagate up when propagate_upwards=False."""
+        canonical_ref = Reference(id=uuid.uuid4())
+        canonical_ref.enhancements = []
+        canonical_ref.identifiers = []
+
+        base_reference.canonical_reference = canonical_ref
+        base_reference.duplicate_of = canonical_ref.id
+
+        new_enhancements = [annotation]
+        new_identifiers = [openalex_identifier]
+
+        delta_identifiers, delta_enhancements = base_reference.merge(
+            new_identifiers, new_enhancements, propagate_upwards=False
+        )
+
+        # Verify that the base reference was updated
+        assert len(delta_identifiers) == 1
+        assert len(delta_enhancements) == 1
+        assert len(base_reference.identifiers) == 2
+        assert len(base_reference.enhancements) == 2
+
+        # Verify that changes did NOT propagate to the canonical reference
+        assert len(canonical_ref.identifiers) == 0
+        assert len(canonical_ref.enhancements) == 0
 
     @pytest.mark.parametrize(
         ("max_reference_duplicate_depth", "expected_error"),
@@ -442,12 +470,12 @@ class TestReferenceMerge:
                 # When we try to merge with ref1, the chain is too deep
                 # ref1->ref2->ref3 exceeds max_depth=2 when traversing up the chain
                 with pytest.raises(expected_error) as excinfo:
-                    ref1.merge([annotation], [openalex_identifier])
+                    ref1.merge([openalex_identifier], [annotation])
 
                 assert "Max duplicate depth reached" in str(excinfo.value)
             else:
                 # The same merge should now work
-                delta_ids, delta_enhs = ref1.merge([annotation], [openalex_identifier])
+                delta_ids, delta_enhs = ref1.merge([openalex_identifier], [annotation])
 
                 # Verify changes propagated through the chain
                 assert len(delta_ids) == 1

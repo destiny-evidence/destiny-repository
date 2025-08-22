@@ -130,9 +130,11 @@ class Reference(
 
     def merge(
         self,
-        enhancements: list["Enhancement"],
         identifiers: list["LinkedExternalIdentifier"],
+        enhancements: list["Enhancement"],
         duplicate_depth: int = 1,
+        *,
+        propagate_upwards: bool = True,
     ) -> tuple[list["LinkedExternalIdentifier"], list["Enhancement"]]:
         """
         Merge an incoming reference into this one.
@@ -155,6 +157,8 @@ class Reference(
             - enhancements (list["Enhancement"]): The incoming enhancements.
             - identifiers (list["LinkedExternalIdentifier"]): The incoming identifiers.
             - duplicate_depth (int): Internal, tracks the current depth of duplication.
+            - propagate_upwards (bool): Whether to propagate changes up the canonical
+                duplicate_of chain.
 
         Returns:
             - tuple[list["LinkedExternalIdentifier"], list["Enhancement"]]: The
@@ -195,7 +199,7 @@ class Reference(
                 update={
                     "id": uuid.uuid4(),
                     "reference_id": self.id,
-                    "derived_from": incoming_enhancement.id,
+                    "derived_from": [incoming_enhancement.id],
                 }
             )
             for incoming_enhancement in enhancements or []
@@ -227,12 +231,12 @@ class Reference(
         # C, it's possible that C is detected as a duplicate of B but not A.
         # In this case, we mark C.duplicate_of=B.id, but we do propagate all of C's
         # enhancements up to A. And so on through the alphabet :)
-        if self.canonical_reference:
+        if self.canonical_reference and propagate_upwards:
             # We know that A has at least the same references as B so we can work
             # on the changeset only.
             self.canonical_reference.merge(
-                delta_enhancements,
                 delta_identifiers,
+                delta_enhancements,
                 duplicate_depth=duplicate_depth + 1,
             )
 
