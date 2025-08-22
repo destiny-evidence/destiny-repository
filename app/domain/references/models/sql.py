@@ -37,7 +37,11 @@ from app.domain.references.models.models import (
     RobotAutomation as DomainRobotAutomation,
 )
 from app.persistence.blob.models import BlobStorageFile
-from app.persistence.sql.persistence import GenericSQLPersistence
+from app.persistence.sql.persistence import (
+    GenericSQLPersistence,
+    RelationshipInfo,
+    RelationshipLoadType,
+)
 
 settings = get_settings()
 
@@ -85,16 +89,20 @@ class Reference(GenericSQLPersistence[DomainReference]):
         # Cascading feels scary on a relationship like this so limiting to the minimal
         # set of operations.
         cascade="merge",
-        lazy="joined",
-        join_depth=settings.max_duplicate_depth - 1,
+        info=RelationshipInfo(
+            max_recursion_depth=settings.max_reference_duplicate_depth,
+            load_type=RelationshipLoadType.SELECTIN,
+        ).model_dump(),
     )
     # NB no cascading effects on duplicating references, handle each explicitly.
     # We only update upwards.
     duplicate_references: Mapped[list["Reference"]] = relationship(
         "Reference",
         back_populates="canonical_reference",
-        lazy="joined",
-        join_depth=settings.max_duplicate_depth - 1,
+        info=RelationshipInfo(
+            max_recursion_depth=settings.max_reference_duplicate_depth,
+            load_type=RelationshipLoadType.SELECTIN,
+        ).model_dump(),
     )
 
     __table_args__ = (Index("ix_reference_duplicate_of", "duplicate_of"),)
@@ -154,7 +162,10 @@ class Reference(GenericSQLPersistence[DomainReference]):
                 else None,
             )
         except MissingGreenlet as exc:
-            msg = "Trying to preload a missing relationship. This is likely due to "
+            msg = (
+                "Trying to preload a missing relationship. This may be due to "
+                "a deeper reference duplicate depth than specified in settings."
+            )
             raise SQLPreloadError(msg) from exc
 
 

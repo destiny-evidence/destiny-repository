@@ -169,7 +169,7 @@ class Reference(
                 exclude_none=True,
             )
 
-        if duplicate_depth > settings.max_duplicate_depth:
+        if duplicate_depth > settings.max_reference_duplicate_depth:
             msg = "Max duplicate depth reached."
             raise UnresolvableReferenceDuplicateError(msg)
 

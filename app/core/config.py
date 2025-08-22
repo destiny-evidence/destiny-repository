@@ -337,7 +337,7 @@ class Settings(BaseSettings):
         description="The log level for the application.",
     )
 
-    max_duplicate_depth: int = Field(
+    max_reference_duplicate_depth: int = Field(
         default=3,
         description=(
             "Duplicate matches are fuzzy and so are not necessarily one-to-many with "

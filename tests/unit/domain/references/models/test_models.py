@@ -399,22 +399,28 @@ class TestReferenceMerge:
         assert canonical_ref.enhancements[0].reference_id == canonical_ref.id
 
     @pytest.mark.parametrize(
-        ("max_duplicate_depth", "expected_error"),
+        ("max_reference_duplicate_depth", "expected_error"),
         [
             (2, UnresolvableReferenceDuplicateError),
             (3, None),
         ],
     )
-    async def test_max_duplicate_depth(
-        self, annotation, openalex_identifier, max_duplicate_depth, expected_error
+    async def test_max_reference_duplicate_depth(
+        self,
+        annotation,
+        openalex_identifier,
+        max_reference_duplicate_depth,
+        expected_error,
     ):
         """Test that merge fails when max duplicate depth is reached."""
         from app.domain.references.models import models
 
-        original_max_depth = models.settings.max_duplicate_depth
+        original_max_depth = models.settings.max_reference_duplicate_depth
 
         try:
-            models.settings.max_duplicate_depth = max_duplicate_depth
+            models.settings.max_reference_duplicate_depth = (
+                max_reference_duplicate_depth
+            )
 
             ref1 = Reference(id=uuid.uuid4())
             ref1.enhancements = []
@@ -454,4 +460,4 @@ class TestReferenceMerge:
                 assert len(ref3.enhancements) == 1
         finally:
             # Restore the original value
-            models.settings.max_duplicate_depth = original_max_depth
+            models.settings.max_reference_duplicate_depth = original_max_depth
