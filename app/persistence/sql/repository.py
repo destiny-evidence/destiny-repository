@@ -358,6 +358,7 @@ class GenericAsyncSqlRepository(
     async def find(
         self,
         limit: int | None = None,
+        order_by: str | None = None,
         **filters: object,
     ) -> list[GenericDomainModelType]:
         """
@@ -365,6 +366,7 @@ class GenericAsyncSqlRepository(
 
         Args:
         - limit (int | None): Maximum number of records to return.
+        - order_by (str | None): Field name to order the results by.
         - **filters: Field filters where key is field name and value is the
                     filter value. Only fields that exist on the persistence
                     model will be applied. None values are ignored.
@@ -380,6 +382,9 @@ class GenericAsyncSqlRepository(
             if value is not None and hasattr(self._persistence_cls, field_name):
                 field = getattr(self._persistence_cls, field_name)
                 query = query.where(field == value)
+
+        if order_by and hasattr(self._persistence_cls, order_by):
+            query = query.order_by(getattr(self._persistence_cls, order_by))
 
         if limit is not None:
             query = query.limit(limit)

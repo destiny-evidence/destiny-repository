@@ -589,6 +589,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             robot_enhancement_batch_id=None,
             status=PendingEnhancementStatus.PENDING,
             limit=limit,
+            order_by="created_at",
         )
 
     @sql_unit_of_work
