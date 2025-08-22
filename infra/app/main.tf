@@ -50,7 +50,7 @@ locals {
     },
     {
       name  = "AZURE_APPLICATION_ID"
-      value = azuread_application_registration.destiny_repository.client_id
+      value = azuread_application.destiny_repository.client_id
     },
     {
       name  = "AZURE_TENANT_ID"

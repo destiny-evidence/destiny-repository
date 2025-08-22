@@ -15,6 +15,7 @@ from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.auth import AuthRole, AuthScope
 from app.api.auth import settings as auth_settings
 from app.core.config import Environment
 from app.domain.references.models.models import EnhancementRequestStatus
@@ -178,13 +179,17 @@ async def test_jwt_authentication_happy_path(  # noqa: PLR0913
     client: AsyncClient,
     es_client: AsyncElasticsearch,  # noqa: ARG001
     stubbed_jwks_response: None,  # noqa: ARG001
-    generate_fake_token: Callable[[dict | None, str | None], str],
+    generate_fake_token: Callable[
+        [dict | None, AuthScope | None, AuthRole | None], str
+    ],
     configured_jwt_auth: None,  # noqa: ARG001
     enhancement_request: SQLEnhancementRequest,
 ) -> None:
     """Test authentication is successful when JWT token is valid."""
     # Generate JWT token with appropriate scope
-    token = generate_fake_token({"sub": "test_user"}, "enhancement_request.writer")
+    token = generate_fake_token(
+        {"sub": "test_user"}, None, AuthRole.ENHANCEMENT_REQUEST_WRITER
+    )
 
     response = await client.get(
         f"/v1/enhancement-requests/single-requests/{enhancement_request.id}/",

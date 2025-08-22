@@ -41,15 +41,23 @@ settings = get_settings()
 security = HTTPBearer(auto_error=False)
 
 
-class AuthScopes(StrEnum):
-    """Enum describing the available auth scopes that we understand."""
+class AuthRole(StrEnum):
+    """Enum describing the available app roles that can be granted to applications."""
 
     ADMINISTRATOR = "administrator"
-    IMPORT = "import"
+    IMPORT_WRITER = "import.writer"
     REFERENCE_READER = "reference.reader"
-    REFERENCE_WRITER = "reference.writer"
     ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer"
-    ROBOT_WRITER = "robot.writer"
+
+
+class AuthScope(StrEnum):
+    """Enum describing the available auth scopes can be granted to users."""
+
+    ADMINISTRATOR = "administrator.all"
+    IMPORT_WRITER = "import.writer.all"
+    REFERENCE_READER = "reference.reader.all"
+    ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer.all"
+    ROBOT_WRITER = "robot.writer.all"
 
 
 class HMACClientType(StrEnum):
@@ -237,7 +245,8 @@ class AzureJwtAuth(AuthMethod):
         self,
         tenant_id: str,
         application_id: str,
-        scope: StrEnum,
+        scope: StrEnum | None = None,
+        role: StrEnum | None = None,
         cache_ttl: int = 60 * 60 * 24,
     ) -> None:
         """
@@ -246,13 +255,15 @@ class AzureJwtAuth(AuthMethod):
         Args:
         tenant_id (str): The Azure AD tenant ID
         application_id (str): The Azure AD application ID
-        scope (StrEnum): The authorization scope for the API
+        scope (AuthScopes): The authorization scope for delegated (user) tokens
+        role (AuthRoles): The authorization role for application tokens
         cache_ttl (int): Time to live for cache entries, defaults to 24 hours.
 
         """
         self.tenant_id = tenant_id
         self.api_audience = f"api://{application_id}"
         self.scope = scope
+        self.role = role
         self.cache: TTLCache = TTLCache(maxsize=1, ttl=cache_ttl)
 
     async def verify_token(self, token: str) -> dict[str, Any]:
@@ -327,21 +338,32 @@ class AzureJwtAuth(AuthMethod):
             )
             return response.json()
 
-    def _require_scope(
-        self, required_scope: StrEnum, verified_claims: dict[str, Any]
-    ) -> bool:
-        if verified_claims.get("roles"):
-            for scope in verified_claims["roles"]:
-                if scope.lower() == required_scope.value.lower():
-                    return True
+    def _require_scope_or_role(self, verified_claims: dict[str, Any]) -> bool:
+        # Delegated (user) token: check scopes
+        if self.scope and verified_claims.get("scp"):
+            scopes = verified_claims["scp"].split()
+            if self.scope.value in scopes:
+                return True
 
             raise AuthError(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"IDW10203: The app permissions (role) claim does not contain the scope {required_scope.value}",  # noqa: E501
+                detail=f"IDW10203: The scope permissions (scp) claim does not contain the required scope {self.scope.value}",  # noqa: E501
             )
+
+        # Application token: check roles
+        if self.role and verified_claims.get("roles"):
+            roles = verified_claims["roles"]
+            if self.role.value in roles:
+                return True
+
+            raise AuthError(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"IDW10203: The role permissions (roles) claim does not contain the required role {self.role.value}",  # noqa: E501
+            )
+
         raise AuthError(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="IDW10201: No app permissions (role) claim was found in the bearer token",  # noqa: E501
+            detail="IDW10201: Neither scope or roles claim was found in the bearer token.",  # noqa: E501
         )
 
     async def __call__(
@@ -368,7 +390,7 @@ class AzureJwtAuth(AuthMethod):
         if email := verified_claims.get("email"):
             span.set_attribute(Attributes.USER_EMAIL, email)
 
-        return self._require_scope(self.scope, verified_claims)
+        return self._require_scope_or_role(verified_claims)
 
 
 class SuccessAuth(AuthMethod):
@@ -403,7 +425,8 @@ class SuccessAuth(AuthMethod):
 def choose_auth_strategy(
     tenant_id: str,
     application_id: str,
-    auth_scope: AuthScopes,
+    auth_scope: AuthScope | None = None,
+    auth_role: AuthRole | None = None,
     *,
     bypass_auth: bool,
 ) -> AuthMethod:
@@ -415,6 +438,7 @@ def choose_auth_strategy(
         tenant_id=tenant_id,
         application_id=application_id,
         scope=auth_scope,
+        role=auth_role,
     )
 
 
@@ -565,7 +589,8 @@ class HybridAuth(AuthMethod):
 def choose_hybrid_auth_strategy(  # noqa: PLR0913
     tenant_id: str,
     application_id: str,
-    jwt_scope: AuthScopes,
+    jwt_scope: AuthScope | None,
+    jwt_role: AuthRole | None,
     get_client_secret: Callable[[UUID], Awaitable[str]],
     hmac_client_type: HMACClientType,
     *,
@@ -589,6 +614,7 @@ def choose_hybrid_auth_strategy(  # noqa: PLR0913
             tenant_id=tenant_id,
             application_id=application_id,
             scope=jwt_scope,
+            role=jwt_role,
         ),
         hmac_auth=HMACMultiClientAuth(
             get_client_secret=get_client_secret,
