@@ -76,9 +76,9 @@ class Reference(GenericSQLPersistence[DomainReference]):
         "Enhancement", back_populates="reference", cascade="all, delete, delete-orphan"
     )
 
-    # When using a self-referential relationship, SQLAlchemy requires the join
-    # lazy strategy and specify a max depth to correctly build the query. (As it
-    # needs to perform n+1 joins for n-depth searching).
+    # When using a self-referential relationship, SQLAlchemy requires information
+    # about how far to take the recursion (As it needs to perform n+1 joins for n-depth
+    # searching, but doesn' know n).
     # Also see:
     # - https://docs.sqlalchemy.org/en/20/orm/self_referential.html#configuring-self-referential-eager-loading
     # - ``Reference.merge()`` to understand the edge case in which duplicates chain
