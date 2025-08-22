@@ -16,12 +16,14 @@ from pydantic import (
     TypeAdapter,
 )
 
+from app.core.config import get_settings
 from app.core.exceptions import UnresolvableReferenceDuplicateError
 from app.core.telemetry.logger import get_logger
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 from app.persistence.blob.models import BlobStorageFile
 
 logger = get_logger(__name__)
+settings = get_settings()
 
 ExternalIdentifierAdapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
     ExternalIdentifier,
@@ -130,6 +132,7 @@ class Reference(
         self,
         enhancements: list["Enhancement"],
         identifiers: list["LinkedExternalIdentifier"],
+        duplicate_depth: int = 1,
     ) -> tuple[list["LinkedExternalIdentifier"], list["Enhancement"]]:
         """
         Merge an incoming reference into this one.
@@ -151,6 +154,7 @@ class Reference(
             - self (Reference): The existing reference.
             - enhancements (list["Enhancement"]): The incoming enhancements.
             - identifiers (list["LinkedExternalIdentifier"]): The incoming identifiers.
+            - duplicate_depth (int): Internal, tracks the current depth of duplication.
 
         Returns:
             - tuple[list["LinkedExternalIdentifier"], list["Enhancement"]]: The
@@ -164,6 +168,10 @@ class Reference(
                 exclude={"id", "reference_id", "reference"},
                 exclude_none=True,
             )
+
+        if duplicate_depth > settings.max_duplicate_depth:
+            msg = "Max duplicate depth reached."
+            raise UnresolvableReferenceDuplicateError(msg)
 
         if not self.enhancements:
             self.enhancements = []
@@ -222,7 +230,11 @@ class Reference(
         if self.canonical_reference:
             # We know that A has at least the same references as B so we can work
             # on the changeset only.
-            self.canonical_reference.merge(delta_enhancements, delta_identifiers)
+            self.canonical_reference.merge(
+                delta_enhancements,
+                delta_identifiers,
+                duplicate_depth=duplicate_depth + 1,
+            )
 
         return delta_identifiers, delta_enhancements
 

@@ -5,8 +5,11 @@ from typing import Any, Self
 
 from sqlalchemy import UUID, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
+from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.config import get_settings
+from app.core.exceptions import SQLPreloadError
 from app.domain.references.models.models import (
     BatchEnhancementRequest as DomainBatchEnhancementRequest,
 )
@@ -35,6 +38,8 @@ from app.domain.references.models.models import (
 )
 from app.persistence.blob.models import BlobStorageFile
 from app.persistence.sql.persistence import GenericSQLPersistence
+
+settings = get_settings()
 
 
 class Reference(GenericSQLPersistence[DomainReference]):
@@ -66,27 +71,33 @@ class Reference(GenericSQLPersistence[DomainReference]):
     enhancements: Mapped[list["Enhancement"]] = relationship(
         "Enhancement", back_populates="reference", cascade="all, delete, delete-orphan"
     )
+
+    # When using a self-referential relationship, SQLAlchemy requires the join
+    # lazy strategy and specify a max depth to correctly build the query. (As it
+    # needs to perform n+1 joins for n-depth searching).
+    # Also see:
+    # - https://docs.sqlalchemy.org/en/20/orm/self_referential.html#configuring-self-referential-eager-loading
+    # - ``Reference.merge()`` to understand the edge case in which duplicates chain
     canonical_reference: Mapped["Reference | None"] = relationship(
         "Reference",
         remote_side="Reference.id",
         back_populates="duplicate_references",
         # Cascading feels scary on a relationship like this so limiting to the minimal
-        # set of operations. This allows the updating of a canonical
-        # reference's canonical reference and so on up the tree. See domain
-        # Reference.merge() for documentation on that edge case.
+        # set of operations.
         cascade="merge",
+        lazy="joined",
+        join_depth=settings.max_duplicate_depth - 1,
     )
     # NB no cascading effects on duplicating references, handle each explicitly.
-    # Setup the self-referential relationship for canonical/duplicate references
+    # We only update upwards.
     duplicate_references: Mapped[list["Reference"]] = relationship(
         "Reference",
         back_populates="canonical_reference",
+        lazy="joined",
+        join_depth=settings.max_duplicate_depth - 1,
     )
 
-    __table_args__ = (
-        # Makes sure it's performant to find duplicate_references
-        Index("ix_reference_duplicate_of", "duplicate_of"),
-    )
+    __table_args__ = (Index("ix_reference_duplicate_of", "duplicate_of"),)
 
     @classmethod
     def from_domain(cls, domain_obj: DomainReference) -> Self:
@@ -111,33 +122,40 @@ class Reference(GenericSQLPersistence[DomainReference]):
 
     def to_domain(self, preload: list[str] | None = None) -> DomainReference:
         """Convert the persistence model into a Domain Reference object."""
-        return DomainReference(
-            id=self.id,
-            visibility=self.visibility,
-            duplicate_of=self.duplicate_of,
-            identifiers=[identifier.to_domain() for identifier in self.identifiers]
-            if "identifiers" in (preload or [])
-            else None,
-            enhancements=[enhancement.to_domain() for enhancement in self.enhancements]
-            if "enhancements" in (preload or [])
-            else None,
-            # Note we don't propagate the opposite side of the duplicate self-join to
-            # avoid infinite recursion. Having both sides of the relationship in preload
-            # will still return the tree on both sides but won't attempt to double back.
-            canonical_reference=self.canonical_reference.to_domain(
-                preload=[p for p in preload or [] if p != "duplicate_references"]
-            )
-            if "canonical_reference" in (preload or []) and self.canonical_reference
-            else None,
-            duplicate_references=[
-                reference.to_domain(
-                    preload=[p for p in preload or [] if p != "canonical_reference"]
+        try:
+            return DomainReference(
+                id=self.id,
+                visibility=self.visibility,
+                duplicate_of=self.duplicate_of,
+                identifiers=[identifier.to_domain() for identifier in self.identifiers]
+                if "identifiers" in (preload or [])
+                else None,
+                enhancements=[
+                    enhancement.to_domain() for enhancement in self.enhancements
+                ]
+                if "enhancements" in (preload or [])
+                else None,
+                # Note we don't propagate the opposite side of the duplicate self-join
+                # to avoid infinite recursion. Having both sides of the relationship in
+                # preload will still return the tree on both sides but won't attempt to
+                # double back.
+                canonical_reference=self.canonical_reference.to_domain(
+                    preload=[p for p in preload or [] if p != "duplicate_references"]
                 )
-                for reference in self.duplicate_references
-            ]
-            if "duplicate_references" in (preload or [])
-            else None,
-        )
+                if "canonical_reference" in (preload or []) and self.canonical_reference
+                else None,
+                duplicate_references=[
+                    reference.to_domain(
+                        preload=[p for p in preload or [] if p != "canonical_reference"]
+                    )
+                    for reference in self.duplicate_references
+                ]
+                if "duplicate_references" in (preload or [])
+                else None,
+            )
+        except MissingGreenlet as exc:
+            msg = "Trying to preload a missing relationship. This is likely due to "
+            raise SQLPreloadError(msg) from exc
 
 
 class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):

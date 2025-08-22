@@ -397,3 +397,61 @@ class TestReferenceMerge:
         # Verify the canonical reference received the new enhancement
         assert canonical_ref.enhancements[0].content == annotation.content
         assert canonical_ref.enhancements[0].reference_id == canonical_ref.id
+
+    @pytest.mark.parametrize(
+        ("max_duplicate_depth", "expected_error"),
+        [
+            (2, UnresolvableReferenceDuplicateError),
+            (3, None),
+        ],
+    )
+    async def test_max_duplicate_depth(
+        self, annotation, openalex_identifier, max_duplicate_depth, expected_error
+    ):
+        """Test that merge fails when max duplicate depth is reached."""
+        from app.domain.references.models import models
+
+        original_max_depth = models.settings.max_duplicate_depth
+
+        try:
+            models.settings.max_duplicate_depth = max_duplicate_depth
+
+            ref1 = Reference(id=uuid.uuid4())
+            ref1.enhancements = []
+            ref1.identifiers = []
+
+            ref2 = Reference(id=uuid.uuid4())
+            ref2.enhancements = []
+            ref2.identifiers = []
+            ref1.canonical_reference = ref2
+            ref1.duplicate_of = ref2.id
+
+            ref3 = Reference(id=uuid.uuid4())
+            ref3.enhancements = []
+            ref3.identifiers = []
+            ref2.canonical_reference = ref3
+            ref2.duplicate_of = ref3.id
+
+            if expected_error:
+                # When we try to merge with ref1, the chain is too deep
+                # ref1->ref2->ref3 exceeds max_depth=2 when traversing up the chain
+                with pytest.raises(expected_error) as excinfo:
+                    ref1.merge([annotation], [openalex_identifier])
+
+                assert "Max duplicate depth reached" in str(excinfo.value)
+            else:
+                # The same merge should now work
+                delta_ids, delta_enhs = ref1.merge([annotation], [openalex_identifier])
+
+                # Verify changes propagated through the chain
+                assert len(delta_ids) == 1
+                assert len(delta_enhs) == 1
+                assert len(ref1.identifiers) == 1
+                assert len(ref1.enhancements) == 1
+                assert len(ref2.identifiers) == 1
+                assert len(ref2.enhancements) == 1
+                assert len(ref3.identifiers) == 1
+                assert len(ref3.enhancements) == 1
+        finally:
+            # Restore the original value
+            models.settings.max_duplicate_depth = original_max_depth
