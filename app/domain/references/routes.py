@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
     AuthMethod,
-    AuthRoles,
-    AuthScopes,
+    AuthRole,
+    AuthScope,
     CachingStrategyAuth,
     HMACClientType,
     choose_auth_strategy,
@@ -119,8 +119,8 @@ def choose_auth_strategy_reference_reader() -> AuthMethod:
     return choose_auth_strategy(
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
-        auth_scope=AuthScopes.REFERENCE_READER,
-        auth_role=AuthRoles.REFERENCE_READER,
+        auth_scope=AuthScope.REFERENCE_READER,
+        auth_role=AuthRole.REFERENCE_READER,
         bypass_auth=settings.running_locally,
     )
 
@@ -137,8 +137,8 @@ async def enhancement_request_hybrid_auth(
     return await choose_hybrid_auth_strategy(
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
-        jwt_scope=AuthScopes.ENHANCEMENT_REQUEST_WRITER,
-        jwt_role=AuthRoles.ENHANCEMENT_REQUEST_WRITER,
+        jwt_scope=AuthScope.ENHANCEMENT_REQUEST_WRITER,
+        jwt_role=AuthRole.ENHANCEMENT_REQUEST_WRITER,
         get_client_secret=robot_service.get_robot_secret_standalone,
         hmac_client_type=HMACClientType.ROBOT,
         bypass_auth=settings.running_locally,

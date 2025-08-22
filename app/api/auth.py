@@ -41,7 +41,7 @@ settings = get_settings()
 security = HTTPBearer(auto_error=False)
 
 
-class AuthRoles(StrEnum):
+class AuthRole(StrEnum):
     """Enum describing the available app roles that can be granted to applications."""
 
     ADMINISTRATOR = "administrator"
@@ -50,7 +50,7 @@ class AuthRoles(StrEnum):
     ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer"
 
 
-class AuthScopes(StrEnum):
+class AuthScope(StrEnum):
     """Enum describing the available auth scopes can be granted to users."""
 
     ADMINISTRATOR = "administrator.all"
@@ -425,8 +425,8 @@ class SuccessAuth(AuthMethod):
 def choose_auth_strategy(
     tenant_id: str,
     application_id: str,
-    auth_scope: AuthScopes | None = None,
-    auth_role: AuthRoles | None = None,
+    auth_scope: AuthScope | None = None,
+    auth_role: AuthRole | None = None,
     *,
     bypass_auth: bool,
 ) -> AuthMethod:
@@ -589,8 +589,8 @@ class HybridAuth(AuthMethod):
 def choose_hybrid_auth_strategy(  # noqa: PLR0913
     tenant_id: str,
     application_id: str,
-    jwt_scope: AuthScopes | None,
-    jwt_role: AuthRoles | None,
+    jwt_scope: AuthScope | None,
+    jwt_role: AuthRole | None,
     get_client_secret: Callable[[UUID], Awaitable[str]],
     hmac_client_type: HMACClientType,
     *,

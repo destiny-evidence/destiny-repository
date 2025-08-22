@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
     AuthMethod,
-    AuthScopes,
+    AuthScope,
     CachingStrategyAuth,
     choose_auth_strategy,
 )
@@ -56,7 +56,7 @@ def choose_auth_strategy_robot_writer() -> AuthMethod:
     return choose_auth_strategy(
         tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
-        auth_scope=AuthScopes.ROBOT_WRITER,
+        auth_scope=AuthScope.ROBOT_WRITER,
         bypass_auth=settings.running_locally,
     )
 

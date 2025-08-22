@@ -14,7 +14,7 @@ from jose import jwt
 from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import AuthRoles, AuthScopes
+from app.api.auth import AuthRole, AuthScope
 from app.core.config import DatabaseConfig, get_settings
 from app.persistence.es.client import AsyncESClientManager, es_manager
 from app.persistence.sql.persistence import Base
@@ -138,13 +138,13 @@ def fake_tenant_id() -> str:
 def generate_fake_token(
     fake_application_id: str,
     fake_tenant_id: str,
-) -> Callable[[dict | None, AuthScopes | None, AuthRoles | None], str]:
+) -> Callable[[dict | None, AuthScope | None, AuthRole | None], str]:
     """Create a function that will return a fake token using the supplied params."""
 
     def __generate_token(
         user_payload: dict | None = None,
-        scope: AuthScopes | None = None,
-        role: AuthRoles | None = None,
+        scope: AuthScope | None = None,
+        role: AuthRole | None = None,
     ) -> str:
         if user_payload is None:
             user_payload = {}
