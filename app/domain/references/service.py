@@ -85,30 +85,49 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_id, preload=["identifiers", "enhancements"]
         )
 
-    async def _add_enhancement(self, enhancement: Enhancement) -> Reference:
-        """Add an enhancement to a reference."""
+    async def _add_enhancement(
+        self, enhancement: Enhancement, *, enforce_enhancement_tree: bool = True
+    ) -> Reference:
+        """
+        Add an enhancement to a reference.
+
+        :param enhancement: The enhancement to add
+        :type enhancement: Enhancement
+        :param enforce_enhancement_tree: Whether the enhancement's parents must be
+        from the same reference. If False, will still verify the enhancement's
+        parents exist without the ownership check. This should be True unless you have
+        a good reason not to. An example of a good reason is duplicating an enhancement
+        to another reference, which should point back at the source enhancement.
+        :type enforce_enhancement_tree: bool
+        """
         reference = await self.sql_uow.references.get_by_pk(
             enhancement.reference_id, preload=["enhancements", "identifiers"]
         )
 
         if enhancement.derived_from:
             try:
-                parent_enhancements = await self.sql_uow.enhancements.get_by_pks(
-                    enhancement.derived_from
-                )
-
-                invalid_derived_from_ids = [
-                    str(parent.id)
-                    for parent in parent_enhancements
-                    if parent.reference_id != enhancement.reference_id
-                ]
-
-                if invalid_derived_from_ids:
-                    detail = (
-                        f"Parent enhancements {",".join(invalid_derived_from_ids)} "
-                        "are for a different parent reference"
+                if enforce_enhancement_tree:
+                    parent_enhancements = await self.sql_uow.enhancements.get_by_pks(
+                        enhancement.derived_from
                     )
-                    raise InvalidParentEnhancementError(detail=detail)
+
+                    invalid_derived_from_ids = [
+                        str(parent.id)
+                        for parent in parent_enhancements
+                        if parent.reference_id != enhancement.reference_id
+                    ]
+
+                    if invalid_derived_from_ids:
+                        detail = (
+                            f"Parent enhancements {",".join(invalid_derived_from_ids)} "
+                            "are for a different parent reference"
+                        )
+                        raise InvalidParentEnhancementError(detail=detail)
+                else:
+                    await self.sql_uow.enhancements.verify_pk_existence(
+                        enhancement.derived_from
+                    )
+
             except SQLNotFoundError as e:
                 detail = f"Enhancements with ids {e.lookup_value} do not exist."
                 raise InvalidParentEnhancementError(detail) from e
@@ -121,7 +140,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def add_enhancement(self, enhancement: Enhancement) -> Reference:
         """Add an enhancement to a reference."""
-        return await self._add_enhancement(enhancement)
+        return await self._add_enhancement(enhancement, enforce_enhancement_tree=True)
 
     async def _get_hydrated_references(
         self,
@@ -342,9 +361,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> tuple[bool, str]:
         """Handle the import of a single batch enhancement result entry."""
         try:
-            await self._add_enhancement(
-                enhancement,
-            )
+            await self._add_enhancement(enhancement, enforce_enhancement_tree=True)
         except SQLNotFoundError:
             return (
                 False,
