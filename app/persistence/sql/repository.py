@@ -284,6 +284,30 @@ class GenericAsyncSqlRepository(
         return persistence.to_domain()
 
     @trace_repository_method(tracer)
+    async def bulk_add(
+        self, records: list[GenericDomainModelType]
+    ) -> list[GenericDomainModelType]:
+        """
+        Add multiple records to the repository in bulk.
+
+        Args:
+        - records (list[T]): The records to be persisted.
+
+        """
+        persistence_objects = [
+            self._persistence_cls.from_domain(record) for record in records
+        ]
+        try:
+            self._session.add_all(persistence_objects)
+            await self._session.flush()
+        except IntegrityError as e:
+            raise SQLIntegrityError.from_sqlacademy_integrity_error(
+                e, self._persistence_cls.__name__
+            ) from e
+
+        return [p.to_domain() for p in persistence_objects]
+
+    @trace_repository_method(tracer)
     async def merge(self, record: GenericDomainModelType) -> GenericDomainModelType:
         """
         Merge a record into the repository.
@@ -329,3 +353,36 @@ class GenericAsyncSqlRepository(
         query = select(self._persistence_cls.id)
         result = await self._session.execute(query)
         return [row[0] for row in result.fetchall()]
+
+    @trace_repository_method(tracer)
+    async def find(
+        self,
+        limit: int | None = None,
+        **filters: object,
+    ) -> list[GenericDomainModelType]:
+        """
+        Find records based on provided field filters.
+
+        Args:
+        - limit (int | None): Maximum number of records to return.
+        - **filters: Field filters where key is field name and value is the
+                    filter value. Only fields that exist on the persistence
+                    model will be applied. None values are ignored.
+
+        Returns:
+        - list[GenericDomainModelType]: A list of domain models matching the
+                                       filters.
+
+        """
+        query = select(self._persistence_cls)
+
+        for field_name, value in filters.items():
+            if value is not None and hasattr(self._persistence_cls, field_name):
+                field = getattr(self._persistence_cls, field_name)
+                query = query.where(field == value)
+
+        if limit is not None:
+            query = query.limit(limit)
+
+        result = await self._session.execute(query)
+        return [record.to_domain() for record in result.scalars().all()]

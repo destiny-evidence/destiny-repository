@@ -29,9 +29,12 @@ from app.domain.references.models.models import (
     ExternalIdentifierSearch,
     ExternalIdentifierType,
     LinkedExternalIdentifier,
+    PendingEnhancement,
+    PendingEnhancementStatus,
     Reference,
     RobotAutomation,
     RobotAutomationPercolationResult,
+    RobotEnhancementBatch,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.services.anti_corruption_service import (
@@ -214,9 +217,31 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             enhancement_request.reference_ids
         )
 
-        # Add any extra parameters here!
+        await self.sql_uow.batch_enhancement_requests.add(enhancement_request)
 
-        return await self.sql_uow.batch_enhancement_requests.add(enhancement_request)
+        await self._create_pending_enhancements(enhancement_request)
+
+        return enhancement_request
+
+    async def _create_pending_enhancements(
+        self, enhancement_request: BatchEnhancementRequest
+    ) -> list[PendingEnhancement]:
+        """Create a batch enhancement request."""
+        pending_enhancements_to_create = [
+            PendingEnhancement(
+                reference_id=ref_id,
+                robot_id=enhancement_request.robot_id,
+                batch_enhancement_request_id=enhancement_request.id,
+            )
+            for ref_id in enhancement_request.reference_ids
+        ]
+
+        if pending_enhancements_to_create:
+            return await self.sql_uow.pending_enhancements.bulk_add(
+                pending_enhancements_to_create
+            )
+
+        return []
 
     @sql_unit_of_work
     async def get_batch_enhancement_request(
@@ -553,3 +578,69 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         # level exception handler, so we don't need to handle it here.
         automation = await self.sql_uow.robot_automations.merge(automation)
         return await self.save_robot_automation(automation)
+
+    @sql_unit_of_work
+    async def get_pending_enhancements_for_robot(
+        self, robot_id: UUID4, limit: int
+    ) -> list[PendingEnhancement]:
+        """Get pending enhancements for a robot."""
+        return await self.sql_uow.pending_enhancements.find(
+            robot_id=robot_id,
+            robot_enhancement_batch_id=None,
+            status=PendingEnhancementStatus.PENDING,
+            limit=limit,
+        )
+
+    @sql_unit_of_work
+    async def create_robot_enhancement_batch(
+        self,
+        robot_id: UUID4,
+        pending_enhancements: list[PendingEnhancement],
+        blob_repository: BlobRepository,
+    ) -> RobotEnhancementBatch:
+        """
+        Create a robot enhancement batch.
+
+        Args:
+            robot_id (UUID4): The ID of the robot.
+            pending_enhancements (list[PendingEnhancement]): The list of pending
+                enhancements to include in the batch.
+            blob_repository (BlobRepository): The blob repository.
+
+        Returns:
+            RobotEnhancementBatch: The created robot enhancement batch.
+
+        """
+        robot_enhancement_batch = RobotEnhancementBatch(
+            robot_id=robot_id,
+        )
+        await self.sql_uow.robot_enhancement_batches.add(robot_enhancement_batch)
+
+        for pending_enhancement in pending_enhancements:
+            await self.sql_uow.pending_enhancements.update_by_pk(
+                pending_enhancement.id,
+                status=PendingEnhancementStatus.PROCESSED,
+                robot_enhancement_batch_id=robot_enhancement_batch.id,
+            )
+
+        file_stream = FileStream(
+            self._get_jsonl_hydrated_references,
+            [
+                {
+                    "reference_ids": reference_id_chunk,
+                }
+                for reference_id_chunk in list_chunker(
+                    [p.reference_id for p in pending_enhancements],
+                    settings.upload_file_chunk_size_override.get(
+                        UploadFile.ROBOT_ENHANCEMENT_BATCH_REFERENCE_DATA,
+                        settings.default_upload_file_chunk_size,
+                    ),
+                )
+            ],
+        )
+
+        return await self._batch_enhancement_service.build_robot_enhancement_batch(
+            robot_enhancement_batch=robot_enhancement_batch,
+            file_stream=file_stream,
+            blob_repository=blob_repository,
+        )

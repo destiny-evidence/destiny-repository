@@ -224,6 +224,7 @@ class ESPercolationOperation(StrEnum):
 class UploadFile(StrEnum):
     """Enum for upload file types."""
 
+    ROBOT_ENHANCEMENT_BATCH_REFERENCE_DATA = auto()
     BATCH_ENHANCEMENT_REQUEST_REFERENCE_DATA = auto()
 
 
