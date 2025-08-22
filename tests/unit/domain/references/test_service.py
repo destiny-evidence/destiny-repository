@@ -91,10 +91,12 @@ async def test_register_batch_reference_enhancement_request(fake_repository, fak
     fake_references = fake_repository(
         init_entries=[Reference(id=ref_id) for ref_id in reference_ids]
     )
+    fake_pending_enhancements = fake_repository()
 
     uow = fake_uow(
         batch_enhancement_requests=fake_batch_requests,
         references=fake_references,
+        pending_enhancements=fake_pending_enhancements,
     )
     service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
 
@@ -107,6 +109,13 @@ async def test_register_batch_reference_enhancement_request(fake_repository, fak
     assert created_request == stored_request
     assert created_request.reference_ids == reference_ids
     assert created_request.enhancement_parameters == {"param": "value"}
+
+    pending_enhancements_records = await fake_pending_enhancements.get_all()
+    assert len(pending_enhancements_records) == len(reference_ids)
+    for pending_enhancement in pending_enhancements_records:
+        assert pending_enhancement.robot_id == robot_id
+        assert pending_enhancement.batch_enhancement_request_id == batch_request_id
+        assert pending_enhancement.reference_id in reference_ids
 
 
 @pytest.mark.asyncio
