@@ -20,13 +20,23 @@ from app.domain.references.models.sql import (
 
 
 class DummyDomainReference:
-    def __init__(self, id, visibility, identifiers=None, enhancements=None):
+    def __init__(
+        self,
+        id,
+        visibility,
+        identifiers=None,
+        enhancements=None,
+        duplicate_of=None,
+        canonical_reference=None,
+        duplicate_references=None,
+    ):
         self.id = id
         self.visibility = visibility
         self.identifiers = identifiers
         self.enhancements = enhancements
-        self.duplicate_of = None
-        self.canonical_reference = None
+        self.duplicate_of = duplicate_of
+        self.canonical_reference = canonical_reference
+        self.duplicate_references = duplicate_references
 
 
 class DummyExternalIdentifier:
@@ -271,13 +281,30 @@ async def test_reference_with_relationships():
         robot_version="2.0.0",
         content=dummy_content,
     )
-    # Create dummy domain reference with identifiers and enhancements
+
+    # Create a canonical reference
+    canonical_ref_id = uuid.uuid4()
+    canonical_dummy_ref = DummyDomainReference(
+        id=canonical_ref_id,
+        visibility=Visibility.PUBLIC,
+    )
+
+    # Create a duplicate reference
+    duplicate_ref_id = uuid.uuid4()
+    duplicate_dummy_ref = DummyDomainReference(
+        id=duplicate_ref_id,
+        visibility=Visibility.HIDDEN,
+    )
+
+    # Create dummy domain reference with identifiers, enhancements, and refs
     dummy_ref = DummyDomainReference(
         id=ref_id,
         visibility=Visibility.PUBLIC,
         identifiers=[dummy_ext],
         enhancements=[dummy_enh],
+        canonical_reference=canonical_dummy_ref,
     )
+
     # Convert the reference from domain
     sql_ref = Reference.from_domain(dummy_ref)
     # Manually assign SQL models for relationships
@@ -286,15 +313,44 @@ async def test_reference_with_relationships():
     sql_ref.identifiers = [sql_ext]
     sql_ref.enhancements = [sql_enh]
 
+    # Create SQL model for canonical reference
+    sql_canonical_ref = Reference.from_domain(canonical_dummy_ref)
+    sql_ref.canonical_reference = sql_canonical_ref
+
+    # Create SQL model for duplicate reference
+    sql_duplicate_ref = Reference.from_domain(duplicate_dummy_ref)
+    sql_ref.duplicate_references = [sql_duplicate_ref]
+
     # Convert back to domain with preload relationships
-    domain_ref = sql_ref.to_domain(preload=["identifiers", "enhancements"])
+    domain_ref = sql_ref.to_domain(
+        preload=[
+            "identifiers",
+            "enhancements",
+            "canonical_reference",
+            "duplicate_references",
+        ]
+    )
     assert domain_ref.id == dummy_ref.id
     assert domain_ref.visibility == dummy_ref.visibility
+
     # Check identifiers conversion
     assert isinstance(domain_ref.identifiers, list)
     assert len(domain_ref.identifiers) == 1
     assert domain_ref.identifiers[0].id == dummy_ext.id
+
     # Check enhancements conversion
     assert isinstance(domain_ref.enhancements, list)
     assert len(domain_ref.enhancements) == 1
     assert domain_ref.enhancements[0].id == dummy_enh.id
+
+    # Check canonical reference conversion
+    assert domain_ref.canonical_reference is not None
+    assert domain_ref.canonical_reference.id == canonical_ref_id
+    assert domain_ref.canonical_reference.visibility == Visibility.PUBLIC
+
+    # Check duplicate references conversion
+    assert domain_ref.duplicate_references is not None
+    assert isinstance(domain_ref.duplicate_references, list)
+    assert len(domain_ref.duplicate_references) == 1
+    assert domain_ref.duplicate_references[0].id == duplicate_ref_id
+    assert domain_ref.duplicate_references[0].visibility == Visibility.HIDDEN
