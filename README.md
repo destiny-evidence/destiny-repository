@@ -231,3 +231,17 @@ docker compose down -v \
 && docker compose -f docker-compose.yml -f docker-compose.e2e.yml -f docker-compose.observable.yml --profile e2e up -d --force-recreate \
 && docker compose -f docker-compose.yml -f docker-compose.e2e.yml -f docker-compose.observable.yml logs -f --tail=0 e2e app worker
 ```
+
+### Seeding the database
+
+```sh
+export PGPASSWORD=localpass
+```
+
+```sh
+pg_dump --data-only --exclude-table=alembic_version -U localuser  -h 0.0.0.0 -p 5432 destiny_dev > .db_seed/local.sql
+```
+
+```sh
+psql -U localuser -h 0.0.0.0 -p 5432 -d destiny_dev -f ".db_seed/local.sql"
+```
