@@ -80,7 +80,7 @@ PGPASSWORD=localpass psql -U localuser -h 0.0.0.0 -p 5432 -d destiny_dev -f ".db
 
 ##### Updating the database seed
 
-After applying a migration to the database, you may need to update the data seed. Apply the migrstion locally, run the following command, and then commit the result.
+After generating a database migration, you will need to update the data seed. Apply the migration locally, run the following command, and then commit the result.
 
 ```sh
 PGPASSWORD=localpass pg_dump --data-only --exclude-table=alembic_version -U localuser -h 0.0.0.0 -p 5432 destiny_dev > .db_seed/local.sql
