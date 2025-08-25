@@ -19,7 +19,7 @@ from pydantic import (
 from app.core.config import get_settings
 from app.core.exceptions import UnresolvableReferenceDuplicateError, WrongReferenceError
 from app.core.telemetry.logger import get_logger
-from app.domain.base import DomainBaseModel, SQLAttributeMixin
+from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
 from app.persistence.blob.models import BlobStorageFile
 
 logger = get_logger(__name__)
@@ -95,6 +95,30 @@ class Visibility(StrEnum):
     PUBLIC = auto()
     RESTRICTED = auto()
     HIDDEN = auto()
+
+
+class Process(StrEnum):
+    """The process used to create or modify a reference."""
+
+    IMPORT = auto()
+    ROBOT_ENHANCEMENT = auto()
+
+
+class DuplicateDetermination(StrEnum):
+    """
+    The determination of whether a reference is a duplicate.
+
+    **Allowed values**:
+    - `pending`: The duplicate status is still being determined.
+    - `duplicate`: The reference is a duplicate of another reference.
+    - `not_duplicate`: The reference is not a duplicate of another reference.
+    - `unresolved`: Automatic attempts to resolve the duplicate were unsuccessful.
+    """
+
+    PENDING = auto()
+    DUPLICATE = auto()
+    NOT_DUPLICATE = auto()
+    UNRESOLVED = auto()
 
 
 class Reference(
@@ -460,3 +484,82 @@ class RobotAutomationPercolationResult(BaseModel):
 
     robot_id: UUID4
     reference_ids: set[UUID4]
+
+
+class CandidateFingerprint(ProjectedBaseModel):
+    """
+    Model representing a simplified reference fingerprint.
+
+    This subsets Fingerprint and is used for selecting candidate pairings with
+    which to do more detailed de-duplication.
+    """
+
+    publication_year: int | None = Field(
+        default=None,
+        description="The publication year of the reference.",
+    )
+    authors: list[str] = Field(
+        default_factory=list, description="The authors of the reference."
+    )
+    title: str | None = Field(
+        default=None,
+        description="The title of the reference.",
+    )
+
+
+class Fingerprint(CandidateFingerprint):
+    """
+    Model representing a reference fingerprint.
+
+    A fingerprint is a flattened representation of a reference, including all relevant
+    data for de-duplication. This data may or may not be pre-processed, eg
+    normalisation.
+    """
+
+    doi_identifier: str | None = Field(
+        default=None,
+        description="The DOI identifier of the reference.",
+    )
+    openalex_identifier: str | None = Field(
+        default=None,
+        description="The OpenAlex identifier of the reference.",
+    )
+    pubmed_identifier: int | None = Field(
+        default=None,
+        description="The PubMed identifier of the reference.",
+    )
+    other_identifiers: dict[str, str] = Field(
+        default_factory=dict,
+        description="Other identifiers for the reference.",
+    )
+    publisher: str | None = Field(
+        default=None,
+        description="The publisher of the reference.",
+    )
+    abstract: str | None = Field(
+        default=None,
+        description="The abstract of the reference.",
+    )
+
+
+class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
+    """Model representing a decision on whether a reference is a duplicate."""
+
+    reference_id: UUID4 = Field(description="The ID of the reference being evaluated.")
+    source: Process = Field(description="The process that triggered this decision.")
+    source_id: UUID4 | None = Field(
+        default=None,
+        description="The ID of the source that triggered this decision. Provides "
+        "provenance in combination with the ``source`` field.",
+    )
+    duplicate_determination: DuplicateDetermination = Field(
+        default=DuplicateDetermination.PENDING,
+        description="The duplicate status of the reference.",
+    )
+    fingerprint: Fingerprint = Field(
+        description="The fingerprint of the reference being evaluated."
+    )
+
+    reference: Reference | None = Field(
+        default=None, description="The reference being evaluated."
+    )

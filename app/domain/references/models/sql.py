@@ -15,10 +15,12 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.models import (
     BatchEnhancementRequestStatus,
+    DuplicateDetermination,
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
+    Process,
     Visibility,
 )
 from app.domain.references.models.models import (
@@ -32,6 +34,9 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.models import (
     Reference as DomainReference,
+)
+from app.domain.references.models.models import (
+    ReferenceDuplicateDecision as DomainReferenceDuplicateDecision,
 )
 from app.domain.references.models.models import (
     RobotAutomation as DomainRobotAutomation,
@@ -74,6 +79,10 @@ class Reference(GenericSQLPersistence[DomainReference]):
     )
     enhancements: Mapped[list["Enhancement"]] = relationship(
         "Enhancement", back_populates="reference", cascade="all, delete, delete-orphan"
+    )
+    duplicate_decision: Mapped["ReferenceDuplicateDecision | None"] = relationship(
+        "ReferenceDuplicateDecision",
+        back_populates="reference",
     )
 
     # When using a self-referential relationship, SQLAlchemy requires information
@@ -506,4 +515,57 @@ class RobotAutomation(GenericSQLPersistence[DomainRobotAutomation]):
             id=self.id,
             robot_id=self.robot_id,
             query=self.query,
+        )
+
+
+class ReferenceDuplicateDecision(
+    GenericSQLPersistence[DomainReferenceDuplicateDecision]
+):
+    """SQL Persistence model for a Reference Duplicate Decision."""
+
+    __tablename__ = "reference_duplicate_decision"
+
+    reference_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("reference.id"), nullable=False
+    )
+    source: Mapped[Process] = mapped_column(String, nullable=False)
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=True)
+    duplicate_determination: Mapped[DuplicateDetermination] = mapped_column(
+        ENUM(
+            *[status.value for status in DuplicateDetermination],
+            name="duplicate_determination",
+        )
+    )
+    fingerprint: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+    reference: Mapped[Reference] = relationship(
+        "Reference", back_populates="duplicate_decision"
+    )
+
+    @classmethod
+    def from_domain(cls, domain_obj: DomainReferenceDuplicateDecision) -> Self:
+        """Create a persistence model from a domain object."""
+        return cls(
+            id=domain_obj.id,
+            reference_id=domain_obj.reference_id,
+            source=domain_obj.source.value,
+            source_id=domain_obj.source_id,
+            duplicate_determination=domain_obj.duplicate_determination,
+            fingerprint=domain_obj.fingerprint.model_dump(mode="json"),
+        )
+
+    def to_domain(
+        self, preload: list[str] | None = None
+    ) -> DomainReferenceDuplicateDecision:
+        """Convert the persistence model into a Domain object."""
+        return DomainReferenceDuplicateDecision(
+            id=self.id,
+            reference_id=self.reference_id,
+            source=self.source,
+            source_id=self.source_id,
+            duplicate_determination=self.duplicate_determination,
+            fingerprint=self.fingerprint,
+            reference=Reference.to_domain(self.reference, preload=preload)
+            if "reference" in (preload or [])
+            else None,
         )

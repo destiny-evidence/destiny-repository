@@ -2,6 +2,7 @@
 
 import datetime
 import uuid
+from typing import Generic, TypeVar
 
 from pydantic import (
     BaseModel,
@@ -63,3 +64,21 @@ class SQLTimestampMixin(SQLAttributeMixin):
         default_factory=utc_now,
         description="The timestamp at which the object was last updated.",
     )
+
+
+class ProjectedBaseModel(BaseModel):
+    """
+    Base model for all projected models to inherit from.
+
+    Projected models are models derived from a domain model. They duplicate or process
+    data in helpful ways and may also be persisted.
+    """
+
+
+GenericProjectedBaseModelType = TypeVar(
+    "GenericProjectedBaseModelType", bound=ProjectedBaseModel
+)
+
+
+class GenericProjection(Generic[GenericProjectedBaseModelType]):
+    """Generic projection class for projected models."""
