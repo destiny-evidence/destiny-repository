@@ -58,7 +58,9 @@ class CandidateFingerprintProjection(GenericProjection[CandidateFingerprint]):
 
         return CandidateFingerprint(
             title=title,
-            authors=authorship,
+            authors=[author.display_name for author in authorship]
+            if authorship
+            else None,
             publication_year=publication_year,
         )
 
