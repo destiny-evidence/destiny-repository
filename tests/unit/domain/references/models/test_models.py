@@ -5,7 +5,11 @@ import uuid
 import destiny_sdk
 import pytest
 
-from app.core.exceptions import SDKToDomainError, UnresolvableReferenceDuplicateError
+from app.core.exceptions import (
+    SDKToDomainError,
+    UnresolvableReferenceDuplicateError,
+    WrongReferenceError,
+)
 from app.domain.references.models.models import (
     Enhancement,
     GenericExternalIdentifier,
@@ -227,7 +231,7 @@ class TestReferenceMerge:
         empty_identifiers = []
 
         delta_identifiers, delta_enhancements = base_reference.merge(
-            empty_identifiers, empty_enhancements
+            empty_identifiers, empty_enhancements, propagate=True
         )
 
         assert len(delta_identifiers) == 0
@@ -243,10 +247,12 @@ class TestReferenceMerge:
         new_identifiers = [doi_identifier, pmid_identifier]
 
         delta_identifiers, delta_enhancements = base_reference.merge(
-            new_identifiers, empty_enhancements
+            new_identifiers, empty_enhancements, propagate=True
         )
 
         assert len(delta_identifiers) == 1
+        assert delta_identifiers[0].id != pmid_identifier.id
+        assert delta_identifiers[0].reference_id == base_reference.id
         assert len(delta_enhancements) == 0
         assert len(base_reference.identifiers) == 2
         assert len(base_reference.enhancements) == 1
@@ -266,14 +272,16 @@ class TestReferenceMerge:
         empty_identifiers = []
 
         delta_identifiers, delta_enhancements = base_reference.merge(
-            empty_identifiers, new_enhancements
+            empty_identifiers, new_enhancements, propagate=True
         )
 
         assert len(delta_identifiers) == 0
         assert len(delta_enhancements) == 1
+        assert delta_enhancements[0].id != annotation.id
+        assert delta_enhancements[0].reference_id == base_reference.id
         assert len(base_reference.identifiers) == 1
         assert len(base_reference.enhancements) == 2
-        assert base_reference.enhancements[1].derived_from == annotation.id
+        assert base_reference.enhancements[1].derived_from[0] == annotation.id
 
         # Check that reference_id was updated to match base reference
         assert all(
@@ -299,7 +307,7 @@ class TestReferenceMerge:
         empty_identifiers = []
 
         delta_identifiers, delta_enhancements = base_reference.merge(
-            empty_identifiers, new_enhancements
+            empty_identifiers, new_enhancements, propagate=True
         )
 
         assert len(delta_identifiers) == 0
@@ -319,32 +327,12 @@ class TestReferenceMerge:
         new_identifiers = [duplicate_identifier]
 
         delta_identifiers, delta_enhancements = base_reference.merge(
-            new_identifiers, empty_enhancements
+            new_identifiers, empty_enhancements, propagate=True
         )
 
         assert len(delta_identifiers) == 0
         assert len(delta_enhancements) == 0
         assert len(base_reference.identifiers) == 1
-
-    async def test_merge_reference_with_clashing_unique_identifiers(
-        self, base_reference, pmid_identifier, openalex_identifier
-    ):
-        """Test merging references with clashing unique identifiers raises an error."""
-        base_reference.identifiers.append(pmid_identifier)
-
-        empty_enhancements = []
-        different_pmid = destiny_sdk.identifiers.PubMedIdentifier(
-            identifier=5678, identifier_type="pm_id"
-        )
-        clashing_identifier = LinkedExternalIdentifier(
-            id=uuid.uuid4(),
-            identifier=different_pmid,
-            reference_id=uuid.uuid4(),
-        )
-        new_identifiers = [clashing_identifier]
-
-        with pytest.raises(UnresolvableReferenceDuplicateError):
-            base_reference.merge(new_identifiers, empty_enhancements)
 
     async def test_merge_different_unique_identifier_types(
         self, base_reference, pmid_identifier, openalex_identifier
@@ -356,7 +344,7 @@ class TestReferenceMerge:
         new_identifiers = [openalex_identifier]
 
         delta_identifiers, delta_enhancements = base_reference.merge(
-            new_identifiers, empty_enhancements
+            new_identifiers, empty_enhancements, propagate=True
         )
 
         assert len(delta_identifiers) == 1
@@ -377,7 +365,7 @@ class TestReferenceMerge:
         new_identifiers = [openalex_identifier]
 
         delta_identifiers, delta_enhancements = base_reference.merge(
-            new_identifiers, new_enhancements
+            new_identifiers, new_enhancements, propagate=True
         )
 
         # Verify that the base reference was updated
@@ -401,7 +389,7 @@ class TestReferenceMerge:
     async def test_merge_no_propagation(
         self, base_reference, annotation, openalex_identifier
     ):
-        """Test that merge does not propagate up when propagate_upwards=False."""
+        """Test that merge does not propagate up when propagate=False."""
         canonical_ref = Reference(id=uuid.uuid4())
         canonical_ref.enhancements = []
         canonical_ref.identifiers = []
@@ -409,16 +397,26 @@ class TestReferenceMerge:
         base_reference.canonical_reference = canonical_ref
         base_reference.duplicate_of = canonical_ref.id
 
-        new_enhancements = [annotation]
-        new_identifiers = [openalex_identifier]
+        new_enhancements = [
+            annotation.model_copy(update={"reference_id": base_reference.id})
+        ]
+        new_identifiers = [
+            openalex_identifier.model_copy(update={"reference_id": base_reference.id})
+        ]
+
+        with pytest.raises(WrongReferenceError):
+            canonical_ref.merge(new_identifiers, new_enhancements, propagate=False)
 
         delta_identifiers, delta_enhancements = base_reference.merge(
-            new_identifiers, new_enhancements, propagate_upwards=False
+            new_identifiers, new_enhancements, propagate=False
         )
 
         # Verify that the base reference was updated
         assert len(delta_identifiers) == 1
         assert len(delta_enhancements) == 1
+        assert delta_identifiers[0].id == openalex_identifier.id
+        assert delta_enhancements[0].id == annotation.id
+        assert not delta_enhancements[0].derived_from
         assert len(base_reference.identifiers) == 2
         assert len(base_reference.enhancements) == 2
 
@@ -470,12 +468,14 @@ class TestReferenceMerge:
                 # When we try to merge with ref1, the chain is too deep
                 # ref1->ref2->ref3 exceeds max_depth=2 when traversing up the chain
                 with pytest.raises(expected_error) as excinfo:
-                    ref1.merge([openalex_identifier], [annotation])
+                    ref1.merge([openalex_identifier], [annotation], propagate=True)
 
                 assert "Max duplicate depth reached" in str(excinfo.value)
             else:
                 # The same merge should now work
-                delta_ids, delta_enhs = ref1.merge([openalex_identifier], [annotation])
+                delta_ids, delta_enhs = ref1.merge(
+                    [openalex_identifier], [annotation], propagate=True
+                )
 
                 # Verify changes propagated through the chain
                 assert len(delta_ids) == 1

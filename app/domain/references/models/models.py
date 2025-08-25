@@ -17,7 +17,7 @@ from pydantic import (
 )
 
 from app.core.config import get_settings
-from app.core.exceptions import UnresolvableReferenceDuplicateError
+from app.core.exceptions import UnresolvableReferenceDuplicateError, WrongReferenceError
 from app.core.telemetry.logger import get_logger
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 from app.persistence.blob.models import BlobStorageFile
@@ -134,10 +134,10 @@ class Reference(
         enhancements: list["Enhancement"],
         duplicate_depth: int = 1,
         *,
-        propagate_upwards: bool = True,
+        propagate: bool,
     ) -> tuple[list["LinkedExternalIdentifier"], list["Enhancement"]]:
         """
-        Merge an incoming reference into this one.
+        Merge reference details into this reference.
 
         **Enhancements**
         Appends any enhancements, unless the incoming enhancement is identical to an
@@ -157,8 +157,13 @@ class Reference(
             - enhancements (list["Enhancement"]): The incoming enhancements.
             - identifiers (list["LinkedExternalIdentifier"]): The incoming identifiers.
             - duplicate_depth (int): Internal, tracks the current depth of duplication.
-            - propagate_upwards (bool): Whether to propagate changes up the canonical
-                duplicate_of chain.
+                Only applicable when propagate=True.
+            - propagate (bool): If True, incoming enhancements and identifiers will be
+                copied before merging (updating the ID and creating a ``derived_from``
+                relationship) and propagated recursively to the canonical reference(s).
+                If False, the incoming enhancements and identifiers will be merged onto
+                the current reference without modification. In general we propagate on
+                imports, and not on new enhancements from robots.
 
         Returns:
             - tuple[list["LinkedExternalIdentifier"], list["Enhancement"]]: The
@@ -188,40 +193,44 @@ class Reference(
         existing_identifiers = {
             _hash_model(identifier) for identifier in self.identifiers
         }
-        existing_unique_identifiers = {
-            identifier.identifier.identifier_type
-            for identifier in self.identifiers
-            if identifier.identifier.unique
-        }
 
-        delta_enhancements = [
-            incoming_enhancement.model_copy(
-                update={
-                    "id": uuid.uuid4(),
-                    "reference_id": self.id,
-                    "derived_from": [incoming_enhancement.id],
-                }
-            )
-            for incoming_enhancement in enhancements or []
-            if _hash_model(incoming_enhancement) not in existing_enhancements
-        ]
-        delta_identifiers = [
-            incoming_identifier.model_copy(
-                update={"id": uuid.uuid4(), "reference_id": self.id}
-            )
-            for incoming_identifier in identifiers or []
-            if _hash_model(incoming_identifier) not in existing_identifiers
-        ]
-        clashing_identifiers = [
-            incoming_identifier
-            for incoming_identifier in delta_identifiers
-            if incoming_identifier.identifier.identifier_type
-            in existing_unique_identifiers
-        ]
-
-        if clashing_identifiers:
-            msg = f"Clashing unique identifiers found: {clashing_identifiers}"
-            raise UnresolvableReferenceDuplicateError(msg)
+        if propagate:
+            delta_enhancements = [
+                incoming_enhancement.model_copy(
+                    update={
+                        "id": uuid.uuid4(),
+                        "reference_id": self.id,
+                        "derived_from": [incoming_enhancement.id],
+                    }
+                )
+                for incoming_enhancement in enhancements
+                if _hash_model(incoming_enhancement) not in existing_enhancements
+            ]
+            delta_identifiers = [
+                incoming_identifier.model_copy(
+                    update={"id": uuid.uuid4(), "reference_id": self.id}
+                )
+                for incoming_identifier in identifiers
+                if _hash_model(incoming_identifier) not in existing_identifiers
+            ]
+        else:
+            # Verify reference IDs
+            delta_enhancements = [
+                incoming_enhancement
+                for incoming_enhancement in enhancements
+                if _hash_model(incoming_enhancement) not in existing_enhancements
+            ]
+            delta_identifiers = [
+                incoming_identifier
+                for incoming_identifier in identifiers
+                if _hash_model(incoming_identifier) not in existing_identifiers
+            ]
+            if not all(
+                obj.reference_id == self.id
+                for obj in delta_enhancements + delta_identifiers
+            ):
+                detail = f"Incoming data is for a different reference than {self.id}."
+                raise WrongReferenceError(detail)
 
         self.enhancements += delta_enhancements
         self.identifiers += delta_identifiers
@@ -230,14 +239,19 @@ class Reference(
         # If we have a reference A, duplicated by B, and then import a new reference
         # C, it's possible that C is detected as a duplicate of B but not A.
         # In this case, we mark C.duplicate_of=B.id, but we do propagate all of C's
-        # enhancements up to A. And so on through the alphabet :)
-        if self.canonical_reference and propagate_upwards:
+        # enhancements up to A.
+        if (
+            self.canonical_reference
+            and propagate
+            and (delta_enhancements or delta_identifiers)
+        ):
             # We know that A has at least the same references as B so we can work
             # on the changeset only.
             self.canonical_reference.merge(
                 delta_identifiers,
                 delta_enhancements,
                 duplicate_depth=duplicate_depth + 1,
+                propagate=propagate,
             )
 
         return delta_identifiers, delta_enhancements

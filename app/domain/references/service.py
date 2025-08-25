@@ -17,7 +17,6 @@ from app.core.exceptions import (
     RobotEnhancementError,
     RobotUnreachableError,
     SQLNotFoundError,
-    WrongReferenceError,
 )
 from app.core.telemetry.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
@@ -95,10 +94,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> Enhancement | None:
         """Add an enhancement to a reference."""
         # This method is used internally and does not use the unit of work.
-        if enhancement.reference_id != reference_id:
-            detail = "Enhancement is for a different reference than requested."
-            raise WrongReferenceError(detail)
-
         if enhancement.derived_from:
             try:
                 await self.sql_uow.enhancements.verify_pk_existence(
@@ -112,7 +107,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_id, preload=["enhancements", "identifiers"]
         )
         _, added_enhancement = reference.merge(
-            identifiers=[], enhancements=[enhancement], propagate_upwards=False
+            identifiers=[], enhancements=[enhancement], propagate=False
         )
         if added_enhancement:
             await self.sql_uow.references.merge(reference)

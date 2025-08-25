@@ -105,6 +105,7 @@ Identifier(s) are already mapped on an existing reference:
             delta_identifiers, delta_enhancements = existing_reference.merge(
                 incoming_reference.identifiers or [],
                 incoming_reference.enhancements or [],
+                propagate=True,
             )
             logger.info(
                 "Merging reference",
