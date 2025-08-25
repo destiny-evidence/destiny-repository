@@ -70,6 +70,22 @@ chmod +x ./.minio/seed_fileserver.sh
 
 Seeding also creates a configuration file at `.minio/presigned_urls.json` which can be used to pass to the application as storage URLs.
 
+#### Seeding the database
+
+We have a database seed in `.db_seed` to give us some local data to work with and to test out migrations, load this in with
+
+```sh
+PGPASSWORD=localpass psql -U localuser -h 0.0.0.0 -p 5432 -d destiny_dev -f ".db_seed/local.sql"
+```
+
+##### Updating the database seed
+
+After applying a migration to the database, you may need to update the data seed. Apply the migrstion locally, run the following command, and then commit the result.
+
+```sh
+PGPASSWORD=localpass pg_dump --data-only --exclude-table=alembic_version -U localuser -h 0.0.0.0 -p 5432 destiny_dev > .db_seed/local.sql
+```
+
 #### Application
 
 Run the development server:
@@ -230,18 +246,4 @@ If you wish to inspect the E2E tests' instrumentation, you must mix in the obser
 docker compose down -v \
 && docker compose -f docker-compose.yml -f docker-compose.e2e.yml -f docker-compose.observable.yml --profile e2e up -d --force-recreate \
 && docker compose -f docker-compose.yml -f docker-compose.e2e.yml -f docker-compose.observable.yml logs -f --tail=0 e2e app worker
-```
-
-### Seeding the database
-
-```sh
-export PGPASSWORD=localpass
-```
-
-```sh
-pg_dump --data-only --exclude-table=alembic_version -U localuser  -h 0.0.0.0 -p 5432 destiny_dev > .db_seed/local.sql
-```
-
-```sh
-psql -U localuser -h 0.0.0.0 -p 5432 -d destiny_dev -f ".db_seed/local.sql"
 ```

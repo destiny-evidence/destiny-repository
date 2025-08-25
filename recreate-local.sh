@@ -10,4 +10,4 @@ uv run alembic upgrade head
 
 ./.minio/seed_fileserver.sh
 
-psql -U localuser -h 0.0.0.0 -p 5432 -d destiny_dev -f ".db_seed/local.sql"
+PGPASSWORD=localpass psql -U localuser -h 0.0.0.0 -p 5432 -d destiny_dev -f ".db_seed/local.sql"

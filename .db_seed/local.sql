@@ -74,6 +74,11 @@ public	Toy Robot	e2277656-4930-4c5a-8718-c3eb422385bb	annotation	0.2.0	{"annotat
 public	Toy Robot	53750d62-5c92-4452-ac39-c8ad1cfa1869	annotation	0.2.0	{"annotations": [{"data": {"toy": "Buzz Lightyear"}, "label": "toy", "score": 0.89, "scheme": "meta:toy", "annotation_type": "score"}], "enhancement_type": "annotation"}	c5914afc-8e2d-489b-9e96-26a508dc4e8f	2025-08-24 23:22:57.70831+00	2025-08-24 23:22:57.708313+00	\N
 public	Toy Robot	bfacd10f-4f37-4726-b4a7-b94fe5f8fe51	annotation	0.2.0	{"annotations": [{"data": {"toy": "Mr. Potatohead"}, "label": "toy", "score": 0.04, "scheme": "meta:toy", "annotation_type": "score"}], "enhancement_type": "annotation"}	7d2c536c-d237-44c4-a6df-ab2789c38b40	2025-08-24 23:22:57.711663+00	2025-08-24 23:22:57.711665+00	\N
 public	Toy Robot	e2277656-4930-4c5a-8718-c3eb422385bb	annotation	0.2.0	{"annotations": [{"data": {"toy": "Bo Peep"}, "label": "toy", "score": 0.36, "scheme": "meta:toy", "annotation_type": "score"}], "enhancement_type": "annotation"}	1990beee-7f30-4ffb-83e3-5ca89c2a3cb0	2025-08-24 23:22:57.714629+00	2025-08-24 23:22:57.71463+00	\N
+public	Toy Robot	53750d62-5c92-4452-ac39-c8ad1cfa1869	annotation	0.2.0	{"annotations": [{"data": {"toy": "Slinky Dog"}, "label": "toy", "score": 0.66, "scheme": "meta:toy", "annotation_type": "score"}], "enhancement_type": "annotation"}	12a023e6-1fd2-4460-a29e-cf8255e03fd0	2025-08-25 00:08:40.727628+00	2025-08-25 00:08:40.727632+00	\N
+public	Toy Robot	bfacd10f-4f37-4726-b4a7-b94fe5f8fe51	annotation	0.2.0	{"annotations": [{"data": {"toy": "Stinky Pete"}, "label": "toy", "score": 0.74, "scheme": "meta:toy", "annotation_type": "score"}], "enhancement_type": "annotation"}	34889ed8-7d33-4364-90bc-9031beed5eff	2025-08-25 00:09:21.029568+00	2025-08-25 00:09:21.029572+00	\N
+public	Toy Robot	e2277656-4930-4c5a-8718-c3eb422385bb	annotation	0.2.0	{"annotations": [{"data": {"toy": "Buzz Lightyear"}, "label": "toy", "score": 0.42, "scheme": "meta:toy", "annotation_type": "score"}], "enhancement_type": "annotation"}	1068de61-f2e0-4aad-a12b-e1860f562bbc	2025-08-25 00:09:44.765128+00	2025-08-25 00:09:44.765132+00	\N
+public	Toy Robot	68a835f7-d5d0-4f8a-8c24-322f25460dca	annotation	0.2.0	{"annotations": [{"data": {"toy": "Little Green Man 1"}, "label": "toy", "score": 0.4, "scheme": "meta:toy", "annotation_type": "score"}], "enhancement_type": "annotation"}	35a9cd57-7ba6-4f25-9eca-f79ba0f2ccf5	2025-08-25 00:09:31.878626+00	2025-08-25 00:09:31.878628+00	\N
+public	Toy Robot	94cc5574-7f0f-4e3f-a3a2-df3df7a0effb	annotation	0.2.0	{"annotations": [{"data": {"toy": "Buzz Lightyear"}, "label": "toy", "score": 0.64, "scheme": "meta:toy", "annotation_type": "score"}], "enhancement_type": "annotation"}	bc65df50-b223-4a6a-a302-fbe3211f8a9c	2025-08-25 00:10:03.68693+00	2025-08-25 00:10:03.686933+00	\N
 \.
 
 
@@ -82,6 +87,11 @@ public	Toy Robot	e2277656-4930-4c5a-8718-c3eb422385bb	annotation	0.2.0	{"annotat
 --
 
 COPY public.enhancement_request (reference_id, robot_id, request_status, enhancement_parameters, error, id, created_at, updated_at, source) FROM stdin;
+53750d62-5c92-4452-ac39-c8ad1cfa1869	cb73f9a3-af2a-4bfa-9502-f61d5fe18b11	completed	null	\N	faf24918-a72a-4f59-82a8-415694ed4d59	2025-08-25 00:08:40.55134+00	2025-08-25 00:08:40.973972+00	\N
+bfacd10f-4f37-4726-b4a7-b94fe5f8fe51	cb73f9a3-af2a-4bfa-9502-f61d5fe18b11	completed	null	\N	c10a5666-d9b6-4bbb-ae44-ec1b16458a0b	2025-08-25 00:09:20.991712+00	2025-08-25 00:09:21.118343+00	\N
+68a835f7-d5d0-4f8a-8c24-322f25460dca	cb73f9a3-af2a-4bfa-9502-f61d5fe18b11	completed	null	\N	4dc19c54-9767-4f58-8d2c-abd47c9f9b40	2025-08-25 00:09:31.848792+00	2025-08-25 00:09:31.945238+00	\N
+e2277656-4930-4c5a-8718-c3eb422385bb	cb73f9a3-af2a-4bfa-9502-f61d5fe18b11	completed	null	\N	639f7d63-3718-4852-8694-b3fae9925324	2025-08-25 00:09:44.731044+00	2025-08-25 00:09:44.829452+00	\N
+94cc5574-7f0f-4e3f-a3a2-df3df7a0effb	cb73f9a3-af2a-4bfa-9502-f61d5fe18b11	completed	null	\N	906deb14-652f-47d8-8084-892252103a34	2025-08-25 00:10:03.647823+00	2025-08-25 00:10:03.769983+00	\N
 \.
 
 
@@ -176,8 +186,8 @@ c7e89216-efed-46e3-a124-160f9e9027b6	76562881-5d41-4dd0-8ea9-9f3b773ef361	failed
 --
 
 COPY public.robot (base_url, client_secret, description, name, owner, id, created_at, updated_at) FROM stdin;
-http://toy-robot:8001/toy/enhancement/	e257c7431d8475d0ca91330d60663808299ffd851211abb8d9e62be9d14922d2	Provides toy annotation enhancements	Toy Robot 1	Future Evidence Foundation	cb73f9a3-af2a-4bfa-9502-f61d5fe18b11	2025-08-24 23:22:56.068721+00	2025-08-24 23:22:56.068725+00
-http://toy-robot:8001/toy/enhancement/	795b37adce534d29091fecf78e099c01764dff04215eb637cdfa044a86452fb2	Provides toy annotation enhancements	Toy Robot 2 but really it is just Toy Robot 1	Future Evidence Foundation	dda2bbb2-2fa2-4dda-859e-8ef3f9e76c49	2025-08-24 23:22:57.467655+00	2025-08-24 23:22:57.467657+00
+http://127.0.0.1:8001/toy/enhancement/	e257c7431d8475d0ca91330d60663808299ffd851211abb8d9e62be9d14922d2	Provides toy annotation enhancements	Toy Robot 1	Future Evidence Foundation	cb73f9a3-af2a-4bfa-9502-f61d5fe18b11	2025-08-24 23:22:56.068721+00	2025-08-24 23:22:56.068725+00
+http://127.0.0.1:8001/toy/enhancement/	795b37adce534d29091fecf78e099c01764dff04215eb637cdfa044a86452fb2	Provides toy annotation enhancements	Toy Robot 2 but really it is just Toy Robot 1	Future Evidence Foundation	dda2bbb2-2fa2-4dda-859e-8ef3f9e76c49	2025-08-24 23:22:57.467655+00	2025-08-24 23:22:57.467657+00
 \.
 
 
