@@ -61,7 +61,7 @@ def test_complete_batch_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
         response = repo_client.post(
             "/robots/",
             json={
-                "name": "Toy Robot 2 but really it's just Toy Robot 1",
+                "name": "Toy Robot 2 but really it is just Toy Robot 1",
                 "base_url": toy_robot_url,
                 "description": "Provides toy annotation enhancements",
                 "owner": "Future Evidence Foundation",
