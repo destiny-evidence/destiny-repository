@@ -1,13 +1,12 @@
 """Schemas that define inputs/outputs for robots."""
 
 from enum import StrEnum, auto
-from typing import Annotated, Any, Self
+from typing import Annotated, Any
 
-from pydantic import UUID4, BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic import UUID4, BaseModel, ConfigDict, Field, HttpUrl
 
 from destiny_sdk.core import _JsonlFileInputMixIn
 from destiny_sdk.enhancements import Enhancement
-from destiny_sdk.references import Reference
 
 
 class RobotError(BaseModel):
@@ -37,29 +36,6 @@ class LinkedRobotError(_JsonlFileInputMixIn, RobotError):
 
 
 class RobotResult(BaseModel):
-    """The result of a robot request which is returned to the repo."""
-
-    request_id: UUID4
-    error: RobotError | None = Field(
-        default=None,
-        description="Error the robot encountered while creating enhancement.",
-    )
-    enhancement: Enhancement | None = Field(
-        default=None, description="An enhancement to create"
-    )
-
-    @model_validator(mode="after")
-    def validate_error_or_enhancement_set(self) -> Self:
-        """Validate that a robot result has either an error or an enhancement set."""
-        if (self.error is None) == (self.enhancement is None):
-            msg = """
-            exactly one of 'error' or 'enhancement' must be provided
-            """
-            raise ValueError(msg)
-        return self
-
-
-class BatchRobotResult(BaseModel):
     """Used to indicate to the repository that the robot has finished processing."""
 
     request_id: UUID4
@@ -67,7 +43,8 @@ class BatchRobotResult(BaseModel):
         default=None,
         description="""
 Error the robot encountered while creating enhancements. If this field is populated,
-we assume the entire batch or request failed, rather than an individual reference.
+we assume the entire enhancement request or http request request failed,
+rather than an individual reference.
 If there was an error with processing an individual reference, it should be passed in
 the result file and this field should be left as None. Vice-versa, if this field is
 None, the repository will assume that the result file is ready for processing.
@@ -75,14 +52,14 @@ None, the repository will assume that the result file is ready for processing.
     )
 
 
-class BatchRobotResultValidationEntry(_JsonlFileInputMixIn, BaseModel):
+class RobotResultValidationEntry(_JsonlFileInputMixIn, BaseModel):
     """A single entry in the validation result file for a batch enhancement request."""
 
     reference_id: UUID4 | None = Field(
         default=None,
         description=(
             "The ID of the reference which was enhanced. "
-            "If this is empty, the BatchEnhancementResultEntry could not be parsed."
+            "If this is empty, the EnhancementResultEntry could not be parsed."
         ),
     )
     error: str | None = Field(
@@ -94,30 +71,15 @@ class BatchRobotResultValidationEntry(_JsonlFileInputMixIn, BaseModel):
     )
 
 
-class RobotRequest(BaseModel):
-    """An enhancement request from the repo to a robot."""
-
-    id: UUID4
-    reference: Reference = Field(
-        description=(
-            "Reference to be enhanced, includes identifiers and existing enhancments."
-        )
-    )
-    extra_fields: dict | None = Field(
-        default=None,
-        description="Extra fields to pass to the robot. TBC.",
-    )
-
-
-#: The result for a single reference when processed by a batch enhancement request.
+#: The result for a single reference when processed by an enhancement request.
 #: This is a single entry in the result file.
-BatchEnhancementResultEntry = Annotated[
+EnhancementResultEntry = Annotated[
     Enhancement | LinkedRobotError,
     Field(),
 ]
 
 
-class BatchRobotRequest(BaseModel):
+class RobotRequest(BaseModel):
     """A batch enhancement request from the repo to a robot."""
 
     id: UUID4
@@ -130,16 +92,16 @@ reference per line.
 Each reference may have identifiers or enhancements attached, as
 required by the robot.
 If the URL expires, a new one can be generated using
-``GET /references/enhancement/batch/<batch_request_id>``.
+``GET /enhancement-requests/{request_id}/``.
 """
     )
     result_storage_url: HttpUrl = Field(
         description="""
 The URL at which the set of enhancements are to be stored. The file is to be a jsonl
 with each line formatted according to
-:class:`BatchEnhancementResultEntry <libs.sdk.src.destiny_sdk.robots.BatchEnhancementResultEntry>`.
+:class:`EnhancementResultEntry <libs.sdk.src.destiny_sdk.robots.EnhancementResultEntry>`.
 If the URL expires, a new one can be generated using
-``GET /references/enhancement/batch/<batch_request_id>``.
+``GET /enhancement-requests/{request_id}/``.
 """  # noqa: E501
     )
     extra_fields: dict | None = Field(
@@ -148,7 +110,7 @@ If the URL expires, a new one can be generated using
     )
 
 
-class BatchEnhancementRequestStatus(StrEnum):
+class EnhancementRequestStatus(StrEnum):
     """
     The status of an enhancement request.
 
@@ -175,11 +137,11 @@ class BatchEnhancementRequestStatus(StrEnum):
     COMPLETED = auto()
 
 
-class _BatchEnhancementRequestBase(BaseModel):
+class _EnhancementRequestBase(BaseModel):
     """
-    Base batch enhancement request class.
+    Base enhancement request class.
 
-    A batch enhancement request is a request to create multiple enhancements.
+    A enhancement request is a request to create one or more enhancements.
     """
 
     robot_id: UUID4 = Field(
@@ -194,15 +156,15 @@ class _BatchEnhancementRequestBase(BaseModel):
     )
 
 
-class BatchEnhancementRequestIn(_BatchEnhancementRequestBase):
+class EnhancementRequestIn(_EnhancementRequestBase):
     """The model for requesting multiple enhancements on specific references."""
 
 
-class BatchEnhancementRequestRead(_BatchEnhancementRequestBase):
+class EnhancementRequestRead(_EnhancementRequestBase):
     """Core batch enhancement request class."""
 
     id: UUID4
-    request_status: BatchEnhancementRequestStatus = Field(
+    request_status: EnhancementRequestStatus = Field(
         description="The status of the request to create enhancements",
     )
     reference_data_url: HttpUrl | None = Field(
@@ -215,7 +177,7 @@ formatted according to
 Each reference may have identifiers or enhancements attached, as
 required by the robot.
 If the URL expires, a new one can be generated using
-``GET /references/enhancement/batch/<batch_request_id>``.
+``GET /enhancement-requests/{request_id}/``.
         """,
     )
     result_storage_url: HttpUrl | None = Field(
@@ -223,26 +185,26 @@ If the URL expires, a new one can be generated using
         description="""
 The URL at which the set of enhancements are stored. The file is to be a jsonl
 with each line formatted according to
-:class:`BatchEnhancementResultEntry <libs.sdk.src.destiny_sdk.robots.BatchEnhancementResultEntry>`.
+:class:`EnhancementResultEntry <libs.sdk.src.destiny_sdk.robots.EnhancementResultEntry>`.
 This field is only relevant to robots.
 If the URL expires, a new one can be generated using
-``GET /references/enhancement/batch/<batch_request_id>``.
+``GET /enhancement-requests/{request_id}/``.
         """,  # noqa: E501
     )
     validation_result_url: HttpUrl | None = Field(
         default=None,
         description="""
-The URL at which the result of the batch enhancement request is stored.
+The URL at which the result of the enhancement request is stored.
 This file is a txt file, one line per reference, with either an error
 or a success message.
 If the URL expires, a new one can be generated using
-``GET /references/enhancement/batch/<batch_request_id>``.
+``GET /enhancement-requests/{request_id}/``.
         """,
     )
     error: str | None = Field(
         default=None,
         description="Error encountered during the enhancement process. This "
-        "is only used if the entire batch enhancement request failed, rather than an "
+        "is only used if the entire enhancement request failed, rather than an "
         "individual reference. If there was an error with processing an individual "
         "reference, it is passed in the validation result file.",
     )

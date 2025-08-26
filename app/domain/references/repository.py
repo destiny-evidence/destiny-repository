@@ -17,10 +17,10 @@ from app.domain.references.models.es import (
     RobotAutomationPercolationDocument,
 )
 from app.domain.references.models.models import (
-    BatchEnhancementRequest as DomainBatchEnhancementRequest,
+    Enhancement as DomainEnhancement,
 )
 from app.domain.references.models.models import (
-    Enhancement as DomainEnhancement,
+    EnhancementRequest as DomainEnhancementRequest,
 )
 from app.domain.references.models.models import (
     ExternalIdentifierType,
@@ -36,10 +36,10 @@ from app.domain.references.models.models import (
 from app.domain.references.models.models import (
     RobotAutomation as DomainRobotAutomation,
 )
-from app.domain.references.models.sql import (
-    BatchEnhancementRequest as SQLBatchEnhancementRequest,
-)
 from app.domain.references.models.sql import Enhancement as SQLEnhancement
+from app.domain.references.models.sql import (
+    EnhancementRequest as SQLEnhancementRequest,
+)
 from app.domain.references.models.sql import ExternalIdentifier as SQLExternalIdentifier
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.models.sql import RobotAutomation as SQLRobotAutomation
@@ -262,18 +262,16 @@ class EnhancementSQLRepository(
         )
 
 
-class BatchEnhancementRequestRepositoryBase(
-    GenericAsyncRepository[DomainBatchEnhancementRequest, GenericPersistenceType],
+class EnhancementRequestRepositoryBase(
+    GenericAsyncRepository[DomainEnhancementRequest, GenericPersistenceType],
     ABC,
 ):
     """Abstract implementation of a repository for batch enhancement requests."""
 
 
-class BatchEnhancementRequestSQLRepository(
-    GenericAsyncSqlRepository[
-        DomainBatchEnhancementRequest, SQLBatchEnhancementRequest
-    ],
-    BatchEnhancementRequestRepositoryBase,
+class EnhancementRequestSQLRepository(
+    GenericAsyncSqlRepository[DomainEnhancementRequest, SQLEnhancementRequest],
+    EnhancementRequestRepositoryBase,
 ):
     """Concrete implementation of a repository for batch enhancement requests."""
 
@@ -281,8 +279,8 @@ class BatchEnhancementRequestSQLRepository(
         """Initialize the repository with the database session."""
         super().__init__(
             session,
-            DomainBatchEnhancementRequest,
-            SQLBatchEnhancementRequest,
+            DomainEnhancementRequest,
+            SQLEnhancementRequest,
         )
 
 

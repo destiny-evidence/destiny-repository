@@ -26,7 +26,7 @@ from app.core.exceptions import (
 )
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
-    BatchEnhancementRequestStatus,
+    EnhancementRequestStatus,
     EnhancementType,
     Visibility,
 )
@@ -142,12 +142,12 @@ async def test_request_batch_enhancement_happy_path(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test requesting a batch enhancement for multiple references."""
+    """Test requesting a enhancement for multiple references."""
     # Add references to the database
     reference_1 = await add_reference(session)
     reference_2 = await add_reference(session)
     robot = await add_robot(session)
-    batch_request_create = {
+    enhancement_request_create = {
         "reference_ids": [str(reference_1.id), str(reference_2.id)],
         "robot_id": f"{robot.id}",
     }
@@ -155,13 +155,13 @@ async def test_request_batch_enhancement_happy_path(
     mock_process = AsyncMock(return_value=None)
     monkeypatch.setattr(
         ReferenceService,
-        "collect_and_dispatch_references_for_batch_enhancement",
+        "collect_and_dispatch_references_for_enhancement",
         mock_process,
     )
 
     with patch("app.core.telemetry.fastapi.bound_contextvars") as mock_bound:
         response = await client.post(
-            "/v1/enhancement-requests/batch-requests/", json=batch_request_create
+            "/v1/enhancement-requests/batch-requests/", json=enhancement_request_create
         )
         found = any(
             "robot_id" in call.kwargs and call.kwargs["robot_id"] == str(robot.id)
@@ -171,7 +171,7 @@ async def test_request_batch_enhancement_happy_path(
         assert response.status_code == status.HTTP_202_ACCEPTED
         response_data = response.json()
     assert "id" in response_data
-    assert response_data["request_status"] == BatchEnhancementRequestStatus.RECEIVED
+    assert response_data["request_status"] == EnhancementRequestStatus.RECEIVED
     assert response_data["reference_ids"] == [str(reference_1.id), str(reference_2.id)]
 
     assert isinstance(broker, InMemoryBroker)

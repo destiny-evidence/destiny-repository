@@ -27,16 +27,3 @@ def test_robot_models_reject_any_extra_fields():
             owner="Styx",
             client_secret="I'm not allowed in this model",
         )
-
-
-def test_robot_request_does_not_require_extra_fields():
-    reference = destiny_sdk.references.Reference(
-        id=uuid.uuid4(), visibility=destiny_sdk.visibility.Visibility.RESTRICTED
-    )
-
-    # Don't pass any extra fields
-    robot_request = destiny_sdk.robots.RobotRequest(
-        id=uuid.uuid4(), reference=reference
-    )
-
-    assert not robot_request.extra_fields

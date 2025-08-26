@@ -8,7 +8,7 @@ from fastapi import status
 
 from app.core.exceptions import RobotEnhancementError, RobotUnreachableError
 from app.domain.references.models.models import (
-    BatchEnhancementRequest,
+    EnhancementRequest,
 )
 from app.domain.robots.models.models import Robot
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
@@ -40,14 +40,14 @@ async def test_send_enhancement_request_to_robot_happy_path(
     frozen_time,  # noqa: ARG001
     robot,
 ):
-    enhancement_request = BatchEnhancementRequest(
+    enhancement_request = EnhancementRequest(
         id=uuid.uuid4(),
         reference_ids=[uuid.uuid4()],
         robot_id=robot.id,
         enhancement_parameters={},
     )
 
-    robot_request = destiny_sdk.robots.BatchRobotRequest(
+    robot_request = destiny_sdk.robots.RobotRequest(
         id=enhancement_request.id,
         reference_storage_url="https://fake-reference-storage-url.org",
         result_storage_url="https://fake-result-storage-url.org",
@@ -86,14 +86,14 @@ async def test_send_enhancement_request_to_robot_request_error(httpx_mock, robot
     # Mock a connection error
     httpx_mock.add_exception(httpx.ConnectError(message="All connections refused"))
 
-    enhancement_request = BatchEnhancementRequest(
+    enhancement_request = EnhancementRequest(
         id=uuid.uuid4(),
         reference_ids=[uuid.uuid4()],
         robot_id=robot.id,
         enhancement_parameters={},
     )
 
-    robot_request = destiny_sdk.robots.BatchRobotRequest(
+    robot_request = destiny_sdk.robots.RobotRequest(
         id=enhancement_request.id,
         reference_storage_url="https://fake-reference-storage-url.org",
         result_storage_url="https://fake-result-storage-url.org",
@@ -113,14 +113,14 @@ async def test_send_enhancement_request_to_robot_503_response(httpx_mock, robot)
     # Mock a robot that is unavailable
     httpx_mock.add_response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-    enhancement_request = BatchEnhancementRequest(
+    enhancement_request = EnhancementRequest(
         id=uuid.uuid4(),
         reference_ids=[uuid.uuid4()],
         robot_id=robot.id,
         enhancement_parameters={},
     )
 
-    robot_request = destiny_sdk.robots.BatchRobotRequest(
+    robot_request = destiny_sdk.robots.RobotRequest(
         id=enhancement_request.id,
         reference_storage_url="https://fake-reference-storage-url.org",
         result_storage_url="https://fake-result-storage-url.org",
@@ -142,14 +142,14 @@ async def test_send_enhancement_request_to_robot_400_response(httpx_mock, robot)
         status_code=status.HTTP_400_BAD_REQUEST, json={"message": "bad request"}
     )
 
-    enhancement_request = BatchEnhancementRequest(
+    enhancement_request = EnhancementRequest(
         id=uuid.uuid4(),
         reference_ids=[uuid.uuid4()],
         robot_id=robot.id,
         enhancement_parameters={},
     )
 
-    robot_request = destiny_sdk.robots.BatchRobotRequest(
+    robot_request = destiny_sdk.robots.RobotRequest(
         id=enhancement_request.id,
         reference_storage_url="https://fake-reference-storage-url.org",
         result_storage_url="https://fake-result-storage-url.org",

@@ -10,8 +10,8 @@ from app.core.exceptions import (
     SQLNotFoundError,
 )
 from app.domain.references.models.models import (
-    BatchEnhancementRequest,
     Enhancement,
+    EnhancementRequest,
     ExternalIdentifierAdapter,
     Reference,
     RobotAutomationPercolationResult,
@@ -158,36 +158,35 @@ async def test_add_enhancement_derived_from_enhancement_for_different_reference(
 
 
 @pytest.mark.asyncio
-async def test_register_batch_reference_enhancement_request(fake_repository, fake_uow):
+async def test_register_reference_enhancement_request(fake_repository, fake_uow):
     """
-    Test the happy path for registering a batch enhancement request.
+    Test the happy path for registering an enhancement request.
     """
-    batch_request_id = uuid.uuid4()
     reference_ids = [uuid.uuid4(), uuid.uuid4()]
     robot_id = uuid.uuid4()
-    batch_enhancement_request = BatchEnhancementRequest(
-        id=batch_request_id,
+    enhancement_request = EnhancementRequest(
+        id=uuid.uuid4(),
         reference_ids=reference_ids,
         robot_id=robot_id,
         enhancement_parameters={"param": "value"},
     )
 
-    fake_batch_requests = fake_repository()
+    fake_requests = fake_repository()
     fake_references = fake_repository(
         init_entries=[Reference(id=ref_id) for ref_id in reference_ids]
     )
 
     uow = fake_uow(
-        batch_enhancement_requests=fake_batch_requests,
+        enhancement_requests=fake_requests,
         references=fake_references,
     )
     service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
 
-    created_request = await service.register_batch_reference_enhancement_request(
-        enhancement_request=batch_enhancement_request
+    created_request = await service.register_reference_enhancement_request(
+        enhancement_request=enhancement_request
     )
 
-    stored_request = fake_batch_requests.get_first_record()
+    stored_request = fake_requests.get_first_record()
 
     assert created_request == stored_request
     assert created_request.reference_ids == reference_ids
@@ -195,30 +194,29 @@ async def test_register_batch_reference_enhancement_request(fake_repository, fak
 
 
 @pytest.mark.asyncio
-async def test_register_batch_reference_enhancement_request_missing_pk(
+async def test_register_reference_enhancement_request_missing_pk(
     fake_repository, fake_uow
 ):
     """
-    Test registering a batch enhancement request with a missing reference ID.
+    Test registering an enhancement request with a missing reference ID.
     """
-    batch_request_id = uuid.uuid4()
     reference_ids = [uuid.uuid4(), uuid.uuid4()]
     missing_reference_id = uuid.uuid4()
     robot_id = uuid.uuid4()
-    batch_enhancement_request = BatchEnhancementRequest(
-        id=batch_request_id,
+    enhancement_request = EnhancementRequest(
+        id=uuid.uuid4(),
         reference_ids=[*reference_ids, missing_reference_id],
         robot_id=robot_id,
         enhancement_parameters={"param": "value"},
     )
 
-    fake_batch_requests = fake_repository()
+    fake_requests = fake_repository()
     fake_references = fake_repository(
         init_entries=[Reference(id=ref_id) for ref_id in reference_ids]
     )
 
     uow = fake_uow(
-        batch_enhancement_requests=fake_batch_requests,
+        enhancement_requests=fake_requests,
         references=fake_references,
     )
     service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
@@ -226,8 +224,8 @@ async def test_register_batch_reference_enhancement_request_missing_pk(
     with pytest.raises(
         SQLNotFoundError, match=f"{{'{missing_reference_id}'}} not in repository"
     ):
-        await service.register_batch_reference_enhancement_request(
-            enhancement_request=batch_enhancement_request
+        await service.register_reference_enhancement_request(
+            enhancement_request=enhancement_request
         )
 
 

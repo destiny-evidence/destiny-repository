@@ -1,5 +1,5 @@
 """
-Test batch enhancements with robots.
+Test E2E enhancements with robots.
 
 This test sends
 
@@ -27,8 +27,8 @@ engine = create_engine(db_url)
 # e2e tests are ordered for easier seeding of downstream tests
 @pytest.mark.order(2)
 # Remove the below if you want to run e2e tests locally with the toy robot.
-def test_complete_batch_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
-    """Test complete batch enhancement workflow, happy-ish path."""
+def test_complete_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
+    """Test complete enhancement workflow, happy-ish path."""
     with (
         httpx.Client(base_url=repo_url) as repo_client,
     ):
@@ -52,7 +52,7 @@ def test_complete_batch_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
 
         # Add a second toy robot
         # We do this so that we can test automatic robots on enhancements:
-        # 1. request batch enhancement on robot number 2
+        # 1. request enhancement on robot number 2
         # 2. robot number 2 imports the enhancements
         # 3. repo sends automatic request to robot number 1
         # 4. robot number 1 imports the enhancements
@@ -72,19 +72,19 @@ def test_complete_batch_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
 
         response = repo_client.post(
             "/enhancement-requests/batch-requests/",
-            json=destiny_sdk.robots.BatchEnhancementRequestIn(
+            json=destiny_sdk.robots.EnhancementRequestIn(
                 robot_id=toy_robot_id, reference_ids=reference_ids
             ).model_dump(mode="json"),
         )
         assert response.status_code == 202
-        batch = response.json()
-        batch_id = batch["id"]
-        assert batch["request_status"] == "received"
+        enhancement_request = response.json()
+        enhancement_request_id = enhancement_request["id"]
+        assert enhancement_request["request_status"] == "received"
 
         while True:
             time.sleep(1)
             response = repo_client.get(
-                f"/enhancement-requests/batch-requests/{batch_id}/",
+                f"/enhancement-requests/batch-requests/{enhancement_request_id}/",
             )
             assert response.status_code == 200
             if (request := response.json())["request_status"] not in (
@@ -96,13 +96,11 @@ def test_complete_batch_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
 
         # Check the ad-hoc request
         assert request["request_status"] == "completed"
-        result = destiny_sdk.robots.BatchEnhancementRequestRead.model_validate(request)
+        result = destiny_sdk.robots.EnhancementRequestRead.model_validate(request)
         validation_file = httpx.get(str(result.validation_result_url))
         for line in validation_file.text.splitlines():
-            entry = (
-                destiny_sdk.robots.BatchRobotResultValidationEntry.model_validate_json(
-                    line
-                )
+            entry = destiny_sdk.robots.RobotResultValidationEntry.model_validate_json(
+                line
             )
             assert str(entry.reference_id) in reference_ids
             assert not entry.error
@@ -117,7 +115,7 @@ def test_complete_batch_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
                 conn.execute(
                     text(
                         f"""
-                    SELECT id FROM batch_enhancement_request
+                    SELECT id FROM enhancement_request
                     WHERE robot_id <> '{toy_robot_id}';
                     """  # noqa: S608
                     ),
@@ -125,7 +123,7 @@ def test_complete_batch_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
             )
             assert len(result) == 2
             import_auto_request_found = False
-            batch_auto_request_found = False
+            enhancement_auto_request_found = False
             for request_id in result:
                 response = repo_client.get(
                     f"/enhancement-requests/batch-requests/{request_id}/",
@@ -134,11 +132,11 @@ def test_complete_batch_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
                 if request["source"].startswith("ImportBatch"):
                     assert request["request_status"] == "completed"
                     import_auto_request_found = True
-                if request["source"].startswith("BatchEnhancementRequest"):
+                if request["source"].startswith("EnhancementRequest"):
                     assert request["request_status"] == "completed"
-                    batch_auto_request_found = True
+                    enhancement_auto_request_found = True
 
-            assert batch_auto_request_found
+            assert enhancement_auto_request_found
             assert import_auto_request_found
 
     # Finally check we got some toys themselves

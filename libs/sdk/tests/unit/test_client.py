@@ -5,7 +5,7 @@ import uuid
 
 import pytest
 from destiny_sdk.client import Client, create_signature
-from destiny_sdk.robots import BatchEnhancementRequestRead, BatchRobotResult, RobotError
+from destiny_sdk.robots import EnhancementRequestRead, RobotError, RobotResult
 from pytest_httpx import HTTPXMock
 
 
@@ -23,11 +23,11 @@ def test_verify_hmac_headers_sent(httpx_mock: HTTPXMock, frozen_time) -> None:  
     fake_robot_id = uuid.uuid4()
     fake_destiny_repository_url = "https://www.destiny-repository-lives-here.co.au/v1"
 
-    fake_robot_result = BatchRobotResult(
+    fake_robot_result = RobotResult(
         request_id=uuid.uuid4(), error=RobotError(message="Cannot process this batch")
     )
 
-    expected_response_body = BatchEnhancementRequestRead(
+    expected_response_body = EnhancementRequestRead(
         reference_ids=[uuid.uuid4()],
         id=uuid.uuid4(),
         robot_id=uuid.uuid4(),
@@ -43,7 +43,7 @@ def test_verify_hmac_headers_sent(httpx_mock: HTTPXMock, frozen_time) -> None:  
 
     httpx_mock.add_response(
         url=fake_destiny_repository_url
-        + "/enhancement-requests/batch-requests/"
+        + "/enhancement-requests/"
         + f"{fake_robot_result.request_id}/results/",
         method="POST",
         match_headers={
@@ -58,8 +58,8 @@ def test_verify_hmac_headers_sent(httpx_mock: HTTPXMock, frozen_time) -> None:  
         base_url=fake_destiny_repository_url,
         secret_key=fake_secret_key,
         client_id=fake_robot_id,
-    ).send_batch_robot_result(
-        batch_robot_result=fake_robot_result,
+    ).send_robot_result(
+        robot_result=fake_robot_result,
     )
 
     callback_request = httpx_mock.get_requests()

@@ -179,5 +179,5 @@ async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -
     for request in requests:
         logger.info(
             "Created automatic enhancement request",
-            batch_enhancement_request_id=str(request.id),
+            enhancement_request_id=str(request.id),
         )
