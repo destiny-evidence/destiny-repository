@@ -52,7 +52,7 @@ For Robots
 ----------
 Robots during registration should indicate their required enhancements and identifiers to derive requested enhancements. This process is yet to be fully defined but will live here: :doc:`Robot Registration <robot-registration>`. These are provided to the robot in the :attr:`reference_storage_url <libs.sdk.src.destiny_sdk.robots.RobotRequest.reference_storage_url>` file with the requested references.
 
-Robots must implement the ``POST /enhancement/`` endpoint to handle enhancement requests. The endpoint should accept a :class:`RobotRequest <libs.sdk.src.destiny_sdk.robots.RobotRequest>` object.
+Robots must implement the ``POST /batch/`` endpoint to handle enhancement requests. The endpoint should accept a :class:`RobotRequest <libs.sdk.src.destiny_sdk.robots.RobotRequest>` object.
 
 There are no restrictions on how the robot processes the request, but it must return a :class:`RobotResult <libs.sdk.src.destiny_sdk.robots.RobotResult>` object.
 

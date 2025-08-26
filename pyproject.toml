@@ -75,7 +75,7 @@ license = "AGPL-3.0-or-later"
 name = "destiny-repository"
 readme = "README.md"
 requires-python = "~=3.12"
-version = "1.0.0"
+version = "2.0.0"
 
 [tool.mypy]
 explicit_package_bases = true
