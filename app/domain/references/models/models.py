@@ -28,7 +28,7 @@ ExternalIdentifierAdapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
 )
 
 
-class BatchEnhancementRequestStatus(StrEnum):
+class EnhancementRequestStatus(StrEnum):
     """
     The status of an enhancement request.
 
@@ -301,7 +301,7 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     )
 
 
-class BatchEnhancementRequest(DomainBaseModel, SQLAttributeMixin):
+class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
     """Request to add enhancements to a list of references."""
 
     reference_ids: list[uuid.UUID] = Field(
@@ -310,8 +310,8 @@ class BatchEnhancementRequest(DomainBaseModel, SQLAttributeMixin):
     robot_id: uuid.UUID = Field(
         description="The robot to request the enhancement from."
     )
-    request_status: BatchEnhancementRequestStatus = Field(
-        default=BatchEnhancementRequestStatus.RECEIVED,
+    request_status: EnhancementRequestStatus = Field(
+        default=EnhancementRequestStatus.RECEIVED,
         description="The status of the request to create an enhancement.",
     )
     source: str | None = Field(
@@ -348,14 +348,14 @@ Errors for individual references are provided <TBC>.
         return len(self.reference_ids)
 
 
-class BatchRobotResultValidationEntry(DomainBaseModel):
-    """A single entry in the validation result file for a batch enhancement request."""
+class RobotResultValidationEntry(DomainBaseModel):
+    """A single entry in the validation result file for a enhancement request."""
 
     reference_id: uuid.UUID | None = Field(
         default=None,
         description=(
             "The ID of the reference which was enhanced. "
-            "If this is empty, the BatchEnhancementResultEntry could not be parsed."
+            "If this is empty, the EnhancementResultEntry could not be parsed."
         ),
     )
     error: str | None = Field(

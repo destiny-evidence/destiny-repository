@@ -4,7 +4,7 @@ import uuid
 from unittest.mock import AsyncMock
 
 from app.domain.references.models.models import (
-    BatchEnhancementRequest,
+    EnhancementRequest,
     RobotAutomationPercolationResult,
 )
 from app.domain.references.service import ReferenceService
@@ -12,7 +12,7 @@ from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.references.tasks import (
-    collect_and_dispatch_references_for_batch_enhancement,
+    collect_and_dispatch_references_for_enhancement,
     detect_and_dispatch_robot_automations,
 )
 
@@ -26,7 +26,7 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
     in_enhancement_ids = {uuid.uuid4(), uuid.uuid4()}
     robot_id = uuid.uuid4()
 
-    expected_request = BatchEnhancementRequest(
+    expected_request = EnhancementRequest(
         reference_ids=in_reference_ids,
         robot_id=robot_id,
         id=uuid.uuid4(),
@@ -36,7 +36,7 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
     mock_register_request = AsyncMock(return_value=expected_request)
     monkeypatch.setattr(
         ReferenceService,
-        "register_batch_reference_enhancement_request",
+        "register_reference_enhancement_request",
         mock_register_request,
     )
 
@@ -55,7 +55,7 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
 
     mock_collect_and_dispatch_request_to_robot = AsyncMock()
     monkeypatch.setattr(
-        collect_and_dispatch_references_for_batch_enhancement,
+        collect_and_dispatch_references_for_enhancement,
         "kiq",
         mock_collect_and_dispatch_request_to_robot,
     )
@@ -82,7 +82,7 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
     mock_collect_and_dispatch_request_to_robot.assert_awaited_once()
     assert (
         mock_collect_and_dispatch_request_to_robot.call_args[1][
-            "batch_enhancement_request_id"
+            "enhancement_request_id"
         ]
         == expected_request.id
     )
