@@ -305,7 +305,7 @@ class AzureJwtAuth(AuthMethod):
                     rsa_key,
                     algorithms=["RS256"],
                     audience=self.api_audience,
-                    issuer=f"https://sts.windows.net/{self.tenant_id}/",
+                    issuer=f"https://login.microsoftonline.com/{self.tenant_id}/v2.0",
                 )
             except exceptions.ExpiredSignatureError as exc:
                 raise AuthError(
