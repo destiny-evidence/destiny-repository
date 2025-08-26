@@ -258,6 +258,11 @@ module "container_app_tasks" {
   ]
 }
 
+import {
+  to = azurerm_postgresql_flexible_server.this
+  id = "/subscriptions/352c7c15-b02d-47dd-a1f1-0fd423d9482d/resourceGroups/rg-destiny-repository-staging/providers/Microsoft.DBforPostgreSQL/flexibleServers/destiny-repository-staging-psqlflexibleserver-bkup"
+}
+
 resource "azurerm_postgresql_flexible_server" "this" {
   name                          = "${local.name}-psqlflexibleserver"
   resource_group_name           = azurerm_resource_group.this.name
