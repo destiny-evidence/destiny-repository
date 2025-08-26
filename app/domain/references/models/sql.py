@@ -5,8 +5,11 @@ from typing import Any, Self
 
 from sqlalchemy import UUID, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
+from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.config import get_settings
+from app.core.exceptions import SQLPreloadError
 from app.domain.references.models.models import (
     BatchEnhancementRequest as DomainBatchEnhancementRequest,
 )
@@ -34,7 +37,13 @@ from app.domain.references.models.models import (
     RobotAutomation as DomainRobotAutomation,
 )
 from app.persistence.blob.models import BlobStorageFile
-from app.persistence.sql.persistence import GenericSQLPersistence
+from app.persistence.sql.persistence import (
+    GenericSQLPersistence,
+    RelationshipInfo,
+    RelationshipLoadType,
+)
+
+settings = get_settings()
 
 
 class Reference(GenericSQLPersistence[DomainReference]):
@@ -54,6 +63,9 @@ class Reference(GenericSQLPersistence[DomainReference]):
         ),
         nullable=False,
     )
+    duplicate_of: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("reference.id"), nullable=True
+    )
 
     identifiers: Mapped[list["ExternalIdentifier"]] = relationship(
         "ExternalIdentifier",
@@ -64,12 +76,44 @@ class Reference(GenericSQLPersistence[DomainReference]):
         "Enhancement", back_populates="reference", cascade="all, delete, delete-orphan"
     )
 
+    # When using a self-referential relationship, SQLAlchemy requires information
+    # about how far to take the recursion (As it needs to perform n+1 joins for n-depth
+    # searching, but doesn' know n).
+    # Also see:
+    # - https://docs.sqlalchemy.org/en/20/orm/self_referential.html#configuring-self-referential-eager-loading
+    # - ``Reference.merge()`` to understand the edge case in which duplicates chain
+    canonical_reference: Mapped["Reference | None"] = relationship(
+        "Reference",
+        remote_side="Reference.id",
+        back_populates="duplicate_references",
+        # Cascading feels scary on a relationship like this so limiting to the minimal
+        # set of operations.
+        cascade="merge",
+        info=RelationshipInfo(
+            max_recursion_depth=settings.max_reference_duplicate_depth - 1,
+            load_type=RelationshipLoadType.SELECTIN,
+        ).model_dump(),
+    )
+    # NB no cascading effects on duplicating references, handle each explicitly.
+    # We only update upwards.
+    duplicate_references: Mapped[list["Reference"]] = relationship(
+        "Reference",
+        back_populates="canonical_reference",
+        info=RelationshipInfo(
+            max_recursion_depth=settings.max_reference_duplicate_depth - 1,
+            load_type=RelationshipLoadType.SELECTIN,
+        ).model_dump(),
+    )
+
+    __table_args__ = (Index("ix_reference_duplicate_of", "duplicate_of"),)
+
     @classmethod
     def from_domain(cls, domain_obj: DomainReference) -> Self:
         """Create a persistence model from a domain Reference object."""
         return cls(
             id=domain_obj.id,
             visibility=domain_obj.visibility,
+            duplicate_of=domain_obj.duplicate_of,
             identifiers=[
                 ExternalIdentifier.from_domain(identifier)
                 for identifier in domain_obj.identifiers or []
@@ -78,20 +122,51 @@ class Reference(GenericSQLPersistence[DomainReference]):
                 Enhancement.from_domain(enhancement)
                 for enhancement in domain_obj.enhancements or []
             ],
+            canonical_reference=Reference.from_domain(domain_obj.canonical_reference)
+            if domain_obj.canonical_reference
+            else None,
+            # No cascading on duplicate references so don't populate from domain
         )
 
     def to_domain(self, preload: list[str] | None = None) -> DomainReference:
         """Convert the persistence model into a Domain Reference object."""
-        return DomainReference(
-            id=self.id,
-            visibility=self.visibility,
-            identifiers=[identifier.to_domain() for identifier in self.identifiers]
-            if "identifiers" in (preload or [])
-            else None,
-            enhancements=[enhancement.to_domain() for enhancement in self.enhancements]
-            if "enhancements" in (preload or [])
-            else None,
-        )
+        try:
+            return DomainReference(
+                id=self.id,
+                visibility=self.visibility,
+                duplicate_of=self.duplicate_of,
+                identifiers=[identifier.to_domain() for identifier in self.identifiers]
+                if "identifiers" in (preload or [])
+                else None,
+                enhancements=[
+                    enhancement.to_domain() for enhancement in self.enhancements
+                ]
+                if "enhancements" in (preload or [])
+                else None,
+                # Note we don't propagate the opposite side of the duplicate self-join
+                # to avoid infinite recursion. Having both sides of the relationship in
+                # preload will still return the tree on both sides but won't attempt to
+                # double back.
+                canonical_reference=self.canonical_reference.to_domain(
+                    preload=[p for p in preload or [] if p != "duplicate_references"]
+                )
+                if "canonical_reference" in (preload or []) and self.canonical_reference
+                else None,
+                duplicate_references=[
+                    reference.to_domain(
+                        preload=[p for p in preload or [] if p != "canonical_reference"]
+                    )
+                    for reference in self.duplicate_references
+                ]
+                if "duplicate_references" in (preload or [])
+                else None,
+            )
+        except MissingGreenlet as exc:
+            msg = (
+                "Trying to preload a missing relationship. This may be due to "
+                "a deeper reference duplicate depth than specified in settings."
+            )
+            raise SQLPreloadError(msg) from exc
 
 
 class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
@@ -128,6 +203,7 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
             "identifier_type",
             "identifier",
             "other_identifier_name",
+            "reference_id",
             name="uix_external_identifier",
             postgresql_nulls_not_distinct=True,
         ),

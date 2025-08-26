@@ -54,34 +54,20 @@ class ImportBatchStatus(StrEnum):
 
 class CollisionStrategy(StrEnum):
     """
-    The strategy to use when an identifier collision is detected.
+    The strategy to use when a duplicate reference is detected on import.
 
-    Identifier collisions are detected on ``identifier_type`` and ``identifier``
-    (and ``other_identifier_name`` where relevant) already present in the database.
-
-    Enhancement collisions are detected on an entry with matching ``enhancement_type``
-    and ``source`` already being present on the collided reference.
-
-    - `discard`: Do nothing with the incoming reference.
-    - `fail`: Do nothing with the incoming reference and mark it as failed. This
-      allows the importing process to "follow up" on the failure.
-    - `merge_aggressive`: Prioritize the incoming reference's identifiers and
-      enhancements in the merge.
-    - `merge_defensive`: Prioritize the existing reference's identifiers and
-      enhancements in the merge.
-    - `append`: Performs an aggressive merge of identifiers, and an append of
-      enhancements.
-    - `overwrite`: Performs an aggressive merge of identifiers, and an overwrite of
-      enhancements (deleting existing and recreating what is imported). This should
-      be used sparingly and carefully.
+    - ``discard``: Do nothing with the incoming reference.
+    - ``fail``: Do nothing with the incoming reference and mark it as failed. This
+      allows the importing process to "follow up" on the conflict.
+    - ``append``: Appends the identifiers and enhancements of the incoming reference
+      to the existing reference. Stores the incoming reference with
+      ``duplicate_of=existing_reference.id``. If any identifiers are of unique types
+      and clash, then follows the ``fail`` strategy.
     """
 
     DISCARD = auto()
     FAIL = auto()
-    MERGE_AGGRESSIVE = auto()
-    MERGE_DEFENSIVE = auto()
     APPEND = auto()
-    OVERWRITE = auto()
 
 
 class ImportResultStatus(StrEnum):

@@ -13,8 +13,7 @@ class ExternalIdentifierType(StrEnum):
     This is used to identify the type of identifier used in the `ExternalIdentifier`
     class.
     **Allowed values**:
-    - `doi`: A DOI (Digital Object Identifier) which is a unique identifier for a
-    document.
+    - `doi`: A DOI (Digital Object Identifier).
     - `pmid`: A PubMed ID which is a unique identifier for a document in PubMed.
     - `openalex`: An OpenAlex ID which is a unique identifier for a document in
     OpenAlex.

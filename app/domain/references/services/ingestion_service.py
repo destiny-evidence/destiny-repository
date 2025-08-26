@@ -2,6 +2,7 @@
 
 import destiny_sdk
 
+from app.core.exceptions import UnresolvableReferenceDuplicateError
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
@@ -69,6 +70,11 @@ class IngestionService(GenericService[ReferenceAntiCorruptionService]):
             msg = "No identifiers found in reference. This should not happen."
             raise RuntimeError(msg)
 
+        incoming_reference = (
+            self._anti_corruption_service.reference_from_sdk_file_input(reference)
+        )
+
+        # To be replaced by duplicate detection logic!
         collided_identifiers = await self.fetch_collided_identifiers(
             [
                 GenericExternalIdentifier.from_specific(identifier)
@@ -78,16 +84,10 @@ class IngestionService(GenericService[ReferenceAntiCorruptionService]):
 
         if not collided_identifiers:
             # No collision detected
-            return self._anti_corruption_service.reference_from_sdk_file_input(
-                reference
-            )
+            return incoming_reference
 
         if collision_strategy == CollisionStrategy.DISCARD:
             return None
-
-        collided_refs = {identifier.reference_id for identifier in collided_identifiers}
-        if len(collided_refs) != 1:
-            return "Incoming reference collides with more than one existing reference."
 
         if collision_strategy == CollisionStrategy.FAIL:
             return f"""
@@ -95,27 +95,41 @@ Identifier(s) are already mapped on an existing reference:
 {collided_identifiers}
 """
 
+        # Perform merge
         existing_reference = await self.sql_uow.references.get_by_pk(
-            collided_refs.pop(), preload=["identifiers", "enhancements"]
+            collided_identifiers[0].reference_id,
+            preload=["identifiers", "enhancements", "canonical_reference"],
         )
-        if not existing_reference:
-            msg = "Existing reference not found in database. This should not happen."
-            raise RuntimeError(msg)
 
-        incoming_reference = (
-            self._anti_corruption_service.reference_from_sdk_file_input(
-                reference, existing_reference.id
+        try:
+            delta_identifiers, delta_enhancements = existing_reference.merge(
+                incoming_reference.identifiers or [],
+                incoming_reference.enhancements or [],
+                propagate=True,
             )
-        )
+            logger.info(
+                "Merging reference",
+                collision_strategy=collision_strategy,
+                existing_reference_id=str(existing_reference.id),
+                incoming_reference_id=str(incoming_reference.id),
+                n_delta_identifiers=len(delta_identifiers),
+                n_delta_enhancements=len(delta_enhancements),
+            )
+        except UnresolvableReferenceDuplicateError as exc:
+            logger.warning(
+                "Merge could not be resolved.", error=exc.detail, exc_info=exc
+            )
+            return exc.detail
 
-        # Merge collision strategies
-        logger.info(
-            "Merging reference",
-            collision_strategy=collision_strategy,
-            existing_reference_id=str(existing_reference.id),
-        )
-        await existing_reference.merge(incoming_reference, collision_strategy)
-        return existing_reference
+        if delta_identifiers or delta_enhancements:
+            # This reference contained new information, store it as the
+            # leaf of the canonical tree
+            incoming_reference.duplicate_of = existing_reference.id
+            incoming_reference.canonical_reference = existing_reference
+            return incoming_reference
+
+        # Nothing changed on the merge, incoming reference is discarded
+        return None
 
     async def ingest_reference(
         self, record_str: str, entry_ref: int, collision_strategy: CollisionStrategy
@@ -152,6 +166,8 @@ Identifier(s) are already mapped on an existing reference:
                 errors=[f"Entry {entry_ref}:", collision_result]
             )
 
+        # We trace the first returned reference as it's always the canonical one
+        # Looking at the log events or database state can show the full state
         trace_attribute(Attributes.REFERENCE_ID, str(collision_result.id))
         final_reference = await self.sql_uow.references.merge(collision_result)
         reference_create_result.reference_id = final_reference.id

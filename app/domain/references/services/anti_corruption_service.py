@@ -32,15 +32,12 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     def reference_from_sdk_file_input(
         self,
         reference_in: destiny_sdk.references.ReferenceFileInput,
-        reference_id: uuid.UUID | None = None,
     ) -> Reference:
         """Create a reference from a file input including id hydration."""
         try:
             reference = Reference(
                 visibility=reference_in.visibility,
             )
-            if reference_id:
-                reference.id = reference_id
             reference.identifiers = [
                 LinkedExternalIdentifier(
                     reference_id=reference.id, identifier=identifier
@@ -67,6 +64,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             return destiny_sdk.references.Reference(
                 id=reference.id,
                 visibility=reference.visibility,
+                duplicate_of=reference.duplicate_of,
                 identifiers=[
                     self.external_identifier_to_sdk(identifier).identifier
                     for identifier in reference.identifiers or []

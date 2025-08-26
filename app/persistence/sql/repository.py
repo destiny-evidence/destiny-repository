@@ -8,8 +8,10 @@ from pydantic import UUID4
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import QueryableAttribute, joinedload, selectinload
+from sqlalchemy.orm.interfaces import ORMOption
 
+from app.core.config import get_settings
 from app.core.exceptions import SQLIntegrityError, SQLNotFoundError
 from app.core.telemetry.attributes import (
     Attributes,
@@ -19,8 +21,10 @@ from app.core.telemetry.repository import trace_repository_method
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
 from app.persistence.sql.generics import GenericSQLPersistenceType
+from app.persistence.sql.persistence import RelationshipLoadType
 
 tracer = trace.get_tracer(__name__)
+settings = get_settings()
 
 
 class GenericAsyncSqlRepository(
@@ -54,6 +58,17 @@ class GenericAsyncSqlRepository(
         self._domain_cls = domain_cls
         self.system = "SQL"
 
+    def _get_relationship_load(self, relationship: QueryableAttribute) -> ORMOption:
+        if (
+            relationship.info.get("load_type", RelationshipLoadType.JOINED)
+            == RelationshipLoadType.SELECTIN
+        ):
+            return selectinload(
+                relationship,
+                recursion_depth=relationship.info.get("max_recursion_depth"),
+            )
+        return joinedload(relationship)
+
     @trace_repository_method(tracer)
     async def get_by_pk(
         self, pk: UUID4, preload: list[str] | None = None
@@ -74,7 +89,8 @@ class GenericAsyncSqlRepository(
         if preload:
             for p in preload:
                 relationship = getattr(self._persistence_cls, p)
-                options.append(joinedload(relationship))
+                options.append(self._get_relationship_load(relationship))
+
         result = await self._session.get(self._persistence_cls, pk, options=options)
         if not result:
             detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
@@ -108,7 +124,7 @@ class GenericAsyncSqlRepository(
         if preload:
             for p in preload:
                 relationship = getattr(self._persistence_cls, p)
-                options.append(joinedload(relationship))
+                options.append(self._get_relationship_load(relationship))
 
         query = (
             select(self._persistence_cls)
@@ -150,10 +166,11 @@ class GenericAsyncSqlRepository(
 
         """
         options = []
+
         if preload:
             for p in preload:
                 relationship = getattr(self._persistence_cls, p)
-                options.append(joinedload(relationship))
+                options.append(self._get_relationship_load(relationship))
 
         query = select(self._persistence_cls).options(*options)
         result = await self._session.execute(query)

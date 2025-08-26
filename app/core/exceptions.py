@@ -456,3 +456,35 @@ class AuthError(destiny_sdk.auth.AuthException):
             detail=detail,
             exception=self,
         )
+
+
+class UnresolvableReferenceDuplicateError(DestinyRepositoryError):
+    """An exception thrown when a duplicate reference cannot be resolved."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the UnresolvableReferenceDuplicateError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        self.detail = detail
+        super().__init__(detail, *args)
+
+
+class SQLPreloadError(DestinyRepositoryError):
+    """An exception thrown when requesting a relationship that hasn't been preloaded."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the SQLPreloadError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        self.detail = detail
+        super().__init__(detail, *args)

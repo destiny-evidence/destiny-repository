@@ -3,8 +3,10 @@
 import datetime
 import uuid
 from abc import abstractmethod
+from enum import StrEnum, auto
 from typing import Generic, Self
 
+from pydantic import BaseModel
 from sqlalchemy import UUID, DateTime
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import (
@@ -54,3 +56,17 @@ class GenericSQLPersistence(
     @abstractmethod
     def to_domain(self, preload: list[str] | None = None) -> GenericDomainModelType:
         """Create a domain model from this persistence model."""
+
+
+class RelationshipLoadType(StrEnum):
+    """Supported types of loading relationships."""
+
+    JOINED = auto()
+    SELECTIN = auto()
+
+
+class RelationshipInfo(BaseModel):
+    """Optional custom information to store on SQL relationships."""
+
+    max_recursion_depth: int | None = None
+    load_type: RelationshipLoadType = RelationshipLoadType.JOINED
