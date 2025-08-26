@@ -427,8 +427,8 @@ class TestReferenceMerge:
     @pytest.mark.parametrize(
         ("max_reference_duplicate_depth", "expected_error"),
         [
-            (2, UnresolvableReferenceDuplicateError),
-            (3, None),
+            (3, UnresolvableReferenceDuplicateError),
+            (4, None),
         ],
     )
     async def test_max_reference_duplicate_depth(

@@ -132,7 +132,7 @@ class Reference(
         self,
         identifiers: list["LinkedExternalIdentifier"],
         enhancements: list["Enhancement"],
-        duplicate_depth: int = 1,
+        duplicate_depth: int = 2,
         *,
         propagate: bool,
     ) -> tuple[list["LinkedExternalIdentifier"], list["Enhancement"]]:
@@ -157,7 +157,9 @@ class Reference(
             - enhancements (list["Enhancement"]): The incoming enhancements.
             - identifiers (list["LinkedExternalIdentifier"]): The incoming identifiers.
             - duplicate_depth (int): Internal, tracks the current depth of duplication.
-                Only applicable when propagate=True.
+                Only applicable when propagate=True. Starts at 2 as in a propagating
+                scenario the incoming identifiers and enhancements already exist, so the
+                first call updates the second reference in the chain.
             - propagate (bool): If True, incoming enhancements and identifiers will be
                 copied before merging (updating the ID and creating a ``derived_from``
                 relationship) and propagated recursively to the canonical reference(s).
@@ -200,6 +202,8 @@ class Reference(
                     update={
                         "id": uuid.uuid4(),
                         "reference_id": self.id,
+                        # NB with propagate=True we can assume that incoming_enhancement
+                        # is or will be persisted.
                         "derived_from": [incoming_enhancement.id],
                     }
                 )
