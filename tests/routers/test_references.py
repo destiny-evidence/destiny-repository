@@ -161,7 +161,7 @@ async def test_request_batch_enhancement_happy_path(
 
     with patch("app.core.telemetry.fastapi.bound_contextvars") as mock_bound:
         response = await client.post(
-            "/v1/enhancement-requests/batch-requests/", json=enhancement_request_create
+            "/v1/enhancement-requests/", json=enhancement_request_create
         )
         found = any(
             "robot_id" in call.kwargs and call.kwargs["robot_id"] == str(robot.id)

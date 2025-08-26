@@ -71,7 +71,7 @@ def test_complete_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
         toy_robot_id = response.json()["id"]
 
         response = repo_client.post(
-            "/enhancement-requests/batch-requests/",
+            "/enhancement-requests/",
             json=destiny_sdk.robots.EnhancementRequestIn(
                 robot_id=toy_robot_id, reference_ids=reference_ids
             ).model_dump(mode="json"),
@@ -84,7 +84,7 @@ def test_complete_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
         while True:
             time.sleep(1)
             response = repo_client.get(
-                f"/enhancement-requests/batch-requests/{enhancement_request_id}/",
+                f"/enhancement-requests/{enhancement_request_id}/",
             )
             assert response.status_code == 200
             if (request := response.json())["request_status"] not in (
@@ -126,7 +126,7 @@ def test_complete_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
             enhancement_auto_request_found = False
             for request_id in result:
                 response = repo_client.get(
-                    f"/enhancement-requests/batch-requests/{request_id}/",
+                    f"/enhancement-requests/{request_id}/",
                 )
                 request = response.json()
                 if request["source"].startswith("ImportBatch"):

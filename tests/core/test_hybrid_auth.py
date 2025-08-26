@@ -131,7 +131,7 @@ async def test_hmac_multi_client_authentication_happy_path(
     )
 
     response = await client.get(
-        f"/v1/enhancement-requests/batch-requests/{enhancement_request.id}/",
+        f"/v1/enhancement-requests/{enhancement_request.id}/",
         auth=auth,
     )
 
@@ -150,7 +150,7 @@ async def test_hmac_multi_client_authentication_robot_does_not_exist(
     )
 
     response = await client.get(
-        f"/v1/enhancement-requests/batch-requests/{enhancement_request.id}/",
+        f"/v1/enhancement-requests/{enhancement_request.id}/",
         auth=auth,
     )
 
@@ -169,7 +169,7 @@ async def test_hmac_multi_client_authentication_robot_secret_mismatch(
     )
 
     response = await client.get(
-        f"/v1/enhancement-requests/batch-requests/{enhancement_request.id}/",
+        f"/v1/enhancement-requests/{enhancement_request.id}/",
         auth=auth,
     )
 
@@ -193,7 +193,7 @@ async def test_jwt_authentication_happy_path(  # noqa: PLR0913
     )
 
     response = await client.get(
-        f"/v1/enhancement-requests/batch-requests/{enhancement_request.id}/",
+        f"/v1/enhancement-requests/{enhancement_request.id}/",
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -212,7 +212,7 @@ async def test_jwt_authentication_failed_jwks_key_lookup(
     token = generate_fake_token({"sub": "test_user"}, "enhancement_request.writer")
 
     response = await client.get(
-        f"/v1/enhancement-requests/batch-requests/{enhancement_request.id}/",
+        f"/v1/enhancement-requests/{enhancement_request.id}/",
         headers={"Authorization": f"Bearer {token}"},
     )
 
