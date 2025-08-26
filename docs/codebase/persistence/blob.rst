@@ -70,7 +70,7 @@ Azure Blob Storage is used for application deployments. At present there is one 
         ├── batch_enhancement_result/
         │   └── <batch_request_id>_robot.jsonl - the enhancement result as published by the robot to the repository
         │   └── <batch_request_id>_repo.jsonl  - the validation result of importing the above as published by the repository
-        ├── batch_enhancement_request_reference_data/
+        ├── enhancement_request_reference_data/
         │   └── <batch_request_id>.jsonl - the reference data provided to the robot for the batch enhancement request
 
 

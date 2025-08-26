@@ -270,7 +270,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 for reference_id_chunk in list_chunker(
                     batch_enhancement_request.reference_ids,
                     settings.upload_file_chunk_size_override.get(
-                        UploadFile.BATCH_ENHANCEMENT_REQUEST_REFERENCE_DATA,
+                        UploadFile.ENHANCEMENT_REQUEST_REFERENCE_DATA,
                         settings.default_upload_file_chunk_size,
                     ),
                 )
