@@ -86,7 +86,7 @@ class BatchEnhancementService(GenericService[ReferenceAntiCorruptionService]):
         # Build jsonl file data using SDK model
         file = await blob_repository.upload_file_to_blob_storage(
             content=file_stream,
-            path="batch_enhancement_request_reference_data",
+            path="enhancement_request_reference_data",
             filename=f"{batch_enhancement_request.id}.jsonl",
         )
 

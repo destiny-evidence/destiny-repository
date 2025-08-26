@@ -98,7 +98,7 @@ async def collect_and_dispatch_references_for_batch_enhancement(
     """Async logic for dispatching a batch enhancement request."""
     logger.info("Processing batch enhancement request")
     trace_attribute(
-        Attributes.BATCH_ENHANCEMENT_REQUEST_ID, str(batch_enhancement_request_id)
+        Attributes.ENHANCEMENT_REQUEST_ID, str(batch_enhancement_request_id)
     )
     name_span(f"Dispatch batch enhancement request {batch_enhancement_request_id}")
     sql_uow = await get_sql_unit_of_work()
@@ -143,11 +143,11 @@ async def validate_and_import_batch_enhancement_result(
     batch_enhancement_request_id: UUID4,
 ) -> None:
     """Async logic for validating and importing a batch enhancement result."""
-    logger.info("Processing batch enhancement result")
+    logger.info("Processing enhancement request result")
     trace_attribute(
-        Attributes.BATCH_ENHANCEMENT_REQUEST_ID, str(batch_enhancement_request_id)
+        Attributes.ENHANCEMENT_REQUEST_ID, str(batch_enhancement_request_id)
     )
-    name_span(f"Import batch enhancement result {batch_enhancement_request_id}")
+    name_span(f"Import enhancement request result {batch_enhancement_request_id}")
     sql_uow = await get_sql_unit_of_work()
     es_uow = await get_es_unit_of_work()
     blob_repository = await get_blob_repository()
