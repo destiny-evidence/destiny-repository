@@ -28,12 +28,6 @@ Robot Automations
             loop For each matching robot
                 DR->>R: Batch Enhancement Request with matching References
             end
-        else On Single Enhancement
-            DR->>DR: Ingest Enhancement
-            DR->>ES: Percolate new Enhancement
-            loop For each matching robot
-                DR->>R: Single Enhancement Request with matching Reference
-            end
         end
 
 .. mermaid::

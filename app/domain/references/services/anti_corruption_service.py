@@ -10,7 +10,6 @@ from app.domain.references.models.models import (
     BatchEnhancementRequest,
     BatchRobotResultValidationEntry,
     Enhancement,
-    EnhancementRequest,
     ExternalIdentifierAdapter,
     LinkedExternalIdentifier,
     Reference,
@@ -139,32 +138,6 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             raise SDKToDomainError(errors=exception.errors()) from exception
         else:
             return enhancement
-
-    def enhancement_request_to_sdk(
-        self, enhancement_request: EnhancementRequest
-    ) -> destiny_sdk.robots.EnhancementRequestRead:
-        """Convert the enhancement request to a EnhancementRequest SDK model."""
-        try:
-            return destiny_sdk.robots.EnhancementRequestRead.model_validate(
-                enhancement_request.model_dump()
-            )
-        except ValidationError as exception:
-            raise DomainToSDKError(errors=exception.errors()) from exception
-
-    def enhancement_request_from_sdk(
-        self,
-        enhancement_request_in: destiny_sdk.robots.EnhancementRequestIn,
-    ) -> EnhancementRequest:
-        """Create a EnhancementRequest from the SDK model."""
-        try:
-            enhancement_request = EnhancementRequest.model_validate(
-                enhancement_request_in.model_dump()
-            )
-            enhancement_request.check_serializability()
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-        else:
-            return enhancement_request
 
     def batch_enhancement_request_from_sdk(
         self,

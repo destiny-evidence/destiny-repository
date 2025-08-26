@@ -3,7 +3,6 @@
 from collections import defaultdict
 from collections.abc import AsyncGenerator, Iterable
 
-import destiny_sdk
 from pydantic import UUID4
 
 from app.core.config import (
@@ -17,7 +16,6 @@ from app.core.exceptions import (
     RobotEnhancementError,
     RobotUnreachableError,
     SQLNotFoundError,
-    WrongReferenceError,
 )
 from app.core.telemetry.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
@@ -25,8 +23,6 @@ from app.domain.references.models.models import (
     BatchEnhancementRequest,
     BatchEnhancementRequestStatus,
     Enhancement,
-    EnhancementRequest,
-    EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifier,
     ExternalIdentifierSearch,
@@ -46,7 +42,6 @@ from app.domain.references.services.batch_enhancement_service import (
 from app.domain.references.services.ingestion_service import (
     IngestionService,
 )
-from app.domain.robots.models.models import Robot
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
@@ -91,37 +86,61 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     async def _add_enhancement(
-        self, reference_id: UUID4, enhancement: Enhancement
+        self, enhancement: Enhancement, *, enforce_enhancement_tree: bool = True
     ) -> Reference:
-        """Add an enhancement to a reference."""
-        # This method is used internally and does not use the unit of work.
-        if enhancement.reference_id != reference_id:
-            detail = "Enhancement is for a different reference than requested."
-            raise WrongReferenceError(detail)
+        """
+        Add an enhancement to a reference.
+
+        :param enhancement: The enhancement to add
+        :type enhancement: Enhancement
+        :param enforce_enhancement_tree: Whether the enhancement's parents must be
+        from the same reference. If False, will still verify the enhancement's
+        parents exist without the ownership check. This should be True unless you have
+        a good reason not to. An example of a good reason is duplicating an enhancement
+        to another reference, which should point back at the source enhancement.
+        :type enforce_enhancement_tree: bool
+        """
+        reference = await self.sql_uow.references.get_by_pk(
+            enhancement.reference_id, preload=["enhancements", "identifiers"]
+        )
 
         if enhancement.derived_from:
             try:
-                await self.sql_uow.enhancements.verify_pk_existence(
-                    enhancement.derived_from
-                )
+                if enforce_enhancement_tree:
+                    parent_enhancements = await self.sql_uow.enhancements.get_by_pks(
+                        enhancement.derived_from
+                    )
+
+                    invalid_derived_from_ids = [
+                        str(parent.id)
+                        for parent in parent_enhancements
+                        if parent.reference_id != enhancement.reference_id
+                    ]
+
+                    if invalid_derived_from_ids:
+                        detail = (
+                            f"Parent enhancements {",".join(invalid_derived_from_ids)} "
+                            "are for a different parent reference"
+                        )
+                        raise InvalidParentEnhancementError(detail=detail)
+                else:
+                    await self.sql_uow.enhancements.verify_pk_existence(
+                        enhancement.derived_from
+                    )
+
             except SQLNotFoundError as e:
                 detail = f"Enhancements with ids {e.lookup_value} do not exist."
                 raise InvalidParentEnhancementError(detail) from e
 
-        reference = await self.sql_uow.references.get_by_pk(
-            reference_id, preload=["enhancements", "identifiers"]
-        )
         # This uses SQLAlchemy to treat References as an aggregate of enhancements.
         # All considered this is a naive implementation, but it works for now.
         reference.enhancements = [*(reference.enhancements or []), *[enhancement]]
         return await self.sql_uow.references.merge(reference)
 
     @sql_unit_of_work
-    async def add_enhancement(
-        self, reference_id: UUID4, enhancement: Enhancement
-    ) -> Reference:
+    async def add_enhancement(self, enhancement: Enhancement) -> Reference:
         """Add an enhancement to a reference."""
-        return await self._add_enhancement(reference_id, enhancement)
+        return await self._add_enhancement(enhancement, enforce_enhancement_tree=True)
 
     async def _get_hydrated_references(
         self,
@@ -189,11 +208,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     @sql_unit_of_work
-    async def register_reference(self) -> Reference:
-        """Create a new reference."""
-        return await self.sql_uow.references.add(Reference())
-
-    @sql_unit_of_work
     async def add_identifier(
         self, reference_id: UUID4, identifier: ExternalIdentifier
     ) -> LinkedExternalIdentifier:
@@ -205,143 +219,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         return await self.sql_uow.external_identifiers.add(db_identifier)
 
-    async def _get_enhancement_request(
-        self,
-        enhancement_request_id: UUID4,
-    ) -> EnhancementRequest:
-        """Get an enhancement request by request id."""
-        return await self.sql_uow.enhancement_requests.get_by_pk(enhancement_request_id)
-
     async def ingest_reference(
         self, record_str: str, entry_ref: int, collision_strategy: CollisionStrategy
     ) -> ReferenceCreateResult | None:
         """Ingest a reference from a file."""
         return await self._ingestion_service.ingest_reference(
             record_str, entry_ref, collision_strategy
-        )
-
-    async def _register_enhancement_request(
-        self,
-        enhancement_request: EnhancementRequest,
-        robot_service: RobotService,
-    ) -> tuple[Reference, Robot]:
-        """Create a new enhancement request."""
-        reference = await self.sql_uow.references.get_by_pk(
-            enhancement_request.reference_id, preload=["identifiers", "enhancements"]
-        )
-
-        robot = await robot_service.get_robot(enhancement_request.robot_id)
-
-        enhancement_request = await self.sql_uow.enhancement_requests.add(
-            enhancement_request
-        )
-
-        return reference, robot
-
-    @sql_unit_of_work
-    async def register_enhancement_request(
-        self,
-        enhancement_request: EnhancementRequest,
-        robot_service: RobotService,
-    ) -> tuple[Reference, Robot]:
-        """Register an enhancement request and return the reference and robot."""
-        return await self._register_enhancement_request(
-            enhancement_request=enhancement_request,
-            robot_service=robot_service,
-        )
-
-    async def _dispatch_enhancement_request(
-        self,
-        enhancement_request: EnhancementRequest,
-        reference: Reference,
-        robot: Robot,
-        robot_request_dispatcher: RobotRequestDispatcher,
-    ) -> EnhancementRequest:
-        """Dispatch an enhancement request to a robot."""
-        robot_request = destiny_sdk.robots.RobotRequest(
-            id=enhancement_request.id,
-            reference=self._anti_corruption_service.reference_to_sdk(reference),
-            extra_fields=enhancement_request.enhancement_parameters,
-        )
-
-        try:
-            await robot_request_dispatcher.send_enhancement_request_to_robot(
-                endpoint="/single/", robot=robot, robot_request=robot_request
-            )
-        except RobotUnreachableError as exception:
-            return await self.sql_uow.enhancement_requests.update_by_pk(
-                enhancement_request.id,
-                request_status=EnhancementRequestStatus.FAILED,
-                error=exception.detail,
-            )
-        except RobotEnhancementError as exception:
-            return await self.sql_uow.enhancement_requests.update_by_pk(
-                enhancement_request.id,
-                request_status=EnhancementRequestStatus.REJECTED,
-                error=exception.detail,
-            )
-
-        return await self.sql_uow.enhancement_requests.update_by_pk(
-            enhancement_request.id,
-            request_status=EnhancementRequestStatus.ACCEPTED,
-        )
-
-    @sql_unit_of_work
-    async def dispatch_enhancement_request(
-        self,
-        enhancement_request: EnhancementRequest,
-        reference: Reference,
-        robot: Robot,
-        robot_request_dispatcher: RobotRequestDispatcher,
-    ) -> EnhancementRequest:
-        """Dispatch an enhancement request to a robot."""
-        return await self._dispatch_enhancement_request(
-            enhancement_request=enhancement_request,
-            reference=reference,
-            robot=robot,
-            robot_request_dispatcher=robot_request_dispatcher,
-        )
-
-    async def _request_reference_enhancement(
-        self,
-        enhancement_request: EnhancementRequest,
-        robot_service: RobotService,
-        robot_request_dispatcher: RobotRequestDispatcher,
-    ) -> EnhancementRequest:
-        """Create an enhancement request and send it to robot using an existing UOW."""
-        reference, robot = await self._register_enhancement_request(
-            enhancement_request=enhancement_request,
-            robot_service=robot_service,
-        )
-        logger.info(
-            "Dispatching enhancement request",
-            enhancement_request_id=enhancement_request.id,
-            robot_id=robot.id,
-        )
-        return await self._dispatch_enhancement_request(
-            enhancement_request=enhancement_request,
-            reference=reference,
-            robot=robot,
-            robot_request_dispatcher=robot_request_dispatcher,
-        )
-
-    async def request_reference_enhancement(
-        self,
-        enhancement_request: EnhancementRequest,
-        robot_service: RobotService,
-        robot_request_dispatcher: RobotRequestDispatcher,
-    ) -> EnhancementRequest:
-        """Create an enhancement request and send it to the robot."""
-        reference, robot = await self.register_enhancement_request(
-            enhancement_request=enhancement_request,
-            robot_service=robot_service,
-        )
-
-        return await self.dispatch_enhancement_request(
-            enhancement_request=enhancement_request,
-            reference=reference,
-            robot=robot,
-            robot_request_dispatcher=robot_request_dispatcher,
         )
 
     @sql_unit_of_work
@@ -359,14 +242,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self.sql_uow.batch_enhancement_requests.add(enhancement_request)
 
     @sql_unit_of_work
-    async def get_enhancement_request(
-        self,
-        enhancement_request_id: UUID4,
-    ) -> EnhancementRequest:
-        """Get an enhancement request by request id."""
-        return await self._get_enhancement_request(enhancement_request_id)
-
-    @sql_unit_of_work
     async def get_batch_enhancement_request(
         self,
         batch_enhancement_request_id: UUID4,
@@ -374,67 +249,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Get a batch enhancement request by request id."""
         return await self.sql_uow.batch_enhancement_requests.get_by_pk(
             batch_enhancement_request_id
-        )
-
-    @sql_unit_of_work
-    async def create_reference_enhancement_from_request(
-        self,
-        enhancement_request_id: UUID4,
-        enhancement: Enhancement,
-        robot_service: RobotService,
-        robot_request_dispatcher: RobotRequestDispatcher,
-    ) -> EnhancementRequest:
-        """Finalise the creation of an enhancement against a reference."""
-        enhancement_request = await self._get_enhancement_request(
-            enhancement_request_id
-        )
-
-        await self._add_enhancement(enhancement_request.reference_id, enhancement)
-
-        await self.index_reference(
-            reference=await self._get_reference(enhancement_request.reference_id)
-        )
-
-        for robot_automation in await self._detect_robot_automations(
-            enhancement_ids=[enhancement.id],
-        ):
-            if robot_automation.robot_id == enhancement_request.robot_id:
-                logger.warning(
-                    "Detected robot automation loop, skipping."
-                    " This is likely a problem in the percolating query.",
-                    robot_id=robot_automation.robot_id,
-                    source=f"EnhancementRequest:{enhancement_request.id}",
-                )
-                continue
-            logger.info(
-                "Detected robot automation for enhancement",
-                robot_id=robot_automation.robot_id,
-                n_references=len(robot_automation.reference_ids),
-            )
-            await self._request_reference_enhancement(
-                EnhancementRequest(
-                    reference_id=enhancement_request.reference_id,
-                    robot_id=robot_automation.robot_id,
-                    source=f"EnhancementRequest:{enhancement_request.id}",
-                ),
-                robot_service=robot_service,
-                robot_request_dispatcher=robot_request_dispatcher,
-            )
-
-        return await self.sql_uow.enhancement_requests.update_by_pk(
-            enhancement_request.id,
-            request_status=EnhancementRequestStatus.COMPLETED,
-        )
-
-    @sql_unit_of_work
-    async def mark_enhancement_request_failed(
-        self, enhancement_request_id: UUID4, error: str
-    ) -> EnhancementRequest:
-        """Mark an enhancement request as failed and supply error message."""
-        return await self.sql_uow.enhancement_requests.update_by_pk(
-            pk=enhancement_request_id,
-            request_status=EnhancementRequestStatus.FAILED,
-            error=error,
         )
 
     @sql_unit_of_work
@@ -547,10 +361,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> tuple[bool, str]:
         """Handle the import of a single batch enhancement result entry."""
         try:
-            await self._add_enhancement(
-                enhancement.reference_id,
-                enhancement,
-            )
+            await self._add_enhancement(enhancement, enforce_enhancement_tree=True)
         except SQLNotFoundError:
             return (
                 False,

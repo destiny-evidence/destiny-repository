@@ -4,13 +4,11 @@ import uuid
 import destiny_sdk
 import httpx
 import pytest
-from destiny_sdk.visibility import Visibility
 from fastapi import status
 
 from app.core.exceptions import RobotEnhancementError, RobotUnreachableError
 from app.domain.references.models.models import (
-    EnhancementRequest,
-    Reference,
+    BatchEnhancementRequest,
 )
 from app.domain.robots.models.models import Robot
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
@@ -42,17 +40,17 @@ async def test_send_enhancement_request_to_robot_happy_path(
     frozen_time,  # noqa: ARG001
     robot,
 ):
-    reference = Reference(id=uuid.uuid4(), visibility=Visibility.RESTRICTED)
-    enhancement_request = EnhancementRequest(
+    enhancement_request = BatchEnhancementRequest(
         id=uuid.uuid4(),
-        reference_id=reference.id,
+        reference_ids=[uuid.uuid4()],
         robot_id=robot.id,
         enhancement_parameters={},
     )
 
-    robot_request = destiny_sdk.robots.RobotRequest(
+    robot_request = destiny_sdk.robots.BatchRobotRequest(
         id=enhancement_request.id,
-        reference=destiny_sdk.references.Reference(**reference.model_dump()),
+        reference_storage_url="https://fake-reference-storage-url.org",
+        result_storage_url="https://fake-result-storage-url.org",
         extra_fields=enhancement_request.enhancement_parameters,
     )
 
@@ -65,7 +63,7 @@ async def test_send_enhancement_request_to_robot_happy_path(
 
     httpx_mock.add_response(
         method="POST",
-        url=str(robot.base_url) + "single/",
+        url=str(robot.base_url) + "batch/",
         status_code=status.HTTP_202_ACCEPTED,
         match_headers={
             "Authorization": f"Signature {expected_signature}",
@@ -77,7 +75,7 @@ async def test_send_enhancement_request_to_robot_happy_path(
     dispatcher = RobotRequestDispatcher()
 
     await dispatcher.send_enhancement_request_to_robot(
-        endpoint="/single/", robot=robot, robot_request=robot_request
+        endpoint="/batch/", robot=robot, robot_request=robot_request
     )
 
     assert len(httpx_mock.get_requests()) == 1
@@ -88,17 +86,17 @@ async def test_send_enhancement_request_to_robot_request_error(httpx_mock, robot
     # Mock a connection error
     httpx_mock.add_exception(httpx.ConnectError(message="All connections refused"))
 
-    reference = Reference(id=uuid.uuid4(), visibility=Visibility.RESTRICTED)
-    enhancement_request = EnhancementRequest(
+    enhancement_request = BatchEnhancementRequest(
         id=uuid.uuid4(),
-        reference_id=reference.id,
+        reference_ids=[uuid.uuid4()],
         robot_id=robot.id,
         enhancement_parameters={},
     )
 
-    robot_request = destiny_sdk.robots.RobotRequest(
+    robot_request = destiny_sdk.robots.BatchRobotRequest(
         id=enhancement_request.id,
-        reference=destiny_sdk.references.Reference(**reference.model_dump()),
+        reference_storage_url="https://fake-reference-storage-url.org",
+        result_storage_url="https://fake-result-storage-url.org",
         extra_fields=enhancement_request.enhancement_parameters,
     )
 
@@ -106,7 +104,7 @@ async def test_send_enhancement_request_to_robot_request_error(httpx_mock, robot
 
     with pytest.raises(RobotUnreachableError):
         await dispatcher.send_enhancement_request_to_robot(
-            endpoint="/v1/single/", robot=robot, robot_request=robot_request
+            endpoint="/batch/", robot=robot, robot_request=robot_request
         )
 
 
@@ -115,17 +113,17 @@ async def test_send_enhancement_request_to_robot_503_response(httpx_mock, robot)
     # Mock a robot that is unavailable
     httpx_mock.add_response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-    reference = Reference(id=uuid.uuid4(), visibility=Visibility.RESTRICTED)
-    enhancement_request = EnhancementRequest(
+    enhancement_request = BatchEnhancementRequest(
         id=uuid.uuid4(),
-        reference_id=reference.id,
+        reference_ids=[uuid.uuid4()],
         robot_id=robot.id,
         enhancement_parameters={},
     )
 
-    robot_request = destiny_sdk.robots.RobotRequest(
+    robot_request = destiny_sdk.robots.BatchRobotRequest(
         id=enhancement_request.id,
-        reference=destiny_sdk.references.Reference(**reference.model_dump()),
+        reference_storage_url="https://fake-reference-storage-url.org",
+        result_storage_url="https://fake-result-storage-url.org",
         extra_fields=enhancement_request.enhancement_parameters,
     )
 
@@ -133,7 +131,7 @@ async def test_send_enhancement_request_to_robot_503_response(httpx_mock, robot)
 
     with pytest.raises(RobotUnreachableError):
         await dispatcher.send_enhancement_request_to_robot(
-            endpoint="/v1/single/", robot=robot, robot_request=robot_request
+            endpoint="/batch/", robot=robot, robot_request=robot_request
         )
 
 
@@ -144,17 +142,17 @@ async def test_send_enhancement_request_to_robot_400_response(httpx_mock, robot)
         status_code=status.HTTP_400_BAD_REQUEST, json={"message": "bad request"}
     )
 
-    reference = Reference(id=uuid.uuid4(), visibility=Visibility.RESTRICTED)
-    enhancement_request = EnhancementRequest(
+    enhancement_request = BatchEnhancementRequest(
         id=uuid.uuid4(),
-        reference_id=reference.id,
+        reference_ids=[uuid.uuid4()],
         robot_id=robot.id,
         enhancement_parameters={},
     )
 
-    robot_request = destiny_sdk.robots.RobotRequest(
+    robot_request = destiny_sdk.robots.BatchRobotRequest(
         id=enhancement_request.id,
-        reference=destiny_sdk.references.Reference(**reference.model_dump()),
+        reference_storage_url="https://fake-reference-storage-url.org",
+        result_storage_url="https://fake-result-storage-url.org",
         extra_fields=enhancement_request.enhancement_parameters,
     )
 
@@ -162,5 +160,5 @@ async def test_send_enhancement_request_to_robot_400_response(httpx_mock, robot)
 
     with pytest.raises(RobotEnhancementError):
         await dispatcher.send_enhancement_request_to_robot(
-            endpoint="/v1/single/", robot=robot, robot_request=robot_request
+            endpoint="/batch/", robot=robot, robot_request=robot_request
         )

@@ -9,8 +9,6 @@ from pydantic import UUID4, HttpUrl
 from destiny_sdk.robots import (
     BatchEnhancementRequestRead,
     BatchRobotResult,
-    EnhancementRequestRead,
-    RobotResult,
 )
 
 from .auth import create_signature
@@ -73,24 +71,6 @@ class Client:
             headers={"Content-Type": "application/json"},
             auth=HMACSigningAuth(secret_key=secret_key, client_id=client_id),
         )
-
-    def send_robot_result(self, robot_result: RobotResult) -> EnhancementRequestRead:
-        """
-        Send a RobotResult to destiny repository.
-
-        Signs the request with the client's secret key.
-
-        :param robot_result: The Robot Result to send
-        :type robot_result: RobotResult
-        :return: The EnhancementRequestRead object from the response.
-        :rtype: EnhancementRequestRead
-        """
-        response = self.session.post(
-            f"/enhancement-requests/single-requests/{robot_result.request_id}/results/",
-            json=robot_result.model_dump(mode="json"),
-        )
-        response.raise_for_status()
-        return EnhancementRequestRead.model_validate(response.json())
 
     def send_batch_robot_result(
         self, batch_robot_result: BatchRobotResult
