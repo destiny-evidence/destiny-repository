@@ -32,6 +32,11 @@ variable "azure_tenant_id" {
   type        = string
 }
 
+variable "external_directory_tenant_id" {
+  description = "ID of the external directory tenant for the Azure AD provider"
+  type        = string
+}
+
 variable "budget_code" {
   description = "Budget code for tagging resource groups. Required tag for resource groups"
   type        = string
@@ -98,6 +103,16 @@ variable "created_by" {
 variable "developers_group_id" {
   type        = string
   description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs"
+}
+
+# variable "external_directory_developers_group_id" {
+#   type        = string
+#   description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs"
+# }
+
+variable "external_directory_client_id" {
+  description = "Client ID of the external directory application"
+  type        = string
 }
 
 variable "db_crud_group_id" {
