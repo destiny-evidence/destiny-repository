@@ -7,8 +7,9 @@ from opentelemetry import trace
 from app.core.config import get_settings
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
+    CandidacyFingerprint,
     DuplicateDetermination,
-    Process,
+    IngestionProcess,
     Reference,
     ReferenceDuplicateDecision,
 )
@@ -37,8 +38,8 @@ class DuplicateDetectionService(GenericService[ReferenceAntiCorruptionService]):
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
 
-    async def register_candidate_reference(
-        self, reference: Reference, source: Process, source_id: uuid.UUID
+    async def register_reference(
+        self, reference: Reference, source: IngestionProcess, source_id: uuid.UUID
     ) -> ReferenceDuplicateDecision:
         """Register a reference for pending deduplication detection."""
         fingerprint = FingerprintProjection.get_from_reference(reference)
@@ -54,3 +55,15 @@ class DuplicateDetectionService(GenericService[ReferenceAntiCorruptionService]):
         return await self.sql_uow.reference_duplicate_decisions.add(
             reference_duplicate_decision
         )
+
+    async def nominate_candidate_duplicates(
+        self, fingerprints: list[CandidacyFingerprint]
+    ) -> dict[uuid.UUID, list[tuple[uuid.UUID, float]]]:
+        """Get candidate duplicate references based on given reference IDs."""
+        return await self.es_uow.references.search_fingerprints(fingerprints)
+
+    async def detect_duplicates(
+        self, fingerprints: list[CandidacyFingerprint]
+    ) -> list[uuid.UUID]:
+        """Detect duplicate references based on given candidate fingerprints."""
+        return []

@@ -4,7 +4,7 @@ import destiny_sdk
 
 from app.domain.base import GenericProjection
 from app.domain.references.models.models import (
-    CandidateFingerprint,
+    CandidacyFingerprint,
     EnhancementType,
     ExternalIdentifierType,
     Fingerprint,
@@ -12,14 +12,14 @@ from app.domain.references.models.models import (
 )
 
 
-class CandidateFingerprintProjection(GenericProjection[CandidateFingerprint]):
+class CandidacyFingerprintProjection(GenericProjection[CandidacyFingerprint]):
     """Projection functions for candidate fingerprints used in duplicate detection."""
 
     @classmethod
     def get_from_reference(
         cls,
         reference: Reference,
-    ) -> CandidateFingerprint:
+    ) -> CandidacyFingerprint:
         """Get the candidate fingerprint from a reference."""
         title, authorship, publication_year = None, None, None
         for enhancement in reference.enhancements or []:
@@ -56,7 +56,7 @@ class CandidateFingerprintProjection(GenericProjection[CandidateFingerprint]):
                 ),
             )
 
-        return CandidateFingerprint(
+        return CandidacyFingerprint(
             title=title,
             authors=[author.display_name for author in authorship]
             if authorship
@@ -65,9 +65,9 @@ class CandidateFingerprintProjection(GenericProjection[CandidateFingerprint]):
         )
 
     @classmethod
-    def get_from_fingerprint(cls, fingerprint: Fingerprint) -> CandidateFingerprint:
+    def get_from_fingerprint(cls, fingerprint: Fingerprint) -> CandidacyFingerprint:
         """Get the subset candidate fingerprint from a fingerprint."""
-        return CandidateFingerprint.model_validate(fingerprint, from_attributes=True)
+        return CandidacyFingerprint.model_validate(fingerprint, from_attributes=True)
 
 
 class FingerprintProjection(GenericProjection[Fingerprint]):
@@ -77,7 +77,7 @@ class FingerprintProjection(GenericProjection[Fingerprint]):
     def get_from_reference(cls, reference: Reference) -> Fingerprint:
         """Get the fingerprint from a reference."""
         fingerprint = Fingerprint.model_validate(
-            CandidateFingerprintProjection.get_from_reference(reference),
+            CandidacyFingerprintProjection.get_from_reference(reference),
             from_attributes=True,
         )
 

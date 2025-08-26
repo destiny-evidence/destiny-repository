@@ -1,9 +1,12 @@
 """Repositories for references and associated models."""
 
 from abc import ABC
+from collections import defaultdict
 from collections.abc import Sequence
 from uuid import UUID
+import uuid
 
+from elasticsearch.dsl import AsyncMultiSearch, AsyncSearch, Response, Q
 from elasticsearch import AsyncElasticsearch
 from opentelemetry import trace
 from sqlalchemy import or_, select
@@ -13,11 +16,13 @@ from sqlalchemy.orm import joinedload
 from app.core.exceptions import SQLNotFoundError
 from app.core.telemetry.repository import trace_repository_method
 from app.domain.references.models.es import (
+    ReferenceCandidacyFingerprintMixin,
     ReferenceDocument,
     RobotAutomationPercolationDocument,
 )
 from app.domain.references.models.models import (
     BatchEnhancementRequest as DomainBatchEnhancementRequest,
+    CandidacyFingerprint,
 )
 from app.domain.references.models.models import (
     Enhancement as DomainEnhancement,
@@ -140,6 +145,89 @@ class ReferenceESRepository(
             DomainReference,
             ReferenceDocument,
         )
+
+    @trace_repository_method(tracer)
+    async def search_fingerprints(
+        self, fingerprints: dict[uuid.UUID, CandidacyFingerprint]
+    ) -> dict[uuid.UUID, list[tuple[uuid.UUID, float]]]:
+        """
+        Fuzzy match candidate fingerprints to existing references.
+
+        NOT RIGOROUSLY TESTED. I threw this together as a proof of concept, this should
+        be polished and evaluated before use.
+        The proof of concept does:
+        - MUST: Fuzzy match on title with AND operator (all terms must be present)
+        - SHOULD: Phrase match on title with slop=2 (allows for word reordering)
+                AND partial match on authors list (requires 80% of authors to match)
+        - FILTER: Publication year within ±1 year range (non-scoring)
+        """
+        msearch = AsyncMultiSearch(using=self._client).doc_type(ReferenceDocument)
+        ordered_reference_ids: list[uuid.UUID] = []
+        for reference_id, fingerprint in fingerprints.items():
+            if not fingerprint.matchable:
+                continue
+            ordered_reference_ids.append(reference_id)
+
+            msearch.add(
+                AsyncSearch()
+                .query(
+                    Q(
+                        "bool",
+                        must=[
+                            Q(
+                                "match",
+                                title={
+                                    "query": fingerprint.title,
+                                    "fuzziness": "AUTO",
+                                    "boost": 2.0,
+                                    "operator": "and",
+                                },
+                            )
+                        ],
+                        should=[
+                            Q(
+                                "match_phrase",
+                                title={
+                                    "query": fingerprint.title,
+                                    "slop": 2,
+                                    "boost": 1.5,
+                                },
+                            ),
+                            Q(
+                                "terms",
+                                authors=fingerprint.authors,
+                                boost=1.5,
+                                minimum_should_match="80%",
+                            ),
+                        ],
+                        filter=[
+                            Q(
+                                "range",
+                                publication_year={
+                                    "gte": fingerprint.publication_year - 1,
+                                    "lte": fingerprint.publication_year + 1,
+                                },
+                            )
+                        ]
+                        if fingerprint.publication_year
+                        else [],
+                        minimum_should_match=1,
+                    )
+                )
+                .source(fields=False)
+            )
+
+        responses: list[Response] = await msearch.execute()
+
+        return {
+            incoming_reference_id: [
+                (uuid.UUID(hit["_id"]), hit["_score"]) for hit in response.hits
+            ]
+            for incoming_reference_id, response in zip(
+                ordered_reference_ids, responses, strict=True
+            )
+            if response.hits
+        }
 
 
 class ExternalIdentifierRepositoryBase(

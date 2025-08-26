@@ -20,7 +20,7 @@ from app.domain.references.models.models import (
     EnhancementType,
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
-    Process,
+    IngestionProcess,
     Visibility,
 )
 from app.domain.references.models.models import (
@@ -528,8 +528,17 @@ class ReferenceDuplicateDecision(
     reference_id: Mapped[uuid.UUID] = mapped_column(
         UUID, ForeignKey("reference.id"), nullable=False
     )
-    source: Mapped[Process] = mapped_column(String, nullable=False)
+    source: Mapped[IngestionProcess] = mapped_column(
+        ENUM(
+            *[status.value for status in IngestionProcess],
+            name="ingestion_process",
+        ),
+        nullable=False,
+    )
     source_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=True)
+    candidate_duplicate_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID), nullable=True
+    )
     duplicate_determination: Mapped[DuplicateDetermination] = mapped_column(
         ENUM(
             *[status.value for status in DuplicateDetermination],
@@ -540,6 +549,14 @@ class ReferenceDuplicateDecision(
 
     reference: Mapped[Reference] = relationship(
         "Reference", back_populates="duplicate_decision"
+    )
+
+    __table_args__ = (
+        Index("ix_reference_duplicate_decision_reference_id", "reference_id"),
+        Index(
+            "ix_reference_duplicate_decision_duplicate_determination",
+            "duplicate_determination",
+        ),
     )
 
     @classmethod

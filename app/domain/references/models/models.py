@@ -21,6 +21,7 @@ from app.core.exceptions import UnresolvableReferenceDuplicateError, WrongRefere
 from app.core.telemetry.logger import get_logger
 from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
 from app.persistence.blob.models import BlobStorageFile
+from app.persistence.es.persistence import ESSearchResult
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -97,7 +98,7 @@ class Visibility(StrEnum):
     HIDDEN = auto()
 
 
-class Process(StrEnum):
+class IngestionProcess(StrEnum):
     """The process used to create or modify a reference."""
 
     IMPORT = auto()
@@ -119,6 +120,13 @@ class DuplicateDetermination(StrEnum):
     DUPLICATE = auto()
     NOT_DUPLICATE = auto()
     UNRESOLVED = auto()
+
+
+class DuplicateAction(StrEnum):
+    """What to do with a duplicate reference if detected."""
+
+    APPEND = auto()
+    DISCARD = auto()
 
 
 class Reference(
@@ -486,7 +494,7 @@ class RobotAutomationPercolationResult(BaseModel):
     reference_ids: set[UUID4]
 
 
-class CandidateFingerprint(ProjectedBaseModel):
+class CandidacyFingerprint(ProjectedBaseModel):
     """
     Model representing a simplified reference fingerprint.
 
@@ -506,8 +514,20 @@ class CandidateFingerprint(ProjectedBaseModel):
         description="The title of the reference.",
     )
 
+    @property
+    def matchable(self) -> bool:
+        """Whether the fingerprint has the minimum fields required for matching."""
+        return all((self.publication_year, self.authors, self.title))
 
-class Fingerprint(CandidateFingerprint):
+
+class CandidacyFingerprintSearchResult(BaseModel):
+    """Search result for candidate fingerprints."""
+
+    fingerprint: CandidacyFingerprint
+    candidate_duplicates: list[ESSearchResult]
+
+
+class Fingerprint(CandidacyFingerprint):
     """
     Model representing a reference fingerprint.
 
@@ -546,11 +566,17 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
     """Model representing a decision on whether a reference is a duplicate."""
 
     reference_id: UUID4 = Field(description="The ID of the reference being evaluated.")
-    source: Process = Field(description="The process that triggered this decision.")
+    source: IngestionProcess = Field(
+        description="The process that triggered this decision.",
+    )
     source_id: UUID4 | None = Field(
         default=None,
         description="The ID of the source that triggered this decision. Provides "
         "provenance in combination with the ``source`` field.",
+    )
+    candidate_duplicate_ids: list[UUID4] = Field(
+        default_factory=list,
+        description="A list of candidate duplicate IDs for the reference.",
     )
     duplicate_determination: DuplicateDetermination = Field(
         default=DuplicateDetermination.PENDING,

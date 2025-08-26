@@ -18,6 +18,7 @@ from pydantic import UUID4
 
 from app.core.config import get_settings
 from app.domain.references.models.models import (
+    CandidacyFingerprint,
     Enhancement,
     EnhancementType,
     ExternalIdentifierAdapter,
@@ -27,7 +28,7 @@ from app.domain.references.models.models import (
     RobotAutomation,
     Visibility,
 )
-from app.domain.references.models.projections import CandidateFingerprintProjection
+from app.domain.references.models.projections import CandidacyFingerprintProjection
 from app.persistence.es.persistence import (
     INDEX_PREFIX,
     GenericESPersistence,
@@ -177,7 +178,7 @@ class ReferenceDomainMixin(InnerDoc):
         )
 
 
-class ReferenceCandidateFingerprintMixin(InnerDoc):
+class ReferenceCandidacyFingerprintMixin(InnerDoc):
     """Mixin to project Reference fields relevant to deduplication."""
 
     if settings.feature_flags.deduplication:
@@ -192,20 +193,26 @@ class ReferenceCandidateFingerprintMixin(InnerDoc):
         )
 
     @classmethod
-    def from_domain(cls, reference: Reference) -> Self:
+    def from_fingerprint(cls, fingerprint: CandidacyFingerprint) -> Self:
         """Create the kwargs for an ES model relevant to ReferenceDeduplicationMixin."""
-        fingerprint = CandidateFingerprintProjection.get_from_reference(reference)
         return cls(
             title=fingerprint.title,
             authors=fingerprint.authors,
             publication_year=fingerprint.publication_year,
         )
 
+    @classmethod
+    def from_domain(cls, reference: Reference) -> Self:
+        """Create the ES ReferenceDeduplicationMixin."""
+        return cls.from_fingerprint(
+            CandidacyFingerprintProjection.get_from_reference(reference)
+        )
+
 
 class ReferenceDocument(
     GenericESPersistence[Reference],
     ReferenceDomainMixin,
-    ReferenceCandidateFingerprintMixin,
+    ReferenceCandidacyFingerprintMixin,
 ):
     """Persistence model for references in Elasticsearch."""
 
@@ -223,7 +230,7 @@ class ReferenceDocument(
             meta={"id": domain_obj.id},  # type: ignore[call-arg]
             **ReferenceDomainMixin.from_domain(domain_obj).to_dict(),
             **(
-                ReferenceCandidateFingerprintMixin.from_domain(domain_obj).to_dict()
+                ReferenceCandidacyFingerprintMixin.from_domain(domain_obj).to_dict()
                 if settings.feature_flags.deduplication
                 else {}
             ),
