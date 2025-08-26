@@ -28,25 +28,6 @@ ExternalIdentifierAdapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
 )
 
 
-class EnhancementRequestStatus(StrEnum):
-    """
-    The status of an enhancement request.
-
-    **Allowed values**:
-    - `received`: Enhancement request has been received.
-    - `accepted`: Enhancement request has been accepted.
-    - `rejected`: Enhancement request has been rejected.
-    - `failed`: Enhancement failed to create.
-    - `completed`: Enhancement has been created.
-    """
-
-    RECEIVED = auto()
-    ACCEPTED = auto()
-    REJECTED = auto()
-    FAILED = auto()
-    COMPLETED = auto()
-
-
 class BatchEnhancementRequestStatus(StrEnum):
     """
     The status of an enhancement request.
@@ -312,38 +293,6 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     )
     reference_id: uuid.UUID = Field(
         description="The ID of the reference this enhancement is associated with."
-    )
-
-    reference: Reference | None = Field(
-        None,
-        description="The reference this enhancement is associated with.",
-    )
-
-
-class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
-    """Request to add an enhancement to a specific reference."""
-
-    reference_id: uuid.UUID = Field(
-        description="The ID of the reference this enhancement is associated with."
-    )
-    robot_id: uuid.UUID = Field(
-        description="The robot to request the enhancement from."
-    )
-    source: str | None = Field(
-        default=None,
-        description="The source of the batch enhancement request.",
-    )
-    enhancement_parameters: dict | None = Field(
-        default=None,
-        description="Additional optional parameters to pass through to the robot.",
-    )
-    request_status: EnhancementRequestStatus = Field(
-        default=EnhancementRequestStatus.RECEIVED,
-        description="The status of the request to create an enhancement.",
-    )
-    error: str | None = Field(
-        None,
-        description="Error encountered during the enhancement process.",
     )
 
     reference: Reference | None = Field(

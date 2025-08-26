@@ -70,25 +70,6 @@ async def test_linked_external_identifier_roundtrip(
     assert back.identifier == sdk_id
 
 
-async def test_enhancement_request_roundtrip(
-    anti_corruption_service: ReferenceAntiCorruptionService,
-):
-    rid = uuid.uuid4()
-    req_in = destiny_sdk.robots.EnhancementRequestIn(
-        reference_id=rid, robot_id=rid, enhancement_parameters={"param": 42}
-    )
-    domain = anti_corruption_service.enhancement_request_from_sdk(req_in)
-    assert domain.reference_id == rid
-    assert domain.robot_id == rid
-    assert domain.enhancement_parameters == {"param": 42}
-
-    sdk_read = anti_corruption_service.enhancement_request_to_sdk(domain)
-    assert isinstance(sdk_read, destiny_sdk.robots.EnhancementRequestRead)
-    assert sdk_read.reference_id == rid
-    assert sdk_read.robot_id == rid
-    assert sdk_read.enhancement_parameters == {"param": 42}
-
-
 async def test_enhancement_unserializable_failure(
     anti_corruption_service: ReferenceAntiCorruptionService,
 ):
