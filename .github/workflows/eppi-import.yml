@@ -57,7 +57,7 @@ jobs:
             --tags "HPV Partnership" \
             --source "alive-hpv-partnership"
 
-      - name: "Az CLI login"
+      - name: "Az CLI login to application tenant"
         uses: azure/login@v2.1.0
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
@@ -93,6 +93,13 @@ jobs:
           url="https://$STORAGE_ACCOUNT_NAME.blob.core.windows.net/import-files/references-$RUN_ID.jsonl?$sas_token"
           echo "::add-mask::$url"
           echo "url=$url" >> $GITHUB_OUTPUT
+
+      - name: "Az CLI login to external tenant"
+        uses: azure/login@v2.1.0
+        with:
+          client-id: ${{ vars.AZURE_EXTERNAL_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_EXTERNAL_TENANT_ID }}
+          allow-no-subscriptions: true
 
       - name: Get access token for Destiny API
         id: get_token

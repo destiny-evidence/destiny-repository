@@ -140,22 +140,22 @@ resource "azuread_application_identifier_uri" "external_directory_identifier_uri
 }
 
 # Grant the GitHub Actions service principal the importer role so it can run the eppi-import GitHub Action
-# resource "azuread_app_role_assignment" "external_directory_github_actions_to_importer" {
-#   provider            = azuread.external_directory
-#   app_role_id         = azuread_application_app_role.external_directory_importer.role_id
-#   principal_object_id = azuread_service_principal.github_actions.object_id
-#   resource_object_id  = azuread_service_principal.external_directory_destiny_repository.object_id
-# }
+resource "azuread_app_role_assignment" "external_directory_github_actions_to_importer" {
+  provider            = azuread.external_directory
+  app_role_id         = azuread_application_app_role.external_directory_importer.role_id
+  principal_object_id = azuread_service_principal.external_directory_github_actions.object_id
+  resource_object_id  = azuread_service_principal.external_directory_destiny_repository.object_id
+}
 
-# resource "azuread_application_api_access" "github_actions" {
-#   provider       = azuread.external_directory
-#   application_id = azuread_application_registration.github_actions.id
-#   api_client_id  = azuread_application.destiny_repository.client_id
+resource "azuread_application_api_access" "external_directory_github_actions" {
+  provider       = azuread.external_directory
+  application_id = azuread_application_registration.external_directory_github_actions.id
+  api_client_id  = azuread_application.external_directory_destiny_repository.client_id
 
-#   role_ids = [
-#     azuread_application_app_role.importer.role_id
-#   ]
-# }
+  role_ids = [
+    azuread_application_app_role.external_directory_importer.role_id
+  ]
+}
 
 # Create an application that we can use to authenticate with the Destiny Repository
 resource "azuread_application_registration" "external_directory_destiny_repository_auth" {
