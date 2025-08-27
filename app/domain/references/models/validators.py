@@ -223,7 +223,7 @@ class ReferenceCreateResult(BaseModel):
         )
 
 
-class BatchEnhancementResultValidator(BaseModel):
+class EnhancementResultValidator(BaseModel):
     """Result of a batch enhancement request."""
 
     enhancement_to_add: destiny_sdk.enhancements.Enhancement | None = Field(
@@ -243,10 +243,10 @@ class BatchEnhancementResultValidator(BaseModel):
     async def from_raw(
         cls, entry: str, entry_ref: int, expected_reference_ids: set[UUID4]
     ) -> Self:
-        """Create a BatchEnhancementResult from a jsonl entry."""
-        file_entry_validator: TypeAdapter[
-            destiny_sdk.robots.BatchEnhancementResultEntry
-        ] = TypeAdapter(destiny_sdk.robots.BatchEnhancementResultEntry)
+        """Create a EnhancementResult from a jsonl entry."""
+        file_entry_validator: TypeAdapter[destiny_sdk.robots.EnhancementResultEntry] = (
+            TypeAdapter(destiny_sdk.robots.EnhancementResultEntry)
+        )
 
         try:
             file_entry = file_entry_validator.validate_json(entry)

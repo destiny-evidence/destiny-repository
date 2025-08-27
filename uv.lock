@@ -554,7 +554,7 @@ wheels = [
 
 [[package]]
 name = "destiny-repository"
-version = "1.0.0"
+version = "2.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -681,7 +681,7 @@ e2e = [
 
 [[package]]
 name = "destiny-sdk"
-version = "0.2.3"
+version = "0.3.0a0"
 source = { editable = "libs/sdk" }
 dependencies = [
     { name = "cachetools" },

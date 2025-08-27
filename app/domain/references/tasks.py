@@ -12,8 +12,8 @@ from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
-    BatchEnhancementRequest,
-    BatchEnhancementRequestStatus,
+    EnhancementRequest,
+    EnhancementRequestStatus,
 )
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
@@ -92,15 +92,13 @@ async def get_robot_request_dispatcher() -> RobotRequestDispatcher:
 
 
 @broker.task
-async def collect_and_dispatch_references_for_batch_enhancement(
-    batch_enhancement_request_id: UUID4,
+async def collect_and_dispatch_references_for_enhancement(
+    enhancement_request_id: UUID4,
 ) -> None:
-    """Async logic for dispatching a batch enhancement request."""
-    logger.info("Processing batch enhancement request")
-    trace_attribute(
-        Attributes.BATCH_ENHANCEMENT_REQUEST_ID, str(batch_enhancement_request_id)
-    )
-    name_span(f"Dispatch batch enhancement request {batch_enhancement_request_id}")
+    """Async logic for dispatching a enhancement request."""
+    logger.info("Processing enhancement request")
+    trace_attribute(Attributes.ENHANCEMENT_REQUEST_ID, str(enhancement_request_id))
+    name_span(f"Dispatch enhancement request {enhancement_request_id}")
     sql_uow = await get_sql_unit_of_work()
     es_uow = await get_es_unit_of_work()
     blob_repository = await get_blob_repository()
@@ -112,42 +110,38 @@ async def collect_and_dispatch_references_for_batch_enhancement(
     robot_service = await get_robot_service(robot_anti_corruption_service, sql_uow)
     robot_request_dispatcher = await get_robot_request_dispatcher()
     blob_repository = await get_blob_repository()
-    batch_enhancement_request = await reference_service.get_batch_enhancement_request(
-        batch_enhancement_request_id
+    enhancement_request = await reference_service.get_enhancement_request(
+        enhancement_request_id
     )
-    trace_attribute(Attributes.ROBOT_ID, str(batch_enhancement_request.robot_id))
+    trace_attribute(Attributes.ROBOT_ID, str(enhancement_request.robot_id))
 
     try:
         with bound_contextvars(
-            robot_id=str(batch_enhancement_request.robot_id),
+            robot_id=str(enhancement_request.robot_id),
         ):
-            # Collect and dispatch references for the batch enhancement request
-            await (
-                reference_service.collect_and_dispatch_references_for_batch_enhancement(
-                    batch_enhancement_request,
-                    robot_service,
-                    robot_request_dispatcher,
-                    blob_repository,
-                )
+            # Collect and dispatch references for the enhancement request
+            await reference_service.collect_and_dispatch_references_for_enhancement(
+                enhancement_request,
+                robot_service,
+                robot_request_dispatcher,
+                blob_repository,
             )
     except Exception as e:
-        logger.exception("Error occurred while creating batch enhancement request")
-        await reference_service.mark_batch_enhancement_request_failed(
-            batch_enhancement_request_id,
+        logger.exception("Error occurred while creating enhancement request")
+        await reference_service.mark_enhancement_request_failed(
+            enhancement_request_id,
             str(e),
         )
 
 
 @broker.task
-async def validate_and_import_batch_enhancement_result(
-    batch_enhancement_request_id: UUID4,
+async def validate_and_import_enhancement_result(
+    enhancement_request_id: UUID4,
 ) -> None:
-    """Async logic for validating and importing a batch enhancement result."""
-    logger.info("Processing batch enhancement result")
-    trace_attribute(
-        Attributes.BATCH_ENHANCEMENT_REQUEST_ID, str(batch_enhancement_request_id)
-    )
-    name_span(f"Import batch enhancement result {batch_enhancement_request_id}")
+    """Async logic for validating and importing an enhancement result."""
+    logger.info("Processing enhancement request result")
+    trace_attribute(Attributes.ENHANCEMENT_REQUEST_ID, str(enhancement_request_id))
+    name_span(f"Import enhancement result for request {enhancement_request_id}")
     sql_uow = await get_sql_unit_of_work()
     es_uow = await get_es_unit_of_work()
     blob_repository = await get_blob_repository()
@@ -156,29 +150,29 @@ async def validate_and_import_batch_enhancement_result(
         reference_anti_corruption_service, sql_uow, es_uow
     )
     blob_repository = await get_blob_repository()
-    batch_enhancement_request = await reference_service.get_batch_enhancement_request(
-        batch_enhancement_request_id
+    enhancement_request = await reference_service.get_enhancement_request(
+        enhancement_request_id
     )
-    trace_attribute(Attributes.ROBOT_ID, str(batch_enhancement_request.robot_id))
+    trace_attribute(Attributes.ROBOT_ID, str(enhancement_request.robot_id))
 
     try:
         with bound_contextvars(
-            robot_id=str(batch_enhancement_request.robot_id),
+            robot_id=str(enhancement_request.robot_id),
         ):
-            # Validate and import the batch enhancement result
+            # Validate and import the enhancement result
             (
                 terminal_status,
                 imported_enhancement_ids,
-            ) = await reference_service.validate_and_import_batch_enhancement_result(
-                batch_enhancement_request,
+            ) = await reference_service.validate_and_import_enhancement_result(
+                enhancement_request,
                 blob_repository,
             )
     except Exception as exc:
         logger.exception(
-            "Error occurred while validating and importing batch enhancement result"
+            "Error occurred while validating and importing enhancement result"
         )
-        await reference_service.mark_batch_enhancement_request_failed(
-            batch_enhancement_request_id,
+        await reference_service.mark_enhancement_request_failed(
+            enhancement_request_id,
             str(exc),
         )
         return
@@ -187,32 +181,32 @@ async def validate_and_import_batch_enhancement_result(
     # For now we naively update all references in the request - this is at worse a
     # superset of the actual enhancement updates.
 
-    await reference_service.update_batch_enhancement_request_status(
-        batch_enhancement_request.id,
-        BatchEnhancementRequestStatus.INDEXING,
+    await reference_service.update_enhancement_request_status(
+        enhancement_request.id,
+        EnhancementRequestStatus.INDEXING,
     )
 
     try:
         await reference_service.index_references(
-            reference_ids=batch_enhancement_request.reference_ids,
+            reference_ids=enhancement_request.reference_ids,
         )
-        await reference_service.update_batch_enhancement_request_status(
-            batch_enhancement_request.id,
+        await reference_service.update_enhancement_request_status(
+            enhancement_request.id,
             terminal_status,
         )
     except Exception:
         logger.exception("Error indexing references in Elasticsearch")
-        await reference_service.update_batch_enhancement_request_status(
-            batch_enhancement_request.id,
-            BatchEnhancementRequestStatus.INDEXING_FAILED,
+        await reference_service.update_enhancement_request_status(
+            enhancement_request.id,
+            EnhancementRequestStatus.INDEXING_FAILED,
         )
 
     # Perform robot automations
     await detect_and_dispatch_robot_automations(
         reference_service,
         enhancement_ids=imported_enhancement_ids,
-        source_str=f"BatchEnhancementRequest:{batch_enhancement_request.id}",
-        skip_robot_id=batch_enhancement_request.robot_id,
+        source_str=f"EnhancementRequest:{enhancement_request.id}",
+        skip_robot_id=enhancement_request.robot_id,
     )
 
 
@@ -254,14 +248,14 @@ async def detect_and_dispatch_robot_automations(
     enhancement_ids: Iterable[UUID4] | None = None,
     source_str: str | None = None,
     skip_robot_id: UUID4 | None = None,
-) -> list[BatchEnhancementRequest]:
+) -> list[EnhancementRequest]:
     """
     Request default enhancements for a set of references.
 
     Technically this is a task distributor, not a task - may live in a higher layer
     later in life.
     """
-    requests: list[BatchEnhancementRequest] = []
+    requests: list[EnhancementRequest] = []
     robot_automations = await reference_service.detect_robot_automations(
         reference_ids=reference_ids,
         enhancement_ids=enhancement_ids,
@@ -276,8 +270,8 @@ async def detect_and_dispatch_robot_automations(
             )
             continue
         enhancement_request = (
-            await reference_service.register_batch_reference_enhancement_request(
-                enhancement_request=BatchEnhancementRequest(
+            await reference_service.register_reference_enhancement_request(
+                enhancement_request=EnhancementRequest(
                     reference_ids=robot_automation.reference_ids,
                     robot_id=robot_automation.robot_id,
                     source=source_str,
@@ -286,7 +280,7 @@ async def detect_and_dispatch_robot_automations(
         )
         requests.append(enhancement_request)
         await queue_task_with_trace(
-            collect_and_dispatch_references_for_batch_enhancement,
-            batch_enhancement_request_id=enhancement_request.id,
+            collect_and_dispatch_references_for_enhancement,
+            enhancement_request_id=enhancement_request.id,
         )
     return requests

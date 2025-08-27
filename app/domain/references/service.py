@@ -20,9 +20,9 @@ from app.core.exceptions import (
 from app.core.telemetry.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
-    BatchEnhancementRequest,
-    BatchEnhancementRequestStatus,
     Enhancement,
+    EnhancementRequest,
+    EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifier,
     ExternalIdentifierSearch,
@@ -36,8 +36,8 @@ from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
-from app.domain.references.services.batch_enhancement_service import (
-    BatchEnhancementService,
+from app.domain.references.services.enhancement_service import (
+    EnhancementService,
 )
 from app.domain.references.services.ingestion_service import (
     IngestionService,
@@ -69,9 +69,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
         self._ingestion_service = IngestionService(anti_corruption_service, sql_uow)
-        self._batch_enhancement_service = BatchEnhancementService(
-            anti_corruption_service, sql_uow
-        )
+        self._enhancement_service = EnhancementService(anti_corruption_service, sql_uow)
 
     @sql_unit_of_work
     async def get_reference(self, reference_id: UUID4) -> Reference:
@@ -228,39 +226,37 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     @sql_unit_of_work
-    async def register_batch_reference_enhancement_request(
+    async def register_reference_enhancement_request(
         self,
-        enhancement_request: BatchEnhancementRequest,
-    ) -> BatchEnhancementRequest:
-        """Create a batch enhancement request."""
+        enhancement_request: EnhancementRequest,
+    ) -> EnhancementRequest:
+        """Create an enhancement request."""
         await self.sql_uow.references.verify_pk_existence(
             enhancement_request.reference_ids
         )
 
         # Add any extra parameters here!
 
-        return await self.sql_uow.batch_enhancement_requests.add(enhancement_request)
+        return await self.sql_uow.enhancement_requests.add(enhancement_request)
 
     @sql_unit_of_work
-    async def get_batch_enhancement_request(
+    async def get_enhancement_request(
         self,
-        batch_enhancement_request_id: UUID4,
-    ) -> BatchEnhancementRequest:
+        enhancement_request_id: UUID4,
+    ) -> EnhancementRequest:
         """Get a batch enhancement request by request id."""
-        return await self.sql_uow.batch_enhancement_requests.get_by_pk(
-            batch_enhancement_request_id
-        )
+        return await self.sql_uow.enhancement_requests.get_by_pk(enhancement_request_id)
 
     @sql_unit_of_work
-    async def collect_and_dispatch_references_for_batch_enhancement(
+    async def collect_and_dispatch_references_for_enhancement(
         self,
-        batch_enhancement_request: BatchEnhancementRequest,
+        enhancement_request: EnhancementRequest,
         robot_service: RobotService,
         robot_request_dispatcher: RobotRequestDispatcher,
         blob_repository: BlobRepository,
     ) -> None:
         """Collect and dispatch references for batch enhancement."""
-        robot = await robot_service.get_robot(batch_enhancement_request.robot_id)
+        robot = await robot_service.get_robot(enhancement_request.robot_id)
         file_stream = FileStream(
             self._get_jsonl_hydrated_references,
             [
@@ -268,17 +264,17 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     "reference_ids": reference_id_chunk,
                 }
                 for reference_id_chunk in list_chunker(
-                    batch_enhancement_request.reference_ids,
+                    enhancement_request.reference_ids,
                     settings.upload_file_chunk_size_override.get(
-                        UploadFile.BATCH_ENHANCEMENT_REQUEST_REFERENCE_DATA,
+                        UploadFile.ENHANCEMENT_REQUEST_REFERENCE_DATA,
                         settings.default_upload_file_chunk_size,
                     ),
                 )
             ],
         )
 
-        robot_request = await self._batch_enhancement_service.build_robot_request(
-            blob_repository, file_stream, batch_enhancement_request
+        robot_request = await self._enhancement_service.build_robot_request(
+            blob_repository, file_stream, enhancement_request
         )
 
         try:
@@ -288,34 +284,34 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 robot_request=robot_request,
             )
         except RobotUnreachableError as exception:
-            await self.sql_uow.batch_enhancement_requests.update_by_pk(
-                batch_enhancement_request.id,
-                request_status=BatchEnhancementRequestStatus.FAILED,
+            await self.sql_uow.enhancement_requests.update_by_pk(
+                enhancement_request.id,
+                request_status=EnhancementRequestStatus.FAILED,
                 error=exception.detail,
             )
         except RobotEnhancementError as exception:
-            await self.sql_uow.batch_enhancement_requests.update_by_pk(
-                batch_enhancement_request.id,
-                request_status=BatchEnhancementRequestStatus.REJECTED,
+            await self.sql_uow.enhancement_requests.update_by_pk(
+                enhancement_request.id,
+                request_status=EnhancementRequestStatus.REJECTED,
                 error=exception.detail,
             )
         else:
-            await self.sql_uow.batch_enhancement_requests.update_by_pk(
-                batch_enhancement_request.id,
-                request_status=BatchEnhancementRequestStatus.ACCEPTED,
+            await self.sql_uow.enhancement_requests.update_by_pk(
+                enhancement_request.id,
+                request_status=EnhancementRequestStatus.ACCEPTED,
             )
 
     @sql_unit_of_work
-    async def validate_and_import_batch_enhancement_result(
+    async def validate_and_import_enhancement_result(
         self,
-        batch_enhancement_request: BatchEnhancementRequest,
+        enhancement_request: EnhancementRequest,
         blob_repository: BlobRepository,
-    ) -> tuple[BatchEnhancementRequestStatus, set[UUID4]]:
+    ) -> tuple[EnhancementRequestStatus, set[UUID4]]:
         """
-        Validate and import the result of a batch enhancement request.
+        Validate and import the result of a enhancement request.
 
         This process:
-        - streams the result of the batch enhancement request line-by-line
+        - streams the result of the enhancement request line-by-line
         - adds the enhancement to the database
         - streams the validation result to the blob storage service line-by-line
         - does some final validation of missing references and updates the request
@@ -324,38 +320,38 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         imported_enhancement_ids: set[UUID4] = set()
         validation_result_file = await blob_repository.upload_file_to_blob_storage(
             content=FileStream(
-                generator=self._batch_enhancement_service.process_batch_enhancement_result(
+                generator=self._enhancement_service.process_enhancement_result(
                     blob_repository=blob_repository,
-                    batch_enhancement_request=batch_enhancement_request,
-                    add_enhancement=self.handle_batch_enhancement_result_entry,
+                    enhancement_request=enhancement_request,
+                    add_enhancement=self.handle_enhancement_result_entry,
                     imported_enhancement_ids=imported_enhancement_ids,
                 )
             ),
-            path="batch_enhancement_result",
-            filename=f"{batch_enhancement_request.id}_repo.jsonl",
+            path="enhancement_result",
+            filename=f"{enhancement_request.id}_repo.jsonl",
         )
 
-        await self._batch_enhancement_service.add_validation_result_file_to_batch_enhancement_request(  # noqa: E501
-            batch_enhancement_request.id, validation_result_file
+        await (
+            self._enhancement_service.add_validation_result_file_to_enhancement_request(
+                enhancement_request.id, validation_result_file
+            )
         )
 
         # This is a bit hacky - we retrieve the terminal status from the import,
         # and then set to indexing. Essentially using the SQL UOW as a transport
         # from the blob generator to this layer.
-        batch_enhancement_request = (
-            await self.sql_uow.batch_enhancement_requests.get_by_pk(
-                batch_enhancement_request.id
-            )
+        enhancement_request = await self.sql_uow.enhancement_requests.get_by_pk(
+            enhancement_request.id
         )
-        terminal_status = batch_enhancement_request.request_status
+        terminal_status = enhancement_request.request_status
 
-        await self.sql_uow.batch_enhancement_requests.update_by_pk(
-            batch_enhancement_request.id,
-            request_status=BatchEnhancementRequestStatus.INDEXING,
+        await self.sql_uow.enhancement_requests.update_by_pk(
+            enhancement_request.id,
+            request_status=EnhancementRequestStatus.INDEXING,
         )
         return terminal_status, imported_enhancement_ids
 
-    async def handle_batch_enhancement_result_entry(
+    async def handle_enhancement_result_entry(
         self,
         enhancement: Enhancement,
     ) -> tuple[bool, str]:
@@ -384,27 +380,25 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     @sql_unit_of_work
-    async def mark_batch_enhancement_request_failed(
+    async def mark_enhancement_request_failed(
         self,
-        batch_enhancement_request_id: UUID4,
+        enhancement_request_id: UUID4,
         error: str,
-    ) -> BatchEnhancementRequest:
+    ) -> EnhancementRequest:
         """Mark a batch enhancement request as failed and supply error message."""
-        return (
-            await self._batch_enhancement_service.mark_batch_enhancement_request_failed(
-                batch_enhancement_request_id, error
-            )
+        return await self._enhancement_service.mark_enhancement_request_failed(
+            enhancement_request_id, error
         )
 
     @sql_unit_of_work
-    async def update_batch_enhancement_request_status(
+    async def update_enhancement_request_status(
         self,
-        batch_enhancement_request_id: UUID4,
-        status: BatchEnhancementRequestStatus,
-    ) -> BatchEnhancementRequest:
+        enhancement_request_id: UUID4,
+        status: EnhancementRequestStatus,
+    ) -> EnhancementRequest:
         """Update a batch enhancement request."""
-        return await self._batch_enhancement_service.update_batch_enhancement_request_status(  # noqa: E501
-            batch_enhancement_request_id, status
+        return await self._enhancement_service.update_enhancement_request_status(
+            enhancement_request_id, status
         )
 
     @es_unit_of_work

@@ -8,17 +8,17 @@ from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.references.models.models import (
-    BatchEnhancementRequest as DomainBatchEnhancementRequest,
+    Enhancement as DomainEnhancement,
 )
 from app.domain.references.models.models import (
-    BatchEnhancementRequestStatus,
+    EnhancementRequest as DomainEnhancementRequest,
+)
+from app.domain.references.models.models import (
+    EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
     Visibility,
-)
-from app.domain.references.models.models import (
-    Enhancement as DomainEnhancement,
 )
 from app.domain.references.models.models import (
     LinkedExternalIdentifier as DomainExternalIdentifier,
@@ -234,24 +234,24 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         )
 
 
-class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementRequest]):
+class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
     """
-    SQL Persistence model for a BatchEnhancementRequest.
+    SQL Persistence model for a EnhancementRequest.
 
     This is used in the repository layer to pass data between the domain and the
     database.
     """
 
-    __tablename__ = "batch_enhancement_request"
+    __tablename__ = "enhancement_request"
 
     reference_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID), nullable=False)
 
     robot_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
 
-    request_status: Mapped[BatchEnhancementRequestStatus] = mapped_column(
+    request_status: Mapped[EnhancementRequestStatus] = mapped_column(
         ENUM(
-            *[status.value for status in BatchEnhancementRequestStatus],
-            name="batch_enhancement_request_status",
+            *[status.value for status in EnhancementRequestStatus],
+            name="enhancement_request_status",
         )
     )
 
@@ -268,7 +268,7 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
     error: Mapped[str | None] = mapped_column(String, nullable=True)
 
     @classmethod
-    def from_domain(cls, domain_obj: DomainBatchEnhancementRequest) -> Self:
+    def from_domain(cls, domain_obj: DomainEnhancementRequest) -> Self:
         """Create a persistence model from a domain Enhancement object."""
         return cls(
             id=domain_obj.id,
@@ -294,9 +294,9 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
     def to_domain(
         self,
         preload: list[str] | None = None,  # noqa: ARG002
-    ) -> DomainBatchEnhancementRequest:
+    ) -> DomainEnhancementRequest:
         """Convert the persistence model into a Domain Enhancement object."""
-        return DomainBatchEnhancementRequest(
+        return DomainEnhancementRequest(
             id=self.id,
             reference_ids=self.reference_ids,
             robot_id=self.robot_id,
