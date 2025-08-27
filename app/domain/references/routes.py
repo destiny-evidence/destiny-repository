@@ -321,7 +321,7 @@ async def check_enhancement_request_status(
 @enhancement_request_router.post(
     "/batch-requests/{enhancement_request_id}/results/",
     status_code=status.HTTP_202_ACCEPTED,
-    deprecated=True
+    deprecated=True,
 )
 async def fulfill_enhancement_request(
     robot_result: destiny_sdk.robots.RobotResult,

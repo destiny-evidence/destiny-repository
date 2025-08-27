@@ -37,7 +37,7 @@ def test_robot():
         base_url="http://127.0.0.1:8001",
         description="fake robot for unit test",
         name="Test Robot",
-        owner="test"
+        owner="test",
     )
 
 
@@ -247,6 +247,7 @@ async def test_register_reference_enhancement_request_missing_pk(
             enhancement_request=enhancement_request
         )
 
+
 @pytest.mark.asyncio
 async def test_collect_and_dispatch_references_for_enhancement_happy_path(
     fake_repository, fake_uow, test_robot
@@ -273,18 +274,20 @@ async def test_collect_and_dispatch_references_for_enhancement_happy_path(
     uow = fake_uow(
         enhancement_requests=fake_requests,
         robots=fake_robots,
-        references=fake_references
+        references=fake_references,
     )
 
     mock_robot_request_dispatcher = AsyncMock()
 
-    service = ReferenceService(ReferenceAntiCorruptionService(mock_blob_repository), uow)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(mock_blob_repository), uow
+    )
 
     await service.collect_and_dispatch_references_for_enhancement(
         enhancement_request=enhancement_request,
         robot_service=RobotService(RobotAntiCorruptionService(), uow),
         robot_request_dispatcher=mock_robot_request_dispatcher,
-        blob_repository=mock_blob_repository
+        blob_repository=mock_blob_repository,
     )
 
     # Assert we've send a request to the robot
@@ -292,6 +295,7 @@ async def test_collect_and_dispatch_references_for_enhancement_happy_path(
 
     # Assert no errors thrown
     assert enhancement_request.request_status == EnhancementRequestStatus.ACCEPTED
+
 
 @pytest.mark.asyncio
 async def test_collect_and_dispatch_references_for_enhancement_robot_unreachable(
@@ -319,24 +323,28 @@ async def test_collect_and_dispatch_references_for_enhancement_robot_unreachable
     uow = fake_uow(
         enhancement_requests=fake_requests,
         robots=fake_robots,
-        references=fake_references
+        references=fake_references,
     )
 
     mock_robot_request_dispatcher = AsyncMock()
-    mock_robot_request_dispatcher.send_enhancement_request_to_robot.side_effect = RobotUnreachableError("can't reach robot.")
+    mock_robot_request_dispatcher.send_enhancement_request_to_robot.side_effect = (
+        RobotUnreachableError("can't reach robot.")
+    )
 
-
-    service = ReferenceService(ReferenceAntiCorruptionService(mock_blob_repository), uow)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(mock_blob_repository), uow
+    )
 
     await service.collect_and_dispatch_references_for_enhancement(
         enhancement_request=enhancement_request,
         robot_service=RobotService(RobotAntiCorruptionService(), uow),
         robot_request_dispatcher=mock_robot_request_dispatcher,
-        blob_repository=mock_blob_repository
+        blob_repository=mock_blob_repository,
     )
 
     # Assert enhancement request has failed
     assert enhancement_request.request_status == EnhancementRequestStatus.FAILED
+
 
 @pytest.mark.asyncio
 async def test_collect_and_dispatch_references_for_enhancement_enhancement_not_possible(
@@ -364,19 +372,23 @@ async def test_collect_and_dispatch_references_for_enhancement_enhancement_not_p
     uow = fake_uow(
         enhancement_requests=fake_requests,
         robots=fake_robots,
-        references=fake_references
+        references=fake_references,
     )
 
     mock_robot_request_dispatcher = AsyncMock()
-    mock_robot_request_dispatcher.send_enhancement_request_to_robot.side_effect = RobotEnhancementError("can't reach robot.")
+    mock_robot_request_dispatcher.send_enhancement_request_to_robot.side_effect = (
+        RobotEnhancementError("can't perform enhancement")
+    )
 
-    service = ReferenceService(ReferenceAntiCorruptionService(mock_blob_repository), uow)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(mock_blob_repository), uow
+    )
 
     await service.collect_and_dispatch_references_for_enhancement(
         enhancement_request=enhancement_request,
         robot_service=RobotService(RobotAntiCorruptionService(), uow),
         robot_request_dispatcher=mock_robot_request_dispatcher,
-        blob_repository=mock_blob_repository
+        blob_repository=mock_blob_repository,
     )
 
     # Assert enhancement request has failed
