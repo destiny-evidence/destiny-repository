@@ -681,7 +681,7 @@ e2e = [
 
 [[package]]
 name = "destiny-sdk"
-version = "0.3.0a0"
+version = "0.3.0"
 source = { editable = "libs/sdk" }
 dependencies = [
     { name = "cachetools" },
