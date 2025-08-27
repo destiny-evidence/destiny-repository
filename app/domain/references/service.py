@@ -230,7 +230,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         enhancement_request: EnhancementRequest,
     ) -> EnhancementRequest:
-        """Create a batch enhancement request."""
+        """Create an enhancement request."""
         await self.sql_uow.references.verify_pk_existence(
             enhancement_request.reference_ids
         )
