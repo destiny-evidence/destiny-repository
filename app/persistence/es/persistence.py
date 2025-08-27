@@ -1,8 +1,8 @@
 """Objects used to interface with SQL implementations."""
 
+import uuid
 from abc import abstractmethod
 from typing import Generic, Self
-import uuid
 
 from elasticsearch.dsl import AsyncDocument
 from pydantic import BaseModel

@@ -68,6 +68,10 @@ class Reference(GenericSQLPersistence[DomainReference]):
         ),
         nullable=False,
     )
+
+    # These fields are essentially projections summarising the latest
+    # Reference.duplicate_decision
+    canonical: Mapped[bool] = mapped_column(nullable=False, default=False)
     duplicate_of: Mapped[uuid.UUID | None] = mapped_column(
         UUID, ForeignKey("reference.id"), nullable=True
     )
@@ -82,7 +86,9 @@ class Reference(GenericSQLPersistence[DomainReference]):
     )
     duplicate_decision: Mapped["ReferenceDuplicateDecision | None"] = relationship(
         "ReferenceDuplicateDecision",
-        back_populates="reference",
+        back_populates="reference_active",
+        primaryjoin="and_(Reference.id==ReferenceDuplicateDecision.reference_id, "
+        "ReferenceDuplicateDecision.active_decision==True)",
     )
 
     # When using a self-referential relationship, SQLAlchemy requires information
@@ -114,7 +120,10 @@ class Reference(GenericSQLPersistence[DomainReference]):
         ).model_dump(),
     )
 
-    __table_args__ = (Index("ix_reference_duplicate_of", "duplicate_of"),)
+    __table_args__ = (
+        Index("ix_reference_duplicate_of", "duplicate_of"),
+        Index("ix_reference_canonical", "canonical"),
+    )
 
     @classmethod
     def from_domain(cls, domain_obj: DomainReference) -> Self:
@@ -122,6 +131,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
         return cls(
             id=domain_obj.id,
             visibility=domain_obj.visibility,
+            canonical=domain_obj.canonical,
             duplicate_of=domain_obj.duplicate_of,
             identifiers=[
                 ExternalIdentifier.from_domain(identifier)
@@ -143,6 +153,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
             return DomainReference(
                 id=self.id,
                 visibility=self.visibility,
+                canonical=self.canonical,
                 duplicate_of=self.duplicate_of,
                 identifiers=[identifier.to_domain() for identifier in self.identifiers]
                 if "identifiers" in (preload or [])
@@ -528,6 +539,7 @@ class ReferenceDuplicateDecision(
     reference_id: Mapped[uuid.UUID] = mapped_column(
         UUID, ForeignKey("reference.id"), nullable=False
     )
+    active_decision: Mapped[bool] = mapped_column(nullable=False, default=True)
     source: Mapped[IngestionProcess] = mapped_column(
         ENUM(
             *[status.value for status in IngestionProcess],
@@ -548,14 +560,21 @@ class ReferenceDuplicateDecision(
     fingerprint: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
     reference: Mapped[Reference] = relationship(
-        "Reference", back_populates="duplicate_decision"
+        "Reference", back_populates="all_duplicate_decisions"
     )
 
     __table_args__ = (
-        Index("ix_reference_duplicate_decision_reference_id", "reference_id"),
+        # Unique constraint to ensure only one active decision per reference
+        UniqueConstraint(
+            "reference_id",
+            "active_decision",
+            name="uix_reference_one_active_decision_constraint",
+            postgresql_where=active_decision.is_(True),
+        ),
         Index(
-            "ix_reference_duplicate_decision_duplicate_determination",
-            "duplicate_determination",
+            "ix_reference_duplicate_decision_reference_id_active_decision",
+            "reference_id",
+            "active_decision",
         ),
     )
 

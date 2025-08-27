@@ -1,13 +1,11 @@
 """Repositories for references and associated models."""
 
 from abc import ABC
-from collections import defaultdict
 from collections.abc import Sequence
 from uuid import UUID
-import uuid
 
-from elasticsearch.dsl import AsyncMultiSearch, AsyncSearch, Response, Q
 from elasticsearch import AsyncElasticsearch
+from elasticsearch.dsl import AsyncMultiSearch, AsyncSearch, Q, Response
 from opentelemetry import trace
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,24 +14,24 @@ from sqlalchemy.orm import joinedload
 from app.core.exceptions import SQLNotFoundError
 from app.core.telemetry.repository import trace_repository_method
 from app.domain.references.models.es import (
-    ReferenceCandidacyFingerprintMixin,
     ReferenceDocument,
     RobotAutomationPercolationDocument,
 )
 from app.domain.references.models.models import (
     BatchEnhancementRequest as DomainBatchEnhancementRequest,
+)
+from app.domain.references.models.models import (
     CandidacyFingerprint,
+    CandidacyFingerprintSearchResult,
+    ExternalIdentifierType,
+    GenericExternalIdentifier,
+    RobotAutomationPercolationResult,
 )
 from app.domain.references.models.models import (
     Enhancement as DomainEnhancement,
 )
 from app.domain.references.models.models import (
     EnhancementRequest as DomainEnhancementRequest,
-)
-from app.domain.references.models.models import (
-    ExternalIdentifierType,
-    GenericExternalIdentifier,
-    RobotAutomationPercolationResult,
 )
 from app.domain.references.models.models import (
     LinkedExternalIdentifier as DomainExternalIdentifier,
@@ -58,6 +56,7 @@ from app.domain.references.models.sql import (
     ReferenceDuplicateDecision as SQLReferenceDuplicateDecision,
 )
 from app.domain.references.models.sql import RobotAutomation as SQLRobotAutomation
+from app.persistence.es.persistence import ESSearchResult
 from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
@@ -148,8 +147,8 @@ class ReferenceESRepository(
 
     @trace_repository_method(tracer)
     async def search_fingerprints(
-        self, fingerprints: dict[uuid.UUID, CandidacyFingerprint]
-    ) -> dict[uuid.UUID, list[tuple[uuid.UUID, float]]]:
+        self, fingerprints: list[CandidacyFingerprint]
+    ) -> list[CandidacyFingerprintSearchResult]:
         """
         Fuzzy match candidate fingerprints to existing references.
 
@@ -162,12 +161,7 @@ class ReferenceESRepository(
         - FILTER: Publication year within ±1 year range (non-scoring)
         """
         msearch = AsyncMultiSearch(using=self._client).doc_type(ReferenceDocument)
-        ordered_reference_ids: list[uuid.UUID] = []
-        for reference_id, fingerprint in fingerprints.items():
-            if not fingerprint.matchable:
-                continue
-            ordered_reference_ids.append(reference_id)
-
+        for fingerprint in fingerprints:
             msearch.add(
                 AsyncSearch()
                 .query(
@@ -214,20 +208,23 @@ class ReferenceESRepository(
                         minimum_should_match=1,
                     )
                 )
+                # Exclude unneeded data
                 .source(fields=False)
             )
 
         responses: list[Response] = await msearch.execute()
 
-        return {
-            incoming_reference_id: [
-                (uuid.UUID(hit["_id"]), hit["_score"]) for hit in response.hits
-            ]
-            for incoming_reference_id, response in zip(
-                ordered_reference_ids, responses, strict=True
+        return [
+            CandidacyFingerprintSearchResult(
+                fingerprint=fingerprint,
+                candidate_duplicates=[
+                    ESSearchResult(id=hit["_id"], score=hit["_score"])
+                    for hit in response.hits
+                ],
             )
+            for fingerprint, response in zip(fingerprints, responses, strict=True)
             if response.hits
-        }
+        ]
 
 
 class ExternalIdentifierRepositoryBase(

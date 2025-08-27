@@ -13,7 +13,10 @@ from app.domain.references.models.models import (
     Reference,
     ReferenceDuplicateDecision,
 )
-from app.domain.references.models.projections import FingerprintProjection
+from app.domain.references.models.projections import (
+    CandidacyFingerprintProjection,
+    FingerprintProjection,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -49,21 +52,56 @@ class DuplicateDetectionService(GenericService[ReferenceAntiCorruptionService]):
             source=source,
             source_id=source_id,
             # We can make preliminary determinations based on definite
-            # duplicates (DUPLICATE) or missing data (UNRESOLVABLE).
-            duplicate_determination=DuplicateDetermination.PENDING,
+            # duplicates (DUPLICATE) or missing data (BLURRED_FINGERPRINT).
+            duplicate_determination=DuplicateDetermination.BLURRED_FINGERPRINT
+            if fingerprint.searchable
+            else DuplicateDetermination.PENDING,
         )
         return await self.sql_uow.reference_duplicate_decisions.add(
             reference_duplicate_decision
         )
 
     async def nominate_candidate_duplicates(
-        self, fingerprints: list[CandidacyFingerprint]
-    ) -> dict[uuid.UUID, list[tuple[uuid.UUID, float]]]:
-        """Get candidate duplicate references based on given reference IDs."""
-        return await self.es_uow.references.search_fingerprints(fingerprints)
+        self, reference_duplicate_decisions: list[ReferenceDuplicateDecision]
+    ) -> list[ReferenceDuplicateDecision]:
+        """Get candidate duplicate references for the given decisions."""
+        search_results = await self.es_uow.references.search_fingerprints(
+            [
+                CandidacyFingerprintProjection.get_from_fingerprint(
+                    decision.fingerprint
+                )
+                for decision in reference_duplicate_decisions
+            ]
+        )
 
-    async def detect_duplicates(
-        self, fingerprints: list[CandidacyFingerprint]
-    ) -> list[uuid.UUID]:
+        for reference_duplicate_decision, search_result in zip(
+            reference_duplicate_decisions, search_results, strict=True
+        ):
+            if not search_result:
+                reference_duplicate_decision.duplicate_determination = (
+                    DuplicateDetermination.NOT_DUPLICATE
+                )
+                self.sql_uow.reference_duplicate_decisions.update_by_pk(
+                    reference_duplicate_decision.id,
+                    duplicate_determination=DuplicateDetermination.NOT_DUPLICATE,
+                )
+            else:
+                # Is there a search result score that would be enough for us to mark as
+                # duplicate?
+                reference_duplicate_decision.duplicate_determination = (
+                    DuplicateDetermination.NOMINATED
+                )
+                reference_duplicate_decision.candidate_duplicate_ids = [
+                    res.id for res in search_result.candidate_duplicates
+                ]
+                self.sql_uow.reference_duplicate_decisions.update_by_pk(
+                    reference_duplicate_decision.id,
+                    candidate_duplicate_ids=reference_duplicate_decision.candidate_duplicate_ids,
+                    duplicate_determination=reference_duplicate_decision.duplicate_determination,
+                )
+
+        return reference_duplicate_decisions
+
+    async def detect_duplicates(self) -> list[uuid.UUID]:
         """Detect duplicate references based on given candidate fingerprints."""
         return []

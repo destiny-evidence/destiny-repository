@@ -111,15 +111,38 @@ class DuplicateDetermination(StrEnum):
 
     **Allowed values**:
     - `pending`: The duplicate status is still being determined.
+    - `nominated`: Candidate duplicates have been identified for the reference and
+        it is being further deduplicated.
     - `duplicate`: The reference is a duplicate of another reference.
+    - `exact_duplicate`: The reference is an identical subset of another reference
+        and has been removed. This is rare and generally occurs in repeated imports.
     - `not_duplicate`: The reference is not a duplicate of another reference.
+    - `blurred_fingerprint`: The reference does contain have enough information to
+        perform deduplication.
     - `unresolved`: Automatic attempts to resolve the duplicate were unsuccessful.
+    - `wont_resolve`: All attempts to resolve the duplicate were unsuccessful. This is
+        also used when a new duplicate decision supercedes a pending/unresolved one.
     """
 
     PENDING = auto()
+    NOMINATED = auto()
     DUPLICATE = auto()
+    EXACT_DUPLICATE = auto()
     NOT_DUPLICATE = auto()
+    BLURRED_FINGERPRINT = auto()
     UNRESOLVED = auto()
+    WONT_RESOLVE = auto()
+
+    @classmethod
+    def get_terminal_states(cls) -> set["DuplicateDetermination"]:
+        """Return the set of terminal DuplicateDetermination states."""
+        return {
+            cls.DUPLICATE,
+            cls.EXACT_DUPLICATE,
+            cls.NOT_DUPLICATE,
+            cls.UNRESOLVED,
+            cls.WONT_RESOLVE,
+        }
 
 
 class DuplicateAction(StrEnum):
@@ -147,15 +170,34 @@ class Reference(
         default=None,
         description="A list of enhancements for the reference",
     )
+
+    # These fields are essentially projections summarising the latest
+    # reference_duplicate_decision
+    canonical: bool = Field(
+        default=False,
+        description="Whether this reference is canonical (not a duplicate of another). "
+        "This field is only set once deduplication has occurred. "
+        "If canonical=False and duplicate_of=None, the reference's duplicate status "
+        "has not yet been determined.",
+    )
     duplicate_of: uuid.UUID | None = Field(
         default=None,
-        description="The ID of the canonical reference that this reference duplicates",
+        description="The ID of the canonical reference that this reference duplicates. "
+        "This field is only set once deduplication has occurred. "
+        "If canonical=False and duplicate_of=None, the reference's duplicate status "
+        "has not yet been determined.",
     )
-    canonical_reference: "Reference | None" = Field(
+
+    @property
+    def deduplicated(self) -> bool:
+        """Whether this reference has been deduplicated."""
+        return self.canonical or bool(self.duplicate_of)
+
+    canonical_reference: Self | None = Field(
         default=None,
         description="The canonical reference that this reference is a duplicate of",
     )
-    duplicate_references: list["Reference"] | None = Field(
+    duplicate_references: list[Self] | None = Field(
         default=None,
         description="A list of references that this reference duplicates",
     )
@@ -515,7 +557,7 @@ class CandidacyFingerprint(ProjectedBaseModel):
     )
 
     @property
-    def matchable(self) -> bool:
+    def searchable(self) -> bool:
         """Whether the fingerprint has the minimum fields required for matching."""
         return all((self.publication_year, self.authors, self.title))
 
