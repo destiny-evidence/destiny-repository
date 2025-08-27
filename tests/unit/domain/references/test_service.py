@@ -1,5 +1,6 @@
 """Unit tests for the ReferenceService class."""
 
+from unittest.mock import AsyncMock
 import uuid
 
 import pytest
@@ -12,6 +13,7 @@ from app.core.exceptions import (
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
+    EnhancementRequestStatus,
     ExternalIdentifierAdapter,
     Reference,
     RobotAutomationPercolationResult,
@@ -20,6 +22,10 @@ from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.robots.models.models import Robot
+from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
+from app.domain.robots.service import RobotService
+from app.domain.robots.services.anti_corruption_service import RobotAntiCorruptionService
 
 
 @pytest.mark.asyncio
@@ -227,6 +233,58 @@ async def test_register_reference_enhancement_request_missing_pk(
         await service.register_reference_enhancement_request(
             enhancement_request=enhancement_request
         )
+
+@pytest.mark.asyncio
+async def test_collect_and_dispatch_references_for_enhancement_happy_path(
+    fake_repository, fake_uow
+):
+    """Test collecting and dispatching references for enhancement"""
+    reference_ids = [uuid.uuid4() for _ in range(3)]
+
+    existing_robot = Robot(
+        base_url="http://127.0.0.1:8001",
+        description="fake robot for unit test",
+        name="Test Robot",
+        owner="test"
+    )
+
+    enhancement_request = EnhancementRequest(
+        reference_ids=reference_ids,
+        robot_id=existing_robot.id,
+        request_status=EnhancementRequestStatus.RECEIVED,
+        enhancement_parameters={"param": "value"},
+    )
+
+    fake_robots = fake_repository(init_entries=[existing_robot])
+    fake_references = fake_repository(
+        init_entries=[Reference(id=ref_id) for ref_id in reference_ids]
+    )
+    fake_requests = fake_repository(init_entries=[enhancement_request])
+
+    uow = fake_uow(
+        enhancement_requests=fake_requests,
+        robots=fake_robots,
+        references=fake_references
+    )
+
+    mock_robot_request_dispatcher = AsyncMock()
+    mock_blob_repository = AsyncMock()
+    mock_blob_repository.get_signed_url.return_value = "http://127.0.0.1:8001"
+
+    service = ReferenceService(ReferenceAntiCorruptionService(mock_blob_repository), uow)
+
+    await service.collect_and_dispatch_references_for_enhancement(
+        enhancement_request=enhancement_request,
+        robot_service=RobotService(RobotAntiCorruptionService(), uow),
+        robot_request_dispatcher=mock_robot_request_dispatcher,
+        blob_repository=mock_blob_repository
+    )
+
+    # Assert we've send a request to the robot
+    mock_robot_request_dispatcher.send_enhancement_request_to_robot.assert_called_once()
+
+    # Assert no errors thrown
+    assert enhancement_request.request_status == EnhancementRequestStatus.ACCEPTED
 
 
 @pytest.mark.asyncio
