@@ -181,12 +181,12 @@ resource "azuread_application_api_access" "external_directory_destiny_repository
 
 # This group is managed by click-ops in Entra Id
 # Allow group members to authenticate via the auth client
-# resource "azuread_app_role_assignment" "external_directory_developer_to_auth" {
-#   provider            = azuread.external_directory
-#   app_role_id         = "00000000-0000-0000-0000-000000000000"
-#   principal_object_id = var.external_directory_developers_group_id
-#   resource_object_id  = azuread_service_principal.external_directory_destiny_repository_auth.object_id
-# }
+resource "azuread_app_role_assignment" "external_directory_developer_to_auth" {
+  provider            = azuread.external_directory
+  app_role_id         = "00000000-0000-0000-0000-000000000000"
+  principal_object_id = var.external_directory_developers_group_id
+  resource_object_id  = azuread_service_principal.external_directory_destiny_repository_auth.object_id
+}
 
 resource "azuread_service_principal" "external_directory_destiny_repository_auth" {
   provider                     = azuread.external_directory
@@ -208,16 +208,18 @@ resource "azuread_application_redirect_uris" "external_directory_local_redirect"
 }
 
 # Openalex incremental updater role assignments
-# data "azuread_application" "openalex_incremental_updater" {
-#   client_id = var.open_alex_incremental_updater_client_id
-# }
+data "azuread_application" "external_directory_openalex_incremental_updater" {
+  provider  = azuread.external_directory
+  client_id = var.open_alex_incremental_updater_external_client_id
+}
 
-# resource "azuread_application_api_access" "openalex_incremental_updater" {
-#   application_id = data.azuread_application.openalex_incremental_updater.id
-#   api_client_id  = azuread_application.destiny_repository.client_id
+resource "azuread_application_api_access" "external_directory_openalex_incremental_updater" {
+  provider       = azuread.external_directory
+  application_id = data.azuread_application.external_directory_openalex_incremental_updater.id
+  api_client_id  = azuread_application.external_directory_destiny_repository.client_id
 
-#   # Only importer role
-#   role_ids = [
-#     azuread_application_app_role.importer.role_id
-#   ]
-# }
+  # Only importer role
+  role_ids = [
+    azuread_application_app_role.external_directory_importer.role_id
+  ]
+}

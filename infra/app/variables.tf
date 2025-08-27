@@ -105,10 +105,10 @@ variable "developers_group_id" {
   description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs"
 }
 
-# variable "external_directory_developers_group_id" {
-#   type        = string
-#   description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs"
-# }
+variable "external_directory_developers_group_id" {
+  type        = string
+  description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs"
+}
 
 variable "external_directory_client_id" {
   description = "Client ID of the external directory application"
@@ -169,6 +169,11 @@ variable "region" {
 
 variable "open_alex_incremental_updater_client_id" {
   description = "The client id of the open alex incrememtal updater application"
+  type        = string
+}
+
+variable "open_alex_incremental_updater_external_client_id" {
+  description = "The client id of the open alex incrememtal updater application in the external tenant"
   type        = string
 }
 
