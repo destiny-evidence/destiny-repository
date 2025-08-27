@@ -31,7 +31,7 @@ def downgrade() -> None:
     op.create_table('enhancement_request',
     sa.Column('reference_id', sa.UUID(), autoincrement=False, nullable=False),
     sa.Column('robot_id', sa.UUID(), autoincrement=False, nullable=False),
-    sa.Column('request_status', postgresql.ENUM('received', 'accepted', 'rejected', 'failed', 'completed', name='request_status'), autoincrement=False, nullable=False),
+    sa.Column('request_status', postgresql.ENUM('received', 'accepted', 'rejected', 'failed', 'completed', name='request_status', create_type=False), autoincrement=False, nullable=False),
     sa.Column('enhancement_parameters', postgresql.JSONB(astext_type=sa.Text()), autoincrement=False, nullable=True),
     sa.Column('error', sa.VARCHAR(), autoincrement=False, nullable=True),
     sa.Column('id', sa.UUID(), autoincrement=False, nullable=False),
