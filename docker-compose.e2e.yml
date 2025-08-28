@@ -73,7 +73,7 @@ services:
       ENV: e2e
     entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover
   toy-robot:
-    build: https://github.com/destiny-evidence/toy-robot.git#remove-single-enhancement-workflow
+    build: https://github.com/destiny-evidence/toy-robot.git
     environment:
       DESTINY_REPOSITORY_URL: "http://app:8000/v1"
       ENV: "test"
