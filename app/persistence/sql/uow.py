@@ -18,7 +18,6 @@ from app.domain.imports.repository import (
     ImportResultSQLRepository,
 )
 from app.domain.references.repository import (
-    BatchEnhancementRequestSQLRepository,
     EnhancementRequestSQLRepository,
     EnhancementSQLRepository,
     ExternalIdentifierSQLRepository,
@@ -48,7 +47,6 @@ class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
     external_identifiers: ExternalIdentifierSQLRepository
     enhancements: EnhancementSQLRepository
     enhancement_requests: EnhancementRequestSQLRepository
-    batch_enhancement_requests: BatchEnhancementRequestSQLRepository
     robots: RobotSQLRepository
     robot_automations: RobotAutomationSQLRepository
 
@@ -66,9 +64,6 @@ class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
         self.external_identifiers = ExternalIdentifierSQLRepository(self.session)
         self.enhancements = EnhancementSQLRepository(self.session)
         self.enhancement_requests = EnhancementRequestSQLRepository(self.session)
-        self.batch_enhancement_requests = BatchEnhancementRequestSQLRepository(
-            self.session
-        )
         self.robots = RobotSQLRepository(self.session)
         self.robot_automations = RobotAutomationSQLRepository(self.session)
 

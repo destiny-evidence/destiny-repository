@@ -7,8 +7,6 @@ import httpx
 from pydantic import UUID4, HttpUrl
 
 from destiny_sdk.robots import (
-    BatchEnhancementRequestRead,
-    BatchRobotResult,
     EnhancementRequestRead,
     RobotResult,
 )
@@ -80,34 +78,14 @@ class Client:
 
         Signs the request with the client's secret key.
 
-        :param robot_result: The Robot Result to send
+        :param robot_result: The RobotResult to send
         :type robot_result: RobotResult
         :return: The EnhancementRequestRead object from the response.
         :rtype: EnhancementRequestRead
         """
         response = self.session.post(
-            f"/enhancement-requests/single-requests/{robot_result.request_id}/results/",
+            f"/enhancement-requests/{robot_result.request_id}/results/",
             json=robot_result.model_dump(mode="json"),
         )
         response.raise_for_status()
         return EnhancementRequestRead.model_validate(response.json())
-
-    def send_batch_robot_result(
-        self, batch_robot_result: BatchRobotResult
-    ) -> BatchEnhancementRequestRead:
-        """
-        Send a BatchRobotResult to destiny repository.
-
-        Signs the request with the client's secret key.
-
-        :param batch_robot_result: The Batch Robot Result to send
-        :type batch_robot_result: BatchRobotResult
-        :return: The BatchEnhancementRequestRead object from the response.
-        :rtype: BatchEnhancementRequestRead
-        """
-        response = self.session.post(
-            f"/enhancement-requests/batch-requests/{batch_robot_result.request_id}/results/",
-            json=batch_robot_result.model_dump(mode="json"),
-        )
-        response.raise_for_status()
-        return BatchEnhancementRequestRead.model_validate(response.json())

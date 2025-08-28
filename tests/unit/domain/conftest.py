@@ -141,7 +141,6 @@ class FakeUnitOfWork:
         external_identifiers=None,
         enhancements=None,
         enhancement_requests=None,
-        batch_enhancement_requests=None,
         robots=None,
         robot_automations=None,
     ):
@@ -152,7 +151,6 @@ class FakeUnitOfWork:
         self.external_identifiers = external_identifiers
         self.enhancements = enhancements
         self.enhancement_requests = enhancement_requests
-        self.batch_enhancement_requests = batch_enhancement_requests
         self.robots = robots
         self.robot_automations = robot_automations
         self.committed = False

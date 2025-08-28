@@ -16,7 +16,6 @@ from app.domain.imports.repository import (
     ImportResultRepositoryBase,
 )
 from app.domain.references.repository import (
-    BatchEnhancementRequestRepositoryBase,
     EnhancementRepositoryBase,
     EnhancementRequestRepositoryBase,
     ExternalIdentifierRepositoryBase,
@@ -41,7 +40,6 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
     external_identifiers: ExternalIdentifierRepositoryBase
     enhancements: EnhancementRepositoryBase
     enhancement_requests: EnhancementRequestRepositoryBase
-    batch_enhancement_requests: BatchEnhancementRequestRepositoryBase
     robots: RobotRepositoryBase
     robot_automations: RobotAutomationRepositoryBase
 
@@ -53,7 +51,6 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
         "external_identifiers",
         "enhancements",
         "enhancement_requests",
-        "batch_enhancement_requests",
         "robots",
         "robot_automations",
     }

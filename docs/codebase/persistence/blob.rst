@@ -4,7 +4,7 @@ Blob Storage
 Blob storage is used for storing large and/or ephemeral data that is not suitable for other persistence stores. This includes:
 - Large permanent data files such as full texts of documents.
 - Temporary files that are generated during processing but not needed long-term.
-- Large payloads that are not suitable for REST APIs, such as batch processes.
+- Large payloads that are not suitable for REST APIs, such as the enhancement process.
 
 .. contents:: Table of Contents
     :depth: 2
@@ -67,11 +67,11 @@ Azure Blob Storage is used for application deployments. At present there is one 
 .. code-block::
 
     destiny-repository-<env>-ops/
-        ├── batch_enhancement_result/
-        │   └── <batch_request_id>_robot.jsonl - the enhancement result as published by the robot to the repository
-        │   └── <batch_request_id>_repo.jsonl  - the validation result of importing the above as published by the repository
-        ├── batch_enhancement_request_reference_data/
-        │   └── <batch_request_id>.jsonl - the reference data provided to the robot for the batch enhancement request
+        ├── enhancement_result/
+        │   └── <request_id>_robot.jsonl - the enhancement result as published by the robot to the repository
+        │   └── <request_id>_repo.jsonl  - the validation result of importing the above as published by the repository
+        ├── enhancement_request_reference_data/
+        │   └── <request_id>.jsonl - the reference data provided to the robot for the enhancement request
 
 
 MinIO

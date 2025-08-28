@@ -24,11 +24,11 @@ def test_verify_hmac_headers_sent(httpx_mock: HTTPXMock, frozen_time) -> None:  
     fake_destiny_repository_url = "https://www.destiny-repository-lives-here.co.au/v1"
 
     fake_robot_result = RobotResult(
-        request_id=uuid.uuid4(), error=RobotError(message="I can't fulfil this request")
+        request_id=uuid.uuid4(), error=RobotError(message="Cannot process this batch")
     )
 
     expected_response_body = EnhancementRequestRead(
-        reference_id=uuid.uuid4(),
+        reference_ids=[uuid.uuid4()],
         id=uuid.uuid4(),
         robot_id=uuid.uuid4(),
         request_status="failed",
@@ -43,7 +43,7 @@ def test_verify_hmac_headers_sent(httpx_mock: HTTPXMock, frozen_time) -> None:  
 
     httpx_mock.add_response(
         url=fake_destiny_repository_url
-        + "/enhancement-requests/single-requests/"
+        + "/enhancement-requests/"
         + f"{fake_robot_result.request_id}/results/",
         method="POST",
         match_headers={

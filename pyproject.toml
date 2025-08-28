@@ -12,6 +12,7 @@ dev = [
     "pre-commit>=4.2.0,<5",
     "psycopg>=3.2.6,<4",
     "pytest-asyncio>=1.0.0,<2",
+    "pytest-cov>=6.2.1",
     "pytest-httpx>=0.35.0,<0.36",
     "pytest>=8.3.4,<9",
     "ruff>=0.8.6,<0.9",
@@ -74,7 +75,7 @@ license = "AGPL-3.0-or-later"
 name = "destiny-repository"
 readme = "README.md"
 requires-python = "~=3.12"
-version = "1.0.0"
+version = "2.0.0"
 
 [tool.mypy]
 explicit_package_bases = true
