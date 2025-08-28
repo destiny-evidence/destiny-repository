@@ -1,0 +1,1798 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="./" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Index &#8212; DESTINY Repository v1.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="_static/autodoc_pydantic.css" />
+    <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css?v=cf3b3841" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+    <script src="_static/documentation_options.js?v=e160b93e"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11.2.0/dist/mermaid.esm.min.mjs"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.1.4/dist/mermaid-layout-elk.esm.min.mjs"></script>
+    <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.2.0/dist/mermaid.esm.min.mjs";import elkLayouts from "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.1.4/dist/mermaid-layout-elk.esm.min.mjs";mermaid.registerLayoutLoaders(elkLayouts);mermaid.initialize({startOnLoad:false});</script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+    <script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.2.0/dist/mermaid.esm.min.mjs";
+window.addEventListener("load", () => mermaid.run());
+</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'genindex';</script>
+    <link rel="index" title="Index" href="#" />
+    <link rel="search" title="Search" href="search.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">DESTINY Repository v1.0 documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="procedures/procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="codebase/codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="sdk/sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+        
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar hide-on-wide">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="procedures/procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="codebase/codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="sdk/sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none"></div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+
+<h1 id="index">Index</h1>
+
+<div class="genindex-jumpbox">
+ <a href="#A"><strong>A</strong></a>
+ | <a href="#B"><strong>B</strong></a>
+ | <a href="#C"><strong>C</strong></a>
+ | <a href="#D"><strong>D</strong></a>
+ | <a href="#E"><strong>E</strong></a>
+ | <a href="#F"><strong>F</strong></a>
+ | <a href="#G"><strong>G</strong></a>
+ | <a href="#H"><strong>H</strong></a>
+ | <a href="#I"><strong>I</strong></a>
+ | <a href="#L"><strong>L</strong></a>
+ | <a href="#M"><strong>M</strong></a>
+ | <a href="#N"><strong>N</strong></a>
+ | <a href="#O"><strong>O</strong></a>
+ | <a href="#P"><strong>P</strong></a>
+ | <a href="#Q"><strong>Q</strong></a>
+ | <a href="#R"><strong>R</strong></a>
+ | <a href="#S"><strong>S</strong></a>
+ | <a href="#T"><strong>T</strong></a>
+ | <a href="#U"><strong>U</strong></a>
+ | <a href="#V"><strong>V</strong></a>
+ | <a href="#W"><strong>W</strong></a>
+ 
+</div>
+<h2 id="A">A</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.AbstractContentEnhancement.abstract">abstract (libs.sdk.src.destiny_sdk.enhancements.AbstractContentEnhancement attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.EnhancementType.ABSTRACT">ABSTRACT (libs.sdk.src.destiny_sdk.enhancements.EnhancementType attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.AbstractProcessType">AbstractProcessType (class in libs.sdk.src.destiny_sdk.enhancements)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequestStatus.ACCEPTED">ACCEPTED (app.domain.references.models.models.EnhancementRequestStatus attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus.ACCEPTED">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.DriverVersion.ACCEPTED_VERSION">ACCEPTED_VERSION (libs.sdk.src.destiny_sdk.enhancements.DriverVersion attribute)</a>
+</li>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.auth.AuthException.add_note">add_note() (libs.sdk.src.destiny_sdk.auth.AuthException method)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Annotation">Annotation (in module libs.sdk.src.destiny_sdk.enhancements)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.EnhancementType.ANNOTATION">ANNOTATION (libs.sdk.src.destiny_sdk.enhancements.EnhancementType attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.BooleanAnnotation.annotation_type">annotation_type (libs.sdk.src.destiny_sdk.enhancements.BooleanAnnotation attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.ScoreAnnotation.annotation_type">(libs.sdk.src.destiny_sdk.enhancements.ScoreAnnotation attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.AnnotationEnhancement.annotations">annotations (libs.sdk.src.destiny_sdk.enhancements.AnnotationEnhancement attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.AnnotationType">AnnotationType (class in libs.sdk.src.destiny_sdk.enhancements)</a>
+</li>
+      <li>
+    app.domain.imports.models.models
+
+      <ul>
+        <li><a href="codebase/models/imports.html#module-app.domain.imports.models.models">module</a>
+</li>
+      </ul></li>
+      <li>
+    app.domain.references.models.models
+
+      <ul>
+        <li><a href="codebase/models/references.html#module-app.domain.references.models.models">module</a>
+</li>
+      </ul></li>
+      <li>
+    app.domain.references.models.validators
+
+      <ul>
+        <li><a href="codebase/models/references.html#module-app.domain.references.models.validators">module</a>
+</li>
+      </ul></li>
+      <li>
+    app.domain.robots.models
+
+      <ul>
+        <li><a href="codebase/models/robots.html#module-app.domain.robots.models">module</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li>
+    app.persistence.blob.models
+
+      <ul>
+        <li><a href="codebase/persistence/blob.html#module-app.persistence.blob.models">module</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/config.html#app.core.config.Settings.app_name">app_name (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.app_version">app_version (app.core.config.Settings property)</a>
+</li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.CollisionStrategy.APPEND">APPEND (app.domain.imports.models.models.CollisionStrategy attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.CollisionStrategy.APPEND">(libs.sdk.src.destiny_sdk.imports.CollisionStrategy attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.auth.AuthException.args">args (libs.sdk.src.destiny_sdk.auth.AuthException attribute)</a>
+</li>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.client.HMACSigningAuth.async_auth_flow">async_auth_flow() (libs.sdk.src.destiny_sdk.client.HMACSigningAuth method)</a>
+</li>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.client.HMACSigningAuth.auth_flow">auth_flow() (libs.sdk.src.destiny_sdk.client.HMACSigningAuth method)</a>
+</li>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.auth.AuthException">AuthException</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.AuthorPosition">AuthorPosition (class in libs.sdk.src.destiny_sdk.enhancements)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement.authorship">authorship (libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement attribute)</a>
+</li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.models.BlobStorageLocation.AZURE">AZURE (app.persistence.blob.models.BlobStorageLocation attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.azure_application_id">azure_application_id (app.core.config.Settings attribute)</a>
+
+      <ul>
+        <li><a href="cli/config.html#cli.config.Settings.azure_application_id">(cli.config.Settings attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/config.html#app.core.config.Settings.azure_blob_config">azure_blob_config (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.azure_login_url">azure_login_url (app.core.config.Settings attribute)</a>
+
+      <ul>
+        <li><a href="cli/config.html#cli.config.Settings.azure_login_url">(cli.config.Settings attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/config.html#app.core.config.Settings.azure_tenant_id">azure_tenant_id (app.core.config.Settings attribute)</a>
+
+      <ul>
+        <li><a href="cli/config.html#cli.config.Settings.azure_tenant_id">(cli.config.Settings attribute)</a>
+</li>
+      </ul></li>
+  </ul></td>
+</tr></table>
+
+<h2 id="B">B</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.ProvisionedRobot.base_url">base_url (libs.sdk.src.destiny_sdk.robots.ProvisionedRobot attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.Robot.base_url">(libs.sdk.src.destiny_sdk.robots.Robot attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotIn.base_url">(libs.sdk.src.destiny_sdk.robots.RobotIn attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportRecord.batches">batches (app.domain.imports.models.models.ImportRecord attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordRead.batches">(libs.sdk.src.destiny_sdk.imports.ImportRecordRead attribute)</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.EnhancementType.BIBLIOGRAPHIC">BIBLIOGRAPHIC (libs.sdk.src.destiny_sdk.enhancements.EnhancementType attribute)</a>
+</li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.repository.BlobRepository">BlobRepository (class in app.persistence.blob.repository)</a>
+</li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.models.BlobSignedUrlType">BlobSignedUrlType (class in app.persistence.blob.models)</a>
+</li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.models.BlobStorageLocation">BlobStorageLocation (class in app.persistence.blob.models)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.AnnotationType.BOOLEAN">BOOLEAN (libs.sdk.src.destiny_sdk.enhancements.AnnotationType attribute)</a>
+</li>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.auth.BypassHMACAuth">BypassHMACAuth (class in libs.sdk.src.destiny_sdk.auth)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="C">C</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatch.callback_url">callback_url (app.domain.imports.models.models.ImportBatch attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchIn.callback_url">(libs.sdk.src.destiny_sdk.imports.ImportBatchIn attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchRead.callback_url">(libs.sdk.src.destiny_sdk.imports.ImportBatchRead attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchSummary.callback_url">(libs.sdk.src.destiny_sdk.imports.ImportBatchSummary attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatchStatus.CANCELLED">CANCELLED (app.domain.imports.models.models.ImportBatchStatus attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportRecordStatus.CANCELLED">(app.domain.imports.models.models.ImportRecordStatus attribute)</a>
+</li>
+        <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportResultStatus.CANCELLED">(app.domain.imports.models.models.ImportResultStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchStatus.CANCELLED">(libs.sdk.src.destiny_sdk.imports.ImportBatchStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordStatus.CANCELLED">(libs.sdk.src.destiny_sdk.imports.ImportRecordStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportResultStatus.CANCELLED">(libs.sdk.src.destiny_sdk.imports.ImportResultStatus attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatch.check_serializability">check_serializability() (app.domain.imports.models.models.ImportBatch method)</a>
+
+      <ul>
+        <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportRecord.check_serializability">(app.domain.imports.models.models.ImportRecord method)</a>
+</li>
+        <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportResult.check_serializability">(app.domain.imports.models.models.ImportResult method)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.Enhancement.check_serializability">(app.domain.references.models.models.Enhancement method)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequest.check_serializability">(app.domain.references.models.models.EnhancementRequest method)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.ExternalIdentifierSearch.check_serializability">(app.domain.references.models.models.ExternalIdentifierSearch method)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.GenericExternalIdentifier.check_serializability">(app.domain.references.models.models.GenericExternalIdentifier method)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.LinkedExternalIdentifier.check_serializability">(app.domain.references.models.models.LinkedExternalIdentifier method)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.Reference.check_serializability">(app.domain.references.models.models.Reference method)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.RobotAutomation.check_serializability">(app.domain.references.models.models.RobotAutomation method)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.RobotResultValidationEntry.check_serializability">(app.domain.references.models.models.RobotResultValidationEntry method)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement.cited_by_count">cited_by_count (libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.cli_client_id">cli_client_id (app.core.config.Settings attribute)</a>
+
+      <ul>
+        <li><a href="cli/config.html#cli.config.Settings.cli_client_id">(cli.config.Settings attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.client.Client">Client (class in libs.sdk.src.destiny_sdk.client)</a>
+</li>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.auth.HMACAuthorizationHeaders.client_id">client_id (libs.sdk.src.destiny_sdk.auth.HMACAuthorizationHeaders attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.ProvisionedRobot.client_secret">client_secret (libs.sdk.src.destiny_sdk.robots.ProvisionedRobot attribute)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.AbstractProcessType.CLOSED_API">CLOSED_API (libs.sdk.src.destiny_sdk.enhancements.AbstractProcessType attribute)</a>
+</li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatch.collision_strategy">collision_strategy (app.domain.imports.models.models.ImportBatch attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchIn.collision_strategy">(libs.sdk.src.destiny_sdk.imports.ImportBatchIn attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchRead.collision_strategy">(libs.sdk.src.destiny_sdk.imports.ImportBatchRead attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchSummary.collision_strategy">(libs.sdk.src.destiny_sdk.imports.ImportBatchSummary attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.CollisionStrategy">CollisionStrategy (class in app.domain.imports.models.models)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.CollisionStrategy">(class in libs.sdk.src.destiny_sdk.imports)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatchStatus.COMPLETED">COMPLETED (app.domain.imports.models.models.ImportBatchStatus attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportRecordStatus.COMPLETED">(app.domain.imports.models.models.ImportRecordStatus attribute)</a>
+</li>
+        <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportResultStatus.COMPLETED">(app.domain.imports.models.models.ImportResultStatus attribute)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequestStatus.COMPLETED">(app.domain.references.models.models.EnhancementRequestStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchStatus.COMPLETED">(libs.sdk.src.destiny_sdk.imports.ImportBatchStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordStatus.COMPLETED">(libs.sdk.src.destiny_sdk.imports.ImportRecordStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportResultStatus.COMPLETED">(libs.sdk.src.destiny_sdk.imports.ImportResultStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus.COMPLETED">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.models.BlobStorageFile.container">container (app.persistence.blob.models.BlobStorageFile attribute)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.Enhancement.content">content (app.domain.references.models.models.Enhancement attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Enhancement.content">(libs.sdk.src.destiny_sdk.enhancements.Enhancement attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.EnhancementFileInput.content">(libs.sdk.src.destiny_sdk.enhancements.EnhancementFileInput attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.models.BlobStorageFile.content_type">content_type (app.persistence.blob.models.BlobStorageFile property)</a>
+</li>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.auth.create_signature">create_signature() (in module libs.sdk.src.destiny_sdk.auth)</a>
+</li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatchStatus.CREATED">CREATED (app.domain.imports.models.models.ImportBatchStatus attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportRecordStatus.CREATED">(app.domain.imports.models.models.ImportRecordStatus attribute)</a>
+</li>
+        <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportResultStatus.CREATED">(app.domain.imports.models.models.ImportResultStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchStatus.CREATED">(libs.sdk.src.destiny_sdk.imports.ImportBatchStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordStatus.CREATED">(libs.sdk.src.destiny_sdk.imports.ImportRecordStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportResultStatus.CREATED">(libs.sdk.src.destiny_sdk.imports.ImportResultStatus attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement.created_date">created_date (libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement attribute)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="D">D</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.BooleanAnnotation.data">data (libs.sdk.src.destiny_sdk.enhancements.BooleanAnnotation attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.ScoreAnnotation.data">(libs.sdk.src.destiny_sdk.enhancements.ScoreAnnotation attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/config.html#app.core.config.Settings.db_config">db_config (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.default_blob_container">default_blob_container (app.core.config.Settings property)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.default_blob_location">default_blob_location (app.core.config.Settings property)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.default_download_file_chunk_size">default_download_file_chunk_size (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.default_es_indexing_chunk_size">default_es_indexing_chunk_size (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.default_es_percolation_chunk_size">default_es_percolation_chunk_size (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.default_upload_file_chunk_size">default_upload_file_chunk_size (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.Enhancement.derived_from">derived_from (app.domain.references.models.models.Enhancement attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Enhancement.derived_from">(libs.sdk.src.destiny_sdk.enhancements.Enhancement attribute)</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.ProvisionedRobot.description">description (libs.sdk.src.destiny_sdk.robots.ProvisionedRobot attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.Robot.description">(libs.sdk.src.destiny_sdk.robots.Robot attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotIn.description">(libs.sdk.src.destiny_sdk.robots.RobotIn attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="cli/config.html#cli.config.Settings.destiny_repository_url">destiny_repository_url (cli.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.CollisionStrategy.DISCARD">DISCARD (app.domain.imports.models.models.CollisionStrategy attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.CollisionStrategy.DISCARD">(libs.sdk.src.destiny_sdk.imports.CollisionStrategy attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Authorship.display_name">display_name (libs.sdk.src.destiny_sdk.enhancements.Authorship attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType.DOI">DOI (libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType attribute)</a>
+</li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.models.BlobSignedUrlType.DOWNLOAD">DOWNLOAD (app.persistence.blob.models.BlobSignedUrlType attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.DriverVersion">DriverVersion (class in libs.sdk.src.destiny_sdk.enhancements)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="E">E</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/models/references.html#app.domain.references.models.validators.EnhancementParseResult.enhancement">enhancement (app.domain.references.models.validators.EnhancementParseResult attribute)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequest.enhancement_parameters">enhancement_parameters (app.domain.references.models.models.EnhancementRequest attribute)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.validators.EnhancementResultValidator.enhancement_to_add">enhancement_to_add (app.domain.references.models.validators.EnhancementResultValidator attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.AbstractContentEnhancement.enhancement_type">enhancement_type (libs.sdk.src.destiny_sdk.enhancements.AbstractContentEnhancement attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.AnnotationEnhancement.enhancement_type">(libs.sdk.src.destiny_sdk.enhancements.AnnotationEnhancement attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement.enhancement_type">(libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.EnhancementFileInput.enhancement_type">(libs.sdk.src.destiny_sdk.enhancements.EnhancementFileInput attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.LocationEnhancement.enhancement_type">(libs.sdk.src.destiny_sdk.enhancements.LocationEnhancement attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.EnhancementContent">EnhancementContent (in module libs.sdk.src.destiny_sdk.enhancements)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequestStatus">EnhancementRequestStatus (class in app.domain.references.models.models)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus">(class in libs.sdk.src.destiny_sdk.robots)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementResultEntry">EnhancementResultEntry (in module libs.sdk.src.destiny_sdk.robots)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.Reference.enhancements">enhancements (app.domain.references.models.models.Reference attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/references.html#app.domain.references.models.validators.ReferenceFileInputValidator.enhancements">(app.domain.references.models.validators.ReferenceFileInputValidator attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.references.Reference.enhancements">(libs.sdk.src.destiny_sdk.references.Reference attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.references.ReferenceFileInput.enhancements">(libs.sdk.src.destiny_sdk.references.ReferenceFileInput attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.EnhancementType">EnhancementType (class in libs.sdk.src.destiny_sdk.enhancements)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.env">env (app.core.config.Settings attribute)</a>
+
+      <ul>
+        <li><a href="cli/config.html#cli.config.Settings.env">(cli.config.Settings attribute)</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequest.error">error (app.domain.references.models.models.EnhancementRequest attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.RobotResultValidationEntry.error">(app.domain.references.models.models.RobotResultValidationEntry attribute)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.validators.EnhancementParseResult.error">(app.domain.references.models.validators.EnhancementParseResult attribute)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.validators.ExternalIdentifierParseResult.error">(app.domain.references.models.validators.ExternalIdentifierParseResult attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead.error">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotResult.error">(libs.sdk.src.destiny_sdk.robots.RobotResult attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotResultValidationEntry.error">(libs.sdk.src.destiny_sdk.robots.RobotResultValidationEntry attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.validators.ReferenceCreateResult.error_str">error_str (app.domain.references.models.validators.ReferenceCreateResult property)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.validators.ReferenceCreateResult.errors">errors (app.domain.references.models.validators.ReferenceCreateResult attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.es_config">es_config (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.es_indexing_chunk_size_override">es_indexing_chunk_size_override (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.es_percolation_chunk_size_override">es_percolation_chunk_size_override (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportRecord.expected_reference_count">expected_reference_count (app.domain.imports.models.models.ImportRecord attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordIn.expected_reference_count">(libs.sdk.src.destiny_sdk.imports.ImportRecordIn attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordRead.expected_reference_count">(libs.sdk.src.destiny_sdk.imports.ImportRecordRead attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.validators.ExternalIdentifierParseResult.external_identifier">external_identifier (app.domain.references.models.validators.ExternalIdentifierParseResult attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifier">ExternalIdentifier (in module libs.sdk.src.destiny_sdk.identifiers)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType">ExternalIdentifierType (class in libs.sdk.src.destiny_sdk.identifiers)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Location.extra">extra (libs.sdk.src.destiny_sdk.enhancements.Location attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotRequest.extra_fields">extra_fields (libs.sdk.src.destiny_sdk.robots.RobotRequest attribute)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="F">F</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.CollisionStrategy.FAIL">FAIL (app.domain.imports.models.models.CollisionStrategy attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.CollisionStrategy.FAIL">(libs.sdk.src.destiny_sdk.imports.CollisionStrategy attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatchStatus.FAILED">FAILED (app.domain.imports.models.models.ImportBatchStatus attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportResultStatus.FAILED">(app.domain.imports.models.models.ImportResultStatus attribute)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequestStatus.FAILED">(app.domain.references.models.models.EnhancementRequestStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchStatus.FAILED">(libs.sdk.src.destiny_sdk.imports.ImportBatchStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportResultStatus.FAILED">(libs.sdk.src.destiny_sdk.imports.ImportResultStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus.FAILED">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportResult.failure_details">failure_details (app.domain.imports.models.models.ImportResult attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchSummary.failure_details">(libs.sdk.src.destiny_sdk.imports.ImportBatchSummary attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportResultRead.failure_details">(libs.sdk.src.destiny_sdk.imports.ImportResultRead attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/config.html#app.core.config.Settings.feature_flags">feature_flags (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.models.BlobStorageFile.filename">filename (app.persistence.blob.models.BlobStorageFile attribute)</a>
+</li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.stream.FileStream">FileStream (class in app.persistence.blob.stream)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.AuthorPosition.FIRST">FIRST (libs.sdk.src.destiny_sdk.enhancements.AuthorPosition attribute)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.references.Reference.from_es">from_es() (libs.sdk.src.destiny_sdk.references.Reference class method)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Enhancement.from_jsonl">from_jsonl() (libs.sdk.src.destiny_sdk.enhancements.Enhancement class method)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.references.Reference.from_jsonl">(libs.sdk.src.destiny_sdk.references.Reference class method)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.references.ReferenceFileInput.from_jsonl">(libs.sdk.src.destiny_sdk.references.ReferenceFileInput class method)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.LinkedRobotError.from_jsonl">(libs.sdk.src.destiny_sdk.robots.LinkedRobotError class method)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotResultValidationEntry.from_jsonl">(libs.sdk.src.destiny_sdk.robots.RobotResultValidationEntry class method)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.validators.EnhancementParseResult.from_raw">from_raw() (app.domain.references.models.validators.EnhancementParseResult class method)</a>
+
+      <ul>
+        <li><a href="codebase/models/references.html#app.domain.references.models.validators.EnhancementResultValidator.from_raw">(app.domain.references.models.validators.EnhancementResultValidator class method)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.validators.ExternalIdentifierParseResult.from_raw">(app.domain.references.models.validators.ExternalIdentifierParseResult class method)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.validators.ReferenceCreateResult.from_raw">(app.domain.references.models.validators.ReferenceCreateResult class method)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.auth.HMACAuthorizationHeaders.from_request">from_request() (libs.sdk.src.destiny_sdk.auth.HMACAuthorizationHeaders class method)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.ExternalIdentifierSearch.from_specific">from_specific() (app.domain.references.models.models.ExternalIdentifierSearch class method)</a>
+
+      <ul>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.GenericExternalIdentifier.from_specific">(app.domain.references.models.models.GenericExternalIdentifier class method)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.models.BlobStorageFile.from_sql">from_sql() (app.persistence.blob.models.BlobStorageFile class method)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.EnhancementType.FULL_TEXT">FULL_TEXT (libs.sdk.src.destiny_sdk.enhancements.EnhancementType attribute)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="G">G</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.client.GenericBlobStorageClient.generate_signed_url">generate_signed_url() (app.persistence.blob.client.GenericBlobStorageClient method)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.client.GenericBlobStorageClient">GenericBlobStorageClient (class in app.persistence.blob.client)</a>
+</li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.repository.BlobRepository.get_signed_url">get_signed_url() (app.persistence.blob.repository.BlobRepository method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="H">H</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.Visibility.HIDDEN">HIDDEN (app.domain.references.models.models.Visibility attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.visibility.Visibility.HIDDEN">(libs.sdk.src.destiny_sdk.visibility.Visibility attribute)</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.auth.HMACAuth">HMACAuth (class in libs.sdk.src.destiny_sdk.auth)</a>
+</li>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.auth.HMACAuthMethod">HMACAuthMethod (class in libs.sdk.src.destiny_sdk.auth)</a>
+</li>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.client.HMACSigningAuth">HMACSigningAuth (class in libs.sdk.src.destiny_sdk.client)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="I">I</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatch.id">id (app.domain.imports.models.models.ImportBatch attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportRecord.id">(app.domain.imports.models.models.ImportRecord attribute)</a>
+</li>
+        <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportResult.id">(app.domain.imports.models.models.ImportResult attribute)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.Enhancement.id">(app.domain.references.models.models.Enhancement attribute)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequest.id">(app.domain.references.models.models.EnhancementRequest attribute)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.LinkedExternalIdentifier.id">(app.domain.references.models.models.LinkedExternalIdentifier attribute)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.Reference.id">(app.domain.references.models.models.Reference attribute)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.RobotAutomation.id">(app.domain.references.models.models.RobotAutomation attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Enhancement.id">(libs.sdk.src.destiny_sdk.enhancements.Enhancement attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchRead.id">(libs.sdk.src.destiny_sdk.imports.ImportBatchRead attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchSummary.id">(libs.sdk.src.destiny_sdk.imports.ImportBatchSummary attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordRead.id">(libs.sdk.src.destiny_sdk.imports.ImportRecordRead attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportResultRead.id">(libs.sdk.src.destiny_sdk.imports.ImportResultRead attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.references.Reference.id">(libs.sdk.src.destiny_sdk.references.Reference attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead.id">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.ProvisionedRobot.id">(libs.sdk.src.destiny_sdk.robots.ProvisionedRobot attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.Robot.id">(libs.sdk.src.destiny_sdk.robots.Robot attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotAutomation.id">(libs.sdk.src.destiny_sdk.robots.RobotAutomation attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotRequest.id">(libs.sdk.src.destiny_sdk.robots.RobotRequest attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.ExternalIdentifierSearch.identifier">identifier (app.domain.references.models.models.ExternalIdentifierSearch attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.GenericExternalIdentifier.identifier">(app.domain.references.models.models.GenericExternalIdentifier attribute)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.LinkedExternalIdentifier.identifier">(app.domain.references.models.models.LinkedExternalIdentifier attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.DOIIdentifier.identifier">(libs.sdk.src.destiny_sdk.identifiers.DOIIdentifier attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.LinkedExternalIdentifier.identifier">(libs.sdk.src.destiny_sdk.identifiers.LinkedExternalIdentifier attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.OpenAlexIdentifier.identifier">(libs.sdk.src.destiny_sdk.identifiers.OpenAlexIdentifier attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.OtherIdentifier.identifier">(libs.sdk.src.destiny_sdk.identifiers.OtherIdentifier attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.PubMedIdentifier.identifier">(libs.sdk.src.destiny_sdk.identifiers.PubMedIdentifier attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.ExternalIdentifierSearch.identifier_type">identifier_type (app.domain.references.models.models.ExternalIdentifierSearch attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.GenericExternalIdentifier.identifier_type">(app.domain.references.models.models.GenericExternalIdentifier attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.DOIIdentifier.identifier_type">(libs.sdk.src.destiny_sdk.identifiers.DOIIdentifier attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.OpenAlexIdentifier.identifier_type">(libs.sdk.src.destiny_sdk.identifiers.OpenAlexIdentifier attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.OtherIdentifier.identifier_type">(libs.sdk.src.destiny_sdk.identifiers.OtherIdentifier attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.PubMedIdentifier.identifier_type">(libs.sdk.src.destiny_sdk.identifiers.PubMedIdentifier attribute)</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.Reference.identifiers">identifiers (app.domain.references.models.models.Reference attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/references.html#app.domain.references.models.validators.ReferenceFileInputValidator.identifiers">(app.domain.references.models.validators.ReferenceFileInputValidator attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.references.Reference.identifiers">(libs.sdk.src.destiny_sdk.references.Reference attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.references.ReferenceFileInput.identifiers">(libs.sdk.src.destiny_sdk.references.ReferenceFileInput attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportResult.import_batch">import_batch (app.domain.imports.models.models.ImportResult attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportResultRead.import_batch">(libs.sdk.src.destiny_sdk.imports.ImportResultRead attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportResult.import_batch_id">import_batch_id (app.domain.imports.models.models.ImportResult attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchSummary.import_batch_id">(libs.sdk.src.destiny_sdk.imports.ImportBatchSummary attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/config.html#app.core.config.Settings.import_batch_retry_count">import_batch_retry_count (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchSummary.import_batch_status">import_batch_status (libs.sdk.src.destiny_sdk.imports.ImportBatchSummary attribute)</a>
+</li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatch.import_record">import_record (app.domain.imports.models.models.ImportBatch attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchRead.import_record">(libs.sdk.src.destiny_sdk.imports.ImportBatchRead attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatch.import_record_id">import_record_id (app.domain.imports.models.models.ImportBatch attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchRead.import_record_id">(libs.sdk.src.destiny_sdk.imports.ImportBatchRead attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatch.import_results">import_results (app.domain.imports.models.models.ImportBatch attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchRead.import_results">(libs.sdk.src.destiny_sdk.imports.ImportBatchRead attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatchStatus">ImportBatchStatus (class in app.domain.imports.models.models)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchStatus">(class in libs.sdk.src.destiny_sdk.imports)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequestStatus.IMPORTING">IMPORTING (app.domain.references.models.models.EnhancementRequestStatus attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus.IMPORTING">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportRecordStatus">ImportRecordStatus (class in app.domain.imports.models.models)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordStatus">(class in libs.sdk.src.destiny_sdk.imports)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportResultStatus">ImportResultStatus (class in app.domain.imports.models.models)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportResultStatus">(class in libs.sdk.src.destiny_sdk.imports)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatchStatus.INDEXING">INDEXING (app.domain.imports.models.models.ImportBatchStatus attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequestStatus.INDEXING">(app.domain.references.models.models.EnhancementRequestStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchStatus.INDEXING">(libs.sdk.src.destiny_sdk.imports.ImportBatchStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus.INDEXING">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatchStatus.INDEXING_FAILED">INDEXING_FAILED (app.domain.imports.models.models.ImportBatchStatus attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequestStatus.INDEXING_FAILED">(app.domain.references.models.models.EnhancementRequestStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchStatus.INDEXING_FAILED">(libs.sdk.src.destiny_sdk.imports.ImportBatchStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus.INDEXING_FAILED">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Location.is_oa">is_oa (libs.sdk.src.destiny_sdk.enhancements.Location attribute)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="L">L</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.BooleanAnnotation.label">label (libs.sdk.src.destiny_sdk.enhancements.BooleanAnnotation attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.ScoreAnnotation.label">(libs.sdk.src.destiny_sdk.enhancements.ScoreAnnotation attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Location.landing_page_url">landing_page_url (libs.sdk.src.destiny_sdk.enhancements.Location attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.AuthorPosition.LAST">LAST (libs.sdk.src.destiny_sdk.enhancements.AuthorPosition attribute)</a>
+</li>
+      <li>
+    libs.sdk.src.destiny_sdk.auth
+
+      <ul>
+        <li><a href="sdk/auth.html#module-libs.sdk.src.destiny_sdk.auth">module</a>
+</li>
+      </ul></li>
+      <li>
+    libs.sdk.src.destiny_sdk.client
+
+      <ul>
+        <li><a href="sdk/auth.html#module-libs.sdk.src.destiny_sdk.client">module</a>
+</li>
+      </ul></li>
+      <li>
+    libs.sdk.src.destiny_sdk.enhancements
+
+      <ul>
+        <li><a href="sdk/schemas.html#module-libs.sdk.src.destiny_sdk.enhancements">module</a>
+</li>
+      </ul></li>
+      <li>
+    libs.sdk.src.destiny_sdk.identifiers
+
+      <ul>
+        <li><a href="sdk/schemas.html#module-libs.sdk.src.destiny_sdk.identifiers">module</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li>
+    libs.sdk.src.destiny_sdk.imports
+
+      <ul>
+        <li><a href="sdk/schemas.html#module-libs.sdk.src.destiny_sdk.imports">module</a>
+</li>
+      </ul></li>
+      <li>
+    libs.sdk.src.destiny_sdk.references
+
+      <ul>
+        <li><a href="sdk/schemas.html#module-libs.sdk.src.destiny_sdk.references">module</a>
+</li>
+      </ul></li>
+      <li>
+    libs.sdk.src.destiny_sdk.robots
+
+      <ul>
+        <li><a href="sdk/schemas.html#module-libs.sdk.src.destiny_sdk.robots">module</a>
+</li>
+      </ul></li>
+      <li>
+    libs.sdk.src.destiny_sdk.visibility
+
+      <ul>
+        <li><a href="sdk/schemas.html#module-libs.sdk.src.destiny_sdk.visibility">module</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Location.license">license (libs.sdk.src.destiny_sdk.enhancements.Location attribute)</a>
+</li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.models.BlobStorageFile.location">location (app.persistence.blob.models.BlobStorageFile attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.EnhancementType.LOCATION">LOCATION (libs.sdk.src.destiny_sdk.enhancements.EnhancementType attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.LocationEnhancement.locations">locations (libs.sdk.src.destiny_sdk.enhancements.LocationEnhancement attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.log_level">log_level (app.core.config.Settings attribute)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="M">M</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.Reference.merge">merge() (app.domain.references.models.models.Reference method)</a>
+</li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.CollisionStrategy.MERGE_AGGRESSIVE">MERGE_AGGRESSIVE (app.domain.imports.models.models.CollisionStrategy attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.CollisionStrategy.MERGE_AGGRESSIVE">(libs.sdk.src.destiny_sdk.imports.CollisionStrategy attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.CollisionStrategy.MERGE_DEFENSIVE">MERGE_DEFENSIVE (app.domain.imports.models.models.CollisionStrategy attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.CollisionStrategy.MERGE_DEFENSIVE">(libs.sdk.src.destiny_sdk.imports.CollisionStrategy attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.LinkedRobotError.message">message (libs.sdk.src.destiny_sdk.robots.LinkedRobotError attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotError.message">(libs.sdk.src.destiny_sdk.robots.RobotError attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/config.html#app.core.config.Settings.message_broker_namespace">message_broker_namespace (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.message_broker_queue_name">message_broker_queue_name (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.message_broker_url">message_broker_url (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.message_lock_renewal_duration">message_lock_renewal_duration (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.AuthorPosition.MIDDLE">MIDDLE (libs.sdk.src.destiny_sdk.enhancements.AuthorPosition attribute)</a>
+</li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.models.BlobStorageLocation.MINIO">MINIO (app.persistence.blob.models.BlobStorageLocation attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.minio_config">minio_config (app.core.config.Settings attribute)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li>
+    module
+
+      <ul>
+        <li><a href="codebase/models/imports.html#module-app.domain.imports.models.models">app.domain.imports.models.models</a>
+</li>
+        <li><a href="codebase/models/references.html#module-app.domain.references.models.models">app.domain.references.models.models</a>
+</li>
+        <li><a href="codebase/models/references.html#module-app.domain.references.models.validators">app.domain.references.models.validators</a>
+</li>
+        <li><a href="codebase/models/robots.html#module-app.domain.robots.models">app.domain.robots.models</a>
+</li>
+        <li><a href="codebase/persistence/blob.html#module-app.persistence.blob.models">app.persistence.blob.models</a>
+</li>
+        <li><a href="sdk/auth.html#module-libs.sdk.src.destiny_sdk.auth">libs.sdk.src.destiny_sdk.auth</a>
+</li>
+        <li><a href="sdk/auth.html#module-libs.sdk.src.destiny_sdk.client">libs.sdk.src.destiny_sdk.client</a>
+</li>
+        <li><a href="sdk/schemas.html#module-libs.sdk.src.destiny_sdk.enhancements">libs.sdk.src.destiny_sdk.enhancements</a>
+</li>
+        <li><a href="sdk/schemas.html#module-libs.sdk.src.destiny_sdk.identifiers">libs.sdk.src.destiny_sdk.identifiers</a>
+</li>
+        <li><a href="sdk/schemas.html#module-libs.sdk.src.destiny_sdk.imports">libs.sdk.src.destiny_sdk.imports</a>
+</li>
+        <li><a href="sdk/schemas.html#module-libs.sdk.src.destiny_sdk.references">libs.sdk.src.destiny_sdk.references</a>
+</li>
+        <li><a href="sdk/schemas.html#module-libs.sdk.src.destiny_sdk.robots">libs.sdk.src.destiny_sdk.robots</a>
+</li>
+        <li><a href="sdk/schemas.html#module-libs.sdk.src.destiny_sdk.visibility">libs.sdk.src.destiny_sdk.visibility</a>
+</li>
+      </ul></li>
+  </ul></td>
+</tr></table>
+
+<h2 id="N">N</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequest.n_references">n_references (app.domain.references.models.models.EnhancementRequest property)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.ProvisionedRobot.name">name (libs.sdk.src.destiny_sdk.robots.ProvisionedRobot attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.Robot.name">(libs.sdk.src.destiny_sdk.robots.Robot attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotIn.name">(libs.sdk.src.destiny_sdk.robots.RobotIn attribute)</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportRecord.notes">notes (app.domain.imports.models.models.ImportRecord attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordIn.notes">(libs.sdk.src.destiny_sdk.imports.ImportRecordIn attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordRead.notes">(libs.sdk.src.destiny_sdk.imports.ImportRecordRead attribute)</a>
+</li>
+      </ul></li>
+  </ul></td>
+</tr></table>
+
+<h2 id="O">O</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType.OPEN_ALEX">OPEN_ALEX (libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Authorship.orcid">orcid (libs.sdk.src.destiny_sdk.enhancements.Authorship attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.otel_config">otel_config (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.otel_enabled">otel_enabled (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.AbstractProcessType.OTHER">OTHER (libs.sdk.src.destiny_sdk.enhancements.AbstractProcessType attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.DriverVersion.OTHER">(libs.sdk.src.destiny_sdk.enhancements.DriverVersion attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType.OTHER">(libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType attribute)</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.ExternalIdentifierSearch.other_identifier_name">other_identifier_name (app.domain.references.models.models.ExternalIdentifierSearch attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.GenericExternalIdentifier.other_identifier_name">(app.domain.references.models.models.GenericExternalIdentifier attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.OtherIdentifier.other_identifier_name">(libs.sdk.src.destiny_sdk.identifiers.OtherIdentifier attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.CollisionStrategy.OVERWRITE">OVERWRITE (app.domain.imports.models.models.CollisionStrategy attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.CollisionStrategy.OVERWRITE">(libs.sdk.src.destiny_sdk.imports.CollisionStrategy attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.ProvisionedRobot.owner">owner (libs.sdk.src.destiny_sdk.robots.ProvisionedRobot attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.Robot.owner">(libs.sdk.src.destiny_sdk.robots.Robot attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotIn.owner">(libs.sdk.src.destiny_sdk.robots.RobotIn attribute)</a>
+</li>
+      </ul></li>
+  </ul></td>
+</tr></table>
+
+<h2 id="P">P</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/models/references.html#app.domain.references.models.validators.EnhancementResultValidator.parse_failure">parse_failure (app.domain.references.models.validators.EnhancementResultValidator attribute)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequestStatus.PARTIAL_FAILED">PARTIAL_FAILED (app.domain.references.models.models.EnhancementRequestStatus attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus.PARTIAL_FAILED">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportResultStatus.PARTIALLY_FAILED">PARTIALLY_FAILED (app.domain.imports.models.models.ImportResultStatus attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportResultStatus.PARTIALLY_FAILED">(libs.sdk.src.destiny_sdk.imports.ImportResultStatus attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.models.BlobStorageFile.path">path (app.persistence.blob.models.BlobStorageFile attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Location.pdf_url">pdf_url (libs.sdk.src.destiny_sdk.enhancements.Location attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType.PM_ID">PM_ID (libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Authorship.position">position (libs.sdk.src.destiny_sdk.enhancements.Authorship attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.presigned_url_expiry_seconds">presigned_url_expiry_seconds (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.AbstractContentEnhancement.process">process (libs.sdk.src.destiny_sdk.enhancements.AbstractContentEnhancement attribute)</a>
+</li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportRecord.processor_name">processor_name (app.domain.imports.models.models.ImportRecord attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordIn.processor_name">(libs.sdk.src.destiny_sdk.imports.ImportRecordIn attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordRead.processor_name">(libs.sdk.src.destiny_sdk.imports.ImportRecordRead attribute)</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportRecord.processor_version">processor_version (app.domain.imports.models.models.ImportRecord attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordIn.processor_version">(libs.sdk.src.destiny_sdk.imports.ImportRecordIn attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordRead.processor_version">(libs.sdk.src.destiny_sdk.imports.ImportRecordRead attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/config.html#app.core.config.Settings.project_root">project_root (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.Visibility.PUBLIC">PUBLIC (app.domain.references.models.models.Visibility attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.visibility.Visibility.PUBLIC">(libs.sdk.src.destiny_sdk.visibility.Visibility attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement.publication_date">publication_date (libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement.publication_year">publication_year (libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.DriverVersion.PUBLISHED_VERSION">PUBLISHED_VERSION (libs.sdk.src.destiny_sdk.enhancements.DriverVersion attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement.publisher">publisher (libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement attribute)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.pyproject_toml">pyproject_toml (app.core.config.Settings property)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="Q">Q</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.RobotAutomation.query">query (app.domain.references.models.models.RobotAutomation attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotAutomation.query">(libs.sdk.src.destiny_sdk.robots.RobotAutomation attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotAutomationIn.query">(libs.sdk.src.destiny_sdk.robots.RobotAutomationIn attribute)</a>
+</li>
+      </ul></li>
+  </ul></td>
+</tr></table>
+
+<h2 id="R">R</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.stream.FileStream.read">read() (app.persistence.blob.stream.FileStream method)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequestStatus.RECEIVED">RECEIVED (app.domain.references.models.models.EnhancementRequestStatus attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus.RECEIVED">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.Enhancement.reference">reference (app.domain.references.models.models.Enhancement attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.LinkedExternalIdentifier.reference">(app.domain.references.models.models.LinkedExternalIdentifier attribute)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.validators.ReferenceCreateResult.reference">(app.domain.references.models.validators.ReferenceCreateResult attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequest.reference_data_file">reference_data_file (app.domain.references.models.models.EnhancementRequest attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead.reference_data_url">reference_data_url (libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead attribute)</a>
+</li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportResult.reference_id">reference_id (app.domain.imports.models.models.ImportResult attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.Enhancement.reference_id">(app.domain.references.models.models.Enhancement attribute)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.LinkedExternalIdentifier.reference_id">(app.domain.references.models.models.LinkedExternalIdentifier attribute)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.RobotResultValidationEntry.reference_id">(app.domain.references.models.models.RobotResultValidationEntry attribute)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.validators.ReferenceCreateResult.reference_id">(app.domain.references.models.validators.ReferenceCreateResult attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Enhancement.reference_id">(libs.sdk.src.destiny_sdk.enhancements.Enhancement attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.LinkedExternalIdentifier.reference_id">(libs.sdk.src.destiny_sdk.identifiers.LinkedExternalIdentifier attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportResultRead.reference_id">(libs.sdk.src.destiny_sdk.imports.ImportResultRead attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.LinkedRobotError.reference_id">(libs.sdk.src.destiny_sdk.robots.LinkedRobotError attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotResultValidationEntry.reference_id">(libs.sdk.src.destiny_sdk.robots.RobotResultValidationEntry attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequest.reference_ids">reference_ids (app.domain.references.models.models.EnhancementRequest attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.RobotAutomationPercolationResult.reference_ids">(app.domain.references.models.models.RobotAutomationPercolationResult attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestIn.reference_ids">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestIn attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead.reference_ids">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotRequest.reference_storage_url">reference_storage_url (libs.sdk.src.destiny_sdk.robots.RobotRequest attribute)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequestStatus.REJECTED">REJECTED (app.domain.references.models.models.EnhancementRequestStatus attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus.REJECTED">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestStatus attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.DOIIdentifier.remove_doi_url">remove_doi_url() (libs.sdk.src.destiny_sdk.identifiers.DOIIdentifier class method)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.OpenAlexIdentifier.remove_open_alex_url">remove_open_alex_url() (libs.sdk.src.destiny_sdk.identifiers.OpenAlexIdentifier class method)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotResult.request_id">request_id (libs.sdk.src.destiny_sdk.robots.RobotResult attribute)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequest.request_status">request_status (app.domain.references.models.models.EnhancementRequest attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead.request_status">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.client.HMACSigningAuth.requires_request_body">requires_request_body (libs.sdk.src.destiny_sdk.client.HMACSigningAuth attribute)</a>
+</li>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.client.HMACSigningAuth.requires_response_body">requires_response_body (libs.sdk.src.destiny_sdk.client.HMACSigningAuth attribute)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.Visibility.RESTRICTED">RESTRICTED (app.domain.references.models.models.Visibility attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.visibility.Visibility.RESTRICTED">(libs.sdk.src.destiny_sdk.visibility.Visibility attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequest.result_file">result_file (app.domain.references.models.models.EnhancementRequest attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead.result_storage_url">result_storage_url (libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotRequest.result_storage_url">(libs.sdk.src.destiny_sdk.robots.RobotRequest attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchSummary.results">results (libs.sdk.src.destiny_sdk.imports.ImportBatchSummary attribute)</a>
+</li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatchStatus.RETRYING">RETRYING (app.domain.imports.models.models.ImportBatchStatus attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchStatus.RETRYING">(libs.sdk.src.destiny_sdk.imports.ImportBatchStatus attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.validators.EnhancementResultValidator.robot_error">robot_error (app.domain.references.models.validators.EnhancementResultValidator attribute)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequest.robot_id">robot_id (app.domain.references.models.models.EnhancementRequest attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.RobotAutomation.robot_id">(app.domain.references.models.models.RobotAutomation attribute)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.RobotAutomationPercolationResult.robot_id">(app.domain.references.models.models.RobotAutomationPercolationResult attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestIn.robot_id">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestIn attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead.robot_id">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotAutomation.robot_id">(libs.sdk.src.destiny_sdk.robots.RobotAutomation attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotAutomationIn.robot_id">(libs.sdk.src.destiny_sdk.robots.RobotAutomationIn attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.Enhancement.robot_version">robot_version (app.domain.references.models.models.Enhancement attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Enhancement.robot_version">(libs.sdk.src.destiny_sdk.enhancements.Enhancement attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.EnhancementFileInput.robot_version">(libs.sdk.src.destiny_sdk.enhancements.EnhancementFileInput attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/config.html#app.core.config.Settings.running_locally">running_locally (app.core.config.Settings property)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="S">S</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.BooleanAnnotation.scheme">scheme (libs.sdk.src.destiny_sdk.enhancements.BooleanAnnotation attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.ScoreAnnotation.scheme">(libs.sdk.src.destiny_sdk.enhancements.ScoreAnnotation attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.AnnotationType.SCORE">SCORE (libs.sdk.src.destiny_sdk.enhancements.AnnotationType attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.BooleanAnnotation.score">score (libs.sdk.src.destiny_sdk.enhancements.BooleanAnnotation attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.ScoreAnnotation.score">(libs.sdk.src.destiny_sdk.enhancements.ScoreAnnotation attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportRecord.search_string">search_string (app.domain.imports.models.models.ImportRecord attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordIn.search_string">(libs.sdk.src.destiny_sdk.imports.ImportRecordIn attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordRead.search_string">(libs.sdk.src.destiny_sdk.imports.ImportRecordRead attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportRecord.searched_at">searched_at (app.domain.imports.models.models.ImportRecord attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordIn.searched_at">(libs.sdk.src.destiny_sdk.imports.ImportRecordIn attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordRead.searched_at">(libs.sdk.src.destiny_sdk.imports.ImportRecordRead attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.client.Client.send_robot_result">send_robot_result() (libs.sdk.src.destiny_sdk.client.Client method)</a>
+</li>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.auth.HMACAuthorizationHeaders.signature">signature (libs.sdk.src.destiny_sdk.auth.HMACAuthorizationHeaders attribute)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.Enhancement.source">source (app.domain.references.models.models.Enhancement attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequest.source">(app.domain.references.models.models.EnhancementRequest attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Enhancement.source">(libs.sdk.src.destiny_sdk.enhancements.Enhancement attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.EnhancementFileInput.source">(libs.sdk.src.destiny_sdk.enhancements.EnhancementFileInput attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestIn.source">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestIn attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead.source">(libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportRecord.source_name">source_name (app.domain.imports.models.models.ImportRecord attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordIn.source_name">(libs.sdk.src.destiny_sdk.imports.ImportRecordIn attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordRead.source_name">(libs.sdk.src.destiny_sdk.imports.ImportRecordRead attribute)</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatchStatus.STARTED">STARTED (app.domain.imports.models.models.ImportBatchStatus attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportRecordStatus.STARTED">(app.domain.imports.models.models.ImportRecordStatus attribute)</a>
+</li>
+        <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportResultStatus.STARTED">(app.domain.imports.models.models.ImportResultStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchStatus.STARTED">(libs.sdk.src.destiny_sdk.imports.ImportBatchStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordStatus.STARTED">(libs.sdk.src.destiny_sdk.imports.ImportRecordStatus attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportResultStatus.STARTED">(libs.sdk.src.destiny_sdk.imports.ImportResultStatus attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatch.status">status (app.domain.imports.models.models.ImportBatch attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportRecord.status">(app.domain.imports.models.models.ImportRecord attribute)</a>
+</li>
+        <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportResult.status">(app.domain.imports.models.models.ImportResult attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchRead.status">(libs.sdk.src.destiny_sdk.imports.ImportBatchRead attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportRecordRead.status">(libs.sdk.src.destiny_sdk.imports.ImportRecordRead attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/models/imports.html#app.domain.imports.models.models.ImportBatch.storage_url">storage_url (app.domain.imports.models.models.ImportBatch attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchIn.storage_url">(libs.sdk.src.destiny_sdk.imports.ImportBatchIn attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchRead.storage_url">(libs.sdk.src.destiny_sdk.imports.ImportBatchRead attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.imports.ImportBatchSummary.storage_url">(libs.sdk.src.destiny_sdk.imports.ImportBatchSummary attribute)</a>
+</li>
+      </ul></li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.stream.FileStream.stream">stream() (app.persistence.blob.stream.FileStream method)</a>
+</li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.client.GenericBlobStorageClient.stream_file">stream_file() (app.persistence.blob.client.GenericBlobStorageClient method)</a>
+</li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.repository.BlobRepository.stream_file_from_blob_storage">stream_file_from_blob_storage() (app.persistence.blob.repository.BlobRepository method)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.DriverVersion.SUBMITTED_VERSION">SUBMITTED_VERSION (libs.sdk.src.destiny_sdk.enhancements.DriverVersion attribute)</a>
+</li>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.client.HMACSigningAuth.sync_auth_flow">sync_auth_flow() (libs.sdk.src.destiny_sdk.client.HMACSigningAuth method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="T">T</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.auth.HMACAuthorizationHeaders.timestamp">timestamp (libs.sdk.src.destiny_sdk.auth.HMACAuthorizationHeaders attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement.title">title (libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Enhancement.to_jsonl">to_jsonl() (libs.sdk.src.destiny_sdk.enhancements.Enhancement method)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.references.Reference.to_jsonl">(libs.sdk.src.destiny_sdk.references.Reference method)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.references.ReferenceFileInput.to_jsonl">(libs.sdk.src.destiny_sdk.references.ReferenceFileInput method)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.LinkedRobotError.to_jsonl">(libs.sdk.src.destiny_sdk.robots.LinkedRobotError method)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotResultValidationEntry.to_jsonl">(libs.sdk.src.destiny_sdk.robots.RobotResultValidationEntry method)</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.models.BlobStorageFile.to_sql">to_sql() (app.persistence.blob.models.BlobStorageFile method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="U">U</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.AbstractProcessType.UNINVERTED">UNINVERTED (libs.sdk.src.destiny_sdk.enhancements.AbstractProcessType attribute)</a>
+</li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.models.BlobSignedUrlType.UPLOAD">UPLOAD (app.persistence.blob.models.BlobSignedUrlType attribute)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.client.GenericBlobStorageClient.upload_file">upload_file() (app.persistence.blob.client.GenericBlobStorageClient method)</a>
+</li>
+      <li><a href="codebase/config.html#app.core.config.Settings.upload_file_chunk_size_override">upload_file_chunk_size_override (app.core.config.Settings attribute)</a>
+</li>
+      <li><a href="codebase/persistence/blob.html#app.persistence.blob.repository.BlobRepository.upload_file_to_blob_storage">upload_file_to_blob_storage() (app.persistence.blob.repository.BlobRepository method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="V">V</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.EnhancementRequest.validation_result_file">validation_result_file (app.domain.references.models.models.EnhancementRequest attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead.validation_result_url">validation_result_url (libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.BooleanAnnotation.value">value (libs.sdk.src.destiny_sdk.enhancements.BooleanAnnotation attribute)</a>
+</li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Location.version">version (libs.sdk.src.destiny_sdk.enhancements.Location attribute)</a>
+</li>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.Enhancement.visibility">visibility (app.domain.references.models.models.Enhancement attribute)</a>
+
+      <ul>
+        <li><a href="codebase/models/references.html#app.domain.references.models.models.Reference.visibility">(app.domain.references.models.models.Reference attribute)</a>
+</li>
+        <li><a href="codebase/models/references.html#app.domain.references.models.validators.ReferenceFileInputValidator.visibility">(app.domain.references.models.validators.ReferenceFileInputValidator attribute)</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="codebase/models/references.html#app.domain.references.models.models.Visibility">Visibility (class in app.domain.references.models.models)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.visibility.Visibility">(class in libs.sdk.src.destiny_sdk.visibility)</a>
+</li>
+      </ul></li>
+      <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Enhancement.visibility">visibility (libs.sdk.src.destiny_sdk.enhancements.Enhancement attribute)</a>
+
+      <ul>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.EnhancementFileInput.visibility">(libs.sdk.src.destiny_sdk.enhancements.EnhancementFileInput attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.references.Reference.visibility">(libs.sdk.src.destiny_sdk.references.Reference attribute)</a>
+</li>
+        <li><a href="sdk/schemas.html#libs.sdk.src.destiny_sdk.references.ReferenceFileInput.visibility">(libs.sdk.src.destiny_sdk.references.ReferenceFileInput attribute)</a>
+</li>
+      </ul></li>
+  </ul></td>
+</tr></table>
+
+<h2 id="W">W</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sdk/auth.html#libs.sdk.src.destiny_sdk.auth.AuthException.with_traceback">with_traceback() (libs.sdk.src.destiny_sdk.auth.AuthException method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, DESTINY Team.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.16.1.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
