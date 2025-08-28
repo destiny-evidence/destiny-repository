@@ -152,8 +152,8 @@ def generate_fake_token(
             "sub": "test_subject",
             "iat": datetime.datetime.now(datetime.UTC),
             "exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=10),
-            "aud": f"api://{fake_application_id}",
-            "iss": f"https://sts.windows.net/{fake_tenant_id}/",
+            "aud": fake_application_id,
+            "iss": f"https://login.microsoftonline.com/{fake_tenant_id}/v2.0",
         }
 
         payload.update(user_payload)
