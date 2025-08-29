@@ -403,6 +403,10 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
         "RobotEnhancementBatch", back_populates="pending_enhancements"
     )
 
+    __table_args__ = (
+        Index("ix_pending_enhancement_robot_id_status", "robot_id", "status"),
+    )
+
     @classmethod
     def from_domain(cls, domain_obj: DomainPendingEnhancement) -> Self:
         """Create a persistence model from a domain PendingEnhancement object."""
