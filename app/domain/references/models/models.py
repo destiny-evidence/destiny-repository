@@ -19,8 +19,9 @@ from pydantic import (
 from app.core.config import get_settings
 from app.core.exceptions import UnresolvableReferenceDuplicateError, WrongReferenceError
 from app.core.telemetry.logger import get_logger
-from app.domain.base import DomainBaseModel, SQLAttributeMixin
+from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
 from app.persistence.blob.models import BlobStorageFile
+from app.persistence.es.persistence import ESSearchResult
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -97,6 +98,59 @@ class Visibility(StrEnum):
     HIDDEN = auto()
 
 
+class IngestionProcess(StrEnum):
+    """The process used to create or modify a reference."""
+
+    IMPORT = auto()
+    ROBOT_ENHANCEMENT = auto()
+
+
+class DuplicateDetermination(StrEnum):
+    """
+    The determination of whether a reference is a duplicate.
+
+    **Allowed values**:
+    - `pending`: The duplicate status is still being determined.
+    - `nominated`: Candidate duplicates have been identified for the reference and
+        it is being further deduplicated.
+    - `duplicate`: The reference is a duplicate of another reference.
+    - `exact_duplicate`: The reference is an identical subset of another reference
+        and has been removed. This is rare and generally occurs in repeated imports.
+    - `not_duplicate`: The reference is not a duplicate of another reference.
+    - `blurred_fingerprint`: The reference does contain have enough information to
+        perform deduplication.
+    - `unresolved`: Automatic attempts to resolve the duplicate were unsuccessful.
+    - `decoupled`: The existing duplicate mapping has been changed/removed based on new
+        information and the references involved require special attention.
+    """
+
+    PENDING = auto()
+    NOMINATED = auto()
+    DUPLICATE = auto()
+    EXACT_DUPLICATE = auto()
+    CANONICAL = auto()
+    BLURRED_FINGERPRINT = auto()
+    UNRESOLVED = auto()
+    DECOUPLED = auto()
+
+    @classmethod
+    def get_terminal_states(cls) -> set["DuplicateDetermination"]:
+        """Return the set of terminal DuplicateDetermination states."""
+        return {
+            cls.DUPLICATE,
+            cls.EXACT_DUPLICATE,
+            cls.CANONICAL,
+            cls.UNRESOLVED,
+        }
+
+
+class DuplicateAction(StrEnum):
+    """What to do with a duplicate reference if detected."""
+
+    APPEND = auto()
+    DISCARD = auto()
+
+
 class Reference(
     DomainBaseModel,
     SQLAttributeMixin,
@@ -115,15 +169,34 @@ class Reference(
         default=None,
         description="A list of enhancements for the reference",
     )
+
+    # These fields are essentially projections summarising the latest
+    # reference_duplicate_decision
+    canonical: bool = Field(
+        default=False,
+        description="Whether this reference is canonical (not a duplicate of another). "
+        "This field is only set once deduplication has occurred. "
+        "If canonical=False and duplicate_of=None, the reference's duplicate status "
+        "has not yet been determined.",
+    )
     duplicate_of: uuid.UUID | None = Field(
         default=None,
-        description="The ID of the canonical reference that this reference duplicates",
+        description="The ID of the canonical reference that this reference duplicates. "
+        "This field is only set once deduplication has occurred. "
+        "If canonical=False and duplicate_of=None, the reference's duplicate status "
+        "has not yet been determined.",
     )
-    canonical_reference: "Reference | None" = Field(
+
+    @property
+    def deduplicated(self) -> bool:
+        """Whether this reference has been deduplicated."""
+        return self.canonical or bool(self.duplicate_of)
+
+    canonical_reference: Self | None = Field(
         default=None,
         description="The canonical reference that this reference is a duplicate of",
     )
-    duplicate_references: list["Reference"] | None = Field(
+    duplicate_references: list[Self] | None = Field(
         default=None,
         description="A list of references that this reference duplicates",
     )
@@ -467,3 +540,100 @@ class RobotAutomationPercolationResult(BaseModel):
 
     robot_id: UUID4
     reference_ids: set[UUID4]
+
+
+class CandidacyFingerprint(ProjectedBaseModel):
+    """
+    Model representing a simplified reference fingerprint.
+
+    This subsets Fingerprint and is used for selecting candidate pairings with
+    which to do more detailed de-duplication.
+    """
+
+    publication_year: int | None = Field(
+        default=None,
+        description="The publication year of the reference.",
+    )
+    authors: list[str] = Field(
+        default_factory=list, description="The authors of the reference."
+    )
+    title: str | None = Field(
+        default=None,
+        description="The title of the reference.",
+    )
+
+    @property
+    def searchable(self) -> bool:
+        """Whether the fingerprint has the minimum fields required for matching."""
+        return all((self.publication_year, self.authors, self.title))
+
+
+class CandidacyFingerprintSearchResult(BaseModel):
+    """Search result for candidate fingerprints."""
+
+    fingerprint: CandidacyFingerprint
+    candidate_duplicates: list[ESSearchResult]
+
+
+class Fingerprint(CandidacyFingerprint):
+    """
+    Model representing a reference fingerprint.
+
+    A fingerprint is a flattened representation of a reference, including all relevant
+    data for de-duplication. This data may or may not be pre-processed, eg
+    normalisation.
+    """
+
+    doi_identifier: str | None = Field(
+        default=None,
+        description="The DOI identifier of the reference.",
+    )
+    openalex_identifier: str | None = Field(
+        default=None,
+        description="The OpenAlex identifier of the reference.",
+    )
+    pubmed_identifier: int | None = Field(
+        default=None,
+        description="The PubMed identifier of the reference.",
+    )
+    other_identifiers: dict[str, str] = Field(
+        default_factory=dict,
+        description="Other identifiers for the reference.",
+    )
+    publisher: str | None = Field(
+        default=None,
+        description="The publisher of the reference.",
+    )
+    abstract: str | None = Field(
+        default=None,
+        description="The abstract of the reference.",
+    )
+
+
+class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
+    """Model representing a decision on whether a reference is a duplicate."""
+
+    reference_id: UUID4 = Field(description="The ID of the reference being evaluated.")
+    source: IngestionProcess = Field(
+        description="The process that triggered this decision.",
+    )
+    source_id: UUID4 | None = Field(
+        default=None,
+        description="The ID of the source that triggered this decision. Provides "
+        "provenance in combination with the ``source`` field.",
+    )
+    candidate_duplicate_ids: list[UUID4] = Field(
+        default_factory=list,
+        description="A list of candidate duplicate IDs for the reference.",
+    )
+    duplicate_determination: DuplicateDetermination = Field(
+        default=DuplicateDetermination.PENDING,
+        description="The duplicate status of the reference.",
+    )
+    fingerprint: Fingerprint = Field(
+        description="The fingerprint of the reference being evaluated."
+    )
+
+    reference: Reference | None = Field(
+        default=None, description="The reference being evaluated."
+    )
