@@ -295,7 +295,7 @@ async def get_robot_automations(
     summary="Request a batch of references to enhance.",
     responses={204: {"model": None}},
 )
-async def request_pending_enhancements(
+async def request_pending_enhancements_batch(
     robot_id: Annotated[
         uuid.UUID,
         Query(description="The ID of the robot."),
