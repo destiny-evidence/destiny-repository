@@ -389,3 +389,93 @@ class RobotAutomationPercolationResult(BaseModel):
 
     robot_id: UUID4
     reference_ids: set[UUID4]
+
+
+class RobotEnhancementBatchStatus(StrEnum):
+    """
+    The status of a robot enhancement batch.
+
+    **Allowed values**:
+    - `pending`: Batch is waiting to be processed by a robot.
+    - `processing`: Batch is being processed by a robot.
+    - `completed`: Batch has been processed by a robot.
+    - `failed`: Batch processing failed.
+    """
+
+    PENDING = auto()
+    PROCESSING = auto()
+    COMPLETED = auto()
+    FAILED = auto()
+
+
+class PendingEnhancementStatus(StrEnum):
+    """
+    The status of a pending enhancement.
+
+    **Allowed values**:
+    - `pending`: Enhancement is waiting to be processed.
+    - `processing`: Enhancement is being processed.
+    - `completed`: Enhancement has been processed successfully.
+    - `failed`: Enhancement processing has failed.
+    """
+
+    PENDING = auto()
+    PROCESSING = auto()
+    COMPLETED = auto()
+    FAILED = auto()
+
+
+class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
+    """A pending enhancement."""
+
+    reference_id: UUID4 = Field(
+        ...,
+        description="The ID of the reference to be enhanced.",
+    )
+    robot_id: UUID4 = Field(
+        ...,
+        description="The ID of the robot that will perform the enhancement.",
+    )
+    enhancement_request_id: UUID4 = Field(
+        ...,
+        description=(
+            "The ID of the batch enhancement request that this pending enhancement"
+            " belongs to."
+        ),
+    )
+    robot_enhancement_batch_id: UUID4 | None = Field(
+        default=None,
+        description=(
+            "The ID of the robot enhancement batch that this pending enhancement"
+            " belongs to."
+        ),
+    )
+    status: PendingEnhancementStatus = Field(
+        default=PendingEnhancementStatus.PENDING,
+        description="The status of the pending enhancement.",
+    )
+
+
+class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):
+    """A batch of references to be enhanced by a robot."""
+
+    robot_id: UUID4 = Field(
+        ...,
+        description="The ID of the robot that will perform the enhancement.",
+    )
+    status: RobotEnhancementBatchStatus = Field(
+        RobotEnhancementBatchStatus.PENDING,
+        description="The status of the robot enhancement batch.",
+    )
+    reference_file: BlobStorageFile | None = Field(
+        None,
+        description="The file containing the references to be enhanced.",
+    )
+    result_file: BlobStorageFile | None = Field(
+        None,
+        description="The file containing the enhancement results.",
+    )
+    pending_enhancements: list[PendingEnhancement] = Field(
+        [],
+        description="The pending enhancements in this batch.",
+    )
