@@ -294,6 +294,7 @@ class GenericAsyncSqlRepository(
         - records (list[T]): The records to be persisted.
 
         """
+        trace_attribute(Attributes.DB_RECORD_COUNT, len(records))
         persistence_objects = [
             self._persistence_cls.from_domain(record) for record in records
         ]
