@@ -21,8 +21,10 @@ from app.domain.references.repository import (
     EnhancementRequestSQLRepository,
     EnhancementSQLRepository,
     ExternalIdentifierSQLRepository,
+    PendingEnhancementSQLRepository,
     ReferenceSQLRepository,
     RobotAutomationSQLRepository,
+    RobotEnhancementBatchSQLRepository,
 )
 from app.domain.robots.repository import (
     RobotSQLRepository,
@@ -49,6 +51,8 @@ class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
     enhancement_requests: EnhancementRequestSQLRepository
     robots: RobotSQLRepository
     robot_automations: RobotAutomationSQLRepository
+    pending_enhancements: PendingEnhancementSQLRepository
+    robot_enhancement_batches: RobotEnhancementBatchSQLRepository
 
     def __init__(self, session: AsyncSession) -> None:
         """Initialize the unit of work with a session."""
@@ -66,6 +70,10 @@ class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
         self.enhancement_requests = EnhancementRequestSQLRepository(self.session)
         self.robots = RobotSQLRepository(self.session)
         self.robot_automations = RobotAutomationSQLRepository(self.session)
+        self.pending_enhancements = PendingEnhancementSQLRepository(self.session)
+        self.robot_enhancement_batches = RobotEnhancementBatchSQLRepository(
+            self.session
+        )
 
         return await super().__aenter__()
 

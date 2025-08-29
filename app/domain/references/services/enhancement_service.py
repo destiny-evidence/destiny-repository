@@ -13,6 +13,7 @@ from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
+    RobotEnhancementBatch,
     RobotResultValidationEntry,
 )
 from app.domain.references.models.validators import (
@@ -63,6 +64,44 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         """Update a enhancement request."""
         return await self.sql_uow.enhancement_requests.update_by_pk(
             pk=enhancement_request_id, request_status=status
+        )
+
+    async def build_robot_enhancement_batch(
+        self,
+        robot_enhancement_batch: RobotEnhancementBatch,
+        file_stream: FileStream,
+        blob_repository: BlobRepository,
+    ) -> RobotEnhancementBatch:
+        """
+        Create a robot enhancement batch.
+
+        Args:
+            robot_enhancement_batch (RobotEnhancementBatch): The robot enhancement
+                object.
+            file_stream (FileStream): The file stream of references.
+            blob_repository (BlobRepository): The blob repository.
+
+        Returns:
+            RobotEnhancementBatch: The created robot enhancement batch.
+
+        """
+        reference_file = await blob_repository.upload_file_to_blob_storage(
+            content=file_stream,
+            path="robot_enhancement_batch_reference_data",
+            filename=f"{robot_enhancement_batch.id}.jsonl",
+        )
+
+        result_file = BlobStorageFile(
+            location=settings.default_blob_location,
+            container=settings.default_blob_container,
+            path="robot_enhancement_batch_result_data",
+            filename=f"{robot_enhancement_batch.id}_robot.jsonl",
+        )
+
+        return await self.sql_uow.robot_enhancement_batches.update_by_pk(
+            pk=robot_enhancement_batch.id,
+            reference_file=reference_file.to_sql(),
+            result_file=result_file.to_sql(),
         )
 
     async def add_validation_result_file_to_enhancement_request(
