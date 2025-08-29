@@ -360,6 +360,7 @@ class GenericAsyncSqlRepository(
         self,
         order_by: str | None = None,
         limit: int | None = None,
+        preload: list[str] | None = None,
         **filters: object,
     ) -> list[GenericDomainModelType]:
         """
@@ -368,6 +369,7 @@ class GenericAsyncSqlRepository(
         Args:
         - limit (int | None): Maximum number of records to return.
         - order_by (str | None): Field name to order the results by.
+        - preload (list[str]): A list of attributes to preload using a join.
         - **filters: Field filters where key is field name and value is the
         filter value. Only fields that exist on the persistence model will be applied.
         None values are ignored.
@@ -376,7 +378,13 @@ class GenericAsyncSqlRepository(
         - list[GenericDomainModelType]: A list of domain models matching the filters.
 
         """
-        query = select(self._persistence_cls)
+        options = []
+        if preload:
+            for p in preload:
+                relationship = getattr(self._persistence_cls, p)
+                options.append(joinedload(relationship))
+
+        query = select(self._persistence_cls).options(*options)
 
         for field_name, value in filters.items():
             if value is not None and hasattr(self._persistence_cls, field_name):
@@ -390,4 +398,4 @@ class GenericAsyncSqlRepository(
             query = query.limit(limit)
 
         result = await self._session.execute(query)
-        return [record.to_domain() for record in result.scalars().all()]
+        return [record.to_domain(preload=preload) for record in result.scalars().all()]
