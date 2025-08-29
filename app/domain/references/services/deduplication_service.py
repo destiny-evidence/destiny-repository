@@ -7,7 +7,6 @@ from opentelemetry import trace
 from app.core.config import get_settings
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
-    CandidacyFingerprint,
     DuplicateDetermination,
     IngestionProcess,
     Reference,
@@ -29,7 +28,7 @@ settings = get_settings()
 tracer = trace.get_tracer(__name__)
 
 
-class DuplicateDetectionService(GenericService[ReferenceAntiCorruptionService]):
+class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
     """Service for managing reference duplicate detection."""
 
     def __init__(
@@ -79,11 +78,11 @@ class DuplicateDetectionService(GenericService[ReferenceAntiCorruptionService]):
         ):
             if not search_result:
                 reference_duplicate_decision.duplicate_determination = (
-                    DuplicateDetermination.NOT_DUPLICATE
+                    DuplicateDetermination.CANONICAL
                 )
                 self.sql_uow.reference_duplicate_decisions.update_by_pk(
                     reference_duplicate_decision.id,
-                    duplicate_determination=DuplicateDetermination.NOT_DUPLICATE,
+                    duplicate_determination=DuplicateDetermination.CANONICAL,
                 )
             else:
                 # Is there a search result score that would be enough for us to mark as

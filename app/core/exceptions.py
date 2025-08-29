@@ -488,3 +488,17 @@ class SQLPreloadError(DestinyRepositoryError):
         """
         self.detail = detail
         super().__init__(detail, *args)
+
+
+class SQLToDomainError(DestinyRepositoryError):
+    """An exception for when we fail to convert a SQL model to a domain model."""
+
+    def __init__(self, detail: str) -> None:
+        """
+        Initialize the SQLToDomainError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+
+        """
+        super().__init__(detail)

@@ -120,18 +120,18 @@ class DuplicateDetermination(StrEnum):
     - `blurred_fingerprint`: The reference does contain have enough information to
         perform deduplication.
     - `unresolved`: Automatic attempts to resolve the duplicate were unsuccessful.
-    - `wont_resolve`: All attempts to resolve the duplicate were unsuccessful. This is
-        also used when a new duplicate decision supercedes a pending/unresolved one.
+    - `decoupled`: The existing duplicate mapping has been changed/removed based on new
+        information and the references involved require special attention.
     """
 
     PENDING = auto()
     NOMINATED = auto()
     DUPLICATE = auto()
     EXACT_DUPLICATE = auto()
-    NOT_DUPLICATE = auto()
+    CANONICAL = auto()
     BLURRED_FINGERPRINT = auto()
     UNRESOLVED = auto()
-    WONT_RESOLVE = auto()
+    DECOUPLED = auto()
 
     @classmethod
     def get_terminal_states(cls) -> set["DuplicateDetermination"]:
@@ -139,9 +139,8 @@ class DuplicateDetermination(StrEnum):
         return {
             cls.DUPLICATE,
             cls.EXACT_DUPLICATE,
-            cls.NOT_DUPLICATE,
+            cls.CANONICAL,
             cls.UNRESOLVED,
-            cls.WONT_RESOLVE,
         }
 
 
