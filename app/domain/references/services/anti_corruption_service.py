@@ -13,6 +13,7 @@ from app.domain.references.models.models import (
     LinkedExternalIdentifier,
     Reference,
     RobotAutomation,
+    RobotEnhancementBatch,
     RobotResultValidationEntry,
 )
 from app.domain.service import GenericAntiCorruptionService
@@ -202,6 +203,29 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     enhancement_request.result_file, BlobSignedUrlType.UPLOAD
                 )
                 if enhancement_request.result_file
+                else None,
+            )
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
+
+    async def robot_enhancement_batch_to_sdk(
+        self,
+        robot_enhancement_batch: "RobotEnhancementBatch",
+    ) -> destiny_sdk.robots.RobotRequest:
+        """Convert the robot enhancement batch to the SDK model."""
+        try:
+            return destiny_sdk.robots.RobotRequest(
+                id=robot_enhancement_batch.id,
+                reference_storage_url=await self._blob_repository.get_signed_url(
+                    robot_enhancement_batch.reference_file,
+                    BlobSignedUrlType.DOWNLOAD,
+                )
+                if robot_enhancement_batch.reference_file
+                else None,
+                result_storage_url=await self._blob_repository.get_signed_url(
+                    robot_enhancement_batch.result_file, BlobSignedUrlType.UPLOAD
+                )
+                if robot_enhancement_batch.result_file
                 else None,
             )
         except ValidationError as exception:
