@@ -153,7 +153,7 @@ def generate_fake_token(
             "iat": datetime.datetime.now(datetime.UTC),
             "exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=10),
             "aud": fake_application_id,
-            "iss": f"https://login.microsoftonline.com/{fake_tenant_id}/v2.0",
+            "iss": f"https://{fake_tenant_id}.ciamlogin.com/{fake_tenant_id}/v2.0",
         }
 
         payload.update(user_payload)
@@ -174,10 +174,12 @@ def generate_fake_token(
 
 
 @pytest.fixture
-def stubbed_jwks_response(httpx_mock: HTTPXMock, fake_public_key: dict) -> None:
+def stubbed_jwks_response(
+    httpx_mock: HTTPXMock, fake_public_key: dict, fake_tenant_id: str
+) -> None:
     """Stub out the jwks respons to return the standard fake public key."""
     httpx_mock.add_response(
-        url=re.compile(r"https://login.microsoftonline.com/"),
+        url=re.compile(rf"https://{fake_tenant_id}\.ciamlogin\.com/"),
         json={"keys": [fake_public_key]},
     )
 
