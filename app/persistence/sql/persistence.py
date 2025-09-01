@@ -6,7 +6,7 @@ from abc import abstractmethod
 from enum import StrEnum, auto
 from typing import Generic, Self
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import UUID, DateTime
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import (
@@ -68,5 +68,13 @@ class RelationshipLoadType(StrEnum):
 class RelationshipInfo(BaseModel):
     """Optional custom information to store on SQL relationships."""
 
-    max_recursion_depth: int | None = None
+    max_recursion_depth: int | None = Field(
+        default=None,
+        description="Number of times to join a self-referential relationship.",
+    )
     load_type: RelationshipLoadType = RelationshipLoadType.JOINED
+    back_populates: str | None = Field(
+        default=None,
+        description="Back-populating relationships names. Used to avoid infinite "
+        "recursion when propagating preloads.",
+    )

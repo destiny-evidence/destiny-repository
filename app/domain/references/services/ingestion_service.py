@@ -124,7 +124,6 @@ Identifier(s) are already mapped on an existing reference:
         if delta_identifiers or delta_enhancements:
             # This reference contained new information, store it as the
             # leaf of the canonical tree
-            incoming_reference.duplicate_of = existing_reference.id
             incoming_reference.canonical_reference = existing_reference
             return incoming_reference
 

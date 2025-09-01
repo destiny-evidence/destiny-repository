@@ -14,6 +14,7 @@ from pydantic import (
     BaseModel,
     Field,
     TypeAdapter,
+    model_validator,
 )
 
 from app.core.config import get_settings
@@ -101,8 +102,8 @@ class Visibility(StrEnum):
 class IngestionProcess(StrEnum):
     """The process used to create or modify a reference."""
 
-    IMPORT = auto()
-    ROBOT_ENHANCEMENT = auto()
+    IMPORT_RESULT = auto()
+    PENDING_ENHANCEMENT = auto()
 
 
 class DuplicateDetermination(StrEnum):
@@ -153,6 +154,7 @@ class DuplicateAction(StrEnum):
 
 class Reference(
     DomainBaseModel,
+    ProjectedBaseModel,  # References can self-project to the same structure
     SQLAttributeMixin,
 ):
     """Core reference model with database attributes included."""
@@ -170,33 +172,18 @@ class Reference(
         description="A list of enhancements for the reference",
     )
 
-    # These fields are essentially projections summarising the latest
-    # reference_duplicate_decision
-    canonical: bool = Field(
-        default=False,
-        description="Whether this reference is canonical (not a duplicate of another). "
-        "This field is only set once deduplication has occurred. "
-        "If canonical=False and duplicate_of=None, the reference's duplicate status "
-        "has not yet been determined.",
-    )
-    duplicate_of: uuid.UUID | None = Field(
+    duplicate_decision: "ReferenceDuplicateDecision | None" = Field(
         default=None,
-        description="The ID of the canonical reference that this reference duplicates. "
-        "This field is only set once deduplication has occurred. "
-        "If canonical=False and duplicate_of=None, the reference's duplicate status "
-        "has not yet been determined.",
+        description="The current active duplicate decision for this reference. If None,"
+        " either duplicate_decision has not been preloaded or the duplicate status"
+        " is pending.",
     )
 
-    @property
-    def deduplicated(self) -> bool:
-        """Whether this reference has been deduplicated."""
-        return self.canonical or bool(self.duplicate_of)
-
-    canonical_reference: Self | None = Field(
+    canonical_reference: "Reference | None" = Field(
         default=None,
         description="The canonical reference that this reference is a duplicate of",
     )
-    duplicate_references: list[Self] | None = Field(
+    duplicate_references: list["Reference"] | None = Field(
         default=None,
         description="A list of references that this reference duplicates",
     )
@@ -607,6 +594,10 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
     """Model representing a decision on whether a reference is a duplicate."""
 
     reference_id: UUID4 = Field(description="The ID of the reference being evaluated.")
+    active_decision: bool = Field(
+        default=False,
+        description="Whether this is the active decision for the reference.",
+    )
     source: IngestionProcess = Field(
         description="The process that triggered this decision.",
     )
@@ -623,10 +614,30 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         default=DuplicateDetermination.PENDING,
         description="The duplicate status of the reference.",
     )
+    duplicate_of: UUID4 | None = Field(
+        default=None,
+        description="The ID of the canonical reference this reference duplicates.",
+    )
     fingerprint: Fingerprint = Field(
         description="The fingerprint of the reference being evaluated."
     )
 
-    reference: Reference | None = Field(
-        default=None, description="The reference being evaluated."
-    )
+    @model_validator(mode="after")
+    def check_duplicate_of_populated_iff_duplicate(self) -> Self:
+        """Assert that duplicate_of must exist if and only if decision is duplicate."""
+        if (
+            self.duplicate_of
+            is not None
+            == self.duplicate_determination
+            in (
+                DuplicateDetermination.DUPLICATE,
+                DuplicateDetermination.EXACT_DUPLICATE,
+            )
+        ):
+            msg = (
+                "duplicate_of must be populated if and only if duplicate_determination"
+                " is DUPLICATE or EXACT_DUPLICATE"
+            )
+            raise ValueError(msg)
+
+        return self

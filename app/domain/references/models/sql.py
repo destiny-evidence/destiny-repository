@@ -12,12 +12,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
 from sqlalchemy.exc import MissingGreenlet
-from sqlalchemy.ext.associationproxy import AssociationProxy, association_proxy
-from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.config import get_settings
-from app.core.exceptions import SQLPreloadError, SQLToDomainError
+from app.core.exceptions import SQLPreloadError
 from app.domain.references.models.models import (
     BatchEnhancementRequest as DomainBatchEnhancementRequest,
 )
@@ -77,41 +75,6 @@ class Reference(GenericSQLPersistence[DomainReference]):
         nullable=False,
     )
 
-    # These properties abstract the reference decisions away
-    duplicate_of: AssociationProxy[uuid.UUID | None] = association_proxy(
-        "duplicate_decision",
-        "duplicate_of",
-    )
-
-    @hybrid_property
-    def canonical(self) -> bool:
-        """
-        Return whether this reference is canonical based on its duplicate_decision.
-
-        A reference is canonical if it has an active decision with a determination
-        of NOT_DUPLICATE.
-        """
-        if self.duplicate_decision is None:
-            return False
-        return (
-            self.duplicate_decision.duplicate_determination
-            == DuplicateDetermination.CANONICAL
-        )
-
-    @hybrid_property
-    def canonical_reference(self) -> "Reference | None":
-        """Return the canonical reference for this reference, if it exists."""
-        if self.duplicate_decision is None:
-            return None
-        return self.duplicate_decision.canonical_reference
-
-    @hybrid_property
-    def duplicate_references(self) -> list["Reference"] | None:
-        """Return a list of duplicate references for this reference."""
-        if self.duplicate_decision is None:
-            return None
-        return self.duplicate_decision.duplicate_references
-
     identifiers: Mapped[list["ExternalIdentifier"]] = relationship(
         "ExternalIdentifier",
         back_populates="reference",
@@ -122,10 +85,42 @@ class Reference(GenericSQLPersistence[DomainReference]):
     )
     duplicate_decision: Mapped["ReferenceDuplicateDecision | None"] = relationship(
         "ReferenceDuplicateDecision",
-        back_populates="reference",
         primaryjoin="and_(Reference.id==ReferenceDuplicateDecision.reference_id, "
         "ReferenceDuplicateDecision.active_decision==True)",
         viewonly=True,
+    )
+
+    # When using a self-referential relationship, SQLAlchemy requires information
+    # about how far to take the recursion (As it needs to perform n+1 joins for n-depth
+    # searching, but doesn't know n).
+    # Also see:
+    # - https://docs.sqlalchemy.org/en/20/orm/self_referential.html#configuring-self-referential-eager-loading
+    canonical_reference: Mapped["Reference | None"] = relationship(
+        "Reference",
+        secondary="reference_duplicate_decision",
+        primaryjoin="and_(Reference.id==reference_duplicate_decision.c.reference_id, "
+        "reference_duplicate_decision.c.active_decision==True)",
+        secondaryjoin="Reference.id==reference_duplicate_decision.c.duplicate_of",
+        uselist=False,
+        viewonly=True,
+        info=RelationshipInfo(
+            max_recursion_depth=settings.max_reference_duplicate_depth - 1,
+            load_type=RelationshipLoadType.SELECTIN,
+            back_populates="duplicate_references",
+        ).model_dump(),
+    )
+    duplicate_references: Mapped[list["Reference"] | None] = relationship(
+        "Reference",
+        secondary="reference_duplicate_decision",
+        primaryjoin="Reference.id==reference_duplicate_decision.c.duplicate_of",
+        secondaryjoin="and_(Reference.id==reference_duplicate_decision.c.reference_id, "
+        "reference_duplicate_decision.c.active_decision==True)",
+        viewonly=True,
+        info=RelationshipInfo(
+            max_recursion_depth=settings.max_reference_duplicate_depth - 1,
+            load_type=RelationshipLoadType.SELECTIN,
+            back_populates="canonical_reference",
+        ).model_dump(),
     )
 
     @classmethod
@@ -142,10 +137,6 @@ class Reference(GenericSQLPersistence[DomainReference]):
                 Enhancement.from_domain(enhancement)
                 for enhancement in domain_obj.enhancements or []
             ],
-            canonical_reference=Reference.from_domain(domain_obj.canonical_reference)
-            if domain_obj.canonical_reference
-            else None,
-            # No cascading on duplicate references so don't populate from domain
         )
 
     def to_domain(self, preload: list[str] | None = None) -> DomainReference:
@@ -156,8 +147,6 @@ class Reference(GenericSQLPersistence[DomainReference]):
             return DomainReference(
                 id=self.id,
                 visibility=self.visibility,
-                canonical=self.canonical,
-                duplicate_of=self.duplicate_of,
                 identifiers=[identifier.to_domain() for identifier in self.identifiers]
                 if "identifiers" in (preload or [])
                 else None,
@@ -171,18 +160,23 @@ class Reference(GenericSQLPersistence[DomainReference]):
                 # preload will still return the tree on both sides but won't attempt to
                 # double back.
                 canonical_reference=self.canonical_reference.to_domain(
-                    preload=[p for p in preload or [] if p != "duplicate_references"]
+                    preload=[p for p in (preload or []) if p != "duplicate_references"]
                 )
                 if "canonical_reference" in (preload or []) and self.canonical_reference
                 else None,
                 duplicate_references=[
                     reference.to_domain(
-                        preload=[p for p in preload or [] if p != "canonical_reference"]
+                        preload=[
+                            p for p in (preload or []) if p != "canonical_reference"
+                        ]
                     )
                     for reference in self.duplicate_references
                 ]
                 if "duplicate_references" in (preload or [])
                 and self.duplicate_references
+                else None,
+                duplicate_decision=self.duplicate_decision.to_domain()
+                if "duplicate_decision" in (preload or []) and self.duplicate_decision
                 else None,
             )
         except MissingGreenlet as exc:
@@ -191,47 +185,6 @@ class Reference(GenericSQLPersistence[DomainReference]):
                 "a deeper reference duplicate depth than specified in settings."
             )
             raise SQLPreloadError(msg) from exc
-
-    def to_deduplicated_domain(
-        self, preload: list[str] | None = None
-    ) -> DomainReference:
-        """
-        Convert the persistence model into a deduplicated Domain Reference object.
-
-        This returns a single reference containing aggregated content from all duplicate
-        references.
-        """
-        if not self.canonical:
-            msg = "Reference must be canonical to get deduplicated view"
-            raise SQLToDomainError(msg)
-
-        if "duplicate_references" not in (preload or []):
-            msg = "duplicate_references must be preloaded to get deduplicated view"
-            raise SQLPreloadError(msg)
-
-        references = [self]
-        if self.duplicate_references:
-            references += self.duplicate_references
-
-        return DomainReference(
-            id=self.id,
-            visibility=self.visibility,
-            canonical=self.canonical,
-            identifiers=[
-                identifier.to_domain()
-                for reference in references
-                for identifier in reference.identifiers
-            ]
-            if "identifiers" in (preload or [])
-            else None,
-            enhancements=[
-                enhancement.to_domain()
-                for reference in references
-                for enhancement in reference.enhancements
-            ]
-            if "enhancements" in (preload or [])
-            else None,
-        )
 
 
 class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
@@ -585,6 +538,8 @@ class ReferenceDuplicateDecision(
         UUID, ForeignKey("reference.id"), nullable=False
     )
     active_decision: Mapped[bool] = mapped_column(nullable=False, default=True)
+    # NB we could consider making a polymorphic relationship on the below in the future
+    # https://docs.sqlalchemy.org/en/20/orm/inheritance.html#joined-table-inheritance
     source: Mapped[IngestionProcess] = mapped_column(
         ENUM(
             *[status.value for status in IngestionProcess],
@@ -609,55 +564,19 @@ class ReferenceDuplicateDecision(
     )
     fingerprint: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
-    reference: Mapped[Reference] = relationship(
-        "Reference", back_populates="duplicate_decision"
-    )
-
-    # When using a self-referential relationship, SQLAlchemy requires information
-    # about how far to take the recursion (As it needs to perform n+1 joins for n-depth
-    # searching, but doesn't know n).
-    # Also see:
-    # - https://docs.sqlalchemy.org/en/20/orm/self_referential.html#configuring-self-referential-eager-loading
-    # - ``Reference.merge()`` to understand the edge case in which duplicates chain
-    canonical_reference: Mapped["Reference | None"] = relationship(
-        "Reference",
-        foreign_keys=duplicate_of,
-        remote_side="Reference.id",
-        back_populates="duplicate_references",
-        info=RelationshipInfo(
-            max_recursion_depth=settings.max_reference_duplicate_depth - 1,
-            load_type=RelationshipLoadType.SELECTIN,
-        ).model_dump(),
-        viewonly=True,
-    )
-    duplicate_references: Mapped[list["Reference"]] = relationship(
-        "Reference",
-        foreign_keys=duplicate_of,
-        back_populates="canonical_reference",
-        info=RelationshipInfo(
-            max_recursion_depth=settings.max_reference_duplicate_depth - 1,
-            load_type=RelationshipLoadType.SELECTIN,
-        ).model_dump(),
-        viewonly=True,
-    )
-
     __table_args__ = (
         # Unique constraint to ensure only one active decision per reference
-        UniqueConstraint(
+        Index(
+            "uix_reference_one_active_decision_constraint",
             "reference_id",
             "active_decision",
-            name="uix_reference_one_active_decision_constraint",
+            unique=True,
             postgresql_where=active_decision.is_(True),
         ),
         # For getting all decisions for a reference
         Index(
             "ix_reference_duplicate_decision_reference_id",
             "reference_id",
-        ),
-        # For getting canonical references
-        Index(
-            "ix_reference_duplicate_decision_duplicate_of",
-            "duplicate_of",
         ),
     )
 
@@ -667,14 +586,18 @@ class ReferenceDuplicateDecision(
         return cls(
             id=domain_obj.id,
             reference_id=domain_obj.reference_id,
+            active_decision=domain_obj.active_decision,
             source=domain_obj.source.value,
             source_id=domain_obj.source_id,
+            candidate_duplicate_ids=domain_obj.candidate_duplicate_ids,
+            duplicate_of=domain_obj.duplicate_of,
             duplicate_determination=domain_obj.duplicate_determination,
             fingerprint=domain_obj.fingerprint.model_dump(mode="json"),
         )
 
     def to_domain(
-        self, preload: list[str] | None = None
+        self,
+        preload: list[str] | None = None,  # noqa: ARG002
     ) -> DomainReferenceDuplicateDecision:
         """Convert the persistence model into a Domain object."""
         return DomainReferenceDuplicateDecision(
@@ -684,7 +607,4 @@ class ReferenceDuplicateDecision(
             source_id=self.source_id,
             duplicate_determination=self.duplicate_determination,
             fingerprint=self.fingerprint,
-            reference=Reference.to_domain(self.reference, preload=preload)
-            if "reference" in (preload or [])
-            else None,
         )

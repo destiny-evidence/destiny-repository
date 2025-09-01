@@ -2,17 +2,29 @@
 
 import uuid
 
+import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.references.models.models import Enhancement, Reference, Visibility
+from app.core.exceptions import SQLIntegrityError
+from app.domain.references.models.models import (
+    DuplicateDetermination,
+    Enhancement,
+    Fingerprint,
+    Reference,
+    ReferenceDuplicateDecision,
+    Visibility,
+)
 from app.domain.references.models.sql import (
     Enhancement as SQLEnhancement,
 )
 from app.domain.references.models.sql import (
     Reference as SQLReference,
 )
-from app.domain.references.repository import ReferenceSQLRepository
+from app.domain.references.repository import (
+    ReferenceDuplicateDecisionSQLRepository,
+    ReferenceSQLRepository,
+)
 
 
 async def test_enhancement_interface(
@@ -71,83 +83,107 @@ async def test_enhancement_interface(
     assert enhancement == enhancement_in
 
 
-async def test_reference_merge_and_get_with_duplicates(session: AsyncSession):
+async def test_reference_get_with_duplicates(session: AsyncSession):
     """Test merging and getting references with duplicate relationships."""
     repo = ReferenceSQLRepository(session=session)
+    dup_repo = ReferenceDuplicateDecisionSQLRepository(session=session)
 
     # 1. Create references
     ref_a = Reference(id=uuid.uuid4(), visibility=Visibility.PUBLIC)
-    ref_b = Reference(
+    ref_b = Reference(id=uuid.uuid4(), visibility=Visibility.PUBLIC)
+    ref_c = Reference(id=uuid.uuid4(), visibility=Visibility.PUBLIC)
+    a_is_canonical = ReferenceDuplicateDecision(
         id=uuid.uuid4(),
-        visibility=Visibility.PUBLIC,
-        duplicate_of=ref_a.id,
-        canonical_reference=ref_a,
+        duplicate_determination=DuplicateDetermination.CANONICAL,
+        reference_id=ref_a.id,
+        active_decision=True,
+        source="import_result",
+        fingerprint=Fingerprint(),
     )
-    ref_c = Reference(
+    b_duplicates_a = ReferenceDuplicateDecision(
         id=uuid.uuid4(),
-        visibility=Visibility.PUBLIC,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        reference_id=ref_b.id,
+        active_decision=True,
+        source="import_result",
         duplicate_of=ref_a.id,
-        canonical_reference=ref_a,
+        fingerprint=Fingerprint(),
     )
-    ref_d = Reference(
+    c_duplicates_a = ReferenceDuplicateDecision(
         id=uuid.uuid4(),
-        visibility=Visibility.PUBLIC,
-        duplicate_of=ref_c.id,
-        canonical_reference=ref_c,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        reference_id=ref_c.id,
+        active_decision=True,
+        source="pending_enhancement",
+        duplicate_of=ref_a.id,
+        fingerprint=Fingerprint(),
     )
 
     # 2. Add references to the database
-    await repo.merge(ref_b)
-    await repo.merge(ref_d)
+    await repo.add(ref_a)
+    await repo.add(ref_b)
+    await repo.add(ref_c)
+    await dup_repo.add(a_is_canonical)
+    await dup_repo.add(b_duplicates_a)
+    await dup_repo.add(c_duplicates_a)
 
-    # 3. Test getting references and their relationships
-    preload = ["canonical_reference", "duplicate_references"]
+    await session.commit()
 
-    # Get D and verify its relationships
-    retrieved_d = await repo.get_by_pk(ref_d.id, preload=preload)
-    assert retrieved_d.duplicate_of == ref_c.id
-    assert retrieved_d.canonical_reference is not None
-    assert retrieved_d.canonical_reference.id == ref_c.id
-    assert not retrieved_d.duplicate_references
+    # 3. Test various gets
+    ref_a_w_dupes = await repo.get_by_pk(ref_a.id, preload=["duplicate_references"])
+    assert ref_a_w_dupes.duplicate_references
+    assert len(ref_a_w_dupes.duplicate_references) == 2
+    assert {r.id for r in ref_a_w_dupes.duplicate_references} == {ref_b.id, ref_c.id}
 
-    # Verify deep relationships
-    assert retrieved_d.canonical_reference.canonical_reference is not None
-    assert retrieved_d.canonical_reference.canonical_reference.id == ref_a.id
+    ref_b_w_canonical = await repo.get_by_pk(ref_b.id, preload=["canonical_reference"])
+    assert ref_b_w_canonical.canonical_reference
+    assert ref_b_w_canonical.canonical_reference.id == ref_a.id
 
-    # Test merging updates
-    # Merging B should update A and B
-    ref_b_updated = await repo.get_by_pk(ref_b.id, preload=["canonical_reference"])
-    ref_b_updated.visibility = Visibility.HIDDEN
-    assert ref_b_updated.canonical_reference
-    ref_b_updated.canonical_reference.visibility = Visibility.HIDDEN
-    await repo.merge(ref_b_updated)
-    retrieved_b_after_merge = await repo.get_by_pk(ref_b.id)
-    assert retrieved_b_after_merge.visibility == Visibility.HIDDEN
-    retrieved_a_after_merge = await repo.get_by_pk(ref_a.id)
-    assert retrieved_a_after_merge.visibility == Visibility.HIDDEN
+    ref_c_w_decision = await repo.get_by_pk(ref_c.id, preload=["duplicate_decision"])
+    assert ref_c_w_decision.duplicate_decision
+    assert ref_c_w_decision.duplicate_decision.id == c_duplicates_a.id
 
-    # Merging C should update A and C, but not D
-    ref_c_updated = await repo.get_by_pk(ref_c.id, preload=["canonical_reference"])
-    ref_c_updated.visibility = Visibility.RESTRICTED
-    assert ref_c_updated.canonical_reference
-    ref_c_updated.canonical_reference.visibility = Visibility.RESTRICTED
-    await repo.merge(ref_c_updated)
-    retrieved_c_after_merge = await repo.get_by_pk(ref_c.id)
-    assert retrieved_c_after_merge.visibility == Visibility.RESTRICTED
-    retrieved_a_after_c_merge = await repo.get_by_pk(ref_a.id)
-    assert retrieved_a_after_c_merge.visibility == Visibility.RESTRICTED
+    # In particular this tests we don't recurse infinitely between dup and canon
+    ref_a_w_all = await repo.get_by_pk(
+        ref_a.id,
+        preload=["duplicate_references", "canonical_reference", "duplicate_decision"],
+    )
+    assert ref_a_w_all.duplicate_references
+    assert ref_a_w_all.duplicate_references[0].canonical_reference is None
+    assert all(r.duplicate_decision for r in ref_a_w_all.duplicate_references)
 
-    # Merging D should update A, C, and D
-    ref_d_updated = await repo.get_by_pk(ref_d.id, preload=["canonical_reference"])
-    ref_d_updated.visibility = Visibility.HIDDEN
-    assert ref_d_updated.canonical_reference
-    ref_d_updated.canonical_reference.visibility = Visibility.HIDDEN
-    assert ref_d_updated.canonical_reference.canonical_reference
-    ref_d_updated.canonical_reference.canonical_reference.visibility = Visibility.HIDDEN
-    await repo.merge(ref_d_updated)
-    retrieved_d_after_merge = await repo.get_by_pk(ref_d.id)
-    assert retrieved_d_after_merge.visibility == Visibility.HIDDEN
-    retrieved_c_after_d_merge = await repo.get_by_pk(ref_c.id)
-    assert retrieved_c_after_d_merge.visibility == Visibility.HIDDEN
-    retrieved_a_after_d_merge = await repo.get_by_pk(ref_a.id)
-    assert retrieved_a_after_d_merge.visibility == Visibility.HIDDEN
+    # 4. Test with variants on duplicate decision(s)
+    with pytest.raises(SQLIntegrityError):
+        await dup_repo.add(a_is_canonical.model_copy(update={"id": uuid.uuid4()}))
+    await session.rollback()
+
+    await dup_repo.add(
+        a_is_canonical.model_copy(
+            update={
+                "id": uuid.uuid4(),
+                "active_decision": False,
+                "duplicate_of": ref_c.id,
+                "duplicate_determination": DuplicateDetermination.DUPLICATE,
+            }
+        )
+    )
+    dd = (
+        await repo.get_by_pk(ref_a.id, preload=["duplicate_decision"])
+    ).duplicate_decision
+    assert dd
+    assert dd.duplicate_determination == DuplicateDetermination.CANONICAL
+    await dup_repo.update_by_pk(b_duplicates_a.id, active_decision=False)
+    assert (
+        await repo.get_by_pk(ref_b.id, preload=["canonical_reference"])
+    ).canonical_reference is None
+    await dup_repo.update_by_pk(
+        b_duplicates_a.id,
+        active_decision=True,
+        duplicate_determination=DuplicateDetermination.UNRESOLVED,
+        duplicate_of=None,
+    )
+    assert (
+        await repo.get_by_pk(ref_b.id, preload=["canonical_reference"])
+    ).canonical_reference is None
+
+    await dup_repo.update_by_pk(c_duplicates_a.id, active_decision=False)

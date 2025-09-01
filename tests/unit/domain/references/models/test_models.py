@@ -359,7 +359,6 @@ class TestReferenceMerge:
         canonical_ref.identifiers = []
 
         base_reference.canonical_reference = canonical_ref
-        base_reference.duplicate_of = canonical_ref.id
 
         new_enhancements = [annotation]
         new_identifiers = [openalex_identifier]
@@ -395,7 +394,6 @@ class TestReferenceMerge:
         canonical_ref.identifiers = []
 
         base_reference.canonical_reference = canonical_ref
-        base_reference.duplicate_of = canonical_ref.id
 
         new_enhancements = [
             annotation.model_copy(update={"reference_id": base_reference.id})
@@ -456,13 +454,11 @@ class TestReferenceMerge:
             ref2.enhancements = []
             ref2.identifiers = []
             ref1.canonical_reference = ref2
-            ref1.duplicate_of = ref2.id
 
             ref3 = Reference(id=uuid.uuid4())
             ref3.enhancements = []
             ref3.identifiers = []
             ref2.canonical_reference = ref3
-            ref2.duplicate_of = ref3.id
 
             if expected_error:
                 # When we try to merge with ref1, the chain is too deep

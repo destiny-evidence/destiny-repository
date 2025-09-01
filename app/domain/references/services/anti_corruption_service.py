@@ -64,7 +64,6 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             return destiny_sdk.references.Reference(
                 id=reference.id,
                 visibility=reference.visibility,
-                duplicate_of=reference.duplicate_of,
                 identifiers=[
                     self.external_identifier_to_sdk(identifier).identifier
                     for identifier in reference.identifiers or []
