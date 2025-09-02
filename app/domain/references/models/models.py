@@ -621,7 +621,7 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         default=DuplicateDetermination.PENDING,
         description="The duplicate status of the reference.",
     )
-    duplicate_of: UUID4 | None = Field(
+    canonical_reference_id: UUID4 | None = Field(
         default=None,
         description="The ID of the canonical reference this reference duplicates.",
     )
@@ -630,10 +630,10 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
     )
 
     @model_validator(mode="after")
-    def check_duplicate_of_populated_iff_duplicate(self) -> Self:
-        """Assert that duplicate_of must exist if and only if decision is duplicate."""
+    def check_canonical_reference_id_populated_iff_duplicate(self) -> Self:
+        """Assert that canonical must exist if and only if decision is duplicate."""
         if (
-            self.duplicate_of
+            self.canonical_reference_id
             is not None
             == self.duplicate_determination
             in (
@@ -642,8 +642,8 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
             )
         ):
             msg = (
-                "duplicate_of must be populated if and only if duplicate_determination"
-                " is DUPLICATE or EXACT_DUPLICATE"
+                "canonical_reference_id must be populated if and only if "
+                "duplicate_determination is DUPLICATE or EXACT_DUPLICATE"
             )
             raise ValueError(msg)
 

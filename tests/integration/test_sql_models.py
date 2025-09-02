@@ -106,7 +106,7 @@ async def test_reference_get_with_duplicates(session: AsyncSession):
         reference_id=ref_b.id,
         active_decision=True,
         source="import_result",
-        duplicate_of=ref_a.id,
+        canonical_reference_id=ref_a.id,
         fingerprint=Fingerprint(),
     )
     c_duplicates_a = ReferenceDuplicateDecision(
@@ -115,7 +115,7 @@ async def test_reference_get_with_duplicates(session: AsyncSession):
         reference_id=ref_c.id,
         active_decision=True,
         source="pending_enhancement",
-        duplicate_of=ref_a.id,
+        canonical_reference_id=ref_a.id,
         fingerprint=Fingerprint(),
     )
 
@@ -162,7 +162,7 @@ async def test_reference_get_with_duplicates(session: AsyncSession):
             update={
                 "id": uuid.uuid4(),
                 "active_decision": False,
-                "duplicate_of": ref_c.id,
+                "canonical_reference_id": ref_c.id,
                 "duplicate_determination": DuplicateDetermination.DUPLICATE,
             }
         )
@@ -180,7 +180,7 @@ async def test_reference_get_with_duplicates(session: AsyncSession):
         b_duplicates_a.id,
         active_decision=True,
         duplicate_determination=DuplicateDetermination.UNRESOLVED,
-        duplicate_of=None,
+        canonical_reference_id=None,
     )
     assert (
         await repo.get_by_pk(ref_b.id, preload=["canonical_reference"])

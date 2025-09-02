@@ -29,12 +29,12 @@ def upgrade() -> None:
     sa.Column('source_id', sa.UUID(), nullable=True),
     sa.Column('candidate_duplicate_ids', postgresql.ARRAY(sa.UUID()), nullable=True),
     sa.Column('duplicate_determination', postgresql.ENUM('pending', 'nominated', 'duplicate', 'exact_duplicate', 'canonical', 'blurred_fingerprint', 'unresolved', 'decoupled', name='duplicate_determination'), nullable=False),
-    sa.Column('duplicate_of', sa.UUID(), nullable=True),
+    sa.Column('canonical_reference_id', sa.UUID(), nullable=True),
     sa.Column('fingerprint', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['duplicate_of'], ['reference.id'], ),
+    sa.ForeignKeyConstraint(['canonical_reference_id'], ['reference.id'], ),
     sa.ForeignKeyConstraint(['reference_id'], ['reference.id'], ),
     sa.PrimaryKeyConstraint('id')
     )

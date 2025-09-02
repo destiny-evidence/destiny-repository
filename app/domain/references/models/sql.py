@@ -100,7 +100,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
         secondary="reference_duplicate_decision",
         primaryjoin="and_(Reference.id==reference_duplicate_decision.c.reference_id, "
         "reference_duplicate_decision.c.active_decision==True)",
-        secondaryjoin="Reference.id==reference_duplicate_decision.c.duplicate_of",
+        secondaryjoin="Reference.id==reference_duplicate_decision.c.canonical_reference_id",
         uselist=False,
         viewonly=True,
         info=RelationshipInfo(
@@ -112,7 +112,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
     duplicate_references: Mapped[list["Reference"] | None] = relationship(
         "Reference",
         secondary="reference_duplicate_decision",
-        primaryjoin="Reference.id==reference_duplicate_decision.c.duplicate_of",
+        primaryjoin="Reference.id==reference_duplicate_decision.c.canonical_reference_id",
         secondaryjoin="and_(Reference.id==reference_duplicate_decision.c.reference_id, "
         "reference_duplicate_decision.c.active_decision==True)",
         viewonly=True,
@@ -142,8 +142,6 @@ class Reference(GenericSQLPersistence[DomainReference]):
     def to_domain(self, preload: list[str] | None = None) -> DomainReference:
         """Convert the persistence model into a Domain Reference object."""
         try:
-            # Retrieve canonical and duplicate_of from hybrid properties
-            # which are derived from duplicate_decision
             return DomainReference(
                 id=self.id,
                 visibility=self.visibility,
@@ -557,7 +555,7 @@ class ReferenceDuplicateDecision(
             name="duplicate_determination",
         )
     )
-    duplicate_of: Mapped[uuid.UUID | None] = mapped_column(
+    canonical_reference_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID,
         ForeignKey("reference.id"),
         nullable=True,
@@ -590,7 +588,7 @@ class ReferenceDuplicateDecision(
             source=domain_obj.source.value,
             source_id=domain_obj.source_id,
             candidate_duplicate_ids=domain_obj.candidate_duplicate_ids,
-            duplicate_of=domain_obj.duplicate_of,
+            canonical_reference_id=domain_obj.canonical_reference_id,
             duplicate_determination=domain_obj.duplicate_determination,
             fingerprint=domain_obj.fingerprint.model_dump(mode="json"),
         )
