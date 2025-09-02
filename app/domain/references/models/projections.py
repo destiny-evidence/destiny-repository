@@ -68,7 +68,7 @@ class CandidacyFingerprintProjection(GenericProjection[CandidacyFingerprint]):
     @classmethod
     def get_from_fingerprint(cls, fingerprint: Fingerprint) -> CandidacyFingerprint:
         """Get the subset candidate fingerprint from a fingerprint."""
-        return CandidacyFingerprint.model_validate(fingerprint, from_attributes=True)
+        return CandidacyFingerprint.model_validate(fingerprint.model_dump())
 
 
 class FingerprintProjection(GenericProjection[Fingerprint]):
@@ -78,8 +78,7 @@ class FingerprintProjection(GenericProjection[Fingerprint]):
     def get_from_reference(cls, reference: Reference) -> Fingerprint:
         """Get the fingerprint from a reference."""
         fingerprint = Fingerprint.model_validate(
-            CandidacyFingerprintProjection.get_from_reference(reference),
-            from_attributes=True,
+            CandidacyFingerprintProjection.get_from_reference(reference).model_dump()
         )
 
         for identifier in reference.identifiers or []:
