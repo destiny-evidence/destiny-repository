@@ -70,7 +70,7 @@ class ProjectedBaseModel(BaseModel):
     """
     Base model for all projected models to inherit from.
 
-    Projected models are models derived from a domain model. They duplicate or process
+    Projected models are models derived from a domain model. They derive or process
     data in helpful ways and may also be persisted.
     """
 

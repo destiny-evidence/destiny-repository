@@ -1,11 +1,12 @@
 """Repositories for references and associated models."""
 
+import math
 from abc import ABC
 from collections.abc import Sequence
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
-from elasticsearch.dsl import AsyncMultiSearch, AsyncSearch, Q, Response
+from elasticsearch.dsl import AsyncMultiSearch, AsyncSearch, Q
 from opentelemetry import trace
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -155,14 +156,15 @@ class ReferenceESRepository(
         NOT RIGOROUSLY TESTED. I threw this together as a proof of concept, this should
         be polished and evaluated before use.
         The proof of concept does:
-        - MUST: Fuzzy match on title with AND operator (all terms must be present)
-        - SHOULD: Phrase match on title with slop=2 (allows for word reordering)
-                AND partial match on authors list (requires 80% of authors to match)
+        - MUST: Fuzzy match on title (requires 50% of terms to match)
+        - SHOULD: partial match on authors list (requires 50% of authors to match)
         - FILTER: Publication year within ±1 year range (non-scoring)
         """
-        msearch = AsyncMultiSearch(using=self._client).doc_type(ReferenceDocument)
+        msearch = AsyncMultiSearch(using=self._client).doc_type(self._persistence_cls)
+
+        # First, build all the search objects without executing them
         for fingerprint in fingerprints:
-            msearch.add(
+            search = (
                 AsyncSearch()
                 .query(
                     Q(
@@ -174,25 +176,13 @@ class ReferenceESRepository(
                                     "query": fingerprint.title,
                                     "fuzziness": "AUTO",
                                     "boost": 2.0,
-                                    "operator": "and",
+                                    "operator": "or",
+                                    "minimum_should_match": "50%",
                                 },
                             )
                         ],
                         should=[
-                            Q(
-                                "match_phrase",
-                                title={
-                                    "query": fingerprint.title,
-                                    "slop": 2,
-                                    "boost": 1.5,
-                                },
-                            ),
-                            Q(
-                                "terms",
-                                authors=fingerprint.authors,
-                                boost=1.5,
-                                minimum_should_match="80%",
-                            ),
+                            Q("match", authors=author) for author in fingerprint.authors
                         ],
                         filter=[
                             Q(
@@ -205,25 +195,24 @@ class ReferenceESRepository(
                         ]
                         if fingerprint.publication_year
                         else [],
-                        minimum_should_match=1,
+                        minimum_should_match=math.floor(0.5 * len(fingerprint.authors)),
                     )
                 )
-                # Exclude unneeded data
                 .source(fields=False)
             )
+            msearch = msearch.add(search)
 
-        responses: list[Response] = await msearch.execute()
+        responses = await msearch.execute()
 
         return [
             CandidacyFingerprintSearchResult(
                 fingerprint=fingerprint,
                 candidate_duplicates=[
-                    ESSearchResult(id=hit["_id"], score=hit["_score"])
+                    ESSearchResult(id=hit.meta.id, score=hit.meta.score)
                     for hit in response.hits
                 ],
             )
             for fingerprint, response in zip(fingerprints, responses, strict=True)
-            if response.hits
         ]
 
 

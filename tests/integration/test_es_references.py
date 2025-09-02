@@ -6,10 +6,17 @@ from typing import Any
 
 import destiny_sdk
 import pytest
+from destiny_sdk.enhancements import AuthorPosition, Authorship
 from elasticsearch import AsyncElasticsearch
 
 from app.core.exceptions import ESNotFoundError
-from app.domain.references.models.models import Enhancement, Reference, RobotAutomation
+from app.domain.references.models.models import (
+    Enhancement,
+    EnhancementType,
+    Reference,
+    RobotAutomation,
+)
+from app.domain.references.models.projections import CandidacyFingerprintProjection
 from app.domain.references.repository import (
     ReferenceESRepository,
     RobotAutomationESRepository,
@@ -285,9 +292,9 @@ async def test_es_repository_cycle(
     es_reference_repository: ReferenceESRepository, reference: Reference
 ):
     """Test saving and getting a reference by primary key from Elasticsearch."""
-    bibliographic_enhancement: destiny_sdk.enhancements.BibliographicMetadataEnhancement = reference.enhancements[  # type: ignore[index]
+    bibliographic_enhancement: destiny_sdk.enhancements.BibliographicMetadataEnhancement = reference.enhancements[
         2
-    ].content
+    ].content  # type: ignore[index]
 
     await es_reference_repository.add(reference)
 
@@ -564,3 +571,95 @@ async def test_robot_automation_percolation(
         else:
             msg = f"Unexpected robot ID: {result.robot_id}"
             raise ValueError(msg)
+
+
+async def test_search_fingerprints(
+    es_reference_repository: ReferenceESRepository, reference: Reference
+):
+    """Test searching for candidate duplicate references by fingerprint."""
+    # Create two similar references that should match the fingerprint
+    matching_ref1 = reference.model_copy(update={"id": uuid.uuid4()})
+
+    # Similar reference with slight variations
+    matching_ref2 = reference.model_copy(
+        update={
+            "id": uuid.uuid4(),
+            "enhancements": [
+                enhancement.model_copy(
+                    update={
+                        "id": uuid.uuid4(),
+                        "reference_id": uuid.uuid4(),
+                        "content": (
+                            enhancement.content.model_copy(
+                                update={
+                                    "title": "Sample Reference Title with Whitespace",
+                                }
+                            )
+                            if enhancement.content.enhancement_type
+                            == EnhancementType.BIBLIOGRAPHIC
+                            else enhancement.content
+                        ),
+                    }
+                )
+                for enhancement in (reference.enhancements or [])
+            ],
+        }
+    )
+
+    # Create a completely different reference that should not match
+    non_matching_ref = reference.model_copy(
+        update={
+            "id": uuid.uuid4(),
+            "enhancements": [
+                enhancement.model_copy(
+                    update={
+                        "id": uuid.uuid4(),
+                        "reference_id": uuid.uuid4(),
+                        "content": (
+                            enhancement.content.model_copy(
+                                update={
+                                    "title": "Completely Different Paper Title",
+                                    "authorship": [
+                                        Authorship(
+                                            display_name="Different Author",
+                                            position=AuthorPosition.FIRST,
+                                        )
+                                    ],
+                                    "publication_year": 2020,
+                                }
+                            )
+                            if enhancement.content.enhancement_type
+                            == EnhancementType.BIBLIOGRAPHIC
+                            else enhancement.content
+                        ),
+                    }
+                )
+                for enhancement in (reference.enhancements or [])
+            ],
+        }
+    )
+
+    # Add all references to the repository
+    await es_reference_repository.add(matching_ref1)
+    await es_reference_repository.add(matching_ref2)
+    await es_reference_repository.add(non_matching_ref)
+
+    await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+        index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
+    )
+
+    searches = [
+        CandidacyFingerprintProjection.get_from_reference(matching_ref1),
+        CandidacyFingerprintProjection.get_from_reference(non_matching_ref),
+    ]
+    # Test the search_fingerprints method
+    results = await es_reference_repository.search_fingerprints(searches)
+
+    # Order is important, check it
+    assert [r.fingerprint for r in results] == searches
+
+    assert {r.id for r in results[0].candidate_duplicates} == {
+        matching_ref1.id,
+        matching_ref2.id,
+    }
+    assert {r.id for r in results[1].candidate_duplicates} == {non_matching_ref.id}
