@@ -25,7 +25,7 @@ def upgrade() -> None:
     op.create_table('reference_duplicate_decision',
     sa.Column('reference_id', sa.UUID(), nullable=False),
     sa.Column('active_decision', sa.Boolean(), nullable=False),
-    sa.Column('source', postgresql.ENUM('import_result', 'pending_enhancement', name='ingestion_process'), nullable=False),
+    sa.Column('source', postgresql.ENUM('import_result', 'enhancement', name='ingestion_process'), nullable=False),
     sa.Column('source_id', sa.UUID(), nullable=True),
     sa.Column('candidate_duplicate_ids', postgresql.ARRAY(sa.UUID()), nullable=True),
     sa.Column('duplicate_determination', postgresql.ENUM('pending', 'nominated', 'duplicate', 'exact_duplicate', 'canonical', 'blurred_fingerprint', 'unresolved', 'decoupled', name='duplicate_determination'), nullable=False),

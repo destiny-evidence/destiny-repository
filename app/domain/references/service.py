@@ -30,11 +30,13 @@ from app.domain.references.models.models import (
     ExternalIdentifier,
     ExternalIdentifierSearch,
     ExternalIdentifierType,
+    IngestionProcess,
     LinkedExternalIdentifier,
     Reference,
     RobotAutomation,
     RobotAutomationPercolationResult,
 )
+from app.domain.references.models.projections import FingerprintProjection
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -42,6 +44,7 @@ from app.domain.references.services.anti_corruption_service import (
 from app.domain.references.services.batch_enhancement_service import (
     BatchEnhancementService,
 )
+from app.domain.references.services.deduplication_service import DeduplicationService
 from app.domain.references.services.ingestion_service import (
     IngestionService,
 )
@@ -76,6 +79,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self._batch_enhancement_service = BatchEnhancementService(
             anti_corruption_service, sql_uow
         )
+        if not es_uow:
+            msg = "Elasticsearch unit of work is required."
+            raise RuntimeError(msg)
+        self._deduplication_service = DeduplicationService(
+            anti_corruption_service, sql_uow, es_uow
+        )
 
     @sql_unit_of_work
     async def get_reference(self, reference_id: UUID4) -> Reference:
@@ -104,14 +113,29 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 raise InvalidParentEnhancementError(detail) from e
 
         reference = await self.sql_uow.references.get_by_pk(
-            reference_id, preload=["enhancements", "identifiers"]
+            reference_id, preload=["enhancements", "duplicate_decision"]
         )
-        _, added_enhancement = reference.merge(
-            identifiers=[], enhancements=[enhancement], propagate=False
-        )
-        if added_enhancement:
-            await self.sql_uow.references.merge(reference)
-        return added_enhancement[0]
+        for existing_enhancement in reference.enhancements or []:
+            if existing_enhancement.hash_data() == enhancement.hash_data():
+                # This enhancement already exists exactly on this reference, no need to
+                # add it redundantly.
+                return None
+
+        reference.enhancements = [*(reference.enhancements or []), *[enhancement]]
+        reference = await self.sql_uow.references.merge(reference)
+        self.es_uow.references.add(reference)
+        if (
+            not reference.duplicate_decision
+            or reference.duplicate_decision.fingerprint
+            != FingerprintProjection.get_from_reference(reference)
+        ):
+            # Active fingerprint has changed, re-check duplicate status
+            await self._deduplication_service.dispatch_deduplication_for_reference(
+                reference,
+                source=IngestionProcess.ENHANCEMENT,
+                source_id=enhancement.id,
+            )
+        return enhancement
 
     @sql_unit_of_work
     async def add_enhancement(

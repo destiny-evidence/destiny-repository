@@ -8,7 +8,7 @@ from uuid import UUID
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import AsyncMultiSearch, AsyncSearch, Q
 from opentelemetry import trace
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -129,6 +129,44 @@ class ReferenceSQLRepository(
         return [
             db_reference.to_domain(preload=["enhancements", "identifiers"])
             for db_reference in db_references
+        ]
+
+    @trace_repository_method(tracer)
+    async def find_with_identifiers(
+        self,
+        identifiers: list[GenericExternalIdentifier],
+        preload: list[str] | None = None,
+    ) -> list[DomainReference]:
+        """Find references that possess ALL of the given identifiers."""
+        options = []
+        if preload:
+            for p in preload:
+                relationship = getattr(self._persistence_cls, p)
+                options.append(self._get_relationship_load(relationship, preload))
+
+        query = (
+            select(SQLReference)
+            .where(
+                *[
+                    SQLReference.identifiers.any(
+                        and_(
+                            SQLExternalIdentifier.identifier_type
+                            == identifier.identifier_type,
+                            SQLExternalIdentifier.identifier == identifier.identifier,
+                            SQLExternalIdentifier.other_identifier_name
+                            == identifier.other_identifier_name,
+                        )
+                    )
+                    for identifier in identifiers
+                ]
+            )
+            .options(*options)
+        )
+
+        result = await self._session.execute(query)
+        db_references = result.unique().scalars().all()
+        return [
+            db_reference.to_domain(preload=preload) for db_reference in db_references
         ]
 
 
@@ -286,42 +324,6 @@ class ExternalIdentifierSQLRepository(
             )
 
         return db_identifier.to_domain(preload=preload)
-
-    @trace_repository_method(tracer)
-    async def get_by_identifiers(
-        self,
-        identifiers: list[GenericExternalIdentifier],
-    ) -> list[DomainExternalIdentifier]:
-        """
-        Get multiple external identifiers that match the given identifiers.
-
-        :param identifiers: List of generic external identifiers to search for
-        :type identifiers: list[GenericExternalIdentifier]
-        :return: List of matching external identifiers found in the database
-        :rtype: list[DomainExternalIdentifier]
-        """
-        if not identifiers:
-            return []
-
-        # Build OR conditions for each identifier combination
-        conditions = []
-        for identifier in identifiers:
-            condition = (
-                SQLExternalIdentifier.identifier_type == identifier.identifier_type
-            ) & (SQLExternalIdentifier.identifier == identifier.identifier)
-            if identifier.identifier_type == ExternalIdentifierType.OTHER:
-                condition &= (
-                    SQLExternalIdentifier.other_identifier_name
-                    == identifier.other_identifier_name
-                )
-            conditions.append(condition)
-
-        query = select(SQLExternalIdentifier).where(or_(*conditions))
-
-        result = await self._session.execute(query)
-        db_identifiers = result.unique().scalars().all()
-
-        return [db_identifier.to_domain() for db_identifier in db_identifiers]
 
 
 class EnhancementRepositoryBase(

@@ -18,7 +18,6 @@ from pydantic import (
 )
 
 from app.core.config import get_settings
-from app.core.exceptions import UnresolvableReferenceDuplicateError, WrongReferenceError
 from app.core.telemetry.logger import get_logger
 from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
 from app.persistence.blob.models import BlobStorageFile
@@ -103,7 +102,7 @@ class IngestionProcess(StrEnum):
     """The process used to create or modify a reference."""
 
     IMPORT_RESULT = auto()
-    PENDING_ENHANCEMENT = auto()
+    ENHANCEMENT = auto()
 
 
 class DuplicateDetermination(StrEnum):
@@ -141,6 +140,7 @@ class DuplicateDetermination(StrEnum):
             cls.DUPLICATE,
             cls.EXACT_DUPLICATE,
             cls.CANONICAL,
+            cls.BLURRED_FINGERPRINT,
             cls.UNRESOLVED,
         }
 
@@ -188,128 +188,55 @@ class Reference(
         description="A list of references that this reference duplicates",
     )
 
-    def merge(
+    @property
+    def canonical(self) -> bool | None:
+        """
+        Check if this reference is the canonical version.
+
+        Returns None if no duplicate decision is present, either due to not being
+        preloaded or still pending.
+        """
+        if not self.duplicate_decision:
+            return None
+        return (
+            self.duplicate_decision.duplicate_determination
+            == DuplicateDetermination.CANONICAL
+        )
+
+    def is_superset(
         self,
-        identifiers: list["LinkedExternalIdentifier"],
-        enhancements: list["Enhancement"],
-        duplicate_depth: int = 2,
-        *,
-        propagate: bool,
-    ) -> tuple[list["LinkedExternalIdentifier"], list["Enhancement"]]:
+        reference: "Reference",
+    ) -> bool:
         """
-        Merge reference details into this reference.
+        Check if this Reference is a superset of the given Reference.
 
-        **Enhancements**
-        Appends any enhancements, unless the incoming enhancement is identical to an
-        existing enhancement.
+        This compares enhancements, identifiers and visibility, removing
+        contextual differences (eg database ids), to verify if the content
+        is identical.
 
-        **Identifiers**
-        Appends any identifiers, unless the incoming identifier is identical to an
-        existing identifier.
-
-        **Returns**
-        The merge operation is in-place and returns a changeset of appended identifiers
-        and enhancements.
-
-        Args:
-            - self (Reference): The existing reference.
-            - enhancements (list["Enhancement"]): The incoming enhancements.
-            - identifiers (list["LinkedExternalIdentifier"]): The incoming identifiers.
-            - duplicate_depth (int): Internal, tracks the current depth of duplication.
-                Only applicable when propagate=True. Starts at 2 as in a propagating
-                scenario the incoming identifiers and enhancements already exist, so the
-                first call updates the second reference in the chain.
-            - propagate (bool): If True, incoming enhancements and identifiers will be
-                copied before merging (updating the ID and creating a ``derived_from``
-                relationship) and propagated recursively to the canonical reference(s).
-                If False, the incoming enhancements and identifiers will be merged onto
-                the current reference without modification. In general we propagate on
-                imports, and not on new enhancements from robots.
-
-        Returns:
-            - tuple[list["LinkedExternalIdentifier"], list["Enhancement"]]: The
-            changeset of appended identifiers and enhancements.
-
+        :param reference: The reference to compare against.
+        :type reference: Reference
+        :return: True if the given Reference is a subset of this Reference, else False.
+        :rtype: bool
         """
-        if duplicate_depth > settings.max_reference_duplicate_depth:
-            msg = "Max duplicate depth reached."
-            raise UnresolvableReferenceDuplicateError(msg)
 
-        if not self.enhancements:
-            self.enhancements = []
-        if not self.identifiers:
-            self.identifiers = []
+        def _create_hash_set(
+            objs: list[Enhancement] | list[LinkedExternalIdentifier] | None,
+        ) -> set[int]:
+            return {obj.hash_data() for obj in (objs or [])}
 
-        existing_enhancements = {
-            enhancement.hash_data() for enhancement in self.enhancements
-        }
-        existing_identifiers = {
-            identifier.hash_data() for identifier in self.identifiers
-        }
-
-        if propagate:
-            delta_enhancements = [
-                incoming_enhancement.model_copy(
-                    update={
-                        "id": uuid.uuid4(),
-                        "reference_id": self.id,
-                        # NB with propagate=True we can assume that incoming_enhancement
-                        # is or will be persisted.
-                        "derived_from": [incoming_enhancement.id],
-                    }
-                )
-                for incoming_enhancement in enhancements
-                if incoming_enhancement.hash_data() not in existing_enhancements
-            ]
-            delta_identifiers = [
-                incoming_identifier.model_copy(
-                    update={"id": uuid.uuid4(), "reference_id": self.id}
-                )
-                for incoming_identifier in identifiers
-                if incoming_identifier.hash_data() not in existing_identifiers
-            ]
-        else:
-            # Verify reference IDs
-            delta_enhancements = [
-                incoming_enhancement
-                for incoming_enhancement in enhancements
-                if incoming_enhancement.hash_data() not in existing_enhancements
-            ]
-            delta_identifiers = [
-                incoming_identifier
-                for incoming_identifier in identifiers
-                if incoming_identifier.hash_data() not in existing_identifiers
-            ]
-            if not all(
-                obj.reference_id == self.id
-                for obj in delta_enhancements + delta_identifiers
-            ):
-                detail = f"Incoming data is for a different reference than {self.id}."
-                raise WrongReferenceError(detail)
-
-        self.enhancements += delta_enhancements
-        self.identifiers += delta_identifiers
-
-        # Edge case: our duplicate detection is fuzzy, allowing for small drift
-        # If we have a reference A, duplicated by B, and then import a new reference
-        # C, it's possible that C is detected as a duplicate of B but not A.
-        # In this case, we mark C.duplicate_of=B.id, but we do propagate all of C's
-        # enhancements up to A.
-        if (
-            self.canonical_reference
-            and propagate
-            and (delta_enhancements or delta_identifiers)
-        ):
-            # We know that A has at least the same references as B so we can work
-            # on the changeset only.
-            self.canonical_reference.merge(
-                delta_identifiers,
-                delta_enhancements,
-                duplicate_depth=duplicate_depth + 1,
-                propagate=propagate,
+        # Find anything in the reference that is not in self
+        return (
+            reference.visibility != self.visibility
+            or bool(
+                _create_hash_set(reference.enhancements)
+                - _create_hash_set(self.enhancements)
             )
-
-        return delta_identifiers, delta_enhancements
+            or bool(
+                _create_hash_set(reference.identifiers)
+                - _create_hash_set(self.identifiers)
+            )
+        )
 
 
 class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):

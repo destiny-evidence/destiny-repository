@@ -8,6 +8,8 @@ from app.core.config import get_settings
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     DuplicateDetermination,
+    ExternalIdentifierType,
+    GenericExternalIdentifier,
     IngestionProcess,
     Reference,
     ReferenceDuplicateDecision,
@@ -40,8 +42,66 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
 
-    async def register_reference(
-        self, reference: Reference, source: IngestionProcess, source_id: uuid.UUID
+    async def find_exact_duplicate(self, reference: Reference) -> Reference | None:
+        """
+        Find exact duplicate references for the given reference.
+
+        This is _not_ part of the regular deduplication flow but is used to circumvent
+        importing and processing redundant references.
+
+        Exact duplicates are defined in ``Reference.is_superset()``. A reference may
+        have more than one exact duplicate, this just returns the first.
+        """
+        if not reference.identifiers:
+            msg = "Reference must have identifiers to find duplicates."
+            raise ValueError(msg)
+
+        # We can't be sure of low cardinality on "other" identifiers, so make sure
+        # there's at least one defined identifier type.
+        if not any(
+            identifier.identifier.identifier_type != ExternalIdentifierType.OTHER
+            for identifier in reference.identifiers
+        ):
+            logger.warning(
+                "Reference did not have any non-other identifiers, exact duplicate "
+                "search skipped."
+            )
+            return None
+
+        # First, find candidates. These are the references with all identical
+        # identifiers to the given reference.
+        candidates = await self.sql_uow.references.find_with_identifiers(
+            [
+                GenericExternalIdentifier.from_specific(identifier.identifier)
+                for identifier in reference.identifiers
+            ],
+            preload=["identifiers", "enhancements", "duplicate_decision"],
+        )
+
+        # Now, find if any candidates are perfect supersets of the new reference.
+        # Try canonical references first to form a nicer tree, but it's
+        # not super important.
+        for candidate in sorted(
+            candidates,
+            key=lambda candidate: (
+                1
+                if candidate.canonical is True
+                else 0
+                if candidate.canonical is False
+                else -1
+            ),
+            reverse=True,
+        ):
+            if candidate.is_superset(reference):
+                return candidate
+        return None
+
+    async def dispatch_deduplication_for_reference(
+        self,
+        reference: Reference,
+        source: IngestionProcess,
+        source_id: uuid.UUID,
+        duplicate_determination: DuplicateDetermination | None = None,
     ) -> ReferenceDuplicateDecision:
         """Register a reference for pending deduplication detection."""
         fingerprint = FingerprintProjection.get_from_reference(reference)
@@ -50,11 +110,15 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             fingerprint=fingerprint,
             source=source,
             source_id=source_id,
-            # We can make preliminary determinations based on definite
-            # duplicates (DUPLICATE) or missing data (BLURRED_FINGERPRINT).
-            duplicate_determination=DuplicateDetermination.BLURRED_FINGERPRINT
-            if fingerprint.searchable
-            else DuplicateDetermination.PENDING,
+            duplicate_determination=(
+                duplicate_determination
+                if duplicate_determination
+                else (
+                    DuplicateDetermination.BLURRED_FINGERPRINT
+                    if not fingerprint.searchable
+                    else DuplicateDetermination.PENDING
+                )
+            ),
         )
         return await self.sql_uow.reference_duplicate_decisions.add(
             reference_duplicate_decision
