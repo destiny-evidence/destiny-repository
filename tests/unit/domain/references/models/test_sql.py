@@ -26,7 +26,6 @@ class DummyDomainReference:
         visibility,
         identifiers=None,
         enhancements=None,
-        duplicate_of=None,
         canonical_reference=None,
         duplicate_references=None,
     ):
@@ -34,7 +33,6 @@ class DummyDomainReference:
         self.visibility = visibility
         self.identifiers = identifiers
         self.enhancements = enhancements
-        self.duplicate_of = duplicate_of
         self.canonical_reference = canonical_reference
         self.duplicate_references = duplicate_references
 

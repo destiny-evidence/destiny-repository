@@ -3,7 +3,13 @@
 import uuid
 from typing import Any, Self
 
-from sqlalchemy import UUID, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import (
+    UUID,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
 from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -15,10 +21,12 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.models import (
     BatchEnhancementRequestStatus,
+    DuplicateDetermination,
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
+    IngestionProcess,
     Visibility,
 )
 from app.domain.references.models.models import (
@@ -32,6 +40,9 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.models import (
     Reference as DomainReference,
+)
+from app.domain.references.models.models import (
+    ReferenceDuplicateDecision as DomainReferenceDuplicateDecision,
 )
 from app.domain.references.models.models import (
     RobotAutomation as DomainRobotAutomation,
@@ -63,9 +74,6 @@ class Reference(GenericSQLPersistence[DomainReference]):
         ),
         nullable=False,
     )
-    duplicate_of: Mapped[uuid.UUID | None] = mapped_column(
-        UUID, ForeignKey("reference.id"), nullable=True
-    )
 
     identifiers: Mapped[list["ExternalIdentifier"]] = relationship(
         "ExternalIdentifier",
@@ -75,37 +83,45 @@ class Reference(GenericSQLPersistence[DomainReference]):
     enhancements: Mapped[list["Enhancement"]] = relationship(
         "Enhancement", back_populates="reference", cascade="all, delete, delete-orphan"
     )
+    duplicate_decision: Mapped["ReferenceDuplicateDecision | None"] = relationship(
+        "ReferenceDuplicateDecision",
+        primaryjoin="and_(Reference.id==ReferenceDuplicateDecision.reference_id, "
+        "ReferenceDuplicateDecision.active_decision==True)",
+        viewonly=True,
+    )
 
     # When using a self-referential relationship, SQLAlchemy requires information
     # about how far to take the recursion (As it needs to perform n+1 joins for n-depth
-    # searching, but doesn' know n).
+    # searching, but doesn't know n).
     # Also see:
     # - https://docs.sqlalchemy.org/en/20/orm/self_referential.html#configuring-self-referential-eager-loading
-    # - ``Reference.merge()`` to understand the edge case in which duplicates chain
     canonical_reference: Mapped["Reference | None"] = relationship(
         "Reference",
-        remote_side="Reference.id",
-        back_populates="duplicate_references",
-        # Cascading feels scary on a relationship like this so limiting to the minimal
-        # set of operations.
-        cascade="merge",
+        secondary="reference_duplicate_decision",
+        primaryjoin="and_(Reference.id==reference_duplicate_decision.c.reference_id, "
+        "reference_duplicate_decision.c.active_decision==True)",
+        secondaryjoin="Reference.id==reference_duplicate_decision.c.canonical_reference_id",
+        uselist=False,
+        viewonly=True,
         info=RelationshipInfo(
             max_recursion_depth=settings.max_reference_duplicate_depth - 1,
             load_type=RelationshipLoadType.SELECTIN,
+            back_populates="duplicate_references",
         ).model_dump(),
     )
-    # NB no cascading effects on duplicating references, handle each explicitly.
-    # We only update upwards.
-    duplicate_references: Mapped[list["Reference"]] = relationship(
+    duplicate_references: Mapped[list["Reference"] | None] = relationship(
         "Reference",
-        back_populates="canonical_reference",
+        secondary="reference_duplicate_decision",
+        primaryjoin="Reference.id==reference_duplicate_decision.c.canonical_reference_id",
+        secondaryjoin="and_(Reference.id==reference_duplicate_decision.c.reference_id, "
+        "reference_duplicate_decision.c.active_decision==True)",
+        viewonly=True,
         info=RelationshipInfo(
             max_recursion_depth=settings.max_reference_duplicate_depth - 1,
             load_type=RelationshipLoadType.SELECTIN,
+            back_populates="canonical_reference",
         ).model_dump(),
     )
-
-    __table_args__ = (Index("ix_reference_duplicate_of", "duplicate_of"),)
 
     @classmethod
     def from_domain(cls, domain_obj: DomainReference) -> Self:
@@ -113,7 +129,6 @@ class Reference(GenericSQLPersistence[DomainReference]):
         return cls(
             id=domain_obj.id,
             visibility=domain_obj.visibility,
-            duplicate_of=domain_obj.duplicate_of,
             identifiers=[
                 ExternalIdentifier.from_domain(identifier)
                 for identifier in domain_obj.identifiers or []
@@ -122,10 +137,6 @@ class Reference(GenericSQLPersistence[DomainReference]):
                 Enhancement.from_domain(enhancement)
                 for enhancement in domain_obj.enhancements or []
             ],
-            canonical_reference=Reference.from_domain(domain_obj.canonical_reference)
-            if domain_obj.canonical_reference
-            else None,
-            # No cascading on duplicate references so don't populate from domain
         )
 
     def to_domain(self, preload: list[str] | None = None) -> DomainReference:
@@ -134,7 +145,6 @@ class Reference(GenericSQLPersistence[DomainReference]):
             return DomainReference(
                 id=self.id,
                 visibility=self.visibility,
-                duplicate_of=self.duplicate_of,
                 identifiers=[identifier.to_domain() for identifier in self.identifiers]
                 if "identifiers" in (preload or [])
                 else None,
@@ -148,17 +158,23 @@ class Reference(GenericSQLPersistence[DomainReference]):
                 # preload will still return the tree on both sides but won't attempt to
                 # double back.
                 canonical_reference=self.canonical_reference.to_domain(
-                    preload=[p for p in preload or [] if p != "duplicate_references"]
+                    preload=[p for p in (preload or []) if p != "duplicate_references"]
                 )
                 if "canonical_reference" in (preload or []) and self.canonical_reference
                 else None,
                 duplicate_references=[
                     reference.to_domain(
-                        preload=[p for p in preload or [] if p != "canonical_reference"]
+                        preload=[
+                            p for p in (preload or []) if p != "canonical_reference"
+                        ]
                     )
                     for reference in self.duplicate_references
                 ]
                 if "duplicate_references" in (preload or [])
+                and self.duplicate_references
+                else None,
+                duplicate_decision=self.duplicate_decision.to_domain()
+                if "duplicate_decision" in (preload or []) and self.duplicate_decision
                 else None,
             )
         except MissingGreenlet as exc:
@@ -506,4 +522,87 @@ class RobotAutomation(GenericSQLPersistence[DomainRobotAutomation]):
             id=self.id,
             robot_id=self.robot_id,
             query=self.query,
+        )
+
+
+class ReferenceDuplicateDecision(
+    GenericSQLPersistence[DomainReferenceDuplicateDecision]
+):
+    """SQL Persistence model for a Reference Duplicate Decision."""
+
+    __tablename__ = "reference_duplicate_decision"
+
+    reference_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("reference.id"), nullable=False
+    )
+    active_decision: Mapped[bool] = mapped_column(nullable=False, default=True)
+    # NB we could consider making a polymorphic relationship on the below in the future
+    # https://docs.sqlalchemy.org/en/20/orm/inheritance.html#joined-table-inheritance
+    source: Mapped[IngestionProcess] = mapped_column(
+        ENUM(
+            *[status.value for status in IngestionProcess],
+            name="ingestion_process",
+        ),
+        nullable=False,
+    )
+    source_id: Mapped[uuid.UUID | None] = mapped_column(UUID, nullable=True)
+    candidate_duplicate_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID), nullable=True
+    )
+    duplicate_determination: Mapped[DuplicateDetermination] = mapped_column(
+        ENUM(
+            *[status.value for status in DuplicateDetermination],
+            name="duplicate_determination",
+        )
+    )
+    canonical_reference_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("reference.id"),
+        nullable=True,
+    )
+    fingerprint: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+    __table_args__ = (
+        # Unique constraint to ensure only one active decision per reference
+        Index(
+            "uix_reference_one_active_decision_constraint",
+            "reference_id",
+            "active_decision",
+            unique=True,
+            postgresql_where=active_decision.is_(True),
+        ),
+        # For getting all decisions for a reference
+        Index(
+            "ix_reference_duplicate_decision_reference_id",
+            "reference_id",
+        ),
+    )
+
+    @classmethod
+    def from_domain(cls, domain_obj: DomainReferenceDuplicateDecision) -> Self:
+        """Create a persistence model from a domain object."""
+        return cls(
+            id=domain_obj.id,
+            reference_id=domain_obj.reference_id,
+            active_decision=domain_obj.active_decision,
+            source=domain_obj.source.value,
+            source_id=domain_obj.source_id,
+            candidate_duplicate_ids=domain_obj.candidate_duplicate_ids,
+            canonical_reference_id=domain_obj.canonical_reference_id,
+            duplicate_determination=domain_obj.duplicate_determination,
+            fingerprint=domain_obj.fingerprint.model_dump(mode="json"),
+        )
+
+    def to_domain(
+        self,
+        preload: list[str] | None = None,  # noqa: ARG002
+    ) -> DomainReferenceDuplicateDecision:
+        """Convert the persistence model into a Domain object."""
+        return DomainReferenceDuplicateDecision(
+            id=self.id,
+            reference_id=self.reference_id,
+            source=self.source,
+            source_id=self.source_id,
+            duplicate_determination=self.duplicate_determination,
+            fingerprint=self.fingerprint,
         )

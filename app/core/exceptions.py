@@ -488,3 +488,17 @@ class SQLPreloadError(DestinyRepositoryError):
         """
         self.detail = detail
         super().__init__(detail, *args)
+
+
+class ProjectionError(DestinyRepositoryError):
+    """An exception for when we fail to project a domain model."""
+
+    def __init__(self, detail: str) -> None:
+        """
+        Initialize the ProjectionError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+
+        """
+        super().__init__(detail)

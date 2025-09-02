@@ -1,10 +1,12 @@
 """Repositories for references and associated models."""
 
+import math
 from abc import ABC
 from collections.abc import Sequence
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
+from elasticsearch.dsl import AsyncMultiSearch, AsyncSearch, Q
 from opentelemetry import trace
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,21 +22,26 @@ from app.domain.references.models.models import (
     BatchEnhancementRequest as DomainBatchEnhancementRequest,
 )
 from app.domain.references.models.models import (
+    CandidacyFingerprint,
+    CandidacyFingerprintSearchResult,
+    ExternalIdentifierType,
+    GenericExternalIdentifier,
+    RobotAutomationPercolationResult,
+)
+from app.domain.references.models.models import (
     Enhancement as DomainEnhancement,
 )
 from app.domain.references.models.models import (
     EnhancementRequest as DomainEnhancementRequest,
 )
 from app.domain.references.models.models import (
-    ExternalIdentifierType,
-    GenericExternalIdentifier,
-    RobotAutomationPercolationResult,
-)
-from app.domain.references.models.models import (
     LinkedExternalIdentifier as DomainExternalIdentifier,
 )
 from app.domain.references.models.models import (
     Reference as DomainReference,
+)
+from app.domain.references.models.models import (
+    ReferenceDuplicateDecision as DomainReferenceDuplicateDecision,
 )
 from app.domain.references.models.models import (
     RobotAutomation as DomainRobotAutomation,
@@ -46,7 +53,11 @@ from app.domain.references.models.sql import Enhancement as SQLEnhancement
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import ExternalIdentifier as SQLExternalIdentifier
 from app.domain.references.models.sql import Reference as SQLReference
+from app.domain.references.models.sql import (
+    ReferenceDuplicateDecision as SQLReferenceDuplicateDecision,
+)
 from app.domain.references.models.sql import RobotAutomation as SQLRobotAutomation
+from app.persistence.es.persistence import ESSearchResult
 from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
@@ -134,6 +145,75 @@ class ReferenceESRepository(
             DomainReference,
             ReferenceDocument,
         )
+
+    @trace_repository_method(tracer)
+    async def search_fingerprints(
+        self, fingerprints: list[CandidacyFingerprint]
+    ) -> list[CandidacyFingerprintSearchResult]:
+        """
+        Fuzzy match candidate fingerprints to existing references.
+
+        NOT RIGOROUSLY TESTED. I threw this together as a proof of concept, this should
+        be polished and evaluated before use.
+        The proof of concept does:
+        - MUST: Fuzzy match on title (requires 50% of terms to match)
+        - SHOULD: partial match on authors list (requires 50% of authors to match)
+        - FILTER: Publication year within ±1 year range (non-scoring)
+        """
+        msearch = AsyncMultiSearch(using=self._client).doc_type(self._persistence_cls)
+
+        # First, build all the search objects without executing them
+        for fingerprint in fingerprints:
+            search = (
+                AsyncSearch()
+                .query(
+                    Q(
+                        "bool",
+                        must=[
+                            Q(
+                                "match",
+                                title={
+                                    "query": fingerprint.title,
+                                    "fuzziness": "AUTO",
+                                    "boost": 2.0,
+                                    "operator": "or",
+                                    "minimum_should_match": "50%",
+                                },
+                            )
+                        ],
+                        should=[
+                            Q("match", authors=author) for author in fingerprint.authors
+                        ],
+                        filter=[
+                            Q(
+                                "range",
+                                publication_year={
+                                    "gte": fingerprint.publication_year - 1,
+                                    "lte": fingerprint.publication_year + 1,
+                                },
+                            )
+                        ]
+                        if fingerprint.publication_year
+                        else [],
+                        minimum_should_match=math.floor(0.5 * len(fingerprint.authors)),
+                    )
+                )
+                .source(fields=False)
+            )
+            msearch = msearch.add(search)
+
+        responses = await msearch.execute()
+
+        return [
+            CandidacyFingerprintSearchResult(
+                fingerprint=fingerprint,
+                candidate_duplicates=[
+                    ESSearchResult(id=hit.meta.id, score=hit.meta.score)
+                    for hit in response.hits
+                ],
+            )
+            for fingerprint, response in zip(fingerprints, responses, strict=True)
+        ]
 
 
 class ExternalIdentifierRepositoryBase(
@@ -400,3 +480,27 @@ class RobotAutomationESRepository(
             )
 
         return robot_automation_percolation_results
+
+
+class ReferenceDuplicateDecisionRepositoryBase(
+    GenericAsyncRepository[DomainReferenceDuplicateDecision, GenericPersistenceType],
+    ABC,
+):
+    """Abstract implementation of a repository for Reference Duplicate Decisions."""
+
+
+class ReferenceDuplicateDecisionSQLRepository(
+    GenericAsyncSqlRepository[
+        DomainReferenceDuplicateDecision, SQLReferenceDuplicateDecision
+    ],
+    ReferenceDuplicateDecisionRepositoryBase,
+):
+    """Concrete implementation of a repo for Reference Duplicate Decisions using SQL."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Initialize the repository with the database session."""
+        super().__init__(
+            session,
+            DomainReferenceDuplicateDecision,
+            SQLReferenceDuplicateDecision,
+        )
