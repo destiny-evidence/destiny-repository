@@ -192,7 +192,7 @@ class Reference(
         self,
         identifiers: list["LinkedExternalIdentifier"],
         enhancements: list["Enhancement"],
-        duplicate_depth: int = 1,
+        duplicate_depth: int = 2,
         *,
         propagate: bool,
     ) -> tuple[list["LinkedExternalIdentifier"], list["Enhancement"]]:
@@ -205,8 +205,7 @@ class Reference(
 
         **Identifiers**
         Appends any identifiers, unless the incoming identifier is identical to an
-        existing identifier. If any identifiers are of unique types and clash, then
-        raises a ``UnresolvableReferenceDuplicateError``.
+        existing identifier.
 
         **Returns**
         The merge operation is in-place and returns a changeset of appended identifiers
@@ -217,7 +216,9 @@ class Reference(
             - enhancements (list["Enhancement"]): The incoming enhancements.
             - identifiers (list["LinkedExternalIdentifier"]): The incoming identifiers.
             - duplicate_depth (int): Internal, tracks the current depth of duplication.
-                Only applicable when propagate=True.
+                Only applicable when propagate=True. Starts at 2 as in a propagating
+                scenario the incoming identifiers and enhancements already exist, so the
+                first call updates the second reference in the chain.
             - propagate (bool): If True, incoming enhancements and identifiers will be
                 copied before merging (updating the ID and creating a ``derived_from``
                 relationship) and propagated recursively to the canonical reference(s).
@@ -230,14 +231,6 @@ class Reference(
             changeset of appended identifiers and enhancements.
 
         """
-
-        def _hash_model(obj: Enhancement | LinkedExternalIdentifier) -> str:
-            """Hash enhancement or identifiers for contentwise comparison."""
-            return obj.model_dump_json(
-                exclude={"id", "reference_id", "reference"},
-                exclude_none=True,
-            )
-
         if duplicate_depth > settings.max_reference_duplicate_depth:
             msg = "Max duplicate depth reached."
             raise UnresolvableReferenceDuplicateError(msg)
@@ -248,10 +241,10 @@ class Reference(
             self.identifiers = []
 
         existing_enhancements = {
-            _hash_model(enhancement) for enhancement in self.enhancements
+            enhancement.hash_data() for enhancement in self.enhancements
         }
         existing_identifiers = {
-            _hash_model(identifier) for identifier in self.identifiers
+            identifier.hash_data() for identifier in self.identifiers
         }
 
         if propagate:
@@ -260,30 +253,32 @@ class Reference(
                     update={
                         "id": uuid.uuid4(),
                         "reference_id": self.id,
+                        # NB with propagate=True we can assume that incoming_enhancement
+                        # is or will be persisted.
                         "derived_from": [incoming_enhancement.id],
                     }
                 )
                 for incoming_enhancement in enhancements
-                if _hash_model(incoming_enhancement) not in existing_enhancements
+                if incoming_enhancement.hash_data() not in existing_enhancements
             ]
             delta_identifiers = [
                 incoming_identifier.model_copy(
                     update={"id": uuid.uuid4(), "reference_id": self.id}
                 )
                 for incoming_identifier in identifiers
-                if _hash_model(incoming_identifier) not in existing_identifiers
+                if incoming_identifier.hash_data() not in existing_identifiers
             ]
         else:
             # Verify reference IDs
             delta_enhancements = [
                 incoming_enhancement
                 for incoming_enhancement in enhancements
-                if _hash_model(incoming_enhancement) not in existing_enhancements
+                if incoming_enhancement.hash_data() not in existing_enhancements
             ]
             delta_identifiers = [
                 incoming_identifier
                 for incoming_identifier in identifiers
-                if _hash_model(incoming_identifier) not in existing_identifiers
+                if incoming_identifier.hash_data() not in existing_identifiers
             ]
             if not all(
                 obj.reference_id == self.id
@@ -330,6 +325,10 @@ class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
         default=None,
         description="The reference this identifier identifies.",
     )
+
+    def hash_data(self) -> int:
+        """Contentwise hash of the identifier, excluding relationships."""
+        return hash(self.identifier.model_dump_json(exclude_none=True))
 
 
 class GenericExternalIdentifier(DomainBaseModel):
@@ -398,6 +397,14 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
         None,
         description="The reference this enhancement is associated with.",
     )
+
+    def hash_data(self) -> int:
+        """Contentwise hash of the enhancement, excluding relationships."""
+        return hash(
+            self.model_dump_json(
+                exclude={"id", "reference_id", "reference"}, exclude_none=True
+            )
+        )
 
 
 class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
