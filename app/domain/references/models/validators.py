@@ -156,6 +156,10 @@ class ReferenceCreateResult(BaseModel):
         default=None,
         description="The ID of the created reference, if created",
     )
+    deduplication_required: bool = Field(
+        default=True,
+        description="If this reference will require deduplication once created.",
+    )
 
     @property
     def error_str(self) -> str | None:

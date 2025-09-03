@@ -97,7 +97,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 return candidate
         return None
 
-    async def dispatch_deduplication_for_reference(
+    async def register_duplicate_decision_for_reference(
         self,
         reference: Reference,
         # Used for passing down exact duplicates
@@ -121,16 +121,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             ),
             canonical_reference_id=canonical_reference_id,
         )
-        reference_duplicate_decision = (
-            await self.sql_uow.reference_duplicate_decisions.add(
-                reference_duplicate_decision
-            )
+        return await self.sql_uow.reference_duplicate_decisions.add(
+            reference_duplicate_decision
         )
-        await queue_task_with_trace(
-            "app.domain.references.tasks.process_reference_duplicate_decision",
-            reference_duplicate_decision.id,
-        )
-        return reference_duplicate_decision
 
     async def nominate_candidate_duplicates(
         self, reference_duplicate_decisions: list[ReferenceDuplicateDecision]

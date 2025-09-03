@@ -62,6 +62,8 @@ class ImportResultStatus(StrEnum):
     - `failed`: The reference failed to be created. See the result's `failure_details`
       field for more information.
     - `cancelled`: Processing was cancelled by calling the API.
+    - `retrying`: Processing has failed, but is being retried.
+    - `ignored`: The reference is an exact duplicate and has not been imported.
     """
 
     CREATED = auto()
@@ -70,6 +72,8 @@ class ImportResultStatus(StrEnum):
     CANCELLED = auto()
     PARTIALLY_FAILED = auto()
     FAILED = auto()
+    RETRYING = auto()
+    IGNORED = auto()
 
 
 class ImportRecord(DomainBaseModel, SQLAttributeMixin):
@@ -165,3 +169,5 @@ class ImportResult(DomainBaseModel, SQLAttributeMixin):
         default=None,
         description="Details of any failure that occurred during processing.",
     )
+    line_number: int = Field(description="The line number of the JSONL input.")
+    line_content: str = Field(description="The raw unvalidated JSONL input.")

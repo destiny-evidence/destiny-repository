@@ -65,6 +65,7 @@ class ImportResultStatus(StrEnum):
     - `failed`: The reference failed to be created. See the result's `failure_details`
       field for more information.
     - `cancelled`: Processing was cancelled by calling the API.
+    - `retrying`: Processing has failed, but is being retried.
     """
 
     CREATED = auto()
@@ -73,6 +74,7 @@ class ImportResultStatus(StrEnum):
     CANCELLED = auto()
     PARTIALLY_FAILED = auto()
     FAILED = auto()
+    RETRYING = auto()
 
 
 class _ImportRecordBase(BaseModel):

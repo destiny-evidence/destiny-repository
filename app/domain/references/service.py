@@ -31,7 +31,6 @@ from app.domain.references.models.models import (
     ExternalIdentifier,
     ExternalIdentifierSearch,
     ExternalIdentifierType,
-    IngestionProcess,
     LinkedExternalIdentifier,
     Reference,
     ReferenceDuplicateDecision,
@@ -130,8 +129,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             # Active fingerprint has changed, re-check duplicate status
             await self._deduplication_service.dispatch_deduplication_for_reference(
                 reference,
-                source=IngestionProcess.ENHANCEMENT,
-                source_id=enhancement.id,
             )
         return enhancement
 
@@ -261,21 +258,19 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
         if exact_duplicate_reference:
-            await self._deduplication_service.dispatch_deduplication_for_reference(
+            reference_create_result.deduplication_required = False
+            await self._deduplication_service.register_duplicate_decision_for_reference(
                 reference,
                 duplicate_determination=DuplicateDetermination.EXACT_DUPLICATE,
                 canonical_reference_id=exact_duplicate_reference.id,
             )
-            reference_create_result.errors.append(
-                f"Exact duplicate of {exact_duplicate_reference.id}, not imported."
-            )
             return reference_create_result
 
-        reference = await self.sql_uow.references.add(reference)
-        reference = await self.es_uow.references.add(reference)
-        await self._deduplication_service.dispatch_deduplication_for_reference(
+        await self._deduplication_service.register_duplicate_decision_for_reference(
             reference
         )
+        reference = await self.sql_uow.references.add(reference)
+        reference = await self.es_uow.references.add(reference)
         if reference_create_result.errors:
             # Partial failure, hydrate errors
             reference_create_result.errors = [

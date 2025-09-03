@@ -10,6 +10,7 @@ from sqlalchemy.exc import DBAPIError
 from app.core.exceptions import SQLIntegrityError
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
+from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.imports.models.models import (
     ImportBatch,
     ImportBatchStatus,
@@ -57,8 +58,13 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
 
     @sql_unit_of_work
     async def get_import_batch(self, import_batch_id: UUID4) -> ImportBatch:
-        """Get a single import by id."""
+        """Get a single import batch by id."""
         return await self.sql_uow.batches.get_by_pk(import_batch_id)
+
+    @sql_unit_of_work
+    async def get_import_result(self, import_result_id: UUID4) -> ImportResult:
+        """Get a single import result by id."""
+        return await self.sql_uow.results.get_by_pk(import_result_id)
 
     @sql_unit_of_work
     async def get_imported_references_from_batch(
@@ -97,6 +103,11 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         await self._get_import_record(batch.import_record_id)
         return await self.sql_uow.batches.add(batch)
 
+    @sql_unit_of_work
+    async def register_result(self, result: ImportResult) -> ImportResult:
+        """Register an import result, persisting it to the database."""
+        return await self.sql_uow.results.add(result)
+
     async def _update_import_batch_status(
         self, import_batch_id: UUID4, status: ImportBatchStatus
     ) -> ImportBatch:
@@ -110,23 +121,52 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         """Update the status of an import batch."""
         return await self._update_import_batch_status(import_batch_id, status=status)
 
-    @tracer.start_as_current_span("Import reference")
-    async def import_reference(
-        self,
-        import_batch_id: UUID4,
-        reference_str: str,
-        reference_service: ReferenceService,
-        entry_ref: int,
-    ) -> None:
-        """Import a reference and persist it to the database."""
-        trace_attribute(Attributes.FILE_LINE_NO, entry_ref)
-        import_result = await self.sql_uow.results.add(
-            ImportResult(
-                import_batch_id=import_batch_id, status=ImportResultStatus.STARTED
-            )
+    @sql_unit_of_work
+    async def update_import_result_status(
+        self, import_result_id: UUID4, status: ImportResultStatus
+    ) -> ImportResult:
+        """Update the status of an import result."""
+        return await self.sql_uow.results.update_by_pk(import_result_id, status=status)
+
+    async def process_batch(self, import_batch: ImportBatch) -> ImportBatch:
+        """Process an import batch."""
+        await self.update_import_batch_status(
+            import_batch.id, ImportBatchStatus.STARTED
         )
+
+        async with (
+            httpx.AsyncClient() as client,
+        ):
+            HTTPXClientInstrumentor().instrument_client(client)
+            async with client.stream("GET", str(import_batch.storage_url)) as response:
+                response.raise_for_status()
+                entry_ref = 1
+                async for line in response.aiter_lines():
+                    if line.strip():
+                        import_result = await self.register_result(
+                            ImportResult(
+                                import_batch_id=import_batch.id,
+                                status=ImportResultStatus.CREATED,
+                                line_content=line,
+                                line_number=entry_ref,
+                            )
+                        )
+                        await queue_task_with_trace(
+                            "app.domain.imports.tasks.process_import_result",
+                            import_result.id,
+                        )
+                    entry_ref += 1
+
+        return import_batch
+
+    @tracer.start_as_current_span("Import reference")
+    async def process_import_result(
+        self, import_result: ImportResult, reference_service: ReferenceService
+    ) -> ImportResult:
+        """Process an import result."""
+        trace_attribute(Attributes.FILE_LINE_NO, import_result.line_number)
         reference_result = await reference_service.ingest_reference(
-            reference_str, entry_ref
+            import_result.line_content, import_result.line_number
         )
 
         if not reference_result.reference:
@@ -151,110 +191,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                 reference_id=reference_result.reference_id,
             )
 
-    @sql_unit_of_work
-    async def process_import_batch_file(
-        self, import_batch: ImportBatch, reference_service: ReferenceService
-    ) -> ImportBatchStatus:
-        """
-        Process an import batch.
-
-        Actions:
-        - Stream the file from the storage URL.
-        - Parse each entry of the file via the Reference service.
-        - Persist the file via the Reference service.
-        """
-        try:
-            logger.info("Processing batch")
-            async with (
-                httpx.AsyncClient() as client,
-            ):
-                HTTPXClientInstrumentor().instrument_client(client)
-                async with client.stream(
-                    "GET", str(import_batch.storage_url)
-                ) as response:
-                    response.raise_for_status()
-                    entry_ref = 1
-                    async for line in response.aiter_lines():
-                        if line.strip():
-                            await self.import_reference(
-                                import_batch.id,
-                                line,
-                                reference_service,
-                                entry_ref,
-                            )
-                        entry_ref += 1
-        except SQLIntegrityError as exc:
-            # This handles the case where files loaded in parallel cause a conflict at
-            # the persistence layer.
-            logger.warning(
-                "Integrity error processing batch, likely caused by inconsistent state"
-                " being loaded in parallel. Will retry if retries remaining.",
-                exc_info=exc,
-            )
-            return ImportBatchStatus.RETRYING
-        except (DBAPIError, DeadlockDetectedError) as exc:
-            # This handles deadlocks that can occur when multiple processes try to
-            # update the same record at the same time.
-            logger.warning(
-                "Deadlock while processing batch. Will retry if retries remaining.",
-                exc_info=exc,
-            )
-            return ImportBatchStatus.RETRYING
-        except (httpx.NetworkError, httpx.RemoteProtocolError) as exc:
-            # This handles retryable network errors like connection refused,
-            # connection reset by peer, timeouts, etc.
-            logger.warning(
-                "Network error processing batch. Will retry if retries remaining.",
-                exc_info=exc,
-            )
-            return ImportBatchStatus.RETRYING
-        except Exception:
-            logger.exception("Failed to process batch")
-            return ImportBatchStatus.FAILED
-        else:
-            return ImportBatchStatus.INDEXING
-
-    async def dispatch_import_batch_callback(
-        self,
-        import_batch: ImportBatch,
-    ) -> None:
-        """Dispatch the callback for an import batch."""
-        if import_batch.callback_url:
-            try:
-                async with httpx.AsyncClient(
-                    transport=httpx.AsyncHTTPTransport(retries=2)
-                ) as client:
-                    # Refresh the import batch to get the latest status
-                    import_batch = await self.get_import_batch_with_results(
-                        import_batch.id
-                    )
-                    response = await client.post(
-                        str(import_batch.callback_url),
-                        json=(
-                            self._anti_corruption_service.import_batch_to_sdk_summary(
-                                import_batch
-                            )
-                        ).model_dump(mode="json"),
-                    )
-                    response.raise_for_status()
-            except Exception:
-                logger.exception("Failed to send callback")
-
-    async def process_batch(
-        self, import_batch: ImportBatch, reference_service: ReferenceService
-    ) -> ImportBatchStatus:
-        """Process an import batch."""
-        await self.update_import_batch_status(
-            import_batch.id, ImportBatchStatus.STARTED
-        )
-
-        # Persist to database
-        import_batch_status = await self.process_import_batch_file(
-            import_batch, reference_service
-        )
-        await self.update_import_batch_status(import_batch.id, import_batch_status)
-
-        return import_batch_status
+        return import_result
 
     @sql_unit_of_work
     async def add_batch_result(

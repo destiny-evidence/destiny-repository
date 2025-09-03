@@ -2,7 +2,7 @@
 
 import datetime
 import uuid
-from typing import Self
+from typing import Any, Self
 
 from pydantic import HttpUrl
 from sqlalchemy import (
@@ -18,12 +18,12 @@ from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.imports.models.models import (
+    ImportBatch as DomainImportBatch,
+)
+from app.domain.imports.models.models import (
     ImportBatchStatus,
     ImportRecordStatus,
     ImportResultStatus,
-)
-from app.domain.imports.models.models import (
-    ImportBatch as DomainImportBatch,
 )
 from app.domain.imports.models.models import (
     ImportRecord as DomainImportRecord,
@@ -187,6 +187,8 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
     )
     reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
     failure_details: Mapped[str | None] = mapped_column(String)
+    line_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    line_content: Mapped[str] = mapped_column(String, nullable=False)
 
     import_batch: Mapped[ImportBatch] = relationship(
         "ImportBatch", back_populates="import_results"
@@ -203,6 +205,8 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
             status=domain_obj.status,
             reference_id=domain_obj.reference_id,
             failure_details=domain_obj.failure_details,
+            line_number=domain_obj.line_number,
+            line_content=domain_obj.line_content,
         )
 
     def to_domain(self, preload: list[str] | None = None) -> DomainImportResult:
@@ -216,4 +220,6 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
             import_batch=self.import_batch.to_domain()
             if "import_batch" in (preload or [])
             else None,
+            line_number=self.line_number,
+            line_content=self.line_content,
         )
