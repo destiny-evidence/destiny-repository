@@ -261,7 +261,7 @@ class AzureJwtAuth(AuthMethod):
 
         """
         self.tenant_id = tenant_id
-        self.api_audience = f"api://{application_id}"
+        self.api_audience = application_id
         self.scope = scope
         self.role = role
         self.cache: TTLCache = TTLCache(maxsize=1, ttl=cache_ttl)
@@ -305,7 +305,7 @@ class AzureJwtAuth(AuthMethod):
                     rsa_key,
                     algorithms=["RS256"],
                     audience=self.api_audience,
-                    issuer=f"https://sts.windows.net/{self.tenant_id}/",
+                    issuer=f"https://{self.tenant_id}.ciamlogin.com/{self.tenant_id}/v2.0",
                 )
             except exceptions.ExpiredSignatureError as exc:
                 raise AuthError(
@@ -334,7 +334,7 @@ class AzureJwtAuth(AuthMethod):
     async def _get_microsoft_keys(self) -> Any:  # noqa: ANN401
         async with AsyncClient() as client:
             response = await client.get(
-                f"https://login.microsoftonline.com/{self.tenant_id}/discovery/v2.0/keys"
+                f"https://{self.tenant_id}.ciamlogin.com/{self.tenant_id}/discovery/v2.0/keys"
             )
             return response.json()
 
