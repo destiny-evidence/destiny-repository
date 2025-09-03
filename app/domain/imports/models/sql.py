@@ -18,7 +18,6 @@ from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.imports.models.models import (
-    CollisionStrategy,
     ImportBatchStatus,
     ImportRecordStatus,
     ImportResultStatus,
@@ -55,13 +54,6 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
         ),
         nullable=False,
     )
-    collision_strategy: Mapped[CollisionStrategy] = mapped_column(
-        ENUM(
-            *[strategy.value for strategy in CollisionStrategy],
-            name="collision_strategy",
-        ),
-        nullable=False,
-    )
     storage_url: Mapped[str] = mapped_column(String, nullable=False)
     callback_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
@@ -87,7 +79,6 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
         return cls(
             id=domain_obj.id,
             import_record_id=domain_obj.import_record_id,
-            collision_strategy=domain_obj.collision_strategy,
             status=domain_obj.status,
             storage_url=str(domain_obj.storage_url),
             callback_url=str(domain_obj.callback_url)
@@ -100,7 +91,6 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
         return DomainImportBatch(
             id=self.id,
             import_record_id=self.import_record_id,
-            collision_strategy=self.collision_strategy,
             status=self.status,
             storage_url=HttpUrl(self.storage_url),
             callback_url=HttpUrl(self.callback_url) if self.callback_url else None,

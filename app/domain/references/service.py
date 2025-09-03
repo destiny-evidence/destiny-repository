@@ -18,11 +18,12 @@ from app.core.exceptions import (
     RobotUnreachableError,
     SQLNotFoundError,
 )
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
-from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
     BatchEnhancementRequest,
     BatchEnhancementRequestStatus,
+    DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
@@ -33,6 +34,7 @@ from app.domain.references.models.models import (
     IngestionProcess,
     LinkedExternalIdentifier,
     Reference,
+    ReferenceDuplicateDecision,
     RobotAutomation,
     RobotAutomationPercolationResult,
 )
@@ -45,9 +47,6 @@ from app.domain.references.services.batch_enhancement_service import (
     BatchEnhancementService,
 )
 from app.domain.references.services.deduplication_service import DeduplicationService
-from app.domain.references.services.ingestion_service import (
-    IngestionService,
-)
 from app.domain.robots.models.models import Robot
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
@@ -75,7 +74,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
-        self._ingestion_service = IngestionService(anti_corruption_service, sql_uow)
         self._batch_enhancement_service = BatchEnhancementService(
             anti_corruption_service, sql_uow
         )
@@ -233,13 +231,59 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Get an enhancement request by request id."""
         return await self.sql_uow.enhancement_requests.get_by_pk(enhancement_request_id)
 
+    @es_unit_of_work
     async def ingest_reference(
-        self, record_str: str, entry_ref: int, collision_strategy: CollisionStrategy
-    ) -> ReferenceCreateResult | None:
+        self, record_str: str, entry_ref: int
+    ) -> ReferenceCreateResult:
         """Ingest a reference from a file."""
-        return await self._ingestion_service.ingest_reference(
-            record_str, entry_ref, collision_strategy
+        reference_create_result = await ReferenceCreateResult.from_raw(
+            record_str, entry_ref
         )
+
+        if not reference_create_result.reference:
+            # Parsing failed, return the error
+            return reference_create_result
+
+        reference = self._anti_corruption_service.reference_from_sdk_file_input(
+            reference_create_result.reference
+        )
+        reference_create_result.reference_id = reference.id
+        trace_attribute(Attributes.REFERENCE_ID, str(reference.id))
+        if reference_create_result.errors:
+            # Partial failure, hydrate errors
+            reference_create_result.errors = [
+                f"Entry {entry_ref}:",
+                *reference_create_result.errors,
+            ]
+
+        exact_duplicate_reference = (
+            await self._deduplication_service.find_exact_duplicate(reference)
+        )
+
+        if exact_duplicate_reference:
+            await self._deduplication_service.dispatch_deduplication_for_reference(
+                reference,
+                duplicate_determination=DuplicateDetermination.EXACT_DUPLICATE,
+                canonical_reference_id=exact_duplicate_reference.id,
+            )
+            reference_create_result.errors.append(
+                f"Exact duplicate of {exact_duplicate_reference.id}, not imported."
+            )
+            return reference_create_result
+
+        reference = await self.sql_uow.references.add(reference)
+        reference = await self.es_uow.references.add(reference)
+        await self._deduplication_service.dispatch_deduplication_for_reference(
+            reference
+        )
+        if reference_create_result.errors:
+            # Partial failure, hydrate errors
+            reference_create_result.errors = [
+                f"Entry {entry_ref}:",
+                *reference_create_result.errors,
+            ]
+
+        return reference_create_result
 
     async def _register_enhancement_request(
         self,
@@ -783,3 +827,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         # level exception handler, so we don't need to handle it here.
         automation = await self.sql_uow.robot_automations.merge(automation)
         return await self.save_robot_automation(automation)
+
+    @sql_unit_of_work
+    async def get_reference_duplicate_decision(
+        self, reference_duplicate_decision_id: UUID4
+    ) -> ReferenceDuplicateDecision:
+        """Get a single reference duplicate decision by id."""
+        return await self.sql_uow.reference_duplicate_decisions.get_by_pk(
+            reference_duplicate_decision_id
+        )

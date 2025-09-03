@@ -11,7 +11,6 @@ from app.core.exceptions import SQLIntegrityError
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.domain.imports.models.models import (
-    CollisionStrategy,
     ImportBatch,
     ImportBatchStatus,
     ImportRecord,
@@ -115,7 +114,6 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
     async def import_reference(
         self,
         import_batch_id: UUID4,
-        collision_strategy: CollisionStrategy,
         reference_str: str,
         reference_service: ReferenceService,
         entry_ref: int,
@@ -128,17 +126,8 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
             )
         )
         reference_result = await reference_service.ingest_reference(
-            reference_str, entry_ref, collision_strategy
+            reference_str, entry_ref
         )
-        if not reference_result:
-            if collision_strategy == CollisionStrategy.DISCARD:
-                # Reference was discarded
-                return
-            msg = """
-Reference was not created, discarded or failed.
-This should not happen.
-"""
-            raise RuntimeError(msg)
 
         if not reference_result.reference:
             # Reference was not created
@@ -189,7 +178,6 @@ This should not happen.
                         if line.strip():
                             await self.import_reference(
                                 import_batch.id,
-                                import_batch.collision_strategy,
                                 line,
                                 reference_service,
                                 entry_ref,

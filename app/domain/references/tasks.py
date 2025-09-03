@@ -217,6 +217,27 @@ async def validate_and_import_batch_enhancement_result(
 
 
 @broker.task
+async def process_reference_duplicate_decision(
+    reference_duplicate_decision_id: UUID4,
+) -> None:
+    """
+    Process a pending reference duplicate decision to a terminal state.
+
+    To be implemented.
+    """
+    sql_uow = await get_sql_unit_of_work()
+    es_uow = await get_es_unit_of_work()
+    blob_repository = await get_blob_repository()
+    reference_anti_corruption_service = ReferenceAntiCorruptionService(blob_repository)
+    reference_service = await get_reference_service(
+        reference_anti_corruption_service, sql_uow, es_uow
+    )
+    await reference_service.get_reference_duplicate_decision(
+        reference_duplicate_decision_id
+    )
+
+
+@broker.task
 async def repair_reference_index() -> None:
     """Async logic for rebuilding the reference index."""
     name_span("Repair reference index")

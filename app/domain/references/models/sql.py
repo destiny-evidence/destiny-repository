@@ -532,20 +532,12 @@ class ReferenceDuplicateDecision(
 
     __tablename__ = "reference_duplicate_decision"
 
-    reference_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("reference.id"), nullable=False
-    )
+    # NB no foreign keys as the reference itself may not be imported in the
+    # case of duplicate_determination=exact_duplicate.
+    reference_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
+    enhancement_id: Mapped[uuid.UUID | None] = mapped_column(UUID, nullable=True)
+
     active_decision: Mapped[bool] = mapped_column(nullable=False, default=True)
-    # NB we could consider making a polymorphic relationship on the below in the future
-    # https://docs.sqlalchemy.org/en/20/orm/inheritance.html#joined-table-inheritance
-    source: Mapped[IngestionProcess] = mapped_column(
-        ENUM(
-            *[status.value for status in IngestionProcess],
-            name="ingestion_process",
-        ),
-        nullable=False,
-    )
-    source_id: Mapped[uuid.UUID | None] = mapped_column(UUID, nullable=True)
     candidate_duplicate_ids: Mapped[list[uuid.UUID]] = mapped_column(
         ARRAY(UUID), nullable=True
     )
@@ -585,8 +577,6 @@ class ReferenceDuplicateDecision(
             id=domain_obj.id,
             reference_id=domain_obj.reference_id,
             active_decision=domain_obj.active_decision,
-            source=domain_obj.source.value,
-            source_id=domain_obj.source_id,
             candidate_duplicate_ids=domain_obj.candidate_duplicate_ids,
             canonical_reference_id=domain_obj.canonical_reference_id,
             duplicate_determination=domain_obj.duplicate_determination,
@@ -601,8 +591,6 @@ class ReferenceDuplicateDecision(
         return DomainReferenceDuplicateDecision(
             id=self.id,
             reference_id=self.reference_id,
-            source=self.source,
-            source_id=self.source_id,
             duplicate_determination=self.duplicate_determination,
             fingerprint=self.fingerprint,
         )

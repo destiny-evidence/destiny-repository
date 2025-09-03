@@ -49,24 +49,6 @@ class ImportBatchStatus(StrEnum):
     CANCELLED = auto()
 
 
-class CollisionStrategy(StrEnum):
-    """
-    The strategy to use when a duplicate reference is detected on import.
-
-    - ``discard``: Do nothing with the incoming reference.
-    - ``fail``: Do nothing with the incoming reference and mark it as failed. This
-      allows the importing process to "follow up" on the conflict.
-    - ``append``: Appends the identifiers and enhancements of the incoming reference
-      to the existing reference. Stores the incoming reference with
-      ``duplicate_of=existing_reference.id``. If any identifiers are of unique types
-      and clash, then follows the ``fail`` strategy.
-    """
-
-    DISCARD = auto()
-    FAIL = auto()
-    APPEND = auto()
-
-
 class ImportResultStatus(StrEnum):
     """
     Describes the status of an import result.
@@ -141,13 +123,6 @@ The number of references expected to be included in this import.
 class ImportBatch(DomainBaseModel, SQLAttributeMixin):
     """Core import batch model with database and internal attributes included."""
 
-    collision_strategy: CollisionStrategy = Field(
-        default=CollisionStrategy.FAIL,
-        description="""
-The strategy to use for each reference when an identifier collision occurs.
-Default is `fail`, which allows the importing process to "follow up" on the collision.
-        """,
-    )
     storage_url: HttpUrl = Field(
         description="""
 The URL at which the set of references for this batch are stored.
@@ -184,10 +159,7 @@ class ImportResult(DomainBaseModel, SQLAttributeMixin):
         default=None, description="The parent import batch."
     )
     reference_id: uuid.UUID | None = Field(
-        default=None,
-        description="The ID of the created reference. If None, with "
-        "collision strategy ``append``, and no failure details, this implies the "
-        "reference was an identical duplicate.",
+        default=None, description="The ID of the created reference."
     )
     failure_details: str | None = Field(
         default=None,

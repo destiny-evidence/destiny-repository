@@ -18,7 +18,6 @@ from app.core.exceptions import NotFoundError
 from app.domain.imports import routes as imports
 from app.domain.imports import tasks as import_tasks
 from app.domain.imports.models.models import (
-    CollisionStrategy,
     ImportBatch,
     ImportBatchStatus,
     ImportRecordStatus,
@@ -210,7 +209,6 @@ async def test_create_batch_for_import(
         SQLImportBatch(
             id=(b2 := uuid.uuid4()),
             import_record_id=valid_import.id,
-            collision_strategy=CollisionStrategy.FAIL,
             status=ImportBatchStatus.COMPLETED,
             storage_url="https://example.com/batch_data2.json",
         )
@@ -254,7 +252,6 @@ async def test_create_batch_for_import(
     assert mock_process.call_args[0][0] == ImportBatch(
         id=uuid.UUID(response.json()["id"]),
         import_record_id=valid_import.id,
-        collision_strategy=CollisionStrategy.FAIL,
         status=ImportBatchStatus.CREATED,
         storage_url="https://example.com/batch_data.json",
     )
@@ -276,14 +273,12 @@ async def test_get_batches(
     await session.commit()
     batch1 = SQLImportBatch(
         import_record_id=valid_import.id,
-        collision_strategy=CollisionStrategy.FAIL,
         status=ImportBatchStatus.CREATED,
         storage_url="https://some.url/file.json",
     )
     session.add(batch1)
     batch2 = SQLImportBatch(
         import_record_id=valid_import.id,
-        collision_strategy=CollisionStrategy.FAIL,
         status=ImportBatchStatus.CREATED,
         storage_url="https://files.storage/something.json",
     )
@@ -303,7 +298,6 @@ async def test_get_import_batch_summary(
     await session.commit()
     batch = SQLImportBatch(
         import_record_id=valid_import.id,
-        collision_strategy=CollisionStrategy.FAIL,
         status=ImportBatchStatus.CREATED,
         storage_url="https://some.url/file.json",
     )
@@ -355,7 +349,6 @@ async def test_get_import_results(
     await session.commit()
     batch = SQLImportBatch(
         import_record_id=valid_import.id,
-        collision_strategy=CollisionStrategy.FAIL,
         status=ImportBatchStatus.CREATED,
         storage_url="https://some.url/file.json",
     )

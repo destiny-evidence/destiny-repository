@@ -1,16 +1,17 @@
 """Service for managing reference duplicate detection."""
 
 import uuid
+from typing import Literal
 
 from opentelemetry import trace
 
 from app.core.config import get_settings
 from app.core.telemetry.logger import get_logger
+from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     DuplicateDetermination,
     ExternalIdentifierType,
     GenericExternalIdentifier,
-    IngestionProcess,
     Reference,
     ReferenceDuplicateDecision,
 )
@@ -99,17 +100,16 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
     async def dispatch_deduplication_for_reference(
         self,
         reference: Reference,
-        source: IngestionProcess,
-        source_id: uuid.UUID,
-        duplicate_determination: DuplicateDetermination | None = None,
+        # Used for passing down exact duplicates
+        duplicate_determination: Literal[DuplicateDetermination.EXACT_DUPLICATE]
+        | None = None,
+        canonical_reference_id: uuid.UUID | None = None,
     ) -> ReferenceDuplicateDecision:
         """Register a reference for pending deduplication detection."""
         fingerprint = FingerprintProjection.get_from_reference(reference)
         reference_duplicate_decision = ReferenceDuplicateDecision(
             reference_id=reference.id,
             fingerprint=fingerprint,
-            source=source,
-            source_id=source_id,
             duplicate_determination=(
                 duplicate_determination
                 if duplicate_determination
@@ -119,10 +119,18 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                     else DuplicateDetermination.PENDING
                 )
             ),
+            canonical_reference_id=canonical_reference_id,
         )
-        return await self.sql_uow.reference_duplicate_decisions.add(
-            reference_duplicate_decision
+        reference_duplicate_decision = (
+            await self.sql_uow.reference_duplicate_decisions.add(
+                reference_duplicate_decision
+            )
         )
+        await queue_task_with_trace(
+            "app.domain.references.tasks.process_reference_duplicate_decision",
+            reference_duplicate_decision.id,
+        )
+        return reference_duplicate_decision
 
     async def nominate_candidate_duplicates(
         self, reference_duplicate_decisions: list[ReferenceDuplicateDecision]

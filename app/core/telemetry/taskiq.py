@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextvars
+import importlib
 from typing import TYPE_CHECKING, Any
 
 from opentelemetry import context, propagate, trace
@@ -28,7 +29,7 @@ settings = get_settings()
 
 
 async def queue_task_with_trace(
-    task: AsyncTaskiqDecoratedTask,
+    task: AsyncTaskiqDecoratedTask | str,
     *args: object,
     **kwargs: object,
 ) -> None:
@@ -38,6 +39,18 @@ async def queue_task_with_trace(
     All tasks should be queued through this function to ensure
     that the OpenTelemetry trace context is automatically injected.
     """
+    if isinstance(task, str):
+        # Task can also be provided as an import path. This allows for services
+        # to queue tasks (not natively possible with tasks<>services importing
+        # each other circularly)
+        imported_task = importlib.import_module(task)
+
+        if not isinstance(imported_task, AsyncTaskiqDecoratedTask):
+            msg = "Task must be an instance of AsyncTaskiqDecoratedTask"
+            raise TypeError(msg)
+
+        task = imported_task
+
     logger.info(
         "Queueing task",
         task_name=task.task_name,
