@@ -75,7 +75,7 @@ def test_polling_pending_enhancements():
         # Now, poll the endpoint as the robot
         for _ in range(2):
             response = repo_client.post(
-                "/pending-enhancements/batch/",
+                "/robot-enhancement-batch/",
                 params={"robot_id": robot_id, "limit": 2},
             )
             assert response.status_code == 200
@@ -92,6 +92,6 @@ def test_polling_pending_enhancements():
 
         # Poll again, should get an empty response
         response = repo_client.post(
-            "/pending-enhancements/batch/", params={"robot_id": robot_id, "limit": 2}
+            "/robot-enhancement-batch/", params={"robot_id": robot_id, "limit": 2}
         )
         assert response.status_code == 204

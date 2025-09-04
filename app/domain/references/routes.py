@@ -179,9 +179,9 @@ enhancement_request_router = APIRouter(
         Depends(PayloadAttributeTracer("robot_id")),
     ],
 )
-pending_enhancements_router = APIRouter(
-    prefix="/pending-enhancements",
-    tags=["pending-enhancements"],
+robot_enhancement_batch_router = APIRouter(
+    prefix="/robot-enhancement-batch",
+    tags=["robot-enhancement-batch"],
     dependencies=[
         Depends(enhancement_request_hybrid_auth),
         Depends(PayloadAttributeTracer("robot_id")),
@@ -289,13 +289,13 @@ async def get_robot_automations(
 
 
 # TODO(danielribeiro): Consider authenticating robot_id matches auth client id  # noqa: E501, TD003
-@pending_enhancements_router.post(
-    "/batch/",
+@robot_enhancement_batch_router.post(
+    "/",
     response_model=destiny_sdk.robots.RobotRequest,
     summary="Request a batch of references to enhance.",
     responses={204: {"model": None}},
 )
-async def request_pending_enhancements_batch(
+async def request_robot_enhancement_batch(
     robot_id: Annotated[
         uuid.UUID,
         Query(description="The ID of the robot."),

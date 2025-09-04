@@ -634,7 +634,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         for pending_enhancement in pending_enhancements:
             await self.sql_uow.pending_enhancements.update_by_pk(
                 pending_enhancement.id,
-                status=PendingEnhancementStatus.PROCESSING,
+                status=PendingEnhancementStatus.ACCEPTED,
                 robot_enhancement_batch_id=robot_enhancement_batch.id,
             )
 

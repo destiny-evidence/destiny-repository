@@ -19,7 +19,6 @@ from app.domain.references.models.models import (
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
     PendingEnhancementStatus,
-    RobotEnhancementBatchStatus,
     Visibility,
 )
 from app.domain.references.models.models import (
@@ -447,11 +446,6 @@ class RobotEnhancementBatch(GenericSQLPersistence[DomainRobotEnhancementBatch]):
     robot_id: Mapped[uuid.UUID] = mapped_column(
         UUID, ForeignKey("robot.id"), nullable=False
     )
-    status: Mapped[RobotEnhancementBatchStatus] = mapped_column(
-        Enum(RobotEnhancementBatchStatus),
-        nullable=False,
-        default=RobotEnhancementBatchStatus.PENDING,
-    )
     reference_file: Mapped[str | None] = mapped_column(String, nullable=True)
     result_file: Mapped[str | None] = mapped_column(String, nullable=True)
 
@@ -467,7 +461,6 @@ class RobotEnhancementBatch(GenericSQLPersistence[DomainRobotEnhancementBatch]):
         return cls(
             id=domain_obj.id,
             robot_id=domain_obj.robot_id,
-            status=domain_obj.status,
             reference_file=domain_obj.reference_file.to_sql()
             if domain_obj.reference_file
             else None,
@@ -490,7 +483,6 @@ class RobotEnhancementBatch(GenericSQLPersistence[DomainRobotEnhancementBatch]):
         return DomainRobotEnhancementBatch(
             id=self.id,
             robot_id=self.robot_id,
-            status=self.status,
             reference_file=BlobStorageFile.from_sql(self.reference_file)
             if self.reference_file
             else None,

@@ -391,36 +391,19 @@ class RobotAutomationPercolationResult(BaseModel):
     reference_ids: set[UUID4]
 
 
-class RobotEnhancementBatchStatus(StrEnum):
-    """
-    The status of a robot enhancement batch.
-
-    **Allowed values**:
-    - `pending`: Batch is waiting to be processed by a robot.
-    - `processing`: Batch is being processed by a robot.
-    - `completed`: Batch has been processed by a robot.
-    - `failed`: Batch processing failed.
-    """
-
-    PENDING = auto()
-    PROCESSING = auto()
-    COMPLETED = auto()
-    FAILED = auto()
-
-
 class PendingEnhancementStatus(StrEnum):
     """
     The status of a pending enhancement.
 
     **Allowed values**:
     - `pending`: Enhancement is waiting to be processed.
-    - `processing`: Enhancement is being processed.
+    - `accepted`: Enhancement has been accepted for processing.
     - `completed`: Enhancement has been processed successfully.
     - `failed`: Enhancement processing has failed.
     """
 
     PENDING = auto()
-    PROCESSING = auto()
+    ACCEPTED = auto()
     COMPLETED = auto()
     FAILED = auto()
 
@@ -462,10 +445,6 @@ class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):
     robot_id: UUID4 = Field(
         ...,
         description="The ID of the robot that will perform the enhancement.",
-    )
-    status: RobotEnhancementBatchStatus = Field(
-        RobotEnhancementBatchStatus.PENDING,
-        description="The status of the robot enhancement batch.",
     )
     reference_file: BlobStorageFile | None = Field(
         None,
