@@ -139,7 +139,11 @@ async def import_reference(
         if remaining_retries:
             logger.info("Retrying import reference.")
             await queue_task_with_trace(
-                import_reference, import_result.id, remaining_retries - 1
+                import_reference,
+                import_result.id,
+                content,
+                line_number,
+                remaining_retries - 1,
             )
         else:
             logger.info("No remaining retries for import batch, marking as failed.")
@@ -162,7 +166,7 @@ async def __back_compat_batch_side_effect_adapter(
     Temporary adapter to dispatch batch-level side effects on import batches.
 
     To be refactored once robot polling is in place: removal of callbacks and
-    direct injection to pending_enhancement table over automatic enhancement
+    direct injection to pending_enhancement table over automatic batch enhancement
     requests.
 
     Could this run twice? Probably.
@@ -172,14 +176,27 @@ async def __back_compat_batch_side_effect_adapter(
     import_batch = await import_service.get_import_batch_with_results(import_batch_id)
     if not import_batch.import_results:
         return
+    has_success, has_failure = False, False
     for import_result in import_batch.import_results:
         # If any are non-terminal results, don't run side effects
-        if import_result.status not in (
+        if import_result.status in (
             ImportResultStatus.COMPLETED,
-            ImportResultStatus.FAILED,
             ImportResultStatus.PARTIALLY_FAILED,
         ):
+            has_success = True
+        elif import_result.status == ImportResultStatus.FAILED:
+            has_failure = True
+        else:
             return
+
+    await import_service.update_import_batch_status(
+        import_batch.id,
+        ImportBatchStatus.PARTIALLY_FAILED
+        if has_failure and has_success
+        else ImportBatchStatus.FAILED
+        if has_failure
+        else ImportBatchStatus.COMPLETED,
+    )
 
     with tracer.start_as_current_span(f"Import Batch Side Effects {import_batch.id}"):
         await import_service.dispatch_import_batch_callback(import_batch)

@@ -160,7 +160,6 @@ async def enqueue_batch(
     await queue_task_with_trace(
         distribute_import_batch,
         import_batch_id=import_batch.id,
-        remaining_retries=settings.import_batch_retry_count,
     )
     return import_anti_corruption_service.import_batch_to_sdk(import_batch)
 

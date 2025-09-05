@@ -83,13 +83,17 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_id, preload=["identifiers", "enhancements"]
         )
 
+    async def _merge_reference(self, reference: Reference) -> Reference:
+        """Persist a reference with an existing SQL & ES UOW."""
+        reference = await self.sql_uow.references.merge(reference)
+        await self.es_uow.references.add(reference)
+        return reference
+
     @sql_unit_of_work
     @es_unit_of_work
     async def merge_reference(self, reference: Reference) -> Reference:
         """Persist a reference."""
-        reference = await self.sql_uow.references.merge(reference)
-        await self.es_uow.references.add(reference)
-        return reference
+        return await self._merge_reference(reference)
 
     async def _add_enhancement(
         self, enhancement: Enhancement, *, enforce_enhancement_tree: bool = True
@@ -231,17 +235,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self, record_str: str, entry_ref: int, collision_strategy: CollisionStrategy
     ) -> ReferenceCreateResult | None:
         """Ingest a reference from a file."""
-        validation_result = (
-            await self._ingestion_service.validate_and_collide_reference(
-                record_str, entry_ref, collision_strategy
-            )
+        (
+            validation_result,
+            reference,
+        ) = await self._ingestion_service.validate_and_collide_reference(
+            record_str, entry_ref, collision_strategy
         )
-        if validation_result and validation_result.reference:
-            await self.merge_reference(
-                self._anti_corruption_service.reference_from_sdk_file_input(
-                    validation_result.reference, validation_result.reference_id
-                )
-            )
+        if reference:
+            await self._merge_reference(reference)
         return validation_result
 
     @sql_unit_of_work

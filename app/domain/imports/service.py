@@ -7,6 +7,7 @@ from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from pydantic import UUID4
 from sqlalchemy.exc import DBAPIError
 
+from app.core.config import get_settings
 from app.core.exceptions import SQLIntegrityError
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
@@ -29,6 +30,7 @@ from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+settings = get_settings()
 
 
 class ImportService(GenericService[ImportAntiCorruptionService]):
@@ -137,6 +139,10 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         line_number: int,
     ) -> ImportResult:
         """Import a reference and persist it to the database."""
+        await self.update_import_result(
+            import_result.id, status=ImportResultStatus.STARTED
+        )
+
         try:
             reference_result = await reference_service.ingest_reference(
                 content, line_number, collision_strategy
@@ -209,7 +215,6 @@ This should not happen.
 
         return import_result
 
-    @sql_unit_of_work
     async def dispatch_import_batch_callback(
         self,
         import_batch: ImportBatch,
@@ -258,10 +263,11 @@ This should not happen.
                             )
                         )
                         await queue_task_with_trace(
-                            ("app.domain.imports.tasks", "import_service"),
+                            ("app.domain.imports.tasks", "import_reference"),
+                            import_result.id,
                             line,
                             line_number,
-                            import_result.id,
+                            settings.import_reference_retry_count,
                         )
 
     @sql_unit_of_work
