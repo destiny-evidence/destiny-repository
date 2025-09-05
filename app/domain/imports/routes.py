@@ -24,7 +24,7 @@ from app.domain.imports.service import ImportService
 from app.domain.imports.services.anti_corruption_service import (
     ImportAntiCorruptionService,
 )
-from app.domain.imports.tasks import process_import_batch
+from app.domain.imports.tasks import distribute_import_batch
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
@@ -158,9 +158,8 @@ async def enqueue_batch(
         )
     )
     await queue_task_with_trace(
-        process_import_batch,
+        distribute_import_batch,
         import_batch_id=import_batch.id,
-        remaining_retries=settings.import_batch_retry_count,
     )
     return import_anti_corruption_service.import_batch_to_sdk(import_batch)
 

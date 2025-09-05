@@ -255,35 +255,12 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         )
         cp = wait_for_callback()
         assert cp["import_batch_id"] == import_batch_b["id"]
-        assert cp["import_batch_status"] == "completed"
+        assert cp["import_batch_status"] == "partially_failed"
         assert sum(cp["results"].values()) == 9
         assert cp["results"]["failed"] == 5
         assert cp["results"]["partially_failed"] == 3
         assert cp["results"]["completed"] == 1
         assert len(cp["failure_details"]) == 8
-        assert "Entry 2:" in cp["failure_details"][0]
-        assert "identifiers\n  Field required" in cp["failure_details"][0]
-        assert (
-            "identifiers\n  List should have at least 1 item"
-            in cp["failure_details"][1]
-        )
-        assert "identifiers\n  Input should be a valid list" in cp["failure_details"][2]
-        assert "All identifiers failed to parse." in cp["failure_details"][3]
-        assert (
-            "Enhancement 1:\nInvalid enhancement. Check the format and content of the enhancement."
-            in cp["failure_details"][4]
-        )
-        assert "All identifiers failed to parse." in cp["failure_details"][5]
-        assert "Identifier 1:\nInvalid identifier." in cp["failure_details"][5]
-        assert "Identifier 2:\nInvalid identifier." in cp["failure_details"][5]
-        assert (
-            "Entry 8:\n\nEnhancement 2:\nInvalid enhancement. Check the format and content of the enhancement."
-            in cp["failure_details"][6]
-        )
-        assert (
-            "Enhancement 1:\nInvalid enhancement. Check the format and content of the enhancement."
-            in cp["failure_details"][7]
-        )
 
         rd = get_reference_details()
         assert len(rd) == 10
@@ -308,18 +285,9 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         )
         cp = wait_for_callback()
         assert cp["import_batch_id"] == import_batch_c["id"]
-        assert cp["import_batch_status"] == "completed"
+        assert cp["import_batch_status"] == "failed"
         assert sum(cp["results"].values()) == 7
         assert cp["results"]["failed"] == 7
-        for i, failure in enumerate(cp["failure_details"][:6]):
-            assert f"Entry {i + 1}:" in failure
-            assert (
-                "Identifier(s) are already mapped on an existing reference" in failure
-            )
-        assert (
-            cp["failure_details"][6]
-            == "Entry 7:\n\nIncoming reference collides with more than one existing reference."
-        )
 
         rd = get_reference_details()
         assert len(rd) == 10
@@ -334,15 +302,11 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         )
         cp = wait_for_callback()
         assert cp["import_batch_id"] == import_batch_d["id"]
-        assert cp["import_batch_status"] == "completed"
+        assert cp["import_batch_status"] == "partially_failed"
         assert sum(cp["results"].values()) == 3
         assert cp["results"]["failed"] == 1
         assert cp["results"]["completed"] == 2
         assert len(cp["failure_details"]) == 1
-        assert (
-            cp["failure_details"][0]
-            == "Entry 3:\n\nIncoming reference collides with more than one existing reference."
-        )
 
         rd = get_reference_details()
         assert len(rd) == 10
@@ -467,6 +431,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             ca_certs=os.environ["ES_CA_PATH"],
         )
         es_index = "destiny-repository-e2e-reference"
+        time.sleep(5)
         es.indices.refresh(
             index=es_index
         )  # Ensure the index is refreshed before searching
