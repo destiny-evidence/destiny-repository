@@ -272,6 +272,11 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
     result_file: Mapped[str | None] = mapped_column(String, nullable=True)
     validation_result_file: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    pending_enhancements: Mapped[list["PendingEnhancement"]] = relationship(
+        "PendingEnhancement",
+        back_populates="enhancement_request",
+    )
+
     error: Mapped[str | None] = mapped_column(String, nullable=True)
 
     @classmethod
@@ -296,11 +301,15 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             validation_result_file=domain_obj.validation_result_file.to_sql()
             if domain_obj.validation_result_file
             else None,
+            pending_enhancements=[
+                PendingEnhancement.from_domain(pe)
+                for pe in domain_obj.pending_enhancements
+            ],
         )
 
     def to_domain(
         self,
-        preload: list[str] | None = None,  # noqa: ARG002
+        preload: list[str] | None = None,
     ) -> DomainEnhancementRequest:
         """Convert the persistence model into a Domain Enhancement object."""
         return DomainEnhancementRequest(
@@ -322,6 +331,9 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             validation_result_file=BlobStorageFile.from_sql(self.validation_result_file)
             if self.validation_result_file
             else None,
+            pending_enhancements=[pe.to_domain() for pe in self.pending_enhancements]
+            if "pending_enhancements" in (preload or [])
+            else [],
         )
 
 
@@ -402,6 +414,10 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
         "RobotEnhancementBatch", back_populates="pending_enhancements"
     )
 
+    enhancement_request: Mapped["EnhancementRequest"] = relationship(
+        "EnhancementRequest", back_populates="pending_enhancements"
+    )
+
     __table_args__ = (
         Index("ix_pending_enhancement_robot_id_status", "robot_id", "status"),
     )
@@ -452,7 +468,7 @@ class RobotEnhancementBatch(GenericSQLPersistence[DomainRobotEnhancementBatch]):
     pending_enhancements: Mapped[list["PendingEnhancement"]] = relationship(
         "PendingEnhancement",
         back_populates="robot_enhancement_batch",
-        cascade="all, delete, delete-orphan",
+        cascade="save-update, merge",
     )
 
     @classmethod

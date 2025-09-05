@@ -35,6 +35,7 @@ class EnhancementRequestStatus(StrEnum):
     **Allowed values**:
     - `received`: Enhancement request has been received by the repo.
     - `accepted`: Enhancement request has been accepted by the robot.
+    - `processing`: Enhancement request is being processed by the robot.
     - `rejected`: Enhancement request has been rejected by the robot.
     - `partial_failed`: Some enhancements failed to create.
     - `failed`: All enhancements failed to create.
@@ -46,6 +47,7 @@ class EnhancementRequestStatus(StrEnum):
 
     RECEIVED = auto()
     ACCEPTED = auto()
+    PROCESSING = auto()
     REJECTED = auto()
     PARTIAL_FAILED = auto()
     FAILED = auto()
@@ -340,6 +342,10 @@ Errors for individual references are provided <TBC>.
     validation_result_file: BlobStorageFile | None = Field(
         default=None,
         description="The file containing the validation result data from the robot.",
+    )
+    pending_enhancements: list["PendingEnhancement"] = Field(
+        default_factory=list,
+        description="List of pending enhancements for the request.",
     )
 
     @property

@@ -356,6 +356,61 @@ class GenericAsyncSqlRepository(
         return [row[0] for row in result.fetchall()]
 
     @trace_repository_method(tracer)
+    async def bulk_update(self, pks: list[UUID4], **kwargs: object) -> int:
+        """
+        Bulk update records by their primary keys.
+
+        Args:
+        - pks (list[UUID4]): The primary keys of records to update.
+        - kwargs (object): The attributes to update.
+
+        Returns:
+        - int: The number of records updated.
+
+        Raises:
+        - SQLIntegrityError: If the update violates a constraint.
+        - ValueError: If field names in kwargs do not exist on the persistence model.
+
+        """
+        trace_attribute(Attributes.DB_RECORD_COUNT, len(pks))
+        # Trace keys, not values
+        trace_attribute(Attributes.DB_PARAMS, list(kwargs.keys()))
+
+        if not pks:
+            return 0
+
+        # Validate all field names exist on the persistence model
+        invalid_fields = [
+            key for key in kwargs if not hasattr(self._persistence_cls, key)
+        ]
+        if invalid_fields:
+            msg = (
+                f"Invalid field(s) for {self._persistence_cls.__name__}: "
+                f"{invalid_fields}"
+            )
+            raise ValueError(msg)
+
+        if not kwargs:
+            return 0
+
+        try:
+            from sqlalchemy import update
+
+            stmt = (
+                update(self._persistence_cls)
+                .where(self._persistence_cls.id.in_(pks))
+                .values(**kwargs)
+            )
+            result = await self._session.execute(stmt)
+            await self._session.flush()
+        except IntegrityError as e:
+            raise SQLIntegrityError.from_sqlacademy_integrity_error(
+                e, self._persistence_cls.__name__
+            ) from e
+        else:
+            return result.rowcount or 0
+
+    @trace_repository_method(tracer)
     async def find(
         self,
         order_by: str | None = None,

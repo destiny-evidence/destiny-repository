@@ -268,9 +268,53 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def get_enhancement_request(
         self,
         enhancement_request_id: UUID4,
+        preload: list[str] | None = None,
     ) -> EnhancementRequest:
         """Get a batch enhancement request by request id."""
-        return await self.sql_uow.enhancement_requests.get_by_pk(enhancement_request_id)
+        return await self.sql_uow.enhancement_requests.get_by_pk(
+            enhancement_request_id, preload=preload
+        )
+
+    @sql_unit_of_work
+    async def get_enhancement_request_with_calculated_status(
+        self,
+        enhancement_request_id: UUID4,
+    ) -> EnhancementRequest:
+        """
+        Get an enhancement request with status calculated from pending enhancements.
+
+        This method efficiently calculates the request status based on the current
+        state of its pending enhancements using database aggregation.
+        """
+        enhancement_request = await self.sql_uow.enhancement_requests.get_by_pk(
+            enhancement_request_id
+        )
+
+        status_counts = await (
+            self.sql_uow.enhancement_requests.get_pending_enhancement_status_counts(
+                enhancement_request_id
+            )
+        )
+
+        total_count = sum(status_counts.values())
+        pending_count = status_counts.get(PendingEnhancementStatus.PENDING, 0)
+        completed_count = status_counts.get(PendingEnhancementStatus.COMPLETED, 0)
+        failed_count = status_counts.get(PendingEnhancementStatus.FAILED, 0)
+
+        if completed_count == total_count and total_count > 0:
+            calculated_status = EnhancementRequestStatus.COMPLETED
+        elif failed_count == total_count and total_count > 0:
+            calculated_status = EnhancementRequestStatus.FAILED
+        elif pending_count == total_count and total_count > 0:
+            calculated_status = EnhancementRequestStatus.RECEIVED
+        elif completed_count + failed_count == total_count:
+            calculated_status = EnhancementRequestStatus.PARTIAL_FAILED
+        else:
+            calculated_status = EnhancementRequestStatus.PROCESSING
+
+        enhancement_request.request_status = calculated_status
+
+        return enhancement_request
 
     @sql_unit_of_work
     async def collect_and_dispatch_references_for_enhancement(
@@ -424,6 +468,17 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Update a batch enhancement request."""
         return await self._enhancement_service.update_enhancement_request_status(
             enhancement_request_id, status
+        )
+
+    @sql_unit_of_work
+    async def update_robot_enhancement_batch_status(
+        self,
+        robot_enhancement_batch_id: UUID4,
+        status: PendingEnhancementStatus,
+    ) -> RobotEnhancementBatch:
+        """Update a robot enhancement batch request."""
+        return await self._enhancement_service.update_pending_enhancements_status_for_robot_enhancement_batch(  # noqa: E501
+            robot_enhancement_batch_id, status
         )
 
     @es_unit_of_work
@@ -626,14 +681,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             RobotEnhancementBatch: The created robot enhancement batch.
 
         """
-        robot_enhancement_batch = RobotEnhancementBatch(
-            robot_id=robot_id,
-        )
+        robot_enhancement_batch = RobotEnhancementBatch(robot_id=robot_id)
+
         await self.sql_uow.robot_enhancement_batches.add(robot_enhancement_batch)
 
-        for pending_enhancement in pending_enhancements:
-            await self.sql_uow.pending_enhancements.update_by_pk(
-                pending_enhancement.id,
+        pending_enhancement_ids = [pe.id for pe in pending_enhancements]
+        if pending_enhancement_ids:
+            await self.sql_uow.pending_enhancements.bulk_update(
+                pks=pending_enhancement_ids,
                 status=PendingEnhancementStatus.ACCEPTED,
                 robot_enhancement_batch_id=robot_enhancement_batch.id,
             )

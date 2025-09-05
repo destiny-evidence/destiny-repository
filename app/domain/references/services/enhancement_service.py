@@ -13,6 +13,7 @@ from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
+    PendingEnhancementStatus,
     RobotEnhancementBatch,
     RobotResultValidationEntry,
 )
@@ -65,6 +66,32 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         return await self.sql_uow.enhancement_requests.update_by_pk(
             pk=enhancement_request_id, request_status=status
         )
+
+    async def update_pending_enhancements_status_for_robot_enhancement_batch(
+        self,
+        robot_enhancement_batch_id: UUID4,
+        status: PendingEnhancementStatus,
+    ) -> RobotEnhancementBatch:
+        """Update status of all pending enhancements for a robot enhancement batch."""
+        robot_enhancement_batch = (
+            await self.sql_uow.robot_enhancement_batches.get_by_pk(
+                robot_enhancement_batch_id, preload=["pending_enhancements"]
+            )
+        )
+
+        # Extract the IDs of all pending enhancements in this batch
+        pending_enhancement_ids = [
+            pe.id for pe in robot_enhancement_batch.pending_enhancements
+        ]
+
+        if pending_enhancement_ids:
+            # Use bulk update for efficiency
+            await self.sql_uow.pending_enhancements.bulk_update(
+                pks=pending_enhancement_ids,
+                status=status,
+            )
+
+        return robot_enhancement_batch
 
     async def build_robot_enhancement_batch(
         self,

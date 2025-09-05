@@ -35,7 +35,6 @@ from app.domain.references.services.enhancement_service import (
     EnhancementService,
 )
 from app.domain.references.tasks import (
-    collect_and_dispatch_references_for_enhancement,
     validate_and_import_enhancement_result,
 )
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
@@ -367,10 +366,6 @@ async def request_enhancement(
         )
     )
 
-    await queue_task_with_trace(
-        collect_and_dispatch_references_for_enhancement,
-        enhancement_request_id=enhancement_request.id,
-    )
     return await anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
 
 
@@ -387,8 +382,10 @@ async def check_enhancement_request_status(
     ],
 ) -> destiny_sdk.robots.EnhancementRequestRead:
     """Check the status of a batch enhancement request."""
-    enhancement_request = await reference_service.get_enhancement_request(
-        enhancement_request_id
+    enhancement_request = (
+        await reference_service.get_enhancement_request_with_calculated_status(
+            enhancement_request_id
+        )
     )
 
     return await anti_corruption_service.enhancement_request_to_sdk(enhancement_request)

@@ -1,11 +1,11 @@
 """Test polling pending enhancements."""
 
 import os
-import time
 
 import destiny_sdk
 import httpx
 import pytest
+from destiny_sdk.robots import EnhancementRequestStatus
 
 toy_robot_url = os.environ["TOY_ROBOT_URL"]
 repo_url = os.environ["REPO_URL"]
@@ -58,19 +58,11 @@ def test_polling_pending_enhancements():
         request_out = response.json()
         request_id = request_out["id"]
 
-        # Wait for the request to be processed and pending enhancements created
-        while True:
-            time.sleep(1)
-            response = repo_client.get(
-                f"/enhancement-requests/{request_id}/",
-            )
-            assert response.status_code == 200
-            if (response.json())["request_status"] not in (
-                "received",
-                "accepted",
-                "importing",
-            ):
-                break
+        # Check that we now have pending enhancements (status should be "received")
+        response = repo_client.get(f"/enhancement-requests/{request_id}/")
+        assert response.status_code == 200
+        request_status = response.json()["request_status"]
+        assert request_status == EnhancementRequestStatus.RECEIVED
 
         # Now, poll the endpoint as the robot
         for _ in range(2):
@@ -90,8 +82,24 @@ def test_polling_pending_enhancements():
                 reference = destiny_sdk.references.Reference.model_validate_json(line)
                 assert str(reference.id) in reference_ids
 
-        # Poll again, should get an empty response
+            # After each batch is created, some pending enhancements should be
+            # "accepted" so status should be "processing" since we have mixed states
+            response = repo_client.get(f"/enhancement-requests/{request_id}/")
+            assert response.status_code == 200
+            request_status = response.json()["request_status"]
+            assert request_status == EnhancementRequestStatus.PROCESSING
+
+        # Poll again, should get an empty response since all pending enhancements
+        # are now accepted
         response = repo_client.post(
             "/robot-enhancement-batch/", params={"robot_id": robot_id, "limit": 2}
         )
         assert response.status_code == 204
+
+        # Final status check - all pending enhancements should be "accepted",
+        # so calculated status should be "processing" (accepted means work is in
+        # progress)
+        response = repo_client.get(f"/enhancement-requests/{request_id}/")
+        assert response.status_code == 200
+        final_status = response.json()["request_status"]
+        assert final_status == EnhancementRequestStatus.PROCESSING
