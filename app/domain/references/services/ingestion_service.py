@@ -117,8 +117,11 @@ Identifier(s) are already mapped on an existing reference:
         await existing_reference.merge(incoming_reference, collision_strategy)
         return existing_reference
 
-    async def ingest_reference(
-        self, record_str: str, entry_ref: int, collision_strategy: CollisionStrategy
+    async def validate_and_collide_reference(
+        self,
+        record_str: str,
+        entry_ref: int,
+        collision_strategy: CollisionStrategy,
     ) -> ReferenceCreateResult | None:
         """
         Attempt to ingest a reference into the database.
@@ -153,8 +156,7 @@ Identifier(s) are already mapped on an existing reference:
             )
 
         trace_attribute(Attributes.REFERENCE_ID, str(collision_result.id))
-        final_reference = await self.sql_uow.references.merge(collision_result)
-        reference_create_result.reference_id = final_reference.id
+        reference_create_result.reference_id = collision_result.id
 
         if reference_create_result.errors:
             reference_create_result.errors = [

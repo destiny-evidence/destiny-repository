@@ -1,10 +1,10 @@
 """Import tasks module for the DESTINY Climate and Health Repository API."""
 
 from elasticsearch import AsyncElasticsearch
+from opentelemetry import trace
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ESError, TaskError
 from app.core.telemetry.attributes import (
     Attributes,
     name_span,
@@ -12,7 +12,7 @@ from app.core.telemetry.attributes import (
 )
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
-from app.domain.imports.models.models import ImportBatchStatus
+from app.domain.imports.models.models import ImportBatchStatus, ImportResultStatus
 from app.domain.imports.service import ImportService
 from app.domain.imports.services.anti_corruption_service import (
     ImportAntiCorruptionService,
@@ -32,6 +32,7 @@ from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.tasks import broker
 
 logger = get_logger(__name__)
+tracer = trace.get_tracer(__name__)
 
 
 async def get_sql_unit_of_work(
@@ -94,90 +95,106 @@ async def get_reference_service(
 
 
 @broker.task
-async def process_import_batch(import_batch_id: UUID4, remaining_retries: int) -> None:
+async def distribute_import_batch(import_batch_id: UUID4) -> None:
     """Async logic for processing an import batch."""
-    logger.info("Processing import batch")
-    name_span(f"Import Batch {import_batch_id}")
+    name_span(f"Distribute import batch {import_batch_id}")
     trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_batch_id))
-    trace_attribute(Attributes.MESSAGING_RETRIES_REMAINING, remaining_retries)
     sql_uow = await get_sql_unit_of_work()
     import_service = await get_import_service(sql_uow=sql_uow)
-    reference_service = await get_reference_service(sql_uow=sql_uow)
 
     import_batch = await import_service.get_import_batch(import_batch_id)
-    if not import_batch:
-        raise TaskError(detail=f"Import batch with ID {import_batch_id} not found.")
-    if import_batch.status in (
-        ImportBatchStatus.FAILED,
-        ImportBatchStatus.INDEXING_FAILED,
-        ImportBatchStatus.COMPLETED,
-        ImportBatchStatus.CANCELLED,
-    ):
-        logger.info(
-            "Terminal task received for import batch, not processing.",
-            import_batch_status=import_batch.status,
-        )
-        return
+    await import_service.distribute_import_batch(import_batch)
 
-    # Import into database
-    status = await import_service.process_batch(import_batch, reference_service)
 
-    if status == ImportBatchStatus.RETRYING:
+@broker.task
+async def import_reference(
+    import_result_id: UUID4, content: str, line_number: int, remaining_retries: int
+) -> None:
+    """Async logic for importing a reference."""
+    name_span(f"Import line {line_number}")
+    trace_attribute(Attributes.IMPORT_RESULT_ID, str(import_result_id))
+    trace_attribute(Attributes.MESSAGING_RETRIES_REMAINING, remaining_retries)
+    sql_uow = await get_sql_unit_of_work()
+    es_uow = await get_es_unit_of_work()
+    import_service = await get_import_service(sql_uow=sql_uow)
+    reference_service = await get_reference_service(sql_uow=sql_uow, es_uow=es_uow)
+
+    import_result = await import_service.get_import_result(
+        import_result_id, preload=["import_batch"]
+    )
+    if not import_result.import_batch:
+        msg = "Import result is missing its import batch. This should not happen."
+        raise RuntimeError(msg)
+    trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_result.import_batch_id))
+
+    import_result = await import_service.import_reference(
+        reference_service,
+        import_result,
+        import_result.import_batch.collision_strategy,
+        content,
+        line_number,
+    )
+
+    if import_result.status == ImportResultStatus.RETRYING:
         if remaining_retries:
-            logger.info("Retrying import batch.")
+            logger.info("Retrying import reference.")
             await queue_task_with_trace(
-                process_import_batch, import_batch.id, remaining_retries - 1
+                import_reference, import_result.id, remaining_retries - 1
             )
         else:
             logger.info("No remaining retries for import batch, marking as failed.")
             await import_service.update_import_batch_status(
-                import_batch.id, ImportBatchStatus.FAILED
+                import_result.id, ImportBatchStatus.FAILED
             )
         return
 
-    # Update elasticsearch index
-    if status != ImportBatchStatus.INDEXING:
-        logger.error(
-            "Import batch processing stopped, "
-            "elasticsearch indexing and automatic enhancements will not proceed.",
-            import_batch_status=import_batch.status,
-        )
+    await __back_compat_batch_side_effect_adapter(
+        import_service, reference_service, import_result.import_batch_id
+    )
+
+
+async def __back_compat_batch_side_effect_adapter(
+    import_service: ImportService,
+    reference_service: ReferenceService,
+    import_batch_id: UUID4,
+) -> None:
+    """
+    Temporary adapter to dispatch batch-level side effects on import batches.
+
+    To be refactored once robot polling is in place: removal of callbacks and
+    direct injection to pending_enhancement table over automatic enhancement
+    requests.
+
+    Could this run twice? Probably.
+    Are these side-effects used anywhere other than e2e tests at time of writing? No.
+    Signed, @Adam-Hammo.
+    """
+    import_batch = await import_service.get_import_batch_with_results(import_batch_id)
+    if not import_batch.import_results:
         return
+    for import_result in import_batch.import_results:
+        # If any are non-terminal results, don't run side effects
+        if import_result.status not in (
+            ImportResultStatus.COMPLETED,
+            ImportResultStatus.FAILED,
+            ImportResultStatus.PARTIALLY_FAILED,
+        ):
+            return
 
-    imported_references = await import_service.get_imported_references_from_batch(
-        import_batch_id=import_batch.id
-    )
-    try:
-        await reference_service.index_references(
+    with tracer.start_as_current_span(f"Import Batch Side Effects {import_batch.id}"):
+        await import_service.dispatch_import_batch_callback(import_batch)
+
+        logger.info("Creating automatic enhancements for imported references")
+        imported_references = await import_service.get_imported_references_from_batch(
+            import_batch_id=import_batch.id
+        )
+        requests = await detect_and_dispatch_robot_automations(
+            reference_service=reference_service,
             reference_ids=imported_references,
+            source_str=f"ImportBatch:{import_batch.id}",
         )
-
-    except ESError as exc:
-        logger.exception("Error indexing references in Elasticsearch", exc_info=exc)
-        import_batch_status = ImportBatchStatus.INDEXING_FAILED
-    except Exception as exc:
-        logger.exception(
-            "Unexpected error indexing references in Elasticsearch", exc_info=exc
-        )
-        import_batch_status = ImportBatchStatus.INDEXING_FAILED
-
-    else:
-        import_batch_status = ImportBatchStatus.COMPLETED
-
-    await import_service.update_import_batch_status(
-        import_batch.id, import_batch_status
-    )
-    await import_service.dispatch_import_batch_callback(import_batch)
-
-    # Perform automatic enhancements on imported references
-    logger.info("Creating automatic enhancements for imported references")
-    requests = await detect_and_dispatch_robot_automations(
-        reference_service=reference_service,
-        reference_ids=imported_references,
-        source_str=f"ImportBatch:{import_batch.id}",
-    )
-    for request in requests:
-        logger.info(
-            "Created automatic enhancement request",
-            enhancement_request_id=str(request.id),
-        )
+        for request in requests:
+            logger.info(
+                "Created automatic enhancement request",
+                enhancement_request_id=str(request.id),
+            )

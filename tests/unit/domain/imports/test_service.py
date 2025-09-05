@@ -27,6 +27,15 @@ RESULT_ID = uuid.uuid4()
 BATCH_ID = uuid.uuid4()
 
 
+@pytest.fixture
+async def import_result():
+    return ImportResult(
+        id=RESULT_ID,
+        import_batch_id=BATCH_ID,
+        status=ImportResultStatus.CREATED,
+    )
+
+
 @pytest.mark.asyncio
 async def test_register_import(fake_repository, fake_uow):
     repo_imports = fake_repository()
@@ -72,8 +81,8 @@ async def test_register_batch(fake_repository, fake_uow, fake_import_record):
 
 
 @pytest.mark.asyncio
-async def test_import_reference_happy_path(fake_repository, fake_uow):
-    repo_results = fake_repository()
+async def test_import_reference_happy_path(fake_repository, fake_uow, import_result):
+    repo_results = fake_repository([import_result])
     uow = fake_uow(results=repo_results)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
@@ -83,7 +92,7 @@ async def test_import_reference_happy_path(fake_repository, fake_uow):
     )
 
     await service.import_reference(
-        BATCH_ID, CollisionStrategy.FAIL, "nonsense", fake_reference_service, 1
+        fake_reference_service, import_result, CollisionStrategy.FAIL, "nonsense", 1
     )
 
     import_result = repo_results.get_first_record()
@@ -92,8 +101,10 @@ async def test_import_reference_happy_path(fake_repository, fake_uow):
 
 
 @pytest.mark.asyncio
-async def test_import_reference_reference_not_created(fake_repository, fake_uow):
-    repo_results = fake_repository()
+async def test_import_reference_reference_not_created(
+    fake_repository, fake_uow, import_result
+):
+    repo_results = fake_repository([import_result])
     uow = fake_uow(results=repo_results)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
@@ -105,7 +116,7 @@ async def test_import_reference_reference_not_created(fake_repository, fake_uow)
     )
 
     await service.import_reference(
-        BATCH_ID, CollisionStrategy.FAIL, "nonsense", fake_reference_service, 1
+        fake_reference_service, import_result, CollisionStrategy.FAIL, "nonsense", 1
     )
 
     import_result = repo_results.get_first_record()
@@ -116,9 +127,9 @@ async def test_import_reference_reference_not_created(fake_repository, fake_uow)
 
 @pytest.mark.asyncio
 async def test_import_reference_reference_created_with_errors(
-    fake_repository, fake_uow
+    fake_repository, fake_uow, import_result
 ):
-    repo_results = fake_repository()
+    repo_results = fake_repository([import_result])
     uow = fake_uow(results=repo_results)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
@@ -131,7 +142,7 @@ async def test_import_reference_reference_created_with_errors(
     )
 
     await service.import_reference(
-        BATCH_ID, CollisionStrategy.FAIL, "nonsense", fake_reference_service, 1
+        fake_reference_service, import_result, CollisionStrategy.FAIL, "nonsense", 1
     )
 
     import_result = repo_results.get_first_record()
