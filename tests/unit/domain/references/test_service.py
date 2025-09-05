@@ -183,8 +183,9 @@ async def test_register_reference_enhancement_request(fake_repository, fake_uow)
     """
     reference_ids = [uuid.uuid4(), uuid.uuid4()]
     robot_id = uuid.uuid4()
+    request_id = uuid.uuid4()
     enhancement_request = EnhancementRequest(
-        id=uuid.uuid4(),
+        id=request_id,
         reference_ids=reference_ids,
         robot_id=robot_id,
         enhancement_parameters={"param": "value"},
@@ -194,10 +195,12 @@ async def test_register_reference_enhancement_request(fake_repository, fake_uow)
     fake_references = fake_repository(
         init_entries=[Reference(id=ref_id) for ref_id in reference_ids]
     )
+    fake_pending_enhancements = fake_repository()
 
     uow = fake_uow(
         enhancement_requests=fake_requests,
         references=fake_references,
+        pending_enhancements=fake_pending_enhancements,
     )
     service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
 
@@ -210,6 +213,13 @@ async def test_register_reference_enhancement_request(fake_repository, fake_uow)
     assert created_request == stored_request
     assert created_request.reference_ids == reference_ids
     assert created_request.enhancement_parameters == {"param": "value"}
+
+    pending_enhancements_records = await fake_pending_enhancements.get_all()
+    assert len(pending_enhancements_records) == len(reference_ids)
+    for pending_enhancement in pending_enhancements_records:
+        assert pending_enhancement.robot_id == robot_id
+        assert pending_enhancement.enhancement_request_id == request_id
+        assert pending_enhancement.reference_id in reference_ids
 
 
 @pytest.mark.asyncio

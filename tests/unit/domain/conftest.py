@@ -25,6 +25,14 @@ class FakeRepository:
         self.repository[record.id] = record
         return record
 
+    async def bulk_add(
+        self, records: list[DummyDomainSQLModel]
+    ) -> list[DummyDomainSQLModel]:
+        """Add multiple records to the repository in bulk."""
+        for record in records:
+            self.repository[record.id] = record
+        return records
+
     async def get_by_pk(
         self, pk: UUID, preload: list[str] | None = None
     ) -> DummyDomainSQLModel:
@@ -130,6 +138,10 @@ class FakeRepository:
             raise RuntimeError(error)
         return record
 
+    async def get_all(self) -> list[DummyDomainSQLModel]:
+        """Get all records from the repository."""
+        return list(self.repository.values())
+
 
 class FakeUnitOfWork:
     def __init__(
@@ -143,6 +155,7 @@ class FakeUnitOfWork:
         enhancement_requests=None,
         robots=None,
         robot_automations=None,
+        pending_enhancements=None,
     ):
         self.batches = batches
         self.imports = imports
@@ -153,6 +166,7 @@ class FakeUnitOfWork:
         self.enhancement_requests = enhancement_requests
         self.robots = robots
         self.robot_automations = robot_automations
+        self.pending_enhancements = pending_enhancements
         self.committed = False
 
     async def __aenter__(self):

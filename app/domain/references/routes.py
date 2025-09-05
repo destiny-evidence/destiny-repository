@@ -5,7 +5,7 @@ from typing import Annotated
 
 import destiny_sdk
 from elasticsearch import AsyncElasticsearch
-from fastapi import APIRouter, Depends, Path, Request, Response, status
+from fastapi import APIRouter, Depends, Path, Query, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,8 +31,10 @@ from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.enhancement_service import (
+    EnhancementService,
+)
 from app.domain.references.tasks import (
-    collect_and_dispatch_references_for_enhancement,
     validate_and_import_enhancement_result,
 )
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
@@ -92,6 +94,19 @@ def reference_service(
     return ReferenceService(
         sql_uow=sql_uow,
         es_uow=es_uow,
+        anti_corruption_service=reference_anti_corruption_service,
+    )
+
+
+def enhancement_service(
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
+    reference_anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+) -> EnhancementService:
+    """Return the batch enhancement service."""
+    return EnhancementService(
+        sql_uow=sql_uow,
         anti_corruption_service=reference_anti_corruption_service,
     )
 
@@ -158,6 +173,14 @@ reference_router = APIRouter(
 enhancement_request_router = APIRouter(
     prefix="/enhancement-requests",
     tags=["enhancement-requests"],
+    dependencies=[
+        Depends(enhancement_request_hybrid_auth),
+        Depends(PayloadAttributeTracer("robot_id")),
+    ],
+)
+robot_enhancement_batch_router = APIRouter(
+    prefix="/robot-enhancement-batch",
+    tags=["robot-enhancement-batch"],
     dependencies=[
         Depends(enhancement_request_hybrid_auth),
         Depends(PayloadAttributeTracer("robot_id")),
@@ -264,6 +287,62 @@ async def get_robot_automations(
     ]
 
 
+# TODO(danielribeiro): Consider authenticating robot_id matches auth client id  # noqa: E501, TD003
+@robot_enhancement_batch_router.post(
+    "/",
+    response_model=destiny_sdk.robots.RobotRequest,
+    summary="Request a batch of references to enhance.",
+    responses={204: {"model": None}},
+)
+async def request_robot_enhancement_batch(
+    robot_id: Annotated[
+        uuid.UUID,
+        Query(description="The ID of the robot."),
+    ],
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    blob_repository: Annotated[BlobRepository, Depends(blob_repository)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService,
+        Depends(reference_anti_corruption_service),
+    ],
+    limit: Annotated[
+        int,
+        Query(
+            description="The maximum number of pending enhancements to return.",
+        ),
+    ] = settings.max_pending_enhancements_batch_size,
+) -> destiny_sdk.robots.RobotRequest | Response:
+    """
+    Request a batch of references to enhance.
+
+    This endpoint is used by robots to poll for new enhancement requests.
+    """
+    if limit > settings.max_pending_enhancements_batch_size:
+        limit = settings.max_pending_enhancements_batch_size
+        logger.warning(
+            "Pending enhancements limit exceeded. "
+            "Using max_pending_enhancements_batch_size: %d",
+            limit,
+        )
+
+    pending_enhancements = await reference_service.get_pending_enhancements_for_robot(
+        robot_id=robot_id,
+        limit=limit,
+    )
+    if not pending_enhancements:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    robot_enhancement_batch = await reference_service.create_robot_enhancement_batch(
+        robot_id=robot_id,
+        pending_enhancements=pending_enhancements,
+        blob_repository=blob_repository,
+    )
+
+    return await anti_corruption_service.robot_enhancement_batch_to_sdk(
+        robot_enhancement_batch
+    )
+
+
 enhancement_request_router.include_router(enhancement_request_automation_router)
 
 
@@ -287,10 +366,6 @@ async def request_enhancement(
         )
     )
 
-    await queue_task_with_trace(
-        collect_and_dispatch_references_for_enhancement,
-        enhancement_request_id=enhancement_request.id,
-    )
     return await anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
 
 
@@ -307,8 +382,10 @@ async def check_enhancement_request_status(
     ],
 ) -> destiny_sdk.robots.EnhancementRequestRead:
     """Check the status of a batch enhancement request."""
-    enhancement_request = await reference_service.get_enhancement_request(
-        enhancement_request_id
+    enhancement_request = (
+        await reference_service.get_enhancement_request_with_calculated_status(
+            enhancement_request_id
+        )
     )
 
     return await anti_corruption_service.enhancement_request_to_sdk(enhancement_request)

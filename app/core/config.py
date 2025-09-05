@@ -225,6 +225,7 @@ class UploadFile(StrEnum):
     """Enum for upload file types."""
 
     ENHANCEMENT_REQUEST_REFERENCE_DATA = auto()
+    ROBOT_ENHANCEMENT_REFERENCE_DATA = auto()
 
 
 class FeatureFlags(BaseModel):
@@ -259,6 +260,13 @@ class Settings(BaseSettings):
     message_broker_queue_name: str = "taskiq"
     cli_client_id: str | None = None
     app_name: str
+
+    max_pending_enhancements_batch_size: int = Field(
+        default=10000,
+        description=(
+            "Maximum number of pending enhancements to return in a single batch."
+        ),
+    )
 
     default_es_indexing_chunk_size: int = Field(
         default=1000,

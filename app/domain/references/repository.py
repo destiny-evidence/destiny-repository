@@ -6,6 +6,7 @@ from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
 from opentelemetry import trace
+from pydantic import UUID4
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -25,10 +26,14 @@ from app.domain.references.models.models import (
 from app.domain.references.models.models import (
     ExternalIdentifierType,
     GenericExternalIdentifier,
+    PendingEnhancementStatus,
     RobotAutomationPercolationResult,
 )
 from app.domain.references.models.models import (
     LinkedExternalIdentifier as DomainExternalIdentifier,
+)
+from app.domain.references.models.models import (
+    PendingEnhancement as DomainPendingEnhancement,
 )
 from app.domain.references.models.models import (
     Reference as DomainReference,
@@ -36,13 +41,30 @@ from app.domain.references.models.models import (
 from app.domain.references.models.models import (
     RobotAutomation as DomainRobotAutomation,
 )
-from app.domain.references.models.sql import Enhancement as SQLEnhancement
+from app.domain.references.models.models import (
+    RobotEnhancementBatch as DomainRobotEnhancementBatch,
+)
+from app.domain.references.models.sql import (
+    Enhancement as SQLEnhancement,
+)
 from app.domain.references.models.sql import (
     EnhancementRequest as SQLEnhancementRequest,
 )
-from app.domain.references.models.sql import ExternalIdentifier as SQLExternalIdentifier
-from app.domain.references.models.sql import Reference as SQLReference
-from app.domain.references.models.sql import RobotAutomation as SQLRobotAutomation
+from app.domain.references.models.sql import (
+    ExternalIdentifier as SQLExternalIdentifier,
+)
+from app.domain.references.models.sql import (
+    PendingEnhancement as SQLPendingEnhancement,
+)
+from app.domain.references.models.sql import (
+    Reference as SQLReference,
+)
+from app.domain.references.models.sql import (
+    RobotAutomation as SQLRobotAutomation,
+)
+from app.domain.references.models.sql import (
+    RobotEnhancementBatch as SQLRobotEnhancementBatch,
+)
 from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
@@ -283,6 +305,35 @@ class EnhancementRequestSQLRepository(
             SQLEnhancementRequest,
         )
 
+    async def get_pending_enhancement_status_counts(
+        self, enhancement_request_id: UUID4
+    ) -> dict[PendingEnhancementStatus, int]:
+        """
+        Get counts of pending enhancements by status for an enhancement request.
+
+        Args:
+            enhancement_request_id: The ID of the enhancement request
+
+        Returns:
+            Dictionary mapping status to count
+
+        """
+        from sqlalchemy import func, select
+
+        query = (
+            select(
+                SQLPendingEnhancement.status,
+                func.count(SQLPendingEnhancement.id).label("count"),
+            )
+            .where(
+                SQLPendingEnhancement.enhancement_request_id == enhancement_request_id
+            )
+            .group_by(SQLPendingEnhancement.status)
+        )
+
+        result = await self._session.execute(query)
+        return {row[0]: row[1] for row in result.fetchall()}
+
 
 class RobotAutomationRepositoryBase(
     GenericAsyncRepository[DomainRobotAutomation, GenericPersistenceType],
@@ -372,3 +423,47 @@ class RobotAutomationESRepository(
             )
 
         return robot_automation_percolation_results
+
+
+class PendingEnhancementRepositoryBase(
+    GenericAsyncRepository[DomainPendingEnhancement, GenericPersistenceType],
+    ABC,
+):
+    """Abstract implementation of a repository for Pending Enhancements."""
+
+
+class PendingEnhancementSQLRepository(
+    GenericAsyncSqlRepository[DomainPendingEnhancement, SQLPendingEnhancement],
+    PendingEnhancementRepositoryBase,
+):
+    """Concrete implementation of a repository for pending enhancements using SQLAlchemy."""  # noqa: E501
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Initialize the repository with the database session."""
+        super().__init__(
+            session,
+            DomainPendingEnhancement,
+            SQLPendingEnhancement,
+        )
+
+
+class RobotEnhancementBatchRepositoryBase(
+    GenericAsyncRepository[DomainRobotEnhancementBatch, GenericPersistenceType],
+    ABC,
+):
+    """Abstract implementation of a repository for Robot Enhancement Batches."""
+
+
+class RobotEnhancementBatchSQLRepository(
+    GenericAsyncSqlRepository[DomainRobotEnhancementBatch, SQLRobotEnhancementBatch],
+    RobotEnhancementBatchRepositoryBase,
+):
+    """Concrete implementation of a repository for robot enhancement batches using SQLAlchemy."""  # noqa: E501
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Initialize the repository with the database session."""
+        super().__init__(
+            session,
+            DomainRobotEnhancementBatch,
+            SQLRobotEnhancementBatch,
+        )
