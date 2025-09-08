@@ -88,10 +88,14 @@ async def test_enhancement_interface(
     ("result_statuses", "expected_status"),
     [
         ([], ImportBatchStatus.CREATED),
-        ([ImportResultStatus.CREATED], ImportBatchStatus.CREATED),
+        ([ImportResultStatus.CREATED], ImportBatchStatus.STARTED),
         ([ImportResultStatus.STARTED], ImportBatchStatus.STARTED),
         ([ImportResultStatus.FAILED], ImportBatchStatus.FAILED),
         ([ImportResultStatus.COMPLETED], ImportBatchStatus.COMPLETED),
+        (
+            [ImportResultStatus.STARTED, ImportResultStatus.COMPLETED],
+            ImportBatchStatus.STARTED,
+        ),
         (
             [ImportResultStatus.FAILED, ImportResultStatus.COMPLETED],
             ImportBatchStatus.PARTIALLY_FAILED,

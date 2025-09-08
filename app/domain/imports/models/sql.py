@@ -13,12 +13,15 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    and_,
+    case,
+    distinct,
+    func,
+    select,
 )
 from sqlalchemy.dialects.postgresql import ENUM
-from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 
-from app.core.exceptions import SQLSelectionError
 from app.domain.imports.models.models import (
     CollisionStrategy,
     ImportBatchStatus,
@@ -35,6 +38,59 @@ from app.domain.imports.models.models import (
     ImportResult as DomainImportResult,
 )
 from app.persistence.sql.persistence import GenericSQLPersistence
+
+
+class ImportResult(GenericSQLPersistence[DomainImportResult]):
+    """SQL model for an individual import result."""
+
+    __tablename__ = "import_result"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    import_batch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("import_batch.id"), nullable=False
+    )
+    status: Mapped[ImportResultStatus] = mapped_column(
+        ENUM(
+            *[status.value for status in ImportResultStatus],
+            name="import_result_status",
+        ),
+        nullable=False,
+    )
+    reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    failure_details: Mapped[str | None] = mapped_column(String)
+
+    import_batch: Mapped["ImportBatch"] = relationship(
+        "ImportBatch", back_populates="import_results"
+    )
+
+    __table_args__ = (Index("ix_import_result_import_batch_id", "import_batch_id"),)
+
+    @classmethod
+    def from_domain(cls, domain_obj: DomainImportResult) -> Self:
+        """Create a persistence model from a domain ImportResult object."""
+        return cls(
+            id=domain_obj.id,
+            import_batch_id=domain_obj.import_batch_id,
+            status=domain_obj.status,
+            reference_id=domain_obj.reference_id,
+            failure_details=domain_obj.failure_details,
+        )
+
+    def to_domain(
+        self,
+        preload: list[str] | None = None,
+    ) -> DomainImportResult:
+        """Convert the persistence model into an Domain ImportResult object."""
+        return DomainImportResult(
+            id=self.id,
+            import_batch_id=self.import_batch_id,
+            status=self.status,
+            reference_id=self.reference_id,
+            failure_details=self.failure_details,
+            import_batch=self.import_batch.to_domain()
+            if "import_batch" in (preload or [])
+            else None,
+        )
 
 
 class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
@@ -61,60 +117,62 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
     storage_url: Mapped[str] = mapped_column(String, nullable=False)
     callback_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    @hybrid_property
-    def status(self) -> ImportBatchStatus:
-        """Calculate status from loaded import_results relationship."""
-        # A note to the future: this would be more performant using
-        # @status.inplace.expression to perform the calculation in the SQL layer.
-        # If we get to the point where performance is a concern, we can revisit.
-        # I (Adam) tried really hard, but couldn't land it. Here's where I got:
-        # - You must specify the hybrid column explicitly in every relevant query
-        # - You must then hydrate the column into the domain model manually
-        # - (SQLAlchemy + async is the main demon here, forcing us to get everything
-        #    at query time)
-        # - That is okay with some low-level surgery, but the real pain comes
-        #   in handling that with relationships, eg hydrating import_batches on an
-        #   import record. It's solvable but didn't seem worth the massive amount of
-        #   complexity it caused in the repository layer.
-        # There are other valid approaches too!
-
-        # As it is, this uses the selectin lazy load on the relationship. The preloaded
-        # import_results are then discarded in the domain transition unless explicitly
-        # requested in the repo's preload arguments, so memory pressure is transient.
-        # Now let me close my eyes and manifest that the simplicity of this approach is
-        # worth it.
-        if self.import_results is None:
-            msg = "ImportBatch.status requires import_results to be preloaded."
-            raise SQLSelectionError(msg)
-
-        statuses = {result.status for result in self.import_results}
-        if not statuses or statuses == {ImportResultStatus.CREATED}:
-            return ImportBatchStatus.CREATED
-
-        non_terminal_statuses = {
-            ImportResultStatus.STARTED,
-            ImportResultStatus.RETRYING,
-            ImportResultStatus.CREATED,
-        }
-        success_statuses = {
-            ImportResultStatus.COMPLETED,
-            ImportResultStatus.PARTIALLY_FAILED,
-        }
-
-        if non_terminal_statuses.intersection(statuses):
-            return ImportBatchStatus.STARTED
-
-        if ImportResultStatus.FAILED in statuses:
-            if success_statuses.intersection(statuses):
-                return ImportBatchStatus.PARTIALLY_FAILED
-            return ImportBatchStatus.FAILED
-
-        return ImportBatchStatus.COMPLETED
+    # Annoying redefinition of shared id so it can be used in column_property.
+    # Using text("ImportBatch.id") doesn't work in nested relationship aliases.
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    status = column_property(
+        select(
+            case(
+                # No results -> CREATED
+                (
+                    func.array_length(func.array_agg(ImportResult.status), 1).is_(None),
+                    ImportBatchStatus.CREATED.value,
+                ),
+                # Has non-terminal statuses -> STARTED
+                (
+                    func.array_agg(ImportResult.status).op("&&")(
+                        [
+                            ImportResultStatus.STARTED.value,
+                            ImportResultStatus.RETRYING.value,
+                            ImportResultStatus.CREATED.value,
+                        ]
+                    ),
+                    ImportBatchStatus.STARTED.value,
+                ),
+                # All failed -> FAILED
+                (
+                    func.array_agg(distinct(ImportResult.status))
+                    == [ImportResultStatus.FAILED.value],
+                    ImportBatchStatus.FAILED.value,
+                ),
+                # Has failures and successes -> PARTIALLY_FAILED
+                (
+                    and_(
+                        func.array_agg(ImportResult.status).op("&&")(
+                            [ImportResultStatus.FAILED.value]
+                        ),
+                        func.array_agg(ImportResult.status).op("&&")(
+                            [
+                                ImportResultStatus.COMPLETED.value,
+                                ImportResultStatus.PARTIALLY_FAILED.value,
+                            ]
+                        ),
+                    ),
+                    ImportBatchStatus.PARTIALLY_FAILED.value,
+                ),
+                # Default -> COMPLETED
+                else_=ImportBatchStatus.COMPLETED.value,
+            )
+        )
+        .select_from(ImportResult)
+        .where(ImportResult.import_batch_id == id)
+        .scalar_subquery()
+    )
 
     import_record: Mapped["ImportRecord"] = relationship(
         "ImportRecord", back_populates="batches"
     )
-    import_results: Mapped[list["ImportResult"]] = relationship(
+    import_results: Mapped[list[ImportResult]] = relationship(
         "ImportResult", back_populates="import_batch", lazy="selectin"
     )
 
@@ -226,58 +284,5 @@ class ImportRecord(GenericSQLPersistence[DomainImportRecord]):
             status=self.status,
             batches=[batch.to_domain() for batch in self.batches]
             if "batches" in (preload or [])
-            else None,
-        )
-
-
-class ImportResult(GenericSQLPersistence[DomainImportResult]):
-    """SQL model for an individual import result."""
-
-    __tablename__ = "import_result"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
-    import_batch_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("import_batch.id"), nullable=False
-    )
-    status: Mapped[ImportResultStatus] = mapped_column(
-        ENUM(
-            *[status.value for status in ImportResultStatus],
-            name="import_result_status",
-        ),
-        nullable=False,
-    )
-    reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
-    failure_details: Mapped[str | None] = mapped_column(String)
-
-    import_batch: Mapped[ImportBatch] = relationship(
-        "ImportBatch", back_populates="import_results"
-    )
-
-    __table_args__ = (Index("ix_import_result_import_batch_id", "import_batch_id"),)
-
-    @classmethod
-    def from_domain(cls, domain_obj: DomainImportResult) -> Self:
-        """Create a persistence model from a domain ImportResult object."""
-        return cls(
-            id=domain_obj.id,
-            import_batch_id=domain_obj.import_batch_id,
-            status=domain_obj.status,
-            reference_id=domain_obj.reference_id,
-            failure_details=domain_obj.failure_details,
-        )
-
-    def to_domain(
-        self,
-        preload: list[str] | None = None,
-    ) -> DomainImportResult:
-        """Convert the persistence model into an Domain ImportResult object."""
-        return DomainImportResult(
-            id=self.id,
-            import_batch_id=self.import_batch_id,
-            status=self.status,
-            reference_id=self.reference_id,
-            failure_details=self.failure_details,
-            import_batch=self.import_batch.to_domain()
-            if "import_batch" in (preload or [])
             else None,
         )
