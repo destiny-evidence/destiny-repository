@@ -6,7 +6,7 @@ from typing import Generic
 from opentelemetry import trace
 from pydantic import UUID4
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -75,15 +75,21 @@ class GenericAsyncSqlRepository(
             for p in preload:
                 relationship = getattr(self._persistence_cls, p)
                 options.append(joinedload(relationship))
-        result = await self._session.get(self._persistence_cls, pk, options=options)
-        if not result:
+        query = (
+            select(self._persistence_cls)
+            .where(self._persistence_cls.id == pk)
+            .options(*options)
+        )
+        try:
+            result = (await self._session.execute(query)).unique().scalar_one()
+        except NoResultFound as exc:
             detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
             raise SQLNotFoundError(
                 detail=detail,
                 lookup_model=self._persistence_cls.__name__,
                 lookup_type="id",
                 lookup_value=pk,
-            )
+            ) from exc
         return result.to_domain(preload=preload)
 
     @trace_repository_method(tracer)
