@@ -120,17 +120,26 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
     # Annoying redefinition of shared id so it can be used in column_property.
     # Using text("ImportBatch.id") doesn't work in nested relationship aliases.
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    # CTE for getting each status in the import results for a batch
+    _status_cte = (
+        select(
+            func.array_agg(distinct(ImportResult.status)).label("statuses"),
+        )
+        .select_from(ImportResult)
+        .where(ImportResult.import_batch_id == id)
+        .cte("status_aggregates")
+    )
     status = column_property(
         select(
             case(
                 # No results -> CREATED
                 (
-                    func.array_length(func.array_agg(ImportResult.status), 1).is_(None),
+                    func.array_length(_status_cte.c.statuses, 1).is_(None),
                     ImportBatchStatus.CREATED.value,
                 ),
                 # Has non-terminal statuses -> STARTED
                 (
-                    func.array_agg(ImportResult.status).op("&&")(
+                    _status_cte.c.statuses.op("&&")(
                         [
                             ImportResultStatus.STARTED.value,
                             ImportResultStatus.RETRYING.value,
@@ -141,17 +150,16 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
                 ),
                 # All failed -> FAILED
                 (
-                    func.array_agg(distinct(ImportResult.status))
-                    == [ImportResultStatus.FAILED.value],
+                    _status_cte.c.statuses == [ImportResultStatus.FAILED.value],
                     ImportBatchStatus.FAILED.value,
                 ),
                 # Has failures and successes -> PARTIALLY_FAILED
                 (
                     and_(
-                        func.array_agg(ImportResult.status).op("&&")(
+                        _status_cte.c.statuses.op("&&")(
                             [ImportResultStatus.FAILED.value]
                         ),
-                        func.array_agg(ImportResult.status).op("&&")(
+                        _status_cte.c.statuses.op("&&")(
                             [
                                 ImportResultStatus.COMPLETED.value,
                                 ImportResultStatus.PARTIALLY_FAILED.value,
@@ -164,8 +172,7 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
                 else_=ImportBatchStatus.COMPLETED.value,
             )
         )
-        .select_from(ImportResult)
-        .where(ImportResult.import_batch_id == id)
+        .select_from(_status_cte)
         .scalar_subquery()
     )
 

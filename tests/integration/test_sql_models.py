@@ -5,7 +5,7 @@ import uuid
 
 import pytest
 from destiny_sdk.imports import ImportRecordStatus
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -140,8 +140,6 @@ async def test_import_batch_status_projection(
     await session.flush()
     await session.commit()
 
-    q = select(ImportBatch).where(ImportBatch.id == batch_id)
-    res = (await session.execute(q)).unique().scalar_one_or_none()
     res = await session.get(
         ImportBatch, batch_id, options=[joinedload(ImportBatch.import_results)]
     )
