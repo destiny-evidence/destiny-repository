@@ -15,6 +15,7 @@ import httpx
 import pytest
 from elasticsearch import Elasticsearch
 from sqlalchemy import create_engine, text
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 toy_robot_url = os.environ["TOY_ROBOT_URL"]
 
@@ -27,7 +28,7 @@ engine = create_engine(db_url)
 # e2e tests are ordered for easier seeding of downstream tests
 @pytest.mark.order(2)
 # Remove the below if you want to run e2e tests locally with the toy robot.
-def test_complete_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
+def test_complete_enhancement_workflow():  # noqa: C901, PLR0915
     """Test complete enhancement workflow, happy-ish path."""
     with (
         httpx.Client(base_url=repo_url) as repo_client,
@@ -159,63 +160,66 @@ def test_complete_enhancement_workflow():  # noqa: C901, PLR0912, PLR0915
             msg = "Expected toy robot enhancements not found in reference."
             raise AssertionError(msg)
 
-    time.sleep(5)
     es = Elasticsearch(
         os.environ["ES_URL"],
         basic_auth=(os.environ["ES_USER"], os.environ["ES_PASS"]),
         ca_certs=os.environ["ES_CA_PATH"],
     )
     es_index = "destiny-repository-e2e-reference"
-    for reference_id in reference_ids:
-        response = es.get(index=es_index, id=reference_id)
-        toys_found = 0
-        for row in response["_source"]["enhancements"]:
-            if (
-                row["content"]["enhancement_type"] == "annotation"
-                and row["source"] == "Toy Robot"
-            ):
-                toys_found += 1
 
-        if toys_found != 2:
-            msg = (
-                "Expected toy robot enhancements not found in elasticsearch reference."
-            )
-            raise AssertionError(msg)
+    @retry(stop=stop_after_attempt(5), wait=wait_fixed(1))
+    def check_reference_enhancements() -> None:
+        for reference_id in reference_ids:
+            response = es.get(index=es_index, id=reference_id)
+            toys_found = 0
+            for row in response["_source"]["enhancements"]:
+                if (
+                    row["content"]["enhancement_type"] == "annotation"
+                    and row["source"] == "Toy Robot"
+                ):
+                    toys_found += 1
 
-    # Finally, check the import batch's automated enhancements
-    es_response = es.search(
-        index=es_index,
-        query={
-            "nested": {
-                "path": "identifiers",
-                "query": {
-                    "bool": {
-                        "should": [
-                            {
-                                "match": {
-                                    "identifiers.identifier": "10.1235/sampledoitwoelectricboogaloo"  # noqa: E501
-                                }
-                            },
-                            {"match": {"identifiers.identifier": "W123456790"}},
-                        ],
-                        "minimum_should_match": 1,
-                    }
-                },
-            }
-        },
-    )
-    assert es_response["hits"]["total"]["value"] == 2
-    for hit in es_response["hits"]["hits"]:
-        es_reference = hit["_source"]
-        toy_found = False
-        for enhancement in es_reference["enhancements"]:
-            if (
-                enhancement["content"]["enhancement_type"] == "annotation"
-                and enhancement["source"] == "Toy Robot"
-            ):
-                toy_found = True
-        if not toy_found:
-            msg = (
-                "Expected toy robot enhancements not found in elasticsearch reference."
-            )
-            raise AssertionError(msg)
+            if toys_found != 2:
+                msg = "Expected toy robot enhancements not found in ES reference."
+                raise AssertionError(msg)
+
+    check_reference_enhancements()
+
+    @retry(stop=stop_after_attempt(5), wait=wait_fixed(1))
+    def check_import_batch_automated_enhancements() -> None:
+        es_response = es.search(
+            index=es_index,
+            query={
+                "nested": {
+                    "path": "identifiers",
+                    "query": {
+                        "bool": {
+                            "should": [
+                                {
+                                    "match": {
+                                        "identifiers.identifier": "10.1235/sampledoitwoelectricboogaloo"  # noqa: E501
+                                    }
+                                },
+                                {"match": {"identifiers.identifier": "W123456790"}},
+                            ],
+                            "minimum_should_match": 1,
+                        }
+                    },
+                }
+            },
+        )
+        assert es_response["hits"]["total"]["value"] == 2
+        for hit in es_response["hits"]["hits"]:
+            es_reference = hit["_source"]
+            toy_found = False
+            for enhancement in es_reference["enhancements"]:
+                if (
+                    enhancement["content"]["enhancement_type"] == "annotation"
+                    and enhancement["source"] == "Toy Robot"
+                ):
+                    toy_found = True
+            if not toy_found:
+                msg = "Expected toy robot enhancements not found in ES reference."
+                raise AssertionError(msg)
+
+    check_import_batch_automated_enhancements()

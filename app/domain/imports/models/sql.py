@@ -15,8 +15,10 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import ENUM
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.exceptions import SQLSelectionError
 from app.domain.imports.models.models import (
     CollisionStrategy,
     ImportBatchStatus,
@@ -48,13 +50,7 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
     import_record_id: Mapped[uuid.UUID] = mapped_column(
         UUID, ForeignKey("import_record.id"), nullable=False
     )
-    status: Mapped[ImportBatchStatus] = mapped_column(
-        ENUM(
-            *[status.value for status in ImportBatchStatus],
-            name="import_batch_status",
-        ),
-        nullable=False,
-    )
+
     collision_strategy: Mapped[CollisionStrategy] = mapped_column(
         ENUM(
             *[strategy.value for strategy in CollisionStrategy],
@@ -65,11 +61,61 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
     storage_url: Mapped[str] = mapped_column(String, nullable=False)
     callback_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    @hybrid_property
+    def status(self) -> ImportBatchStatus:
+        """Calculate status from loaded import_results relationship."""
+        # A note to the future: this would be more performant using
+        # @status.inplace.expression to perform the calculation in the SQL layer.
+        # If we get to the point where performance is a concern, we can revisit.
+        # I (Adam) tried really hard, but couldn't land it. Here's where I got:
+        # - You must specify the hybrid column explicitly in every relevant query
+        # - You must then hydrate the column into the domain model manually
+        # - (SQLAlchemy + async is the main demon here, forcing us to get everything
+        #    at query time)
+        # - That is okay with some low-level surgery, but the real pain comes
+        #   in handling that with relationships, eg hydrating import_batches on an
+        #   import record. It's solvable but didn't seem worth the massive amount of
+        #   complexity it caused in the repository layer.
+        # There are other valid approaches too!
+
+        # As it is, this uses the selectin lazy load on the relationship. The preloaded
+        # import_results are then discarded in the domain transition unless explicitly
+        # requested in the repo's preload arguments, so memory pressure is transient.
+        # Now let me close my eyes and manifest that the simplicity of this approach is
+        # worth it.
+        if self.import_results is None:
+            msg = "ImportBatch.status requires import_results to be preloaded."
+            raise SQLSelectionError(msg)
+
+        statuses = {result.status for result in self.import_results}
+        if not statuses or statuses == {ImportResultStatus.CREATED}:
+            return ImportBatchStatus.CREATED
+
+        non_terminal_statuses = {
+            ImportResultStatus.STARTED,
+            ImportResultStatus.RETRYING,
+            ImportResultStatus.CREATED,
+        }
+        success_statuses = {
+            ImportResultStatus.COMPLETED,
+            ImportResultStatus.PARTIALLY_FAILED,
+        }
+
+        if non_terminal_statuses.intersection(statuses):
+            return ImportBatchStatus.STARTED
+
+        if ImportResultStatus.FAILED in statuses:
+            if success_statuses.intersection(statuses):
+                return ImportBatchStatus.PARTIALLY_FAILED
+            return ImportBatchStatus.FAILED
+
+        return ImportBatchStatus.COMPLETED
+
     import_record: Mapped["ImportRecord"] = relationship(
         "ImportRecord", back_populates="batches"
     )
     import_results: Mapped[list["ImportResult"]] = relationship(
-        "ImportResult", back_populates="import_batch"
+        "ImportResult", back_populates="import_batch", lazy="selectin"
     )
 
     __table_args__ = (
@@ -88,20 +134,22 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
             id=domain_obj.id,
             import_record_id=domain_obj.import_record_id,
             collision_strategy=domain_obj.collision_strategy,
-            status=domain_obj.status,
             storage_url=str(domain_obj.storage_url),
             callback_url=str(domain_obj.callback_url)
             if domain_obj.callback_url
             else None,
         )
 
-    def to_domain(self, preload: list[str] | None = None) -> DomainImportBatch:
+    def to_domain(
+        self,
+        preload: list[str] | None = None,
+    ) -> DomainImportBatch:
         """Convert the persistence model into an Domain ImportBatch object."""
         return DomainImportBatch(
             id=self.id,
             import_record_id=self.import_record_id,
-            collision_strategy=self.collision_strategy,
             status=self.status,
+            collision_strategy=self.collision_strategy,
             storage_url=HttpUrl(self.storage_url),
             callback_url=HttpUrl(self.callback_url) if self.callback_url else None,
             import_record=self.import_record.to_domain()
@@ -161,7 +209,10 @@ class ImportRecord(GenericSQLPersistence[DomainImportRecord]):
             status=domain_obj.status,
         )
 
-    def to_domain(self, preload: list[str] | None = None) -> DomainImportRecord:
+    def to_domain(
+        self,
+        preload: list[str] | None = None,
+    ) -> DomainImportRecord:
         """Convert the persistence model into an Domain ImportRecord object."""
         return DomainImportRecord(
             id=self.id,
@@ -215,7 +266,10 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
             failure_details=domain_obj.failure_details,
         )
 
-    def to_domain(self, preload: list[str] | None = None) -> DomainImportResult:
+    def to_domain(
+        self,
+        preload: list[str] | None = None,
+    ) -> DomainImportResult:
         """Convert the persistence model into an Domain ImportResult object."""
         return DomainImportResult(
             id=self.id,

@@ -70,7 +70,6 @@ async def queue_task_with_trace(
         # for distributed tracing
         carrier: dict[str, Any] = {}
         propagate.inject(carrier)
-
         # Queue the task with the trace context
         await task.kiq(
             *args,

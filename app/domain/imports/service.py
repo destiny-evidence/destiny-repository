@@ -14,7 +14,6 @@ from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.imports.models.models import (
     CollisionStrategy,
     ImportBatch,
-    ImportBatchStatus,
     ImportRecord,
     ImportRecordStatus,
     ImportResult,
@@ -60,7 +59,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
 
     @sql_unit_of_work
     async def get_import_batch(self, import_batch_id: UUID4) -> ImportBatch:
-        """Get a single import by id."""
+        """Get a single import batch."""
         return await self.sql_uow.batches.get_by_pk(import_batch_id)
 
     @sql_unit_of_work
@@ -109,19 +108,6 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
     async def register_result(self, result: ImportResult) -> ImportResult:
         """Register an import result, persisting it to the database."""
         return await self.sql_uow.results.add(result)
-
-    async def _update_import_batch_status(
-        self, import_batch_id: UUID4, status: ImportBatchStatus
-    ) -> ImportBatch:
-        """Update the status of an import batch."""
-        return await self.sql_uow.batches.update_by_pk(import_batch_id, status=status)
-
-    @sql_unit_of_work
-    async def update_import_batch_status(
-        self, import_batch_id: UUID4, status: ImportBatchStatus
-    ) -> ImportBatch:
-        """Update the status of an import batch."""
-        return await self._update_import_batch_status(import_batch_id, status=status)
 
     @sql_unit_of_work
     async def update_import_result(
@@ -243,10 +229,6 @@ This should not happen.
 
     async def distribute_import_batch(self, import_batch: ImportBatch) -> None:
         """Distribute an import batch."""
-        await self.update_import_batch_status(
-            import_batch.id, ImportBatchStatus.STARTED
-        )
-
         async with (
             httpx.AsyncClient() as client,
         ):

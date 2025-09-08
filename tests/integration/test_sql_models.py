@@ -1,10 +1,24 @@
 """Integration tests for SQL interface."""
 
+import datetime
 import uuid
 
-from sqlalchemy import text
+import pytest
+from destiny_sdk.imports import ImportRecordStatus
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
+from app.domain.imports.models.models import (
+    CollisionStrategy,
+    ImportBatchStatus,
+    ImportResultStatus,
+)
+from app.domain.imports.models.sql import (
+    ImportBatch,
+    ImportRecord,
+    ImportResult,
+)
 from app.domain.references.models.models import Enhancement, Reference
 from app.domain.references.models.sql import (
     Enhancement as SQLEnhancement,
@@ -68,3 +82,64 @@ async def test_enhancement_interface(
     assert loaded_enhancement
     enhancement = loaded_enhancement.to_domain()
     assert enhancement == enhancement_in
+
+
+@pytest.mark.parametrize(
+    ("result_statuses", "expected_status"),
+    [
+        ([], ImportBatchStatus.CREATED),
+        ([ImportResultStatus.CREATED], ImportBatchStatus.CREATED),
+        ([ImportResultStatus.STARTED], ImportBatchStatus.STARTED),
+        ([ImportResultStatus.FAILED], ImportBatchStatus.FAILED),
+        ([ImportResultStatus.COMPLETED], ImportBatchStatus.COMPLETED),
+        (
+            [ImportResultStatus.FAILED, ImportResultStatus.COMPLETED],
+            ImportBatchStatus.PARTIALLY_FAILED,
+        ),
+    ],
+)
+async def test_import_batch_status_projection(
+    session: AsyncSession,
+    result_statuses: list[ImportResultStatus],
+    expected_status: ImportBatchStatus,
+):
+    """Test ImportBatch status projection logic."""
+    record_id = uuid.uuid4()
+    record = ImportRecord(
+        id=record_id,
+        searched_at=datetime.datetime.now(tz=datetime.UTC),
+        processor_name="test",
+        processor_version="1.0",
+        status=ImportRecordStatus.STARTED,
+        expected_reference_count=-1,
+        source_name="test",
+    )
+    session.add(record)
+    batch_id = uuid.uuid4()
+    batch = ImportBatch(
+        id=batch_id,
+        import_record_id=record_id,
+        collision_strategy=CollisionStrategy.OVERWRITE,
+        storage_url="https://example.com/bucket",
+        callback_url=None,
+    )
+    session.add(batch)
+    for status in result_statuses:
+        result = ImportResult(
+            id=uuid.uuid4(),
+            import_batch_id=batch_id,
+            status=status,
+            reference_id=None,
+            failure_details=None,
+        )
+        session.add(result)
+    await session.flush()
+    await session.commit()
+
+    q = select(ImportBatch).where(ImportBatch.id == batch_id)
+    res = (await session.execute(q)).unique().scalar_one_or_none()
+    res = await session.get(
+        ImportBatch, batch_id, options=[joinedload(ImportBatch.import_results)]
+    )
+    assert res
+    assert res.to_domain().status == expected_status

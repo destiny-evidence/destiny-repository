@@ -23,6 +23,7 @@ import uvicorn
 from elasticsearch import Elasticsearch
 from fastapi import FastAPI
 from sqlalchemy import create_engine, text
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 with Path(os.environ["MINIO_PRESIGNED_URL_FILEPATH"]).open() as f:
     PRESIGNED_URLS: dict[str, str] = json.load(f)
@@ -431,37 +432,42 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             ca_certs=os.environ["ES_CA_PATH"],
         )
         es_index = "destiny-repository-e2e-reference"
-        time.sleep(5)
         es.indices.refresh(
             index=es_index
         )  # Ensure the index is refreshed before searching
         assert es.indices.exists(index=es_index)
-        es_response = es.search(
-            index=es_index,
-            query={
-                "nested": {
-                    "path": "identifiers",
-                    "query": {
-                        "bool": {
-                            "must": [
-                                {
-                                    "match": {
-                                        "identifiers.identifier": "10.1235/sampledoitwoelectricboogaloo"
+
+        @retry(stop=stop_after_attempt(5), wait=wait_fixed(1))
+        def search_and_assert() -> None:
+            es_response = es.search(
+                index=es_index,
+                query={
+                    "nested": {
+                        "path": "identifiers",
+                        "query": {
+                            "bool": {
+                                "must": [
+                                    {
+                                        "match": {
+                                            "identifiers.identifier": "10.1235/sampledoitwoelectricboogaloo"
+                                        }
                                     }
-                                }
-                            ]
-                        }
-                    },
-                }
-            },
-        )
-        assert es_response["hits"]["total"]["value"] == 1
-        es_reference = es_response["hits"]["hits"][0]["_source"]
-        for enhancement in es_reference["enhancements"]:
-            if enhancement["content"]["enhancement_type"] == "bibliographic":
-                assert (
-                    enhancement["content"]["authorship"][0]["display_name"] == "Wynstan"
-                )
+                                ]
+                            }
+                        },
+                    }
+                },
+            )
+            assert es_response["hits"]["total"]["value"] == 1
+            es_reference = es_response["hits"]["hits"][0]["_source"]
+            for enhancement in es_reference["enhancements"]:
+                if enhancement["content"]["enhancement_type"] == "bibliographic":
+                    assert (
+                        enhancement["content"]["authorship"][0]["display_name"]
+                        == "Wynstan"
+                    )
+
+        search_and_assert()
 
 
 def register_toy_robot(client: httpx.Client) -> None:

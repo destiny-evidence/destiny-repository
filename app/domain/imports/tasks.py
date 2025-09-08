@@ -12,7 +12,7 @@ from app.core.telemetry.attributes import (
 )
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
-from app.domain.imports.models.models import ImportBatchStatus, ImportResultStatus
+from app.domain.imports.models.models import ImportResultStatus
 from app.domain.imports.service import ImportService
 from app.domain.imports.services.anti_corruption_service import (
     ImportAntiCorruptionService,
@@ -22,7 +22,6 @@ from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.references.tasks import (
-    detect_and_dispatch_robot_automations,
     get_blob_repository,
 )
 from app.persistence.es.client import es_manager
@@ -147,71 +146,4 @@ async def import_reference(
             )
         else:
             logger.info("No remaining retries for import batch, marking as failed.")
-            await import_service.update_import_batch_status(
-                import_result.id, ImportBatchStatus.FAILED
-            )
         return
-
-    await __back_compat_batch_side_effect_adapter(
-        import_service, reference_service, import_result.import_batch_id
-    )
-
-
-async def __back_compat_batch_side_effect_adapter(
-    import_service: ImportService,
-    reference_service: ReferenceService,
-    import_batch_id: UUID4,
-) -> None:
-    """
-    Temporary adapter to dispatch batch-level side effects on import batches.
-
-    To be refactored once robot polling is in place: removal of callbacks and
-    direct injection to pending_enhancement table over automatic batch enhancement
-    requests.
-
-    Could this run twice? Probably.
-    Are these side-effects used anywhere other than e2e tests at time of writing? No.
-    Signed, @Adam-Hammo.
-    """
-    import_batch = await import_service.get_import_batch_with_results(import_batch_id)
-    if not import_batch.import_results:
-        return
-    has_success, has_failure = False, False
-    for import_result in import_batch.import_results:
-        # If any are non-terminal results, don't run side effects
-        if import_result.status in (
-            ImportResultStatus.COMPLETED,
-            ImportResultStatus.PARTIALLY_FAILED,
-        ):
-            has_success = True
-        elif import_result.status == ImportResultStatus.FAILED:
-            has_failure = True
-        else:
-            return
-
-    await import_service.update_import_batch_status(
-        import_batch.id,
-        ImportBatchStatus.PARTIALLY_FAILED
-        if has_failure and has_success
-        else ImportBatchStatus.FAILED
-        if has_failure
-        else ImportBatchStatus.COMPLETED,
-    )
-
-    with tracer.start_as_current_span(f"Import Batch Side Effects {import_batch.id}"):
-        await import_service.dispatch_import_batch_callback(import_batch)
-
-        logger.info("Creating automatic enhancements for imported references")
-        imported_references = await import_service.get_imported_references_from_batch(
-            import_batch_id=import_batch.id
-        )
-        requests = await detect_and_dispatch_robot_automations(
-            reference_service=reference_service,
-            reference_ids=imported_references,
-            source_str=f"ImportBatch:{import_batch.id}",
-        )
-        for request in requests:
-            logger.info(
-                "Created automatic enhancement request",
-                enhancement_request_id=str(request.id),
-            )

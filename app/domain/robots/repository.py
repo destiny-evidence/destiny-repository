@@ -88,7 +88,7 @@ class RobotSQLRepository(
         try:
             await self._session.flush()
         except IntegrityError as e:
-            raise SQLIntegrityError.from_sqlacademy_integrity_error(
+            raise SQLIntegrityError.from_sqlalchemy_integrity_error(
                 e, self._persistence_cls.__name__
             ) from e
 

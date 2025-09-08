@@ -221,7 +221,7 @@ class GenericAsyncSqlRepository(
         try:
             await self._session.flush()
         except IntegrityError as e:
-            raise SQLIntegrityError.from_sqlacademy_integrity_error(
+            raise SQLIntegrityError.from_sqlalchemy_integrity_error(
                 e, self._persistence_cls.__name__
             ) from e
 
@@ -276,7 +276,7 @@ class GenericAsyncSqlRepository(
             self._session.add(persistence)
             await self._session.flush()
         except IntegrityError as e:
-            raise SQLIntegrityError.from_sqlacademy_integrity_error(
+            raise SQLIntegrityError.from_sqlalchemy_integrity_error(
                 e, self._persistence_cls.__name__
             ) from e
 
@@ -307,7 +307,7 @@ class GenericAsyncSqlRepository(
             persistence = await self._session.merge(persistence)
             await self._session.flush()
         except IntegrityError as e:
-            raise SQLIntegrityError.from_sqlacademy_integrity_error(
+            raise SQLIntegrityError.from_sqlalchemy_integrity_error(
                 e, self._persistence_cls.__name__
             ) from e
 

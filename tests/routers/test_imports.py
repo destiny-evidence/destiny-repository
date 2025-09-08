@@ -16,7 +16,6 @@ from app.api.exception_handlers import not_found_exception_handler
 from app.core.config import Environment
 from app.core.exceptions import NotFoundError
 from app.domain.imports import routes as imports
-from app.domain.imports import tasks as import_tasks
 from app.domain.imports.models.models import (
     CollisionStrategy,
     ImportBatch,
@@ -171,12 +170,10 @@ async def test_create_batch_for_import(
     assert response.json()["status"] == ImportBatchStatus.CREATED
     assert response.json().items() >= batch_params.items()
 
-    await import_tasks.distribute_import_batch.kiq(
-        import_batch_id=response.json()["id"]
-    )
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()  # Wait for all async tasks to complete
     mock_process.assert_awaited_once()
+
     assert mock_process.call_args[0][0] == ImportBatch(
         id=uuid.UUID(response.json()["id"]),
         import_record_id=valid_import.id,
@@ -195,14 +192,12 @@ async def test_get_batches(
     batch1 = SQLImportBatch(
         import_record_id=valid_import.id,
         collision_strategy=CollisionStrategy.FAIL,
-        status=ImportBatchStatus.CREATED,
         storage_url="https://some.url/file.json",
     )
     session.add(batch1)
     batch2 = SQLImportBatch(
         import_record_id=valid_import.id,
         collision_strategy=CollisionStrategy.FAIL,
-        status=ImportBatchStatus.CREATED,
         storage_url="https://files.storage/something.json",
     )
     session.add(batch2)
@@ -211,6 +206,7 @@ async def test_get_batches(
     response = await client.get(f"/v1/imports/records/{valid_import.id}/batches/")
     assert response.status_code == status.HTTP_200_OK
     assert len(response.json()) == 2
+    assert response.json()[0]["status"] == "created"
 
 
 async def test_get_import_batch_summary(
@@ -222,7 +218,6 @@ async def test_get_import_batch_summary(
     batch = SQLImportBatch(
         import_record_id=valid_import.id,
         collision_strategy=CollisionStrategy.FAIL,
-        status=ImportBatchStatus.CREATED,
         storage_url="https://some.url/file.json",
     )
     session.add(batch)
@@ -274,7 +269,6 @@ async def test_get_import_results(
     batch = SQLImportBatch(
         import_record_id=valid_import.id,
         collision_strategy=CollisionStrategy.FAIL,
-        status=ImportBatchStatus.CREATED,
         storage_url="https://some.url/file.json",
     )
     session.add(batch)

@@ -135,7 +135,7 @@ class SQLIntegrityError(IntegrityError):
         super().__init__(detail, *args)
 
     @classmethod
-    def from_sqlacademy_integrity_error(
+    def from_sqlalchemy_integrity_error(
         cls, error: SQLAlchemyIntegriyError, lookup_model: str
     ) -> Self:
         """
@@ -456,3 +456,19 @@ class AuthError(destiny_sdk.auth.AuthException):
             detail=detail,
             exception=self,
         )
+
+
+class SQLSelectionError(DestinyRepositoryError):
+    """An exception thrown when a SQL selection is improperly formed."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the SQLSelectionError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        self.detail = detail
+        super().__init__(detail, *args)
