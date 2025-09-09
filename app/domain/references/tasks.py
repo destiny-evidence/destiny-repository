@@ -256,6 +256,7 @@ async def detect_and_dispatch_robot_automations(
     later in life.
     """
     requests: list[EnhancementRequest] = []
+    logger.info(reference_ids)
     robot_automations = await reference_service.detect_robot_automations(
         reference_ids=reference_ids,
         enhancement_ids=enhancement_ids,

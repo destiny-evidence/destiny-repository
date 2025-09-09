@@ -22,6 +22,7 @@ from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.references.tasks import (
+    detect_and_dispatch_robot_automations,
     get_blob_repository,
 )
 from app.persistence.es.client import es_manager
@@ -147,3 +148,23 @@ async def import_reference(
         else:
             logger.info("No remaining retries for import batch, marking as failed.")
         return
+
+    if (
+        import_result.status
+        in (
+            ImportResultStatus.COMPLETED,
+            ImportResultStatus.PARTIALLY_FAILED,
+        )
+        and import_result.reference_id
+    ):
+        logger.info("Creating automatic enhancements for imported references")
+        requests = await detect_and_dispatch_robot_automations(
+            reference_service=reference_service,
+            reference_ids=[import_result.reference_id],
+            source_str=f"ImportResult:{import_result.id}",
+        )
+        for request in requests:
+            logger.info(
+                "Created automatic enhancement request",
+                enhancement_request_id=str(request.id),
+            )

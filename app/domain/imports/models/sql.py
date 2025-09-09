@@ -13,9 +13,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
-    and_,
     case,
-    distinct,
     func,
     select,
 )
@@ -117,63 +115,67 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
     storage_url: Mapped[str] = mapped_column(String, nullable=False)
     callback_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    # Annoying redefinition of shared id so it can be used in column_property.
-    # Using text("ImportBatch.id") doesn't work in nested relationship aliases.
+    # Annoying redefinition of id so we can use the class variable in the status join
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
-    # CTE for getting each status in the import results for a batch
-    _status_cte = (
-        select(
-            func.array_agg(distinct(ImportResult.status)).label("statuses"),
-        )
-        .select_from(ImportResult)
-        .where(ImportResult.import_batch_id == id)
-        .cte("status_aggregates")
-    )
+    # This looks worse than it is. Importantly, this only scans once so should be good
+    # enough (for now?)
     status = column_property(
         select(
             case(
                 # No results -> CREATED
-                (
-                    func.array_length(_status_cte.c.statuses, 1).is_(None),
-                    ImportBatchStatus.CREATED.value,
-                ),
+                (func.count(ImportResult.id) == 0, ImportBatchStatus.CREATED.value),
                 # Has non-terminal statuses -> STARTED
                 (
-                    _status_cte.c.statuses.op("&&")(
-                        [
-                            ImportResultStatus.STARTED.value,
-                            ImportResultStatus.RETRYING.value,
-                            ImportResultStatus.CREATED.value,
-                        ]
-                    ),
+                    func.count(
+                        case(
+                            (
+                                ImportResult.status.in_(
+                                    [
+                                        ImportResultStatus.CREATED.value,
+                                        ImportResultStatus.STARTED.value,
+                                        ImportResultStatus.RETRYING.value,
+                                    ]
+                                ),
+                                1,
+                            )
+                        )
+                    )
+                    > 0,
                     ImportBatchStatus.STARTED.value,
                 ),
                 # All failed -> FAILED
                 (
-                    _status_cte.c.statuses == [ImportResultStatus.FAILED.value],
+                    func.count(ImportResult.id)
+                    == func.count(
+                        case(
+                            (
+                                ImportResult.status == ImportResultStatus.FAILED.value,
+                                1,
+                            )
+                        )
+                    ),
                     ImportBatchStatus.FAILED.value,
                 ),
-                # Has failures and successes -> PARTIALLY_FAILED
+                # Has failures -> PARTIALLY_FAILED
                 (
-                    and_(
-                        _status_cte.c.statuses.op("&&")(
-                            [ImportResultStatus.FAILED.value]
-                        ),
-                        _status_cte.c.statuses.op("&&")(
-                            [
-                                ImportResultStatus.COMPLETED.value,
-                                ImportResultStatus.PARTIALLY_FAILED.value,
-                            ]
-                        ),
-                    ),
+                    func.count(
+                        case(
+                            (
+                                ImportResult.status == ImportResultStatus.FAILED.value,
+                                1,
+                            )
+                        )
+                    )
+                    > 0,
                     ImportBatchStatus.PARTIALLY_FAILED.value,
                 ),
                 # Default -> COMPLETED
                 else_=ImportBatchStatus.COMPLETED.value,
             )
         )
-        .select_from(_status_cte)
-        .scalar_subquery()
+        .where(ImportResult.import_batch_id == id)
+        .correlate_except(ImportResult)
+        .scalar_subquery(),
     )
 
     import_record: Mapped["ImportRecord"] = relationship(

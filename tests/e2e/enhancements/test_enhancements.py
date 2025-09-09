@@ -116,29 +116,32 @@ def test_complete_enhancement_workflow():  # noqa: C901, PLR0915
                 conn.execute(
                     text(
                         f"""
-                    SELECT id FROM enhancement_request
+                    SELECT id, source FROM enhancement_request
                     WHERE robot_id <> '{toy_robot_id}';
                     """  # noqa: S608
                     ),
-                ).scalars()
+                )
             )
-            assert len(result) == 2
-            import_auto_request_found = False
-            enhancement_auto_request_found = False
-            for request_id in result:
+            import_result_count = 0
+            enhancement_request_count = 0
+            for row in result:
+                request_id = row.id
+                source = row.source
                 response = repo_client.get(
                     f"/enhancement-requests/{request_id}/",
                 )
                 request = response.json()
-                if request["source"].startswith("ImportBatch"):
+                if source.startswith("ImportResult"):
                     assert request["request_status"] == "completed"
-                    import_auto_request_found = True
-                if request["source"].startswith("EnhancementRequest"):
+                    import_result_count += 1
+                if source.startswith("EnhancementRequest"):
                     assert request["request_status"] == "completed"
-                    enhancement_auto_request_found = True
+                    enhancement_request_count += 1
 
-            assert enhancement_auto_request_found
-            assert import_auto_request_found
+            # Distributed per-reference
+            assert import_result_count == 2
+            # Still batched
+            assert enhancement_request_count == 1
 
     # Finally check we got some toys themselves
     with engine.connect() as conn:

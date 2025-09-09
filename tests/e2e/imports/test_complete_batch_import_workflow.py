@@ -11,7 +11,6 @@ N.B. does NOT use the SDK in order to test serverside validation.
 import datetime
 import json
 import os
-import threading
 import time
 import uuid
 from collections import defaultdict
@@ -19,9 +18,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-import uvicorn
 from elasticsearch import Elasticsearch
-from fastapi import FastAPI
 from sqlalchemy import create_engine, text
 from tenacity import retry, stop_after_attempt, wait_fixed
 
@@ -44,37 +41,25 @@ toy_robot_url = os.environ["TOY_ROBOT_URL"]
 @pytest.mark.order(1)
 def test_complete_batch_import_workflow():  # noqa: PLR0915
     """Test the complete batch import workflow."""
-    #############################
-    # Start the callback server #
-    #############################
-    callback_app = FastAPI()
 
-    @callback_app.post("/callback/")
-    def callback_endpoint(payload: dict) -> dict:
-        """Receive callback payloads."""
-        callback_payload.clear()
-        callback_payload.update(payload)
-        return {"status": "received"}
-
-    # Helper to wait for a callback and then clear it
-    def wait_for_callback(timeout: int = 10) -> dict:
-        start = time.time()
-        while time.time() - start < timeout:
-            if callback_payload:
-                cp = callback_payload.copy()
-                callback_payload.clear()
-                return cp
-            time.sleep(0.1)
-        msg = "Callback not received in time"
-        raise TimeoutError(msg)
-
-    def run_callback_server() -> None:
-        """Run the FastAPI server."""
-        print("Starting callback server...")
-        uvicorn.run(callback_app, host="0.0.0.0", port=8001)  # noqa: S104
-
-    server_thread = threading.Thread(target=run_callback_server, daemon=True)
-    server_thread.start()
+    # Helper to poll for batch completion
+    @retry(stop=stop_after_attempt(5), wait=wait_fixed(1))
+    def poll_batch_status(
+        client: httpx.Client,
+        import_record_id: uuid.UUID,
+        batch_id: uuid.UUID,
+        expected_status: str,
+    ) -> dict:
+        response = client.get(
+            f"/imports/records/{import_record_id}/batches/{batch_id}/summary/"
+        )
+        assert response.status_code == 200
+        summary = response.json()
+        if summary["import_batch_status"] == expected_status:
+            return summary
+        print(summary)
+        msg = f"Batch {batch_id} did not reach status '{expected_status}' yet: '{summary['import_batch_status']}'"
+        raise Exception(msg)  # noqa: TRY002
 
     def get_reference_details() -> list[dict]:
         """Get reference details from the database."""
@@ -210,7 +195,9 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             callback_url=f"{CALLBACK_URL}/callback/",
         )
 
-        cp = wait_for_callback()
+        cp = poll_batch_status(
+            client, import_record["id"], import_batch_a["id"], "completed"
+        )
         assert cp["import_batch_id"] == import_batch_a["id"]
         assert cp["import_batch_status"] == "completed"
         assert sum(cp["results"].values()) == 6
@@ -254,7 +241,9 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             url,
             callback_url=f"{CALLBACK_URL}/callback/",
         )
-        cp = wait_for_callback()
+        cp = poll_batch_status(
+            client, import_record["id"], import_batch_b["id"], "partially_failed"
+        )
         assert cp["import_batch_id"] == import_batch_b["id"]
         assert cp["import_batch_status"] == "partially_failed"
         assert sum(cp["results"].values()) == 9
@@ -284,7 +273,9 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             collision_strategy="fail",
             callback_url=f"{CALLBACK_URL}/callback/",
         )
-        cp = wait_for_callback()
+        cp = poll_batch_status(
+            client, import_record["id"], import_batch_c["id"], "failed"
+        )
         assert cp["import_batch_id"] == import_batch_c["id"]
         assert cp["import_batch_status"] == "failed"
         assert sum(cp["results"].values()) == 7
@@ -301,7 +292,9 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             collision_strategy="overwrite",
             callback_url=f"{CALLBACK_URL}/callback/",
         )
-        cp = wait_for_callback()
+        cp = poll_batch_status(
+            client, import_record["id"], import_batch_d["id"], "partially_failed"
+        )
         assert cp["import_batch_id"] == import_batch_d["id"]
         assert cp["import_batch_status"] == "partially_failed"
         assert sum(cp["results"].values()) == 3
@@ -334,7 +327,9 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             collision_strategy="merge_defensive",
             callback_url=f"{CALLBACK_URL}/callback/",
         )
-        cp = wait_for_callback()
+        cp = poll_batch_status(
+            client, import_record["id"], import_batch_e["id"], "completed"
+        )
         assert cp["import_batch_id"] == import_batch_e["id"]
         assert cp["import_batch_status"] == "completed"
         assert sum(cp["results"].values()) == 2
@@ -381,7 +376,9 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             collision_strategy="merge_aggressive",
             callback_url=f"{CALLBACK_URL}/callback/",
         )
-        cp = wait_for_callback()
+        cp = poll_batch_status(
+            client, import_record["id"], import_batch_f["id"], "completed"
+        )
         assert cp["import_batch_id"] == import_batch_f["id"]
         assert cp["import_batch_status"] == "completed"
         assert sum(cp["results"].values()) == 2

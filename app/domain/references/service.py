@@ -85,7 +85,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
     async def _merge_reference(self, reference: Reference) -> Reference:
         """Persist a reference with an existing SQL & ES UOW."""
-        reference = await self.sql_uow.references.merge(reference)
+        await self.sql_uow.references.merge(reference)
         await self.es_uow.references.add(reference)
         return reference
 

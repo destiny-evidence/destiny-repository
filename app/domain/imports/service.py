@@ -125,7 +125,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         line_number: int,
     ) -> ImportResult:
         """Import a reference and persist it to the database."""
-        await self.update_import_result(
+        import_result = await self.update_import_result(
             import_result.id, status=ImportResultStatus.STARTED
         )
 
@@ -179,26 +179,25 @@ This should not happen.
 
         if not reference_result.reference:
             # Reference was not created
-            await self.update_import_result(
+            import_result = await self.update_import_result(
                 import_result.id,
                 failure_details=reference_result.error_str,
                 status=ImportResultStatus.FAILED,
             )
         elif reference_result.errors:
             # Reference was created, but errors occurred
-            await self.update_import_result(
+            import_result = await self.update_import_result(
                 import_result.id,
                 status=ImportResultStatus.PARTIALLY_FAILED,
                 reference_id=reference_result.reference_id,
                 failure_details=reference_result.error_str,
             )
         else:
-            await self.update_import_result(
+            import_result = await self.update_import_result(
                 import_result.id,
                 status=ImportResultStatus.COMPLETED,
                 reference_id=reference_result.reference_id,
             )
-
         return import_result
 
     async def dispatch_import_batch_callback(
@@ -251,6 +250,7 @@ This should not happen.
                             line_number,
                             settings.import_reference_retry_count,
                         )
+                        line_number += 1
 
     @sql_unit_of_work
     async def add_batch_result(
