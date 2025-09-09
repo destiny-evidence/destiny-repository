@@ -182,7 +182,7 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
         "ImportRecord", back_populates="batches"
     )
     import_results: Mapped[list[ImportResult]] = relationship(
-        "ImportResult", back_populates="import_batch", lazy="selectin"
+        "ImportResult", back_populates="import_batch"
     )
 
     __table_args__ = (
