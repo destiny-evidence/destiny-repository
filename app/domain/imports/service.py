@@ -200,32 +200,6 @@ This should not happen.
             )
         return import_result
 
-    async def dispatch_import_batch_callback(
-        self,
-        import_batch: ImportBatch,
-    ) -> None:
-        """Dispatch the callback for an import batch."""
-        if import_batch.callback_url:
-            try:
-                async with httpx.AsyncClient(
-                    transport=httpx.AsyncHTTPTransport(retries=2)
-                ) as client:
-                    # Refresh the import batch to get the latest status
-                    import_batch = await self.get_import_batch_with_results(
-                        import_batch.id
-                    )
-                    response = await client.post(
-                        str(import_batch.callback_url),
-                        json=(
-                            self._anti_corruption_service.import_batch_to_sdk_summary(
-                                import_batch
-                            )
-                        ).model_dump(mode="json"),
-                    )
-                    response.raise_for_status()
-            except Exception:
-                logger.exception("Failed to send callback")
-
     async def distribute_import_batch(self, import_batch: ImportBatch) -> None:
         """Distribute an import batch."""
         async with (

@@ -135,7 +135,6 @@ async def test_import_batch_status_projection(
         import_record_id=record_id,
         collision_strategy=CollisionStrategy.OVERWRITE,
         storage_url="https://example.com/bucket",
-        callback_url=None,
     )
     session.add(batch)
     for status in result_statuses:

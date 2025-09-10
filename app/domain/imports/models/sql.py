@@ -113,7 +113,6 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
         nullable=False,
     )
     storage_url: Mapped[str] = mapped_column(String, nullable=False)
-    callback_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Annoying redefinition of id so we can use the class variable in the status join
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
@@ -202,9 +201,6 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
             import_record_id=domain_obj.import_record_id,
             collision_strategy=domain_obj.collision_strategy,
             storage_url=str(domain_obj.storage_url),
-            callback_url=str(domain_obj.callback_url)
-            if domain_obj.callback_url
-            else None,
         )
 
     def to_domain(
@@ -218,7 +214,6 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
             status=self.status,
             collision_strategy=self.collision_strategy,
             storage_url=HttpUrl(self.storage_url),
-            callback_url=HttpUrl(self.callback_url) if self.callback_url else None,
             import_record=self.import_record.to_domain()
             if "import_record" in (preload or [])
             else None,

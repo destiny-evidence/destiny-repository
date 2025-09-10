@@ -178,9 +178,8 @@ with each line formatted according to
     )
     callback_url: HttpUrl | None = Field(
         default=None,
-        description="""
-The URL to which the processor should send a callback when the batch has been processed.
-        """,
+        deprecated=True,
+        description="This field is currently a no-op.",
     )
 
 

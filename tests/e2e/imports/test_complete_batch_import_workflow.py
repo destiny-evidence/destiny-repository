@@ -27,9 +27,6 @@ with Path(os.environ["MINIO_PRESIGNED_URL_FILEPATH"]).open() as f:
 
 BKT = "e2e/test_complete_batch_import_workflow/"
 
-CALLBACK_URL = os.environ["CALLBACK_URL"]
-
-callback_payload: dict = {}
 
 db_url = os.environ["DB_URL"]
 engine = create_engine(db_url)
@@ -192,7 +189,6 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         import_batch_a = submit_happy_batch(
             import_record["id"],
             url,
-            callback_url=f"{CALLBACK_URL}/callback/",
         )
 
         cp = poll_batch_status(
@@ -225,7 +221,6 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             f"/imports/records/{import_record['id']}/batches/",
             json={
                 "storage_url": url,
-                "callback_url": f"{CALLBACK_URL}/callback/",
             },
         )
         assert response.status_code in (409, 500)
@@ -239,7 +234,6 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         import_batch_b = submit_happy_batch(
             import_record["id"],
             url,
-            callback_url=f"{CALLBACK_URL}/callback/",
         )
         cp = poll_batch_status(
             client, import_record["id"], import_batch_b["id"], "partially_failed"
@@ -271,7 +265,6 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             import_record["id"],
             url,
             collision_strategy="fail",
-            callback_url=f"{CALLBACK_URL}/callback/",
         )
         cp = poll_batch_status(
             client, import_record["id"], import_batch_c["id"], "failed"
@@ -290,7 +283,6 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             import_record["id"],
             url,
             collision_strategy="overwrite",
-            callback_url=f"{CALLBACK_URL}/callback/",
         )
         cp = poll_batch_status(
             client, import_record["id"], import_batch_d["id"], "partially_failed"
@@ -325,7 +317,6 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             import_record["id"],
             url,
             collision_strategy="merge_defensive",
-            callback_url=f"{CALLBACK_URL}/callback/",
         )
         cp = poll_batch_status(
             client, import_record["id"], import_batch_e["id"], "completed"
@@ -374,7 +365,6 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             import_record["id"],
             url,
             collision_strategy="merge_aggressive",
-            callback_url=f"{CALLBACK_URL}/callback/",
         )
         cp = poll_batch_status(
             client, import_record["id"], import_batch_f["id"], "completed"

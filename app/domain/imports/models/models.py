@@ -159,12 +159,6 @@ Default is `fail`, which allows the importing process to "follow up" on the coll
 The URL at which the set of references for this batch are stored.
     """,
     )
-    callback_url: HttpUrl | None = Field(
-        default=None,
-        description="""
-The URL to which the processor should send a callback when the batch has been processed.
-        """,
-    )
     status: ImportBatchStatus = Field(
         default=ImportBatchStatus.CREATED, description="The status of the batch."
     )

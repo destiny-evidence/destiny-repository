@@ -60,10 +60,6 @@ class ImportAntiCorruptionService(GenericAntiCorruptionService):
         self, import_batch: ImportBatch
     ) -> destiny_sdk.imports.ImportBatchSummary:
         """Convert the ImportBatch to an SDK summary model."""
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.info(import_batch)
         try:
             result_summary: dict[ImportResultStatus, int] = dict.fromkeys(
                 ImportResultStatus, 0

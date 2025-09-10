@@ -4,6 +4,7 @@ import uuid
 from unittest.mock import AsyncMock
 
 import destiny_sdk
+import httpx
 import pytest
 
 from app.domain.imports.models.models import (
@@ -148,6 +149,119 @@ async def test_import_reference_reference_created_with_errors(
     import_result = repo_results.get_first_record()
     assert import_result.status == ImportResultStatus.PARTIALLY_FAILED
     assert import_result.failure_details == import_reference_error
+
+
+@pytest.mark.asyncio
+async def test_import_reference_sql_integrity_error(
+    fake_repository, fake_uow, import_result
+):
+    """Test SQLIntegrityError handling in import_reference (should retry)."""
+    from app.core.exceptions import SQLIntegrityError
+
+    repo_results = fake_repository([import_result])
+    uow = fake_uow(results=repo_results)
+    service = ImportService(ImportAntiCorruptionService(), uow)
+
+    # Provide all required arguments for SQLIntegrityError
+    fake_reference_service = AsyncMock()
+    fake_reference_service.ingest_reference.side_effect = SQLIntegrityError(
+        detail="Integrity error",
+        lookup_model="ImportResult",
+        collision="test-collision",
+    )
+
+    result = await service.import_reference(
+        fake_reference_service, import_result, CollisionStrategy.FAIL, "nonsense", 1
+    )
+
+    assert result.status == ImportResultStatus.RETRYING
+
+
+@pytest.mark.asyncio
+async def test_distribute_import_batch_happy_path(monkeypatch, fake_uow):
+    """Test distribute_import_batch happy path with multiple lines."""
+
+    # Prepare a fake ImportBatch
+    batch_id = uuid.uuid4()
+    import_batch = ImportBatch(
+        id=batch_id,
+        storage_url="https://fake-storage-url.com",
+        status=ImportBatchStatus.CREATED,
+        import_record_id=uuid.uuid4(),
+    )
+
+    # Prepare lines to be returned by the HTTPX stream
+    lines = ["ref1", "ref2", "ref3"]
+
+    class FakeResponse:
+        def __init__(self, lines):
+            self._lines = lines
+            self._idx = 0
+            self.status_code = 200
+
+        async def aiter_lines(self):
+            for line in self._lines:
+                yield line
+
+        def raise_for_status(self):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    class FakeStreamContext:
+        def __init__(self, response):
+            self._response = response
+
+        async def __aenter__(self):
+            return self._response
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    class FakeClient:
+        def __init__(self, lines):
+            self._lines = lines
+            self._transport = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+        def stream(self, method, url):
+            assert method == "GET"
+            assert url == str(import_batch.storage_url)
+            response = FakeResponse(self._lines)
+            return FakeStreamContext(response)
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda: FakeClient(lines))
+
+    created_results = []
+
+    async def fake_register_result(result):
+        created_results.append(result)
+        return result
+
+    queued_tasks = []
+
+    async def fake_queue_task_with_trace(*args):
+        queued_tasks.append(args)
+
+    service = ImportService(ImportAntiCorruptionService(), fake_uow())
+    monkeypatch.setattr(service, "register_result", fake_register_result)
+    monkeypatch.setattr(
+        "app.domain.imports.service.queue_task_with_trace", fake_queue_task_with_trace
+    )
+
+    await service.distribute_import_batch(import_batch)
+
+    assert len(created_results) == len(lines)
+    assert len(queued_tasks) == len(lines)
 
 
 @pytest.mark.asyncio
