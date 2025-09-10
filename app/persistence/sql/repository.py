@@ -6,10 +6,12 @@ from typing import Generic
 from opentelemetry import trace
 from pydantic import UUID4
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError, NoResultFound
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import QueryableAttribute, joinedload, selectinload
+from sqlalchemy.orm.strategy_options import _AbstractLoad
 
+from app.core.config import get_settings
 from app.core.exceptions import SQLIntegrityError, SQLNotFoundError
 from app.core.telemetry.attributes import (
     Attributes,
@@ -19,8 +21,10 @@ from app.core.telemetry.repository import trace_repository_method
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
 from app.persistence.sql.generics import GenericSQLPersistenceType
+from app.persistence.sql.persistence import RelationshipLoadType
 
 tracer = trace.get_tracer(__name__)
+settings = get_settings()
 
 
 class GenericAsyncSqlRepository(
@@ -54,6 +58,57 @@ class GenericAsyncSqlRepository(
         self._domain_cls = domain_cls
         self.system = "SQL"
 
+    def _get_relationship_load(
+        self,
+        relationship: QueryableAttribute,
+        preload: list[str] | None = None,
+        depth: int = 1,
+    ) -> _AbstractLoad:
+        """
+        Get the appropriate relationship loading strategy with support for nesting.
+
+        Args:
+            relationship: The relationship attribute to load
+            preload: List of additional relationships to preload
+            depth: Internal tracker for max relationship depth
+
+        Returns:
+            An ORM loading option configured for the relationship
+
+        """
+        load_type = relationship.info.get("load_type", RelationshipLoadType.JOINED)
+        max_recursion_depth = relationship.info.get("max_recursion_depth")
+
+        # Determine the base loading strategy
+        if load_type == RelationshipLoadType.SELECTIN:
+            # Recurse once, we add more loads dynamically below
+            loader = selectinload(relationship, recursion_depth=1)
+        else:
+            loader = joinedload(relationship)
+
+        # This magic ensures we both:
+        # - propagate preloads to self-referential relationships
+        # - recursively join self-referential relationships a configured number of times
+        # Use-case for initial implementation is propagating enhancements etc to
+        # duplicates when preloaded.
+        avoid_propagate: set[str] = set()
+        if back_populates := relationship.info.get("back_populates"):
+            # Don't "bounce back" and form a joining cycle
+            avoid_propagate.add(back_populates)
+        if depth == (max_recursion_depth or 1):
+            # Recursion exit case, maximum length of this relationship's
+            # self-referential chain
+            avoid_propagate.add(relationship.key)
+        if preload and relationship.prop.mapper.class_ == self._persistence_cls:
+            preload = [p for p in preload if p not in avoid_propagate]
+            for nested_rel_name in preload:
+                nested_rel = getattr(relationship.prop.mapper.class_, nested_rel_name)
+                loader = loader.options(
+                    self._get_relationship_load(nested_rel, preload, depth + 1)
+                )
+
+        return loader
+
     @trace_repository_method(tracer)
     async def get_by_pk(
         self, pk: UUID4, preload: list[str] | None = None
@@ -74,22 +129,17 @@ class GenericAsyncSqlRepository(
         if preload:
             for p in preload:
                 relationship = getattr(self._persistence_cls, p)
-                options.append(joinedload(relationship))
-        query = (
-            select(self._persistence_cls)
-            .where(self._persistence_cls.id == pk)
-            .options(*options)
-        )
-        try:
-            result = (await self._session.execute(query)).unique().scalar_one()
-        except NoResultFound as exc:
+                options.append(self._get_relationship_load(relationship, preload))
+
+        result = await self._session.get(self._persistence_cls, pk, options=options)
+        if not result:
             detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
             raise SQLNotFoundError(
                 detail=detail,
                 lookup_model=self._persistence_cls.__name__,
                 lookup_type="id",
                 lookup_value=pk,
-            ) from exc
+            )
         return result.to_domain(preload=preload)
 
     @trace_repository_method(tracer)
@@ -114,7 +164,7 @@ class GenericAsyncSqlRepository(
         if preload:
             for p in preload:
                 relationship = getattr(self._persistence_cls, p)
-                options.append(joinedload(relationship))
+                options.append(self._get_relationship_load(relationship))
 
         query = (
             select(self._persistence_cls)
@@ -156,10 +206,11 @@ class GenericAsyncSqlRepository(
 
         """
         options = []
+
         if preload:
             for p in preload:
                 relationship = getattr(self._persistence_cls, p)
-                options.append(joinedload(relationship))
+                options.append(self._get_relationship_load(relationship))
 
         query = select(self._persistence_cls).options(*options)
         result = await self._session.execute(query)

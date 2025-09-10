@@ -21,6 +21,7 @@ from app.domain.references.repository import (
     EnhancementRequestSQLRepository,
     EnhancementSQLRepository,
     ExternalIdentifierSQLRepository,
+    ReferenceDuplicateDecisionSQLRepository,
     ReferenceSQLRepository,
     RobotAutomationSQLRepository,
 )
@@ -49,6 +50,7 @@ class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
     enhancement_requests: EnhancementRequestSQLRepository
     robots: RobotSQLRepository
     robot_automations: RobotAutomationSQLRepository
+    reference_duplicate_decisions: ReferenceDuplicateDecisionSQLRepository
 
     def __init__(self, session: AsyncSession) -> None:
         """Initialize the unit of work with a session."""
@@ -66,6 +68,9 @@ class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
         self.enhancement_requests = EnhancementRequestSQLRepository(self.session)
         self.robots = RobotSQLRepository(self.session)
         self.robot_automations = RobotAutomationSQLRepository(self.session)
+        self.reference_duplicate_decisions = ReferenceDuplicateDecisionSQLRepository(
+            self.session
+        )
 
         return await super().__aenter__()
 

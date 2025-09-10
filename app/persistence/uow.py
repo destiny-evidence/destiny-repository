@@ -19,6 +19,7 @@ from app.domain.references.repository import (
     EnhancementRepositoryBase,
     EnhancementRequestRepositoryBase,
     ExternalIdentifierRepositoryBase,
+    ReferenceDuplicateDecisionRepositoryBase,
     ReferenceRepositoryBase,
     RobotAutomationRepositoryBase,
 )
@@ -42,6 +43,7 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
     enhancement_requests: EnhancementRequestRepositoryBase
     robots: RobotRepositoryBase
     robot_automations: RobotAutomationRepositoryBase
+    reference_duplicate_decisions: ReferenceDuplicateDecisionRepositoryBase
 
     _protected_attrs: Final[set[str]] = {
         "imports",
@@ -53,6 +55,7 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
         "enhancement_requests",
         "robots",
         "robot_automations",
+        "reference_duplicate_decisions",
     }
 
     def __init__(self) -> None:
