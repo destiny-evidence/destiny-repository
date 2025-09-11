@@ -652,11 +652,13 @@ async def test_duplicate_candidate_search(
     # Test the search_for_candidate_duplicates method
     results = await es_reference_repository.search_for_candidate_duplicates(
         CandidateDuplicateSearchFieldsProjection.get_from_reference(matching_ref1),
+        reference_id=matching_ref1.id,
     )
 
-    assert {r.id for r in results} == {matching_ref1.id, matching_ref2.id}
+    assert {r.id for r in results} == {matching_ref2.id}
 
     results = await es_reference_repository.search_for_candidate_duplicates(
         CandidateDuplicateSearchFieldsProjection.get_from_reference(non_matching_ref),
+        reference_id=non_matching_ref.id,
     )
-    assert {r.id for r in results} == {non_matching_ref.id}
+    assert not results

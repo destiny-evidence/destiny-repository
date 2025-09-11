@@ -179,7 +179,9 @@ class ReferenceESRepository(
 
     @trace_repository_method(tracer)
     async def search_for_candidate_duplicates(
-        self, search_fields: CandidateDuplicateSearchFields
+        self,
+        search_fields: CandidateDuplicateSearchFields,
+        reference_id: UUID,
     ) -> list[ESSearchResult]:
         """
         Fuzzy match candidate fingerprints to existing references.
@@ -193,7 +195,6 @@ class ReferenceESRepository(
         - SHOULD: partial match on authors list (requires 50% of authors to match)
         - FILTER: Publication year within ±1 year range (non-scoring)
         """
-        # First, build all the search objects without executing them
         search = (
             AsyncSearch(using=self._client)
             .doc_type(self._persistence_cls)
@@ -226,6 +227,7 @@ class ReferenceESRepository(
                     ]
                     if search_fields.publication_year
                     else [],
+                    must_not=[Q("ids", values=[reference_id])],
                     minimum_should_match=math.floor(0.5 * len(search_fields.authors)),
                 )
             )

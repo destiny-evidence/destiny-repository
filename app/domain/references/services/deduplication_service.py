@@ -156,7 +156,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision.reference_id
         )
         search_result = await self.es_uow.references.search_for_candidate_duplicates(
-            CandidateDuplicateSearchFieldsProjection.get_from_reference(reference)
+            CandidateDuplicateSearchFieldsProjection.get_from_reference(reference),
+            reference_id=reference.id,
         )
 
         if not search_result:
