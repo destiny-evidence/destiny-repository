@@ -92,6 +92,8 @@ class DuplicateDetermination(StrEnum):
         and has been removed. This is rare and generally occurs in repeated imports.
     - `canonical`: The reference is not a duplicate of another reference.
     - `unresolved`: Automatic attempts to resolve the duplicate were unsuccessful.
+    - `unsearchable`: The reference does not have sufficient metadata to be
+        automatically matched to other references.
     - `decoupled`: The existing duplicate mapping has been changed/removed based on new
         information and the references involved require special attention.
     """
@@ -102,18 +104,8 @@ class DuplicateDetermination(StrEnum):
     EXACT_DUPLICATE = auto()
     CANONICAL = auto()
     UNRESOLVED = auto()
+    UNSEARCHABLE = auto()
     DECOUPLED = auto()
-
-    @classmethod
-    def get_terminal_states(cls) -> set["DuplicateDetermination"]:
-        """Return the set of terminal DuplicateDetermination states."""
-        return {
-            cls.DUPLICATE,
-            cls.EXACT_DUPLICATE,
-            cls.CANONICAL,
-            cls.UNRESOLVED,
-            cls.DECOUPLED,
-        }
 
 
 class Reference(
