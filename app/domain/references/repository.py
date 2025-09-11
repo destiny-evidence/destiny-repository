@@ -34,6 +34,9 @@ from app.domain.references.models.models import (
     Reference as DomainReference,
 )
 from app.domain.references.models.models import (
+    ReferenceDuplicateDecision as DomainReferenceDuplicateDecision,
+)
+from app.domain.references.models.models import (
     RobotAutomation as DomainRobotAutomation,
 )
 from app.domain.references.models.sql import Enhancement as SQLEnhancement
@@ -42,6 +45,9 @@ from app.domain.references.models.sql import (
 )
 from app.domain.references.models.sql import ExternalIdentifier as SQLExternalIdentifier
 from app.domain.references.models.sql import Reference as SQLReference
+from app.domain.references.models.sql import (
+    ReferenceDuplicateDecision as SQLReferenceDuplicateDecision,
+)
 from app.domain.references.models.sql import RobotAutomation as SQLRobotAutomation
 from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
@@ -372,3 +378,27 @@ class RobotAutomationESRepository(
             )
 
         return robot_automation_percolation_results
+
+
+class ReferenceDuplicateDecisionRepositoryBase(
+    GenericAsyncRepository[DomainReferenceDuplicateDecision, GenericPersistenceType],
+    ABC,
+):
+    """Abstract implementation of a repository for Reference Duplicate Decisions."""
+
+
+class ReferenceDuplicateDecisionSQLRepository(
+    GenericAsyncSqlRepository[
+        DomainReferenceDuplicateDecision, SQLReferenceDuplicateDecision
+    ],
+    ReferenceDuplicateDecisionRepositoryBase,
+):
+    """Concrete implementation of a repo for Reference Duplicate Decisions using SQL."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Initialize the repository with the database session."""
+        super().__init__(
+            session,
+            DomainReferenceDuplicateDecision,
+            SQLReferenceDuplicateDecision,
+        )
