@@ -460,9 +460,10 @@ class ReferenceDuplicateDecision(
 
     __tablename__ = "reference_duplicate_decision"
 
-    reference_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("reference.id"), nullable=False
-    )
+    # NB not foreign keys as can also refer to a reference that is not
+    # imported, for instance an exact duplicate.
+    reference_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
+    enhancement_id: Mapped[uuid.UUID | None] = mapped_column(UUID, nullable=True)
     active_decision: Mapped[bool] = mapped_column(nullable=False, default=True)
     candidate_duplicate_ids: Mapped[list[uuid.UUID]] = mapped_column(
         ARRAY(UUID), nullable=True
@@ -501,6 +502,7 @@ class ReferenceDuplicateDecision(
         return cls(
             id=domain_obj.id,
             reference_id=domain_obj.reference_id,
+            enhancement_id=domain_obj.enhancement_id,
             active_decision=domain_obj.active_decision,
             candidate_duplicate_ids=domain_obj.candidate_duplicate_ids,
             canonical_reference_id=domain_obj.canonical_reference_id,
@@ -515,5 +517,9 @@ class ReferenceDuplicateDecision(
         return DomainReferenceDuplicateDecision(
             id=self.id,
             reference_id=self.reference_id,
+            enhancement_id=self.enhancement_id,
+            active_decision=self.active_decision,
+            candidate_duplicate_ids=self.candidate_duplicate_ids,
+            canonical_reference_id=self.canonical_reference_id,
             duplicate_determination=self.duplicate_determination,
         )

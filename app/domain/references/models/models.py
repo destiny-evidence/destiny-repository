@@ -435,6 +435,12 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
     """Model representing a decision on whether a reference is a duplicate."""
 
     reference_id: UUID4 = Field(description="The ID of the reference being evaluated.")
+    enhancement_id: UUID4 | None = Field(
+        default=None,
+        description=(
+            "The ID of the enhancement that triggered this duplicate decision, if any."
+        ),
+    )
     active_decision: bool = Field(
         default=False,
         description="Whether this is the active decision for the reference.",
