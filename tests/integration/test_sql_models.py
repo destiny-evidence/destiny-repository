@@ -110,6 +110,10 @@ async def test_enhancement_interface(
             [ImportResultStatus.FAILED, ImportResultStatus.COMPLETED],
             ImportBatchStatus.PARTIALLY_FAILED,
         ),
+        (
+            [ImportResultStatus.PARTIALLY_FAILED, ImportResultStatus.COMPLETED],
+            ImportBatchStatus.PARTIALLY_FAILED,
+        ),
     ],
 )
 async def test_import_batch_status_projection(

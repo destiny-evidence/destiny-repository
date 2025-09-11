@@ -61,7 +61,9 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
         "ImportBatch", back_populates="import_results"
     )
 
-    __table_args__ = (Index("ix_import_result_import_batch_id", "import_batch_id"),)
+    __table_args__ = (
+        Index("ix_import_result_import_batch_id_status", "import_batch_id", "status"),
+    )
 
     @classmethod
     def from_domain(cls, domain_obj: DomainImportResult) -> Self:
@@ -160,7 +162,12 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
                     func.count(
                         case(
                             (
-                                ImportResult.status == ImportResultStatus.FAILED.value,
+                                ImportResult.status.in_(
+                                    [
+                                        ImportResultStatus.FAILED.value,
+                                        ImportResultStatus.PARTIALLY_FAILED.value,
+                                    ]
+                                ),
                                 1,
                             )
                         )
