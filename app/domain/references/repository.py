@@ -195,7 +195,8 @@ class ReferenceESRepository(
         """
         # First, build all the search objects without executing them
         search = (
-            AsyncSearch()
+            AsyncSearch(using=self._client)
+            .doc_type(self._persistence_cls)
             .query(
                 Q(
                     "bool",
