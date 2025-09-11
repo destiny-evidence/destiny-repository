@@ -5,7 +5,16 @@ from typing import Annotated
 
 import destiny_sdk
 from elasticsearch import AsyncElasticsearch
-from fastapi import APIRouter, Depends, Path, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +35,7 @@ from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     EnhancementRequestStatus,
     ExternalIdentifierSearch,
+    PendingEnhancementStatus,
 )
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
@@ -36,6 +46,7 @@ from app.domain.references.services.enhancement_service import (
 )
 from app.domain.references.tasks import (
     validate_and_import_enhancement_result,
+    validate_and_import_robot_enhancement_batch_result,
 )
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
@@ -338,7 +349,7 @@ async def request_robot_enhancement_batch(
         blob_repository=blob_repository,
     )
 
-    return await anti_corruption_service.robot_enhancement_batch_to_sdk(
+    return await anti_corruption_service.robot_enhancement_batch_to_sdk_robot(
         robot_enhancement_batch
     )
 
@@ -430,3 +441,57 @@ async def fulfill_enhancement_request(
     )
 
     return await anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
+
+
+@robot_enhancement_batch_router.post(
+    "/{robot_enhancement_batch_id}/results/",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def fulfill_robot_enhancement_batch(
+    robot_enhancement_batch_id: Annotated[
+        uuid.UUID,
+        Path(description="The ID of the robot enhancement batch."),
+    ],
+    robot_result: destiny_sdk.robots.RobotResult,
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    response: Response,
+) -> destiny_sdk.robots.RobotEnhancementBatchRead:
+    """Receive the robot result and kick off importing the enhancements."""
+    if robot_result.request_id != robot_enhancement_batch_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Request ID mismatch"
+        )
+
+    if robot_result.error:
+        robot_enhancement_batch = (
+            await reference_service.mark_robot_enhancement_batch_failed(
+                robot_enhancement_batch_id=robot_enhancement_batch_id,
+                error=robot_result.error.message,
+            )
+        )
+
+        response.status_code = status.HTTP_200_OK
+        return await anti_corruption_service.robot_enhancement_batch_to_sdk(
+            robot_enhancement_batch
+        )
+
+    robot_enhancement_batch = await reference_service.get_robot_enhancement_batch(
+        robot_enhancement_batch_id
+    )
+
+    await reference_service.update_pending_enhancements_status_for_robot_enhancement_batch(  # noqa: E501
+        robot_enhancement_batch_id=robot_enhancement_batch.id,
+        status=PendingEnhancementStatus.IMPORTING,
+    )
+
+    await queue_task_with_trace(
+        validate_and_import_robot_enhancement_batch_result,
+        robot_enhancement_batch_id=robot_enhancement_batch_id,
+    )
+
+    return await anti_corruption_service.robot_enhancement_batch_to_sdk(
+        robot_enhancement_batch
+    )

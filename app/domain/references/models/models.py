@@ -404,12 +404,18 @@ class PendingEnhancementStatus(StrEnum):
     **Allowed values**:
     - `pending`: Enhancement is waiting to be processed.
     - `accepted`: Enhancement has been accepted for processing.
+    - `importing`: Enhancement is currently being imported.
+    - `indexing`: Enhancement is currently being indexed.
+    - `indexing_failed`: Enhancement indexing has failed.
     - `completed`: Enhancement has been processed successfully.
     - `failed`: Enhancement processing has failed.
     """
 
     PENDING = auto()
     ACCEPTED = auto()
+    IMPORTING = auto()
+    INDEXING = auto()
+    INDEXING_FAILED = auto()
     COMPLETED = auto()
     FAILED = auto()
 
@@ -452,13 +458,21 @@ class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):
         ...,
         description="The ID of the robot that will perform the enhancement.",
     )
-    reference_file: BlobStorageFile | None = Field(
+    reference_data_file: BlobStorageFile | None = Field(
         None,
         description="The file containing the references to be enhanced.",
     )
     result_file: BlobStorageFile | None = Field(
         None,
         description="The file containing the enhancement results.",
+    )
+    validation_result_file: BlobStorageFile | None = Field(
+        default=None,
+        description="The file containing the validation result data from the robot.",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error encountered during the enhancement batch process.",
     )
     pending_enhancements: list[PendingEnhancement] = Field(
         [],

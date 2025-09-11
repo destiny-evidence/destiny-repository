@@ -41,6 +41,7 @@ from app.domain.references.services.anti_corruption_service import (
 )
 from app.domain.references.services.enhancement_service import (
     EnhancementService,
+    ProcessedResults,
 )
 from app.domain.references.services.ingestion_service import (
     IngestionService,
@@ -276,6 +277,17 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     @sql_unit_of_work
+    async def get_robot_enhancement_batch(
+        self,
+        robot_enhancement_batch_id: UUID4,
+        preload: list[str] | None = None,
+    ) -> RobotEnhancementBatch:
+        """Get a robot enhancement batch by batch id."""
+        return await self.sql_uow.robot_enhancement_batches.get_by_pk(
+            robot_enhancement_batch_id, preload=preload
+        )
+
+    @sql_unit_of_work
     async def get_enhancement_request_with_calculated_status(
         self,
         enhancement_request_id: UUID4,
@@ -283,8 +295,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """
         Get an enhancement request with status calculated from pending enhancements.
 
-        This method efficiently calculates the request status based on the current
+        This method calculates the request status based on the current
         state of its pending enhancements using database aggregation.
+        For backwards compatibility, returns the original database status if no
+        pending enhancements exist.
         """
         enhancement_request = await self.sql_uow.enhancement_requests.get_by_pk(
             enhancement_request_id
@@ -297,15 +311,21 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
         total_count = sum(status_counts.values())
+
+        # For backwards compatibility, return original database status
+        # if no pending enhancements
+        if total_count == 0:
+            return enhancement_request
+
         pending_count = status_counts.get(PendingEnhancementStatus.PENDING, 0)
         completed_count = status_counts.get(PendingEnhancementStatus.COMPLETED, 0)
         failed_count = status_counts.get(PendingEnhancementStatus.FAILED, 0)
 
-        if completed_count == total_count and total_count > 0:
+        if completed_count == total_count:
             calculated_status = EnhancementRequestStatus.COMPLETED
-        elif failed_count == total_count and total_count > 0:
+        elif failed_count == total_count:
             calculated_status = EnhancementRequestStatus.FAILED
-        elif pending_count == total_count and total_count > 0:
+        elif pending_count == total_count:
             calculated_status = EnhancementRequestStatus.RECEIVED
         elif completed_count + failed_count == total_count:
             calculated_status = EnhancementRequestStatus.PARTIAL_FAILED
@@ -460,6 +480,77 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     @sql_unit_of_work
+    async def validate_and_import_robot_enhancement_batch_result(
+        self,
+        robot_enhancement_batch: RobotEnhancementBatch,
+        blob_repository: BlobRepository,
+    ) -> tuple[set[UUID4], set[UUID4]]:
+        """
+        Validate and import the result of a robot enhancement batch.
+
+        This process:
+        - streams the result of the robot enhancement batch line-by-line
+        - adds the enhancement to the database
+        - streams the validation result to the blob storage service line-by-line
+        - does some final validation of missing references and updates the request
+        """
+        if not robot_enhancement_batch.result_file:
+            msg = "Robot enhancement batch has no result file. This should not happen."
+            raise RuntimeError(msg)
+
+        pending_enhancements = robot_enhancement_batch.pending_enhancements
+        if not pending_enhancements:
+            pending_enhancements = await self.sql_uow.pending_enhancements.find(
+                robot_enhancement_batch_id=robot_enhancement_batch.id
+            )
+
+        # Mutable sets to track imported enhancement IDs and pending enhancement IDs
+        results = ProcessedResults(
+            imported_enhancement_ids=set(),
+            successful_pending_enhancement_ids=set(),
+            failed_pending_enhancement_ids=set(),
+        )
+
+        validation_result_file = await blob_repository.upload_file_to_blob_storage(
+            content=FileStream(
+                generator=self._enhancement_service.process_robot_enhancement_batch_result(
+                    blob_repository=blob_repository,
+                    result_file=robot_enhancement_batch.result_file,
+                    pending_enhancements=pending_enhancements,
+                    add_enhancement=self.handle_enhancement_result_entry,
+                    results=results,
+                )
+            ),
+            path="enhancement_result",
+            filename=f"{robot_enhancement_batch.id}_repo.jsonl",
+        )
+
+        await self._enhancement_service.add_validation_result_file_to_robot_enhancement_batch(  # noqa: E501
+            robot_enhancement_batch.id, validation_result_file
+        )
+
+        await self._enhancement_service.update_pending_enhancements_status(
+            pending_enhancement_ids=list(results.failed_pending_enhancement_ids),
+            status=PendingEnhancementStatus.FAILED,
+        )
+
+        return (
+            results.imported_enhancement_ids,
+            results.successful_pending_enhancement_ids,
+        )
+
+    @sql_unit_of_work
+    async def mark_robot_enhancement_batch_failed(
+        self,
+        robot_enhancement_batch_id: UUID4,
+        error: str,
+    ) -> RobotEnhancementBatch:
+        """Mark a robot enhancement batch as failed and supply error message."""
+        return await self._enhancement_service.mark_robot_enhancement_batch_failed(
+            robot_enhancement_batch_id, error
+        )
+
+    @sql_unit_of_work
     async def update_enhancement_request_status(
         self,
         enhancement_request_id: UUID4,
@@ -471,15 +562,33 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     @sql_unit_of_work
-    async def update_robot_enhancement_batch_status(
+    async def update_pending_enhancements_status(
+        self,
+        pending_enhancement_ids: list[UUID4],
+        status: PendingEnhancementStatus,
+    ) -> int:
+        """Update pending enhancements status."""
+        return await self._enhancement_service.update_pending_enhancements_status(
+            pending_enhancement_ids, status
+        )
+
+    @sql_unit_of_work
+    async def update_pending_enhancements_status_for_robot_enhancement_batch(
         self,
         robot_enhancement_batch_id: UUID4,
         status: PendingEnhancementStatus,
-    ) -> RobotEnhancementBatch:
-        """Update a robot enhancement batch request."""
-        return await self._enhancement_service.update_pending_enhancements_status_for_robot_enhancement_batch(  # noqa: E501
-            robot_enhancement_batch_id, status
+    ) -> int:
+        """Update pending enhancements status for a robot enhancement batch."""
+        pending_enhancements = await self.sql_uow.pending_enhancements.find(
+            robot_enhancement_batch_id=robot_enhancement_batch_id
         )
+
+        if pending_enhancements:
+            return await self._enhancement_service.update_pending_enhancements_status(
+                [pe.id for pe in pending_enhancements], status
+            )
+
+        return 0
 
     @es_unit_of_work
     async def index_references(

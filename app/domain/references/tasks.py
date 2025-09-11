@@ -14,6 +14,7 @@ from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     EnhancementRequest,
     EnhancementRequestStatus,
+    PendingEnhancementStatus,
 )
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
@@ -207,6 +208,85 @@ async def validate_and_import_enhancement_result(
         enhancement_ids=imported_enhancement_ids,
         source_str=f"EnhancementRequest:{enhancement_request.id}",
         skip_robot_id=enhancement_request.robot_id,
+    )
+
+
+@broker.task
+async def validate_and_import_robot_enhancement_batch_result(
+    robot_enhancement_batch_id: UUID4,
+) -> None:
+    """Async logic for validating and importing a robot enhancement batch result."""
+    logger.info("Processing robot enhancement batch result")
+    trace_attribute(
+        Attributes.ROBOT_ENHANCEMENT_BATCH_ID, str(robot_enhancement_batch_id)
+    )
+    name_span(
+        f"Import robot enhancement batch result for batch {robot_enhancement_batch_id}"
+    )
+    sql_uow = await get_sql_unit_of_work()
+    es_uow = await get_es_unit_of_work()
+    blob_repository = await get_blob_repository()
+    reference_anti_corruption_service = ReferenceAntiCorruptionService(blob_repository)
+    reference_service = await get_reference_service(
+        reference_anti_corruption_service, sql_uow, es_uow
+    )
+    blob_repository = await get_blob_repository()
+    robot_enhancement_batch = await reference_service.get_robot_enhancement_batch(
+        robot_enhancement_batch_id, preload=["pending_enhancements"]
+    )
+    trace_attribute(Attributes.ROBOT_ID, str(robot_enhancement_batch.robot_id))
+
+    try:
+        with bound_contextvars(
+            robot_id=str(robot_enhancement_batch.robot_id),
+        ):
+            # Validate and import the enhancement result
+            (
+                imported_enhancement_ids,
+                successful_pending_enhancement_ids,
+            ) = await reference_service.validate_and_import_robot_enhancement_batch_result(  # noqa: E501
+                robot_enhancement_batch,
+                blob_repository,
+            )
+    except Exception as exc:
+        logger.exception(
+            "Error occurred while validating and importing a robot enhancement batch result"  # noqa: E501
+        )
+        await reference_service.mark_robot_enhancement_batch_failed(
+            robot_enhancement_batch_id,
+            str(exc),
+        )
+        return
+
+    await reference_service.update_pending_enhancements_status(
+        pending_enhancement_ids=list(successful_pending_enhancement_ids),
+        status=PendingEnhancementStatus.INDEXING,
+    )
+
+    try:
+        await reference_service.index_references(
+            reference_ids=[
+                pe.reference_id for pe in robot_enhancement_batch.pending_enhancements
+            ],
+        )
+
+        await reference_service.update_pending_enhancements_status(
+            pending_enhancement_ids=list(successful_pending_enhancement_ids),
+            status=PendingEnhancementStatus.COMPLETED,
+        )
+    except Exception:
+        logger.exception("Error indexing references in Elasticsearch")
+        await reference_service.update_pending_enhancements_status(
+            pending_enhancement_ids=list(successful_pending_enhancement_ids),
+            status=PendingEnhancementStatus.INDEXING_FAILED,
+        )
+
+    # Perform robot automations
+    await detect_and_dispatch_robot_automations(
+        reference_service,
+        enhancement_ids=imported_enhancement_ids,
+        source_str=f"RobotEnhancementBatch:{robot_enhancement_batch.id}",
+        skip_robot_id=robot_enhancement_batch.robot_id,
     )
 
 

@@ -212,6 +212,70 @@ If the URL expires, a new one can be generated using
     )
 
 
+class _RobotEnhancementBatchBase(BaseModel):
+    """
+    Base robot enhancement batch class.
+
+    A robot enhancement batch is a batch of pending enhancements the robot has picked up
+    for processing.
+    """
+
+    robot_id: UUID4 = Field(
+        description="The robot to be used to create the enhancements."
+    )
+    source: str | None = Field(
+        default=None,
+        description="The source of the batch enhancement request.",
+    )
+
+
+class RobotEnhancementBatchRead(_RobotEnhancementBatchBase):
+    """Core robot enhancement batch class."""
+
+    id: UUID4
+    reference_data_url: HttpUrl | None = Field(
+        default=None,
+        description="""
+The URL at which the set of references are stored. The file is a jsonl with each line
+formatted according to
+:class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>`.
+, one reference per line.
+Each reference may have identifiers or enhancements attached, as
+required by the robot.
+If the URL expires, a new one can be generated using
+``GET /enhancement-requests/{request_id}/``.
+        """,
+    )
+    result_storage_url: HttpUrl | None = Field(
+        default=None,
+        description="""
+The URL at which the set of enhancements are stored. The file is to be a jsonl
+with each line formatted according to
+:class:`EnhancementResultEntry <libs.sdk.src.destiny_sdk.robots.EnhancementResultEntry>`.
+This field is only relevant to robots.
+If the URL expires, a new one can be generated using
+``GET /robot-enhancement-batch/{batch_id}/``.
+        """,  # noqa: E501
+    )
+    validation_result_url: HttpUrl | None = Field(
+        default=None,
+        description="""
+The URL at which the result of the enhancement request is stored.
+This file is a txt file, one line per reference, with either an error
+or a success message.
+If the URL expires, a new one can be generated using
+``GET /robot-enhancement-batch/{batch_id}/``.
+        """,
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error encountered during the enhancement process. This "
+        "is only used if the entire enhancement batch failed, rather than an "
+        "individual reference. If there was an error with processing an individual "
+        "reference, it is passed in the validation result file.",
+    )
+
+
 class _RobotBase(BaseModel):
     """
     Base Robot class.

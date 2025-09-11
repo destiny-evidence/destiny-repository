@@ -462,8 +462,10 @@ class RobotEnhancementBatch(GenericSQLPersistence[DomainRobotEnhancementBatch]):
     robot_id: Mapped[uuid.UUID] = mapped_column(
         UUID, ForeignKey("robot.id"), nullable=False
     )
-    reference_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    reference_data_file: Mapped[str | None] = mapped_column(String, nullable=True)
     result_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    validation_result_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
 
     pending_enhancements: Mapped[list["PendingEnhancement"]] = relationship(
         "PendingEnhancement",
@@ -477,12 +479,16 @@ class RobotEnhancementBatch(GenericSQLPersistence[DomainRobotEnhancementBatch]):
         return cls(
             id=domain_obj.id,
             robot_id=domain_obj.robot_id,
-            reference_file=domain_obj.reference_file.to_sql()
-            if domain_obj.reference_file
+            reference_data_file=domain_obj.reference_data_file.to_sql()
+            if domain_obj.reference_data_file
             else None,
             result_file=domain_obj.result_file.to_sql()
             if domain_obj.result_file
             else None,
+            validation_result_file=domain_obj.validation_result_file.to_sql()
+            if domain_obj.validation_result_file
+            else None,
+            error=domain_obj.error,
             pending_enhancements=[
                 PendingEnhancement.from_domain(pe)
                 for pe in domain_obj.pending_enhancements
@@ -499,12 +505,16 @@ class RobotEnhancementBatch(GenericSQLPersistence[DomainRobotEnhancementBatch]):
         return DomainRobotEnhancementBatch(
             id=self.id,
             robot_id=self.robot_id,
-            reference_file=BlobStorageFile.from_sql(self.reference_file)
-            if self.reference_file
+            reference_data_file=BlobStorageFile.from_sql(self.reference_data_file)
+            if self.reference_data_file
             else None,
             result_file=BlobStorageFile.from_sql(self.result_file)
             if self.result_file
             else None,
+            validation_result_file=BlobStorageFile.from_sql(self.validation_result_file)
+            if self.validation_result_file
+            else None,
+            error=self.error,
             pending_enhancements=[pe.to_domain() for pe in self.pending_enhancements]
             if "pending_enhancements" in (preload or [])
             else [],

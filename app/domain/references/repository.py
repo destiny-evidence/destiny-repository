@@ -7,7 +7,7 @@ from uuid import UUID
 from elasticsearch import AsyncElasticsearch
 from opentelemetry import trace
 from pydantic import UUID4
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -318,8 +318,6 @@ class EnhancementRequestSQLRepository(
             Dictionary mapping status to count
 
         """
-        from sqlalchemy import func, select
-
         query = (
             select(
                 SQLPendingEnhancement.status,

@@ -5,7 +5,7 @@ from typing import Generic
 
 from opentelemetry import trace
 from pydantic import UUID4
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -373,7 +373,6 @@ class GenericAsyncSqlRepository(
 
         """
         trace_attribute(Attributes.DB_RECORD_COUNT, len(pks))
-        # Trace keys, not values
         trace_attribute(Attributes.DB_PARAMS, list(kwargs.keys()))
 
         if not pks:
@@ -394,13 +393,79 @@ class GenericAsyncSqlRepository(
             return 0
 
         try:
-            from sqlalchemy import update
-
             stmt = (
                 update(self._persistence_cls)
                 .where(self._persistence_cls.id.in_(pks))
                 .values(**kwargs)
             )
+            result = await self._session.execute(stmt)
+            await self._session.flush()
+        except IntegrityError as e:
+            raise SQLIntegrityError.from_sqlacademy_integrity_error(
+                e, self._persistence_cls.__name__
+            ) from e
+        else:
+            return result.rowcount or 0
+
+    @trace_repository_method(tracer)
+    async def bulk_update_by_filter(
+        self, filter_conditions: dict[str, object], **kwargs: object
+    ) -> int:
+        """
+        Bulk update records by filter conditions.
+
+        Args:
+        - filter_conditions (dict[str, object]): The conditions to filter records.
+          None values will be matched using SQL IS NULL.
+        - kwargs (object): The attributes to update. Can include None values.
+
+        Returns:
+        - int: The number of records updated.
+
+        Raises:
+        - SQLIntegrityError: If the update violates a constraint.
+        - ValueError: If field names do not exist on the persistence model.
+
+        Examples:
+        - Update status to FAILED for all records with robot_enhancement_batch_id=123:
+          bulk_update_by_filter({"robot_enhancement_batch_id": 123}, status="FAILED")
+
+        - Update records where some_field is NULL:
+          bulk_update_by_filter({"some_field": None}, new_value="updated")
+
+        - Set a field to NULL:
+          bulk_update_by_filter({"id": 123}, some_field=None)
+
+        """
+        # Trace filter conditions and update parameters
+        all_field_keys = list({**filter_conditions, **kwargs}.keys())
+        trace_attribute(Attributes.DB_PARAMS, all_field_keys)
+
+        if not filter_conditions or not kwargs:
+            return 0
+
+        # Validate all field names exist on the persistence model
+        all_fields = {**filter_conditions, **kwargs}
+        invalid_fields = [
+            key for key in all_fields if not hasattr(self._persistence_cls, key)
+        ]
+        if invalid_fields:
+            msg = (
+                f"Invalid field(s) for {self._persistence_cls.__name__}: "
+                f"{invalid_fields}"
+            )
+            raise ValueError(msg)
+
+        try:
+            stmt = update(self._persistence_cls).values(**kwargs)
+
+            for field_name, value in filter_conditions.items():
+                field = getattr(self._persistence_cls, field_name)
+                if value is None:
+                    stmt = stmt.where(field.is_(None))
+                else:
+                    stmt = stmt.where(field == value)
+
             result = await self._session.execute(stmt)
             await self._session.flush()
         except IntegrityError as e:

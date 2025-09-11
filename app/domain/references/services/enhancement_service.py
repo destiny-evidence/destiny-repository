@@ -1,6 +1,7 @@
 """Service for managing batch enhancements."""
 
 from collections.abc import AsyncGenerator, Awaitable, Callable
+from typing import NamedTuple
 
 import destiny_sdk
 from opentelemetry import trace
@@ -13,6 +14,7 @@ from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
+    PendingEnhancement,
     PendingEnhancementStatus,
     RobotEnhancementBatch,
     RobotResultValidationEntry,
@@ -36,6 +38,14 @@ settings = get_settings()
 tracer = trace.get_tracer(__name__)
 
 
+class ProcessedResults(NamedTuple):
+    """Results from processing robot enhancement batch."""
+
+    imported_enhancement_ids: set[UUID4]
+    successful_pending_enhancement_ids: set[UUID4]
+    failed_pending_enhancement_ids: set[UUID4]
+
+
 class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
     """Service for managing batch enhancements."""
 
@@ -57,6 +67,20 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             error=error,
         )
 
+    async def mark_robot_enhancement_batch_failed(
+        self, robot_enhancement_batch_id: UUID4, error: str
+    ) -> RobotEnhancementBatch:
+        """Mark a robot enhancement batch as failed and supply error message."""
+        await self.update_pending_enhancements_status_for_robot_enhancement_batch(
+            robot_enhancement_batch_id,
+            PendingEnhancementStatus.FAILED,
+        )
+
+        return await self.sql_uow.robot_enhancement_batches.update_by_pk(
+            pk=robot_enhancement_batch_id,
+            error=error,
+        )
+
     async def update_enhancement_request_status(
         self,
         enhancement_request_id: UUID4,
@@ -67,31 +91,29 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             pk=enhancement_request_id, request_status=status
         )
 
+    async def update_pending_enhancements_status(
+        self,
+        pending_enhancement_ids: list[UUID4],
+        status: PendingEnhancementStatus,
+    ) -> int:
+        """Update multiple pending enhancements."""
+        return await self.sql_uow.pending_enhancements.bulk_update(
+            pks=pending_enhancement_ids, status=status
+        )
+
     async def update_pending_enhancements_status_for_robot_enhancement_batch(
         self,
         robot_enhancement_batch_id: UUID4,
         status: PendingEnhancementStatus,
-    ) -> RobotEnhancementBatch:
+    ) -> int:
         """Update status of all pending enhancements for a robot enhancement batch."""
-        robot_enhancement_batch = (
-            await self.sql_uow.robot_enhancement_batches.get_by_pk(
-                robot_enhancement_batch_id, preload=["pending_enhancements"]
-            )
+        # Use the new bulk_update_by_filter method for better performance
+        return await self.sql_uow.pending_enhancements.bulk_update_by_filter(
+            filter_conditions={
+                "robot_enhancement_batch_id": robot_enhancement_batch_id
+            },
+            status=status,
         )
-
-        # Extract the IDs of all pending enhancements in this batch
-        pending_enhancement_ids = [
-            pe.id for pe in robot_enhancement_batch.pending_enhancements
-        ]
-
-        if pending_enhancement_ids:
-            # Use bulk update for efficiency
-            await self.sql_uow.pending_enhancements.bulk_update(
-                pks=pending_enhancement_ids,
-                status=status,
-            )
-
-        return robot_enhancement_batch
 
     async def build_robot_enhancement_batch(
         self,
@@ -112,7 +134,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             RobotEnhancementBatch: The created robot enhancement batch.
 
         """
-        reference_file = await blob_repository.upload_file_to_blob_storage(
+        reference_data_file = await blob_repository.upload_file_to_blob_storage(
             content=file_stream,
             path="robot_enhancement_batch_reference_data",
             filename=f"{robot_enhancement_batch.id}.jsonl",
@@ -127,7 +149,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
 
         return await self.sql_uow.robot_enhancement_batches.update_by_pk(
             pk=robot_enhancement_batch.id,
-            reference_file=reference_file.to_sql(),
+            reference_data_file=reference_data_file.to_sql(),
             result_file=result_file.to_sql(),
         )
 
@@ -139,6 +161,17 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         """Add a validation result file to a enhancement request."""
         return await self.sql_uow.enhancement_requests.update_by_pk(
             pk=enhancement_request_id,
+            validation_result_file=validation_result_file.to_sql(),
+        )
+
+    async def add_validation_result_file_to_robot_enhancement_batch(
+        self,
+        robot_enhancement_batch_id: UUID4,
+        validation_result_file: BlobStorageFile,
+    ) -> RobotEnhancementBatch:
+        """Add a validation result file to a robot enhancement batch."""
+        return await self.sql_uow.robot_enhancement_batches.update_by_pk(
+            pk=robot_enhancement_batch_id,
             validation_result_file=validation_result_file.to_sql(),
         )
 
@@ -320,3 +353,184 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             await self.update_enhancement_request_status(
                 enhancement_request.id, EnhancementRequestStatus.COMPLETED
             )
+
+    async def _process_robot_error_line(
+        self,
+        robot_error: destiny_sdk.robots.LinkedRobotError,
+        attempted_reference_ids: set[UUID4],
+    ) -> str:
+        """Process a line containing a robot error."""
+        trace_attribute(
+            Attributes.REFERENCE_ID,
+            str(robot_error.reference_id),
+        )
+        attempted_reference_ids.add(robot_error.reference_id)
+
+        return self._anti_corruption_service.robot_result_validation_entry_to_sdk(
+            RobotResultValidationEntry(
+                reference_id=robot_error.reference_id,
+                error=robot_error.message,
+            )
+        ).to_jsonl()
+
+    async def _process_parse_failure_line(
+        self,
+        parse_failure: str,
+        line_no: int,
+    ) -> str:
+        """Process a line that failed to parse."""
+        logger.warning(
+            "Failed to parse enhancement",
+            line_no=line_no,
+            error=parse_failure,
+        )
+
+        return self._anti_corruption_service.robot_result_validation_entry_to_sdk(
+            RobotResultValidationEntry(
+                error=parse_failure,
+            )
+        ).to_jsonl()
+
+    async def _process_enhancement_line(  # noqa: PLR0913
+        self,
+        enhancement_to_add: destiny_sdk.enhancements.Enhancement,
+        add_enhancement: Callable[[Enhancement], Awaitable[tuple[bool, str]]],
+        line_no: int,
+        attempted_reference_ids: set[UUID4],
+        results: ProcessedResults,
+        successful_reference_ids: set[UUID4],
+    ) -> str:
+        """Process a line containing an enhancement to add."""
+        trace_attribute(
+            Attributes.REFERENCE_ID,
+            str(enhancement_to_add.reference_id),
+        )
+        attempted_reference_ids.add(enhancement_to_add.reference_id)
+
+        # NB this generates the UUID that we import into the database,
+        # which is handy!
+        enhancement = self._anti_corruption_service.enhancement_from_sdk(
+            enhancement_to_add
+        )
+        trace_attribute(Attributes.ENHANCEMENT_ID, str(enhancement.id))
+
+        success, message = await add_enhancement(enhancement)
+
+        if success:
+            results.imported_enhancement_ids.add(enhancement.id)
+            successful_reference_ids.add(enhancement_to_add.reference_id)
+
+            return self._anti_corruption_service.robot_result_validation_entry_to_sdk(
+                RobotResultValidationEntry(
+                    reference_id=enhancement_to_add.reference_id,
+                )
+            ).to_jsonl()
+
+        logger.warning(
+            "Failed to add enhancement",
+            error=message,
+            line_no=line_no,
+            reference_id=enhancement.reference_id,
+            enhancement_id=enhancement.id,
+        )
+
+        return self._anti_corruption_service.robot_result_validation_entry_to_sdk(
+            RobotResultValidationEntry(
+                reference_id=enhancement_to_add.reference_id,
+                error=message,
+            )
+        ).to_jsonl()
+
+    def _categorize_pending_enhancements(
+        self,
+        pending_enhancements: list[PendingEnhancement],
+        successful_reference_ids: set[UUID4],
+        results: ProcessedResults,
+    ) -> None:
+        """Categorize pending enhancements as successful or failed."""
+        for pending_enhancement in pending_enhancements:
+            if pending_enhancement.reference_id in successful_reference_ids:
+                results.successful_pending_enhancement_ids.add(pending_enhancement.id)
+            else:
+                results.failed_pending_enhancement_ids.add(pending_enhancement.id)
+
+    async def process_robot_enhancement_batch_result(
+        self,
+        blob_repository: BlobRepository,
+        # robot_enhancement_batch: RobotEnhancementBatch,
+        result_file: BlobStorageFile,
+        pending_enhancements: list[PendingEnhancement],
+        add_enhancement: Callable[[Enhancement], Awaitable[tuple[bool, str]]],
+        results: ProcessedResults,
+    ) -> AsyncGenerator[str, None]:
+        """
+        Validate the result of a robot enhancement batch.
+
+        This generator yields validation messages which are streamed into the
+        result file of the robot enhancement batch.
+        """
+        expected_reference_ids = {pe.reference_id for pe in pending_enhancements}
+        successful_reference_ids: set[UUID4] = set()
+        attempted_reference_ids: set[UUID4] = set()
+
+        async with blob_repository.stream_file_from_blob_storage(
+            result_file,
+        ) as file_stream:
+            # Read the file stream and validate the content
+            line_no = 1
+            async for line in file_stream:
+                with tracer.start_as_current_span(
+                    "Import enhancement",
+                    attributes={Attributes.FILE_LINE_NO: line_no},
+                ):
+                    if not line.strip():
+                        continue
+
+                    validated_result = await EnhancementResultValidator.from_raw(
+                        line, line_no, expected_reference_ids
+                    )
+                    line_no += 1
+
+                    # Process the validated result line
+                    result_entry = ""
+                    if validated_result.robot_error:
+                        result_entry = await self._process_robot_error_line(
+                            validated_result.robot_error,
+                            attempted_reference_ids,
+                        )
+                    elif validated_result.parse_failure:
+                        result_entry = await self._process_parse_failure_line(
+                            validated_result.parse_failure,
+                            line_no,
+                        )
+                    elif validated_result.enhancement_to_add:
+                        result_entry = await self._process_enhancement_line(
+                            validated_result.enhancement_to_add,
+                            add_enhancement,
+                            line_no,
+                            attempted_reference_ids,
+                            results,
+                            successful_reference_ids,
+                        )
+
+                    if result_entry:  # Only yield non-empty results
+                        yield result_entry
+
+        # Generate entries for missing references
+        if missing_reference_ids := (expected_reference_ids - attempted_reference_ids):
+            for missing_reference_id in missing_reference_ids:
+                yield (
+                    self._anti_corruption_service.robot_result_validation_entry_to_sdk(
+                        RobotResultValidationEntry(
+                            reference_id=missing_reference_id,
+                            error="Requested reference not in enhancement result.",
+                        )
+                    ).to_jsonl()
+                )
+
+        # Categorize pending enhancements
+        self._categorize_pending_enhancements(
+            pending_enhancements,
+            successful_reference_ids,
+            results,
+        )
