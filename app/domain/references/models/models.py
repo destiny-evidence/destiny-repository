@@ -266,6 +266,56 @@ class Reference(
 
         return
 
+    @property
+    def canonical(self) -> bool | None:
+        """
+        Check if this reference is the canonical version.
+
+        Returns None if no duplicate decision is present, either due to not being
+        preloaded or still pending.
+        """
+        if not self.duplicate_decision:
+            return None
+        return (
+            self.duplicate_decision.duplicate_determination
+            == DuplicateDetermination.CANONICAL
+        )
+
+    def is_superset(
+        self,
+        reference: "Reference",
+    ) -> bool:
+        """
+        Check if this Reference is a superset of the given Reference.
+
+        This compares enhancements, identifiers and visibility, removing
+        contextual differences (eg database ids), to verify if the content
+        is identical.
+
+        :param reference: The reference to compare against.
+        :type reference: Reference
+        :return: True if the given Reference is a subset of this Reference, else False.
+        :rtype: bool
+        """
+
+        def _create_hash_set(
+            objs: list[Enhancement] | list[LinkedExternalIdentifier] | None,
+        ) -> set[int]:
+            return {obj.hash_data() for obj in (objs or [])}
+
+        # Find anything in the reference that is not in self
+        return (
+            reference.visibility != self.visibility
+            or bool(
+                _create_hash_set(reference.enhancements)
+                - _create_hash_set(self.enhancements)
+            )
+            or bool(
+                _create_hash_set(reference.identifiers)
+                - _create_hash_set(self.identifiers)
+            )
+        )
+
 
 class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
     """External identifier model with database attributes included."""
@@ -280,6 +330,10 @@ class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
         default=None,
         description="The reference this identifier identifies.",
     )
+
+    def hash_data(self) -> int:
+        """Contentwise hash of the identifier, excluding relationships."""
+        return hash(self.identifier.model_dump_json(exclude_none=True))
 
 
 class GenericExternalIdentifier(DomainBaseModel):
@@ -348,6 +402,14 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
         None,
         description="The reference this enhancement is associated with.",
     )
+
+    def hash_data(self) -> int:
+        """Contentwise hash of the enhancement, excluding relationships."""
+        return hash(
+            self.model_dump_json(
+                exclude={"id", "reference_id", "reference"}, exclude_none=True
+            )
+        )
 
 
 class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):

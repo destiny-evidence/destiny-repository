@@ -486,3 +486,31 @@ class ProjectionError(DestinyRepositoryError):
 
         """
         super().__init__(detail)
+
+
+class DeduplicationError(DestinyRepositoryError):
+    """An exception for when something goes wrong in deduplication."""
+
+    def __init__(self, detail: str) -> None:
+        """
+        Initialize the DeduplicationError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+
+        """
+        super().__init__(detail)
+
+
+class DeduplicationValueError(DeduplicationError, ValueError):
+    """An exception for when a value provided to deduplication is invalid."""
+
+    def __init__(self, detail: str) -> None:
+        """
+        Initialize the DeduplicationValueError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+
+        """
+        super().__init__(detail)
