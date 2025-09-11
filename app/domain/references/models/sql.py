@@ -80,7 +80,8 @@ class Reference(GenericSQLPersistence[DomainReference]):
     )
     duplicate_decision: Mapped["ReferenceDuplicateDecision | None"] = relationship(
         "ReferenceDuplicateDecision",
-        primaryjoin="and_(Reference.id==ReferenceDuplicateDecision.reference_id, "
+        primaryjoin="and_("
+        "Reference.id==foreign(ReferenceDuplicateDecision.reference_id), "
         "ReferenceDuplicateDecision.active_decision==True)",
         viewonly=True,
     )
@@ -93,9 +94,10 @@ class Reference(GenericSQLPersistence[DomainReference]):
     canonical_reference: Mapped["Reference | None"] = relationship(
         "Reference",
         secondary="reference_duplicate_decision",
-        primaryjoin="and_(Reference.id==reference_duplicate_decision.c.reference_id, "
-        "reference_duplicate_decision.c.active_decision==True)",
-        secondaryjoin="Reference.id==reference_duplicate_decision.c.canonical_reference_id",
+        primaryjoin="and_("
+        "Reference.id==ReferenceDuplicateDecision.reference_id, "
+        "ReferenceDuplicateDecision.active_decision==True)",
+        secondaryjoin="Reference.id==ReferenceDuplicateDecision.canonical_reference_id",
         uselist=False,
         viewonly=True,
         info=RelationshipInfo(
@@ -107,9 +109,10 @@ class Reference(GenericSQLPersistence[DomainReference]):
     duplicate_references: Mapped[list["Reference"] | None] = relationship(
         "Reference",
         secondary="reference_duplicate_decision",
-        primaryjoin="Reference.id==reference_duplicate_decision.c.canonical_reference_id",
-        secondaryjoin="and_(Reference.id==reference_duplicate_decision.c.reference_id, "
-        "reference_duplicate_decision.c.active_decision==True)",
+        primaryjoin="Reference.id==ReferenceDuplicateDecision.canonical_reference_id",
+        secondaryjoin="and_("
+        "Reference.id==ReferenceDuplicateDecision.reference_id, "
+        "ReferenceDuplicateDecision.active_decision==True)",
         viewonly=True,
         info=RelationshipInfo(
             max_recursion_depth=settings.max_reference_duplicate_depth - 1,
