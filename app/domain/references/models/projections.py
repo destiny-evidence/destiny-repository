@@ -72,3 +72,50 @@ class CandidateDuplicateSearchFieldsProjection(
             authors=[author.display_name.strip() for author in authorship],
             publication_year=publication_year,
         )
+
+
+class DeduplicatedReferenceProjection(GenericProjection[Reference]):
+    """
+    Projection functions for deduplicating canonical references.
+
+    A deduplicated reference contains all the enhancements and identifiers of its
+    duplicates, and is flattened to remove its duplicates. This makes it compatible
+    with a SDK reference.
+    """
+
+    @classmethod
+    def get_from_reference(cls, reference: Reference) -> Reference:
+        """Get the deduplicated reference from a reference."""
+        if reference.duplicate_references is None:
+            msg = "Reference must have duplicates preloaded to be deduplicated."
+            raise ProjectionError(msg)
+
+        deduplicated_reference = reference.model_copy(
+            deep=True,
+            update={
+                "duplicate_references": None,
+            },
+        )
+
+        # Allows for reference chaining if settings.max_reference_duplicate_length>2
+        duplicate_references = [
+            DeduplicatedReferenceProjection.get_from_reference(reference)
+            for reference in reference.duplicate_references
+        ]
+
+        # If None, we assume it was not preloaded. An empty reference with preloads
+        # would have an empty list here instead.
+        if deduplicated_reference.enhancements is not None:
+            deduplicated_reference.enhancements += [
+                enhancement
+                for reference in duplicate_references
+                for enhancement in reference.enhancements or []
+            ]
+        if deduplicated_reference.identifiers is not None:
+            deduplicated_reference.identifiers += [
+                identifier
+                for reference in duplicate_references
+                for identifier in (reference.identifiers or [])
+            ]
+
+        return deduplicated_reference

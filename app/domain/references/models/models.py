@@ -118,6 +118,7 @@ class DuplicateDetermination(StrEnum):
 
 class Reference(
     DomainBaseModel,
+    ProjectedBaseModel,  # References can self-project to the same structure
     SQLAttributeMixin,
 ):
     """Core reference model with database attributes included."""
@@ -133,6 +134,22 @@ class Reference(
     enhancements: list["Enhancement"] | None = Field(
         default=None,
         description="A list of enhancements for the reference",
+    )
+
+    duplicate_decision: "ReferenceDuplicateDecision | None" = Field(
+        default=None,
+        description="The current active duplicate decision for this reference. If None,"
+        " either duplicate_decision has not been preloaded or the duplicate status"
+        " is pending.",
+    )
+
+    canonical_reference: "Reference | None" = Field(
+        default=None,
+        description="The canonical reference that this reference is a duplicate of",
+    )
+    duplicate_references: list["Reference"] | None = Field(
+        default=None,
+        description="A list of references that this reference duplicates",
     )
 
     async def merge(  # noqa: PLR0912
