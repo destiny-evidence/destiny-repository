@@ -2,9 +2,7 @@
 
 import uuid
 from typing import Any, Self
-from unicodedata import normalize
 
-import destiny_sdk
 from elasticsearch.dsl import (
     Boolean,
     InnerDoc,
@@ -20,6 +18,7 @@ from pydantic import UUID4
 
 from app.core.config import get_settings
 from app.domain.references.models.models import (
+    CandidateDuplicateSearchFields,
     Enhancement,
     EnhancementType,
     ExternalIdentifierAdapter,
@@ -28,6 +27,9 @@ from app.domain.references.models.models import (
     Reference,
     RobotAutomation,
     Visibility,
+)
+from app.domain.references.models.projections import (
+    CandidateDuplicateSearchFieldsProjection,
 )
 from app.persistence.es.persistence import (
     INDEX_PREFIX,
@@ -178,7 +180,7 @@ class ReferenceDomainMixin(InnerDoc):
         )
 
 
-class ReferenceDeduplicationMixin(InnerDoc):
+class ReferenceCandidateDuplicateMixin(InnerDoc):
     """Mixin to project Reference fields relevant to deduplication."""
 
     if settings.feature_flags.deduplication:
@@ -193,64 +195,26 @@ class ReferenceDeduplicationMixin(InnerDoc):
         )
 
     @classmethod
-    def from_domain(cls, reference: Reference) -> Self:
+    def from_projection(cls, projection: CandidateDuplicateSearchFields) -> Self:
         """Create the kwargs for an ES model relevant to ReferenceDeduplicationMixin."""
-        if not reference.enhancements:
-            return cls()
-
-        title, authorship, publication_year = None, None, None
-        for enhancement in reference.enhancements:
-            # NB at present we have no way of discriminating between multiple
-            # bibliographic enhancements, nor are they ordered. This takes a
-            # random one (but hydrates in the case of one bibliographic enhancement
-            # missing a field while the other has it present).
-            if enhancement.content.enhancement_type == EnhancementType.BIBLIOGRAPHIC:
-                # Hydrate if exists on enhancement, otherwise use prior value
-                title = enhancement.content.title or title
-                authorship = enhancement.content.authorship or authorship
-                publication_year = (
-                    enhancement.content.publication_year
-                    or (
-                        enhancement.content.publication_date.year
-                        if enhancement.content.publication_date
-                        else None
-                    )
-                    or publication_year
-                )
-
-        # Title normalization: strip whitespace and title case
-        if title:
-            title = normalize("NFC", title.strip()).title()
-
-        # Author normalization:
-        # Maintain first and last author, sort middle authors by name
-        # Then strip whitespace and title case
-        authors = None
-        if authorship:
-            authorship = sorted(
-                authorship,
-                key=lambda author: (
-                    {
-                        destiny_sdk.enhancements.AuthorPosition.FIRST: -1,
-                        destiny_sdk.enhancements.AuthorPosition.LAST: 1,
-                    }.get(author.position, 0),
-                    author.display_name,
-                ),
-            )
-            authors = [
-                normalize("NFC", author.display_name.strip()).title()
-                for author in authorship
-            ]
-
         return cls(
-            title=title,
-            authors=authors,
-            publication_year=publication_year,
+            title=projection.title,
+            authors=projection.authors,
+            publication_year=projection.publication_year,
+        )
+
+    @classmethod
+    def from_domain(cls, reference: Reference) -> Self:
+        """Create the ES ReferenceDeduplicationMixin."""
+        return cls.from_projection(
+            CandidateDuplicateSearchFieldsProjection.get_from_reference(reference)
         )
 
 
 class ReferenceDocument(
-    GenericESPersistence[Reference], ReferenceDomainMixin, ReferenceDeduplicationMixin
+    GenericESPersistence[Reference],
+    ReferenceDomainMixin,
+    ReferenceCandidateDuplicateMixin,
 ):
     """Persistence model for references in Elasticsearch."""
 
@@ -268,7 +232,7 @@ class ReferenceDocument(
             meta={"id": domain_obj.id},  # type: ignore[call-arg]
             **ReferenceDomainMixin.from_domain(domain_obj).to_dict(),
             **(
-                ReferenceDeduplicationMixin.from_domain(domain_obj).to_dict()
+                ReferenceCandidateDuplicateMixin.from_domain(domain_obj).to_dict()
                 if settings.feature_flags.deduplication
                 else {}
             ),

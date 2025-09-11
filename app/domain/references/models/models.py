@@ -18,7 +18,7 @@ from pydantic import (
 )
 
 from app.core.telemetry.logger import get_logger
-from app.domain.base import DomainBaseModel, SQLAttributeMixin
+from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
 from app.domain.imports.models.models import CollisionStrategy
 from app.persistence.blob.models import BlobStorageFile
 
@@ -429,6 +429,27 @@ class RobotAutomationPercolationResult(BaseModel):
 
     robot_id: UUID4
     reference_ids: set[UUID4]
+
+
+class CandidateDuplicateSearchFields(ProjectedBaseModel):
+    """Model representing fields used for candidate selection."""
+
+    publication_year: int | None = Field(
+        default=None,
+        description="The publication year of the reference.",
+    )
+    authors: list[str] = Field(
+        default_factory=list, description="The authors of the reference."
+    )
+    title: str | None = Field(
+        default=None,
+        description="The title of the reference.",
+    )
+
+    @property
+    def searchable(self) -> bool:
+        """Whether the projection has the minimum fields required for matching."""
+        return all((self.publication_year, self.authors, self.title))
 
 
 class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
