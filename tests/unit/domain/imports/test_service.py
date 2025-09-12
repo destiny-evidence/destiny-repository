@@ -265,21 +265,6 @@ async def test_distribute_import_batch_happy_path(monkeypatch, fake_uow):
 
 
 @pytest.mark.asyncio
-async def test_add_batch_result(fake_repository, fake_uow):
-    repo_results = fake_repository()
-    uow = fake_uow(results=repo_results)
-    service = ImportService(ImportAntiCorruptionService(), uow)
-
-    import_result_create = ImportResult(
-        import_batch_id=BATCH_ID, status=ImportResultStatus.CREATED
-    )
-
-    import_result = await service.add_batch_result(import_result_create)
-
-    assert import_result.import_batch_id == BATCH_ID
-
-
-@pytest.mark.asyncio
 async def test_get_import_batch_summary_batch_completed_no_failures(
     fake_repository, fake_uow, fake_import_batch
 ):

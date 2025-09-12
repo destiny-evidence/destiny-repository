@@ -227,15 +227,6 @@ This should not happen.
                         line_number += 1
 
     @sql_unit_of_work
-    async def add_batch_result(
-        self,
-        import_result: ImportResult,
-    ) -> ImportResult:
-        """Persist an import result to the database."""
-        db_import_result = ImportResult(**import_result.model_dump())
-        return await self.sql_uow.results.add(db_import_result)
-
-    @sql_unit_of_work
     async def get_import_results(
         self,
         import_batch_id: UUID4,
