@@ -482,6 +482,7 @@ class ReferenceDuplicateDecision(
         ForeignKey("reference.id"),
         nullable=True,
     )
+    detail: Mapped[str | None] = mapped_column(String, nullable=True)
 
     __table_args__ = (
         # Unique constraint to ensure only one active decision per reference
@@ -510,6 +511,7 @@ class ReferenceDuplicateDecision(
             candidate_duplicate_ids=domain_obj.candidate_duplicate_ids,
             canonical_reference_id=domain_obj.canonical_reference_id,
             duplicate_determination=domain_obj.duplicate_determination,
+            detail=domain_obj.detail,
         )
 
     def to_domain(
@@ -525,4 +527,5 @@ class ReferenceDuplicateDecision(
             candidate_duplicate_ids=self.candidate_duplicate_ids,
             canonical_reference_id=self.canonical_reference_id,
             duplicate_determination=self.duplicate_determination,
+            detail=self.detail,
         )
