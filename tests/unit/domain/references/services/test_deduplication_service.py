@@ -1,5 +1,5 @@
 import uuid
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from destiny_sdk.identifiers import DOIIdentifier, OtherIdentifier
@@ -11,6 +11,7 @@ from app.domain.references.models.models import (
     LinkedExternalIdentifier,
     Reference,
     ReferenceDuplicateDecision,
+    ReferenceDuplicateDeterminationResult,
 )
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -165,30 +166,213 @@ async def test_nominate_candidate_duplicates_no_candidates(
 
 
 @pytest.mark.asyncio
-async def test_detect_duplicates_happy_path(
-    reference_with_identifiers, anti_corruption_service, sql_uow, es_uow
+async def test_determine_and_map_duplicate_happy_path(
+    sql_uow, anti_corruption_service, es_uow
 ):
-    service = DeduplicationService(anti_corruption_service, sql_uow, es_uow)
+    # Setup reference and decision
+    reference = MagicMock(spec=Reference)
+    reference.id = uuid.uuid4()
+    reference.duplicate_decision = None
+
     candidate_id = uuid.uuid4()
     decision = ReferenceDuplicateDecision(
-        reference_id=reference_with_identifiers.id,
+        reference_id=reference.id,
         candidate_duplicate_ids=[candidate_id],
         duplicate_determination=DuplicateDetermination.NOMINATED,
     )
-    sql_uow.reference_duplicate_decisions.update_by_pk.return_value = decision
-    result = await service.detect_duplicates(decision)
-    assert result == decision
+
+    # Patch __placeholder_duplicate_determinator to return DUPLICATE
+    result_obj = ReferenceDuplicateDeterminationResult(
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=candidate_id,
+        detail="duplicate found",
+    )
+
+    service = DeduplicationService(anti_corruption_service, sql_uow, es_uow)
+    with patch.object(
+        service,
+        "_DeduplicationService__placeholder_duplicate_determinator",
+        return_value=result_obj,
+    ) as mock_determine:
+        sql_uow.references.get_by_pk.return_value = reference
+        sql_uow.reference_duplicate_decisions.merge = AsyncMock(return_value=decision)
+        out_decision = await service.determine_and_map_duplicate(decision)
+        assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
+        assert out_decision.canonical_reference_id == candidate_id
+        assert out_decision.detail == "duplicate found"
+        mock_determine.assert_called_once_with(decision)
+        sql_uow.reference_duplicate_decisions.merge.assert_awaited()
 
 
 @pytest.mark.asyncio
-async def test_detect_duplicates_invalid_state(
-    reference_with_identifiers, anti_corruption_service, sql_uow, es_uow
+async def test_determine_and_map_duplicate_invalid_input_raises(
+    sql_uow, anti_corruption_service, es_uow
 ):
-    service = DeduplicationService(anti_corruption_service, sql_uow, es_uow)
+    reference = MagicMock(spec=Reference)
+    reference.id = uuid.uuid4()
+    reference.duplicate_decision = None
+
+    # Case 1: No candidate_duplicate_ids
     decision = ReferenceDuplicateDecision(
-        reference_id=reference_with_identifiers.id,
+        reference_id=reference.id,
         candidate_duplicate_ids=[],
+        duplicate_determination=DuplicateDetermination.NOMINATED,
+    )
+    service = DeduplicationService(anti_corruption_service, sql_uow, es_uow)
+    sql_uow.references.get_by_pk.return_value = reference
+    with pytest.raises(DeduplicationValueError):
+        await service.determine_and_map_duplicate(decision)
+
+    # Case 2: Wrong determination state
+    candidate_id = uuid.uuid4()
+    decision2 = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        candidate_duplicate_ids=[candidate_id],
         duplicate_determination=DuplicateDetermination.PENDING,
     )
     with pytest.raises(DeduplicationValueError):
-        await service.detect_duplicates(decision)
+        await service.determine_and_map_duplicate(decision2)
+
+
+@pytest.mark.asyncio
+async def test_determine_and_map_duplicate_decoupled_canonical_change(
+    sql_uow, anti_corruption_service, es_uow
+):
+    # Setup reference and active decision (was DUPLICATE, now CANONICAL)
+    reference = MagicMock(spec=Reference)
+    reference.id = uuid.uuid4()
+    active_decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=uuid.uuid4(),
+        active_decision=True,
+    )
+    reference.duplicate_decision = active_decision
+
+    candidate_id = uuid.uuid4()
+    decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        candidate_duplicate_ids=[candidate_id],
+        duplicate_determination=DuplicateDetermination.NOMINATED,
+    )
+
+    result_obj = ReferenceDuplicateDeterminationResult(
+        duplicate_determination=DuplicateDetermination.CANONICAL,
+        canonical_reference_id=None,
+        detail="now canonical",
+    )
+
+    service = DeduplicationService(anti_corruption_service, sql_uow, es_uow)
+    with patch.object(
+        service,
+        "_DeduplicationService__placeholder_duplicate_determinator",
+        return_value=result_obj,
+    ):
+        sql_uow.references.get_by_pk.return_value = reference
+        sql_uow.reference_duplicate_decisions.merge = AsyncMock(return_value=decision)
+        out_decision = await service.determine_and_map_duplicate(decision)
+        assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
+        assert (
+            "Decouple reason: Existing duplicate decision changed."
+            in out_decision.detail
+        )
+        sql_uow.reference_duplicate_decisions.merge.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_determine_and_map_duplicate_decoupled_different_canonical(
+    sql_uow, anti_corruption_service, es_uow
+):
+    # Setup reference and active decision (was DUPLICATE of A, now DUPLICATE of B)
+    reference = MagicMock(spec=Reference)
+    reference.id = uuid.uuid4()
+    canonical_a = uuid.uuid4()
+    canonical_b = uuid.uuid4()
+    active_decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=canonical_a,
+        active_decision=True,
+    )
+    reference.duplicate_decision = active_decision
+
+    decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        candidate_duplicate_ids=[canonical_b],
+        duplicate_determination=DuplicateDetermination.NOMINATED,
+    )
+
+    result_obj = ReferenceDuplicateDeterminationResult(
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=canonical_b,
+        detail="different canonical",
+    )
+
+    service = DeduplicationService(anti_corruption_service, sql_uow, es_uow)
+    with patch.object(
+        service,
+        "_DeduplicationService__placeholder_duplicate_determinator",
+        return_value=result_obj,
+    ):
+        sql_uow.references.get_by_pk.return_value = reference
+        sql_uow.reference_duplicate_decisions.merge = AsyncMock(return_value=decision)
+        out_decision = await service.determine_and_map_duplicate(decision)
+        assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
+        assert (
+            "Decouple reason: Existing duplicate decision changed."
+            in out_decision.detail
+        )
+        sql_uow.reference_duplicate_decisions.merge.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_determine_and_map_duplicate_decoupled_chain_length(
+    sql_uow, anti_corruption_service, es_uow
+):
+    # Setup reference with canonical chain length 2 using real Reference objects
+    canonical_reference = Reference(
+        id=uuid.uuid4(),
+        identifiers=[],
+        enhancements=[],
+        duplicate_decision=None,
+        canonical_reference=None,
+    )
+
+    reference = Reference(
+        id=uuid.uuid4(),
+        identifiers=[],
+        enhancements=[],
+        duplicate_decision=None,
+        canonical_reference=canonical_reference,
+    )
+
+    candidate_id = uuid.uuid4()
+    decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        candidate_duplicate_ids=[candidate_id],
+        duplicate_determination=DuplicateDetermination.NOMINATED,
+    )
+
+    result_obj = ReferenceDuplicateDeterminationResult(
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=candidate_id,
+        detail="chain length reached",
+    )
+
+    service = DeduplicationService(anti_corruption_service, sql_uow, es_uow)
+    # Patch settings.max_reference_duplicate_depth to 2
+    service.__class__.settings = MagicMock(max_reference_duplicate_depth=2)
+    with patch.object(
+        service,
+        "_DeduplicationService__placeholder_duplicate_determinator",
+        return_value=result_obj,
+    ):
+        sql_uow.references.get_by_pk.return_value = reference
+        sql_uow.reference_duplicate_decisions.merge = AsyncMock(return_value=decision)
+        out_decision = await service.determine_and_map_duplicate(decision)
+        assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
+        assert (
+            "Decouple reason: Max duplicate chain length reached."
+            in out_decision.detail
+        )
+        sql_uow.reference_duplicate_decisions.merge.assert_awaited()
