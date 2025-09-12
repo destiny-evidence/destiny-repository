@@ -29,6 +29,7 @@ def upgrade() -> None:
     sa.Column('candidate_duplicate_ids', postgresql.ARRAY(sa.UUID()), nullable=True),
     sa.Column('duplicate_determination', postgresql.ENUM('pending', 'nominated', 'duplicate', 'exact_duplicate', 'canonical', 'unresolved', 'unsearchable', 'decoupled', name='duplicate_determination'), nullable=False),
     sa.Column('canonical_reference_id', sa.UUID(), nullable=True),
+    sa.Column('detail', sa.String(), nullable=True),
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),

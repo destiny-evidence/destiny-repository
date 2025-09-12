@@ -616,6 +616,10 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         default=None,
         description="The ID of the canonical reference this reference duplicates.",
     )
+    detail: str | None = Field(
+        default=None,
+        description="Optional additional detail about the decision.",
+    )
 
     @model_validator(mode="after")
     def check_canonical_reference_id_populated_iff_duplicate(self) -> Self:
