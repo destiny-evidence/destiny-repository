@@ -9,6 +9,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.core.config import get_settings
 from app.core.exceptions import SQLIntegrityError
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.imports.models.models import (
@@ -210,6 +211,7 @@ This should not happen.
                 response.raise_for_status()
                 line_number = 1
                 async for line in response.aiter_lines():
+                    trace_attribute(Attributes.FILE_LINE_NO, line_number)
                     if line := line.strip():
                         import_result = await self.register_result(
                             ImportResult(
