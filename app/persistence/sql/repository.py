@@ -54,6 +54,22 @@ class GenericAsyncSqlRepository(
         self._domain_cls = domain_cls
         self.system = "SQL"
 
+    def _validate_fields_exist(self, field_names: list[str]) -> None:
+        """
+        Validate provided field names exist on the persistence model.
+
+        Raises ValueError if any are invalid.
+        """
+        invalid_fields = [
+            key for key in field_names if not hasattr(self._persistence_cls, key)
+        ]
+        if invalid_fields:
+            msg = (
+                f"Invalid field(s) for {self._persistence_cls.__name__}: "
+                f"{invalid_fields}"
+            )
+            raise ValueError(msg)
+
     @trace_repository_method(tracer)
     async def get_by_pk(
         self, pk: UUID4, preload: list[str] | None = None
@@ -379,15 +395,7 @@ class GenericAsyncSqlRepository(
             return 0
 
         # Validate all field names exist on the persistence model
-        invalid_fields = [
-            key for key in kwargs if not hasattr(self._persistence_cls, key)
-        ]
-        if invalid_fields:
-            msg = (
-                f"Invalid field(s) for {self._persistence_cls.__name__}: "
-                f"{invalid_fields}"
-            )
-            raise ValueError(msg)
+        self._validate_fields_exist(list(kwargs.keys()))
 
         if not kwargs:
             return 0
@@ -445,16 +453,8 @@ class GenericAsyncSqlRepository(
             return 0
 
         # Validate all field names exist on the persistence model
-        all_fields = {**filter_conditions, **kwargs}
-        invalid_fields = [
-            key for key in all_fields if not hasattr(self._persistence_cls, key)
-        ]
-        if invalid_fields:
-            msg = (
-                f"Invalid field(s) for {self._persistence_cls.__name__}: "
-                f"{invalid_fields}"
-            )
-            raise ValueError(msg)
+        all_field_names = list({**filter_conditions, **kwargs}.keys())
+        self._validate_fields_exist(all_field_names)
 
         try:
             stmt = update(self._persistence_cls).values(**kwargs)
@@ -490,9 +490,8 @@ class GenericAsyncSqlRepository(
         - limit (int | None): Maximum number of records to return.
         - order_by (str | None): Field name to order the results by.
         - preload (list[str]): A list of attributes to preload using a join.
-        - **filters: Field filters where key is field name and value is the
-        filter value. Only fields that exist on the persistence model will be applied.
-        None values are ignored.
+        - **filters**: Field filters (name -> value).
+          Only fields on the model are applied. None values match using SQL IS NULL.
 
         Returns:
         - list[GenericDomainModelType]: A list of domain models matching the filters.
@@ -504,12 +503,18 @@ class GenericAsyncSqlRepository(
                 relationship = getattr(self._persistence_cls, p)
                 options.append(joinedload(relationship))
 
+        # Validate filter field names
+        self._validate_fields_exist(list(filters.keys()))
+
         query = select(self._persistence_cls).options(*options)
 
         for field_name, value in filters.items():
-            if value is not None and hasattr(self._persistence_cls, field_name):
+            if hasattr(self._persistence_cls, field_name):
                 field = getattr(self._persistence_cls, field_name)
-                query = query.where(field == value)
+                if value is None:
+                    query = query.where(field.is_(None))
+                else:
+                    query = query.where(field == value)
 
         if order_by and hasattr(self._persistence_cls, order_by):
             query = query.order_by(getattr(self._persistence_cls, order_by))
