@@ -2,7 +2,7 @@
 
 import uuid
 from enum import StrEnum, auto
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 import destiny_sdk
 
@@ -94,8 +94,9 @@ class DuplicateDetermination(StrEnum):
     - `unresolved`: Automatic attempts to resolve the duplicate were unsuccessful.
     - `unsearchable`: The reference does not have sufficient metadata to be
         automatically matched to other references.
-    - `decoupled`: The existing duplicate mapping has been changed/removed based on new
-        information and the references involved require special attention.
+    - `decoupled`: A decision has been made, but needs further attention. This could be
+        due to a change in the canonical mapping, or a chain of duplicates longer
+        than allowed.
     """
 
     PENDING = auto()
@@ -269,7 +270,7 @@ class Reference(
     @property
     def canonical(self) -> bool | None:
         """
-        Check if this reference is the canonical version.
+        Pessimistically check if this reference is the canonical version.
 
         Returns None if no duplicate decision is present, either due to not being
         preloaded or still pending.
@@ -279,6 +280,37 @@ class Reference(
         return (
             self.duplicate_decision.duplicate_determination
             == DuplicateDetermination.CANONICAL
+        )
+
+    @property
+    def canonical_like(self) -> bool:
+        """
+        Optimistically check if this reference is the canonical version.
+
+        Only returns False if the reference is a determined duplicate. Pending,
+        unresolved and not-preloaded duplicate decisions are treated as canonical-like.
+        """
+        if not self.duplicate_decision:
+            return True
+        return (
+            self.duplicate_decision.duplicate_determination
+            != DuplicateDetermination.DUPLICATE
+        )
+
+    @property
+    def canonical_chain_length(self) -> int:
+        """
+        Get the length of the canonical chain for this reference.
+
+        This is the number of references in the chain from this reference to
+        the root canonical reference, including this reference.
+
+        Requires canonical_reference to be preloaded, will always return 1 if not.
+        """
+        return 1 + (
+            self.canonical_reference.canonical_chain_length
+            if self.canonical_reference
+            else 0
         )
 
     def is_superset(
@@ -521,6 +553,41 @@ class CandidateDuplicateSearchFields(ProjectedBaseModel):
     def searchable(self) -> bool:
         """Whether the projection has the minimum fields required for matching."""
         return all((self.publication_year, self.authors, self.title))
+
+
+class ReferenceDuplicateDeterminationResult(BaseModel):
+    """Model representing the result of a duplicate determination."""
+
+    duplicate_determination: Literal[
+        DuplicateDetermination.CANONICAL,
+        DuplicateDetermination.DUPLICATE,
+        DuplicateDetermination.UNRESOLVED,
+    ]
+    canonical_reference_id: UUID4 | None = Field(
+        default=None,
+        description="The ID of the determined canonical reference.",
+    )
+    detail: str | None = Field(
+        default=None,
+        description="Optional detail about the determination process, particularly"
+        " where the determination is UNRESOLVED.",
+    )
+
+    @model_validator(mode="after")
+    def check_canonical_reference_id_populated_iff_canonical(self) -> Self:
+        """Assert that canonical must exist if and only if decision is duplicate."""
+        if (
+            self.canonical_reference_id
+            is not None
+            == (self.duplicate_determination == DuplicateDetermination.DUPLICATE)
+        ):
+            msg = (
+                "canonical_reference_id must be populated if and only if "
+                "duplicate_determination is DUPLICATE"
+            )
+            raise ValueError(msg)
+
+        return self
 
 
 class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):

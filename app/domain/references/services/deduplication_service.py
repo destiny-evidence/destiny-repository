@@ -14,6 +14,7 @@ from app.domain.references.models.models import (
     GenericExternalIdentifier,
     Reference,
     ReferenceDuplicateDecision,
+    ReferenceDuplicateDeterminationResult,
 )
 from app.domain.references.models.projections import (
     CandidateDuplicateSearchFieldsProjection,
@@ -180,30 +181,97 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
         return reference_duplicate_decision
 
-    async def detect_duplicates(
+    async def __placeholder_duplicate_determinator(
         self, reference_duplicate_decision: ReferenceDuplicateDecision
-    ) -> ReferenceDuplicateDecision:
+    ) -> ReferenceDuplicateDeterminationResult:
         """
-        Detect duplicate references based on given candidate fingerprints.
+        Implement a basic placeholder duplicate determinator.
 
         Temporary implementation: takes the first candidate as the duplicate.
-        This is the one with the highest score. This proofs out the flow but
-        should not be used in production.
+        This is the one with the highest score in the candidate nomination stage.
+        This proofs out the flow but should not be used in production.
         """
+        return ReferenceDuplicateDeterminationResult(
+            duplicate_determination=DuplicateDetermination.DUPLICATE,
+            canonical_reference_id=reference_duplicate_decision.candidate_duplicate_ids[
+                0
+            ],
+        )
+
+    async def determine_and_map_duplicate(
+        self, new_decision: ReferenceDuplicateDecision
+    ) -> ReferenceDuplicateDecision:
+        """Determine a duplicate reference from its candidates and save the mapping."""
         if (
-            not reference_duplicate_decision.candidate_duplicate_ids
-            or reference_duplicate_decision.duplicate_determination
-            != DuplicateDetermination.NOMINATED
+            not new_decision.candidate_duplicate_ids
+            or new_decision.duplicate_determination != DuplicateDetermination.NOMINATED
         ):
             msg = (
                 "ReferenceDuplicateDecision must have candidate_duplicate_ids and "
                 "be in NOMINATED state to detect duplicates."
             )
             raise DeduplicationValueError(msg)
-        return await self.sql_uow.reference_duplicate_decisions.update_by_pk(
-            reference_duplicate_decision.id,
-            duplicate_determination=DuplicateDetermination.DUPLICATE,
-            canonical_reference_id=reference_duplicate_decision.candidate_duplicate_ids[
-                0
-            ],
+
+        reference = await self.sql_uow.references.get_by_pk(
+            new_decision.reference_id,
+            preload=["duplicate_decision", "canonical_reference"],
         )
+        active_decision = reference.duplicate_decision
+
+        duplicate_determination_result = (
+            await self.__placeholder_duplicate_determinator(new_decision)
+        )
+
+        # Update new decision with the result
+        new_decision.detail = duplicate_determination_result.detail
+        new_decision.duplicate_determination = (
+            duplicate_determination_result.duplicate_determination
+        )
+        new_decision.canonical_reference_id = (
+            duplicate_determination_result.canonical_reference_id
+        )
+
+        # Remap active decision if needed and handle other cases (flattened if/else)
+        if active_decision and (
+            (
+                # Reference was duplicate but is now canonical
+                new_decision.duplicate_determination == DuplicateDetermination.CANONICAL
+                and active_decision.duplicate_determination
+                == DuplicateDetermination.DUPLICATE
+            )
+            or (
+                # Reference was duplicate but is now duplicate of a different canonical
+                new_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
+                and active_decision.canonical_reference_id
+                != new_decision.canonical_reference_id
+            )
+        ):
+            # Maintain existing decision and raise for manual review
+            new_decision.duplicate_determination = DuplicateDetermination.DECOUPLED
+            new_decision.detail = (
+                "Decouple reason: Existing duplicate decision changed. "
+                + (new_decision.detail if new_decision.detail else "")
+            )
+        elif (
+            # Reference forms a chain longer than allowed
+            new_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
+            and reference.canonical_chain_length
+            == settings.max_reference_duplicate_depth
+        ):
+            # Raise for manual review
+            new_decision.duplicate_determination = DuplicateDetermination.DECOUPLED
+            new_decision.detail = (
+                "Decouple reason: Max duplicate chain length reached. "
+                + (new_decision.detail if new_decision.detail else "")
+            )
+        else:
+            # Either no active decision or the mapping is the same.
+            # Just update the active decision to record the consistent state.
+            if active_decision:
+                active_decision.active_decision = False
+            new_decision.active_decision = True
+
+        # Update in-place, it's just easier
+        if active_decision:
+            await self.sql_uow.reference_duplicate_decisions.merge(active_decision)
+        return await self.sql_uow.reference_duplicate_decisions.merge(new_decision)
