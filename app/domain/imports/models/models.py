@@ -6,7 +6,7 @@ from enum import StrEnum, auto
 
 from pydantic import Field, HttpUrl, PastDatetime
 
-from app.domain.base import DomainBaseModel, SQLAttributeMixin
+from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
 
 
 class ImportRecordStatus(StrEnum):
@@ -144,7 +144,7 @@ The number of references expected to be included in this import.
     )
 
 
-class ImportBatch(DomainBaseModel, SQLAttributeMixin):
+class ImportBatch(DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin):
     """Core import batch model with database and internal attributes included."""
 
     collision_strategy: CollisionStrategy = Field(
@@ -159,8 +159,8 @@ Default is `fail`, which allows the importing process to "follow up" on the coll
 The URL at which the set of references for this batch are stored.
     """,
     )
-    status: ImportBatchStatus = Field(
-        default=ImportBatchStatus.CREATED, description="The status of the batch."
+    status: ImportBatchStatus | None = Field(
+        default=None, description="The status of the batch."
     )
     import_record_id: uuid.UUID = Field(
         description="The ID of the parent import record."

@@ -8,7 +8,7 @@ from pydantic import UUID4
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import InstrumentedAttribute, RelationshipProperty, joinedload
 
 from app.core.exceptions import SQLIntegrityError, SQLNotFoundError
 from app.core.telemetry.attributes import (
@@ -73,8 +73,11 @@ class GenericAsyncSqlRepository(
         options = []
         if preload:
             for p in preload:
-                relationship = getattr(self._persistence_cls, p)
-                options.append(joinedload(relationship))
+                attribute: InstrumentedAttribute | None = getattr(
+                    self._persistence_cls, p, None
+                )
+                if attribute and isinstance(attribute.property, RelationshipProperty):
+                    options.append(joinedload(attribute))
         query = (
             select(self._persistence_cls)
             .where(self._persistence_cls.id == pk)

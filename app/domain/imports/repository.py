@@ -20,6 +20,7 @@ from app.domain.imports.models.models import (
 from app.domain.imports.models.models import (
     ImportResultStatus,
 )
+from app.domain.imports.models.projections import ImportBatchStatusProjection
 from app.domain.imports.models.sql import (
     ImportBatch as SQLImportBatch,
 )
@@ -73,6 +74,37 @@ class ImportBatchSQLRepository(
     def __init__(self, session: AsyncSession) -> None:
         """Initialize the repository with the session."""
         super().__init__(session, DomainImportBatch, SQLImportBatch)
+
+    async def _get_import_result_status_set(
+        self, import_batch_id: uuid.UUID
+    ) -> set[ImportResultStatus]:
+        """
+        Get current underlying statuses for an import batch.
+
+        Args:
+            import_batch_id: The ID of the import batch
+
+        Returns:
+            Set of statuses for the import results in the batch
+
+        """
+        query = select(
+            SQLImportResult.status.distinct(),
+        ).where(SQLImportResult.import_batch_id == import_batch_id)
+        results = await self._session.execute(query)
+        return {row[0] for row in results.all()}
+
+    async def get_by_pk(
+        self, pk: uuid.UUID, preload: list[str] | None = None
+    ) -> DomainImportBatch:
+        """Override to include derived batch status."""
+        import_batch = await super().get_by_pk(pk, preload)
+        if "status" in (preload or []):
+            import_batch_statuses = await self._get_import_result_status_set(pk)
+            return ImportBatchStatusProjection.get_from_status_set(
+                import_batch, import_batch_statuses
+            )
+        return import_batch
 
 
 class ImportResultRepositoryBase(

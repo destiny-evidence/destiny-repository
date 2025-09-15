@@ -5,7 +5,7 @@ import uuid
 
 import pytest
 from destiny_sdk.imports import ImportRecordStatus
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.imports.models.models import (
@@ -18,6 +18,7 @@ from app.domain.imports.models.sql import (
     ImportRecord,
     ImportResult,
 )
+from app.domain.imports.repository import ImportBatchSQLRepository
 from app.domain.references.models.models import Enhancement, Reference
 from app.domain.references.models.sql import (
     Enhancement as SQLEnhancement,
@@ -87,7 +88,7 @@ async def test_enhancement_interface(
     ("result_statuses", "expected_status"),
     [
         ([], ImportBatchStatus.CREATED),
-        ([ImportResultStatus.CREATED], ImportBatchStatus.STARTED),
+        ([ImportResultStatus.CREATED], ImportBatchStatus.CREATED),
         ([ImportResultStatus.STARTED], ImportBatchStatus.STARTED),
         (
             [
@@ -153,6 +154,7 @@ async def test_import_batch_status_projection(
     await session.flush()
     await session.commit()
 
-    q = select(ImportBatch).where(ImportBatch.id == batch_id)
-    res = (await session.execute(q)).unique().scalar_one()
-    assert res.to_domain().status == expected_status
+    repo = ImportBatchSQLRepository(session)
+    assert (
+        await repo.get_by_pk(batch_id, preload=["status"])
+    ).status == expected_status
