@@ -45,6 +45,10 @@ class ImportRecordRepositoryBase(
 ):
     """Abstract implementation of a repository for Imports."""
 
+    def __init__(self) -> None:
+        """Initialize the repository with the batches repository."""
+        super().__init__()
+
 
 _import_record_sql_preloadable = Literal["batches", "ImportBatch.status"]
 
@@ -57,19 +61,50 @@ class ImportRecordSQLRepository(
 ):
     """Concrete implementation of a repository for imports using SQLAlchemy."""
 
-    def __init__(self, session: AsyncSession) -> None:
-        """Initialize the repository with the database session."""
+    def __init__(
+        self, session: AsyncSession, batches_repo: "ImportBatchSQLRepository"
+    ) -> None:
+        """Initialize the repository with the database session and batches repo."""
         super().__init__(
             session,
             DomainImportRecord,
             SQLImportRecord,
         )
+        self.batches = batches_repo
+
+    async def get_by_pk(
+        self,
+        pk: uuid.UUID,
+        preload: list[_import_record_sql_preloadable] | None = None,
+    ) -> DomainImportRecord:
+        """Override to include batch statuses if requested."""
+        import_record = await super().get_by_pk(pk, preload)
+        if "ImportBatch.status" in (preload or []) and import_record.batches:
+            status_sets = await asyncio.gather(
+                *[
+                    self.batches.get_import_result_status_set(import_batch.id)
+                    for import_batch in import_record.batches
+                ]
+            )
+            import_record.batches = [
+                ImportBatchStatusProjection.get_from_status_set(
+                    import_batch, status_set
+                )
+                for import_batch, status_set in zip(
+                    import_record.batches, status_sets, strict=True
+                )
+            ]
+        return import_record
 
 
 class ImportBatchRepositoryBase(
     GenericAsyncRepository[DomainImportBatch, GenericPersistenceType], ABC
 ):
     """Abstract implementation of a repository for ImportBatches."""
+
+    def __init__(self) -> None:
+        """Initialize the repository with the results repository."""
+        super().__init__()
 
 
 _import_batch_sql_preloadable = Literal["import_record", "import_results", "status"]
@@ -85,11 +120,14 @@ class ImportBatchSQLRepository(
 ):
     """Repository for ImportBatches using SQLAlchemy."""
 
-    def __init__(self, session: AsyncSession) -> None:
-        """Initialize the repository with the session."""
+    def __init__(
+        self, session: AsyncSession, results_repo: "ImportResultSQLRepository"
+    ) -> None:
+        """Initialize the repository with the session and results repository."""
         super().__init__(session, DomainImportBatch, SQLImportBatch)
+        self.results = results_repo
 
-    async def _get_import_result_status_set(
+    async def get_import_result_status_set(
         self, import_batch_id: uuid.UUID
     ) -> set[ImportResultStatus]:
         """
@@ -116,36 +154,11 @@ class ImportBatchSQLRepository(
         """Override to include derived batch status."""
         import_batch = await super().get_by_pk(pk, preload)
         if "status" in (preload or []):
-            import_batch_statuses = await self._get_import_result_status_set(pk)
+            import_batch_statuses = await self.get_import_result_status_set(pk)
             return ImportBatchStatusProjection.get_from_status_set(
                 import_batch, import_batch_statuses
             )
         return import_batch
-
-    async def get_by_pks(
-        self,
-        pks: list[uuid.UUID],
-        preload: list[_import_batch_sql_preloadable] | None = None,
-    ) -> list[DomainImportBatch]:
-        """Override to include derived batch status."""
-        import_batches = await super().get_by_pks(pks, preload)
-        if "status" in (preload or []):
-            # Uses async benefits to mitigate the need for a batch status set method
-            status_sets = await asyncio.gather(
-                *[
-                    self._get_import_result_status_set(import_batch.id)
-                    for import_batch in import_batches
-                ]
-            )
-            return [
-                ImportBatchStatusProjection.get_from_status_set(
-                    import_batch, status_set
-                )
-                for import_batch, status_set in zip(
-                    import_batches, status_sets, strict=True
-                )
-            ]
-        return import_batches
 
 
 class ImportResultRepositoryBase(

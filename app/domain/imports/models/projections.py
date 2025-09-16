@@ -29,6 +29,7 @@ class ImportBatchStatusProjection(GenericProjection[ImportBatch]):
         elif {
             ImportResultStatus.STARTED,
             ImportResultStatus.RETRYING,
+            ImportResultStatus.CREATED,
         } & import_result_status_set:
             import_batch.status = ImportBatchStatus.STARTED
 

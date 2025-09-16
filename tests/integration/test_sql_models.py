@@ -18,7 +18,10 @@ from app.domain.imports.models.sql import (
     ImportRecord,
     ImportResult,
 )
-from app.domain.imports.repository import ImportBatchSQLRepository
+from app.domain.imports.repository import (
+    ImportBatchSQLRepository,
+    ImportResultSQLRepository,
+)
 from app.domain.references.models.models import Enhancement, Reference
 from app.domain.references.models.sql import (
     Enhancement as SQLEnhancement,
@@ -154,7 +157,7 @@ async def test_import_batch_status_projection(
     await session.flush()
     await session.commit()
 
-    repo = ImportBatchSQLRepository(session)
+    repo = ImportBatchSQLRepository(session, ImportResultSQLRepository(session))
     assert (
         await repo.get_by_pk(batch_id, preload=["status"])
     ).status == expected_status

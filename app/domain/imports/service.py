@@ -63,7 +63,9 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
     @sql_unit_of_work
     async def get_import_batch(self, import_batch_id: UUID4) -> ImportBatch:
         """Get a single import batch."""
-        return await self.sql_uow.batches.get_by_pk(import_batch_id, preload=["status"])
+        return await self.sql_uow.imports.batches.get_by_pk(
+            import_batch_id, preload=["status"]
+        )
 
     @sql_unit_of_work
     async def get_import_result(
@@ -71,14 +73,24 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         import_result_id: UUID4,
     ) -> ImportResult:
         """Get a single import result by id."""
-        return await self.sql_uow.results.get_by_pk(import_result_id)
+        return await self.sql_uow.imports.batches.results.get_by_pk(import_result_id)
+
+    @sql_unit_of_work
+    async def get_import_result_with_batch(
+        self,
+        import_result_id: UUID4,
+    ) -> ImportResult:
+        """Get a single import result by id."""
+        return await self.sql_uow.imports.batches.results.get_by_pk(
+            import_result_id, preload=["import_batch"]
+        )
 
     @sql_unit_of_work
     async def get_imported_references_from_batch(
         self, import_batch_id: UUID4
     ) -> set[UUID4]:
         """Get all imported references from a batch."""
-        results = await self.sql_uow.results.get_by_filter(
+        results = await self.sql_uow.imports.batches.results.get_by_filter(
             import_batch_id=import_batch_id,
         )
         return {
@@ -94,7 +106,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         self, import_batch_id: UUID4
     ) -> ImportBatch:
         """Get a single import batch with preloaded results."""
-        return await self.sql_uow.batches.get_by_pk(
+        return await self.sql_uow.imports.batches.get_by_pk(
             import_batch_id, preload=["import_results", "status"]
         )
 
@@ -106,19 +118,24 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
     @sql_unit_of_work
     async def register_batch(self, batch: ImportBatch) -> ImportBatch:
         """Register an import batch, persisting it to the database."""
-        return await self.sql_uow.batches.add(batch)
+        batch = await self.sql_uow.imports.batches.add(batch)
+        return await self.sql_uow.imports.batches.get_by_pk(
+            batch.id, preload=["status"]
+        )
 
     @sql_unit_of_work
     async def register_result(self, result: ImportResult) -> ImportResult:
         """Register an import result, persisting it to the database."""
-        return await self.sql_uow.results.add(result)
+        return await self.sql_uow.imports.batches.results.add(result)
 
     @sql_unit_of_work
     async def update_import_result(
         self, import_result_id: UUID4, **kwargs: object
     ) -> ImportResult:
         """Update the status of an import result."""
-        return await self.sql_uow.results.update_by_pk(import_result_id, **kwargs)
+        return await self.sql_uow.imports.batches.results.update_by_pk(
+            import_result_id, **kwargs
+        )
 
     async def import_reference(
         self,
@@ -238,7 +255,7 @@ This should not happen.
         result_status: ImportResultStatus | None = None,
     ) -> list[ImportResult]:
         """Get a list of results for an import batch."""
-        return await self.sql_uow.results.get_by_filter(
+        return await self.sql_uow.imports.batches.results.get_by_filter(
             import_batch_id=import_batch_id,
             status=result_status,
         )

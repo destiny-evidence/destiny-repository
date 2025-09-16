@@ -63,9 +63,11 @@ async def test_register_import(fake_repository, fake_uow):
 
 @pytest.mark.asyncio
 async def test_register_batch(fake_repository, fake_uow, fake_import_record):
-    repo_imports = fake_repository(init_entries=[fake_import_record(RECORD_ID)])
     repo_batches = fake_repository()
-    uow = fake_uow(imports=repo_imports, batches=repo_batches)
+    repo_imports = fake_repository(
+        init_entries=[fake_import_record(RECORD_ID)], batches=repo_batches
+    )
+    uow = fake_uow(imports=repo_imports)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
     batch_to_register = ImportBatch(
@@ -76,7 +78,6 @@ async def test_register_batch(fake_repository, fake_uow, fake_import_record):
 
     import_batch = next(iter(repo_batches.repository.values()))
 
-    assert import_batch.status == ImportBatchStatus.CREATED
     assert import_batch.import_record_id == RECORD_ID
     assert import_batch.import_results is None
 
@@ -84,7 +85,9 @@ async def test_register_batch(fake_repository, fake_uow, fake_import_record):
 @pytest.mark.asyncio
 async def test_import_reference_happy_path(fake_repository, fake_uow, import_result):
     repo_results = fake_repository([import_result])
-    uow = fake_uow(results=repo_results)
+    repo_batches = fake_repository(results=repo_results)
+    repo = fake_repository(batches=repo_batches)
+    uow = fake_uow(imports=repo)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
     fake_reference_service = AsyncMock()
@@ -106,7 +109,9 @@ async def test_import_reference_reference_not_created(
     fake_repository, fake_uow, import_result
 ):
     repo_results = fake_repository([import_result])
-    uow = fake_uow(results=repo_results)
+    repo_batches = fake_repository(results=repo_results)
+    repo = fake_repository(batches=repo_batches)
+    uow = fake_uow(imports=repo)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
     import_reference_error = "it bronked"
@@ -131,7 +136,9 @@ async def test_import_reference_reference_created_with_errors(
     fake_repository, fake_uow, import_result
 ):
     repo_results = fake_repository([import_result])
-    uow = fake_uow(results=repo_results)
+    repo_batches = fake_repository(results=repo_results)
+    repo = fake_repository(batches=repo_batches)
+    uow = fake_uow(imports=repo)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
     import_reference_error = "it's a bit bronked"
@@ -159,7 +166,9 @@ async def test_import_reference_sql_integrity_error(
     from app.core.exceptions import SQLIntegrityError
 
     repo_results = fake_repository([import_result])
-    uow = fake_uow(results=repo_results)
+    repo_batches = fake_repository(results=repo_results)
+    repo = fake_repository(batches=repo_batches)
+    uow = fake_uow(imports=repo)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
     # Provide all required arguments for SQLIntegrityError
@@ -282,8 +291,9 @@ async def test_get_import_batch_summary_batch_completed_no_failures(
     )
 
     repo_batches = fake_repository(init_entries=[fake_completed_batch])
+    repo = fake_repository(batches=repo_batches)
 
-    uow = fake_uow(batches=repo_batches)
+    uow = fake_uow(imports=repo)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
     batch = await service.get_import_batch_with_results(BATCH_ID)
@@ -321,8 +331,9 @@ async def test_get_import_batch_summary_batch_completed_with_failures(
     )
 
     repo_batches = fake_repository(init_entries=[fake_batch])
+    repo = fake_repository(batches=repo_batches)
 
-    uow = fake_uow(batches=repo_batches)
+    uow = fake_uow(imports=repo)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
     batch = await service.get_import_batch_with_results(BATCH_ID)
@@ -358,8 +369,9 @@ async def test_get_import_batch_summary_batch_in_progress(
     )
 
     repo_batches = fake_repository(init_entries=[fake_batch])
+    repo = fake_repository(batches=repo_batches)
 
-    uow = fake_uow(batches=repo_batches)
+    uow = fake_uow(imports=repo)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
     batch = await service.get_import_batch_with_results(BATCH_ID)

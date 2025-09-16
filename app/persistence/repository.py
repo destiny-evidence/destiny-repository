@@ -27,7 +27,7 @@ class GenericAsyncRepository(
     @trace_repository_method(tracer)
     async def get_by_pk(
         self, pk: UUID4, preload: list[Any] | None = None
-    ) -> GenericDomainModelType | None:
+    ) -> GenericDomainModelType:
         """
         Get a record using its primary key.
 
