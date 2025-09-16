@@ -99,7 +99,9 @@ class GenericAsyncSqlRepository(
             # Recursion exit case, maximum length of this relationship's
             # self-referential chain
             avoid_propagate.add(relationship.key)
-        if preload and relationship.prop.mapper.class_ == self._persistence_cls:
+
+        is_self_referential = relationship.prop.mapper.class_ == self._persistence_cls
+        if preload and is_self_referential:
             preload = [p for p in preload if p not in avoid_propagate]
             for nested_rel_name in preload:
                 nested_rel = getattr(relationship.prop.mapper.class_, nested_rel_name)

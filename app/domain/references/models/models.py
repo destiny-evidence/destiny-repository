@@ -495,10 +495,8 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
     @model_validator(mode="after")
     def check_canonical_reference_id_populated_iff_duplicate(self) -> Self:
         """Assert that canonical must exist if and only if decision is duplicate."""
-        if (
-            self.canonical_reference_id
-            is not None
-            == self.duplicate_determination
+        if (self.canonical_reference_id is not None) == (
+            self.duplicate_determination
             in (
                 DuplicateDetermination.DUPLICATE,
                 DuplicateDetermination.EXACT_DUPLICATE,
