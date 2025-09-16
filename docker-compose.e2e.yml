@@ -111,7 +111,6 @@ services:
       REPO_URL: "http://app:8000/v1"
       HTTP_CLIENT_URL: "http://http:5678"
       MINIO_URL: "http://fs:9000"
-      CALLBACK_URL: "http://e2e:8001"
       ES_URL: "https://elasticsearch:9200"
       ES_CA_PATH: /usr/share/elasticsearch/config/certs/ca/ca.crt
       ES_USER: "elastic"

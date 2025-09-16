@@ -3,6 +3,7 @@
 import math
 from abc import ABC
 from collections.abc import Sequence
+from typing import Literal
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
@@ -66,8 +67,19 @@ class ReferenceRepositoryBase(
     """Abstract implementation of a repository for References."""
 
 
+_reference_sql_preloadable = Literal[
+    "identifiers",
+    "enhancements",
+    "duplicate_references",
+    "canonical_reference",
+    "duplicate_decision",
+]
+
+
 class ReferenceSQLRepository(
-    GenericAsyncSqlRepository[DomainReference, SQLReference],
+    GenericAsyncSqlRepository[
+        DomainReference, SQLReference, _reference_sql_preloadable
+    ],
     ReferenceRepositoryBase,
 ):
     """Concrete implementation of a repository for references using SQLAlchemy."""
@@ -128,7 +140,7 @@ class ReferenceSQLRepository(
     async def find_with_identifiers(
         self,
         identifiers: list[GenericExternalIdentifier],
-        preload: list[str] | None = None,
+        preload: list[_reference_sql_preloadable] | None = None,
     ) -> list[DomainReference]:
         """Find references that possess ALL of the given identifiers."""
         options = []
@@ -254,7 +266,9 @@ class ExternalIdentifierRepositoryBase(
 
 
 class ExternalIdentifierSQLRepository(
-    GenericAsyncSqlRepository[DomainExternalIdentifier, SQLExternalIdentifier],
+    GenericAsyncSqlRepository[
+        DomainExternalIdentifier, SQLExternalIdentifier, Literal["reference"]
+    ],
     ExternalIdentifierRepositoryBase,
 ):
     """Concrete implementation of a repository for identifiers using SQLAlchemy."""
@@ -362,7 +376,7 @@ class EnhancementRepositoryBase(
 
 
 class EnhancementSQLRepository(
-    GenericAsyncSqlRepository[DomainEnhancement, SQLEnhancement],
+    GenericAsyncSqlRepository[DomainEnhancement, SQLEnhancement, Literal["reference"]],
     EnhancementRepositoryBase,
 ):
     """Concrete implementation of a repository for identifiers using SQLAlchemy."""
@@ -384,7 +398,9 @@ class EnhancementRequestRepositoryBase(
 
 
 class EnhancementRequestSQLRepository(
-    GenericAsyncSqlRepository[DomainEnhancementRequest, SQLEnhancementRequest],
+    GenericAsyncSqlRepository[
+        DomainEnhancementRequest, SQLEnhancementRequest, Literal["__none__"]
+    ],
     EnhancementRequestRepositoryBase,
 ):
     """Concrete implementation of a repository for batch enhancement requests."""
@@ -406,7 +422,9 @@ class RobotAutomationRepositoryBase(
 
 
 class RobotAutomationSQLRepository(
-    GenericAsyncSqlRepository[DomainRobotAutomation, SQLRobotAutomation],
+    GenericAsyncSqlRepository[
+        DomainRobotAutomation, SQLRobotAutomation, Literal["__none__"]
+    ],
     RobotAutomationRepositoryBase,
 ):
     """Concrete implementation of a repository for robot automations using SQL."""
@@ -497,7 +515,9 @@ class ReferenceDuplicateDecisionRepositoryBase(
 
 class ReferenceDuplicateDecisionSQLRepository(
     GenericAsyncSqlRepository[
-        DomainReferenceDuplicateDecision, SQLReferenceDuplicateDecision
+        DomainReferenceDuplicateDecision,
+        SQLReferenceDuplicateDecision,
+        Literal["__none__"],
     ],
     ReferenceDuplicateDecisionRepositoryBase,
 ):

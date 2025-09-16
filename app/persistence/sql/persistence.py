@@ -9,11 +9,7 @@ from typing import Generic, Self
 from pydantic import BaseModel, Field
 from sqlalchemy import UUID, DateTime
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlalchemy.orm import (
-    DeclarativeBase,
-    Mapped,
-    mapped_column,
-)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.persistence.generics import GenericDomainModelType
 from app.utils.time_and_date import utc_now

@@ -115,11 +115,15 @@ Identifier(s) are already mapped on an existing reference:
             existing_reference_id=str(existing_reference.id),
         )
         await existing_reference.merge(incoming_reference, collision_strategy)
+        trace_attribute(Attributes.REFERENCE_ID, str(existing_reference.id))
         return existing_reference
 
-    async def ingest_reference(
-        self, record_str: str, entry_ref: int, collision_strategy: CollisionStrategy
-    ) -> ReferenceCreateResult | None:
+    async def validate_and_collide_reference(
+        self,
+        record_str: str,
+        entry_ref: int,
+        collision_strategy: CollisionStrategy,
+    ) -> tuple[ReferenceCreateResult | None, Reference | None]:
         """
         Attempt to ingest a reference into the database.
 
@@ -133,7 +137,7 @@ Identifier(s) are already mapped on an existing reference:
 
         if not reference_create_result.reference:
             # Parsing failed, return the error
-            return reference_create_result
+            return reference_create_result, None
 
         collision_result = await self.detect_and_handle_collision(
             reference_create_result.reference, collision_strategy
@@ -141,7 +145,7 @@ Identifier(s) are already mapped on an existing reference:
 
         if collision_result is None:
             # Record to be discarded
-            return None
+            return None, None
 
         if isinstance(collision_result, str):
             logger.warning(
@@ -150,11 +154,9 @@ Identifier(s) are already mapped on an existing reference:
             )
             return ReferenceCreateResult(
                 errors=[f"Entry {entry_ref}:", collision_result]
-            )
+            ), None
 
-        trace_attribute(Attributes.REFERENCE_ID, str(collision_result.id))
-        final_reference = await self.sql_uow.references.merge(collision_result)
-        reference_create_result.reference_id = final_reference.id
+        reference_create_result.reference_id = collision_result.id
 
         if reference_create_result.errors:
             reference_create_result.errors = [
@@ -162,4 +164,4 @@ Identifier(s) are already mapped on an existing reference:
                 *reference_create_result.errors,
             ]
 
-        return reference_create_result
+        return reference_create_result, collision_result

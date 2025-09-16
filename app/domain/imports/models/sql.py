@@ -19,7 +19,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.imports.models.models import (
     CollisionStrategy,
-    ImportBatchStatus,
     ImportRecordStatus,
     ImportResultStatus,
 )
@@ -35,6 +34,61 @@ from app.domain.imports.models.models import (
 from app.persistence.sql.persistence import GenericSQLPersistence
 
 
+class ImportResult(GenericSQLPersistence[DomainImportResult]):
+    """SQL model for an individual import result."""
+
+    __tablename__ = "import_result"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    import_batch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("import_batch.id"), nullable=False
+    )
+    status: Mapped[ImportResultStatus] = mapped_column(
+        ENUM(
+            *[status.value for status in ImportResultStatus],
+            name="import_result_status",
+        ),
+        nullable=False,
+    )
+    reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    failure_details: Mapped[str | None] = mapped_column(String)
+
+    import_batch: Mapped["ImportBatch"] = relationship(
+        "ImportBatch", back_populates="import_results"
+    )
+
+    __table_args__ = (
+        Index("ix_import_result_import_batch_id_status", "import_batch_id", "status"),
+    )
+
+    @classmethod
+    def from_domain(cls, domain_obj: DomainImportResult) -> Self:
+        """Create a persistence model from a domain ImportResult object."""
+        return cls(
+            id=domain_obj.id,
+            import_batch_id=domain_obj.import_batch_id,
+            status=domain_obj.status,
+            reference_id=domain_obj.reference_id,
+            failure_details=domain_obj.failure_details,
+        )
+
+    def to_domain(
+        self,
+        preload: list[str] | None = None,
+    ) -> DomainImportResult:
+        """Convert the persistence model into an Domain ImportResult object."""
+        return DomainImportResult(
+            id=self.id,
+            import_batch_id=self.import_batch_id,
+            status=self.status,
+            reference_id=self.reference_id,
+            failure_details=self.failure_details,
+            import_batch=self.import_batch.to_domain()
+            if "import_batch" in (preload or [])
+            else None,
+        )
+
+
 class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
     """
     SQL Persistence model for an ImportBatch.
@@ -48,13 +102,7 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
     import_record_id: Mapped[uuid.UUID] = mapped_column(
         UUID, ForeignKey("import_record.id"), nullable=False
     )
-    status: Mapped[ImportBatchStatus] = mapped_column(
-        ENUM(
-            *[status.value for status in ImportBatchStatus],
-            name="import_batch_status",
-        ),
-        nullable=False,
-    )
+
     collision_strategy: Mapped[CollisionStrategy] = mapped_column(
         ENUM(
             *[strategy.value for strategy in CollisionStrategy],
@@ -63,12 +111,11 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
         nullable=False,
     )
     storage_url: Mapped[str] = mapped_column(String, nullable=False)
-    callback_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
     import_record: Mapped["ImportRecord"] = relationship(
         "ImportRecord", back_populates="batches"
     )
-    import_results: Mapped[list["ImportResult"]] = relationship(
+    import_results: Mapped[list[ImportResult]] = relationship(
         "ImportResult", back_populates="import_batch"
     )
 
@@ -88,22 +135,19 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
             id=domain_obj.id,
             import_record_id=domain_obj.import_record_id,
             collision_strategy=domain_obj.collision_strategy,
-            status=domain_obj.status,
             storage_url=str(domain_obj.storage_url),
-            callback_url=str(domain_obj.callback_url)
-            if domain_obj.callback_url
-            else None,
         )
 
-    def to_domain(self, preload: list[str] | None = None) -> DomainImportBatch:
+    def to_domain(
+        self,
+        preload: list[str] | None = None,
+    ) -> DomainImportBatch:
         """Convert the persistence model into an Domain ImportBatch object."""
         return DomainImportBatch(
             id=self.id,
             import_record_id=self.import_record_id,
             collision_strategy=self.collision_strategy,
-            status=self.status,
             storage_url=HttpUrl(self.storage_url),
-            callback_url=HttpUrl(self.callback_url) if self.callback_url else None,
             import_record=self.import_record.to_domain()
             if "import_record" in (preload or [])
             else None,
@@ -161,7 +205,10 @@ class ImportRecord(GenericSQLPersistence[DomainImportRecord]):
             status=domain_obj.status,
         )
 
-    def to_domain(self, preload: list[str] | None = None) -> DomainImportRecord:
+    def to_domain(
+        self,
+        preload: list[str] | None = None,
+    ) -> DomainImportRecord:
         """Convert the persistence model into an Domain ImportRecord object."""
         return DomainImportRecord(
             id=self.id,
@@ -175,55 +222,5 @@ class ImportRecord(GenericSQLPersistence[DomainImportRecord]):
             status=self.status,
             batches=[batch.to_domain() for batch in self.batches]
             if "batches" in (preload or [])
-            else None,
-        )
-
-
-class ImportResult(GenericSQLPersistence[DomainImportResult]):
-    """SQL model for an individual import result."""
-
-    __tablename__ = "import_result"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
-    import_batch_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("import_batch.id"), nullable=False
-    )
-    status: Mapped[ImportResultStatus] = mapped_column(
-        ENUM(
-            *[status.value for status in ImportResultStatus],
-            name="import_result_status",
-        ),
-        nullable=False,
-    )
-    reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
-    failure_details: Mapped[str | None] = mapped_column(String)
-
-    import_batch: Mapped[ImportBatch] = relationship(
-        "ImportBatch", back_populates="import_results"
-    )
-
-    __table_args__ = (Index("ix_import_result_import_batch_id", "import_batch_id"),)
-
-    @classmethod
-    def from_domain(cls, domain_obj: DomainImportResult) -> Self:
-        """Create a persistence model from a domain ImportResult object."""
-        return cls(
-            id=domain_obj.id,
-            import_batch_id=domain_obj.import_batch_id,
-            status=domain_obj.status,
-            reference_id=domain_obj.reference_id,
-            failure_details=domain_obj.failure_details,
-        )
-
-    def to_domain(self, preload: list[str] | None = None) -> DomainImportResult:
-        """Convert the persistence model into an Domain ImportResult object."""
-        return DomainImportResult(
-            id=self.id,
-            import_batch_id=self.import_batch_id,
-            status=self.status,
-            reference_id=self.reference_id,
-            failure_details=self.failure_details,
-            import_batch=self.import_batch.to_domain()
-            if "import_batch" in (preload or [])
             else None,
         )
