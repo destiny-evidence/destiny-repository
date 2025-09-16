@@ -49,7 +49,7 @@ class ExternalIdentifierParseResult(BaseModel):
     )
 
     @classmethod
-    async def from_raw(cls, raw_identifier: JSON, entry_ref: int) -> Self:
+    def from_raw(cls, raw_identifier: JSON, entry_ref: int) -> Self:
         """Parse an external identifier from raw JSON."""
         try:
             identifier: ExternalIdentifier = ExternalIdentifierAdapter.validate_python(
@@ -98,7 +98,7 @@ class EnhancementParseResult(BaseModel):
     )
 
     @classmethod
-    async def from_raw(cls, raw_enhancement: JSON, entry_ref: int) -> Self:
+    def from_raw(cls, raw_enhancement: JSON, entry_ref: int) -> Self:
         """Parse an enhancement from raw JSON."""
         try:
             enhancement = destiny_sdk.enhancements.EnhancementFileInput.model_validate(
@@ -139,14 +139,12 @@ class ReferenceCreateResult(BaseModel):
     were errors in the hydration.
     If reference exists and there are no errors, the reference was created and all
     enhancements/identifiers were hydrated successfully from the input.
+    If duplicate_decision_id is set, the reference is pending deduplication.
     """
 
     reference: destiny_sdk.references.ReferenceFileInput | None = Field(
         default=None,
-        description="""
-    The created reference.
-    If None, no reference was created.
-    """,
+        description="The validated reference input.",
     )
     errors: list[str] = Field(
         default_factory=list,
@@ -156,6 +154,10 @@ class ReferenceCreateResult(BaseModel):
         default=None,
         description="The ID of the created reference, if created",
     )
+    duplicate_decision_id: UUID4 | None = Field(
+        default=None,
+        description="The ID of the pending duplicate decision, if required",
+    )
 
     @property
     def error_str(self) -> str | None:
@@ -163,7 +165,7 @@ class ReferenceCreateResult(BaseModel):
         return "\n\n".join(e.strip() for e in self.errors) if self.errors else None
 
     @classmethod
-    async def from_raw(
+    def from_raw(
         cls,
         record_str: str,
         entry_ref: int,
@@ -177,7 +179,7 @@ class ReferenceCreateResult(BaseModel):
             return cls(errors=[f"Entry {entry_ref}:", str(exc)])
 
         identifier_results: list[ExternalIdentifierParseResult] = [
-            await ExternalIdentifierParseResult.from_raw(identifier, entry_ref)
+            ExternalIdentifierParseResult.from_raw(identifier, entry_ref)
             for entry_ref, identifier in enumerate(validated_input.identifiers, 1)
         ]
 
@@ -195,7 +197,7 @@ class ReferenceCreateResult(BaseModel):
             )
 
         enhancement_results: list[EnhancementParseResult] = [
-            await EnhancementParseResult.from_raw(enhancement, entry_ref)
+            EnhancementParseResult.from_raw(enhancement, entry_ref)
             for entry_ref, enhancement in enumerate(validated_input.enhancements, 1)
         ]
 
@@ -240,7 +242,7 @@ class EnhancementResultValidator(BaseModel):
     )
 
     @classmethod
-    async def from_raw(
+    def from_raw(
         cls, entry: str, entry_ref: int, expected_reference_ids: set[UUID4]
     ) -> Self:
         """Create a EnhancementResult from a jsonl entry."""

@@ -24,6 +24,7 @@ from app.domain.references.services.anti_corruption_service import (
 from app.domain.references.tasks import (
     detect_and_dispatch_robot_automations,
     get_blob_repository,
+    process_reference_duplicate_decision,
 )
 from app.persistence.es.client import es_manager
 from app.persistence.es.uow import AsyncESUnitOfWork
@@ -125,7 +126,7 @@ async def import_reference(
         raise RuntimeError(msg)
     trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_result.import_batch_id))
 
-    import_result = await import_service.import_reference(
+    import_result, duplicate_decision_id = await import_service.import_reference(
         reference_service,
         import_result,
         import_result.import_batch.collision_strategy,
@@ -146,6 +147,12 @@ async def import_reference(
         else:
             logger.info("No remaining retries for import batch, marking as failed.")
         return
+
+    if duplicate_decision_id:
+        await queue_task_with_trace(
+            process_reference_duplicate_decision,
+            duplicate_decision_id,
+        )
 
     if (
         import_result.status

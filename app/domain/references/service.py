@@ -244,15 +244,52 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self, record_str: str, entry_ref: int, collision_strategy: CollisionStrategy
     ) -> ReferenceCreateResult | None:
         """Ingest a reference from a file."""
-        (
-            validation_result,
-            reference,
-        ) = await self._ingestion_service.validate_and_collide_reference(
-            record_str, entry_ref, collision_strategy
+        if not settings.feature_flags.deduplication:
+            # Back-compatible merging on simple collision and merge strategy
+            # Removing this can also remove IngestionService entirely
+            (
+                validation_result,
+                reference,
+            ) = await self._ingestion_service.validate_and_collide_reference(
+                record_str, entry_ref, collision_strategy
+            )
+            if reference:
+                await self._merge_reference(reference)
+            return validation_result
+
+        # Full deduplication flow
+        reference_create_result = ReferenceCreateResult.from_raw(record_str, entry_ref)
+        if not reference_create_result.reference:
+            return reference_create_result
+        reference = self._anti_corruption_service.reference_from_sdk_file_input(
+            reference_create_result.reference
         )
-        if reference:
-            await self._merge_reference(reference)
-        return validation_result
+
+        canonical_reference = await self._deduplication_service.find_exact_duplicate(
+            reference
+        )
+        if canonical_reference:
+            logger.info(
+                "Exact duplicate found during ingestion",
+                reference_id=str(reference.id),
+                canonical_reference_id=str(canonical_reference.id),
+            )
+            await self._deduplication_service.register_duplicate_decision_for_reference(
+                reference=reference,
+                duplicate_determination=DuplicateDetermination.EXACT_DUPLICATE,
+                canonical_reference_id=canonical_reference.id,
+            )
+            return reference_create_result
+
+        duplicate_decision = (
+            await self._deduplication_service.register_duplicate_decision_for_reference(
+                reference=reference
+            )
+        )
+        await self._merge_reference(reference)
+        reference_create_result.duplicate_decision_id = duplicate_decision.id
+
+        return reference_create_result
 
     @sql_unit_of_work
     async def register_reference_enhancement_request(

@@ -131,9 +131,7 @@ Identifier(s) are already mapped on an existing reference:
         `ReferenceCreate` model) to provide more useful error messages to the user and
         allow for partial successes.
         """
-        reference_create_result = await ReferenceCreateResult.from_raw(
-            record_str, entry_ref
-        )
+        reference_create_result = ReferenceCreateResult.from_raw(record_str, entry_ref)
 
         if not reference_create_result.reference:
             # Parsing failed, return the error
