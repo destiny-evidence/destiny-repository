@@ -56,7 +56,9 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
     @sql_unit_of_work
     async def get_import_record_with_batches(self, pk: UUID4) -> ImportRecord:
         """Get a single import, eager loading its batches."""
-        return await self.sql_uow.imports.get_by_pk(pk, preload=["batches"])
+        return await self.sql_uow.imports.get_by_pk(
+            pk, preload=["batches", "ImportBatch.status"]
+        )
 
     @sql_unit_of_work
     async def get_import_batch(self, import_batch_id: UUID4) -> ImportBatch:
@@ -65,10 +67,11 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
 
     @sql_unit_of_work
     async def get_import_result(
-        self, import_result_id: UUID4, preload: list[str] | None = None
+        self,
+        import_result_id: UUID4,
     ) -> ImportResult:
         """Get a single import result by id."""
-        return await self.sql_uow.results.get_by_pk(import_result_id, preload=preload)
+        return await self.sql_uow.results.get_by_pk(import_result_id)
 
     @sql_unit_of_work
     async def get_imported_references_from_batch(
@@ -92,7 +95,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
     ) -> ImportBatch:
         """Get a single import batch with preloaded results."""
         return await self.sql_uow.batches.get_by_pk(
-            import_batch_id, preload=["import_results"]
+            import_batch_id, preload=["import_results", "status"]
         )
 
     @sql_unit_of_work

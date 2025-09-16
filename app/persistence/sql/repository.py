@@ -18,13 +18,18 @@ from app.core.telemetry.attributes import (
 from app.core.telemetry.repository import trace_repository_method
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
-from app.persistence.sql.generics import GenericSQLPersistenceType
+from app.persistence.sql.generics import (
+    GenericSQLPersistenceType,
+    GenericSQLPreloadableType,
+)
 
 tracer = trace.get_tracer(__name__)
 
 
 class GenericAsyncSqlRepository(
-    Generic[GenericDomainModelType, GenericSQLPersistenceType],
+    Generic[
+        GenericDomainModelType, GenericSQLPersistenceType, GenericSQLPreloadableType
+    ],
     GenericAsyncRepository[GenericDomainModelType, GenericSQLPersistenceType],  # type:ignore[type-var]
     ABC,
 ):
@@ -56,7 +61,7 @@ class GenericAsyncSqlRepository(
 
     @trace_repository_method(tracer)
     async def get_by_pk(
-        self, pk: UUID4, preload: list[str] | None = None
+        self, pk: UUID4, preload: list[GenericSQLPreloadableType] | None = None
     ) -> GenericDomainModelType:
         """
         Get a record using its primary key.
@@ -97,7 +102,7 @@ class GenericAsyncSqlRepository(
 
     @trace_repository_method(tracer)
     async def get_by_pks(
-        self, pks: list[UUID4], preload: list[str] | None = None
+        self, pks: list[UUID4], preload: list[GenericSQLPreloadableType] | None = None
     ) -> list[GenericDomainModelType]:
         """
         Get records using their primary keys.
@@ -144,7 +149,7 @@ class GenericAsyncSqlRepository(
 
     @trace_repository_method(tracer)
     async def get_all(
-        self, preload: list[str] | None = None
+        self, preload: list[GenericSQLPreloadableType] | None = None
     ) -> list[GenericDomainModelType]:
         """
         Get all records in the repository.

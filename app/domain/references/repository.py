@@ -2,6 +2,7 @@
 
 from abc import ABC
 from collections.abc import Sequence
+from typing import Literal
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
@@ -59,7 +60,9 @@ class ReferenceRepositoryBase(
 
 
 class ReferenceSQLRepository(
-    GenericAsyncSqlRepository[DomainReference, SQLReference],
+    GenericAsyncSqlRepository[
+        DomainReference, SQLReference, Literal["identifiers", "enhancements"]
+    ],
     ReferenceRepositoryBase,
 ):
     """Concrete implementation of a repository for references using SQLAlchemy."""
@@ -140,7 +143,9 @@ class ExternalIdentifierRepositoryBase(
 
 
 class ExternalIdentifierSQLRepository(
-    GenericAsyncSqlRepository[DomainExternalIdentifier, SQLExternalIdentifier],
+    GenericAsyncSqlRepository[
+        DomainExternalIdentifier, SQLExternalIdentifier, Literal["reference"]
+    ],
     ExternalIdentifierRepositoryBase,
 ):
     """Concrete implementation of a repository for identifiers using SQLAlchemy."""
@@ -248,7 +253,7 @@ class EnhancementRepositoryBase(
 
 
 class EnhancementSQLRepository(
-    GenericAsyncSqlRepository[DomainEnhancement, SQLEnhancement],
+    GenericAsyncSqlRepository[DomainEnhancement, SQLEnhancement, Literal["reference"]],
     EnhancementRepositoryBase,
 ):
     """Concrete implementation of a repository for identifiers using SQLAlchemy."""
@@ -270,7 +275,9 @@ class EnhancementRequestRepositoryBase(
 
 
 class EnhancementRequestSQLRepository(
-    GenericAsyncSqlRepository[DomainEnhancementRequest, SQLEnhancementRequest],
+    GenericAsyncSqlRepository[
+        DomainEnhancementRequest, SQLEnhancementRequest, Literal["__none__"]
+    ],
     EnhancementRequestRepositoryBase,
 ):
     """Concrete implementation of a repository for batch enhancement requests."""
@@ -292,7 +299,9 @@ class RobotAutomationRepositoryBase(
 
 
 class RobotAutomationSQLRepository(
-    GenericAsyncSqlRepository[DomainRobotAutomation, SQLRobotAutomation],
+    GenericAsyncSqlRepository[
+        DomainRobotAutomation, SQLRobotAutomation, Literal["__none__"]
+    ],
     RobotAutomationRepositoryBase,
 ):
     """Concrete implementation of a repository for robot automations using SQL."""

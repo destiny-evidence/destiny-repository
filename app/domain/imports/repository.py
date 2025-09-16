@@ -1,7 +1,9 @@
 """Repositories for imports and associated models."""
 
+import asyncio
 import uuid
 from abc import ABC
+from typing import Literal
 
 from opentelemetry import trace
 from sqlalchemy import select
@@ -44,8 +46,13 @@ class ImportRecordRepositoryBase(
     """Abstract implementation of a repository for Imports."""
 
 
+_import_record_sql_preloadable = Literal["batches", "ImportBatch.status"]
+
+
 class ImportRecordSQLRepository(
-    GenericAsyncSqlRepository[DomainImportRecord, SQLImportRecord],
+    GenericAsyncSqlRepository[
+        DomainImportRecord, SQLImportRecord, _import_record_sql_preloadable
+    ],
     ImportRecordRepositoryBase,
 ):
     """Concrete implementation of a repository for imports using SQLAlchemy."""
@@ -65,8 +72,15 @@ class ImportBatchRepositoryBase(
     """Abstract implementation of a repository for ImportBatches."""
 
 
+_import_batch_sql_preloadable = Literal["import_record", "import_results", "status"]
+
+
 class ImportBatchSQLRepository(
-    GenericAsyncSqlRepository[DomainImportBatch, SQLImportBatch],
+    GenericAsyncSqlRepository[
+        DomainImportBatch,
+        SQLImportBatch,
+        _import_batch_sql_preloadable,
+    ],
     ImportBatchRepositoryBase,
 ):
     """Repository for ImportBatches using SQLAlchemy."""
@@ -95,7 +109,9 @@ class ImportBatchSQLRepository(
         return {row[0] for row in results.all()}
 
     async def get_by_pk(
-        self, pk: uuid.UUID, preload: list[str] | None = None
+        self,
+        pk: uuid.UUID,
+        preload: list[_import_batch_sql_preloadable] | None = None,
     ) -> DomainImportBatch:
         """Override to include derived batch status."""
         import_batch = await super().get_by_pk(pk, preload)
@@ -106,6 +122,31 @@ class ImportBatchSQLRepository(
             )
         return import_batch
 
+    async def get_by_pks(
+        self,
+        pks: list[uuid.UUID],
+        preload: list[_import_batch_sql_preloadable] | None = None,
+    ) -> list[DomainImportBatch]:
+        """Override to include derived batch status."""
+        import_batches = await super().get_by_pks(pks, preload)
+        if "status" in (preload or []):
+            # Uses async benefits to mitigate the need for a batch status set method
+            status_sets = await asyncio.gather(
+                *[
+                    self._get_import_result_status_set(import_batch.id)
+                    for import_batch in import_batches
+                ]
+            )
+            return [
+                ImportBatchStatusProjection.get_from_status_set(
+                    import_batch, status_set
+                )
+                for import_batch, status_set in zip(
+                    import_batches, status_sets, strict=True
+                )
+            ]
+        return import_batches
+
 
 class ImportResultRepositoryBase(
     GenericAsyncRepository[DomainImportResult, GenericPersistenceType], ABC
@@ -114,7 +155,9 @@ class ImportResultRepositoryBase(
 
 
 class ImportResultSQLRepository(
-    GenericAsyncSqlRepository[DomainImportResult, SQLImportResult],
+    GenericAsyncSqlRepository[
+        DomainImportResult, SQLImportResult, Literal["import_batch"]
+    ],
     ImportResultRepositoryBase,
 ):
     """Repository for ImportBatches using SQLAlchemy."""
