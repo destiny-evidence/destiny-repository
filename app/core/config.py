@@ -284,10 +284,10 @@ class Settings(BaseSettings):
         description=("Override the default Elasticsearch percolation chunk size."),
     )
 
-    import_batch_retry_count: int = Field(
+    import_reference_retry_count: int = Field(
         default=3,
         description=(
-            "Number of times to retry processing an import batch before marking it as "
+            "Number of times to retry importing a reference before marking it as "
             "failed. We only retry on errors we are confident can be resolved - eg "
             "network issues or inconsistent database state being loaded in parallel."
         ),
