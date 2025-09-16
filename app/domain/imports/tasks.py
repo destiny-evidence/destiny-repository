@@ -5,6 +5,7 @@ from opentelemetry import trace
 from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.telemetry.attributes import (
     Attributes,
     name_span,
@@ -34,6 +35,7 @@ from app.tasks import broker
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+settings = get_settings()
 
 
 async def get_sql_unit_of_work(
@@ -154,7 +156,7 @@ async def import_reference(
             duplicate_decision_id,
         )
 
-    if (
+    if not settings.feature_flags.deduplication and (
         import_result.status
         in (
             ImportResultStatus.COMPLETED,
