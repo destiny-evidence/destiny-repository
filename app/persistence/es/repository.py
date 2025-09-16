@@ -4,14 +4,15 @@ import contextlib
 from abc import ABC
 from collections.abc import AsyncGenerator
 from typing import Generic
+from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch, NotFoundError
 from elasticsearch.dsl.exceptions import UnknownDslObject
 from elasticsearch.exceptions import BadRequestError
 from opentelemetry import trace
-from pydantic import UUID4
 
 from app.core.exceptions import ESError, ESMalformedDocumentError, ESNotFoundError
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.repository import trace_repository_method
 from app.persistence.es.generics import GenericESPersistenceType
 from app.persistence.generics import GenericDomainModelType
@@ -53,7 +54,7 @@ class GenericAsyncESRepository(
     @trace_repository_method(tracer)
     async def get_by_pk(
         self,
-        pk: UUID4,
+        pk: UUID,
         preload: list[str] | None = None,
     ) -> GenericDomainModelType:
         """
@@ -64,6 +65,7 @@ class GenericAsyncESRepository(
         :return: The retrieved record.
         :rtype: GenericDomainModelType
         """
+        trace_attribute(Attributes.DB_PK, str(pk))
         if preload:
             msg = "Preloading is not supported in Elasticsearch repositories."
             raise ESError(msg)
@@ -127,3 +129,16 @@ class GenericAsyncESRepository(
         await self._persistence_cls.bulk(
             es_record_translation_generator(), using=self._client
         )
+
+    @trace_repository_method(tracer)
+    async def delete_by_pk(self, pk: UUID) -> None:
+        """
+        Delete a record using its primary key.
+
+        :param pk: The primary key of the record to delete.
+        :type pk: UUID4
+        """
+        trace_attribute(Attributes.DB_PK, str(pk))
+        record = await self._persistence_cls.get(id=str(pk), using=self._client)
+        if record:
+            await record.delete(using=self._client)

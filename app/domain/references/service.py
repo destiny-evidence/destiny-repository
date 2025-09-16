@@ -88,14 +88,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_id, preload=["identifiers", "enhancements"]
         )
 
-    async def _sync_reference_to_es(self, reference_id: UUID) -> Reference:
-        """Upsert a single reference to Elasticsearch from SQL."""
-        return await self.es_uow.references.add(await self._get_reference(reference_id))
-
     async def _merge_reference(self, reference: Reference) -> Reference:
         """Persist a reference with an existing SQL & ES UOW."""
         db_reference = await self.sql_uow.references.merge(reference)
-        await self._sync_reference_to_es(db_reference.id)
+        await self.es_uow.references.index_from_sql(
+            db_reference.id, self.sql_uow.references.get_by_pk
+        )
         return db_reference
 
     @sql_unit_of_work
@@ -460,14 +458,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
         await self.es_uow.references.add_bulk(reference_generator())
 
-    @es_unit_of_work
-    async def index_reference(
-        self,
-        reference: Reference,
-    ) -> None:
-        """Index a single reference in Elasticsearch."""
-        await self.es_uow.references.add(reference)
-
     async def repopulate_reference_index(self) -> None:
         """Index ALL references in Elasticsearch."""
         reference_ids = await self.get_all_reference_ids()
@@ -626,7 +616,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         ):
             return reference_duplicate_decision
 
-        # Call determine_and_map_duplicate
         reference_duplicate_decision = (
             await self._deduplication_service.determine_and_map_duplicate(
                 reference_duplicate_decision
@@ -634,11 +623,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
         if reference_duplicate_decision.active_decision:
-            await self._sync_reference_to_es(reference_duplicate_decision.reference_id)
-            if reference_duplicate_decision.canonical_reference_id:
-                # Canonical reference may have an updated projection
-                await self._sync_reference_to_es(
-                    reference_duplicate_decision.canonical_reference_id
-                )
+            await self.es_uow.references.index_from_sql(
+                reference_duplicate_decision.reference_id,
+                self.sql_uow.references.get_by_pk,
+            )
 
         return reference_duplicate_decision
