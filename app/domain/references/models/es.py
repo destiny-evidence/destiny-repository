@@ -196,7 +196,7 @@ class ReferenceCandidateDuplicateMixin(InnerDoc):
 
     @classmethod
     def from_projection(cls, projection: CandidateDuplicateSearchFields) -> Self:
-        """Create the kwargs for an ES model relevant to ReferenceDeduplicationMixin."""
+        """Create the kwargs for an ES model relevant to ReferenceCandidateDuplicateMixin from a CandidateDuplicateSearchFields projection."""
         return cls(
             title=projection.title,
             authors=projection.authors,
