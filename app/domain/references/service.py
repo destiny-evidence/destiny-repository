@@ -44,6 +44,7 @@ from app.domain.references.services.enhancement_service import (
 from app.domain.references.services.ingestion_service import (
     IngestionService,
 )
+from app.domain.references.services.synchronizer_service import ReferenceSynchronizer
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
@@ -66,7 +67,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         anti_corruption_service: ReferenceAntiCorruptionService,
         sql_uow: AsyncSqlUnitOfWork,
-        es_uow: AsyncESUnitOfWork | None = None,
+        es_uow: AsyncESUnitOfWork,
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
@@ -74,6 +75,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self._enhancement_service = EnhancementService(anti_corruption_service, sql_uow)
         self._deduplication_service = DeduplicationService(
             anti_corruption_service, sql_uow
+        )
+        self._reference_synchronizer = ReferenceSynchronizer(
+            sql_uow.references, es_uow.references
         )
 
     @sql_unit_of_work
@@ -91,9 +95,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def _merge_reference(self, reference: Reference) -> Reference:
         """Persist a reference with an existing SQL & ES UOW."""
         db_reference = await self.sql_uow.references.merge(reference)
-        await self.es_uow.references.index_from_sql(
-            db_reference.id, self.sql_uow.references.get_by_pk
-        )
+        await self._reference_synchronizer.sql_to_es(db_reference.id)
         return db_reference
 
     @sql_unit_of_work
@@ -623,9 +625,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
         if reference_duplicate_decision.active_decision:
-            await self.es_uow.references.index_from_sql(
-                reference_duplicate_decision.reference_id,
-                self.sql_uow.references.get_by_pk,
+            await self._reference_synchronizer.sql_to_es(
+                reference_duplicate_decision.reference_id
             )
 
         return reference_duplicate_decision

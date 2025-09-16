@@ -2,7 +2,7 @@
 
 import math
 from abc import ABC
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Sequence
 from typing import Literal
 from uuid import UUID
 
@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.core.exceptions import SQLNotFoundError
-from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.repository import trace_repository_method
 from app.domain.references.models.es import (
     ReferenceDocument,
@@ -189,46 +188,6 @@ class ReferenceESRepository(
             DomainReference,
             ReferenceDocument,
         )
-
-    @trace_repository_method(tracer)
-    async def index_from_sql(
-        self,
-        reference_id: UUID,
-        get_from_sql: Callable[
-            [
-                UUID,
-                list[_reference_sql_preloadable] | None,
-            ],
-            Awaitable[DomainReference],
-        ],
-    ) -> DomainReference:
-        """
-        Specialised method to expressly translate an index an SQL reference in ES.
-
-        This is not the prettiest pattern, but grants absolute control to ensure a
-        consistent pipeline from SQL to Elasticsearch.
-
-        The SQL method is passed in to allow for recursive running on canonical
-        references without passing the responsibility to the caller.
-        """
-        trace_attribute(Attributes.DB_PK, str(reference_id))
-        reference = await get_from_sql(
-            reference_id,
-            [
-                "identifiers",
-                "enhancements",
-                "canonical_reference",
-                "duplicate_references",
-                "duplicate_decision",
-            ],
-        )
-        if not reference.canonical_like and reference.canonical_reference:
-            # If definitely a duplicate, we don't index and update the canonical
-            await super().delete_by_pk(reference.id)
-            return await self.index_from_sql(
-                reference.canonical_reference.id, get_from_sql
-            )
-        return await super().add(reference)
 
     @trace_repository_method(tracer)
     async def search_for_candidate_duplicates(
