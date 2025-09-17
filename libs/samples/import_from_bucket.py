@@ -9,7 +9,6 @@ Actions:
 4. Produce a summary of the import
 
 Not implemented:
-- Receiving callbacks
 - Marshalling objects using SDK
 
 Note:
@@ -88,7 +87,6 @@ if __name__ == "__main__":
                 f"/imports/record/{import_record.id}/batch/",
                 json=destiny_sdk.imports.ImportBatchIn(
                     storage_url=sas_url,
-                    callback_url=None,
                 ).model_dump(mode="json"),
             )
             response.raise_for_status()
@@ -106,7 +104,7 @@ if __name__ == "__main__":
         )
         response.raise_for_status()
 
-        # 4: Produce a summary of the import (since we aren't receiving a callback here)
+        # 4: Produce a summary of the import
         for import_batch_id in import_batch_ids:
             # Poll to check if complete
             print(f"Polling import batch {import_batch_id} for completion")

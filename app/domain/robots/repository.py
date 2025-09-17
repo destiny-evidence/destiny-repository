@@ -1,6 +1,7 @@
 """Repositories for Robots and associated models."""
 
 from abc import ABC
+from typing import Literal
 
 from opentelemetry import trace
 from sqlalchemy.exc import IntegrityError
@@ -30,7 +31,7 @@ class RobotRepositoryBase(
 
 
 class RobotSQLRepository(
-    GenericAsyncSqlRepository[DomainRobot, SQLRobot],
+    GenericAsyncSqlRepository[DomainRobot, SQLRobot, Literal["__none__"]],
     RobotRepositoryBase,
 ):
     """Concrete implementation of a repository for robots using SQLAlchemy."""
@@ -88,7 +89,7 @@ class RobotSQLRepository(
         try:
             await self._session.flush()
         except IntegrityError as e:
-            raise SQLIntegrityError.from_sqlacademy_integrity_error(
+            raise SQLIntegrityError.from_sqlalchemy_integrity_error(
                 e, self._persistence_cls.__name__
             ) from e
 

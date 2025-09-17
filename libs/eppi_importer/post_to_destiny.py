@@ -59,7 +59,6 @@ def register_import_batch(
         json=ImportBatchIn(
             collision_strategy=CollisionStrategy.MERGE_DEFENSIVE,
             storage_url=file_url,
-            callback_url=None,
         ).model_dump(mode="json"),
     )
     response.raise_for_status()

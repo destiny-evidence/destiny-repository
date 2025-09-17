@@ -16,10 +16,16 @@ class DummyDomainSQLModel(DomainBaseModel, SQLAttributeMixin): ...
 
 
 class FakeRepository:
-    def __init__(self, init_entries: list[DummyDomainSQLModel] | None = None):
+    def __init__(
+        self,
+        init_entries: list[DummyDomainSQLModel] | None = None,
+        **child_repositories,
+    ):
         self.repository: dict[UUID, DummyDomainSQLModel] = {
             e.id: e for e in init_entries or []
         }
+        for key, value in child_repositories.items():
+            self.__setattr__(key, value)
 
     async def add(self, record: DummyDomainSQLModel) -> DummyDomainSQLModel:
         self.repository[record.id] = record

@@ -135,7 +135,7 @@ class SQLIntegrityError(IntegrityError):
         super().__init__(detail, *args)
 
     @classmethod
-    def from_sqlacademy_integrity_error(
+    def from_sqlalchemy_integrity_error(
         cls, error: SQLAlchemyIntegriyError, lookup_model: str
     ) -> Self:
         """

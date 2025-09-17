@@ -19,13 +19,11 @@ class ImportRecordStatus(StrEnum):
     - `created`: Created, but no processing has started.
     - `started`: Processing has started on the batch.
     - `completed`: Processing has been completed.
-    - `cancelled`: Processing was cancelled by calling the API.
     """
 
     CREATED = auto()
     STARTED = auto()
     COMPLETED = auto()
-    CANCELLED = auto()
 
 
 class ImportBatchStatus(StrEnum):
@@ -35,21 +33,15 @@ class ImportBatchStatus(StrEnum):
     - `created`: Created, but no processing has started.
     - `started`: Processing has started on the batch.
     - `failed`: Processing has failed.
-    - `retrying`: Processing has failed, but is being retried.
-    - `indexing`: The imports have been saved and are being indexed.
-    - `indexing_failed`: The imports have been saved but were not indexed.
+    - `partially_failed`: Some references succeeded while others failed.
     - `completed`: Processing has been completed.
-    - `cancelled`: Processing was cancelled by calling the API.
     """
 
     CREATED = auto()
     STARTED = auto()
-    RETRYING = auto()
     FAILED = auto()
-    INDEXING = auto()
-    INDEXING_FAILED = auto()
+    PARTIALLY_FAILED = auto()
     COMPLETED = auto()
-    CANCELLED = auto()
 
 
 class CollisionStrategy(StrEnum):
@@ -96,15 +88,15 @@ class ImportResultStatus(StrEnum):
       more information.
     - `failed`: The reference failed to be created. See the result's `failure_details`
       field for more information.
-    - `cancelled`: Processing was cancelled by calling the API.
+    - `retrying`: Processing has failed, but is being retried.
     """
 
     CREATED = auto()
     STARTED = auto()
     COMPLETED = auto()
-    CANCELLED = auto()
     PARTIALLY_FAILED = auto()
     FAILED = auto()
+    RETRYING = auto()
 
 
 class _ImportRecordBase(BaseModel):
@@ -186,9 +178,8 @@ with each line formatted according to
     )
     callback_url: HttpUrl | None = Field(
         default=None,
-        description="""
-The URL to which the processor should send a callback when the batch has been processed.
-        """,
+        deprecated=True,
+        description="This field is currently a no-op.",
     )
 
 
