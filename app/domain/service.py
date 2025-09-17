@@ -2,6 +2,7 @@
 
 from typing import Generic, TypeVar
 
+from app.domain.base import GenericDomainBaseModelType
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
@@ -48,3 +49,24 @@ class GenericService(Generic[GenericAntiCorruptionServiceType]):
         # we access it.
         if es_uow:
             self.es_uow: AsyncESUnitOfWork = es_uow
+
+
+class GenericSynchronizer(Generic[GenericDomainBaseModelType]):
+    """Base class for synchronizer services."""
+
+    def __init__(
+        self,
+        sql_uow: AsyncSqlUnitOfWork,
+        es_uow: AsyncESUnitOfWork,
+    ) -> None:
+        """
+        Initialize the service with the required repositories.
+
+        :param sql_uow: The SQL unit of work for database operations. This is the source
+            of truth and is required.
+        :type sql_uow: AsyncSqlUnitOfWork
+        :param es_uow: The Elasticsearch unit of work for search operations.
+        :type es_uow: AsyncESUnitOfWork
+        """
+        self.sql_uow = sql_uow
+        self.es_uow = es_uow

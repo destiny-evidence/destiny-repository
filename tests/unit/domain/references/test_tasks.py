@@ -62,7 +62,7 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
 
     requests = await detect_and_dispatch_robot_automations(
         reference_service=ReferenceService(
-            ReferenceAntiCorruptionService(fake_repository), fake_uow()
+            ReferenceAntiCorruptionService(fake_repository), fake_uow(), fake_uow()
         ),
         reference_ids=in_reference_ids,
         enhancement_ids=in_enhancement_ids,

@@ -78,7 +78,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
     enhancements: Mapped[list["Enhancement"]] = relationship(
         "Enhancement", back_populates="reference", cascade="all, delete, delete-orphan"
     )
-    duplicate_decision: Mapped["ReferenceDuplicateDecision | None"] = relationship(
+    duplicate_decision: Mapped["ReferenceDuplicateDecision"] = relationship(
         "ReferenceDuplicateDecision",
         primaryjoin="and_("
         "Reference.id==foreign(ReferenceDuplicateDecision.reference_id), "
@@ -91,7 +91,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
     # searching, but doesn't know n).
     # Also see:
     # - https://docs.sqlalchemy.org/en/20/orm/self_referential.html#configuring-self-referential-eager-loading
-    canonical_reference: Mapped["Reference | None"] = relationship(
+    canonical_reference: Mapped["Reference"] = relationship(
         "Reference",
         secondary="reference_duplicate_decision",
         primaryjoin="and_("
@@ -106,7 +106,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
             back_populates="duplicate_references",
         ).model_dump(),
     )
-    duplicate_references: Mapped[list["Reference"] | None] = relationship(
+    duplicate_references: Mapped[list["Reference"]] = relationship(
         "Reference",
         secondary="reference_duplicate_decision",
         primaryjoin="Reference.id==ReferenceDuplicateDecision.canonical_reference_id",
@@ -169,7 +169,6 @@ class Reference(GenericSQLPersistence[DomainReference]):
                     for reference in self.duplicate_references
                 ]
                 if "duplicate_references" in (preload or [])
-                and self.duplicate_references
                 else None,
                 duplicate_decision=self.duplicate_decision.to_domain()
                 if "duplicate_decision" in (preload or []) and self.duplicate_decision

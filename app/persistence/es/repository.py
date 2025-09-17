@@ -111,7 +111,7 @@ class GenericAsyncESRepository(
     async def add_bulk(
         self,
         get_records: AsyncGenerator[GenericDomainModelType, None],
-    ) -> None:
+    ) -> int:
         """
         Add multiple records to the repository in bulk, memory-efficiently.
 
@@ -126,9 +126,10 @@ class GenericAsyncESRepository(
             async for record in get_records:
                 yield self._persistence_cls.from_domain(record)
 
-        await self._persistence_cls.bulk(
+        added, _ = await self._persistence_cls.bulk(
             es_record_translation_generator(), using=self._client
         )
+        return added
 
     @trace_repository_method(tracer)
     async def delete_by_pk(self, pk: UUID) -> None:
