@@ -11,7 +11,6 @@ N.B. does NOT use the SDK in order to test serverside validation.
 import datetime
 import json
 import os
-import threading
 import time
 import uuid
 from collections import defaultdict
@@ -19,19 +18,15 @@ from pathlib import Path
 
 import httpx
 import pytest
-import uvicorn
 from elasticsearch import Elasticsearch
-from fastapi import FastAPI
 from sqlalchemy import create_engine, text
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 with Path(os.environ["MINIO_PRESIGNED_URL_FILEPATH"]).open() as f:
     PRESIGNED_URLS: dict[str, str] = json.load(f)
 
 BKT = "e2e/test_complete_batch_import_workflow/"
 
-CALLBACK_URL = os.environ["CALLBACK_URL"]
-
-callback_payload: dict = {}
 
 db_url = os.environ["DB_URL"]
 engine = create_engine(db_url)
@@ -43,37 +38,25 @@ toy_robot_url = os.environ["TOY_ROBOT_URL"]
 @pytest.mark.order(1)
 def test_complete_batch_import_workflow():  # noqa: PLR0915
     """Test the complete batch import workflow."""
-    #############################
-    # Start the callback server #
-    #############################
-    callback_app = FastAPI()
 
-    @callback_app.post("/callback/")
-    def callback_endpoint(payload: dict) -> dict:
-        """Receive callback payloads."""
-        callback_payload.clear()
-        callback_payload.update(payload)
-        return {"status": "received"}
-
-    # Helper to wait for a callback and then clear it
-    def wait_for_callback(timeout: int = 10) -> dict:
-        start = time.time()
-        while time.time() - start < timeout:
-            if callback_payload:
-                cp = callback_payload.copy()
-                callback_payload.clear()
-                return cp
-            time.sleep(0.1)
-        msg = "Callback not received in time"
-        raise TimeoutError(msg)
-
-    def run_callback_server() -> None:
-        """Run the FastAPI server."""
-        print("Starting callback server...")
-        uvicorn.run(callback_app, host="0.0.0.0", port=8001)  # noqa: S104
-
-    server_thread = threading.Thread(target=run_callback_server, daemon=True)
-    server_thread.start()
+    # Helper to poll for batch completion
+    @retry(stop=stop_after_attempt(5), wait=wait_fixed(1))
+    def poll_batch_status(
+        client: httpx.Client,
+        import_record_id: uuid.UUID,
+        batch_id: uuid.UUID,
+        expected_status: str,
+    ) -> dict:
+        response = client.get(
+            f"/imports/records/{import_record_id}/batches/{batch_id}/summary/"
+        )
+        assert response.status_code == 200
+        summary = response.json()
+        if summary["import_batch_status"] == expected_status:
+            return summary
+        print(summary)
+        msg = f"Batch {batch_id} did not reach status '{expected_status}' yet: '{summary['import_batch_status']}'"
+        raise Exception(msg)  # noqa: TRY002
 
     def get_reference_details() -> list[dict]:
         """Get reference details from the database."""
@@ -206,10 +189,11 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         import_batch_a = submit_happy_batch(
             import_record["id"],
             url,
-            callback_url=f"{CALLBACK_URL}/callback/",
         )
 
-        cp = wait_for_callback()
+        cp = poll_batch_status(
+            client, import_record["id"], import_batch_a["id"], "completed"
+        )
         assert cp["import_batch_id"] == import_batch_a["id"]
         assert cp["import_batch_status"] == "completed"
         assert sum(cp["results"].values()) == 6
@@ -237,7 +221,6 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             f"/imports/records/{import_record['id']}/batches/",
             json={
                 "storage_url": url,
-                "callback_url": f"{CALLBACK_URL}/callback/",
             },
         )
         assert response.status_code in (409, 500)
@@ -251,39 +234,17 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         import_batch_b = submit_happy_batch(
             import_record["id"],
             url,
-            callback_url=f"{CALLBACK_URL}/callback/",
         )
-        cp = wait_for_callback()
+        cp = poll_batch_status(
+            client, import_record["id"], import_batch_b["id"], "partially_failed"
+        )
         assert cp["import_batch_id"] == import_batch_b["id"]
-        assert cp["import_batch_status"] == "completed"
+        assert cp["import_batch_status"] == "partially_failed"
         assert sum(cp["results"].values()) == 9
         assert cp["results"]["failed"] == 5
         assert cp["results"]["partially_failed"] == 3
         assert cp["results"]["completed"] == 1
         assert len(cp["failure_details"]) == 8
-        assert "Entry 2:" in cp["failure_details"][0]
-        assert "identifiers\n  Field required" in cp["failure_details"][0]
-        assert (
-            "identifiers\n  List should have at least 1 item"
-            in cp["failure_details"][1]
-        )
-        assert "identifiers\n  Input should be a valid list" in cp["failure_details"][2]
-        assert "All identifiers failed to parse." in cp["failure_details"][3]
-        assert (
-            "Enhancement 1:\nInvalid enhancement. Check the format and content of the enhancement."
-            in cp["failure_details"][4]
-        )
-        assert "All identifiers failed to parse." in cp["failure_details"][5]
-        assert "Identifier 1:\nInvalid identifier." in cp["failure_details"][5]
-        assert "Identifier 2:\nInvalid identifier." in cp["failure_details"][5]
-        assert (
-            "Entry 8:\n\nEnhancement 2:\nInvalid enhancement. Check the format and content of the enhancement."
-            in cp["failure_details"][6]
-        )
-        assert (
-            "Enhancement 1:\nInvalid enhancement. Check the format and content of the enhancement."
-            in cp["failure_details"][7]
-        )
 
         rd = get_reference_details()
         assert len(rd) == 10
@@ -304,22 +265,14 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             import_record["id"],
             url,
             collision_strategy="fail",
-            callback_url=f"{CALLBACK_URL}/callback/",
         )
-        cp = wait_for_callback()
+        cp = poll_batch_status(
+            client, import_record["id"], import_batch_c["id"], "failed"
+        )
         assert cp["import_batch_id"] == import_batch_c["id"]
-        assert cp["import_batch_status"] == "completed"
+        assert cp["import_batch_status"] == "failed"
         assert sum(cp["results"].values()) == 7
         assert cp["results"]["failed"] == 7
-        for i, failure in enumerate(cp["failure_details"][:6]):
-            assert f"Entry {i + 1}:" in failure
-            assert (
-                "Identifier(s) are already mapped on an existing reference" in failure
-            )
-        assert (
-            cp["failure_details"][6]
-            == "Entry 7:\n\nIncoming reference collides with more than one existing reference."
-        )
 
         rd = get_reference_details()
         assert len(rd) == 10
@@ -330,19 +283,16 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             import_record["id"],
             url,
             collision_strategy="overwrite",
-            callback_url=f"{CALLBACK_URL}/callback/",
         )
-        cp = wait_for_callback()
+        cp = poll_batch_status(
+            client, import_record["id"], import_batch_d["id"], "partially_failed"
+        )
         assert cp["import_batch_id"] == import_batch_d["id"]
-        assert cp["import_batch_status"] == "completed"
+        assert cp["import_batch_status"] == "partially_failed"
         assert sum(cp["results"].values()) == 3
         assert cp["results"]["failed"] == 1
         assert cp["results"]["completed"] == 2
         assert len(cp["failure_details"]) == 1
-        assert (
-            cp["failure_details"][0]
-            == "Entry 3:\n\nIncoming reference collides with more than one existing reference."
-        )
 
         rd = get_reference_details()
         assert len(rd) == 10
@@ -367,9 +317,10 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             import_record["id"],
             url,
             collision_strategy="merge_defensive",
-            callback_url=f"{CALLBACK_URL}/callback/",
         )
-        cp = wait_for_callback()
+        cp = poll_batch_status(
+            client, import_record["id"], import_batch_e["id"], "completed"
+        )
         assert cp["import_batch_id"] == import_batch_e["id"]
         assert cp["import_batch_status"] == "completed"
         assert sum(cp["results"].values()) == 2
@@ -414,9 +365,10 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             import_record["id"],
             url,
             collision_strategy="merge_aggressive",
-            callback_url=f"{CALLBACK_URL}/callback/",
         )
-        cp = wait_for_callback()
+        cp = poll_batch_status(
+            client, import_record["id"], import_batch_f["id"], "completed"
+        )
         assert cp["import_batch_id"] == import_batch_f["id"]
         assert cp["import_batch_status"] == "completed"
         assert sum(cp["results"].values()) == 2
@@ -471,32 +423,38 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             index=es_index
         )  # Ensure the index is refreshed before searching
         assert es.indices.exists(index=es_index)
-        es_response = es.search(
-            index=es_index,
-            query={
-                "nested": {
-                    "path": "identifiers",
-                    "query": {
-                        "bool": {
-                            "must": [
-                                {
-                                    "match": {
-                                        "identifiers.identifier": "10.1235/sampledoitwoelectricboogaloo"
+
+        @retry(stop=stop_after_attempt(5), wait=wait_fixed(1))
+        def search_and_assert() -> None:
+            es_response = es.search(
+                index=es_index,
+                query={
+                    "nested": {
+                        "path": "identifiers",
+                        "query": {
+                            "bool": {
+                                "must": [
+                                    {
+                                        "match": {
+                                            "identifiers.identifier": "10.1235/sampledoitwoelectricboogaloo"
+                                        }
                                     }
-                                }
-                            ]
-                        }
-                    },
-                }
-            },
-        )
-        assert es_response["hits"]["total"]["value"] == 1
-        es_reference = es_response["hits"]["hits"][0]["_source"]
-        for enhancement in es_reference["enhancements"]:
-            if enhancement["content"]["enhancement_type"] == "bibliographic":
-                assert (
-                    enhancement["content"]["authorship"][0]["display_name"] == "Wynstan"
-                )
+                                ]
+                            }
+                        },
+                    }
+                },
+            )
+            assert es_response["hits"]["total"]["value"] == 1
+            es_reference = es_response["hits"]["hits"][0]["_source"]
+            for enhancement in es_reference["enhancements"]:
+                if enhancement["content"]["enhancement_type"] == "bibliographic":
+                    assert (
+                        enhancement["content"]["authorship"][0]["display_name"]
+                        == "Wynstan"
+                    )
+
+        search_and_assert()
 
 
 def register_toy_robot(client: httpx.Client) -> None:

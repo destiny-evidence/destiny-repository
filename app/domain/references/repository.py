@@ -2,6 +2,7 @@
 
 from abc import ABC
 from collections.abc import Sequence
+from typing import Literal
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
@@ -81,7 +82,9 @@ class ReferenceRepositoryBase(
 
 
 class ReferenceSQLRepository(
-    GenericAsyncSqlRepository[DomainReference, SQLReference],
+    GenericAsyncSqlRepository[
+        DomainReference, SQLReference, Literal["identifiers", "enhancements"]
+    ],
     ReferenceRepositoryBase,
 ):
     """Concrete implementation of a repository for references using SQLAlchemy."""
@@ -161,8 +164,15 @@ class ExternalIdentifierRepositoryBase(
     """Abstract implementation of a repository for external identifiers."""
 
 
+_external_identifier_sql_preloadable = Literal["reference"]
+
+
 class ExternalIdentifierSQLRepository(
-    GenericAsyncSqlRepository[DomainExternalIdentifier, SQLExternalIdentifier],
+    GenericAsyncSqlRepository[
+        DomainExternalIdentifier,
+        SQLExternalIdentifier,
+        _external_identifier_sql_preloadable,
+    ],
     ExternalIdentifierRepositoryBase,
 ):
     """Concrete implementation of a repository for identifiers using SQLAlchemy."""
@@ -181,7 +191,7 @@ class ExternalIdentifierSQLRepository(
         identifier_type: ExternalIdentifierType,
         identifier: str,
         other_identifier_name: str | None = None,
-        preload: list[str] | None = None,
+        preload: list[_external_identifier_sql_preloadable] | None = None,
     ) -> DomainExternalIdentifier:
         """
         Get a single external identifier by type and identifier, if it exists.
@@ -270,7 +280,7 @@ class EnhancementRepositoryBase(
 
 
 class EnhancementSQLRepository(
-    GenericAsyncSqlRepository[DomainEnhancement, SQLEnhancement],
+    GenericAsyncSqlRepository[DomainEnhancement, SQLEnhancement, Literal["reference"]],
     EnhancementRepositoryBase,
 ):
     """Concrete implementation of a repository for identifiers using SQLAlchemy."""
@@ -291,8 +301,15 @@ class EnhancementRequestRepositoryBase(
     """Abstract implementation of a repository for batch enhancement requests."""
 
 
+EnhancementRequestSQLPreloadable = Literal["pending_enhancements"]
+
+
 class EnhancementRequestSQLRepository(
-    GenericAsyncSqlRepository[DomainEnhancementRequest, SQLEnhancementRequest],
+    GenericAsyncSqlRepository[
+        DomainEnhancementRequest,
+        SQLEnhancementRequest,
+        EnhancementRequestSQLPreloadable,
+    ],
     EnhancementRequestRepositoryBase,
 ):
     """Concrete implementation of a repository for batch enhancement requests."""
@@ -341,7 +358,9 @@ class RobotAutomationRepositoryBase(
 
 
 class RobotAutomationSQLRepository(
-    GenericAsyncSqlRepository[DomainRobotAutomation, SQLRobotAutomation],
+    GenericAsyncSqlRepository[
+        DomainRobotAutomation, SQLRobotAutomation, Literal["__none__"]
+    ],
     RobotAutomationRepositoryBase,
 ):
     """Concrete implementation of a repository for robot automations using SQL."""
@@ -431,7 +450,9 @@ class PendingEnhancementRepositoryBase(
 
 
 class PendingEnhancementSQLRepository(
-    GenericAsyncSqlRepository[DomainPendingEnhancement, SQLPendingEnhancement],
+    GenericAsyncSqlRepository[
+        DomainPendingEnhancement, SQLPendingEnhancement, Literal["__none__"]
+    ],
     PendingEnhancementRepositoryBase,
 ):
     """Concrete implementation of a repository for pending enhancements using SQLAlchemy."""  # noqa: E501
@@ -452,8 +473,15 @@ class RobotEnhancementBatchRepositoryBase(
     """Abstract implementation of a repository for Robot Enhancement Batches."""
 
 
+RobotEnhancementBatchSQLPreloadable = Literal["pending_enhancements"]
+
+
 class RobotEnhancementBatchSQLRepository(
-    GenericAsyncSqlRepository[DomainRobotEnhancementBatch, SQLRobotEnhancementBatch],
+    GenericAsyncSqlRepository[
+        DomainRobotEnhancementBatch,
+        SQLRobotEnhancementBatch,
+        RobotEnhancementBatchSQLPreloadable,
+    ],
     RobotEnhancementBatchRepositoryBase,
 ):
     """Concrete implementation of a repository for robot enhancement batches using SQLAlchemy."""  # noqa: E501

@@ -37,6 +37,7 @@ from app.domain.references.models.models import (
     RobotEnhancementBatch as DomainRobotEnhancementBatch,
 )
 from app.persistence.blob.models import BlobStorageFile
+from app.persistence.sql.generics import GenericSQLPreloadableType
 from app.persistence.sql.persistence import GenericSQLPersistence
 
 
@@ -83,7 +84,9 @@ class Reference(GenericSQLPersistence[DomainReference]):
             ],
         )
 
-    def to_domain(self, preload: list[str] | None = None) -> DomainReference:
+    def to_domain(
+        self, preload: list[GenericSQLPreloadableType] | None = None
+    ) -> DomainReference:
         """Convert the persistence model into a Domain Reference object."""
         return DomainReference(
             id=self.id,
@@ -150,7 +153,9 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
             else None,
         )
 
-    def to_domain(self, preload: list[str] | None = None) -> DomainExternalIdentifier:
+    def to_domain(
+        self, preload: list[GenericSQLPreloadableType] | None = None
+    ) -> DomainExternalIdentifier:
         """Convert the persistence model into a Domain ExternalIdentifier object."""
         return DomainExternalIdentifier(
             id=self.id,
@@ -225,7 +230,9 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             content=domain_obj.content.model_dump(mode="json"),
         )
 
-    def to_domain(self, preload: list[str] | None = None) -> DomainEnhancement:
+    def to_domain(
+        self, preload: list[GenericSQLPreloadableType] | None = None
+    ) -> DomainEnhancement:
         """Convert the persistence model into a Domain Enhancement object."""
         return DomainEnhancement(
             id=self.id,
@@ -309,7 +316,7 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
 
     def to_domain(
         self,
-        preload: list[str] | None = None,
+        preload: list[GenericSQLPreloadableType] | None = None,
     ) -> DomainEnhancementRequest:
         """Convert the persistence model into a Domain Enhancement object."""
         return DomainEnhancementRequest(
@@ -372,7 +379,7 @@ class RobotAutomation(GenericSQLPersistence[DomainRobotAutomation]):
 
     def to_domain(
         self,
-        preload: list[str] | None = None,  # noqa: ARG002
+        preload: list[GenericSQLPreloadableType] | None = None,  # noqa: ARG002
     ) -> DomainRobotAutomation:
         """Convert the persistence model into a Domain RobotAutomation object."""
         return DomainRobotAutomation(
@@ -452,7 +459,7 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
 
     def to_domain(
         self,
-        preload: list[str] | None = None,  # noqa: ARG002
+        preload: list[GenericSQLPreloadableType] | None = None,  # noqa: ARG002
     ) -> DomainPendingEnhancement:
         """Convert the persistence model into a Domain PendingEnhancement object."""
         return DomainPendingEnhancement(
@@ -515,7 +522,7 @@ class RobotEnhancementBatch(GenericSQLPersistence[DomainRobotEnhancementBatch]):
 
     def to_domain(
         self,
-        preload: list[str] | None = None,
+        preload: list[GenericSQLPreloadableType] | None = None,
     ) -> DomainRobotEnhancementBatch:
         """Convert the persistence model into a Domain RobotEnhancementBatch object."""
         return DomainRobotEnhancementBatch(

@@ -6,7 +6,7 @@ from enum import StrEnum, auto
 
 from pydantic import Field, HttpUrl, PastDatetime
 
-from app.domain.base import DomainBaseModel, SQLAttributeMixin
+from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
 
 
 class ImportRecordStatus(StrEnum):
@@ -16,13 +16,11 @@ class ImportRecordStatus(StrEnum):
     - `created`: Created, but no processing has started.
     - `started`: Processing has started on the batch.
     - `completed`: Processing has been completed.
-    - `cancelled`: Processing was cancelled by calling the API.
     """
 
     CREATED = auto()
     STARTED = auto()
     COMPLETED = auto()
-    CANCELLED = auto()
 
 
 class ImportBatchStatus(StrEnum):
@@ -32,21 +30,15 @@ class ImportBatchStatus(StrEnum):
     - `created`: Created, but no processing has started.
     - `started`: Processing has started on the batch.
     - `failed`: Processing has failed.
-    - `retrying`: Processing has failed, but is being retried.
-    - `indexing`: The imports have been saved and are being indexed.
-    - `indexing_failed`: The imports have been saved but were not indexed.
+    - `partially_failed`: Some references succeeded while others failed.
     - `completed`: Processing has been completed.
-    - `cancelled`: Processing was cancelled by calling the API.
     """
 
     CREATED = auto()
     STARTED = auto()
-    RETRYING = auto()
     FAILED = auto()
-    INDEXING = auto()
-    INDEXING_FAILED = auto()
+    PARTIALLY_FAILED = auto()
     COMPLETED = auto()
-    CANCELLED = auto()
 
 
 class CollisionStrategy(StrEnum):
@@ -93,15 +85,15 @@ class ImportResultStatus(StrEnum):
       more information.
     - `failed`: The reference failed to be created. See the result's `failure_details`
       field for more information.
-    - `cancelled`: Processing was cancelled by calling the API.
+    - `retrying`: Processing has failed, but is being retried.
     """
 
     CREATED = auto()
     STARTED = auto()
     COMPLETED = auto()
-    CANCELLED = auto()
     PARTIALLY_FAILED = auto()
     FAILED = auto()
+    RETRYING = auto()
 
 
 class ImportRecord(DomainBaseModel, SQLAttributeMixin):
@@ -152,7 +144,7 @@ The number of references expected to be included in this import.
     )
 
 
-class ImportBatch(DomainBaseModel, SQLAttributeMixin):
+class ImportBatch(DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin):
     """Core import batch model with database and internal attributes included."""
 
     collision_strategy: CollisionStrategy = Field(
@@ -167,14 +159,8 @@ Default is `fail`, which allows the importing process to "follow up" on the coll
 The URL at which the set of references for this batch are stored.
     """,
     )
-    callback_url: HttpUrl | None = Field(
-        default=None,
-        description="""
-The URL to which the processor should send a callback when the batch has been processed.
-        """,
-    )
-    status: ImportBatchStatus = Field(
-        default=ImportBatchStatus.CREATED, description="The status of the batch."
+    status: ImportBatchStatus | None = Field(
+        default=None, description="The status of the batch."
     )
     import_record_id: uuid.UUID = Field(
         description="The ID of the parent import record."

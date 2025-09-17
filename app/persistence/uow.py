@@ -10,11 +10,7 @@ from opentelemetry import trace
 from app.core.exceptions import IntegrityError, NotFoundError
 from app.core.telemetry.attributes import set_span_status
 from app.core.telemetry.logger import get_logger
-from app.domain.imports.repository import (
-    ImportBatchRepositoryBase,
-    ImportRecordRepositoryBase,
-    ImportResultRepositoryBase,
-)
+from app.domain.imports.repository import ImportRecordRepositoryBase
 from app.domain.references.repository import (
     EnhancementRepositoryBase,
     EnhancementRequestRepositoryBase,
@@ -36,8 +32,6 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
     """An asynchronous context manager which handles the persistence lifecyle."""
 
     imports: ImportRecordRepositoryBase
-    batches: ImportBatchRepositoryBase
-    results: ImportResultRepositoryBase
     references: ReferenceRepositoryBase
     external_identifiers: ExternalIdentifierRepositoryBase
     enhancements: EnhancementRepositoryBase
@@ -49,8 +43,6 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
 
     _protected_attrs: Final[set[str]] = {
         "imports",
-        "batches",
-        "results",
         "references",
         "external_identifiers",
         "enhancements",

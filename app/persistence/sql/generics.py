@@ -8,3 +8,4 @@ if TYPE_CHECKING:
 GenericSQLPersistenceType = TypeVar(
     "GenericSQLPersistenceType", bound="GenericSQLPersistence"
 )
+GenericSQLPreloadableType = TypeVar("GenericSQLPreloadableType", bound=str)

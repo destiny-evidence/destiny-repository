@@ -36,6 +36,10 @@ from app.domain.references.models.models import (
     RobotEnhancementBatch,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
+from app.domain.references.repository import (
+    EnhancementRequestSQLPreloadable,
+    RobotEnhancementBatchSQLPreloadable,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -86,6 +90,18 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self.sql_uow.references.get_by_pk(
             reference_id, preload=["identifiers", "enhancements"]
         )
+
+    async def _merge_reference(self, reference: Reference) -> Reference:
+        """Persist a reference with an existing SQL & ES UOW."""
+        db_reference = await self.sql_uow.references.merge(reference)
+        await self.es_uow.references.add(reference)
+        return db_reference
+
+    @sql_unit_of_work
+    @es_unit_of_work
+    async def merge_reference(self, reference: Reference) -> Reference:
+        """Persist a reference."""
+        return await self._merge_reference(reference)
 
     async def _add_enhancement(
         self, enhancement: Enhancement, *, enforce_enhancement_tree: bool = True
@@ -221,13 +237,21 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         return await self.sql_uow.external_identifiers.add(db_identifier)
 
+    @sql_unit_of_work
+    @es_unit_of_work
     async def ingest_reference(
         self, record_str: str, entry_ref: int, collision_strategy: CollisionStrategy
     ) -> ReferenceCreateResult | None:
         """Ingest a reference from a file."""
-        return await self._ingestion_service.ingest_reference(
+        (
+            validation_result,
+            reference,
+        ) = await self._ingestion_service.validate_and_collide_reference(
             record_str, entry_ref, collision_strategy
         )
+        if reference:
+            await self._merge_reference(reference)
+        return validation_result
 
     @sql_unit_of_work
     async def register_reference_enhancement_request(
@@ -269,7 +293,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def get_enhancement_request(
         self,
         enhancement_request_id: UUID4,
-        preload: list[str] | None = None,
+        preload: list[EnhancementRequestSQLPreloadable] | None = None,
     ) -> EnhancementRequest:
         """Get a batch enhancement request by request id."""
         return await self.sql_uow.enhancement_requests.get_by_pk(
@@ -280,7 +304,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def get_robot_enhancement_batch(
         self,
         robot_enhancement_batch_id: UUID4,
-        preload: list[str] | None = None,
+        preload: list[RobotEnhancementBatchSQLPreloadable] | None = None,
     ) -> RobotEnhancementBatch:
         """Get a robot enhancement batch by batch id."""
         return await self.sql_uow.robot_enhancement_batches.get_by_pk(
