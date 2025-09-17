@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextvars
+import importlib
 from typing import TYPE_CHECKING, Any
 
 from opentelemetry import context, propagate, trace
@@ -28,7 +29,7 @@ settings = get_settings()
 
 
 async def queue_task_with_trace(
-    task: AsyncTaskiqDecoratedTask,
+    task: AsyncTaskiqDecoratedTask | tuple[str, str],
     *args: object,
     **kwargs: object,
 ) -> None:
@@ -38,6 +39,15 @@ async def queue_task_with_trace(
     All tasks should be queued through this function to ensure
     that the OpenTelemetry trace context is automatically injected.
     """
+    # Allow runtime string imports so services can queue tasks without circular imports
+    if isinstance(task, tuple):
+        imported_module = importlib.import_module(task[0])
+        imported_task = getattr(imported_module, task[1])
+        if not isinstance(imported_task, AsyncTaskiqDecoratedTask):
+            msg = "String path must resolve to an AsyncTaskiqDecoratedTask"
+            raise TypeError(msg)
+        task = imported_task
+
     logger.info(
         "Queueing task",
         task_name=task.task_name,
@@ -60,7 +70,6 @@ async def queue_task_with_trace(
         # for distributed tracing
         carrier: dict[str, Any] = {}
         propagate.inject(carrier)
-
         # Queue the task with the trace context
         await task.kiq(
             *args,

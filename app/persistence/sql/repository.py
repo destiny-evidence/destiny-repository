@@ -6,9 +6,9 @@ from typing import Generic
 from opentelemetry import trace
 from pydantic import UUID4
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import InstrumentedAttribute, RelationshipProperty, joinedload
 
 from app.core.exceptions import SQLIntegrityError, SQLNotFoundError
 from app.core.telemetry.attributes import (
@@ -18,13 +18,18 @@ from app.core.telemetry.attributes import (
 from app.core.telemetry.repository import trace_repository_method
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
-from app.persistence.sql.generics import GenericSQLPersistenceType
+from app.persistence.sql.generics import (
+    GenericSQLPersistenceType,
+    GenericSQLPreloadableType,
+)
 
 tracer = trace.get_tracer(__name__)
 
 
 class GenericAsyncSqlRepository(
-    Generic[GenericDomainModelType, GenericSQLPersistenceType],
+    Generic[
+        GenericDomainModelType, GenericSQLPersistenceType, GenericSQLPreloadableType
+    ],
     GenericAsyncRepository[GenericDomainModelType, GenericSQLPersistenceType],  # type:ignore[type-var]
     ABC,
 ):
@@ -56,7 +61,7 @@ class GenericAsyncSqlRepository(
 
     @trace_repository_method(tracer)
     async def get_by_pk(
-        self, pk: UUID4, preload: list[str] | None = None
+        self, pk: UUID4, preload: list[GenericSQLPreloadableType] | None = None
     ) -> GenericDomainModelType:
         """
         Get a record using its primary key.
@@ -73,22 +78,31 @@ class GenericAsyncSqlRepository(
         options = []
         if preload:
             for p in preload:
-                relationship = getattr(self._persistence_cls, p)
-                options.append(joinedload(relationship))
-        result = await self._session.get(self._persistence_cls, pk, options=options)
-        if not result:
+                attribute: InstrumentedAttribute | None = getattr(
+                    self._persistence_cls, p, None
+                )
+                if attribute and isinstance(attribute.property, RelationshipProperty):
+                    options.append(joinedload(attribute))
+        query = (
+            select(self._persistence_cls)
+            .where(self._persistence_cls.id == pk)
+            .options(*options)
+        )
+        try:
+            result = (await self._session.execute(query)).unique().scalar_one()
+        except NoResultFound as exc:
             detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
             raise SQLNotFoundError(
                 detail=detail,
                 lookup_model=self._persistence_cls.__name__,
                 lookup_type="id",
                 lookup_value=pk,
-            )
+            ) from exc
         return result.to_domain(preload=preload)
 
     @trace_repository_method(tracer)
     async def get_by_pks(
-        self, pks: list[UUID4], preload: list[str] | None = None
+        self, pks: list[UUID4], preload: list[GenericSQLPreloadableType] | None = None
     ) -> list[GenericDomainModelType]:
         """
         Get records using their primary keys.
@@ -135,7 +149,7 @@ class GenericAsyncSqlRepository(
 
     @trace_repository_method(tracer)
     async def get_all(
-        self, preload: list[str] | None = None
+        self, preload: list[GenericSQLPreloadableType] | None = None
     ) -> list[GenericDomainModelType]:
         """
         Get all records in the repository.
@@ -221,7 +235,7 @@ class GenericAsyncSqlRepository(
         try:
             await self._session.flush()
         except IntegrityError as e:
-            raise SQLIntegrityError.from_sqlacademy_integrity_error(
+            raise SQLIntegrityError.from_sqlalchemy_integrity_error(
                 e, self._persistence_cls.__name__
             ) from e
 
@@ -276,7 +290,7 @@ class GenericAsyncSqlRepository(
             self._session.add(persistence)
             await self._session.flush()
         except IntegrityError as e:
-            raise SQLIntegrityError.from_sqlacademy_integrity_error(
+            raise SQLIntegrityError.from_sqlalchemy_integrity_error(
                 e, self._persistence_cls.__name__
             ) from e
 
@@ -307,7 +321,7 @@ class GenericAsyncSqlRepository(
             persistence = await self._session.merge(persistence)
             await self._session.flush()
         except IntegrityError as e:
-            raise SQLIntegrityError.from_sqlacademy_integrity_error(
+            raise SQLIntegrityError.from_sqlalchemy_integrity_error(
                 e, self._persistence_cls.__name__
             ) from e
 

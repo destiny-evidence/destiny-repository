@@ -7,13 +7,10 @@ from typing import Generic, Self
 
 from sqlalchemy import UUID, DateTime
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlalchemy.orm import (
-    DeclarativeBase,
-    Mapped,
-    mapped_column,
-)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.persistence.generics import GenericDomainModelType
+from app.persistence.sql.generics import GenericSQLPreloadableType
 from app.utils.time_and_date import utc_now
 
 
@@ -52,5 +49,7 @@ class GenericSQLPersistence(
         """Create a persistence model from a domain model."""
 
     @abstractmethod
-    def to_domain(self, preload: list[str] | None = None) -> GenericDomainModelType:
+    def to_domain(
+        self, preload: list[GenericSQLPreloadableType] | None = None
+    ) -> GenericDomainModelType:
         """Create a domain model from this persistence model."""

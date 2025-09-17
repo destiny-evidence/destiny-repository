@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.domain.robots.models.models import (
     Robot as DomainRobot,
 )
+from app.persistence.sql.generics import GenericSQLPreloadableType
 from app.persistence.sql.persistence import GenericSQLPersistence
 
 
@@ -55,7 +56,7 @@ class Robot(GenericSQLPersistence[DomainRobot]):
 
     def to_domain(
         self,
-        preload: list[str] | None = None,  # noqa: ARG002
+        preload: list[GenericSQLPreloadableType] | None = None,  # noqa: ARG002
     ) -> DomainRobot:
         """Convert the persistence model indo a Domain Robot object."""
         return DomainRobot(
