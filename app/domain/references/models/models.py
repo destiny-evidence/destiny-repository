@@ -17,7 +17,7 @@ from pydantic import (
 )
 
 from app.core.telemetry.logger import get_logger
-from app.domain.base import DomainBaseModel, SQLAttributeMixin
+from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
 from app.domain.imports.models.models import CollisionStrategy
 from app.persistence.blob.models import BlobStorageFile
 
@@ -303,7 +303,7 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     )
 
 
-class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
+class EnhancementRequest(DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin):
     """Request to add enhancements to a list of references."""
 
     reference_ids: list[uuid.UUID] = Field(

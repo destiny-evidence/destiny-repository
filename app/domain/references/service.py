@@ -316,49 +316,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         enhancement_request_id: UUID4,
     ) -> EnhancementRequest:
-        """
-        Get an enhancement request with status calculated from pending enhancements.
-
-        This method calculates the request status based on the current
-        state of its pending enhancements using database aggregation.
-        For backwards compatibility, returns the original database status if no
-        pending enhancements exist.
-        """
-        enhancement_request = await self.sql_uow.enhancement_requests.get_by_pk(
-            enhancement_request_id
+        """Get an enhancement request with calculated status."""
+        return await self.sql_uow.enhancement_requests.get_by_pk(
+            enhancement_request_id, preload=["status"]
         )
-
-        status_counts = await (
-            self.sql_uow.enhancement_requests.get_pending_enhancement_status_counts(
-                enhancement_request_id
-            )
-        )
-
-        total_count = sum(status_counts.values())
-
-        # For backwards compatibility, return original database status
-        # if no pending enhancements
-        if total_count == 0:
-            return enhancement_request
-
-        pending_count = status_counts.get(PendingEnhancementStatus.PENDING, 0)
-        completed_count = status_counts.get(PendingEnhancementStatus.COMPLETED, 0)
-        failed_count = status_counts.get(PendingEnhancementStatus.FAILED, 0)
-
-        if completed_count == total_count:
-            calculated_status = EnhancementRequestStatus.COMPLETED
-        elif failed_count == total_count:
-            calculated_status = EnhancementRequestStatus.FAILED
-        elif pending_count == total_count:
-            calculated_status = EnhancementRequestStatus.RECEIVED
-        elif completed_count + failed_count == total_count:
-            calculated_status = EnhancementRequestStatus.PARTIAL_FAILED
-        else:
-            calculated_status = EnhancementRequestStatus.PROCESSING
-
-        enhancement_request.request_status = calculated_status
-
-        return enhancement_request
 
     @sql_unit_of_work
     async def collect_and_dispatch_references_for_enhancement(

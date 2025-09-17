@@ -45,6 +45,9 @@ from app.domain.references.models.models import (
 from app.domain.references.models.models import (
     RobotEnhancementBatch as DomainRobotEnhancementBatch,
 )
+from app.domain.references.models.projections import (
+    EnhancementRequestStatusProjection,
+)
 from app.domain.references.models.sql import (
     Enhancement as SQLEnhancement,
 )
@@ -301,7 +304,7 @@ class EnhancementRequestRepositoryBase(
     """Abstract implementation of a repository for batch enhancement requests."""
 
 
-EnhancementRequestSQLPreloadable = Literal["pending_enhancements"]
+EnhancementRequestSQLPreloadable = Literal["pending_enhancements", "status"]
 
 
 class EnhancementRequestSQLRepository(
@@ -348,6 +351,39 @@ class EnhancementRequestSQLRepository(
 
         result = await self._session.execute(query)
         return {row[0]: row[1] for row in result.fetchall()}
+
+    async def get_pending_enhancement_status_set(
+        self, enhancement_request_id: UUID4
+    ) -> set[PendingEnhancementStatus]:
+        """
+        Get current underlying statuses for an enhancement request.
+
+        Args:
+            enhancement_request_id: The ID of the enhancement request
+
+        Returns:
+            Set of statuses for the pending enhancements in the request
+
+        """
+        query = select(
+            SQLPendingEnhancement.status.distinct(),
+        ).where(SQLPendingEnhancement.enhancement_request_id == enhancement_request_id)
+        results = await self._session.execute(query)
+        return {row[0] for row in results.all()}
+
+    async def get_by_pk(
+        self,
+        pk: UUID4,
+        preload: list[EnhancementRequestSQLPreloadable] | None = None,
+    ) -> DomainEnhancementRequest:
+        """Override to include derived enhancement request status."""
+        enhancement_request = await super().get_by_pk(pk, preload)
+        if "status" in (preload or []):
+            status_set = await self.get_pending_enhancement_status_set(pk)
+            return EnhancementRequestStatusProjection.get_from_status_set(
+                enhancement_request, status_set
+            )
+        return enhancement_request
 
 
 class RobotAutomationRepositoryBase(
