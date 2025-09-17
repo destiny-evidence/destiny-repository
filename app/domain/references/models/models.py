@@ -343,8 +343,8 @@ Errors for individual references are provided <TBC>.
         default=None,
         description="The file containing the validation result data from the robot.",
     )
-    pending_enhancements: list["PendingEnhancement"] = Field(
-        default_factory=list,
+    pending_enhancements: list["PendingEnhancement"] | None = Field(
+        default=None,
         description="List of pending enhancements for the request.",
     )
 
@@ -474,7 +474,7 @@ class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):
         default=None,
         description="Error encountered during the enhancement batch process.",
     )
-    pending_enhancements: list[PendingEnhancement] = Field(
-        [],
+    pending_enhancements: list[PendingEnhancement] | None = Field(
+        default=None,
         description="The pending enhancements in this batch.",
     )
