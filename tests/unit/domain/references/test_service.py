@@ -47,7 +47,9 @@ async def test_get_reference_happy_path(fake_repository, fake_uow):
     dummy_reference = Reference(id=dummy_id)
     repo = fake_repository(init_entries=[dummy_reference])
     uow = fake_uow(references=repo)
-    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
     result = await service.get_reference(dummy_id)
     assert result.id == dummy_reference.id
 
@@ -56,7 +58,9 @@ async def test_get_reference_happy_path(fake_repository, fake_uow):
 async def test_get_reference_not_found(fake_repository, fake_uow):
     repo = fake_repository()
     uow = fake_uow(references=repo)
-    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
     dummy_id = uuid.uuid4()
     with pytest.raises(SQLNotFoundError):
         await service.get_reference(dummy_id)
@@ -69,7 +73,9 @@ async def test_add_identifier_happy_path(fake_repository, fake_uow):
     repo_refs = fake_repository(init_entries=[dummy_reference])
     repo_ids = fake_repository()
     uow = fake_uow(references=repo_refs, external_identifiers=repo_ids)
-    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
     identifier_data = {"identifier": "W1234", "identifier_type": "open_alex"}
     fake_identifier_create = ExternalIdentifierAdapter.validate_python(identifier_data)
     returned_identifier = await service.add_identifier(dummy_id, fake_identifier_create)
@@ -83,7 +89,9 @@ async def test_add_identifier_reference_not_found(fake_repository, fake_uow):
     repo_refs = fake_repository()
     repo_ids = fake_repository()
     uow = fake_uow(references=repo_refs, external_identifiers=repo_ids)
-    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
     dummy_id = uuid.uuid4()
     fake_identifier_create = ExternalIdentifierAdapter.validate_python(
         {"identifier": "W1234", "identifier_type": "open_alex"}
@@ -99,7 +107,9 @@ async def test_add_enhancement_happy_path(
     dummy_reference = Reference(id=uuid.uuid4())
     repo_refs = fake_repository(init_entries=[dummy_reference])
     uow = fake_uow(references=repo_refs)
-    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
 
     enhancement_to_add = Enhancement(
         reference_id=dummy_reference.id, **fake_enhancement_data
@@ -118,7 +128,9 @@ async def test_add_enhancement_reference_does_not_exist(
     fake_repository, fake_uow, fake_enhancement_data
 ):
     uow = fake_uow(references=fake_repository())
-    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
 
     enhancement_to_add = Enhancement(
         reference_id=uuid.uuid4(),  # Doesn't exist
@@ -136,7 +148,9 @@ async def test_add_enhancement_derived_from_does_not_exist(
     dummy_reference = Reference(id=uuid.uuid4())
     repo_refs = fake_repository(init_entries=[dummy_reference])
     uow = fake_uow(references=repo_refs, enhancements=fake_repository())
-    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
 
     enhancement_to_add = Enhancement(
         reference_id=dummy_reference.id,
@@ -162,7 +176,9 @@ async def test_add_enhancement_derived_from_enhancement_for_different_reference(
 
     repo_enhs = fake_repository(init_entries=[dummy_parent_enhancement])
     uow = fake_uow(references=repo_refs, enhancements=repo_enhs)
-    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
 
     enhancement_to_add = Enhancement(
         reference_id=dummy_reference.id,  # different reference id
@@ -199,7 +215,9 @@ async def test_register_reference_enhancement_request(fake_repository, fake_uow)
         enhancement_requests=fake_requests,
         references=fake_references,
     )
-    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
 
     created_request = await service.register_reference_enhancement_request(
         enhancement_request=enhancement_request
@@ -238,7 +256,9 @@ async def test_register_reference_enhancement_request_missing_pk(
         enhancement_requests=fake_requests,
         references=fake_references,
     )
-    service = ReferenceService(ReferenceAntiCorruptionService(fake_repository()), uow)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
 
     with pytest.raises(
         SQLNotFoundError, match=f"{{'{missing_reference_id}'}} not in repository"
@@ -280,7 +300,7 @@ async def test_collect_and_dispatch_references_for_enhancement_happy_path(
     mock_robot_request_dispatcher = AsyncMock()
 
     service = ReferenceService(
-        ReferenceAntiCorruptionService(mock_blob_repository), uow
+        ReferenceAntiCorruptionService(mock_blob_repository), uow, fake_uow()
     )
 
     await service.collect_and_dispatch_references_for_enhancement(
@@ -332,7 +352,7 @@ async def test_collect_and_dispatch_references_for_enhancement_robot_unreachable
     )
 
     service = ReferenceService(
-        ReferenceAntiCorruptionService(mock_blob_repository), uow
+        ReferenceAntiCorruptionService(mock_blob_repository), uow, fake_uow()
     )
 
     await service.collect_and_dispatch_references_for_enhancement(
@@ -381,7 +401,7 @@ async def test_collect_and_dispatch_references_for_enhancement_enhancement_not_p
     )
 
     service = ReferenceService(
-        ReferenceAntiCorruptionService(mock_blob_repository), uow
+        ReferenceAntiCorruptionService(mock_blob_repository), uow, fake_uow()
     )
 
     await service.collect_and_dispatch_references_for_enhancement(

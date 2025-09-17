@@ -1,11 +1,10 @@
 """The service for interacting with and managing references."""
 
 from collections import defaultdict
-from collections.abc import AsyncGenerator, Iterable
+from collections.abc import Iterable
 from uuid import UUID
 
 from app.core.config import (
-    ESIndexingOperation,
     ESPercolationOperation,
     UploadFile,
     get_settings,
@@ -44,6 +43,9 @@ from app.domain.references.services.enhancement_service import (
 from app.domain.references.services.ingestion_service import (
     IngestionService,
 )
+from app.domain.references.services.synchronizer_service import (
+    Synchronizer,
+)
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
@@ -66,7 +68,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         anti_corruption_service: ReferenceAntiCorruptionService,
         sql_uow: AsyncSqlUnitOfWork,
-        es_uow: AsyncESUnitOfWork | None = None,
+        es_uow: AsyncESUnitOfWork,
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
@@ -75,6 +77,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self._deduplication_service = DeduplicationService(
             anti_corruption_service, sql_uow
         )
+        self._synchronizer = Synchronizer(sql_uow, es_uow)
 
     @sql_unit_of_work
     async def get_reference(self, reference_id: UUID) -> Reference:
@@ -88,14 +91,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_id, preload=["identifiers", "enhancements"]
         )
 
-    async def _sync_reference_to_es(self, reference_id: UUID) -> Reference:
-        """Upsert a single reference to Elasticsearch from SQL."""
-        return await self.es_uow.references.add(await self._get_reference(reference_id))
-
     async def _merge_reference(self, reference: Reference) -> Reference:
         """Persist a reference with an existing SQL & ES UOW."""
         db_reference = await self.sql_uow.references.merge(reference)
-        await self._sync_reference_to_es(db_reference.id)
+        await self._synchronizer.references.sql_to_es(db_reference.id)
         return db_reference
 
     @sql_unit_of_work
@@ -194,18 +193,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         ]
 
     @sql_unit_of_work
-    async def get_hydrated_references(
-        self,
-        reference_ids: list[UUID],
-        enhancement_types: list[EnhancementType] | None = None,
-        external_identifier_types: list[ExternalIdentifierType] | None = None,
-    ) -> list[Reference]:
-        """Get a list of references with enhancements and identifiers by id."""
-        return await self._get_hydrated_references(
-            reference_ids, enhancement_types, external_identifier_types
-        )
-
-    @sql_unit_of_work
     async def get_all_reference_ids(self) -> list[UUID]:
         """Get all reference IDs from the database."""
         return await self.sql_uow.references.get_all_pks()
@@ -264,6 +251,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference = self._anti_corruption_service.reference_from_sdk_file_input(
             reference_create_result.reference
         )
+        if reference:
+            await self._merge_reference(reference)
 
         canonical_reference = await self._deduplication_service.find_exact_duplicate(
             reference
@@ -467,56 +456,19 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             enhancement_request_id, status
         )
 
+    @sql_unit_of_work
     @es_unit_of_work
     async def index_references(
         self,
         reference_ids: Iterable[UUID],
     ) -> None:
         """Index references in Elasticsearch."""
-        ids = list(reference_ids)
-        chunk_size = settings.es_indexing_chunk_size_override.get(
-            ESIndexingOperation.REFERENCE_IMPORT,
-            settings.default_es_indexing_chunk_size,
-        )
-
-        logger.info(
-            "Indexing references in Elasticsearch",
-            n_references=len(ids),
-            chunk_size=chunk_size,
-        )
-
-        async def reference_generator() -> AsyncGenerator[Reference, None]:
-            """Generate references for indexing."""
-            for reference_id_chunk in list_chunker(
-                ids,
-                chunk_size,
-            ):
-                references = await self.get_hydrated_references(reference_id_chunk)
-                for reference in references:
-                    yield reference
-
-        await self.es_uow.references.add_bulk(reference_generator())
-
-    @es_unit_of_work
-    async def index_reference(
-        self,
-        reference: Reference,
-    ) -> None:
-        """Index a single reference in Elasticsearch."""
-        await self.es_uow.references.add(reference)
+        await self._synchronizer.references.bulk_sql_to_es(reference_ids)
 
     async def repopulate_reference_index(self) -> None:
         """Index ALL references in Elasticsearch."""
         reference_ids = await self.get_all_reference_ids()
         await self.index_references(reference_ids)
-
-    @es_unit_of_work
-    async def save_robot_automation(
-        self, automation: RobotAutomation
-    ) -> RobotAutomation:
-        """Add an automation to a robot."""
-        await self.es_uow.robot_automations.add(automation)
-        return automation
 
     @es_unit_of_work
     async def _detect_robot_automations(
@@ -591,7 +543,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         We assume the scale is small enough that we can do this naively.
         """
         for robot_automation in await self.sql_uow.robot_automations.get_all():
-            await self.es_uow.robot_automations.add(robot_automation)
+            await self._synchronizer.robot_automations.sql_to_es(robot_automation.id)
 
     @sql_unit_of_work
     async def get_robot_automations(self) -> list[RobotAutomation]:
@@ -604,6 +556,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self.sql_uow.robot_automations.get_by_pk(automation_id)
 
     @sql_unit_of_work
+    @es_unit_of_work
     async def add_robot_automation(
         self, robot_service: RobotService, automation: RobotAutomation
     ) -> RobotAutomation:
@@ -615,9 +568,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         # some handy validation against the index itself. This is caught with an API-
         # level exception handler, so we don't need to handle it here.
         await self.sql_uow.robot_automations.add(automation)
-        return await self.save_robot_automation(automation)
+        return await self._synchronizer.robot_automations.sql_to_es(automation.id)
 
     @sql_unit_of_work
+    @es_unit_of_work
     async def update_robot_automation(
         self,
         automation: RobotAutomation,
@@ -632,7 +586,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         # some handy validation against the index itself. This is caught with an API-
         # level exception handler, so we don't need to handle it here.
         automation = await self.sql_uow.robot_automations.merge(automation)
-        return await self.save_robot_automation(automation)
+        return await self._synchronizer.robot_automations.sql_to_es(automation.id)
 
     @sql_unit_of_work
     async def get_reference_duplicate_decision(
@@ -663,7 +617,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         ):
             return reference_duplicate_decision
 
-        # Call determine_and_map_duplicate
         reference_duplicate_decision = (
             await self._deduplication_service.determine_and_map_duplicate(
                 reference_duplicate_decision
@@ -671,11 +624,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
         if reference_duplicate_decision.active_decision:
-            await self._sync_reference_to_es(reference_duplicate_decision.reference_id)
-            if reference_duplicate_decision.canonical_reference_id:
-                # Canonical reference may have an updated projection
-                await self._sync_reference_to_es(
-                    reference_duplicate_decision.canonical_reference_id
-                )
+            await self._synchronizer.references.sql_to_es(
+                reference_duplicate_decision.reference_id
+            )
 
         return reference_duplicate_decision
