@@ -31,6 +31,7 @@ from app.domain.imports.models.models import (
 from app.domain.imports.models.models import (
     ImportResult as DomainImportResult,
 )
+from app.persistence.sql.generics import GenericSQLPreloadableType
 from app.persistence.sql.persistence import GenericSQLPersistence
 
 
@@ -74,7 +75,7 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
 
     def to_domain(
         self,
-        preload: list[str] | None = None,
+        preload: list[GenericSQLPreloadableType] | None = None,
     ) -> DomainImportResult:
         """Convert the persistence model into an Domain ImportResult object."""
         return DomainImportResult(
@@ -140,7 +141,7 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
 
     def to_domain(
         self,
-        preload: list[str] | None = None,
+        preload: list[GenericSQLPreloadableType] | None = None,
     ) -> DomainImportBatch:
         """Convert the persistence model into an Domain ImportBatch object."""
         return DomainImportBatch(
@@ -207,7 +208,7 @@ class ImportRecord(GenericSQLPersistence[DomainImportRecord]):
 
     def to_domain(
         self,
-        preload: list[str] | None = None,
+        preload: list[GenericSQLPreloadableType] | None = None,
     ) -> DomainImportRecord:
         """Convert the persistence model into an Domain ImportRecord object."""
         return DomainImportRecord(
