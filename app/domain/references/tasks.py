@@ -266,7 +266,8 @@ async def validate_and_import_robot_enhancement_batch_result(
     try:
         await reference_service.index_references(
             reference_ids=[
-                pe.reference_id for pe in robot_enhancement_batch.pending_enhancements
+                pe.reference_id
+                for pe in (robot_enhancement_batch.pending_enhancements or [])
             ],
         )
 

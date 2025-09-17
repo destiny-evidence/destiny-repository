@@ -303,7 +303,7 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             else None,
             pending_enhancements=[
                 PendingEnhancement.from_domain(pe)
-                for pe in domain_obj.pending_enhancements
+                for pe in (domain_obj.pending_enhancements or [])
             ],
         )
 
