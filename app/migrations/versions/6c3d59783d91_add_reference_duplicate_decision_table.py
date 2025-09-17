@@ -2,7 +2,7 @@
 add reference_duplicate_decision table
 
 Revision ID: 6c3d59783d91
-Revises: 7042fe692130
+Revises: 8fc1a39aad48
 Create Date: 2025-09-11 05:57:52.289905+00:00
 
 """
@@ -15,7 +15,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '6c3d59783d91'
-down_revision: Union[str, None] = '7042fe692130'
+down_revision: Union[str, None] = '8fc1a39aad48'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -46,4 +46,5 @@ def downgrade() -> None:
     op.drop_index('uix_reference_one_active_decision_constraint', table_name='reference_duplicate_decision', postgresql_where=sa.text('active_decision IS true'))
     op.drop_index('ix_reference_duplicate_decision_reference_id', table_name='reference_duplicate_decision')
     op.drop_table('reference_duplicate_decision')
+    op.execute('DROP TYPE duplicate_determination')
     # ### end Alembic commands ###
