@@ -45,6 +45,7 @@ from app.domain.references.services.enhancement_service import (
     EnhancementService,
 )
 from app.domain.references.tasks import (
+    collect_and_dispatch_references_for_enhancement,
     validate_and_import_enhancement_result,
     validate_and_import_robot_enhancement_batch_result,
 )
@@ -375,6 +376,11 @@ async def request_enhancement(
                 enhancement_request_in
             ),
         )
+    )
+
+    await queue_task_with_trace(
+        collect_and_dispatch_references_for_enhancement,
+        enhancement_request_id=enhancement_request.id,
     )
 
     return await anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
