@@ -457,7 +457,6 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
     async def process_robot_enhancement_batch_result(
         self,
         blob_repository: BlobRepository,
-        # robot_enhancement_batch: RobotEnhancementBatch,
         result_file: BlobStorageFile,
         pending_enhancements: list[PendingEnhancement],
         add_enhancement: Callable[[Enhancement], Awaitable[tuple[bool, str]]],

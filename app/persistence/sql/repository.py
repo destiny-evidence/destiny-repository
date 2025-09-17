@@ -10,7 +10,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.core.exceptions import SQLIntegrityError, SQLNotFoundError
+from app.core.exceptions import (
+    SQLIntegrityError,
+    SQLNotFoundError,
+    SQLValueError,
+)
 from app.core.telemetry.attributes import (
     Attributes,
     trace_attribute,
@@ -58,7 +62,7 @@ class GenericAsyncSqlRepository(
         """
         Validate provided field names exist on the persistence model.
 
-        Raises ValueError if any are invalid.
+        Raises SQLValueError if any are invalid.
         """
         invalid_fields = [
             key for key in field_names if not hasattr(self._persistence_cls, key)
@@ -68,7 +72,7 @@ class GenericAsyncSqlRepository(
                 f"Invalid field(s) for {self._persistence_cls.__name__}: "
                 f"{invalid_fields}"
             )
-            raise ValueError(msg)
+            raise SQLValueError(msg)
 
     @trace_repository_method(tracer)
     async def get_by_pk(
@@ -385,7 +389,7 @@ class GenericAsyncSqlRepository(
 
         Raises:
         - SQLIntegrityError: If the update violates a constraint.
-        - ValueError: If field names in kwargs do not exist on the persistence model.
+        - SQLValueError: If field names in kwargs do not exist on the persistence model.
 
         """
         trace_attribute(Attributes.DB_RECORD_COUNT, len(pks))
@@ -432,7 +436,7 @@ class GenericAsyncSqlRepository(
 
         Raises:
         - SQLIntegrityError: If the update violates a constraint.
-        - ValueError: If field names do not exist on the persistence model.
+        - SQLValueError: If field names do not exist on the persistence model.
 
         Examples:
         - Update status to FAILED for all records with robot_enhancement_batch_id=123:
