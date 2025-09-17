@@ -2,7 +2,7 @@
 Add robot_enhancement_batch and pending_enhancement tables
 
 Revision ID: 5f5b2e791c6e
-Revises: 7042fe692130
+Revises: 8fc1a39aad48
 Create Date: 2025-08-28 05:14:48.260955+00:00
 
 """
@@ -15,7 +15,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '5f5b2e791c6e'
-down_revision: Union[str, None] = '7042fe692130'
+down_revision: Union[str, None] = '8fc1a39aad48'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
