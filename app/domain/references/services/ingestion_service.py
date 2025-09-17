@@ -156,10 +156,4 @@ Identifier(s) are already mapped on an existing reference:
 
         reference_create_result.reference_id = collision_result.id
 
-        if reference_create_result.errors:
-            reference_create_result.errors = [
-                f"Entry {entry_ref}:",
-                *reference_create_result.errors,
-            ]
-
         return reference_create_result, collision_result

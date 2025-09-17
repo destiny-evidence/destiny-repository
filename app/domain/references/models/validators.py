@@ -201,6 +201,12 @@ class ReferenceCreateResult(BaseModel):
             for entry_ref, enhancement in enumerate(validated_input.enhancements, 1)
         ]
 
+        errors = [
+            result.error
+            for result in identifier_results + enhancement_results
+            if result.error
+        ]
+
         return cls(
             reference=destiny_sdk.references.ReferenceFileInput(
                 visibility=raw_reference.get(  # type: ignore[union-attr]
@@ -220,8 +226,7 @@ class ReferenceCreateResult(BaseModel):
                     if result.enhancement
                 ],
             ),
-            errors=[result.error for result in identifier_results if result.error]
-            + [result.error for result in enhancement_results if result.error],
+            errors=[f"Entry ref {entry_ref}:", *errors] if errors else [],
         )
 
 
