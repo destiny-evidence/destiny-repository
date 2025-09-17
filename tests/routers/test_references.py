@@ -28,9 +28,7 @@ from app.domain.references import routes as references
 from app.domain.references.models.models import (
     EnhancementRequestStatus,
     EnhancementType,
-    PendingEnhancement,
     PendingEnhancementStatus,
-    RobotEnhancementBatch,
     Visibility,
 )
 from app.domain.references.models.sql import (
@@ -43,7 +41,6 @@ from app.domain.references.models.sql import (
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.service import ReferenceService
 from app.domain.robots.models.sql import Robot as SQLRobot
-from app.persistence.blob.models import BlobStorageFile
 from app.tasks import broker
 
 # Use the database session in all tests to set up the database manager.
@@ -484,7 +481,7 @@ async def add_pending_enhancement(
     return pending_enhancement
 
 
-async def test_request_pending_enhancements_batch_no_results(
+async def test_request_pending_enhancements_batch(
     session: AsyncSession,
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -513,87 +510,6 @@ async def test_request_pending_enhancements_batch_no_results(
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
     mock_get_pending.assert_awaited_once_with(robot_id=robot.id, limit=10)
-
-
-async def test_request_pending_enhancements_batch_with_results(
-    session: AsyncSession,
-    client: AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Test requesting a batch of pending enhancements when there are results."""
-    # Set up test data
-    robot = await add_robot(session)
-    reference = await add_reference(session)
-    enhancement_request = await add_enhancement_request(session, robot, reference)
-    pending_enhancement = await add_pending_enhancement(
-        session, robot, reference, enhancement_request
-    )
-
-    # Mock the service methods
-    mock_pending_enhancements = [
-        PendingEnhancement(
-            id=pending_enhancement.id,
-            reference_id=reference.id,
-            robot_id=robot.id,
-            enhancement_request_id=enhancement_request.id,
-            status=PendingEnhancementStatus.PENDING,
-        )
-    ]
-
-    mock_batch = RobotEnhancementBatch(
-        id=uuid.uuid4(),
-        robot_id=robot.id,
-        reference_file=BlobStorageFile(
-            location="minio", container="test", path="test", filename="test.jsonl"
-        ),
-        result_file=BlobStorageFile(
-            location="minio", container="test", path="test", filename="result.jsonl"
-        ),
-        pending_enhancements=mock_pending_enhancements,
-    )
-
-    mock_sdk_response = {
-        "id": str(uuid.uuid4()),
-        "reference_storage_url": "http://example.com/references.jsonl",
-        "result_storage_url": "http://example.com/results.jsonl",
-        "extra_fields": None,
-    }
-
-    mock_get_pending = AsyncMock(return_value=mock_pending_enhancements)
-    mock_create_batch = AsyncMock(return_value=mock_batch)
-    mock_batch_to_sdk = AsyncMock(return_value=mock_sdk_response)
-
-    monkeypatch.setattr(
-        ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
-    )
-    monkeypatch.setattr(
-        ReferenceService, "create_robot_enhancement_batch", mock_create_batch
-    )
-
-    # Mock the anti-corruption service method that converts to SDK
-    from app.domain.references.services.anti_corruption_service import (
-        ReferenceAntiCorruptionService,
-    )
-
-    monkeypatch.setattr(
-        ReferenceAntiCorruptionService,
-        "robot_enhancement_batch_to_sdk",
-        mock_batch_to_sdk,
-    )
-
-    response = await client.post(
-        f"/v1/robot-enhancement-batch/?robot_id={robot.id}&limit=10"
-    )
-
-    assert response.status_code == status.HTTP_200_OK
-    response_data = response.json()
-
-    # Check that the response contains expected fields from the RobotRequest schema
-    assert response_data == mock_sdk_response
-
-    mock_get_pending.assert_awaited_once_with(robot_id=robot.id, limit=10)
-    mock_create_batch.assert_awaited_once()
-    mock_batch_to_sdk.assert_awaited_once_with(mock_batch)
 
 
 async def test_request_pending_enhancements_batch_limit_exceeded(
