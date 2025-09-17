@@ -302,7 +302,7 @@ async def get_robot_automations(
 # TODO(danielribeiro): Consider authenticating robot_id matches auth client id  # noqa: E501, TD003
 @robot_enhancement_batch_router.post(
     "/",
-    response_model=destiny_sdk.robots.RobotRequest,
+    response_model=destiny_sdk.robots.RobotEnhancementBatch,
     summary="Request a batch of references to enhance.",
     responses={204: {"model": None}},
 )
@@ -323,7 +323,7 @@ async def request_robot_enhancement_batch(
             description="The maximum number of pending enhancements to return.",
         ),
     ] = settings.max_pending_enhancements_batch_size,
-) -> destiny_sdk.robots.RobotRequest | Response:
+) -> destiny_sdk.robots.RobotEnhancementBatch | Response:
     """
     Request a batch of references to enhance.
 

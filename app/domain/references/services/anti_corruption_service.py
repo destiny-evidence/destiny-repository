@@ -242,10 +242,10 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     async def robot_enhancement_batch_to_sdk_robot(
         self,
         robot_enhancement_batch: "RobotEnhancementBatch",
-    ) -> destiny_sdk.robots.RobotRequest:
-        """Convert the robot enhancement batch to the SDK model."""
+    ) -> destiny_sdk.robots.RobotEnhancementBatch:
+        """Convert robot enhancement batch to the new SDK RobotEnhancementBatch."""
         try:
-            return destiny_sdk.robots.RobotRequest(
+            return destiny_sdk.robots.RobotEnhancementBatch(
                 id=robot_enhancement_batch.id,
                 reference_storage_url=await self._blob_repository.get_signed_url(
                     robot_enhancement_batch.reference_data_file,

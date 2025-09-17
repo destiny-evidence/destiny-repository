@@ -110,6 +110,37 @@ If the URL expires, a new one can be generated using
     )
 
 
+class RobotEnhancementBatch(BaseModel):
+    """A robot enhancement batch from the repo to a robot."""
+
+    id: UUID4
+    reference_storage_url: HttpUrl = Field(
+        description="""
+The URL at which the set of references are stored. The file is a jsonl
+with each line formatted according to
+:class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>`, one
+reference per line.
+Each reference may have identifiers or enhancements attached, as
+required by the robot.
+If the URL expires, a new one can be generated using
+``GET /robot-enhancement-batch/{batch_id}/``.
+"""
+    )
+    result_storage_url: HttpUrl = Field(
+        description="""
+The URL at which the set of enhancements are to be stored. The file is to be a jsonl
+with each line formatted according to
+:class:`EnhancementResultEntry <libs.sdk.src.destiny_sdk.robots.EnhancementResultEntry>`.
+If the URL expires, a new one can be generated using
+``GET /robot-enhancement-batch/{batch_id}/``.
+"""  # noqa: E501
+    )
+    extra_fields: dict | None = Field(
+        default=None,
+        description="Extra fields to pass to the robot. TBC.",
+    )
+
+
 class EnhancementRequestStatus(StrEnum):
     """
     The status of an enhancement request.

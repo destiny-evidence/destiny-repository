@@ -10,7 +10,7 @@ from destiny_sdk.references import Reference
 from destiny_sdk.robots import (
     EnhancementRequestIn,
     EnhancementRequestStatus,
-    RobotRequest,
+    RobotEnhancementBatch,
     RobotResult,
 )
 from destiny_sdk.visibility import Visibility
@@ -74,7 +74,7 @@ def _poll_robot_batches(
     robot_id: str,
     reference_ids: list[str],
     request_id: str,
-) -> tuple[list[str], list[list[str]], list[RobotRequest]]:
+) -> tuple[list[str], list[list[str]], list[RobotEnhancementBatch]]:
     """Poll for robot enhancement batches and return batch data."""
     robot_enhancement_batch_ids = []
     batch_references = []
@@ -87,7 +87,7 @@ def _poll_robot_batches(
         )
         assert response.status_code == 200
 
-        result = RobotRequest.model_validate(response.json())
+        result = RobotEnhancementBatch.model_validate(response.json())
         robot_enhancement_batch_ids.append(str(result.id))
         robot_requests.append(result)
 
@@ -117,7 +117,7 @@ def _submit_robot_results(
     repo_client: httpx.Client,
     robot_enhancement_batch_ids: list[str],
     batch_references: list[list[str]],
-    robot_requests: list[RobotRequest],
+    robot_requests: list[RobotEnhancementBatch],
 ) -> None:
     """Submit robot enhancement batch results."""
     for i, (batch_id, robot_request) in enumerate(
