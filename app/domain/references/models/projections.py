@@ -35,15 +35,12 @@ class EnhancementRequestStatusProjection(GenericProjection[EnhancementRequest]):
         elif pending_enhancement_status_set == {PendingEnhancementStatus.FAILED}:
             enhancement_request.request_status = EnhancementRequestStatus.FAILED
 
-        # Some completed, some failed -> partial failed
-        elif (
-            PendingEnhancementStatus.COMPLETED in pending_enhancement_status_set
-            and {
-                PendingEnhancementStatus.FAILED,
-                PendingEnhancementStatus.INDEXING_FAILED,
-            }
-            & pending_enhancement_status_set
-        ):
+        # Any combination of terminal statuses involving failures -> partial failed
+        elif {
+            PendingEnhancementStatus.FAILED,
+            PendingEnhancementStatus.INDEXING_FAILED,
+            PendingEnhancementStatus.COMPLETED,
+        } & pending_enhancement_status_set:
             enhancement_request.request_status = EnhancementRequestStatus.PARTIAL_FAILED
 
         # Something in progress -> processing

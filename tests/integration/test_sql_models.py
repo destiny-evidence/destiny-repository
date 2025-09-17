@@ -22,13 +22,31 @@ from app.domain.imports.repository import (
     ImportBatchSQLRepository,
     ImportResultSQLRepository,
 )
-from app.domain.references.models.models import Enhancement, Reference
+from app.domain.references.models.models import (
+    Enhancement,
+    EnhancementRequest,
+    EnhancementRequestStatus,
+    PendingEnhancement,
+    PendingEnhancementStatus,
+    Reference,
+)
 from app.domain.references.models.sql import (
     Enhancement as SQLEnhancement,
 )
 from app.domain.references.models.sql import (
+    EnhancementRequest as SQLEnhancementRequest,
+)
+from app.domain.references.models.sql import (
+    PendingEnhancement as SQLPendingEnhancement,
+)
+from app.domain.references.models.sql import (
     Reference as SQLReference,
 )
+from app.domain.references.repository import (
+    EnhancementRequestSQLRepository,
+)
+from app.domain.robots.models.models import Robot
+from app.domain.robots.models.sql import Robot as SQLRobot
 
 
 async def test_enhancement_interface(
@@ -161,3 +179,129 @@ async def test_import_batch_status_projection(
     assert (
         await repo.get_by_pk(batch_id, preload=["status"])
     ).status == expected_status
+
+
+@pytest.mark.parametrize(
+    ("pending_statuses", "expected_status"),
+    [
+        ([], None),  # No pending enhancements -> keep original status
+        ([PendingEnhancementStatus.PENDING], EnhancementRequestStatus.RECEIVED),
+        (
+            [PendingEnhancementStatus.ACCEPTED],
+            EnhancementRequestStatus.PROCESSING,
+        ),
+        (
+            [PendingEnhancementStatus.IMPORTING],
+            EnhancementRequestStatus.PROCESSING,
+        ),
+        (
+            [PendingEnhancementStatus.INDEXING],
+            EnhancementRequestStatus.PROCESSING,
+        ),
+        (
+            [PendingEnhancementStatus.COMPLETED],
+            EnhancementRequestStatus.COMPLETED,
+        ),
+        (
+            [PendingEnhancementStatus.FAILED],
+            EnhancementRequestStatus.FAILED,
+        ),
+        (
+            [
+                PendingEnhancementStatus.COMPLETED,
+                PendingEnhancementStatus.FAILED,
+            ],
+            EnhancementRequestStatus.PARTIAL_FAILED,
+        ),
+        (
+            [
+                PendingEnhancementStatus.COMPLETED,
+                PendingEnhancementStatus.INDEXING_FAILED,
+            ],
+            EnhancementRequestStatus.PARTIAL_FAILED,
+        ),
+        (
+            [PendingEnhancementStatus.INDEXING_FAILED],
+            EnhancementRequestStatus.PARTIAL_FAILED,
+        ),
+        (
+            [
+                PendingEnhancementStatus.FAILED,
+                PendingEnhancementStatus.INDEXING_FAILED,
+            ],
+            EnhancementRequestStatus.PARTIAL_FAILED,
+        ),
+        (
+            [
+                PendingEnhancementStatus.PENDING,
+                PendingEnhancementStatus.ACCEPTED,
+            ],
+            EnhancementRequestStatus.PROCESSING,
+        ),
+    ],
+)
+async def test_enhancement_request_status_projection(
+    session: AsyncSession,
+    pending_statuses: list[PendingEnhancementStatus],
+    expected_status: EnhancementRequestStatus | None,
+):
+    """Test EnhancementRequest status projection logic."""
+    # Create a reference first
+    reference = SQLReference.from_domain(
+        Reference(
+            id=uuid.uuid4(),
+        )
+    )
+    session.add(reference)
+
+    # Create a robot first (required for foreign key constraint)
+    robot_id = uuid.uuid4()
+    robot = SQLRobot.from_domain(
+        Robot(
+            id=robot_id,
+            name="Test Robot",
+            description="A test robot",
+            owner="test@example.com",
+            base_url="https://example.com",
+            client_secret="test-secret",
+        )
+    )
+    session.add(robot)
+
+    # Create an enhancement request
+    request_id = uuid.uuid4()
+    enhancement_request = SQLEnhancementRequest.from_domain(
+        EnhancementRequest(
+            id=request_id,
+            reference_ids=[reference.id],
+            robot_id=robot_id,
+            request_status=EnhancementRequestStatus.RECEIVED,
+        )
+    )
+    session.add(enhancement_request)
+
+    # Create pending enhancements with different statuses
+    for status in pending_statuses:
+        pending_enhancement = SQLPendingEnhancement.from_domain(
+            PendingEnhancement(
+                id=uuid.uuid4(),
+                reference_id=reference.id,
+                robot_id=robot_id,
+                enhancement_request_id=request_id,
+                status=status,
+            )
+        )
+        session.add(pending_enhancement)
+
+    await session.flush()
+    await session.commit()
+
+    # Test the projection logic
+    repo = EnhancementRequestSQLRepository(session)
+    loaded_request = await repo.get_by_pk(request_id, preload=["status"])
+
+    if expected_status is None:
+        # Should keep original status when no pending enhancements
+        assert loaded_request.request_status == EnhancementRequestStatus.RECEIVED
+    else:
+        assert loaded_request.request_status == expected_status
