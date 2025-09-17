@@ -1,7 +1,7 @@
 """Unit tests for the ReferenceService class."""
 
 import uuid
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -416,9 +416,14 @@ async def test_collect_and_dispatch_references_for_enhancement_enhancement_not_p
 
 
 @pytest.mark.asyncio
-async def test_ingest_reference_calls_validation_and_merges(fake_repository, fake_uow):
+async def test_ingest_reference_calls_validation_and_merges_legacy(
+    fake_repository, fake_uow, monkeypatch
+):
     """Test ReferenceService.ingest_reference calls validation and merges reference."""
-    from unittest.mock import AsyncMock, patch
+
+    monkeypatch.setattr(
+        "app.domain.references.service.settings.feature_flags.deduplication", False
+    )
 
     dummy_validation_result = AsyncMock()
     dummy_reference = AsyncMock()

@@ -220,11 +220,11 @@ This should not happen.
                 status=ImportResultStatus.COMPLETED,
                 reference_id=reference_result.reference_id,
             )
-
-        await queue_task_with_trace(
-            ("app.domain.references.tasks", "process_reference_duplicate_decision"),
-            reference_result.duplicate_decision_id,
-        )
+        if reference_result.duplicate_decision_id:
+            await queue_task_with_trace(
+                ("app.domain.references.tasks", "process_reference_duplicate_decision"),
+                reference_result.duplicate_decision_id,
+            )
         return import_result, reference_result.duplicate_decision_id
 
     async def distribute_import_batch(self, import_batch: ImportBatch) -> None:

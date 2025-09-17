@@ -179,7 +179,7 @@ async def test_import_reference_sql_integrity_error(
         collision="test-collision",
     )
 
-    result = await service.import_reference(
+    result, _ = await service.import_reference(
         fake_reference_service, import_result, CollisionStrategy.FAIL, "nonsense", 1
     )
 
