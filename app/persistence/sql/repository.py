@@ -102,11 +102,11 @@ class GenericAsyncSqlRepository(
 
         is_self_referential = relationship.prop.mapper.class_ == self._persistence_cls
         if preload and is_self_referential:
-            preload = [p for p in preload if p not in avoid_propagate]
-            for nested_rel_name in preload:
-                nested_rel = getattr(relationship.prop.mapper.class_, nested_rel_name)
+            filtered_preload = [p for p in preload if p not in avoid_propagate]
+            for nested_rel_name in filtered_preload:
+                nested_rel = getattr(self._persistence_cls, nested_rel_name)
                 loader = loader.options(
-                    self._get_relationship_load(nested_rel, preload, depth + 1)
+                    self._get_relationship_load(nested_rel, filtered_preload, depth + 1)
                 )
 
         return loader
