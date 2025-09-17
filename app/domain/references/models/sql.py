@@ -3,7 +3,7 @@
 import uuid
 from typing import Any, Self
 
-from sqlalchemy import UUID, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import UUID, Enum, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,16 +18,23 @@ from app.domain.references.models.models import (
     EnhancementType,
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
+    PendingEnhancementStatus,
     Visibility,
 )
 from app.domain.references.models.models import (
     LinkedExternalIdentifier as DomainExternalIdentifier,
 )
 from app.domain.references.models.models import (
+    PendingEnhancement as DomainPendingEnhancement,
+)
+from app.domain.references.models.models import (
     Reference as DomainReference,
 )
 from app.domain.references.models.models import (
     RobotAutomation as DomainRobotAutomation,
+)
+from app.domain.references.models.models import (
+    RobotEnhancementBatch as DomainRobotEnhancementBatch,
 )
 from app.persistence.blob.models import BlobStorageFile
 from app.persistence.sql.generics import GenericSQLPreloadableType
@@ -272,6 +279,11 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
     result_file: Mapped[str | None] = mapped_column(String, nullable=True)
     validation_result_file: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    pending_enhancements: Mapped[list["PendingEnhancement"]] = relationship(
+        "PendingEnhancement",
+        back_populates="enhancement_request",
+    )
+
     error: Mapped[str | None] = mapped_column(String, nullable=True)
 
     @classmethod
@@ -296,11 +308,15 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             validation_result_file=domain_obj.validation_result_file.to_sql()
             if domain_obj.validation_result_file
             else None,
+            pending_enhancements=[
+                PendingEnhancement.from_domain(pe)
+                for pe in (domain_obj.pending_enhancements or [])
+            ],
         )
 
     def to_domain(
         self,
-        preload: list[GenericSQLPreloadableType] | None = None,  # noqa: ARG002
+        preload: list[GenericSQLPreloadableType] | None = None,
     ) -> DomainEnhancementRequest:
         """Convert the persistence model into a Domain Enhancement object."""
         return DomainEnhancementRequest(
@@ -322,6 +338,9 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             validation_result_file=BlobStorageFile.from_sql(self.validation_result_file)
             if self.validation_result_file
             else None,
+            pending_enhancements=[pe.to_domain() for pe in self.pending_enhancements]
+            if "pending_enhancements" in (preload or [])
+            else [],
         )
 
 
@@ -367,4 +386,159 @@ class RobotAutomation(GenericSQLPersistence[DomainRobotAutomation]):
             id=self.id,
             robot_id=self.robot_id,
             query=self.query,
+        )
+
+
+class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
+    """
+    SQL Persistence model for a PendingEnhancement.
+
+    This is used in the repository layer to pass data between the domain and the
+    database.
+    """
+
+    __tablename__ = "pending_enhancement"
+
+    reference_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("reference.id"), nullable=False
+    )
+    robot_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("robot.id"), nullable=False
+    )
+    enhancement_request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("enhancement_request.id"), nullable=False
+    )
+    robot_enhancement_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("robot_enhancement_batch.id"), nullable=True
+    )
+    status: Mapped[PendingEnhancementStatus] = mapped_column(
+        Enum(PendingEnhancementStatus),
+        nullable=False,
+        default=PendingEnhancementStatus.PENDING,
+    )
+
+    robot_enhancement_batch: Mapped["RobotEnhancementBatch"] = relationship(
+        "RobotEnhancementBatch", back_populates="pending_enhancements"
+    )
+
+    enhancement_request: Mapped["EnhancementRequest"] = relationship(
+        "EnhancementRequest", back_populates="pending_enhancements"
+    )
+
+    __table_args__ = (
+        Index("ix_pending_enhancement_robot_id_status", "robot_id", "status"),
+        Index(
+            "ix_pending_enhancement_enhancement_request_id_status",
+            "enhancement_request_id",
+            "status",
+        ),
+        Index(
+            "ix_pending_enhancement_robot_polling",
+            "robot_id",
+            "robot_enhancement_batch_id",
+            "status",
+            "created_at",
+        ),
+        Index(
+            "ix_pending_enhancement_robot_enhancement_batch_id",
+            "robot_enhancement_batch_id",
+        ),
+    )
+
+    @classmethod
+    def from_domain(cls, domain_obj: DomainPendingEnhancement) -> Self:
+        """Create a persistence model from a domain PendingEnhancement object."""
+        return cls(
+            id=domain_obj.id,
+            reference_id=domain_obj.reference_id,
+            robot_id=domain_obj.robot_id,
+            enhancement_request_id=domain_obj.enhancement_request_id,
+            robot_enhancement_batch_id=domain_obj.robot_enhancement_batch_id,
+            status=domain_obj.status,
+        )
+
+    def to_domain(
+        self,
+        preload: list[GenericSQLPreloadableType] | None = None,  # noqa: ARG002
+    ) -> DomainPendingEnhancement:
+        """Convert the persistence model into a Domain PendingEnhancement object."""
+        return DomainPendingEnhancement(
+            id=self.id,
+            reference_id=self.reference_id,
+            robot_id=self.robot_id,
+            enhancement_request_id=self.enhancement_request_id,
+            robot_enhancement_batch_id=self.robot_enhancement_batch_id,
+            status=self.status,
+        )
+
+
+class RobotEnhancementBatch(GenericSQLPersistence[DomainRobotEnhancementBatch]):
+    """
+    SQL Persistence model for a RobotEnhancementBatch.
+
+    This is used in the repository layer to pass data between the domain and the
+    database.
+    """
+
+    __tablename__ = "robot_enhancement_batch"
+
+    robot_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("robot.id"), nullable=False
+    )
+    reference_data_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    result_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    validation_result_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    pending_enhancements: Mapped[list["PendingEnhancement"]] = relationship(
+        "PendingEnhancement",
+        back_populates="robot_enhancement_batch",
+        cascade="save-update, merge",
+    )
+
+    @classmethod
+    def from_domain(cls, domain_obj: DomainRobotEnhancementBatch) -> Self:
+        """Create a persistence model from a domain RobotEnhancementBatch object."""
+        return cls(
+            id=domain_obj.id,
+            robot_id=domain_obj.robot_id,
+            reference_data_file=domain_obj.reference_data_file.to_sql()
+            if domain_obj.reference_data_file
+            else None,
+            result_file=domain_obj.result_file.to_sql()
+            if domain_obj.result_file
+            else None,
+            validation_result_file=domain_obj.validation_result_file.to_sql()
+            if domain_obj.validation_result_file
+            else None,
+            error=domain_obj.error,
+            pending_enhancements=[
+                PendingEnhancement.from_domain(pe)
+                for pe in domain_obj.pending_enhancements
+            ]
+            if domain_obj.pending_enhancements
+            else [],
+        )
+
+    def to_domain(
+        self,
+        preload: list[GenericSQLPreloadableType] | None = None,
+    ) -> DomainRobotEnhancementBatch:
+        """Convert the persistence model into a Domain RobotEnhancementBatch object."""
+        return DomainRobotEnhancementBatch(
+            id=self.id,
+            robot_id=self.robot_id,
+            reference_data_file=BlobStorageFile.from_sql(self.reference_data_file)
+            if self.reference_data_file
+            else None,
+            result_file=BlobStorageFile.from_sql(self.result_file)
+            if self.result_file
+            else None,
+            validation_result_file=BlobStorageFile.from_sql(self.validation_result_file)
+            if self.validation_result_file
+            else None,
+            error=self.error,
+            pending_enhancements=[pe.to_domain() for pe in self.pending_enhancements]
+            if "pending_enhancements" in (preload or [])
+            else [],
         )
