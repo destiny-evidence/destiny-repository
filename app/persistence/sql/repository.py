@@ -10,7 +10,6 @@ from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import (
     InstrumentedAttribute,
-    QueryableAttribute,
     RelationshipProperty,
     joinedload,
     selectinload,
@@ -71,10 +70,10 @@ class GenericAsyncSqlRepository(
 
     def _get_relationship_load(
         self,
-        relationship: QueryableAttribute,
+        attribute_name: GenericSQLPreloadableType,
         preload: list[GenericSQLPreloadableType] | None = None,
         depth: int = 1,
-    ) -> _AbstractLoad:
+    ) -> _AbstractLoad | None:
         """
         Get the appropriate relationship loading strategy with support for nesting.
 
@@ -87,6 +86,14 @@ class GenericAsyncSqlRepository(
             An ORM loading option configured for the relationship
 
         """
+        attribute: InstrumentedAttribute | None = getattr(
+            self._persistence_cls, attribute_name, None
+        )
+        if not attribute or not isinstance(attribute.property, RelationshipProperty):
+            # Not a relationship, perhaps a calculated attribute, return None
+            return None
+
+        relationship = attribute
         load_type = relationship.info.get("load_type", RelationshipLoadType.JOINED)
         max_recursion_depth = relationship.info.get("max_recursion_depth")
 
@@ -110,14 +117,23 @@ class GenericAsyncSqlRepository(
             # Recursion exit case, maximum length of this relationship's
             # self-referential chain
             avoid_propagate.add(relationship.key)
-        if preload and relationship.prop.mapper.class_ == self._persistence_cls:
-            preload = [p for p in preload if p not in avoid_propagate]
-            for nested_rel_name in preload:
-                nested_rel = getattr(relationship.prop.mapper.class_, nested_rel_name)
-                loader = loader.options(
-                    self._get_relationship_load(nested_rel, preload, depth + 1)
-                )
 
+        is_self_referential = relationship.prop.mapper.class_ == self._persistence_cls
+        if preload and is_self_referential:
+            filtered_preload = [p for p in preload if p not in avoid_propagate]
+            loader = loader.options(
+                *[
+                    _relationship_load
+                    for nested_rel_name in filtered_preload
+                    if (
+                        _relationship_load := self._get_relationship_load(
+                            nested_rel_name,
+                            filtered_preload,
+                            depth + 1,
+                        )
+                    )
+                ]
+            )
         return loader
 
     @trace_repository_method(tracer)
@@ -139,11 +155,9 @@ class GenericAsyncSqlRepository(
         options = []
         if preload:
             for p in preload:
-                attribute: InstrumentedAttribute | None = getattr(
-                    self._persistence_cls, p, None
-                )
-                if attribute and isinstance(attribute.property, RelationshipProperty):
-                    options.append(self._get_relationship_load(attribute, preload))
+                loader = self._get_relationship_load(p, preload)
+                if loader:
+                    options.append(loader)
 
         query = (
             select(self._persistence_cls)
@@ -183,8 +197,9 @@ class GenericAsyncSqlRepository(
         options = []
         if preload:
             for p in preload:
-                relationship = getattr(self._persistence_cls, p)
-                options.append(self._get_relationship_load(relationship))
+                loader = self._get_relationship_load(p, preload)
+                if loader:
+                    options.append(loader)
 
         query = (
             select(self._persistence_cls)
@@ -229,8 +244,9 @@ class GenericAsyncSqlRepository(
 
         if preload:
             for p in preload:
-                relationship = getattr(self._persistence_cls, p)
-                options.append(self._get_relationship_load(relationship))
+                loader = self._get_relationship_load(p, preload)
+                if loader:
+                    options.append(loader)
 
         query = select(self._persistence_cls).options(*options)
         result = await self._session.execute(query)

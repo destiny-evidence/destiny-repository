@@ -3,7 +3,7 @@
 import contextlib
 from abc import ABC
 from collections.abc import AsyncGenerator
-from typing import Generic
+from typing import Generic, Never
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch, NotFoundError
@@ -53,9 +53,7 @@ class GenericAsyncESRepository(
 
     @trace_repository_method(tracer)
     async def get_by_pk(
-        self,
-        pk: UUID,
-        preload: list[str] | None = None,
+        self, pk: UUID, preload: list[Never] | None = None
     ) -> GenericDomainModelType:
         """
         Get a record using its primary key.
