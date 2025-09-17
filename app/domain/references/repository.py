@@ -142,9 +142,14 @@ class ExternalIdentifierRepositoryBase(
     """Abstract implementation of a repository for external identifiers."""
 
 
+_external_identifier_sql_preloadable = Literal["reference"]
+
+
 class ExternalIdentifierSQLRepository(
     GenericAsyncSqlRepository[
-        DomainExternalIdentifier, SQLExternalIdentifier, Literal["reference"]
+        DomainExternalIdentifier,
+        SQLExternalIdentifier,
+        _external_identifier_sql_preloadable,
     ],
     ExternalIdentifierRepositoryBase,
 ):
@@ -164,7 +169,7 @@ class ExternalIdentifierSQLRepository(
         identifier_type: ExternalIdentifierType,
         identifier: str,
         other_identifier_name: str | None = None,
-        preload: list[str] | None = None,
+        preload: list[_external_identifier_sql_preloadable] | None = None,
     ) -> DomainExternalIdentifier:
         """
         Get a single external identifier by type and identifier, if it exists.
