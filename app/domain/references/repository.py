@@ -145,9 +145,7 @@ class ReferenceSQLRepository(
         """Find references that possess ALL of the given identifiers."""
         options = []
         if preload:
-            for p in preload:
-                relationship = getattr(self._persistence_cls, p)
-                options.append(self._get_relationship_load(relationship, preload))
+            options.extend(self._get_relationship_loads(preload))
 
         query = (
             select(SQLReference)
