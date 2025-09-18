@@ -18,7 +18,6 @@ from app.core.exceptions import (
 from app.core.telemetry.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
-    DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
@@ -572,14 +571,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
         )
 
-        if (
-            reference_duplicate_decision.duplicate_determination
-            != DuplicateDetermination.NOMINATED
-        ):
-            return reference_duplicate_decision
+        reference_duplicate_decision = (
+            await self._deduplication_service.determine_duplicate_from_candidates(
+                reference_duplicate_decision
+            )
+        )
 
         reference_duplicate_decision = (
-            await self._deduplication_service.determine_and_map_duplicate(
+            await self._deduplication_service.map_duplicate_decision(
                 reference_duplicate_decision
             )
         )
