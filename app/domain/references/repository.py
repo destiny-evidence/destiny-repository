@@ -207,10 +207,7 @@ class ExternalIdentifierSQLRepository(
                 SQLExternalIdentifier.other_identifier_name == other_identifier_name
             )
         if preload:
-            for p in preload:
-                loader = self._get_relationship_load(p, preload)
-                if loader:
-                    query = query.options(loader)
+            query = query.options(*self._get_relationship_loads(preload))
         result = await self._session.execute(query)
         db_identifier = result.scalar_one_or_none()
 
