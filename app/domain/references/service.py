@@ -469,7 +469,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         robot_enhancement_batch: RobotEnhancementBatch,
         blob_repository: BlobRepository,
-    ) -> tuple[set[UUID4], set[UUID4]]:
+    ) -> tuple[set[UUID4], set[UUID4], set[UUID4]]:
         """
         Validate and import the result of a robot enhancement batch.
 
@@ -514,14 +514,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             robot_enhancement_batch.id, validation_result_file
         )
 
-        await self._enhancement_service.update_pending_enhancements_status(
-            pending_enhancement_ids=list(results.failed_pending_enhancement_ids),
-            status=PendingEnhancementStatus.FAILED,
-        )
-
         return (
             results.imported_enhancement_ids,
             results.successful_pending_enhancement_ids,
+            results.failed_pending_enhancement_ids,
         )
 
     @sql_unit_of_work

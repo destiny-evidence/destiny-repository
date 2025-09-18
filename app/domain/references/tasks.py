@@ -244,6 +244,7 @@ async def validate_and_import_robot_enhancement_batch_result(
             (
                 imported_enhancement_ids,
                 successful_pending_enhancement_ids,
+                failed_pending_enhancement_ids,
             ) = await reference_service.validate_and_import_robot_enhancement_batch_result(  # noqa: E501
                 robot_enhancement_batch,
                 blob_repository,
@@ -257,6 +258,11 @@ async def validate_and_import_robot_enhancement_batch_result(
             str(exc),
         )
         return
+
+    await reference_service.update_pending_enhancements_status(
+        pending_enhancement_ids=list(failed_pending_enhancement_ids),
+        status=PendingEnhancementStatus.FAILED,
+    )
 
     await reference_service.update_pending_enhancements_status(
         pending_enhancement_ids=list(successful_pending_enhancement_ids),
