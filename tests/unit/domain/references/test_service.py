@@ -416,6 +416,7 @@ async def test_collect_and_dispatch_references_for_enhancement_enhancement_not_p
 
 
 @pytest.mark.asyncio
+@pytest.mark.deduplication_legacy
 async def test_ingest_reference_calls_validation_and_merges_legacy(
     fake_repository, fake_uow, monkeypatch
 ):

@@ -129,19 +129,22 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 "canonical_reference_id must be provided."
             )
             raise DeduplicationValueError(msg)
+        _duplicate_determination = (
+            duplicate_determination
+            if duplicate_determination
+            else DuplicateDetermination.UNSEARCHABLE
+            if not CandidateDuplicateSearchFieldsProjection.get_from_reference(
+                reference
+            ).searchable
+            else DuplicateDetermination.PENDING
+        )
         reference_duplicate_decision = ReferenceDuplicateDecision(
             reference_id=reference.id,
             enhancement_id=enhancement_id,
-            duplicate_determination=(
-                duplicate_determination
-                if duplicate_determination
-                else DuplicateDetermination.UNSEARCHABLE
-                if not CandidateDuplicateSearchFieldsProjection.get_from_reference(
-                    reference
-                ).searchable
-                else DuplicateDetermination.PENDING
-            ),
+            duplicate_determination=_duplicate_determination,
             canonical_reference_id=canonical_reference_id,
+            # If not pending, the decision is terminal and hence active
+            active_decision=_duplicate_determination != DuplicateDetermination.PENDING,
         )
         return await self.sql_uow.reference_duplicate_decisions.add(
             reference_duplicate_decision
