@@ -68,73 +68,72 @@ class GenericAsyncSqlRepository(
         self._domain_cls = domain_cls
         self.system = "SQL"
 
-    def _get_relationship_load(
+    def _get_relationship_loads(
         self,
-        attribute_name: GenericSQLPreloadableType,
-        preload: list[GenericSQLPreloadableType] | None = None,
+        preload: list[GenericSQLPreloadableType],
         depth: int = 1,
-    ) -> _AbstractLoad | None:
+    ) -> list[_AbstractLoad]:
         """
-        Get the appropriate relationship loading strategy with support for nesting.
+        Get a list of relationship loading strategies with support for nesting.
 
         Args:
-            relationship: The relationship attribute to load
-            preload: List of additional relationships to preload
+            preload: List of relationships to preload
             depth: Internal tracker for max relationship depth
 
         Returns:
-            An ORM loading option configured for the relationship
+            A list of ORM loading options configured for the relationships
 
         """
-        attribute: InstrumentedAttribute | None = getattr(
-            self._persistence_cls, attribute_name, None
-        )
-        if not attribute or not isinstance(attribute.property, RelationshipProperty):
-            # Not a relationship, perhaps a calculated attribute, return None
-            return None
+        loaders: list[_AbstractLoad] = []
 
-        relationship = attribute
-        load_type = relationship.info.get("load_type", RelationshipLoadType.JOINED)
-        max_recursion_depth = relationship.info.get("max_recursion_depth")
-
-        # Determine the base loading strategy
-        if load_type == RelationshipLoadType.SELECTIN:
-            # Recurse once, we add more loads dynamically below
-            loader = selectinload(relationship, recursion_depth=1)
-        else:
-            loader = joinedload(relationship)
-
-        # This magic ensures we both:
-        # - propagate preloads to self-referential relationships
-        # - recursively join self-referential relationships a configured number of times
-        # Use-case for initial implementation is propagating enhancements etc to
-        # duplicates when preloaded.
-        avoid_propagate: set[str] = set()
-        if back_populates := relationship.info.get("back_populates"):
-            # Don't "bounce back" and form a joining cycle
-            avoid_propagate.add(back_populates)
-        if depth == (max_recursion_depth or 1):
-            # Recursion exit case, maximum length of this relationship's
-            # self-referential chain
-            avoid_propagate.add(relationship.key)
-
-        is_self_referential = relationship.prop.mapper.class_ == self._persistence_cls
-        if preload and is_self_referential:
-            filtered_preload = [p for p in preload if p not in avoid_propagate]
-            loader = loader.options(
-                *[
-                    _relationship_load
-                    for nested_rel_name in filtered_preload
-                    if (
-                        _relationship_load := self._get_relationship_load(
-                            nested_rel_name,
-                            filtered_preload,
-                            depth + 1,
-                        )
-                    )
-                ]
+        for attribute_name in preload:
+            attribute: InstrumentedAttribute | None = getattr(
+                self._persistence_cls, attribute_name, None
             )
-        return loader
+            if not attribute or not isinstance(
+                attribute.property, RelationshipProperty
+            ):
+                # Not a relationship, perhaps a calculated attribute, skip
+                continue
+
+            relationship = attribute
+            load_type = relationship.info.get("load_type", RelationshipLoadType.JOINED)
+            max_recursion_depth = relationship.info.get("max_recursion_depth")
+
+            # Determine the base loading strategy
+            if load_type == RelationshipLoadType.SELECTIN:
+                # Recurse once, we add more loads dynamically below
+                loader = selectinload(relationship, recursion_depth=1)
+            else:
+                loader = joinedload(relationship)
+
+            # This magic ensures we both:
+            # - propagate preloads to self-referential relationships
+            # - recursively join self-referential relationships a set number of times
+            # Use-case for initial implementation is propagating enhancements etc to
+            # duplicates when preloaded.
+            avoid_propagate: set[str] = set()
+            if back_populates := relationship.info.get("back_populates"):
+                # Don't "bounce back" and form a joining cycle
+                avoid_propagate.add(back_populates)
+            if depth == (max_recursion_depth or 1):
+                # Recursion exit case, maximum length of this relationship's
+                # self-referential chain
+                avoid_propagate.add(relationship.key)
+
+            is_self_referential = (
+                relationship.prop.mapper.class_ == self._persistence_cls
+            )
+            if preload and is_self_referential:
+                loader = loader.options(
+                    *self._get_relationship_loads(
+                        [p for p in preload if p not in avoid_propagate], depth + 1
+                    )
+                )
+
+            loaders.append(loader)
+
+        return loaders
 
     @trace_repository_method(tracer)
     async def get_by_pk(
@@ -154,10 +153,7 @@ class GenericAsyncSqlRepository(
         trace_attribute(Attributes.DB_PK, str(pk))
         options = []
         if preload:
-            for p in preload:
-                loader = self._get_relationship_load(p, preload)
-                if loader:
-                    options.append(loader)
+            options.extend(self._get_relationship_loads(preload))
 
         query = (
             select(self._persistence_cls)
@@ -196,10 +192,7 @@ class GenericAsyncSqlRepository(
         """
         options = []
         if preload:
-            for p in preload:
-                loader = self._get_relationship_load(p, preload)
-                if loader:
-                    options.append(loader)
+            options.extend(self._get_relationship_loads(preload))
 
         query = (
             select(self._persistence_cls)
@@ -243,10 +236,7 @@ class GenericAsyncSqlRepository(
         options = []
 
         if preload:
-            for p in preload:
-                loader = self._get_relationship_load(p, preload)
-                if loader:
-                    options.append(loader)
+            options.extend(self._get_relationship_loads(preload))
 
         query = select(self._persistence_cls).options(*options)
         result = await self._session.execute(query)
