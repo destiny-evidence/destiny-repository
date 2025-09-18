@@ -481,7 +481,7 @@ async def add_pending_enhancement(
     return pending_enhancement
 
 
-async def test_request_pending_enhancements_batch(
+async def test_request_robot_enhancement_batch(
     session: AsyncSession,
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -512,7 +512,7 @@ async def test_request_pending_enhancements_batch(
     mock_get_pending.assert_awaited_once_with(robot_id=robot.id, limit=10)
 
 
-async def test_request_pending_enhancements_batch_limit_exceeded(
+async def test_request_robot_enhancement_batch_limit_exceeded(
     session: AsyncSession,
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -537,7 +537,7 @@ async def test_request_pending_enhancements_batch_limit_exceeded(
     assert call_args.kwargs["limit"] == 10000  # Should be capped at max limit
 
 
-async def test_request_pending_enhancements_batch_invalid_robot_id(
+async def test_request_robot_enhancement_batch_invalid_robot_id(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -555,7 +555,7 @@ async def test_request_pending_enhancements_batch_invalid_robot_id(
     mock_get_pending.assert_not_awaited()
 
 
-async def test_request_pending_enhancements_batch_missing_robot_id(
+async def test_request_robot_enhancement_batch_missing_robot_id(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
