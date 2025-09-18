@@ -145,9 +145,7 @@ class ReferenceSQLRepository(
         """Find references that possess ALL of the given identifiers."""
         options = []
         if preload:
-            for p in preload:
-                relationship = getattr(self._persistence_cls, p)
-                options.append(self._get_relationship_load(relationship, preload))
+            options.extend(self._get_relationship_loads(preload))
 
         query = (
             select(SQLReference)
@@ -315,10 +313,7 @@ class ExternalIdentifierSQLRepository(
                 SQLExternalIdentifier.other_identifier_name == other_identifier_name
             )
         if preload:
-            for p in preload:
-                loader = self._get_relationship_load(p, preload)
-                if loader:
-                    query = query.options(loader)
+            query = query.options(*self._get_relationship_loads(preload))
         result = await self._session.execute(query)
         db_identifier = result.scalar_one_or_none()
 
