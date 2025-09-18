@@ -650,7 +650,7 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         return self
 
     @model_validator(mode="after")
-    def check_active_decision_is_terminal_if_true(self) -> Self:
+    def check_active_decision_is_terminal(self) -> Self:
         """Assert that active decisions are only set for terminal states."""
         if (
             self.active_decision

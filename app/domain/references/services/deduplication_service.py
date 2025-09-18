@@ -5,7 +5,7 @@ from typing import Literal
 
 from opentelemetry import trace
 
-from app.core.config import get_settings
+from app.core.config import Environment, get_settings
 from app.core.exceptions import DeduplicationValueError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
@@ -188,15 +188,25 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         """
         Implement a basic placeholder duplicate determinator.
 
-        Temporary implementation: takes the first candidate as the duplicate.
-        This is the one with the highest score in the candidate nomination stage.
         This proofs out the flow but should not be used in production.
+
+        Temporary test implementation: takes the first candidate as the duplicate.
+        This is the one with the highest score in the candidate nomination stage.
+
+        Temporary deployed implementation: returns no duplicate.
         """
-        return ReferenceDuplicateDeterminationResult(
-            duplicate_determination=DuplicateDetermination.DUPLICATE,
-            canonical_reference_id=reference_duplicate_decision.candidate_duplicate_ids[
-                0
-            ],
+        return (
+            ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.DUPLICATE,
+                canonical_reference_id=reference_duplicate_decision.candidate_duplicate_ids[
+                    0
+                ],
+            )
+            if settings.env in (Environment.E2E, Environment.TEST)
+            and reference_duplicate_decision.candidate_duplicate_ids
+            else ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.UNRESOLVED
+            )
         )
 
     async def determine_and_map_duplicate(
