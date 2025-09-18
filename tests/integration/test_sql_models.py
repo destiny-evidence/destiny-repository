@@ -221,10 +221,6 @@ async def test_import_batch_status_projection(
             EnhancementRequestStatus.PARTIAL_FAILED,
         ),
         (
-            [PendingEnhancementStatus.INDEXING_FAILED],
-            EnhancementRequestStatus.PARTIAL_FAILED,
-        ),
-        (
             [
                 PendingEnhancementStatus.FAILED,
                 PendingEnhancementStatus.INDEXING_FAILED,
@@ -235,6 +231,20 @@ async def test_import_batch_status_projection(
             [
                 PendingEnhancementStatus.PENDING,
                 PendingEnhancementStatus.ACCEPTED,
+            ],
+            EnhancementRequestStatus.PROCESSING,
+        ),
+        (
+            [
+                PendingEnhancementStatus.COMPLETED,
+                PendingEnhancementStatus.IMPORTING,
+            ],
+            EnhancementRequestStatus.PROCESSING,
+        ),
+        (
+            [
+                PendingEnhancementStatus.PENDING,
+                PendingEnhancementStatus.INDEXING_FAILED,
             ],
             EnhancementRequestStatus.PROCESSING,
         ),
