@@ -241,7 +241,11 @@ class EnhancementResultValidator(BaseModel):
 
     @classmethod
     async def from_raw(
-        cls, entry: str, entry_ref: int, expected_reference_ids: set[UUID4]
+        cls,
+        entry: str,
+        entry_ref: int,
+        expected_reference_ids: set[UUID4],
+        processed_reference_ids: set[UUID4] | None = None,
     ) -> Self:
         """Create a EnhancementResult from a jsonl entry."""
         file_entry_validator: TypeAdapter[destiny_sdk.robots.EnhancementResultEntry] = (
@@ -262,6 +266,17 @@ class EnhancementResultValidator(BaseModel):
                     message="Reference not in batch enhancement request.",
                 )
             )
+
+        # Check for duplicate reference IDs if tracking is enabled
+        if processed_reference_ids is not None:
+            if file_entry.reference_id in processed_reference_ids:
+                return cls(
+                    robot_error=destiny_sdk.robots.LinkedRobotError(
+                        reference_id=file_entry.reference_id,
+                        message="Duplicate reference ID in enhancement result.",
+                    )
+                )
+            processed_reference_ids.add(file_entry.reference_id)
 
         if isinstance(file_entry, destiny_sdk.enhancements.Enhancement):
             return cls(

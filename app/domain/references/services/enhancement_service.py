@@ -231,6 +231,8 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         at_least_one_failed = False
         at_least_one_succeeded = False
         attempted_reference_ids: set[UUID4] = set()
+        # Track processed IDs for duplicate validation
+        processed_reference_ids: set[UUID4] = set()
         async with blob_repository.stream_file_from_blob_storage(
             enhancement_request.result_file,
         ) as file_stream:
@@ -244,7 +246,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                     if not line.strip():
                         continue
                     validated_result = await EnhancementResultValidator.from_raw(
-                        line, line_no, expected_reference_ids
+                        line, line_no, expected_reference_ids, processed_reference_ids
                     )
                     line_no += 1
                     if validated_result.robot_error:
@@ -471,6 +473,8 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         expected_reference_ids = {pe.reference_id for pe in pending_enhancements}
         successful_reference_ids: set[UUID4] = set()
         attempted_reference_ids: set[UUID4] = set()
+        # Track processed IDs for duplicate validation
+        processed_reference_ids: set[UUID4] = set()
 
         async with blob_repository.stream_file_from_blob_storage(
             result_file,
@@ -486,7 +490,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                         continue
 
                     validated_result = await EnhancementResultValidator.from_raw(
-                        line, line_no, expected_reference_ids
+                        line, line_no, expected_reference_ids, processed_reference_ids
                     )
                     line_no += 1
 
