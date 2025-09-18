@@ -149,6 +149,7 @@ class FakeUnitOfWork:
         enhancement_requests=None,
         robots=None,
         robot_automations=None,
+        reference_duplicate_decisions=None,
     ):
         self.batches = batches
         self.imports = imports
@@ -159,6 +160,7 @@ class FakeUnitOfWork:
         self.enhancement_requests = enhancement_requests
         self.robots = robots
         self.robot_automations = robot_automations
+        self.reference_duplicate_decisions = reference_duplicate_decisions
         self.committed = False
 
     async def __aenter__(self):
