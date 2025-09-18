@@ -241,6 +241,39 @@ async def repair_robot_automation_percolation_index() -> None:
     await reference_service.repopulate_robot_automation_percolation_index()
 
 
+@broker.task
+async def process_reference_duplicate_decision(
+    reference_duplicate_decision_id: UUID4,
+) -> None:
+    """Task to process a reference duplicate decision."""
+    logger.info(
+        "Processing reference duplicate decision",
+        reference_duplicate_decision_id=str(reference_duplicate_decision_id),
+    )
+    name_span(f"Process reference duplicate decision {reference_duplicate_decision_id}")
+    sql_uow = await get_sql_unit_of_work()
+    es_uow = await get_es_unit_of_work()
+    blob_repository = await get_blob_repository()
+    reference_anti_corruption_service = ReferenceAntiCorruptionService(blob_repository)
+    reference_service = await get_reference_service(
+        reference_anti_corruption_service, sql_uow, es_uow
+    )
+    reference_duplicate_decision = (
+        await reference_service.get_reference_duplicate_decision(
+            reference_duplicate_decision_id
+        )
+    )
+    trace_attribute(
+        Attributes.REFERENCE_ID, str(reference_duplicate_decision.reference_id)
+    )
+    with bound_contextvars(
+        reference_id=str(reference_duplicate_decision.reference_id),
+    ):
+        await reference_service.process_reference_duplicate_decision(
+            reference_duplicate_decision
+        )
+
+
 @tracer.start_as_current_span("Detect and dispatch robot automations")
 async def detect_and_dispatch_robot_automations(
     reference_service: ReferenceService,
