@@ -251,8 +251,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference = self._anti_corruption_service.reference_from_sdk_file_input(
             reference_create_result.reference
         )
-        if reference:
-            await self._merge_reference(reference)
 
         canonical_reference = await self._deduplication_service.find_exact_duplicate(
             reference
@@ -611,14 +609,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
         )
 
-        if (
-            reference_duplicate_decision.duplicate_determination
-            != DuplicateDetermination.NOMINATED
-        ):
-            return reference_duplicate_decision
+        reference_duplicate_decision = (
+            await self._deduplication_service.determine_duplicate_from_candidates(
+                reference_duplicate_decision
+            )
+        )
 
         reference_duplicate_decision = (
-            await self._deduplication_service.determine_and_map_duplicate(
+            await self._deduplication_service.map_duplicate_decision(
                 reference_duplicate_decision
             )
         )

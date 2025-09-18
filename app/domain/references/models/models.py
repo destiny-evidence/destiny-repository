@@ -109,8 +109,8 @@ class DuplicateDetermination(StrEnum):
     DECOUPLED = auto()
 
     @classmethod
-    def terminal_states(cls) -> set["DuplicateDetermination"]:
-        """Get the terminal states of the determination process."""
+    def get_terminal_states(cls) -> set["DuplicateDetermination"]:
+        """Get the terminal states for duplicate determination."""
         return {
             cls.DUPLICATE,
             cls.EXACT_DUPLICATE,
@@ -347,15 +347,11 @@ class Reference(
 
         # Find anything in the reference that is not in self
         return (
-            reference.visibility != self.visibility
-            or bool(
-                _create_hash_set(reference.enhancements)
-                - _create_hash_set(self.enhancements)
-            )
-            or bool(
-                _create_hash_set(reference.identifiers)
-                - _create_hash_set(self.identifiers)
-            )
+            reference.visibility == self.visibility
+            and _create_hash_set(reference.enhancements)
+            == _create_hash_set(self.enhancements)
+            and _create_hash_set(reference.identifiers)
+            == _create_hash_set(self.identifiers)
         )
 
 
@@ -655,7 +651,7 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         if (
             self.active_decision
             and self.duplicate_determination
-            not in DuplicateDetermination.terminal_states()
+            not in DuplicateDetermination.get_terminal_states()
         ):
             msg = (
                 "Decision can only be active if terminal: "

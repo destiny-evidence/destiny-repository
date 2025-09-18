@@ -209,38 +209,38 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             )
         )
 
-    async def determine_and_map_duplicate(
+    async def determine_duplicate_from_candidates(
+        self, reference_duplicate_decision: ReferenceDuplicateDecision
+    ) -> ReferenceDuplicateDecision:
+        """Determine a duplicate reference from its candidates."""
+        if (
+            reference_duplicate_decision.duplicate_determination
+            in DuplicateDetermination.get_terminal_states()
+        ):
+            return reference_duplicate_decision
+
+        duplicate_determination_result = (
+            await self.__placeholder_duplicate_determinator(
+                reference_duplicate_decision
+            )
+        )
+
+        return await self.sql_uow.reference_duplicate_decisions.update_by_pk(
+            reference_duplicate_decision.id,
+            detail=duplicate_determination_result.detail,
+            duplicate_determination=duplicate_determination_result.duplicate_determination,
+            canonical_reference_id=duplicate_determination_result.canonical_reference_id,
+        )
+
+    async def map_duplicate_decision(
         self, new_decision: ReferenceDuplicateDecision
     ) -> ReferenceDuplicateDecision:
-        """Determine a duplicate reference from its candidates and save the mapping."""
-        if (
-            not new_decision.candidate_duplicate_ids
-            or new_decision.duplicate_determination != DuplicateDetermination.NOMINATED
-        ):
-            msg = (
-                "ReferenceDuplicateDecision must have candidate_duplicate_ids and "
-                "be in NOMINATED state to detect duplicates."
-            )
-            raise DeduplicationValueError(msg)
-
+        """Apply the persistence changes from the new duplicate decision."""
         reference = await self.sql_uow.references.get_by_pk(
             new_decision.reference_id,
             preload=["duplicate_decision", "canonical_reference"],
         )
         active_decision = reference.duplicate_decision
-
-        duplicate_determination_result = (
-            await self.__placeholder_duplicate_determinator(new_decision)
-        )
-
-        # Update new decision with the result
-        new_decision.detail = duplicate_determination_result.detail
-        new_decision.duplicate_determination = (
-            duplicate_determination_result.duplicate_determination
-        )
-        new_decision.canonical_reference_id = (
-            duplicate_determination_result.canonical_reference_id
-        )
 
         # Remap active decision if needed and handle other cases (flattened if/else)
         if active_decision and (
