@@ -111,30 +111,26 @@ If the URL expires, a new one can be generated using
 
 
 class EnhancementRequestStatus(StrEnum):
-    """
-    The status of an enhancement request.
-
-    **Allowed values**:
-    - `received`: Enhancement request has been received by the repo.
-    - `accepted`: Enhancement request has been accepted by the robot.
-    - `rejected`: Enhancement request has been rejected by the robot.
-    - `partial_failed`: Some enhancements failed to create.
-    - `failed`: All enhancements failed to create.
-    - `importing`: Enhancements have been received by the repo and are being imported.
-    - `indexing`: Enhancements have been imported and are being indexed.
-    - `indexing_failed`: Enhancements have been imported but indexing failed.
-    - `completed`: All enhancements have been created.
-    """
+    """The status of an enhancement request."""
 
     RECEIVED = auto()
+    """Enhancement request has been received by the repo."""
     ACCEPTED = auto()
+    """Enhancement request has been accepted by the robot."""
     REJECTED = auto()
+    """Enhancement request has been rejected by the robot."""
     PARTIAL_FAILED = auto()
+    """Some enhancements failed to create."""
     FAILED = auto()
+    """All enhancements failed to create."""
     IMPORTING = auto()
+    """Enhancements have been received by the repo and are being imported."""
     INDEXING = auto()
+    """Enhancements have been imported and are being indexed."""
     INDEXING_FAILED = auto()
+    """Enhancements have been imported but indexing failed."""
     COMPLETED = auto()
+    """All enhancements have been created."""
 
 
 class _EnhancementRequestBase(BaseModel):

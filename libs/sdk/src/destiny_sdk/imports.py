@@ -13,35 +13,29 @@ from pydantic import (
 
 
 class ImportRecordStatus(StrEnum):
-    """
-    Describes the status of an import record.
-
-    - `created`: Created, but no processing has started.
-    - `started`: Processing has started on the batch.
-    - `completed`: Processing has been completed.
-    """
+    """Describes the status of an import record."""
 
     CREATED = auto()
+    """Created, but no processing has started."""
     STARTED = auto()
+    """Processing has started on the batch."""
     COMPLETED = auto()
+    """Processing has been completed."""
 
 
 class ImportBatchStatus(StrEnum):
-    """
-    Describes the status of an import batch.
-
-    - `created`: Created, but no processing has started.
-    - `started`: Processing has started on the batch.
-    - `failed`: Processing has failed.
-    - `partially_failed`: Some references succeeded while others failed.
-    - `completed`: Processing has been completed.
-    """
+    """Describes the status of an import batch."""
 
     CREATED = auto()
+    """Created, but no processing has started."""
     STARTED = auto()
+    """Processing has started on the batch."""
     FAILED = auto()
+    """Processing has failed."""
     PARTIALLY_FAILED = auto()
+    """Some references succeeded while others failed."""
     COMPLETED = auto()
+    """Processing has been completed."""
 
 
 class CollisionStrategy(StrEnum):
@@ -53,50 +47,50 @@ class CollisionStrategy(StrEnum):
 
     Enhancement collisions are detected on an entry with matching ``enhancement_type``
     and ``source`` already being present on the collided reference.
-
-    - `discard`: Do nothing with the incoming reference.
-    - `fail`: Do nothing with the incoming reference and mark it as failed. This
-      allows the importing process to "follow up" on the failure.
-    - `merge_aggressive`: Prioritize the incoming reference's identifiers and
-      enhancements in the merge.
-    - `merge_defensive`: Prioritize the existing reference's identifiers and
-      enhancements in the merge.
-    - `append`: Performs an aggressive merge of identifiers, and an append of
-      enhancements.
-    - `overwrite`: Performs an aggressive merge of identifiers, and an overwrite of
-      enhancements (deleting existing and recreating what is imported). This should
-      be used sparingly and carefully.
     """
 
     DISCARD = auto()
+    """Do nothing with the incoming reference."""
     FAIL = auto()
+    """
+    Do nothing with the incoming reference and mark it as failed. This allows the
+    importing process to 'follow up' on the failure.
+    """
     MERGE_AGGRESSIVE = auto()
+    """Prioritize the incoming reference's identifiers and enhancements in the merge."""
     MERGE_DEFENSIVE = auto()
+    """Prioritize the existing reference's identifiers and enhancements in the merge."""
     APPEND = auto()
+    """Performs an aggressive merge of identifiers, and an append of enhancements."""
     OVERWRITE = auto()
+    """
+    Performs an aggressive merge of identifiers, and an overwrite of enhancements
+    (deleting existing and recreating what is imported). This should be used sparingly
+    and carefully.
+    """
 
 
 class ImportResultStatus(StrEnum):
-    """
-    Describes the status of an import result.
-
-    - `created`: Created, but no processing has started.
-    - `started`: The reference is currently being processed.
-    - `completed`: The reference has been created.
-    - `partially_failed`: The reference was created but one or more enhancements or
-      identifiers failed to be added. See the result's `failure_details` field for
-      more information.
-    - `failed`: The reference failed to be created. See the result's `failure_details`
-      field for more information.
-    - `retrying`: Processing has failed, but is being retried.
-    """
+    """Describes the status of an import result."""
 
     CREATED = auto()
+    """Created, but no processing has started."""
     STARTED = auto()
+    """The reference is currently being processed."""
     COMPLETED = auto()
+    """The reference has been created."""
     PARTIALLY_FAILED = auto()
+    """
+    The reference was created but one or more enhancements or identifiers failed to
+    be added. See the result's `failure_details` field for more information.
+    """
     FAILED = auto()
+    """
+    The reference failed to be created. See the result's `failure_details` field for
+    more information.
+    """
     RETRYING = auto()
+    """Processing has failed, but is being retried."""
 
 
 class _ImportRecordBase(BaseModel):

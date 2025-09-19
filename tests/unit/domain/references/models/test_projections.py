@@ -16,7 +16,7 @@ from app.domain.references.models.models import (
     Visibility,
 )
 from app.domain.references.models.projections import (
-    CandidateDuplicateSearchFieldsProjection,
+    CandidateCanonicalSearchFieldsProjection,
     DeduplicatedReferenceProjection,
 )
 
@@ -191,8 +191,8 @@ def complete_reference(
     )
 
 
-class TestCandidateDuplicateSearchFieldsProjection:
-    """Test the CandidateDuplicateSearchFieldsProjection class."""
+class TestCandidateCanonicalSearchFieldsProjection:
+    """Test the CandidateCanonicalSearchFieldsProjection class."""
 
     def test_get_from_reference(self, sample_authorship):
         """Test extracting candidacy fingerprint with various scenarios."""
@@ -284,7 +284,7 @@ class TestCandidateDuplicateSearchFieldsProjection:
             identifiers=[],
         )
 
-        result1 = CandidateDuplicateSearchFieldsProjection.get_from_reference(
+        result1 = CandidateCanonicalSearchFieldsProjection.get_from_reference(
             reference1
         )
         assert result1.title == "Sample Research Paper"  # Whitespace stripped
@@ -303,7 +303,7 @@ class TestCandidateDuplicateSearchFieldsProjection:
             identifiers=[],
         )
 
-        result2 = CandidateDuplicateSearchFieldsProjection.get_from_reference(
+        result2 = CandidateCanonicalSearchFieldsProjection.get_from_reference(
             reference2
         )
         assert result2.publication_year == 2022  # From publication_date
@@ -316,7 +316,7 @@ class TestCandidateDuplicateSearchFieldsProjection:
             identifiers=[],
         )
 
-        result3 = CandidateDuplicateSearchFieldsProjection.get_from_reference(
+        result3 = CandidateCanonicalSearchFieldsProjection.get_from_reference(
             reference3
         )
         assert result3.title == "Hydration Title"  # From first enhancement
@@ -333,7 +333,7 @@ class TestCandidateDuplicateSearchFieldsProjection:
             identifiers=[],
         )
 
-        result_empty = CandidateDuplicateSearchFieldsProjection.get_from_reference(
+        result_empty = CandidateCanonicalSearchFieldsProjection.get_from_reference(
             reference_empty
         )
         assert result_empty.title is None
@@ -349,7 +349,7 @@ class TestCandidateDuplicateSearchFieldsProjection:
             identifiers=[],
         )
 
-        result_none = CandidateDuplicateSearchFieldsProjection.get_from_reference(
+        result_none = CandidateCanonicalSearchFieldsProjection.get_from_reference(
             reference_none
         )
         assert result_none.title is None

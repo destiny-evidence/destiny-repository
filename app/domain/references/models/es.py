@@ -18,7 +18,7 @@ from pydantic import UUID4
 
 from app.core.config import get_settings
 from app.domain.references.models.models import (
-    CandidateDuplicateSearchFields,
+    CandidateCanonicalSearchFields,
     Enhancement,
     EnhancementType,
     ExternalIdentifierAdapter,
@@ -29,7 +29,7 @@ from app.domain.references.models.models import (
     Visibility,
 )
 from app.domain.references.models.projections import (
-    CandidateDuplicateSearchFieldsProjection,
+    CandidateCanonicalSearchFieldsProjection,
 )
 from app.persistence.es.persistence import (
     INDEX_PREFIX,
@@ -180,7 +180,7 @@ class ReferenceDomainMixin(InnerDoc):
         )
 
 
-class ReferenceCandidateDuplicateMixin(InnerDoc):
+class ReferenceCandidateCanonicalMixin(InnerDoc):
     """Mixin to project Reference fields relevant to deduplication."""
 
     if settings.feature_flags.deduplication:
@@ -195,8 +195,8 @@ class ReferenceCandidateDuplicateMixin(InnerDoc):
         )
 
     @classmethod
-    def from_projection(cls, projection: CandidateDuplicateSearchFields) -> Self:
-        """Create a ReferenceCandidateDuplicateMixin from the search projection."""
+    def from_projection(cls, projection: CandidateCanonicalSearchFields) -> Self:
+        """Create a ReferenceCandidateCanonicalMixin from the search projection."""
         return cls(
             title=projection.title,
             authors=projection.authors,
@@ -207,14 +207,14 @@ class ReferenceCandidateDuplicateMixin(InnerDoc):
     def from_domain(cls, reference: Reference) -> Self:
         """Create the ES ReferenceDeduplicationMixin."""
         return cls.from_projection(
-            CandidateDuplicateSearchFieldsProjection.get_from_reference(reference)
+            CandidateCanonicalSearchFieldsProjection.get_from_reference(reference)
         )
 
 
 class ReferenceDocument(
     GenericESPersistence[Reference],
     ReferenceDomainMixin,
-    ReferenceCandidateDuplicateMixin,
+    ReferenceCandidateCanonicalMixin,
 ):
     """Persistence model for references in Elasticsearch."""
 
@@ -232,7 +232,7 @@ class ReferenceDocument(
             meta={"id": domain_obj.id},  # type: ignore[call-arg]
             **ReferenceDomainMixin.from_domain(domain_obj).to_dict(),
             **(
-                ReferenceCandidateDuplicateMixin.from_domain(domain_obj).to_dict()
+                ReferenceCandidateCanonicalMixin.from_domain(domain_obj).to_dict()
                 if settings.feature_flags.deduplication
                 else {}
             ),
