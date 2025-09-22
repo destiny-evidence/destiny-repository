@@ -468,7 +468,7 @@ class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):
     )
     validation_result_file: BlobStorageFile | None = Field(
         default=None,
-        description="The file containing the validation result data from the robot.",
+        description="The file containing the validation result data from the repository.",
     )
     error: str | None = Field(
         default=None,
