@@ -516,20 +516,22 @@ class GenericAsyncSqlRepository(
         """
         options = self._get_preload_options(preload)
 
-        # Validate filter field names
-        self._validate_fields_exist(list(filters.keys()))
+        # Validate filter and order_by field names
+        fields_to_validate = list(filters.keys())
+        if order_by:
+            fields_to_validate.append(order_by)
+        self._validate_fields_exist(fields_to_validate)
 
         query = select(self._persistence_cls).options(*options)
 
         for field_name, value in filters.items():
-            if hasattr(self._persistence_cls, field_name):
-                field = getattr(self._persistence_cls, field_name)
-                if value is None:
-                    query = query.where(field.is_(None))
-                else:
-                    query = query.where(field == value)
+            field = getattr(self._persistence_cls, field_name)
+            if value is None:
+                query = query.where(field.is_(None))
+            else:
+                query = query.where(field == value)
 
-        if order_by and hasattr(self._persistence_cls, order_by):
+        if order_by:
             query = query.order_by(getattr(self._persistence_cls, order_by))
 
         if limit is not None:
