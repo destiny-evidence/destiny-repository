@@ -118,8 +118,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
     async def build_robot_enhancement_batch(
         self,
         robot_enhancement_batch: RobotEnhancementBatch,
-        file_stream: FileStream,
-        blob_repository: BlobRepository,
+        reference_data_file: BlobStorageFile,
     ) -> RobotEnhancementBatch:
         """
         Create a robot enhancement batch.
@@ -127,19 +126,12 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         Args:
             robot_enhancement_batch (RobotEnhancementBatch): The robot enhancement
                 object.
-            file_stream (FileStream): The file stream of references.
-            blob_repository (BlobRepository): The blob repository.
+            reference_data_file (BlobStorageFile): The blob storage file object.
 
         Returns:
             RobotEnhancementBatch: The created robot enhancement batch.
 
         """
-        reference_data_file = await blob_repository.upload_file_to_blob_storage(
-            content=file_stream,
-            path="robot_enhancement_batch_reference_data",
-            filename=f"{robot_enhancement_batch.id}.jsonl",
-        )
-
         result_file = BlobStorageFile(
             location=settings.default_blob_location,
             container=settings.default_blob_container,

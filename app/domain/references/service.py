@@ -799,8 +799,13 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             ],
         )
 
+        reference_data_file = await blob_repository.upload_file_to_blob_storage(
+            content=file_stream,
+            path="robot_enhancement_batch_reference_data",
+            filename=f"{robot_enhancement_batch.id}.jsonl",
+        )
+
         return await self._enhancement_service.build_robot_enhancement_batch(
             robot_enhancement_batch=robot_enhancement_batch,
-            file_stream=file_stream,
-            blob_repository=blob_repository,
+            reference_data_file=reference_data_file,
         )
