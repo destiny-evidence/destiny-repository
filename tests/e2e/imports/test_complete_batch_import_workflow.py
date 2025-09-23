@@ -473,46 +473,12 @@ def register_toy_robot(client: httpx.Client) -> None:
     assert response.status_code == 201
     toy_robot_id = response.json()["id"]
 
-    # Send an enhancement request if a new reference doesn't have a toy enhancement,
-    # or if a new toy enhancement is added to a reference (we do some fancy stuff in
-    # the next test to do this once and stop the cycle).
     response = client.post(
         "/enhancement-requests/automations/",
         json={
             "robot_id": toy_robot_id,
-            "query": {
-                "bool": {
-                    "should": [
-                        {
-                            "bool": {
-                                "must_not": [
-                                    {
-                                        "nested": {
-                                            "path": "reference.enhancements.content.annotations",
-                                            "query": {
-                                                "term": {
-                                                    "reference.enhancements.content.annotations.label": "toy"
-                                                }
-                                            },
-                                        }
-                                    }
-                                ]
-                            }
-                        },
-                        {
-                            "nested": {
-                                "path": "enhancement.content.annotations",
-                                "query": {
-                                    "term": {
-                                        "enhancement.content.annotations.label": "toy"
-                                    }
-                                },
-                            }
-                        },
-                    ],
-                    "minimum_should_match": 1,
-                }
-            },
+            # Enhancements for all!
+            "query": {"match_all": {}},
         },
     )
 

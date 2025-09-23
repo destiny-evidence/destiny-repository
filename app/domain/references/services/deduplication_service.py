@@ -234,13 +234,16 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
     async def map_duplicate_decision(
         self, new_decision: ReferenceDuplicateDecision
-    ) -> ReferenceDuplicateDecision:
+    ) -> tuple[ReferenceDuplicateDecision, bool]:
         """Apply the persistence changes from the new duplicate decision."""
         reference = await self.sql_uow.references.get_by_pk(
             new_decision.reference_id,
             preload=["duplicate_decision", "canonical_reference"],
         )
         active_decision = reference.duplicate_decision
+
+        # Preset to True, will be flipped if not changed
+        decision_changed = True
 
         # Remap active decision if needed and handle other cases (flattened if/else)
         if active_decision and (
@@ -279,10 +282,15 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             # Either no active decision or the mapping is the same.
             # Just update the active decision to record the consistent state.
             if active_decision:
+                decision_changed = False
                 active_decision.active_decision = False
             new_decision.active_decision = True
 
         # Update in-place, it's just easier
         if active_decision:
             await self.sql_uow.reference_duplicate_decisions.merge(active_decision)
-        return await self.sql_uow.reference_duplicate_decisions.merge(new_decision)
+        new_decision = await self.sql_uow.reference_duplicate_decisions.merge(
+            new_decision
+        )
+
+        return new_decision, decision_changed

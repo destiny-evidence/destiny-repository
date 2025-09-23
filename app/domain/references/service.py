@@ -1,5 +1,6 @@
 """The service for interacting with and managing references."""
 
+import asyncio
 from collections import defaultdict
 from collections.abc import Iterable
 from uuid import UUID
@@ -93,6 +94,34 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_id, preload=["identifiers", "enhancements"]
         )
 
+    async def _get_canonical_reference(self, reference_id: UUID) -> Reference:
+        """Get the canonical reference for a given reference."""
+        reference = await self.sql_uow.references.get_by_pk(
+            reference_id,
+            preload=[
+                "identifiers",
+                "enhancements",
+                "duplicate_decision",
+                "duplicate_references",
+            ],
+        )
+        if reference.canonical_like:
+            return DeduplicatedReferenceProjection.get_from_reference(reference)
+
+        if (
+            not reference.duplicate_decision
+            or not reference.duplicate_decision.canonical_reference_id
+        ):
+            msg = (
+                "Reference is not canonical but has no canonical reference id. "
+                "This should not happen."
+            )
+            raise RuntimeError(msg)
+
+        return await self._get_canonical_reference(
+            reference.duplicate_decision.canonical_reference_id
+        )
+
     @sql_unit_of_work
     async def get_canonical_reference_with_implied_changeset(
         self, reference_id: UUID
@@ -107,40 +136,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         base reference is the deduplicated projection of its canonical reference.
         """
         reference = await self.sql_uow.references.get_by_pk(
-            reference_id,
-            preload=[
-                "identifiers",
-                "enhancements",
-                "duplicate_decision",
-            ],
+            reference_id, preload=["identifiers", "enhancements", "duplicate_decision"]
         )
-        if reference.canonical_like:
-            # Reference is canonical or has no decision
-            return ReferenceWithChangeset(
-                **reference.model_dump(),
-                delta_reference=reference,
-            )
-
-        if (
-            not reference.duplicate_decision
-            or not reference.duplicate_decision.canonical_reference_id
-        ):
-            msg = (
-                "Reference is not canonical but has no canonical reference id. "
-                "This should not happen."
-            )
-            raise RuntimeError(msg)
-        canonical_reference = await self.sql_uow.references.get_by_pk(
-            reference.duplicate_decision.canonical_reference_id,
-            preload=["identifiers", "enhancements", "duplicate_references"],
-        )
+        canonical_reference = await self._get_canonical_reference(reference_id)
         return ReferenceWithChangeset(
             **DeduplicatedReferenceProjection.get_from_reference(
                 canonical_reference
             ).model_dump(),
-            delta_reference=Reference(
-                **canonical_reference.model_dump(),
-            ),
+            delta_reference=reference,
         )
 
     async def _merge_reference(self, reference: Reference) -> Reference:
@@ -520,6 +523,37 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference_ids = await self.get_all_reference_ids()
         await self.index_references(reference_ids)
 
+    async def _get_reference_changesets_from_enhancements(
+        self,
+        enhancement_ids: list[UUID],
+    ) -> list[ReferenceWithChangeset]:
+        """
+        Get the reference changeset from an incoming enhancement.
+
+        This is a temporary adapter, to eventually be superseded by direct passing of
+        ReferenceWithChangeset from the enhancing process.
+        See the note in docstring of detect_robot_automations().
+        """
+        enhancements = await self.sql_uow.enhancements.get_by_pks(enhancement_ids)
+        canonical_references: list[Reference] = await asyncio.gather(
+            *[
+                self._get_canonical_reference(enhancement.reference_id)
+                for enhancement in enhancements
+            ]
+        )
+        return [
+            ReferenceWithChangeset(
+                **canonical_reference.model_dump(),
+                delta_reference=Reference(
+                    id=enhancement.reference_id,
+                    enhancements=[enhancement],
+                ),
+            )
+            for enhancement, canonical_reference in zip(
+                enhancements, canonical_references, strict=True
+            )
+        ]
+
     @es_unit_of_work
     async def _detect_robot_automations(
         self,
@@ -541,11 +575,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     settings.default_es_percolation_chunk_size,
                 ),
             ):
-                enhancements = await self.sql_uow.enhancements.get_by_pks(
-                    enhancement_id_chunk,
-                )
                 robot_automations.extend(
-                    await self.es_uow.robot_automations.percolate(enhancements)
+                    await self.es_uow.robot_automations.percolate(
+                        await self._get_reference_changesets_from_enhancements(
+                            enhancement_id_chunk
+                        )
+                    )
                 )
 
         # Merge robot_automations on robot_id
@@ -573,7 +608,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         NB this is currently in a bit of an asymmetric state. Imports are processed
         per-reference, and enhancement fulfillments are processed per-batch. If/when we
         process enhancements per-reference, then the enhancement_ids parameter and
-        translation can be removed in favour of directly passing a ReferenceWithChangeset.
+        translation can be removed in favour of directly passing in a
+        ReferenceWithChangeset.
         """
         return await self._detect_robot_automations(
             reference=reference, enhancement_ids=enhancement_ids
@@ -650,7 +686,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def process_reference_duplicate_decision(
         self,
         reference_duplicate_decision: ReferenceDuplicateDecision,
-    ) -> ReferenceDuplicateDecision:
+    ) -> tuple[ReferenceDuplicateDecision, bool]:
         """Process a reference duplicate decision."""
         reference_duplicate_decision = (
             await self._deduplication_service.nominate_candidate_duplicates(
@@ -664,10 +700,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
         )
 
-        reference_duplicate_decision = (
-            await self._deduplication_service.map_duplicate_decision(
-                reference_duplicate_decision
-            )
+        (
+            reference_duplicate_decision,
+            decision_changed,
+        ) = await self._deduplication_service.map_duplicate_decision(
+            reference_duplicate_decision
         )
 
         if reference_duplicate_decision.active_decision:
@@ -675,4 +712,4 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 reference_duplicate_decision.reference_id
             )
 
-        return reference_duplicate_decision
+        return reference_duplicate_decision, decision_changed

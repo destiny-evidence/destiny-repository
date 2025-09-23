@@ -25,6 +25,7 @@ from app.domain.references.models.models import (
     ExternalIdentifierType,
     LinkedExternalIdentifier,
     Reference,
+    ReferenceWithChangeset,
     RobotAutomation,
     Visibility,
 )
@@ -146,13 +147,18 @@ class EnhancementDocument(InnerDoc):
 
 
 class ReferenceDomainMixin(InnerDoc):
-    """1:1 mapping of Reference domain model to Elasticsearch document."""
+    """Mapping of Reference domain model to Elasticsearch document."""
 
     visibility: Visibility = mapped_field(Keyword(required=True))
     identifiers: list[ExternalIdentifierDocument] = mapped_field(
         Nested(ExternalIdentifierDocument)
     )
     enhancements: list[EnhancementDocument] = mapped_field(Nested(EnhancementDocument))
+    # Active duplicate determination, if any. This will only ever present a terminal
+    # state or None
+    duplicate_determination: DuplicateDetermination | None = mapped_field(
+        Keyword(required=False),
+    )
 
     @classmethod
     def from_domain(cls, reference: Reference) -> Self:
@@ -167,6 +173,9 @@ class ReferenceDomainMixin(InnerDoc):
                 EnhancementDocument.from_domain(enhancement)
                 for enhancement in reference.enhancements or []
             ],
+            duplicate_determination=reference.duplicate_decision.duplicate_determination
+            if reference.duplicate_decision
+            else None,
         )
 
     def to_domain(self) -> Reference:
@@ -249,43 +258,6 @@ class ReferenceDocument(
         return ReferenceDomainMixin.to_domain(self)
 
 
-class ReferenceInnerDocument(InnerDoc):
-    """InnerDoc for references in Elasticsearch."""
-
-    visibility: Visibility = mapped_field(Keyword(required=True))
-    identifiers: list[ExternalIdentifierDocument] = mapped_field(
-        Nested(ExternalIdentifierDocument)
-    )
-    enhancements: list[EnhancementDocument] = mapped_field(Nested(EnhancementDocument))
-    # Active duplicate determination, if any. This will only ever present a terminal
-    # state or None
-    duplicate_determination: DuplicateDetermination | None = mapped_field(
-        Keyword(required=False),
-    )
-    # Simpler projection of the above, and maybe others, for accessible querying.
-    # "Default" view might filter on at_rest=True
-    at_rest: bool = mapped_field(Boolean(required=True))
-
-    @classmethod
-    def from_domain(cls, domain_obj: Reference) -> Self:
-        """Create a ReferenceInnerDocument from a domain Reference object."""
-        return cls(
-            visibility=domain_obj.visibility,
-            identifiers=[
-                ExternalIdentifierDocument.from_domain(identifier)
-                for identifier in domain_obj.identifiers or []
-            ],
-            enhancements=[
-                EnhancementDocument.from_domain(enhancement)
-                for enhancement in domain_obj.enhancements or []
-            ],
-            at_rest=domain_obj.duplicate_decision is not None,
-            duplicate_determination=domain_obj.duplicate_decision.duplicate_determination
-            if domain_obj.duplicate_decision
-            else None,
-        )
-
-
 class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
     """
     Persistence model for robot automation percolation in Elasticsearch.
@@ -306,11 +278,11 @@ class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
     robot_id: UUID | None = mapped_field(
         Keyword(required=False),
     )
-    reference: ReferenceInnerDocument | None = mapped_field(
-        Object(ReferenceInnerDocument, required=False),
+    reference: ReferenceDomainMixin | None = mapped_field(
+        Object(ReferenceDomainMixin, required=False),
     )
-    enhancement: EnhancementDocument | None = mapped_field(
-        Object(EnhancementDocument, required=False),
+    changeset: ReferenceDomainMixin | None = mapped_field(
+        Object(ReferenceDomainMixin, required=False),
     )
 
     @classmethod
@@ -333,23 +305,19 @@ class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
     @classmethod
     def percolatable_document_from_domain(
         cls,
-        percolatable: Reference | Enhancement,
+        percolatable: ReferenceWithChangeset,
     ) -> Self:
         """
         Create a percolatable document from a domain model.
 
         :param percolatable: The percolatable document to convert.
-        :type percolatable: Reference | Enhancement
+        :type percolatable: ReferenceWithChangeset
         :return: The persistence model.
         :rtype: RobotAutomationPercolationDocument
         """
         return cls(
             query=None,
             robot_id=None,
-            reference=ReferenceInnerDocument.from_domain(percolatable)
-            if isinstance(percolatable, Reference)
-            else None,
-            enhancement=EnhancementDocument.from_domain(percolatable)
-            if isinstance(percolatable, Enhancement)
-            else None,
+            reference=ReferenceDomainMixin.from_domain(percolatable),
+            changeset=ReferenceDomainMixin.from_domain(percolatable.delta_reference),
         )

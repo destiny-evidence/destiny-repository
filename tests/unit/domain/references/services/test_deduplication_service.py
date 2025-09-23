@@ -203,9 +203,51 @@ async def test_determine_and_map_duplicate_happy_path(
     )
     # Split: determine then map
     determined = await service.determine_duplicate_from_candidates(decision)
-    out_decision = await service.map_duplicate_decision(determined)
+    out_decision, decision_changed = await service.map_duplicate_decision(determined)
     assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
     assert out_decision.canonical_reference_id == candidate_id
+    assert decision_changed is True
+    out_decision = await dec_repo.get_by_pk(out_decision.id)
+    assert out_decision.active_decision
+    assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
+
+
+@pytest.mark.asyncio
+async def test_determine_and_map_duplicate_no_change(
+    fake_uow, fake_repository, anti_corruption_service
+):
+    # Setup reference and decision
+    reference = MagicMock(spec=Reference)
+    reference.id = uuid.uuid4()
+    active_decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=uuid.uuid4(),
+        active_decision=True,
+    )
+    reference.duplicate_decision = active_decision
+
+    decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        candidate_duplicate_ids=[active_decision.canonical_reference_id],
+        duplicate_determination=DuplicateDetermination.NOMINATED,
+    )
+
+    ref_repo = fake_repository([reference])
+    dec_repo = fake_repository([decision])
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(
+            references=ref_repo,
+            reference_duplicate_decisions=dec_repo,
+        ),
+    )
+    # Split: determine then map
+    determined = await service.determine_duplicate_from_candidates(decision)
+    out_decision, decision_changed = await service.map_duplicate_decision(determined)
+    assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
+    assert out_decision.canonical_reference_id == active_decision.canonical_reference_id
+    assert decision_changed is False
     out_decision = await dec_repo.get_by_pk(out_decision.id)
     assert out_decision.active_decision
     assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
@@ -267,11 +309,12 @@ async def test_determine_and_map_duplicate_decoupled_canonical_change(
         ),
     )
     determined = await service.determine_duplicate_from_candidates(decision)
-    out_decision = await service.map_duplicate_decision(determined)
+    out_decision, decision_changed = await service.map_duplicate_decision(determined)
     assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
     assert (
         "Decouple reason: Existing duplicate decision changed." in out_decision.detail
     )
+    assert decision_changed is True
     out_decision = await dec_repo.get_by_pk(out_decision.id)
     assert not out_decision.active_decision
     assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
@@ -313,11 +356,12 @@ async def test_determine_and_map_duplicate_decoupled_different_canonical(
         ),
     )
     determined = await service.determine_duplicate_from_candidates(decision)
-    out_decision = await service.map_duplicate_decision(determined)
+    out_decision, decision_changed = await service.map_duplicate_decision(determined)
     assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
     assert (
         "Decouple reason: Existing duplicate decision changed." in out_decision.detail
     )
+    assert decision_changed is True
 
 
 @pytest.mark.asyncio
@@ -360,9 +404,10 @@ async def test_determine_and_map_duplicate_decoupled_chain_length(
     service.__class__.settings = MagicMock(max_reference_duplicate_depth=2)
 
     determined = await service.determine_duplicate_from_candidates(decision)
-    out_decision = await service.map_duplicate_decision(determined)
+    out_decision, decision_changed = await service.map_duplicate_decision(determined)
     assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
     assert "Decouple reason: Max duplicate chain length reached." in out_decision.detail
+    assert decision_changed is True
 
 
 @pytest.mark.asyncio
@@ -397,11 +442,12 @@ async def test_determine_and_map_duplicate_now_duplicate(
         ),
     )
     determined = await service.determine_duplicate_from_candidates(decision)
-    out_decision = await service.map_duplicate_decision(determined)
+    out_decision, decision_changed = await service.map_duplicate_decision(determined)
     assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
     assert (
         "Decouple reason: Existing duplicate decision changed." in out_decision.detail
     )
+    assert decision_changed is True
     old_decision = await dec_repo.get_by_pk(active_decision.id)
     assert old_decision.active_decision
     out_decision = await dec_repo.get_by_pk(out_decision.id)

@@ -270,10 +270,11 @@ async def process_reference_duplicate_decision(
     with bound_contextvars(
         reference_id=str(reference_duplicate_decision.reference_id),
     ):
-        reference_duplicate_decision = (
-            await reference_service.process_reference_duplicate_decision(
-                reference_duplicate_decision
-            )
+        (
+            reference_duplicate_decision,
+            decision_changed,
+        ) = await reference_service.process_reference_duplicate_decision(
+            reference_duplicate_decision
         )
         logger.info(
             "Processed reference duplicate decision",
@@ -281,12 +282,15 @@ async def process_reference_duplicate_decision(
             determination=reference_duplicate_decision.duplicate_determination,
         )
 
-        if reference_duplicate_decision.active_decision:
+        if reference_duplicate_decision.active_decision and decision_changed:
+            reference = (
+                await reference_service.get_canonical_reference_with_implied_changeset(
+                    reference_duplicate_decision.reference_id
+                )
+            )
             requests = await detect_and_dispatch_robot_automations(
                 reference_service=reference_service,
-                reference=await reference_service.get_canonical_reference_with_implied_changeset(
-                    reference_duplicate_decision.reference_id
-                ),
+                reference=reference,
                 source_str=f"DuplicateDecision:{reference_duplicate_decision.id}",
             )
             for request in requests:
