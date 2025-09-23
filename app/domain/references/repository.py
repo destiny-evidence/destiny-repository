@@ -8,7 +8,7 @@ from uuid import UUID
 from elasticsearch import AsyncElasticsearch
 from opentelemetry import trace
 from pydantic import UUID4
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -324,33 +324,6 @@ class EnhancementRequestSQLRepository(
             DomainEnhancementRequest,
             SQLEnhancementRequest,
         )
-
-    async def get_pending_enhancement_status_counts(
-        self, enhancement_request_id: UUID4
-    ) -> dict[PendingEnhancementStatus, int]:
-        """
-        Get counts of pending enhancements by status for an enhancement request.
-
-        Args:
-            enhancement_request_id: The ID of the enhancement request
-
-        Returns:
-            Dictionary mapping status to count
-
-        """
-        query = (
-            select(
-                SQLPendingEnhancement.status,
-                func.count(SQLPendingEnhancement.id).label("count"),
-            )
-            .where(
-                SQLPendingEnhancement.enhancement_request_id == enhancement_request_id
-            )
-            .group_by(SQLPendingEnhancement.status)
-        )
-
-        result = await self._session.execute(query)
-        return {row[0]: row[1] for row in result.fetchall()}
 
     async def get_pending_enhancement_status_set(
         self, enhancement_request_id: UUID4

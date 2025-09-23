@@ -5,10 +5,10 @@ from typing import Generic
 
 from opentelemetry import trace
 from pydantic import UUID4
-from sqlalchemy import select, update
+from sqlalchemy import inspect, select, update
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import InstrumentedAttribute, RelationshipProperty, joinedload
+from sqlalchemy.orm import joinedload
 
 from app.core.exceptions import (
     SQLIntegrityError,
@@ -69,15 +69,31 @@ class GenericAsyncSqlRepository(
 
         Raises SQLValueError if any are invalid.
         """
-        invalid_fields = [
-            key for key in field_names if not hasattr(self._persistence_cls, key)
-        ]
+        mapper = inspect(self._persistence_cls)
+        valid_columns = {c.key for c in mapper.column_attrs}
+        invalid_fields = [key for key in field_names if key not in valid_columns]
         if invalid_fields:
             msg = (
                 f"Invalid field(s) for {self._persistence_cls.__name__}: "
                 f"{invalid_fields}"
             )
             raise SQLValueError(msg)
+
+    def _get_preload_options(
+        self, preload: list[GenericSQLPreloadableType] | None
+    ) -> list:
+        """Generate a list of SQLAlchemy options for preloading relationships."""
+        if not preload:
+            return []
+
+        mapper = inspect(self._persistence_cls)
+        valid_relationships = {r.key for r in mapper.relationships}
+
+        return [
+            joinedload(getattr(self._persistence_cls, p))
+            for p in preload
+            if p in valid_relationships
+        ]
 
     @trace_repository_method(tracer)
     async def get_by_pk(
@@ -95,14 +111,7 @@ class GenericAsyncSqlRepository(
 
         """
         trace_attribute(Attributes.DB_PK, str(pk))
-        options = []
-        if preload:
-            for p in preload:
-                attribute: InstrumentedAttribute | None = getattr(
-                    self._persistence_cls, p, None
-                )
-                if attribute and isinstance(attribute.property, RelationshipProperty):
-                    options.append(joinedload(attribute))
+        options = self._get_preload_options(preload)
         query = (
             select(self._persistence_cls)
             .where(self._persistence_cls.id == pk)
@@ -138,12 +147,7 @@ class GenericAsyncSqlRepository(
         - SQLNotFoundError: If any of the records do not exist.
 
         """
-        options = []
-        if preload:
-            for p in preload:
-                relationship = getattr(self._persistence_cls, p)
-                options.append(joinedload(relationship))
-
+        options = self._get_preload_options(preload)
         query = (
             select(self._persistence_cls)
             .where(self._persistence_cls.id.in_(pks))
@@ -183,12 +187,7 @@ class GenericAsyncSqlRepository(
         - list[GenericDomainModelType]: A list of domain models.
 
         """
-        options = []
-        if preload:
-            for p in preload:
-                relationship = getattr(self._persistence_cls, p)
-                options.append(joinedload(relationship))
-
+        options = self._get_preload_options(preload)
         query = select(self._persistence_cls).options(*options)
         result = await self._session.execute(query)
         return [ref.to_domain(preload=preload) for ref in result.scalars().all()]
@@ -515,26 +514,24 @@ class GenericAsyncSqlRepository(
         - list[GenericDomainModelType]: A list of domain models matching the filters.
 
         """
-        options = []
-        if preload:
-            for p in preload:
-                relationship = getattr(self._persistence_cls, p)
-                options.append(joinedload(relationship))
+        options = self._get_preload_options(preload)
 
-        # Validate filter field names
-        self._validate_fields_exist(list(filters.keys()))
+        # Validate filter and order_by field names
+        fields_to_validate = list(filters.keys())
+        if order_by:
+            fields_to_validate.append(order_by)
+        self._validate_fields_exist(fields_to_validate)
 
         query = select(self._persistence_cls).options(*options)
 
         for field_name, value in filters.items():
-            if hasattr(self._persistence_cls, field_name):
-                field = getattr(self._persistence_cls, field_name)
-                if value is None:
-                    query = query.where(field.is_(None))
-                else:
-                    query = query.where(field == value)
+            field = getattr(self._persistence_cls, field_name)
+            if value is None:
+                query = query.where(field.is_(None))
+            else:
+                query = query.where(field == value)
 
-        if order_by and hasattr(self._persistence_cls, order_by):
+        if order_by:
             query = query.order_by(getattr(self._persistence_cls, order_by))
 
         if limit is not None:

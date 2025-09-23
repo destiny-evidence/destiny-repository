@@ -1,6 +1,5 @@
 """Projection functions for reference domain data."""
 
-from app.core.exceptions import ProjectionError
 from app.domain.base import GenericProjection
 from app.domain.references.models.models import (
     EnhancementRequest,
@@ -23,43 +22,31 @@ class EnhancementRequestStatusProjection(GenericProjection[EnhancementRequest]):
         if not pending_enhancement_status_set:
             return enhancement_request
 
+        # Define non-terminal statuses
+        non_terminal_statuses = {
+            PendingEnhancementStatus.PENDING,
+            PendingEnhancementStatus.ACCEPTED,
+            PendingEnhancementStatus.IMPORTING,
+            PendingEnhancementStatus.INDEXING,
+        }
+
         # All pending -> received
         if pending_enhancement_status_set == {PendingEnhancementStatus.PENDING}:
             enhancement_request.request_status = EnhancementRequestStatus.RECEIVED
 
-        # All completed -> completed
+        # If there are any non-terminal statuses, result should be PROCESSING
+        elif non_terminal_statuses & pending_enhancement_status_set:
+            enhancement_request.request_status = EnhancementRequestStatus.PROCESSING
+
+        # Only terminal statuses remain - check their combination
         elif pending_enhancement_status_set == {PendingEnhancementStatus.COMPLETED}:
             enhancement_request.request_status = EnhancementRequestStatus.COMPLETED
 
-        # All failed -> failed
         elif pending_enhancement_status_set == {PendingEnhancementStatus.FAILED}:
             enhancement_request.request_status = EnhancementRequestStatus.FAILED
 
-        # Some completed, some failed -> partial failed
-        elif (
-            PendingEnhancementStatus.COMPLETED in pending_enhancement_status_set
-            and {
-                PendingEnhancementStatus.FAILED,
-                PendingEnhancementStatus.INDEXING_FAILED,
-            }
-            & pending_enhancement_status_set
-        ):
-            enhancement_request.request_status = EnhancementRequestStatus.PARTIAL_FAILED
-
-        # Something in progress -> processing
-        elif {
-            PendingEnhancementStatus.ACCEPTED,
-            PendingEnhancementStatus.IMPORTING,
-            PendingEnhancementStatus.INDEXING,
-        } & pending_enhancement_status_set:
-            enhancement_request.request_status = EnhancementRequestStatus.PROCESSING
-
-        # Some other state we haven't foreseen
+        # Any other combination of terminal statuses -> partial failed
         else:
-            msg = (
-                f"Could not resolve enhancement request status. "
-                f"{pending_enhancement_status_set}."
-            )
-            raise ProjectionError(msg)
+            enhancement_request.request_status = EnhancementRequestStatus.PARTIAL_FAILED
 
         return enhancement_request
