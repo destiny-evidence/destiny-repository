@@ -146,7 +146,6 @@ def robot_result_enhancement(
 async def test_request_batch_enhancement_happy_path(
     session: AsyncSession,
     client: AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test requesting a enhancement for multiple references."""
     # Add references to the database
@@ -157,13 +156,6 @@ async def test_request_batch_enhancement_happy_path(
         "reference_ids": [str(reference_1.id), str(reference_2.id)],
         "robot_id": f"{robot.id}",
     }
-
-    mock_process = AsyncMock(return_value=None)
-    monkeypatch.setattr(
-        ReferenceService,
-        "collect_and_dispatch_references_for_enhancement",
-        mock_process,
-    )
 
     with patch("app.core.telemetry.fastapi.bound_contextvars") as mock_bound:
         response = await client.post(
@@ -182,7 +174,6 @@ async def test_request_batch_enhancement_happy_path(
 
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()
-    mock_process.assert_awaited_once()
 
 
 async def test_add_robot_automation_happy_path(
