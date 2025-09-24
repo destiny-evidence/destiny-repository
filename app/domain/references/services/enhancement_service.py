@@ -249,6 +249,10 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                         attempted_reference_ids.add(
                             validated_result.robot_error.reference_id
                         )
+                        # Track processed IDs here for clarity
+                        ref_id = validated_result.robot_error.reference_id
+                        if ref_id in expected_reference_ids:
+                            processed_reference_ids.add(ref_id)
                         at_least_one_failed = True
                         yield self._anti_corruption_service.robot_result_validation_entry_to_sdk(  # noqa: E501
                             RobotResultValidationEntry(
@@ -274,6 +278,10 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                             str(validated_result.enhancement_to_add.reference_id),
                         )
                         attempted_reference_ids.add(
+                            validated_result.enhancement_to_add.reference_id
+                        )
+                        # Track processed IDs here for clarity
+                        processed_reference_ids.add(
                             validated_result.enhancement_to_add.reference_id
                         )
                         # NB this generates the UUID that we import into the database,
@@ -489,6 +497,10 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                     # Process the validated result line
                     result_entry = ""
                     if validated_result.robot_error:
+                        # Track processed IDs here for clarity
+                        ref_id = validated_result.robot_error.reference_id
+                        if ref_id in expected_reference_ids:
+                            processed_reference_ids.add(ref_id)
                         result_entry = await self._process_robot_error_line(
                             validated_result.robot_error,
                             attempted_reference_ids,
@@ -499,6 +511,10 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                             line_no,
                         )
                     elif validated_result.enhancement_to_add:
+                        # Track processed IDs here for clarity
+                        processed_reference_ids.add(
+                            validated_result.enhancement_to_add.reference_id
+                        )
                         result_entry = await self._process_enhancement_line(
                             validated_result.enhancement_to_add,
                             add_enhancement,
