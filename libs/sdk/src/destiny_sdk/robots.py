@@ -52,6 +52,23 @@ None, the repository will assume that the result file is ready for processing.
     )
 
 
+class RobotEnhancementBatchResult(BaseModel):
+    """Used to indicate that the robot has finished processing a batch."""
+
+    request_id: UUID4
+    error: RobotError | None = Field(
+        default=None,
+        description="""
+Error the robot encountered while creating enhancements. If this field is populated,
+we assume the entire robot enhancement batch failed,
+rather than an individual reference.
+If there was an error with processing an individual reference, it should be passed in
+the result file and this field should be left as None. Vice-versa, if this field is
+None, the repository will assume that the result file is ready for processing.
+""",
+    )
+
+
 class RobotResultValidationEntry(_JsonlFileInputMixIn, BaseModel):
     """A single entry in the validation result file for a batch enhancement request."""
 

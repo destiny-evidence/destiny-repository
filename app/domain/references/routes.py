@@ -452,7 +452,7 @@ async def fulfill_robot_enhancement_batch(
         uuid.UUID,
         Path(description="The ID of the robot enhancement batch."),
     ],
-    robot_result: destiny_sdk.robots.RobotResult,
+    robot_result: destiny_sdk.robots.RobotEnhancementBatchResult,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)

@@ -11,7 +11,7 @@ from destiny_sdk.robots import (
     EnhancementRequestIn,
     EnhancementRequestStatus,
     RobotEnhancementBatch,
-    RobotResult,
+    RobotEnhancementBatchResult,
 )
 from destiny_sdk.visibility import Visibility
 
@@ -147,7 +147,7 @@ def _submit_robot_results(
         )
         assert upload_response.status_code == 200
 
-        robot_result = RobotResult(request_id=batch_id, error=None)
+        robot_result = RobotEnhancementBatchResult(request_id=batch_id, error=None)
 
         response = repo_client.post(
             f"/robot-enhancement-batch/{batch_id}/results/",
