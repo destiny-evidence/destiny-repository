@@ -41,14 +41,10 @@ from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
-from app.domain.references.services.enhancement_service import (
-    EnhancementService,
-)
 from app.domain.references.tasks import (
     validate_and_import_enhancement_result,
     validate_and_import_robot_enhancement_batch_result,
 )
-from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 from app.domain.robots.services.anti_corruption_service import (
     RobotAntiCorruptionService,
@@ -109,19 +105,6 @@ def reference_service(
     )
 
 
-def enhancement_service(
-    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
-    reference_anti_corruption_service: Annotated[
-        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
-    ],
-) -> EnhancementService:
-    """Return the batch enhancement service."""
-    return EnhancementService(
-        sql_uow=sql_uow,
-        anti_corruption_service=reference_anti_corruption_service,
-    )
-
-
 def robot_service(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
     robot_anti_corruption_service: Annotated[
@@ -133,11 +116,6 @@ def robot_service(
         sql_uow=sql_uow,
         anti_corruption_service=robot_anti_corruption_service,
     )
-
-
-def robot_request_dispatcher() -> RobotRequestDispatcher:
-    """Return the robot request dispatcher."""
-    return RobotRequestDispatcher()
 
 
 def choose_auth_strategy_reference_reader() -> AuthMethod:
