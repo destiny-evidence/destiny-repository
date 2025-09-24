@@ -188,10 +188,39 @@ async def test_add_enhancement_derived_from_enhancement_for_different_reference(
         **fake_enhancement_data,
     )
 
-    with pytest.raises(
-        InvalidParentEnhancementError, match="different parent reference"
-    ):
+    with pytest.raises(InvalidParentEnhancementError, match="same reference tree"):
         await service.add_enhancement(enhancement_to_add)
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_derived_from_enhancement_for_duplicate_reference(
+    fake_repository, fake_uow, fake_enhancement_data
+):
+    dup_ref_id = uuid.uuid4()
+    dummy_reference = Reference(
+        id=uuid.uuid4(), duplicate_references=[Reference(id=dup_ref_id)]
+    )
+    repo_refs = fake_repository(init_entries=[dummy_reference])
+
+    dummy_parent_enhancement = Enhancement(
+        reference_id=dup_ref_id,  # Derived from an enhancement from a duplicate ref
+        **fake_enhancement_data,
+    )
+
+    repo_enhs = fake_repository(init_entries=[dummy_parent_enhancement])
+    uow = fake_uow(references=repo_refs, enhancements=repo_enhs)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+
+    enhancement_to_add = Enhancement(
+        reference_id=dummy_reference.id,  # different reference id
+        derived_from=[dummy_parent_enhancement.id],
+        **fake_enhancement_data,
+    )
+
+    reference = await service.add_enhancement(enhancement_to_add)
+    assert reference.enhancements[0]["id"] == enhancement_to_add.id
 
 
 @pytest.mark.asyncio
