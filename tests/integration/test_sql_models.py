@@ -188,7 +188,7 @@ async def test_reference_get_with_duplicates(session: AsyncSession):
     await dup_repo.update_by_pk(
         b_duplicates_a.id,
         active_decision=True,
-        duplicate_determination=DuplicateDetermination.UNRESOLVED,
+        duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
         canonical_reference_id=None,
     )
     assert (

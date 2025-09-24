@@ -1,7 +1,7 @@
 """Objects used to interface with Elasticsearch implementations."""
 
-import uuid
 from typing import Any, Self
+from uuid import UUID
 
 from elasticsearch.dsl import (
     Boolean,
@@ -14,11 +14,11 @@ from elasticsearch.dsl import (
     Text,
     mapped_field,
 )
-from pydantic import UUID4
 
 from app.core.config import get_settings
 from app.domain.references.models.models import (
     CandidateDuplicateSearchFields,
+    DuplicateDetermination,
     Enhancement,
     EnhancementType,
     ExternalIdentifierAdapter,
@@ -42,6 +42,7 @@ settings = get_settings()
 class ExternalIdentifierDocument(InnerDoc):
     """Persistence model for external identifiers in Elasticsearch."""
 
+    reference_id: UUID = mapped_field(Keyword(required=True))
     identifier: str = mapped_field(Text(required=True))
     identifier_type: ExternalIdentifierType = mapped_field(Keyword(required=True))
     other_identifier_name: str | None = mapped_field(Keyword())
@@ -50,6 +51,7 @@ class ExternalIdentifierDocument(InnerDoc):
     def from_domain(cls, domain_obj: LinkedExternalIdentifier) -> Self:
         """Create a persistence model from a domain ExternalIdentifier object."""
         return cls(
+            reference_id=domain_obj.reference_id,
             identifier_type=domain_obj.identifier.identifier_type,
             identifier=str(domain_obj.identifier.identifier),
             other_identifier_name=getattr(
@@ -57,10 +59,10 @@ class ExternalIdentifierDocument(InnerDoc):
             ),
         )
 
-    def to_domain(self, reference_id: UUID4) -> LinkedExternalIdentifier:
+    def to_domain(self, reference_id: UUID) -> LinkedExternalIdentifier:
         """Convert the persistence model into a Domain ExternalIdentifier object."""
         return LinkedExternalIdentifier(
-            reference_id=reference_id,
+            reference_id=self.reference_id or reference_id,
             identifier=ExternalIdentifierAdapter.validate_python(
                 {
                     "identifier": self.identifier,
@@ -107,7 +109,8 @@ class EnhancementContentDocument(InnerDoc):
 class EnhancementDocument(InnerDoc):
     """Persistence model for enhancements in Elasticsearch."""
 
-    id: UUID4 = mapped_field(Keyword(required=True, index=True))
+    id: UUID = mapped_field(Keyword(required=True, index=True))
+    reference_id: UUID = mapped_field(Keyword(required=True))
     visibility: Visibility = mapped_field(Keyword(required=True))
     source: str = mapped_field(Keyword(required=True))
     robot_version: str | None = mapped_field(Keyword())
@@ -120,6 +123,7 @@ class EnhancementDocument(InnerDoc):
         """Create a persistence model from a domain model."""
         return cls(
             id=domain_obj.id,
+            reference_id=domain_obj.reference_id,
             visibility=domain_obj.visibility,
             source=domain_obj.source,
             robot_version=domain_obj.robot_version,
@@ -128,11 +132,11 @@ class EnhancementDocument(InnerDoc):
             ),
         )
 
-    def to_domain(self, reference_id: UUID4) -> Enhancement:
+    def to_domain(self, reference_id: UUID) -> Enhancement:
         """Create a domain model from this persistence model."""
         return Enhancement(
             id=self.id,
-            reference_id=reference_id,
+            reference_id=self.reference_id or reference_id,
             visibility=self.visibility,
             source=self.source,
             enhancement_type=self.content.enhancement_type,
@@ -167,7 +171,9 @@ class ReferenceDomainMixin(InnerDoc):
 
     def to_domain(self) -> Reference:
         """Create a domain model from a ReferenceDomainMixin."""
-        reference_id = uuid.UUID(self.meta.id)
+        # Passing in reference_id for back-compatibility with existing data
+        # Once all references have been re-indexed, this can be removed
+        reference_id = UUID(self.meta.id)
         return Reference(
             id=reference_id,
             visibility=self.visibility,
@@ -251,6 +257,14 @@ class ReferenceInnerDocument(InnerDoc):
         Nested(ExternalIdentifierDocument)
     )
     enhancements: list[EnhancementDocument] = mapped_field(Nested(EnhancementDocument))
+    # Active duplicate determination, if any. This will only ever present a terminal
+    # state or None
+    duplicate_determination: DuplicateDetermination | None = mapped_field(
+        Keyword(required=False),
+    )
+    # Simpler projection of the above, and maybe others, for accessible querying.
+    # "Default" view might filter on at_rest=True
+    at_rest: bool = mapped_field(Boolean(required=True))
 
     @classmethod
     def from_domain(cls, domain_obj: Reference) -> Self:
@@ -265,6 +279,10 @@ class ReferenceInnerDocument(InnerDoc):
                 EnhancementDocument.from_domain(enhancement)
                 for enhancement in domain_obj.enhancements or []
             ],
+            at_rest=domain_obj.duplicate_decision is not None,
+            duplicate_determination=domain_obj.duplicate_decision.duplicate_determination
+            if domain_obj.duplicate_decision
+            else None,
         )
 
 
@@ -285,7 +303,7 @@ class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
     query: dict[str, Any] | None = mapped_field(
         Percolator(required=False),
     )
-    robot_id: uuid.UUID | None = mapped_field(
+    robot_id: UUID | None = mapped_field(
         Keyword(required=False),
     )
     reference: ReferenceInnerDocument | None = mapped_field(

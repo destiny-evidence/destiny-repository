@@ -204,6 +204,9 @@ class ReferenceESRepository(
         - MUST: Fuzzy match on title (requires 50% of terms to match)
         - SHOULD: partial match on authors list (requires 50% of authors to match)
         - FILTER: Publication year within ±1 year range (non-scoring)
+
+        Open question: do we want to filter on duplicate decision? EG only search
+        against at-rest references?
         """
         search = (
             AsyncSearch(using=self._client)
