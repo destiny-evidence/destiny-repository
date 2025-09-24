@@ -504,6 +504,11 @@ class ReferenceDuplicateDecision(
             "ix_reference_duplicate_decision_reference_id",
             "reference_id",
         ),
+        # For getting decisions by state eg needing manual resolution
+        Index(
+            "ix_reference_duplicate_decision_duplicate_determination",
+            "duplicate_determination",
+        ),
     )
 
     @classmethod
