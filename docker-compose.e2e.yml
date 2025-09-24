@@ -53,6 +53,7 @@ services:
         condition: service_completed_successfully
     environment:
       ENV: e2e
+      FEATURE_FLAGS: '{"deduplication": "false"}'
     healthcheck:
       test:
         [
@@ -71,6 +72,7 @@ services:
     profiles: ["e2e"]
     environment:
       ENV: e2e
+      FEATURE_FLAGS: '{"deduplication": "false"}'
     entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover
   toy-robot:
     build: https://github.com/destiny-evidence/toy-robot.git
