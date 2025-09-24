@@ -111,15 +111,27 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         :type enhancement: Enhancement
         """
         reference = await self.sql_uow.references.get_by_pk(
-            enhancement.reference_id, preload=["enhancements", "identifiers"]
+            enhancement.reference_id,
+            preload=["enhancements", "identifiers", "duplicate_references"],
         )
 
         if enhancement.derived_from:
+            valid_derived_reference_ids = {
+                ref.id for ref in reference.duplicate_references or []
+            } | {reference.id}
             try:
-                await self.sql_uow.enhancements.verify_pk_existence(
+                parent_enhancements = await self.sql_uow.enhancements.get_by_pks(
                     enhancement.derived_from
                 )
-
+                if not all(
+                    e.reference_id in valid_derived_reference_ids
+                    for e in parent_enhancements
+                ):
+                    detail = (
+                        "All parent enhancements must belong to the same reference "
+                        "tree as the child enhancement."
+                    )
+                    raise InvalidParentEnhancementError(detail)
             except SQLNotFoundError as e:
                 detail = f"Enhancements with ids {e.lookup_value} do not exist."
                 raise InvalidParentEnhancementError(detail) from e
