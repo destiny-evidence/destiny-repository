@@ -25,13 +25,6 @@ class FakeServiceBusSender:
     Azure Service Bus sender during unit tests.
     """
 
-    async def __aenter__(self) -> "FakeServiceBusSender":
-        """Open the sender."""
-        return self
-
-    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
-        """Close the sender."""
-
     async def schedule_messages(
         self, message: AmqpAnnotatedMessage, scheduled_time: datetime | None = None
     ) -> None:

@@ -17,7 +17,6 @@ from taskiq.utils import maybe_awaitable
 
 from app.core.azure_service_bus_broker import AzureServiceBusBroker
 from app.core.exceptions import MessageBrokerError
-from tests.core.conftest import FakeServiceBusSender
 
 
 async def get_first_task(broker: AzureServiceBusBroker):
@@ -110,12 +109,13 @@ async def test_happy_startup(broker: AzureServiceBusBroker) -> None:
     """
     Test that the broker initializes correctly.
 
-    This test checks that the broker's Service Bus client
-    and receiver are correctly initialized.
+    This test checks that the broker's Service Bus client,
+    sender and receiver are correctly initialized.
 
     :param broker: Azure Service Bus broker.
     """
     assert broker.service_bus_client is not None
+    assert broker.sender is not None
     assert broker.receiver is not None
 
 
@@ -143,14 +143,7 @@ async def test_kick_success(
         },
     )
 
-    from tests.core.conftest import FakeServiceBusSender
-
-    with patch.object(
-        broker.service_bus_client,
-        "get_queue_sender",
-        return_value=FakeServiceBusSender(),
-    ):
-        await broker.kick(sent)
+    await broker.kick(sent)
 
     message = await asyncio.wait_for(get_first_task(broker), timeout=1.0)
 
@@ -182,15 +175,8 @@ async def test_delayed_message(
         labels={"delay": "2"},
     )
 
-    from tests.core.conftest import FakeServiceBusSender
-
-    with patch.object(
-        broker.service_bus_client,
-        "get_queue_sender",
-        return_value=FakeServiceBusSender(),
-    ):
-        # Send the delayed message
-        await broker.kick(broker_msg)
+    # Send the delayed message
+    await broker.kick(broker_msg)
 
     # Try to get the message immediately - should not be available yet
     with pytest.raises(asyncio.TimeoutError):
@@ -209,32 +195,34 @@ async def test_delayed_message(
 @pytest.mark.anyio
 async def test_priority_handling(
     broker: AzureServiceBusBroker,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
     Test that priority is correctly set in the message headers.
 
     :param broker: current broker.
+    :param test_sender: test sender.
+    :param test_receiver: test receiver.
     """
-    sent_message = {}
+    assert broker.sender is not None
+    original_send_messages = broker.sender.send_messages
+    sent_message = None
 
-    class CaptureSender(FakeServiceBusSender):
-        async def send_messages(self, message: AmqpAnnotatedMessage) -> None:
-            sent_message["msg"] = message
-            await super().send_messages(message)
+    async def mock_send_messages(message: AmqpAnnotatedMessage) -> None:
+        nonlocal sent_message
+        sent_message = message
+        await original_send_messages(message)
 
-    with patch.object(
-        broker.service_bus_client, "get_queue_sender", return_value=CaptureSender()
-    ):
-        await broker.kick(
-            BrokerMessage(
-                task_id="priority-task",
-                task_name="priority-name",
-                message=b"priority-message",
-                labels={"priority": "5"},
-            )
+    monkeypatch.setattr(broker.sender, "send_messages", mock_send_messages)
+    await broker.kick(
+        BrokerMessage(
+            task_id="priority-task",
+            task_name="priority-name",
+            message=b"priority-message",
+            labels={"priority": "5"},
         )
+    )
 
-    msg = sent_message.get("msg")
-    assert isinstance(msg, AmqpAnnotatedMessage)
-    assert msg.header is not None
-    assert msg.header.priority == 5
+    assert isinstance(sent_message, AmqpAnnotatedMessage)
+    assert sent_message.header is not None
+    assert sent_message.header.priority == 5
