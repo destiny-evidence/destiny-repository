@@ -17,6 +17,7 @@ from azure.servicebus.aio import (
     AutoLockRenewer,
     ServiceBusClient,
     ServiceBusReceiver,
+    ServiceBusSender,
 )
 from azure.servicebus.amqp import AmqpAnnotatedMessage, AmqpMessageBodyType
 from taskiq import AckableMessage, AsyncBroker, BrokerMessage
@@ -83,6 +84,7 @@ class AzureServiceBusBroker(AsyncBroker):
         self.max_lock_renewal_duration = max_lock_renewal_duration
 
         self.service_bus_client: ServiceBusClient | None = None
+        self.sender: ServiceBusSender | None = None
         self.receiver: ServiceBusReceiver | None = None
         self.credential: DefaultAzureCredential | None = None
         self.auto_lock_renewer: AutoLockRenewer | None = None
@@ -106,6 +108,10 @@ class AzureServiceBusBroker(AsyncBroker):
                 detail="Either connection_string or namespace must be provided"
             )
 
+        self.sender = self.service_bus_client.get_queue_sender(
+            queue_name=self._queue_name
+        )
+
         if self.is_worker_process:
             self.receiver = self.service_bus_client.get_queue_receiver(
                 queue_name=self._queue_name,
@@ -120,6 +126,8 @@ class AzureServiceBusBroker(AsyncBroker):
         """Close all connections on shutdown."""
         await super().shutdown()
 
+        if self.sender:
+            await self.sender.close()
         if self.receiver:
             await self.receiver.close()
         if self.service_bus_client:
@@ -137,7 +145,7 @@ class AzureServiceBusBroker(AsyncBroker):
         :raises MessageBrokerError:detail= if startup wasn't called.
         :param message: message to send.
         """
-        if self.service_bus_client is None:
+        if self.sender is None or self.service_bus_client is None:
             raise MessageBrokerError(detail="Please run startup before kicking.")
 
         headers = {}
@@ -160,16 +168,13 @@ class AzureServiceBusBroker(AsyncBroker):
 
         logger.debug("Sending message...", task_id=message.task_id, delay=delay)
 
-        async with self.service_bus_client.get_queue_sender(
-            queue_name=self._queue_name
-        ) as sender:
-            if delay is None:
-                # Send message directly to main queue
-                await sender.send_messages(service_bus_message)
-            else:
-                # Use Azure's built-in scheduled messages feature
-                scheduled_time = datetime.now(UTC) + timedelta(seconds=delay)
-                await sender.schedule_messages(service_bus_message, scheduled_time)
+        if delay is None:
+            # Send message directly to main queue
+            await self.sender.send_messages(service_bus_message)
+        else:
+            # Use Azure's built-in scheduled messages feature
+            scheduled_time = datetime.now(UTC) + timedelta(seconds=delay)
+            await self.sender.schedule_messages(service_bus_message, scheduled_time)
 
     async def listen(self) -> AsyncGenerator[AckableMessage, None]:
         """
