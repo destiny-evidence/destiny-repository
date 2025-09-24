@@ -34,6 +34,7 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['canonical_reference_id'], ['reference.id'], ),
+    sa.ForeignKeyConstraint(['enhancement_id'], ['enhancement.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index('ix_reference_duplicate_decision_reference_id', 'reference_duplicate_decision', ['reference_id'], unique=False)

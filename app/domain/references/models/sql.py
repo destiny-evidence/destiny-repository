@@ -486,7 +486,9 @@ class ReferenceDuplicateDecision(
     # NB not foreign keys as can also refer to a reference that is not
     # imported, for instance an exact duplicate.
     reference_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
-    enhancement_id: Mapped[uuid.UUID | None] = mapped_column(UUID, nullable=True)
+    enhancement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("enhancement.id"), nullable=True
+    )
     active_decision: Mapped[bool] = mapped_column(nullable=False, default=True)
     candidate_duplicate_ids: Mapped[list[uuid.UUID]] = mapped_column(
         ARRAY(UUID), nullable=True
