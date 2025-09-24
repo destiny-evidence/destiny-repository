@@ -2,10 +2,10 @@
 
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import NamedTuple
+from uuid import UUID
 
 import destiny_sdk
 from opentelemetry import trace
-from pydantic import UUID4
 
 from app.core.config import get_settings
 from app.core.telemetry.attributes import Attributes, trace_attribute
@@ -41,9 +41,9 @@ tracer = trace.get_tracer(__name__)
 class ProcessedResults(NamedTuple):
     """Results from processing robot enhancement batch."""
 
-    imported_enhancement_ids: set[UUID4]
-    successful_pending_enhancement_ids: set[UUID4]
-    failed_pending_enhancement_ids: set[UUID4]
+    imported_enhancement_ids: set[UUID]
+    successful_pending_enhancement_ids: set[UUID]
+    failed_pending_enhancement_ids: set[UUID]
 
 
 class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
@@ -58,7 +58,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         super().__init__(anti_corruption_service, sql_uow)
 
     async def mark_enhancement_request_failed(
-        self, enhancement_request_id: UUID4, error: str
+        self, enhancement_request_id: UUID, error: str
     ) -> EnhancementRequest:
         """Mark a enhancement request as failed and supply error message."""
         return await self.sql_uow.enhancement_requests.update_by_pk(
@@ -68,7 +68,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     async def mark_robot_enhancement_batch_failed(
-        self, robot_enhancement_batch_id: UUID4, error: str
+        self, robot_enhancement_batch_id: UUID, error: str
     ) -> RobotEnhancementBatch:
         """Mark a robot enhancement batch as failed and supply error message."""
         await self.update_pending_enhancements_status_for_robot_enhancement_batch(
@@ -83,7 +83,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
 
     async def update_enhancement_request_status(
         self,
-        enhancement_request_id: UUID4,
+        enhancement_request_id: UUID,
         status: EnhancementRequestStatus,
     ) -> EnhancementRequest:
         """Update a enhancement request."""
@@ -93,7 +93,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
 
     async def update_pending_enhancements_status(
         self,
-        pending_enhancement_ids: list[UUID4],
+        pending_enhancement_ids: list[UUID],
         status: PendingEnhancementStatus,
     ) -> int:
         """Update multiple pending enhancements."""
@@ -103,7 +103,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
 
     async def update_pending_enhancements_status_for_robot_enhancement_batch(
         self,
-        robot_enhancement_batch_id: UUID4,
+        robot_enhancement_batch_id: UUID,
         status: PendingEnhancementStatus,
     ) -> int:
         """Update status of all pending enhancements for a robot enhancement batch."""
@@ -147,7 +147,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
 
     async def add_validation_result_file_to_enhancement_request(
         self,
-        enhancement_request_id: UUID4,
+        enhancement_request_id: UUID,
         validation_result_file: BlobStorageFile,
     ) -> EnhancementRequest:
         """Add a validation result file to a enhancement request."""
@@ -158,7 +158,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
 
     async def add_validation_result_file_to_robot_enhancement_batch(
         self,
-        robot_enhancement_batch_id: UUID4,
+        robot_enhancement_batch_id: UUID,
         validation_result_file: BlobStorageFile,
     ) -> RobotEnhancementBatch:
         """Add a validation result file to a robot enhancement batch."""
@@ -205,7 +205,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         enhancement_request: EnhancementRequest,
         add_enhancement: Callable[[Enhancement], Awaitable[tuple[bool, str]]],
         # Mutable argument to give caller visibility of imported enhancements
-        imported_enhancement_ids: set[UUID4],
+        imported_enhancement_ids: set[UUID],
     ) -> AsyncGenerator[str, None]:
         """
         Validate the result of a batch enhancement request.
@@ -222,9 +222,9 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         expected_reference_ids = set(enhancement_request.reference_ids)
         at_least_one_failed = False
         at_least_one_succeeded = False
-        attempted_reference_ids: set[UUID4] = set()
+        attempted_reference_ids: set[UUID] = set()
         # Track processed IDs for duplicate validation
-        processed_reference_ids: set[UUID4] = set()
+        processed_reference_ids: set[UUID] = set()
         async with blob_repository.stream_file_from_blob_storage(
             enhancement_request.result_file,
         ) as file_stream:
@@ -351,7 +351,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
     async def _process_robot_error_line(
         self,
         robot_error: destiny_sdk.robots.LinkedRobotError,
-        attempted_reference_ids: set[UUID4],
+        attempted_reference_ids: set[UUID],
     ) -> str:
         """Process a line containing a robot error."""
         trace_attribute(
@@ -390,9 +390,9 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         enhancement_to_add: destiny_sdk.enhancements.Enhancement,
         add_enhancement: Callable[[Enhancement], Awaitable[tuple[bool, str]]],
         line_no: int,
-        attempted_reference_ids: set[UUID4],
+        attempted_reference_ids: set[UUID],
         results: ProcessedResults,
-        successful_reference_ids: set[UUID4],
+        successful_reference_ids: set[UUID],
     ) -> str:
         """Process a line containing an enhancement to add."""
         trace_attribute(
@@ -438,7 +438,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
     def _categorize_pending_enhancements(
         self,
         pending_enhancements: list[PendingEnhancement],
-        successful_reference_ids: set[UUID4],
+        successful_reference_ids: set[UUID],
         results: ProcessedResults,
     ) -> None:
         """Categorize pending enhancements as successful or failed."""
@@ -463,10 +463,10 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         result file of the robot enhancement batch.
         """
         expected_reference_ids = {pe.reference_id for pe in pending_enhancements}
-        successful_reference_ids: set[UUID4] = set()
-        attempted_reference_ids: set[UUID4] = set()
+        successful_reference_ids: set[UUID] = set()
+        attempted_reference_ids: set[UUID] = set()
         # Track processed IDs for duplicate validation
-        processed_reference_ids: set[UUID4] = set()
+        processed_reference_ids: set[UUID] = set()
 
         async with blob_repository.stream_file_from_blob_storage(
             result_file,

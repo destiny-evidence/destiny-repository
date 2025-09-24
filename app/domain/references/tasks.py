@@ -1,6 +1,7 @@
 """Import tasks module for the DESTINY Climate and Health Repository API."""
 
 from collections.abc import Iterable
+from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
 from opentelemetry import trace
@@ -213,7 +214,7 @@ async def validate_and_import_enhancement_result(
 
 @broker.task
 async def validate_and_import_robot_enhancement_batch_result(
-    robot_enhancement_batch_id: UUID4,
+    robot_enhancement_batch_id: UUID,
 ) -> None:
     """Async logic for validating and importing a robot enhancement batch result."""
     logger.info("Processing robot enhancement batch result")

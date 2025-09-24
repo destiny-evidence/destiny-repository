@@ -2,8 +2,7 @@
 
 from collections import defaultdict
 from collections.abc import AsyncGenerator, Iterable
-
-from pydantic import UUID4
+from uuid import UUID
 
 from app.core.config import (
     ESIndexingOperation,
@@ -80,11 +79,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self._enhancement_service = EnhancementService(anti_corruption_service, sql_uow)
 
     @sql_unit_of_work
-    async def get_reference(self, reference_id: UUID4) -> Reference:
+    async def get_reference(self, reference_id: UUID) -> Reference:
         """Get a single reference by id."""
         return await self._get_reference(reference_id)
 
-    async def _get_reference(self, reference_id: UUID4) -> Reference:
+    async def _get_reference(self, reference_id: UUID) -> Reference:
         """Get a single reference by id without using the unit of work."""
         # This method is used internally and does not use the unit of work.
         return await self.sql_uow.references.get_by_pk(
@@ -162,7 +161,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
     async def _get_hydrated_references(
         self,
-        reference_ids: list[UUID4],
+        reference_ids: list[UUID],
         enhancement_types: list[EnhancementType] | None = None,
         external_identifier_types: list[ExternalIdentifierType] | None = None,
     ) -> list[Reference]:
@@ -184,7 +183,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
     async def _get_jsonl_hydrated_references(
         self,
-        reference_ids: list[UUID4],
+        reference_ids: list[UUID],
     ) -> list[str]:
         """Get a list of JSONL strings for hydrated references by id."""
         return [
@@ -195,7 +194,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def get_hydrated_references(
         self,
-        reference_ids: list[UUID4],
+        reference_ids: list[UUID],
         enhancement_types: list[EnhancementType] | None = None,
         external_identifier_types: list[ExternalIdentifierType] | None = None,
     ) -> list[Reference]:
@@ -205,7 +204,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     @sql_unit_of_work
-    async def get_all_reference_ids(self) -> list[UUID4]:
+    async def get_all_reference_ids(self) -> list[UUID]:
         """Get all reference IDs from the database."""
         return await self.sql_uow.references.get_all_pks()
 
@@ -227,7 +226,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
     @sql_unit_of_work
     async def add_identifier(
-        self, reference_id: UUID4, identifier: ExternalIdentifier
+        self, reference_id: UUID, identifier: ExternalIdentifier
     ) -> LinkedExternalIdentifier:
         """Register an identifier, persisting it to the database."""
         reference = await self.sql_uow.references.get_by_pk(reference_id)
@@ -292,7 +291,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def get_enhancement_request(
         self,
-        enhancement_request_id: UUID4,
+        enhancement_request_id: UUID,
         preload: list[EnhancementRequestSQLPreloadable] | None = None,
     ) -> EnhancementRequest:
         """Get a batch enhancement request by request id."""
@@ -303,7 +302,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def get_robot_enhancement_batch(
         self,
-        robot_enhancement_batch_id: UUID4,
+        robot_enhancement_batch_id: UUID,
         preload: list[RobotEnhancementBatchSQLPreloadable] | None = None,
     ) -> RobotEnhancementBatch:
         """Get a robot enhancement batch by batch id."""
@@ -314,7 +313,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def get_enhancement_request_with_calculated_status(
         self,
-        enhancement_request_id: UUID4,
+        enhancement_request_id: UUID,
     ) -> EnhancementRequest:
         """Get an enhancement request with calculated status."""
         return await self.sql_uow.enhancement_requests.get_by_pk(
@@ -380,7 +379,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         enhancement_request: EnhancementRequest,
         blob_repository: BlobRepository,
-    ) -> tuple[EnhancementRequestStatus, set[UUID4]]:
+    ) -> tuple[EnhancementRequestStatus, set[UUID]]:
         """
         Validate and import the result of a enhancement request.
 
@@ -391,7 +390,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         - does some final validation of missing references and updates the request
         """
         # Mutable set to track imported enhancement IDs
-        imported_enhancement_ids: set[UUID4] = set()
+        imported_enhancement_ids: set[UUID] = set()
         validation_result_file = await blob_repository.upload_file_to_blob_storage(
             content=FileStream(
                 generator=self._enhancement_service.process_enhancement_result(
@@ -456,7 +455,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def mark_enhancement_request_failed(
         self,
-        enhancement_request_id: UUID4,
+        enhancement_request_id: UUID,
         error: str,
     ) -> EnhancementRequest:
         """Mark a batch enhancement request as failed and supply error message."""
@@ -469,7 +468,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         robot_enhancement_batch: RobotEnhancementBatch,
         blob_repository: BlobRepository,
-    ) -> tuple[set[UUID4], set[UUID4], set[UUID4]]:
+    ) -> tuple[set[UUID], set[UUID], set[UUID]]:
         """
         Validate and import the result of a robot enhancement batch.
 
@@ -523,7 +522,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def mark_robot_enhancement_batch_failed(
         self,
-        robot_enhancement_batch_id: UUID4,
+        robot_enhancement_batch_id: UUID,
         error: str,
     ) -> RobotEnhancementBatch:
         """Mark a robot enhancement batch as failed and supply error message."""
@@ -534,7 +533,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def update_enhancement_request_status(
         self,
-        enhancement_request_id: UUID4,
+        enhancement_request_id: UUID,
         status: EnhancementRequestStatus,
     ) -> EnhancementRequest:
         """Update a batch enhancement request."""
@@ -545,7 +544,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def update_pending_enhancements_status(
         self,
-        pending_enhancement_ids: list[UUID4],
+        pending_enhancement_ids: list[UUID],
         status: PendingEnhancementStatus,
     ) -> int:
         """Update pending enhancements status."""
@@ -556,7 +555,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def update_pending_enhancements_status_for_robot_enhancement_batch(
         self,
-        robot_enhancement_batch_id: UUID4,
+        robot_enhancement_batch_id: UUID,
         status: PendingEnhancementStatus,
     ) -> int:
         """Update pending enhancements status for a robot enhancement batch."""
@@ -574,7 +573,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @es_unit_of_work
     async def index_references(
         self,
-        reference_ids: Iterable[UUID4],
+        reference_ids: Iterable[UUID],
     ) -> None:
         """Index references in Elasticsearch."""
         ids = list(reference_ids)
@@ -625,8 +624,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @es_unit_of_work
     async def _detect_robot_automations(
         self,
-        reference_ids: Iterable[UUID4] | None = None,
-        enhancement_ids: Iterable[UUID4] | None = None,
+        reference_ids: Iterable[UUID] | None = None,
+        enhancement_ids: Iterable[UUID] | None = None,
     ) -> list[RobotAutomationPercolationResult]:
         """Detect and dispatch robot automations for an added reference/enhancement."""
         robot_automations: list[RobotAutomationPercolationResult] = []
@@ -661,7 +660,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 )
 
         # Merge robot_automations on robot_id
-        robot_automations_dict: dict[UUID4, set[UUID4]] = defaultdict(set)
+        robot_automations_dict: dict[UUID, set[UUID]] = defaultdict(set)
         for automation in robot_automations:
             robot_automations_dict[automation.robot_id] |= automation.reference_ids
 
@@ -676,8 +675,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def detect_robot_automations(
         self,
-        reference_ids: Iterable[UUID4] | None = None,
-        enhancement_ids: Iterable[UUID4] | None = None,
+        reference_ids: Iterable[UUID] | None = None,
+        enhancement_ids: Iterable[UUID] | None = None,
     ) -> list[RobotAutomationPercolationResult]:
         """Detect robot automations for a set of references or enhancements."""
         return await self._detect_robot_automations(
@@ -703,7 +702,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self.sql_uow.robot_automations.get_all()
 
     @sql_unit_of_work
-    async def get_robot_automation(self, automation_id: UUID4) -> RobotAutomation:
+    async def get_robot_automation(self, automation_id: UUID) -> RobotAutomation:
         """Get a robot automation by id."""
         return await self.sql_uow.robot_automations.get_by_pk(automation_id)
 
@@ -740,7 +739,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
     @sql_unit_of_work
     async def get_pending_enhancements_for_robot(
-        self, robot_id: UUID4, limit: int
+        self, robot_id: UUID, limit: int
     ) -> list[PendingEnhancement]:
         """Get pending enhancements for a robot."""
         return await self.sql_uow.pending_enhancements.find(
@@ -754,7 +753,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def create_robot_enhancement_batch(
         self,
-        robot_id: UUID4,
+        robot_id: UUID,
         pending_enhancements: list[PendingEnhancement],
         blob_repository: BlobRepository,
     ) -> RobotEnhancementBatch:
@@ -762,7 +761,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         Create a robot enhancement batch.
 
         Args:
-            robot_id (UUID4): The ID of the robot.
+            robot_id (UUID): The ID of the robot.
             pending_enhancements (list[PendingEnhancement]): The list of pending
                 enhancements to include in the batch.
             blob_repository (BlobRepository): The blob repository.
