@@ -8,6 +8,7 @@ from pydantic import UUID4, HttpUrl
 
 from destiny_sdk.robots import (
     EnhancementRequestRead,
+    RobotEnhancementBatch,
     RobotEnhancementBatchRead,
     RobotEnhancementBatchResult,
     RobotResult,
@@ -111,3 +112,30 @@ class Client:
         )
         response.raise_for_status()
         return RobotEnhancementBatchRead.model_validate(response.json())
+
+    def poll_robot_enhancement_batch(
+        self, robot_id: UUID4, limit: int = 10
+    ) -> RobotEnhancementBatch | None:
+        """
+        Poll for a robot enhancement batch.
+
+        Signs the request with the client's secret key.
+
+        :param robot_id: The ID of the robot to poll for
+        :type robot_id: UUID4
+        :param limit: The maximum number of pending enhancements to return
+        :type limit: int
+        :return: The RobotEnhancementBatch object from the response, or None if no
+            batches available
+        :rtype: RobotEnhancementBatch | None
+        """
+        response = self.session.post(
+            "/robot-enhancement-batch/",
+            params={"robot_id": str(robot_id), "limit": limit},
+        )
+        # HTTP 204 No Content indicates no batches available
+        if response.status_code == httpx.codes.NO_CONTENT:
+            return None
+
+        response.raise_for_status()
+        return RobotEnhancementBatch.model_validate(response.json())

@@ -2,9 +2,11 @@
 
 import os
 import time
+import uuid
 
 import httpx
 import pytest
+from destiny_sdk.client import Client
 from destiny_sdk.enhancements import BibliographicMetadataEnhancement, Enhancement
 from destiny_sdk.references import Reference
 from destiny_sdk.robots import (
@@ -14,9 +16,20 @@ from destiny_sdk.robots import (
     RobotEnhancementBatchResult,
 )
 from destiny_sdk.visibility import Visibility
+from pydantic import HttpUrl
 
 toy_robot_url = os.environ["TOY_ROBOT_URL"]
 repo_url = os.environ["REPO_URL"]
+
+
+def _create_client() -> Client:
+    """Create a test client for API calls."""
+    # For e2e tests, we use a dummy secret key and client_id since auth is bypassed
+    return Client(
+        base_url=HttpUrl(repo_url),
+        secret_key="dummy_secret_key",
+        client_id=uuid.uuid4(),
+    )
 
 
 def _create_robot(repo_client: httpx.Client) -> str:
@@ -80,14 +93,14 @@ def _poll_robot_batches(
     batch_references = []
     robot_requests = []
 
-    for _ in range(2):
-        response = repo_client.post(
-            "/robot-enhancement-batch/",
-            params={"robot_id": robot_id, "limit": 2},
-        )
-        assert response.status_code == 200
+    client = _create_client()
 
-        result = RobotEnhancementBatch.model_validate(response.json())
+    for _ in range(2):
+        result = client.poll_robot_enhancement_batch(
+            robot_id=uuid.UUID(robot_id), limit=2
+        )
+        assert result is not None
+
         robot_enhancement_batch_ids.append(str(result.id))
         robot_requests.append(result)
 
@@ -114,7 +127,6 @@ def _poll_robot_batches(
 
 
 def _submit_robot_results(
-    repo_client: httpx.Client,
     robot_enhancement_batch_ids: list[str],
     batch_references: list[list[str]],
     robot_requests: list[RobotEnhancementBatch],
@@ -149,11 +161,9 @@ def _submit_robot_results(
 
         robot_result = RobotEnhancementBatchResult(request_id=batch_id, error=None)
 
-        response = repo_client.post(
-            f"/robot-enhancement-batch/{batch_id}/results/",
-            json=robot_result.model_dump(mode="json"),
-        )
-        assert response.status_code == 202
+        client = _create_client()
+        result = client.send_robot_enhancement_batch_result(robot_result)
+        assert result is not None
 
 
 @pytest.mark.order(3)
@@ -175,12 +185,13 @@ def test_polling_pending_enhancements():
         )
 
         # Verify no more batches available
-        response = repo_client.post(
-            "/robot-enhancement-batch/", params={"robot_id": robot_id, "limit": 2}
+        client = _create_client()
+        result = client.poll_robot_enhancement_batch(
+            robot_id=uuid.UUID(robot_id), limit=2
         )
-        assert response.status_code == 204
+        assert result is None
 
-        _submit_robot_results(repo_client, batch_ids, batch_refs, robot_requests)
+        _submit_robot_results(batch_ids, batch_refs, robot_requests)
 
         retries = 0
         max_retries = 3
