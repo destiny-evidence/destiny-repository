@@ -7,6 +7,7 @@ information about the parsing process as well as the converted data.
 
 import json
 from typing import Self
+from uuid import UUID
 
 import destiny_sdk
 from pydantic import UUID4, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
@@ -241,7 +242,11 @@ class EnhancementResultValidator(BaseModel):
 
     @classmethod
     async def from_raw(
-        cls, entry: str, entry_ref: int, expected_reference_ids: set[UUID4]
+        cls,
+        entry: str,
+        entry_ref: int,
+        expected_reference_ids: set[UUID],
+        processed_reference_ids: set[UUID] | None = None,
     ) -> Self:
         """Create a EnhancementResult from a jsonl entry."""
         file_entry_validator: TypeAdapter[destiny_sdk.robots.EnhancementResultEntry] = (
@@ -260,6 +265,18 @@ class EnhancementResultValidator(BaseModel):
                 robot_error=destiny_sdk.robots.LinkedRobotError(
                     reference_id=file_entry.reference_id,
                     message="Reference not in batch enhancement request.",
+                )
+            )
+
+        # Check for duplicate reference IDs if tracking is enabled
+        if (
+            processed_reference_ids is not None
+            and file_entry.reference_id in processed_reference_ids
+        ):
+            return cls(
+                robot_error=destiny_sdk.robots.LinkedRobotError(
+                    reference_id=file_entry.reference_id,
+                    message="Duplicate reference ID in enhancement result.",
                 )
             )
 

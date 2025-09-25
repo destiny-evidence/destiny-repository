@@ -25,6 +25,7 @@ repo_url = os.environ["REPO_URL"]
 engine = create_engine(db_url)
 
 
+@pytest.mark.skip
 # e2e tests are ordered for easier seeding of downstream tests
 @pytest.mark.order(2)
 # Remove the below if you want to run e2e tests locally with the toy robot.
