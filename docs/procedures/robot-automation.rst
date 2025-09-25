@@ -77,7 +77,7 @@ Some examples:
 
 - After deduplicating a reference, if the reference is canonical, ``reference`` and ``changeset`` will be identical: the imported reference. Automations trigger on that reference.
 - After deduplicating a reference, if the reference is a duplicate, ``reference`` will be the deduplicated view of its canonical reference, and ``changeset`` will be the duplicate reference. Automations trigger on the canonical reference.
-- After adding an enhancement, ``reference`` will be the reference with the new enhancement applied, and ``changeset`` will be an empty reference just including the new enhancement. Automations trigger on the reference that was enhanced, canonical or not.
+- After adding an enhancement, ``reference`` will be the reference with the new enhancement applied, and ``changeset`` will be an empty reference just including the new enhancement. Automations trigger on the reference that was enhanced, canonical or not. ``reference`` is still deduplicated - if it is canonical, its duplicate's contents will be included.
 
 For the exact structure of these inner documents, see :class:`ReferenceDomainMixin <app.domain.references.models.es.ReferenceDomainMixin>`.
 
