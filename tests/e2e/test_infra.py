@@ -1,14 +1,20 @@
-import os
+"""Diagnostic test to ensure the test infra is working."""
+
+import asyncpg
+import httpx
 
 
-def test_postgres_connection():
-    """Stub test: connect to Postgres started by infra."""
-    db_url = os.environ.get("DB_URL")
-    assert db_url, "DB_URL not set in environment"
-    conn = psycopg2.connect(db_url)
-    cur = conn.cursor()
-    cur.execute("SELECT 1;")
-    result = cur.fetchone()
-    assert result == (1,)
-    cur.close()
-    conn.close()
+async def test_infra(
+    destiny_client_v1: httpx.AsyncClient, pg_session: asyncpg.Connection
+):
+    """Diagnostic test to ensure the test infra is working."""
+    (
+        await destiny_client_v1.get(
+            "system/healthcheck/", params={"azure_blob_storage": False}
+        )
+    ).raise_for_status()
+
+    # Check alembic migrations have been applied
+    version = await pg_session.fetchrow("SELECT version_num FROM alembic_version;")
+    assert version
+    await pg_session.execute("SELECT * FROM reference;")

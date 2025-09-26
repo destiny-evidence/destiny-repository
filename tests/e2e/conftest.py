@@ -1,108 +1,145 @@
 """Containers setup for end-to-end tests."""
 
-# TODO List:
-# - [x] Analyze requirements
-# - [ ] Refactor to use dynamic container URLs/configs
-# - [ ] Implement proper waiting strategies (no fixed sleeps)
-# - [ ] Standardize versions/configs from environment or central config
-# - [ ] Improve error handling/logging
-# - [ ] Externalize sensitive configs
-# - [ ] Test and verify improved setup
-
 import json
-import os
-import subprocess
-import time
+import logging
+import pathlib
 
+import asyncpg
 import httpx
 import pytest
-import asyncpg
+import testcontainers.elasticsearch
+import testcontainers.rabbitmq
+from alembic.command import upgrade
+from elasticsearch import AsyncElasticsearch
 from testcontainers.core.container import DockerContainer
+from testcontainers.core.docker_client import DockerClient
+from testcontainers.core.wait_strategies import HttpWaitStrategy, LogMessageWaitStrategy
 from testcontainers.elasticsearch import ElasticSearchContainer
 from testcontainers.minio import MinioContainer
 from testcontainers.postgres import PostgresContainer
 from testcontainers.rabbitmq import RabbitMqContainer
-from elasticsearch import AsyncElasticsearch
+
+from tests.db_utils import alembic_config_from_url
+
+# Monkeypatch testcontainers.elasticsearch._environment_by_version for elastic v9
+testcontainers.elasticsearch._environment_by_version = lambda _: {  # noqa: SLF001
+    "xpack.security.enabled": "false"
+}
+
+# Monkeypatch testcontainers.rabbitmq.RabbitMqContainer.readiness_probe to a no-op
+testcontainers.rabbitmq.RabbitMqContainer.readiness_probe = lambda self: self
 
 
-@pytest.fixture(scope="module")
-async def postgres():
+# Pass --log-cli-level info to see these
+logger = logging.getLogger(__name__)
+
+_cwd = pathlib.Path.cwd()
+
+
+@pytest.fixture(scope="session")
+def postgres():
     """Postgres container with alembic migrations applied."""
-    with PostgresContainer("postgres:17") as postgres:
-        subprocess.run(  # noqa: S603
-            [
-                "/usr/bin/uv",
-                "run",
-                "alembic",
-                "upgrade",
-                "head",
-            ],
-            check=True,
-        )
+    logger.info("Creating Postgres container...")
+    with PostgresContainer("postgres:17", driver="asyncpg") as postgres:
+        logger.info("Applying alembic migrations.")
+        alembic_config = alembic_config_from_url(postgres.get_connection_url())
+        upgrade(alembic_config, "head")
+        logger.info("Postgres container ready.")
         yield postgres
-    postgres.stop()
 
 
 @pytest.fixture(scope="session")
 async def pg_session(postgres: PostgresContainer):
     """Postgres session for use in tests."""
     url = postgres.get_connection_url()
-    async with asyncpg.connect(url) as connection:
-        yield connection
+    conn = await asyncpg.connect(url.replace("+asyncpg", ""))
+    try:
+        yield conn
+    finally:
+        await conn.close()
 
 
 @pytest.fixture(scope="session")
-async def elasticsearch():
+def elasticsearch():
     """Elasticsearch container with default credentials."""
-    with ElasticSearchContainer("elasticsearch:9.0.0") as elastic:
-        yield elastic
+    logger.info("Creating Elasticsearch container...")
+    with ElasticSearchContainer("elasticsearch:9.1.4", mem_limit="2G") as elasticsearch:
+        logger.info("Elasticsearch container ready.")
+        yield elasticsearch
 
 
 @pytest.fixture(scope="session")
 async def es_client(elasticsearch: ElasticSearchContainer):
     """Elasticsearch client for use in tests."""
-    host = elasticsearch.get_container_host_ip()
-    port = elasticsearch.get_exposed_port(9200)
-    async with AsyncElasticsearch(
-        f"http://{host}:{port}", basic_auth=("elastic", "changeme")
-    ) as client:
+    async with AsyncElasticsearch(elasticsearch.get_url()) as client:
         yield client
 
 
 @pytest.fixture(scope="session")
-async def minio():
+def minio():
     """MinIO container with default credentials."""
+    logger.info("Starting MinIO container...")
     with MinioContainer("minio/minio") as minio:
+        logger.info("MinIO container ready.")
         yield minio
 
 
 @pytest.fixture(scope="session")
-async def rabbitmq():
+def rabbitmq():
     """RabbitMQ container."""
-    with RabbitMqContainer("rabbitmq:3-management") as rabbit:
-        yield rabbit
+    logger.info("Creating RabbitMQ container...")
+    with RabbitMqContainer("rabbitmq:3-management", port=5672).waiting_for(
+        LogMessageWaitStrategy("Server startup complete")
+    ) as rabbitmq:
+        logger.info("RabbitMQ container ready.")
+        yield rabbitmq
 
 
 @pytest.fixture(scope="session")
-def app(
+async def destiny_repository_image(request: pytest.FixtureRequest) -> str:
+    """Get the destiny-repository container."""
+    if request.config.getoption("--build"):
+        logger.info("Building destiny-repository image...")
+        DockerClient().build(".", dockerfile="Dockerfile.e2e", tag="destiny-repository")
+        logger.info("destiny-repository image built.")
+
+    return "destiny-repository"
+
+
+def _add_env(
+    container: DockerContainer,
     postgres: PostgresContainer,
     elasticsearch: ElasticSearchContainer,
-    minio: MinioContainer,
     rabbitmq: RabbitMqContainer,
-):
-    """Get the main application container."""
+    minio: MinioContainer,
+) -> DockerContainer:
+    """Add environment variables to a container."""
     minio_config = minio.get_config()
-    es_config = elasticsearch.get()
-    app = (
-        DockerContainer("destiny-app:latest")
-        .with_exposed_ports(8000)
-        .with_env("MESSAGE_BROKER_URL", rabbitmq.get_container_host_ip())
-        .with_env("DB_CONFIG", json.dumps({"DB_URL": postgres.get_connection_url()}))
+    return (
+        container.with_env(
+            "MESSAGE_BROKER_URL",
+            f"amqp://guest:guest@{(
+                rabbitmq.get_container_host_ip()
+                .replace('localhost', 'host.docker.internal')
+            )}:{rabbitmq.get_exposed_port(5672)}/",
+        )
+        .with_env(
+            "DB_CONFIG",
+            json.dumps(
+                {
+                    "DB_URL": postgres.get_connection_url().replace(
+                        "localhost", "host.docker.internal"
+                    )
+                }
+            ),
+        )
         .with_env(
             "MINIO_CONFIG",
             json.dumps(
                 {
-                    "HOST": minio_config["endpoint"],
+                    "HOST": minio_config["endpoint"].replace(
+                        "localhost", "host.docker.internal"
+                    ),
                     "ACCESS_KEY": minio_config["access_key"],
                     "SECRET_KEY": minio_config["secret_key"],
                 }
@@ -112,104 +149,125 @@ def app(
             "ES_CONFIG",
             json.dumps(
                 {
-                    "ES_URL": es_url,
-                    "ES_USER": es_user,
-                    "ES_PASS": es_pass,
-                    "ES_CA_PATH": es_ca_path,
+                    "ES_INSECURE_URL": elasticsearch.get_url().replace(
+                        "localhost", "host.docker.internal"
+                    )
                 }
             ),
         )
-        .with_env("APP_NAME", "destiny-app")
-        .with_command("fastapi dev app/main.py --host 0.0.0.0 --port 8000")
-        .with_volume_mapping("./app", "/app/app")
-        .with_volume_mapping("./libs/sdk", "/app/libs/sdk")
-        .with_volume_mapping("certs", "/app/certs")
+        .with_env("ENV", "e2e")
+        .with_env("AZURE_APPLICATION_ID", "dummy")
+        .with_env("AZURE_TENANT_ID", "dummy")
     )
-    with app as container:
-        host = container.get_host_ip()
-        port = container.get_exposed_port(8000)
-        os.environ["REPO_URL"] = f"http://{host}:{port}/v1"
-        # Wait for healthcheck
-        for _ in range(30):
-            try:
-                r = httpx.get(f"http://{host}:{port}/v1/system/health")
-                if r.status_code == 200:
-                    break
-            except Exception:  # noqa: BLE001
-                time.sleep(1)
+
+
+@pytest.fixture(scope="session")
+async def worker(
+    postgres: PostgresContainer,
+    elasticsearch: ElasticSearchContainer,
+    rabbitmq: RabbitMqContainer,
+    minio: MinioContainer,
+    destiny_repository_image: str,
+):
+    """Get the worker container."""
+    logger.info("Starting worker container...")
+    worker = (
+        _add_env(
+            DockerContainer(destiny_repository_image),
+            postgres,
+            elasticsearch,
+            rabbitmq,
+            minio,
+        )
+        .with_command(
+            [
+                "uv",
+                "run",
+                "taskiq",
+                "worker",
+                "app.tasks:broker",
+                "--tasks-pattern",
+                "app/**/tasks.py",
+            ]
+        )
+        .with_env("APP_NAME", "destiny-worker")
+        .with_volume_mapping(str(_cwd / "app"), "/app/app")
+        .with_volume_mapping(str(_cwd / "libs/sdk"), "/app/libs/sdk")
+        .waiting_for(LogMessageWaitStrategy("Listening started."))
+    )
+    with worker as container:
+        logger.info("Worker container ready.")
         yield container
 
 
 @pytest.fixture(scope="session")
-def worker(postgres, elasticsearch, minio, rabbitmq):
-    """Get the worker container."""
-    # Use dynamic URLs/configs from testcontainers
-    worker_db_url = os.environ["DB_URL"]
-    minio_url = os.environ["MINIO_URL"]
-    minio_access_key = os.environ["MINIO_ROOT_USER"]
-    minio_secret_key = os.environ["MINIO_ROOT_PASSWORD"]
-    es_url = os.environ["ES_URL"]
-    es_user = os.environ["ES_USER"]
-    es_pass = os.environ["ES_PASS"]
-    es_ca_path = os.environ.get("ES_CA_PATH", "/app/certs/ca/ca.crt")
-    message_broker_url = os.environ["MESSAGE_BROKER_URL"]
-
-    worker = (
-        DockerContainer("destiny-app:latest")
-        .with_env("MESSAGE_BROKER_URL", message_broker_url)
-        .with_env("DB_CONFIG", json.dumps({"DB_URL": worker_db_url}))
-        .with_env(
-            "MINIO_CONFIG",
-            json.dumps(
-                {
-                    "HOST": minio_url.replace("http://", "").replace("https://", ""),
-                    "ACCESS_KEY": minio_access_key,
-                    "SECRET_KEY": minio_secret_key,
-                }
-            ),
+async def app(  # noqa: PLR0913
+    postgres: PostgresContainer,
+    elasticsearch: ElasticSearchContainer,
+    rabbitmq: RabbitMqContainer,
+    minio: MinioContainer,
+    destiny_repository_image: str,
+    worker: DockerContainer,  # noqa: ARG001, used for ordering dependencies
+):
+    """Get the main application container."""
+    logger.info("Starting app container...")
+    port = 8000
+    app = (
+        _add_env(
+            DockerContainer(destiny_repository_image),
+            postgres,
+            elasticsearch,
+            rabbitmq,
+            minio,
         )
-        .with_env(
-            "ES_CONFIG",
-            json.dumps(
-                {
-                    "ES_URL": es_url,
-                    "ES_USER": es_user,
-                    "ES_PASS": es_pass,
-                    "ES_CA_PATH": es_ca_path,
-                }
-            ),
-        )
-        .with_env("APP_NAME", "destiny-worker")
+        .with_env("APP_NAME", "destiny-app")
+        .with_bind_ports(port, port)
         .with_command(
-            "taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover --reload"
+            [
+                "uv",
+                "run",
+                "fastapi",
+                "dev",
+                "app/main.py",
+                "--host",
+                "0.0.0.0",  # noqa: S104
+                "--port",
+                str(port),
+            ]
         )
-        .with_volume_mapping("./app", "/app/app")
-        .with_volume_mapping("./libs/sdk", "/app/libs/sdk")
-        .with_volume_mapping("certs", "/app/certs")
+        .with_volume_mapping(str(_cwd / "app"), "/app/app")
+        .with_volume_mapping(str(_cwd / "libs/sdk"), "/app/libs/sdk")
+        .waiting_for(
+            HttpWaitStrategy(
+                port=port, path="/v1/system/healthcheck/?azure_blob_storage=false"
+            ).for_status_code(200)
+        )
     )
-    with worker as container:
-        yield container
+    with app as container:
+        logger.info("App container ready.")
+        try:
+            yield container
+        finally:
+            logs = container.get_logs()
+            logger.info("App container logs:\n%s", logs)
 
 
-@pytest.fixture(scope="session", autouse=True)
-def setup_infrastructure(  # noqa: PLR0913
-    request: pytest.FixtureRequest,
-) -> None:
-    """Create and destroy infrastructure for end-to-end tests."""
-    postgres = _start_postgres_container()
-    postgres.start()
-    # elasticsearch.start()
-    # minio.start()
-    # rabbitmq.start()
-    # app.start()
-    # worker.start()
+@pytest.fixture(scope="session")
+async def destiny_client_v1(app: DockerContainer) -> httpx.AsyncClient:
+    """Get a httpx client for the main application."""
+    host = app.get_container_host_ip()
+    port = app.get_exposed_port(8000)
+    url = f"http://{host}:{port}/v1/"
+    logger.info("Creating httpx client for %s", url)
+    return httpx.AsyncClient(base_url=url)
 
-    # def cleanup() -> None:
-    #     postgres.stop()
-    #     elasticsearch.stop()
-    #     minio.stop()
-    #     rabbitmq.stop()
-    #     app.stop()
-    #     worker.stop()
 
-    request.addfinalizer(cleanup)  # noqa: PT021, explicitly recommended in testcontainers docs
+def pytest_addoption(parser: pytest.Parser):
+    """Add custom command line options to pytest."""
+    parser.addoption(
+        "--build",
+        action="store_true",
+        default=False,
+        help="Rebuild the destiny image. Helps when uv dependencies have changed. "
+        "Code changes will be picked up automatically without needing this flag.",
+    )

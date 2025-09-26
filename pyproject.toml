@@ -30,6 +30,7 @@ e2e = [
     "psycopg>=3.2.6,<4",
     "pytest-order>=1.3.0,<2",
     "pytest>=8.3.4,<9",
+    "testcontainers[elasticsearch,minio,postgres,rabbitmq]>=4.13.1",
 ]
 
 [project]
