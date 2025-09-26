@@ -11,7 +11,6 @@ from collections.abc import AsyncGenerator, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TypeVar
 
-import tenacity
 from azure.identity.aio import DefaultAzureCredential
 from azure.servicebus import ServiceBusReceivedMessage, ServiceBusReceiveMode
 from azure.servicebus.aio import (
@@ -24,7 +23,7 @@ from azure.servicebus.amqp import AmqpAnnotatedMessage, AmqpMessageBodyType
 from taskiq import AckableMessage, AsyncBroker, BrokerMessage
 
 from app.core.config import get_settings
-from app.core.exceptions import MessageBrokerError, MessageBrokerRetryableError
+from app.core.exceptions import MessageBrokerError
 from app.core.telemetry.logger import get_logger
 
 _T = TypeVar("_T")
@@ -90,6 +89,9 @@ class AzureServiceBusBroker(AsyncBroker):
         self.credential: DefaultAzureCredential | None = None
         self.auto_lock_renewer: AutoLockRenewer | None = None
 
+        self._send_lock = asyncio.Lock()
+        self._receive_lock = asyncio.Lock()
+
     async def startup(self) -> None:
         """Initialize connections and create queues if needed."""
         await super().startup()
@@ -136,12 +138,6 @@ class AzureServiceBusBroker(AsyncBroker):
         if self.credential:
             await self.credential.close()
 
-    @tenacity.retry(
-        retry=tenacity.retry_if_exception_type(MessageBrokerRetryableError),
-        wait=tenacity.wait_exponential_jitter(initial=0.5, jitter=1, exp_base=2),
-        stop=tenacity.stop_after_attempt(5),
-        reraise=True,
-    )
     async def kick(self, message: BrokerMessage) -> None:
         """
         Send message to the queue.
@@ -175,24 +171,15 @@ class AzureServiceBusBroker(AsyncBroker):
 
         logger.debug("Sending message...", task_id=message.task_id, delay=delay)
 
-        try:
-            if delay is None:
-                # Send message directly to main queue
+        if delay is None:
+            # Send message directly to main queue
+            async with self._send_lock:
                 await self.sender.send_messages(service_bus_message)
-            else:
-                # Use Azure's built-in scheduled messages feature
-                scheduled_time = datetime.now(UTC) + timedelta(seconds=delay)
+        else:
+            # Use Azure's built-in scheduled messages feature
+            scheduled_time = datetime.now(UTC) + timedelta(seconds=delay)
+            async with self._send_lock:
                 await self.sender.schedule_messages(service_bus_message, scheduled_time)
-        except AttributeError as exc:
-            # Sporadic issue with Azure service bus. Suspect a race condition.
-            # Has pattern:
-            #   AttributeError: 'NoneType' object has no attribute 'create_sender_link'
-            # See: https://github.com/Azure/azure-sdk-for-python/issues/32967
-            if "NoneType" in str(exc) and "create_sender_link" in str(exc):
-                raise MessageBrokerRetryableError(
-                    detail="Sporadic Azure Service Bus issue encountered."
-                ) from exc
-            raise
 
     async def listen(self) -> AsyncGenerator[AckableMessage, None]:
         """
@@ -209,7 +196,8 @@ class AzureServiceBusBroker(AsyncBroker):
         while True:
             try:
                 # Receive a batch of messages
-                batch_messages = await self.receiver.receive_messages()
+                async with self._receive_lock:
+                    batch_messages = await self.receiver.receive_messages()
 
                 # Process each message
                 for sb_message in batch_messages:
@@ -219,7 +207,8 @@ class AzureServiceBusBroker(AsyncBroker):
                         sb_message: ServiceBusReceivedMessage = sb_message,
                     ) -> None:
                         if self.receiver is not None:
-                            await self.receiver.complete_message(sb_message)
+                            async with self._receive_lock:
+                                await self.receiver.complete_message(sb_message)
                         else:
                             logger.error(
                                 "Receiver is None. Cannot complete the message."
