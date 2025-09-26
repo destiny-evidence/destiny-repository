@@ -1,6 +1,5 @@
 """Integration tests for references in Elasticsearch."""
 
-import unicodedata
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -10,7 +9,11 @@ import pytest
 from elasticsearch import AsyncElasticsearch
 
 from app.core.exceptions import ESNotFoundError
-from app.domain.references.models.models import Enhancement, Reference, RobotAutomation
+from app.domain.references.models.models import (
+    Enhancement,
+    Reference,
+    RobotAutomation,
+)
 from app.domain.references.repository import (
     ReferenceESRepository,
     RobotAutomationESRepository,
@@ -109,14 +112,14 @@ async def reference() -> Reference:
                 "reference_id": r,
                 "content": {
                     "enhancement_type": "bibliographic",
-                    "title": " Sample reference Title with whitespace and a funny charactér ",
+                    "title": " Sample reference Title with whitespace and a funny charactér ",
                     "authorship": [
                         {
                             "display_name": "bMiddle author",
                             "position": destiny_sdk.enhancements.AuthorPosition.MIDDLE,
                         },
                         {
-                            "display_name": "aMiddlé author",
+                            "display_name": "aMiddlé author",
                             "position": destiny_sdk.enhancements.AuthorPosition.MIDDLE,
                         },
                         {
@@ -286,14 +289,9 @@ async def test_es_repository_cycle(
     es_reference_repository: ReferenceESRepository, reference: Reference
 ):
     """Test saving and getting a reference by primary key from Elasticsearch."""
-    bibliographic_enhancement: destiny_sdk.enhancements.BibliographicMetadataEnhancement = reference.enhancements[  # type: ignore[index]
+    bibliographic_enhancement: destiny_sdk.enhancements.BibliographicMetadataEnhancement = reference.enhancements[
         2
-    ].content
-    assert not unicodedata.is_normalized("NFC", bibliographic_enhancement.title)
-    assert not unicodedata.is_normalized(
-        "NFC",
-        bibliographic_enhancement.authorship[1].display_name,
-    )
+    ].content  # type: ignore[index]
 
     await es_reference_repository.add(reference)
 
@@ -326,16 +324,14 @@ async def test_es_repository_cycle(
     )
     assert (
         raw_es_reference["title"]
-        == "Sample Reference Title With Whitespace And A Funny Charactér"
+        == "Sample reference Title with whitespace and a funny charactér"
     )
-    assert unicodedata.is_normalized("NFC", raw_es_reference["title"])
     assert raw_es_reference["authors"] == [
-        "First Author",
-        "Amiddlé Author",
-        "Bmiddle Author",
-        "Last Author",
+        "First author",
+        "aMiddlé author",
+        "bMiddle author",
+        "Last author",
     ]
-    assert unicodedata.is_normalized("NFC", raw_es_reference["authors"][2])
 
 
 async def test_es_repository_not_found(

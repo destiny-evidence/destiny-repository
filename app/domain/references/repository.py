@@ -40,6 +40,9 @@ from app.domain.references.models.models import (
     Reference as DomainReference,
 )
 from app.domain.references.models.models import (
+    ReferenceDuplicateDecision as DomainReferenceDuplicateDecision,
+)
+from app.domain.references.models.models import (
     RobotAutomation as DomainRobotAutomation,
 )
 from app.domain.references.models.models import (
@@ -54,18 +57,15 @@ from app.domain.references.models.sql import (
 from app.domain.references.models.sql import (
     EnhancementRequest as SQLEnhancementRequest,
 )
-from app.domain.references.models.sql import (
-    ExternalIdentifier as SQLExternalIdentifier,
-)
+from app.domain.references.models.sql import ExternalIdentifier as SQLExternalIdentifier
 from app.domain.references.models.sql import (
     PendingEnhancement as SQLPendingEnhancement,
 )
+from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.models.sql import (
-    Reference as SQLReference,
+    ReferenceDuplicateDecision as SQLReferenceDuplicateDecision,
 )
-from app.domain.references.models.sql import (
-    RobotAutomation as SQLRobotAutomation,
-)
+from app.domain.references.models.sql import RobotAutomation as SQLRobotAutomation
 from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
@@ -84,9 +84,18 @@ class ReferenceRepositoryBase(
     """Abstract implementation of a repository for References."""
 
 
+_reference_sql_preloadable = Literal[
+    "identifiers",
+    "enhancements",
+    "duplicate_references",
+    "canonical_reference",
+    "duplicate_decision",
+]
+
+
 class ReferenceSQLRepository(
     GenericAsyncSqlRepository[
-        DomainReference, SQLReference, Literal["identifiers", "enhancements"]
+        DomainReference, SQLReference, _reference_sql_preloadable
     ],
     ReferenceRepositoryBase,
 ):
@@ -217,9 +226,7 @@ class ExternalIdentifierSQLRepository(
                 SQLExternalIdentifier.other_identifier_name == other_identifier_name
             )
         if preload:
-            for p in preload:
-                relationship = getattr(SQLExternalIdentifier, p)
-                query = query.options(joinedload(relationship))
+            query = query.options(*self._get_relationship_loads(preload))
         result = await self._session.execute(query)
         db_identifier = result.scalar_one_or_none()
 
@@ -449,6 +456,32 @@ class RobotAutomationESRepository(
             )
 
         return robot_automation_percolation_results
+
+
+class ReferenceDuplicateDecisionRepositoryBase(
+    GenericAsyncRepository[DomainReferenceDuplicateDecision, GenericPersistenceType],
+    ABC,
+):
+    """Abstract implementation of a repository for Reference Duplicate Decisions."""
+
+
+class ReferenceDuplicateDecisionSQLRepository(
+    GenericAsyncSqlRepository[
+        DomainReferenceDuplicateDecision,
+        SQLReferenceDuplicateDecision,
+        Literal["__none__"],
+    ],
+    ReferenceDuplicateDecisionRepositoryBase,
+):
+    """Concrete implementation of a repo for Reference Duplicate Decisions using SQL."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Initialize the repository with the database session."""
+        super().__init__(
+            session,
+            DomainReferenceDuplicateDecision,
+            SQLReferenceDuplicateDecision,
+        )
 
 
 class PendingEnhancementRepositoryBase(

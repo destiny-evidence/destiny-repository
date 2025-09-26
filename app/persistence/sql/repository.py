@@ -8,8 +8,15 @@ from pydantic import UUID4
 from sqlalchemy import inspect, select, update
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import (
+    InstrumentedAttribute,
+    RelationshipProperty,
+    joinedload,
+    selectinload,
+)
+from sqlalchemy.orm.strategy_options import _AbstractLoad
 
+from app.core.config import get_settings
 from app.core.exceptions import (
     SQLIntegrityError,
     SQLNotFoundError,
@@ -26,8 +33,10 @@ from app.persistence.sql.generics import (
     GenericSQLPersistenceType,
     GenericSQLPreloadableType,
 )
+from app.persistence.sql.persistence import RelationshipLoadType
 
 tracer = trace.get_tracer(__name__)
+settings = get_settings()
 
 
 class GenericAsyncSqlRepository(
@@ -63,6 +72,76 @@ class GenericAsyncSqlRepository(
         self._domain_cls = domain_cls
         self.system = "SQL"
 
+    def _get_relationship_loads(
+        self,
+        preload: list[GenericSQLPreloadableType] | None = None,
+        depth: int = 1,
+    ) -> list[_AbstractLoad]:
+        """
+        Get a list of relationship loading strategies with support for nesting.
+
+        Args:
+            preload: List of relationships to preload
+            depth: Internal tracker for max relationship depth
+
+        Returns:
+            A list of ORM loading options configured for the relationships
+
+        """
+        if not preload:
+            return []
+
+        loaders: list[_AbstractLoad] = []
+
+        for attribute_name in preload:
+            attribute: InstrumentedAttribute | None = getattr(
+                self._persistence_cls, attribute_name, None
+            )
+            if not attribute or not isinstance(
+                attribute.property, RelationshipProperty
+            ):
+                # Not a relationship, perhaps a calculated attribute, skip
+                continue
+
+            relationship = attribute
+            load_type = relationship.info.get("load_type", RelationshipLoadType.JOINED)
+            max_recursion_depth = relationship.info.get("max_recursion_depth")
+
+            # Determine the base loading strategy
+            if load_type == RelationshipLoadType.SELECTIN:
+                # Recurse once, we add more loads dynamically below
+                loader = selectinload(relationship, recursion_depth=1)
+            else:
+                loader = joinedload(relationship)
+
+            # This magic ensures we both:
+            # - propagate preloads to self-referential relationships
+            # - recursively join self-referential relationships a set number of times
+            # Use-case for initial implementation is propagating enhancements etc to
+            # duplicates when preloaded.
+            avoid_propagate: set[str] = set()
+            if back_populates := relationship.info.get("back_populates"):
+                # Don't "bounce back" and form a joining cycle
+                avoid_propagate.add(back_populates)
+            if depth == (max_recursion_depth or 1):
+                # Recursion exit case, maximum length of this relationship's
+                # self-referential chain
+                avoid_propagate.add(relationship.key)
+
+            is_self_referential = (
+                relationship.prop.mapper.class_ == self._persistence_cls
+            )
+            if preload and is_self_referential:
+                loader = loader.options(
+                    *self._get_relationship_loads(
+                        [p for p in preload if p not in avoid_propagate], depth + 1
+                    )
+                )
+
+            loaders.append(loader)
+
+        return loaders
+
     def _validate_fields_exist(self, field_names: list[str]) -> None:
         """
         Validate provided field names exist on the persistence model.
@@ -78,22 +157,6 @@ class GenericAsyncSqlRepository(
                 f"{invalid_fields}"
             )
             raise SQLValueError(msg)
-
-    def _get_preload_options(
-        self, preload: list[GenericSQLPreloadableType] | None
-    ) -> list:
-        """Generate a list of SQLAlchemy options for preloading relationships."""
-        if not preload:
-            return []
-
-        mapper = inspect(self._persistence_cls)
-        valid_relationships = {r.key for r in mapper.relationships}
-
-        return [
-            joinedload(getattr(self._persistence_cls, p))
-            for p in preload
-            if p in valid_relationships
-        ]
 
     @trace_repository_method(tracer)
     async def get_by_pk(
@@ -111,7 +174,7 @@ class GenericAsyncSqlRepository(
 
         """
         trace_attribute(Attributes.DB_PK, str(pk))
-        options = self._get_preload_options(preload)
+        options = self._get_relationship_loads(preload)
         query = (
             select(self._persistence_cls)
             .where(self._persistence_cls.id == pk)
@@ -147,7 +210,7 @@ class GenericAsyncSqlRepository(
         - SQLNotFoundError: If any of the records do not exist.
 
         """
-        options = self._get_preload_options(preload)
+        options = self._get_relationship_loads(preload)
         query = (
             select(self._persistence_cls)
             .where(self._persistence_cls.id.in_(pks))
@@ -187,7 +250,7 @@ class GenericAsyncSqlRepository(
         - list[GenericDomainModelType]: A list of domain models.
 
         """
-        options = self._get_preload_options(preload)
+        options = self._get_relationship_loads(preload)
         query = select(self._persistence_cls).options(*options)
         result = await self._session.execute(query)
         return [ref.to_domain(preload=preload) for ref in result.scalars().all()]
@@ -514,7 +577,7 @@ class GenericAsyncSqlRepository(
         - list[GenericDomainModelType]: A list of domain models matching the filters.
 
         """
-        options = self._get_preload_options(preload)
+        options = self._get_relationship_loads(preload)
 
         # Validate filter and order_by field names
         fields_to_validate = list(filters.keys())
