@@ -8,6 +8,7 @@ import pytest
 from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
+from pydantic import HttpUrl
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
@@ -42,6 +43,8 @@ from app.domain.references.models.sql import (
 )
 from app.domain.references.service import ReferenceService
 from app.domain.robots.models.sql import Robot as SQLRobot
+from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
+from app.persistence.blob.repository import BlobRepository
 from app.tasks import broker
 
 # Use the database session in all tests to set up the database manager.
@@ -93,6 +96,25 @@ async def client(
         base_url="http://test",
     ) as client:
         yield client
+
+
+@pytest.fixture
+def mock_blob_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Use a mock blob repository for generating signed urls."""
+
+    class MockBlobRepository(BlobRepository):
+        async def get_signed_url(
+            self,
+            file: BlobStorageFile,
+            interaction_type: BlobSignedUrlType,
+        ) -> HttpUrl:
+            return HttpUrl(f"http://signed/{file.filename}/{interaction_type}")
+
+    monkeypatch.setattr(
+        references,
+        "BlobRepository",
+        MockBlobRepository,
+    )
 
 
 async def add_reference(session: AsyncSession) -> SQLReference:
@@ -554,7 +576,9 @@ async def test_request_robot_enhancement_batch_missing_robot_id(
 
 
 async def test_get_robot_enhancement_batch_happy_path(
-    session: AsyncSession, client: AsyncClient
+    session: AsyncSession,
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
 ):
     """Test getting an existing robot batch by id."""
     robot = await add_robot(session)
@@ -575,7 +599,7 @@ async def test_get_robot_enhancement_batch_happy_path(
 
     response_data = response.json()
     assert response_data["id"] == str(robot_enhancement_batch.id)
-    assert "X-Amz-Signature" in response_data["reference_storage_url"]
+    assert "signed" in response_data["reference_storage_url"]
 
 
 async def test_get_robot_enhancement_batch_nonexistent_batch(client: AsyncClient):
