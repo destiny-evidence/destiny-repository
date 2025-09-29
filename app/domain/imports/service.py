@@ -9,6 +9,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.core.config import get_settings
 from app.core.exceptions import SQLIntegrityError
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.imports.models.models import (
@@ -55,26 +56,41 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
     @sql_unit_of_work
     async def get_import_record_with_batches(self, pk: UUID4) -> ImportRecord:
         """Get a single import, eager loading its batches."""
-        return await self.sql_uow.imports.get_by_pk(pk, preload=["batches"])
+        return await self.sql_uow.imports.get_by_pk(
+            pk, preload=["batches", "ImportBatch.status"]
+        )
 
     @sql_unit_of_work
     async def get_import_batch(self, import_batch_id: UUID4) -> ImportBatch:
         """Get a single import batch."""
-        return await self.sql_uow.batches.get_by_pk(import_batch_id)
+        return await self.sql_uow.imports.batches.get_by_pk(
+            import_batch_id, preload=["status"]
+        )
 
     @sql_unit_of_work
     async def get_import_result(
-        self, import_result_id: UUID4, preload: list[str] | None = None
+        self,
+        import_result_id: UUID4,
     ) -> ImportResult:
         """Get a single import result by id."""
-        return await self.sql_uow.results.get_by_pk(import_result_id, preload=preload)
+        return await self.sql_uow.imports.batches.results.get_by_pk(import_result_id)
+
+    @sql_unit_of_work
+    async def get_import_result_with_batch(
+        self,
+        import_result_id: UUID4,
+    ) -> ImportResult:
+        """Get a single import result by id."""
+        return await self.sql_uow.imports.batches.results.get_by_pk(
+            import_result_id, preload=["import_batch"]
+        )
 
     @sql_unit_of_work
     async def get_imported_references_from_batch(
         self, import_batch_id: UUID4
     ) -> set[UUID4]:
         """Get all imported references from a batch."""
-        results = await self.sql_uow.results.get_by_filter(
+        results = await self.sql_uow.imports.batches.results.get_by_filter(
             import_batch_id=import_batch_id,
         )
         return {
@@ -90,8 +106,8 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         self, import_batch_id: UUID4
     ) -> ImportBatch:
         """Get a single import batch with preloaded results."""
-        return await self.sql_uow.batches.get_by_pk(
-            import_batch_id, preload=["import_results"]
+        return await self.sql_uow.imports.batches.get_by_pk(
+            import_batch_id, preload=["import_results", "status"]
         )
 
     @sql_unit_of_work
@@ -102,19 +118,24 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
     @sql_unit_of_work
     async def register_batch(self, batch: ImportBatch) -> ImportBatch:
         """Register an import batch, persisting it to the database."""
-        return await self.sql_uow.batches.add(batch)
+        batch = await self.sql_uow.imports.batches.add(batch)
+        return await self.sql_uow.imports.batches.get_by_pk(
+            batch.id, preload=["status"]
+        )
 
     @sql_unit_of_work
     async def register_result(self, result: ImportResult) -> ImportResult:
         """Register an import result, persisting it to the database."""
-        return await self.sql_uow.results.add(result)
+        return await self.sql_uow.imports.batches.results.add(result)
 
     @sql_unit_of_work
     async def update_import_result(
         self, import_result_id: UUID4, **kwargs: object
     ) -> ImportResult:
         """Update the status of an import result."""
-        return await self.sql_uow.results.update_by_pk(import_result_id, **kwargs)
+        return await self.sql_uow.imports.batches.results.update_by_pk(
+            import_result_id, **kwargs
+        )
 
     async def import_reference(
         self,
@@ -210,6 +231,7 @@ This should not happen.
                 response.raise_for_status()
                 line_number = 1
                 async for line in response.aiter_lines():
+                    trace_attribute(Attributes.FILE_LINE_NO, line_number)
                     if line := line.strip():
                         import_result = await self.register_result(
                             ImportResult(
@@ -227,22 +249,13 @@ This should not happen.
                         line_number += 1
 
     @sql_unit_of_work
-    async def add_batch_result(
-        self,
-        import_result: ImportResult,
-    ) -> ImportResult:
-        """Persist an import result to the database."""
-        db_import_result = ImportResult(**import_result.model_dump())
-        return await self.sql_uow.results.add(db_import_result)
-
-    @sql_unit_of_work
     async def get_import_results(
         self,
         import_batch_id: UUID4,
         result_status: ImportResultStatus | None = None,
     ) -> list[ImportResult]:
         """Get a list of results for an import batch."""
-        return await self.sql_uow.results.get_by_filter(
+        return await self.sql_uow.imports.batches.results.get_by_filter(
             import_batch_id=import_batch_id,
             status=result_status,
         )

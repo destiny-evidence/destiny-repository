@@ -1,6 +1,7 @@
 """Repositories for Robots and associated models."""
 
 from abc import ABC
+from typing import Literal
 
 from opentelemetry import trace
 from sqlalchemy.exc import IntegrityError
@@ -30,7 +31,7 @@ class RobotRepositoryBase(
 
 
 class RobotSQLRepository(
-    GenericAsyncSqlRepository[DomainRobot, SQLRobot],
+    GenericAsyncSqlRepository[DomainRobot, SQLRobot, Literal["__none__"]],
     RobotRepositoryBase,
 ):
     """Concrete implementation of a repository for robots using SQLAlchemy."""

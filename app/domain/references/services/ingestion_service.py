@@ -115,6 +115,7 @@ Identifier(s) are already mapped on an existing reference:
             existing_reference_id=str(existing_reference.id),
         )
         await existing_reference.merge(incoming_reference, collision_strategy)
+        trace_attribute(Attributes.REFERENCE_ID, str(existing_reference.id))
         return existing_reference
 
     async def validate_and_collide_reference(
@@ -155,7 +156,6 @@ Identifier(s) are already mapped on an existing reference:
                 errors=[f"Entry {entry_ref}:", collision_result]
             ), None
 
-        trace_attribute(Attributes.REFERENCE_ID, str(collision_result.id))
         reference_create_result.reference_id = collision_result.id
 
         if reference_create_result.errors:

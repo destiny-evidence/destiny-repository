@@ -36,6 +36,7 @@ class EnhancementRequestStatus(StrEnum):
     **Allowed values**:
     - `received`: Enhancement request has been received by the repo.
     - `accepted`: Enhancement request has been accepted by the robot.
+    - `processing`: Enhancement request is being processed by the robot.
     - `rejected`: Enhancement request has been rejected by the robot.
     - `partial_failed`: Some enhancements failed to create.
     - `failed`: All enhancements failed to create.
@@ -47,6 +48,7 @@ class EnhancementRequestStatus(StrEnum):
 
     RECEIVED = auto()
     ACCEPTED = auto()
+    PROCESSING = auto()
     REJECTED = auto()
     PARTIAL_FAILED = auto()
     FAILED = auto()
@@ -92,6 +94,8 @@ class DuplicateDetermination(StrEnum):
         and has been removed. This is rare and generally occurs in repeated imports.
     - `canonical`: The reference is not a duplicate of another reference.
     - `unresolved`: Automatic attempts to resolve the duplicate were unsuccessful.
+    - `unsearchable`: The reference does not have sufficient metadata to be
+        automatically matched to other references.
     - `decoupled`: The existing duplicate mapping has been changed/removed based on new
         information and the references involved require special attention.
     """
@@ -102,6 +106,7 @@ class DuplicateDetermination(StrEnum):
     EXACT_DUPLICATE = auto()
     CANONICAL = auto()
     UNRESOLVED = auto()
+    UNSEARCHABLE = auto()
     DECOUPLED = auto()
 
     @classmethod
@@ -112,12 +117,14 @@ class DuplicateDetermination(StrEnum):
             cls.EXACT_DUPLICATE,
             cls.CANONICAL,
             cls.UNRESOLVED,
+            cls.UNSEARCHABLE,
             cls.DECOUPLED,
         }
 
 
 class Reference(
     DomainBaseModel,
+    ProjectedBaseModel,  # References can self-project to the same structure
     SQLAttributeMixin,
 ):
     """Core reference model with database attributes included."""
@@ -133,6 +140,22 @@ class Reference(
     enhancements: list["Enhancement"] | None = Field(
         default=None,
         description="A list of enhancements for the reference",
+    )
+
+    duplicate_decision: "ReferenceDuplicateDecision | None" = Field(
+        default=None,
+        description="The current active duplicate decision for this reference. If None,"
+        " either duplicate_decision has not been preloaded or the duplicate status"
+        " is pending.",
+    )
+
+    canonical_reference: "Reference | None" = Field(
+        default=None,
+        description="The canonical reference that this reference is a duplicate of",
+    )
+    duplicate_references: list["Reference"] | None = Field(
+        default=None,
+        description="A list of references that this reference duplicates",
     )
 
     async def merge(  # noqa: PLR0912
@@ -341,7 +364,7 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     )
 
 
-class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
+class EnhancementRequest(DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin):
     """Request to add enhancements to a list of references."""
 
     reference_ids: list[uuid.UUID] = Field(
@@ -380,6 +403,10 @@ Errors for individual references are provided <TBC>.
     validation_result_file: BlobStorageFile | None = Field(
         default=None,
         description="The file containing the validation result data from the robot.",
+    )
+    pending_enhancements: list["PendingEnhancement"] | None = Field(
+        default=None,
+        description="List of pending enhancements for the request.",
     )
 
     @property
@@ -456,6 +483,12 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
     """Model representing a decision on whether a reference is a duplicate."""
 
     reference_id: UUID4 = Field(description="The ID of the reference being evaluated.")
+    enhancement_id: UUID4 | None = Field(
+        default=None,
+        description=(
+            "The ID of the enhancement that triggered this duplicate decision, if any."
+        ),
+    )
     active_decision: bool = Field(
         default=False,
         description="Whether this is the active decision for the reference.",
@@ -472,14 +505,16 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         default=None,
         description="The ID of the canonical reference this reference duplicates.",
     )
+    detail: str | None = Field(
+        default=None,
+        description="Optional additional detail about the decision.",
+    )
 
     @model_validator(mode="after")
     def check_canonical_reference_id_populated_iff_duplicate(self) -> Self:
         """Assert that canonical must exist if and only if decision is duplicate."""
-        if (
-            self.canonical_reference_id
-            is not None
-            == self.duplicate_determination
+        if (self.canonical_reference_id is not None) != (
+            self.duplicate_determination
             in (
                 DuplicateDetermination.DUPLICATE,
                 DuplicateDetermination.EXACT_DUPLICATE,
@@ -492,3 +527,86 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
             raise ValueError(msg)
 
         return self
+
+
+class PendingEnhancementStatus(StrEnum):
+    """
+    The status of a pending enhancement.
+
+    **Allowed values**:
+    - `pending`: Enhancement is waiting to be processed.
+    - `accepted`: Enhancement has been accepted for processing.
+    - `importing`: Enhancement is currently being imported.
+    - `indexing`: Enhancement is currently being indexed.
+    - `indexing_failed`: Enhancement indexing has failed.
+    - `completed`: Enhancement has been processed successfully.
+    - `failed`: Enhancement processing has failed.
+    """
+
+    PENDING = auto()
+    ACCEPTED = auto()
+    IMPORTING = auto()
+    INDEXING = auto()
+    INDEXING_FAILED = auto()
+    COMPLETED = auto()
+    FAILED = auto()
+
+
+class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
+    """A pending enhancement."""
+
+    reference_id: UUID4 = Field(
+        ...,
+        description="The ID of the reference to be enhanced.",
+    )
+    robot_id: UUID4 = Field(
+        ...,
+        description="The ID of the robot that will perform the enhancement.",
+    )
+    enhancement_request_id: UUID4 = Field(
+        ...,
+        description=(
+            "The ID of the batch enhancement request that this pending enhancement"
+            " belongs to."
+        ),
+    )
+    robot_enhancement_batch_id: UUID4 | None = Field(
+        default=None,
+        description=(
+            "The ID of the robot enhancement batch that this pending enhancement"
+            " belongs to."
+        ),
+    )
+    status: PendingEnhancementStatus = Field(
+        default=PendingEnhancementStatus.PENDING,
+        description="The status of the pending enhancement.",
+    )
+
+
+class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):
+    """A batch of references to be enhanced by a robot."""
+
+    robot_id: UUID4 = Field(
+        ...,
+        description="The ID of the robot that will perform the enhancement.",
+    )
+    reference_data_file: BlobStorageFile | None = Field(
+        None,
+        description="The file containing the references to be enhanced.",
+    )
+    result_file: BlobStorageFile | None = Field(
+        None,
+        description="The file containing the enhancement results.",
+    )
+    validation_result_file: BlobStorageFile | None = Field(
+        default=None,
+        description="The file containing validation result data from the repository.",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error encountered during the enhancement batch process.",
+    )
+    pending_enhancements: list[PendingEnhancement] | None = Field(
+        default=None,
+        description="The pending enhancements in this batch.",
+    )

@@ -119,9 +119,7 @@ async def import_reference(
     import_service = await get_import_service(sql_uow=sql_uow)
     reference_service = await get_reference_service(sql_uow=sql_uow, es_uow=es_uow)
 
-    import_result = await import_service.get_import_result(
-        import_result_id, preload=["import_batch"]
-    )
+    import_result = await import_service.get_import_result_with_batch(import_result_id)
     if not import_result.import_batch:
         msg = "Import result is missing its import batch. This should not happen."
         raise RuntimeError(msg)
@@ -146,7 +144,7 @@ async def import_reference(
                 remaining_retries - 1,
             )
         else:
-            logger.info("No remaining retries for import batch, marking as failed.")
+            logger.info("No remaining retries for reference import, marking as failed.")
         return
 
     if (

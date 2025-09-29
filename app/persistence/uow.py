@@ -10,18 +10,16 @@ from opentelemetry import trace
 from app.core.exceptions import IntegrityError, NotFoundError
 from app.core.telemetry.attributes import set_span_status
 from app.core.telemetry.logger import get_logger
-from app.domain.imports.repository import (
-    ImportBatchRepositoryBase,
-    ImportRecordRepositoryBase,
-    ImportResultRepositoryBase,
-)
+from app.domain.imports.repository import ImportRecordRepositoryBase
 from app.domain.references.repository import (
     EnhancementRepositoryBase,
     EnhancementRequestRepositoryBase,
     ExternalIdentifierRepositoryBase,
+    PendingEnhancementRepositoryBase,
     ReferenceDuplicateDecisionRepositoryBase,
     ReferenceRepositoryBase,
     RobotAutomationRepositoryBase,
+    RobotEnhancementBatchRepositoryBase,
 )
 from app.domain.robots.repository import (
     RobotRepositoryBase,
@@ -35,8 +33,6 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
     """An asynchronous context manager which handles the persistence lifecyle."""
 
     imports: ImportRecordRepositoryBase
-    batches: ImportBatchRepositoryBase
-    results: ImportResultRepositoryBase
     references: ReferenceRepositoryBase
     external_identifiers: ExternalIdentifierRepositoryBase
     enhancements: EnhancementRepositoryBase
@@ -44,11 +40,11 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
     robots: RobotRepositoryBase
     robot_automations: RobotAutomationRepositoryBase
     reference_duplicate_decisions: ReferenceDuplicateDecisionRepositoryBase
+    pending_enhancements: PendingEnhancementRepositoryBase
+    robot_enhancement_batches: RobotEnhancementBatchRepositoryBase
 
     _protected_attrs: Final[set[str]] = {
         "imports",
-        "batches",
-        "results",
         "references",
         "external_identifiers",
         "enhancements",
@@ -56,6 +52,8 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
         "robots",
         "robot_automations",
         "reference_duplicate_decisions",
+        "pending_enhancements",
+        "robot_enhancement_batches",
     }
 
     def __init__(self) -> None:

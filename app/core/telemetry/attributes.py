@@ -40,6 +40,7 @@ class Attributes(StrEnum):
     DB_OPERATION_NAME = db_attributes.DB_OPERATION_NAME
     DB_PK = _db_attributes.DB_QUERY_PARAMETER_TEMPLATE + ".pk"
     DB_PARAMS = _db_attributes.DB_QUERY_PARAMETER_TEMPLATE
+    DB_RECORD_COUNT = "db.record_count"
 
     # Deployment attributes
     DEPLOYMENT_ENVIRONMENT = _deployment_attributes.DEPLOYMENT_ENVIRONMENT

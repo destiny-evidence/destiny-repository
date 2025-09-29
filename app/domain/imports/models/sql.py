@@ -13,16 +13,12 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
-    case,
-    func,
-    select,
 )
 from sqlalchemy.dialects.postgresql import ENUM
-from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.imports.models.models import (
     CollisionStrategy,
-    ImportBatchStatus,
     ImportRecordStatus,
     ImportResultStatus,
 )
@@ -35,6 +31,7 @@ from app.domain.imports.models.models import (
 from app.domain.imports.models.models import (
     ImportResult as DomainImportResult,
 )
+from app.persistence.sql.generics import GenericSQLPreloadableType
 from app.persistence.sql.persistence import GenericSQLPersistence
 
 
@@ -61,7 +58,9 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
         "ImportBatch", back_populates="import_results"
     )
 
-    __table_args__ = (Index("ix_import_result_import_batch_id", "import_batch_id"),)
+    __table_args__ = (
+        Index("ix_import_result_import_batch_id_status", "import_batch_id", "status"),
+    )
 
     @classmethod
     def from_domain(cls, domain_obj: DomainImportResult) -> Self:
@@ -76,7 +75,7 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
 
     def to_domain(
         self,
-        preload: list[str] | None = None,
+        preload: list[GenericSQLPreloadableType] | None = None,
     ) -> DomainImportResult:
         """Convert the persistence model into an Domain ImportResult object."""
         return DomainImportResult(
@@ -114,69 +113,6 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
     )
     storage_url: Mapped[str] = mapped_column(String, nullable=False)
 
-    # Annoying redefinition of id so we can use the class variable in the status join
-    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
-    # This looks worse than it is. Importantly, this only scans once so should be good
-    # enough (for now?)
-    status = column_property(
-        select(
-            case(
-                # No results -> CREATED
-                (func.count(ImportResult.id) == 0, ImportBatchStatus.CREATED.value),
-                # Has non-terminal statuses -> STARTED
-                (
-                    func.count(
-                        case(
-                            (
-                                ImportResult.status.in_(
-                                    [
-                                        ImportResultStatus.CREATED.value,
-                                        ImportResultStatus.STARTED.value,
-                                        ImportResultStatus.RETRYING.value,
-                                    ]
-                                ),
-                                1,
-                            )
-                        )
-                    )
-                    > 0,
-                    ImportBatchStatus.STARTED.value,
-                ),
-                # All failed -> FAILED
-                (
-                    func.count(ImportResult.id)
-                    == func.count(
-                        case(
-                            (
-                                ImportResult.status == ImportResultStatus.FAILED.value,
-                                1,
-                            )
-                        )
-                    ),
-                    ImportBatchStatus.FAILED.value,
-                ),
-                # Has failures -> PARTIALLY_FAILED
-                (
-                    func.count(
-                        case(
-                            (
-                                ImportResult.status == ImportResultStatus.FAILED.value,
-                                1,
-                            )
-                        )
-                    )
-                    > 0,
-                    ImportBatchStatus.PARTIALLY_FAILED.value,
-                ),
-                # Default -> COMPLETED
-                else_=ImportBatchStatus.COMPLETED.value,
-            )
-        )
-        .where(ImportResult.import_batch_id == id)
-        .correlate_except(ImportResult)
-        .scalar_subquery(),
-    )
-
     import_record: Mapped["ImportRecord"] = relationship(
         "ImportRecord", back_populates="batches"
     )
@@ -205,13 +141,12 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
 
     def to_domain(
         self,
-        preload: list[str] | None = None,
+        preload: list[GenericSQLPreloadableType] | None = None,
     ) -> DomainImportBatch:
         """Convert the persistence model into an Domain ImportBatch object."""
         return DomainImportBatch(
             id=self.id,
             import_record_id=self.import_record_id,
-            status=self.status,
             collision_strategy=self.collision_strategy,
             storage_url=HttpUrl(self.storage_url),
             import_record=self.import_record.to_domain()
@@ -273,7 +208,7 @@ class ImportRecord(GenericSQLPersistence[DomainImportRecord]):
 
     def to_domain(
         self,
-        preload: list[str] | None = None,
+        preload: list[GenericSQLPreloadableType] | None = None,
     ) -> DomainImportRecord:
         """Convert the persistence model into an Domain ImportRecord object."""
         return DomainImportRecord(
