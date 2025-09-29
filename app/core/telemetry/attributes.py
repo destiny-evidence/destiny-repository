@@ -79,6 +79,7 @@ class Attributes(StrEnum):
     REFERENCE_ID = "app.reference.id"
     ENHANCEMENT_ID = "app.enhancement.id"
     ENHANCEMENT_REQUEST_ID = "app.enhancement_request.id"
+    ROBOT_ENHANCEMENT_BATCH_ID = "app.robot_enhancement_batch.id"
     ROBOT_ID = "app.robot.id"
     ROBOT_AUTOMATION_ID = "app.robot_automation.id"
 

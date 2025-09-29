@@ -17,6 +17,7 @@ from azure.servicebus.aio import (
     AutoLockRenewer,
     ServiceBusClient,
     ServiceBusReceiver,
+    ServiceBusSender,
 )
 from azure.servicebus.amqp import AmqpAnnotatedMessage, AmqpMessageBodyType
 from taskiq import AckableMessage, AsyncBroker, BrokerMessage
@@ -83,9 +84,13 @@ class AzureServiceBusBroker(AsyncBroker):
         self.max_lock_renewal_duration = max_lock_renewal_duration
 
         self.service_bus_client: ServiceBusClient | None = None
+        self.sender: ServiceBusSender | None = None
         self.receiver: ServiceBusReceiver | None = None
         self.credential: DefaultAzureCredential | None = None
         self.auto_lock_renewer: AutoLockRenewer | None = None
+
+        self._send_lock = asyncio.Lock()
+        self._receive_lock = asyncio.Lock()
 
     async def startup(self) -> None:
         """Initialize connections and create queues if needed."""
@@ -106,6 +111,10 @@ class AzureServiceBusBroker(AsyncBroker):
                 detail="Either connection_string or namespace must be provided"
             )
 
+        self.sender = self.service_bus_client.get_queue_sender(
+            queue_name=self._queue_name
+        )
+
         if self.is_worker_process:
             self.receiver = self.service_bus_client.get_queue_receiver(
                 queue_name=self._queue_name,
@@ -120,6 +129,8 @@ class AzureServiceBusBroker(AsyncBroker):
         """Close all connections on shutdown."""
         await super().shutdown()
 
+        if self.sender:
+            await self.sender.close()
         if self.receiver:
             await self.receiver.close()
         if self.service_bus_client:
@@ -137,7 +148,7 @@ class AzureServiceBusBroker(AsyncBroker):
         :raises MessageBrokerError:detail= if startup wasn't called.
         :param message: message to send.
         """
-        if self.service_bus_client is None:
+        if self.sender is None or self.service_bus_client is None:
             raise MessageBrokerError(detail="Please run startup before kicking.")
 
         headers = {}
@@ -160,16 +171,15 @@ class AzureServiceBusBroker(AsyncBroker):
 
         logger.debug("Sending message...", task_id=message.task_id, delay=delay)
 
-        async with self.service_bus_client.get_queue_sender(
-            queue_name=self._queue_name
-        ) as sender:
-            if delay is None:
-                # Send message directly to main queue
-                await sender.send_messages(service_bus_message)
-            else:
-                # Use Azure's built-in scheduled messages feature
-                scheduled_time = datetime.now(UTC) + timedelta(seconds=delay)
-                await sender.schedule_messages(service_bus_message, scheduled_time)
+        if delay is None:
+            # Send message directly to main queue
+            async with self._send_lock:
+                await self.sender.send_messages(service_bus_message)
+        else:
+            # Use Azure's built-in scheduled messages feature
+            scheduled_time = datetime.now(UTC) + timedelta(seconds=delay)
+            async with self._send_lock:
+                await self.sender.schedule_messages(service_bus_message, scheduled_time)
 
     async def listen(self) -> AsyncGenerator[AckableMessage, None]:
         """
@@ -186,7 +196,8 @@ class AzureServiceBusBroker(AsyncBroker):
         while True:
             try:
                 # Receive a batch of messages
-                batch_messages = await self.receiver.receive_messages()
+                async with self._receive_lock:
+                    batch_messages = await self.receiver.receive_messages()
 
                 # Process each message
                 for sb_message in batch_messages:
@@ -196,7 +207,8 @@ class AzureServiceBusBroker(AsyncBroker):
                         sb_message: ServiceBusReceivedMessage = sb_message,
                     ) -> None:
                         if self.receiver is not None:
-                            await self.receiver.complete_message(sb_message)
+                            async with self._receive_lock:
+                                await self.receiver.complete_message(sb_message)
                         else:
                             logger.error(
                                 "Receiver is None. Cannot complete the message."
