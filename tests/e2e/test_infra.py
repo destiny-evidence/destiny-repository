@@ -1,12 +1,11 @@
 """Diagnostic test to ensure the test infra is working."""
 
-import asyncpg
 import httpx
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
-async def test_infra(
-    destiny_client_v1: httpx.AsyncClient, pg_session: asyncpg.Connection
-):
+async def test_infra(destiny_client_v1: httpx.AsyncClient, pg_session: AsyncSession):
     """Diagnostic test to ensure the test infra is working."""
     (
         await destiny_client_v1.get(
@@ -15,6 +14,7 @@ async def test_infra(
     ).raise_for_status()
 
     # Check alembic migrations have been applied
-    version = await pg_session.fetchrow("SELECT version_num FROM alembic_version;")
-    assert version
-    await pg_session.execute("SELECT * FROM reference;")
+    version = await pg_session.execute(text("SELECT version_num FROM alembic_version"))
+    version_value = version.scalar()
+    assert version_value
+    await pg_session.execute(text("SELECT * FROM reference"))

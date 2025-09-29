@@ -4,7 +4,6 @@ import json
 import logging
 import pathlib
 
-import asyncpg
 import httpx
 import pytest
 import testcontainers.elasticsearch
@@ -19,7 +18,13 @@ from testcontainers.minio import MinioContainer
 from testcontainers.postgres import PostgresContainer
 from testcontainers.rabbitmq import RabbitMqContainer
 
-from tests.db_utils import alembic_config_from_url
+from app.core.config import DatabaseConfig
+from app.persistence.sql.session import (
+    AsyncDatabaseSessionManager,
+    db_manager,
+)
+from tests.db_utils import alembic_config_from_url, clean_tables
+from tests.es_utils import clean_test_indices, create_test_indices, delete_test_indices
 
 # Monkeypatch testcontainers.elasticsearch._environment_by_version for elastic v9
 testcontainers.elasticsearch._environment_by_version = lambda _: {  # noqa: SLF001
@@ -35,6 +40,9 @@ logger = logging.getLogger(__name__)
 
 _cwd = pathlib.Path.cwd()
 
+# Attempt to avoid port collisions in CI
+app_port = 8000
+
 
 @pytest.fixture(scope="session")
 def postgres():
@@ -49,30 +57,69 @@ def postgres():
 
 
 @pytest.fixture(scope="session")
-async def pg_session(postgres: PostgresContainer):
+async def pg_sessionmanager(
+    postgres: PostgresContainer,
+):
+    """Build shared session manager for tests."""
+    db_manager.init(DatabaseConfig(db_url=postgres.get_connection_url()), "e2e")
+    # can add another init (redis, etc...)
+    yield db_manager
+    await db_manager.close()
+
+
+@pytest.fixture
+async def pg_session(pg_sessionmanager: AsyncDatabaseSessionManager):
     """Postgres session for use in tests."""
-    url = postgres.get_connection_url()
-    conn = await asyncpg.connect(url.replace("+asyncpg", ""))
-    try:
-        yield conn
-    finally:
-        await conn.close()
+    engine = pg_sessionmanager._engine  # noqa: SLF001
+    assert engine
+
+    async with pg_sessionmanager.session() as session:
+        yield session
+
+
+@pytest.fixture(autouse=True)
+async def pg_lifecycle(pg_sessionmanager: AsyncDatabaseSessionManager):
+    """Cleanup database tables after each test."""
+    # Alembic manages the schema with a session scope,
+    # so we just need to clean the tables after each test
+    yield
+
+    engine = pg_sessionmanager._engine  # noqa: SLF001
+    assert engine
+
+    async with engine.begin() as conn:
+        await clean_tables(conn)
 
 
 @pytest.fixture(scope="session")
-def elasticsearch():
+async def elasticsearch():
     """Elasticsearch container with default credentials."""
     logger.info("Creating Elasticsearch container...")
     with ElasticSearchContainer("elasticsearch:9.1.4", mem_limit="2G") as elasticsearch:
+        logger.info("Creating Elasticsearch indices...")
+        async with AsyncElasticsearch(elasticsearch.get_url()) as client:
+            await create_test_indices(client)
         logger.info("Elasticsearch container ready.")
         yield elasticsearch
+        async with AsyncElasticsearch(elasticsearch.get_url()) as client:
+            await delete_test_indices(client)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def es_client(elasticsearch: ElasticSearchContainer):
     """Elasticsearch client for use in tests."""
     async with AsyncElasticsearch(elasticsearch.get_url()) as client:
         yield client
+
+
+@pytest.fixture(autouse=True)
+async def es_lifecycle(elasticsearch: ElasticSearchContainer):
+    """Clean indices around each test."""
+    # Indices are created with session scope,
+    # so we just need to clean them after each test
+    yield
+    async with AsyncElasticsearch(elasticsearch.get_url()) as client:
+        await clean_test_indices(client)
 
 
 @pytest.fixture(scope="session")
@@ -211,7 +258,6 @@ async def app(  # noqa: PLR0913
 ):
     """Get the main application container."""
     logger.info("Starting app container...")
-    port = 8000
     app = (
         _add_env(
             DockerContainer(destiny_repository_image),
@@ -221,7 +267,7 @@ async def app(  # noqa: PLR0913
             minio,
         )
         .with_env("APP_NAME", "destiny-app")
-        .with_bind_ports(port, port)
+        .with_exposed_ports(app_port)
         .with_command(
             [
                 "uv",
@@ -232,14 +278,14 @@ async def app(  # noqa: PLR0913
                 "--host",
                 "0.0.0.0",  # noqa: S104
                 "--port",
-                str(port),
+                str(app_port),
             ]
         )
         .with_volume_mapping(str(_cwd / "app"), "/app/app")
         .with_volume_mapping(str(_cwd / "libs/sdk"), "/app/libs/sdk")
         .waiting_for(
             HttpWaitStrategy(
-                port=port, path="/v1/system/healthcheck/?azure_blob_storage=false"
+                port=app_port, path="/v1/system/healthcheck/?azure_blob_storage=false"
             ).for_status_code(200)
         )
     )
@@ -256,7 +302,7 @@ async def app(  # noqa: PLR0913
 async def destiny_client_v1(app: DockerContainer) -> httpx.AsyncClient:
     """Get a httpx client for the main application."""
     host = app.get_container_host_ip()
-    port = app.get_exposed_port(8000)
+    port = app.get_exposed_port(app_port)
     url = f"http://{host}:{port}/v1/"
     logger.info("Creating httpx client for %s", url)
     return httpx.AsyncClient(base_url=url)
