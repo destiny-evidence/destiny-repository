@@ -11,7 +11,6 @@ from structlog.contextvars import bound_contextvars
 
 from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
 from app.core.telemetry.logger import get_logger
-from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     EnhancementRequest,
     EnhancementRequestStatus,
@@ -367,8 +366,4 @@ async def detect_and_dispatch_robot_automations(
             )
         )
         requests.append(enhancement_request)
-        await queue_task_with_trace(
-            collect_and_dispatch_references_for_enhancement,
-            enhancement_request_id=enhancement_request.id,
-        )
     return requests
