@@ -331,17 +331,17 @@ async def request_robot_enhancement_batch(
         robot_enhancement_batch
     )
 
+
 @robot_enhancement_batch_router.get(
     "/{robot_enhancement_batch_id}/",
     response_model=destiny_sdk.robots.RobotEnhancementBatch,
-    summary="Get an existing batch of references to enhance"
+    summary="Get an existing batch of references to enhance",
 )
 async def get_robot_enhancement_batch(
     robot_enhancement_batch_id: uuid.UUID,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     anti_corruption_service: Annotated[
-        ReferenceAntiCorruptionService,
-        Depends(reference_anti_corruption_service)
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
 ) -> destiny_sdk.robots.RobotEnhancementBatch:
     """
@@ -355,6 +355,7 @@ async def get_robot_enhancement_batch(
     return await anti_corruption_service.robot_enhancement_batch_to_sdk_robot(
         robot_enhancement_batch
     )
+
 
 enhancement_request_router.include_router(enhancement_request_automation_router)
 

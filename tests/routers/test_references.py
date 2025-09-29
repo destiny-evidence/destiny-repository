@@ -116,6 +116,7 @@ async def add_robot(session: AsyncSession) -> SQLRobot:
     await session.commit()
     return robot
 
+
 async def add_enhancement_request(
     session: AsyncSession, robot: SQLRobot, reference: SQLReference
 ) -> SQLEnhancementRequest:
@@ -128,6 +129,7 @@ async def add_enhancement_request(
     session.add(enhancement_request)
     await session.commit()
     return enhancement_request
+
 
 async def add_pending_enhancement(
     session: AsyncSession,
@@ -145,16 +147,16 @@ async def add_pending_enhancement(
     await session.commit()
     return pending_enhancement
 
+
 async def add_robot_enhancement_batch(
-    session: AsyncSession,
-    pending_enhancement: SQLPendingEnhancement
+    session: AsyncSession, pending_enhancement: SQLPendingEnhancement
 ):
     """Add a robot enhancement batch to the database."""
     robot_enhancement_batch = SQLRobotEnhancementBatch(
-        robot_id = pending_enhancement.robot_id,
-        pending_enhancements = [pending_enhancement],
-        reference_data_file = "minio://destiny-repository/robot_enhancement_batch_reference_data/some_fake_reference_data.jsonl",
-        result_file = "minio://destiny-repository/enhancement_result/some_fake_enhancement_results.jsonl"
+        robot_id=pending_enhancement.robot_id,
+        pending_enhancements=[pending_enhancement],
+        reference_data_file="minio://destiny-repository/robot_enhancement_batch_reference_data/some_fake_reference_data.jsonl",
+        result_file="minio://destiny-repository/enhancement_result/some_fake_enhancement_results.jsonl",
     )
     pending_enhancement.robot_enhancement_batch_id = robot_enhancement_batch.id
 
@@ -550,9 +552,9 @@ async def test_request_robot_enhancement_batch_missing_robot_id(
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     mock_get_pending.assert_not_awaited()
 
+
 async def test_get_robot_enhancement_batch_happy_path(
-        session: AsyncSession,
-        client: AsyncClient
+    session: AsyncSession, client: AsyncClient
 ):
     """Test getting an existing robot batch by id."""
     robot = await add_robot(session)
@@ -570,5 +572,14 @@ async def test_get_robot_enhancement_batch_happy_path(
     )
 
     assert response.status_code == status.HTTP_200_OK
-    assert response.json()["id"] == str(robot_enhancement_batch.id)
 
+    response_data = response.json()
+    assert response_data["id"] == str(robot_enhancement_batch.id)
+    assert "X-Amz-Signature" in response_data["reference_storage_url"]
+
+
+async def test_get_robot_enhancement_batch_nonexistent_batch(client: AsyncClient):
+    """Test getting a robot enhancement batch that does not exist."""
+    response = await client.get(f"/v1/robot-enhancement-batch/{uuid.uuid4()}/")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
