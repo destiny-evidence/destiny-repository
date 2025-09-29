@@ -29,8 +29,8 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     Visibility,
 )
+from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import (
-    EnhancementRequest,
     ExternalIdentifier,
 )
 from app.domain.references.models.sql import (
@@ -112,6 +112,19 @@ async def add_robot(session: AsyncSession) -> SQLRobot:
     session.add(robot)
     await session.commit()
     return robot
+
+async def add_enhancement_request(
+    session: AsyncSession, robot: SQLRobot, reference: SQLReference
+) -> SQLEnhancementRequest:
+    """Add an enhancement request to the database."""
+    enhancement_request = SQLEnhancementRequest(
+        reference_ids=[reference.id],
+        robot_id=robot.id,
+        request_status=EnhancementRequestStatus.RECEIVED,
+    )
+    session.add(enhancement_request)
+    await session.commit()
+    return enhancement_request
 
 
 async def test_request_batch_enhancement_happy_path(
@@ -410,26 +423,11 @@ async def test_get_robot_automations_with_automations(
     expected_robot_ids = {robot.id, robot.id}
     assert robot_ids == expected_robot_ids
 
-
-async def add_enhancement_request(
-    session: AsyncSession, robot: SQLRobot, reference: SQLReference
-) -> EnhancementRequest:
-    """Add an enhancement request to the database."""
-    enhancement_request = EnhancementRequest(
-        reference_ids=[reference.id],
-        robot_id=robot.id,
-        request_status=EnhancementRequestStatus.RECEIVED,
-    )
-    session.add(enhancement_request)
-    await session.commit()
-    return enhancement_request
-
-
 async def add_pending_enhancement(
     session: AsyncSession,
     robot: SQLRobot,
     reference: SQLReference,
-    enhancement_request: EnhancementRequest,
+    enhancement_request: SQLEnhancementRequest,
 ) -> SQLPendingEnhancement:
     """Add a pending enhancement to the database."""
     pending_enhancement = SQLPendingEnhancement(
