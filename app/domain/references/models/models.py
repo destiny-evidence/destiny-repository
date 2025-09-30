@@ -36,6 +36,7 @@ class EnhancementRequestStatus(StrEnum):
     **Allowed values**:
     - `received`: Enhancement request has been received by the repo.
     - `accepted`: Enhancement request has been accepted by the robot.
+    - `processing`: Enhancement request is being processed by the robot.
     - `rejected`: Enhancement request has been rejected by the robot.
     - `partial_failed`: Some enhancements failed to create.
     - `failed`: All enhancements failed to create.
@@ -47,6 +48,7 @@ class EnhancementRequestStatus(StrEnum):
 
     RECEIVED = auto()
     ACCEPTED = auto()
+    PROCESSING = auto()
     REJECTED = auto()
     PARTIAL_FAILED = auto()
     FAILED = auto()
@@ -110,7 +112,7 @@ class DuplicateDetermination(StrEnum):
 
     @classmethod
     def get_terminal_states(cls) -> set["DuplicateDetermination"]:
-        """Get the terminal states for duplicate determination."""
+        """Return the set of terminal DuplicateDetermination states."""
         return {
             cls.DUPLICATE,
             cls.EXACT_DUPLICATE,
@@ -451,7 +453,7 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
         )
 
 
-class EnhancementRequest(DomainBaseModel, SQLAttributeMixin):
+class EnhancementRequest(DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin):
     """Request to add enhancements to a list of references."""
 
     reference_ids: list[uuid.UUID] = Field(
@@ -490,6 +492,10 @@ Errors for individual references are provided <TBC>.
     validation_result_file: BlobStorageFile | None = Field(
         default=None,
         description="The file containing the validation result data from the robot.",
+    )
+    pending_enhancements: list["PendingEnhancement"] | None = Field(
+        default=None,
+        description="List of pending enhancements for the request.",
     )
 
     @property
@@ -645,3 +651,86 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
             raise ValueError(msg)
 
         return self
+
+
+class PendingEnhancementStatus(StrEnum):
+    """
+    The status of a pending enhancement.
+
+    **Allowed values**:
+    - `pending`: Enhancement is waiting to be processed.
+    - `accepted`: Enhancement has been accepted for processing.
+    - `importing`: Enhancement is currently being imported.
+    - `indexing`: Enhancement is currently being indexed.
+    - `indexing_failed`: Enhancement indexing has failed.
+    - `completed`: Enhancement has been processed successfully.
+    - `failed`: Enhancement processing has failed.
+    """
+
+    PENDING = auto()
+    ACCEPTED = auto()
+    IMPORTING = auto()
+    INDEXING = auto()
+    INDEXING_FAILED = auto()
+    COMPLETED = auto()
+    FAILED = auto()
+
+
+class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
+    """A pending enhancement."""
+
+    reference_id: UUID4 = Field(
+        ...,
+        description="The ID of the reference to be enhanced.",
+    )
+    robot_id: UUID4 = Field(
+        ...,
+        description="The ID of the robot that will perform the enhancement.",
+    )
+    enhancement_request_id: UUID4 = Field(
+        ...,
+        description=(
+            "The ID of the batch enhancement request that this pending enhancement"
+            " belongs to."
+        ),
+    )
+    robot_enhancement_batch_id: UUID4 | None = Field(
+        default=None,
+        description=(
+            "The ID of the robot enhancement batch that this pending enhancement"
+            " belongs to."
+        ),
+    )
+    status: PendingEnhancementStatus = Field(
+        default=PendingEnhancementStatus.PENDING,
+        description="The status of the pending enhancement.",
+    )
+
+
+class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):
+    """A batch of references to be enhanced by a robot."""
+
+    robot_id: UUID4 = Field(
+        ...,
+        description="The ID of the robot that will perform the enhancement.",
+    )
+    reference_data_file: BlobStorageFile | None = Field(
+        None,
+        description="The file containing the references to be enhanced.",
+    )
+    result_file: BlobStorageFile | None = Field(
+        None,
+        description="The file containing the enhancement results.",
+    )
+    validation_result_file: BlobStorageFile | None = Field(
+        default=None,
+        description="The file containing validation result data from the repository.",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error encountered during the enhancement batch process.",
+    )
+    pending_enhancements: list[PendingEnhancement] | None = Field(
+        default=None,
+        description="The pending enhancements in this batch.",
+    )

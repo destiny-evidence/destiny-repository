@@ -94,6 +94,22 @@ class SQLNotFoundError(NotFoundError):
         super().__init__(detail, *args)
 
 
+class SQLValueError(DestinyRepositoryError):
+    """Exception for when a value is invalid for a SQL operation."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the SQLValueError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        self.detail = detail
+        super().__init__(detail, *args)
+
+
 class IntegrityError(DestinyRepositoryError):
     """Exception for when a change would violate data integrity."""
 
