@@ -221,7 +221,7 @@ class ReferenceDocument(
     class Index:
         """Index metadata for the persistence model."""
 
-        name = f"{INDEX_PREFIX}-reference"
+        name = f"{INDEX_PREFIX}reference"
 
     @classmethod
     def from_domain(cls, domain_obj: Reference) -> Self:
@@ -328,10 +328,14 @@ class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
         return cls(
             query=None,
             robot_id=None,
-            reference=ReferenceInnerDocument.from_domain(percolatable)
-            if isinstance(percolatable, Reference)
-            else None,
-            enhancement=EnhancementDocument.from_domain(percolatable)
-            if isinstance(percolatable, Enhancement)
-            else None,
+            reference=(
+                ReferenceInnerDocument.from_domain(percolatable)
+                if isinstance(percolatable, Reference)
+                else None
+            ),
+            enhancement=(
+                EnhancementDocument.from_domain(percolatable)
+                if isinstance(percolatable, Enhancement)
+                else None
+            ),
         )
