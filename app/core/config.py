@@ -104,6 +104,7 @@ class ESConfig(BaseModel):
     timeout_seconds: int = 30
     retry_on_timeout: bool = True
     max_retries: int = 5
+    index_prefix: str = ""
 
     @property
     def uses_api_key(self) -> bool:

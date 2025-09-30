@@ -32,7 +32,6 @@ from app.domain.references.models.projections import (
     CandidateCanonicalSearchFieldsProjection,
 )
 from app.persistence.es.persistence import (
-    INDEX_PREFIX,
     GenericESPersistence,
 )
 
@@ -221,7 +220,7 @@ class ReferenceDocument(
     class Index:
         """Index metadata for the persistence model."""
 
-        name = f"{INDEX_PREFIX}reference"
+        name = f"{settings.es_config.index_prefix}reference"
 
     @classmethod
     def from_domain(cls, domain_obj: Reference) -> Self:
@@ -280,7 +279,7 @@ class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
     class Index:
         """Index metadata for the persistence model."""
 
-        name = f"{INDEX_PREFIX}-robot-automation-percolation"
+        name = f"{settings.es_config.index_prefix}robot-automation-percolation"
 
     query: dict[str, Any] | None = mapped_field(
         Percolator(required=False),
