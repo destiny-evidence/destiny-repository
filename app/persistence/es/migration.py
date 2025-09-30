@@ -1,0 +1,383 @@
+import logging
+from typing import Any, Optional
+
+from elasticsearch import AsyncElasticsearch, NotFoundError
+from elasticsearch.dsl import AsyncDocument, Index
+
+logger = logging.getLogger(__name__)
+
+
+class IndexMigrationManager:
+    """
+    Manages Elasticsearch index migrations with versioning and zero-downtime upgrades.
+
+    Uses an alias to point to the current active index version, allowing seamless
+    migrations by creating new indices and switching the alias atomically.
+    """
+
+    def __init__(
+        self,
+        document_class: type[AsyncDocument],
+        alias_name: str,
+        client: AsyncElasticsearch,
+        version_prefix: str = "v",
+        batch_size: int = 1000,
+    ) -> None:
+        """
+        Initialize the migration manager.
+
+        Args:
+            document_class: The AsyncDocument subclass defining the mapping
+            alias_name: The alias name (defaults to document_class._index._name)
+            client: AsyncElasticsearch client (uses document_class default if not provided)
+            version_prefix: Prefix for version numbers in index names
+            batch_size: Batch size for reindexing operations
+
+        """
+        self.document_class = document_class
+        self.client = client
+        self.batch_size = batch_size
+        self.version_prefix = version_prefix
+
+        self.base_index_name = document_class.Index.name
+        self.alias_name = alias_name or self.base_index_name
+
+    async def get_current_version(self, index_name: str | None = None) -> int | None:
+        """
+        Get the current version number of the index pointed to by the alias.
+
+        Returns:
+            Current version number or None if alias doesn't exist
+
+        """
+        current_index_name = index_name or await self.get_current_index_name()
+        if current_index_name is None:
+            return None
+        try:
+            version_str = current_index_name.split(f"_{self.version_prefix}")[-1]
+            return int(version_str)
+        except ValueError:
+            logger.warning(
+                "Could not parse version from index name: %s", current_index_name
+            )
+            return None
+
+    async def get_current_index_name(self) -> str | None:
+        """
+        Get the name of the current index pointed to by the alias.
+
+        Returns:
+            Current index name or None if alias doesn't exist
+
+        """
+        try:
+            alias_info = await self.client.indices.get_alias(name=self.alias_name)
+            indices = list(alias_info.keys())
+            return indices[0] if indices else None
+        except NotFoundError:
+            return None
+
+    def _generate_index_name(self, version: int) -> str:
+        """Generate a versioned index name."""
+        return f"{self.base_index_name}_{self.version_prefix}{version}"
+
+    async def _create_index_with_mapping(self, index_name: str) -> None:
+        """
+        Create a new index with the mapping from the document class.
+
+        Args:
+            index_name: Name of the index to create
+
+        """
+        await self.document_class.init(index=index_name, using=self.client)
+        logger.info("Created index: %s", index_name)
+
+    async def initialize(self) -> str:
+        """
+        Initialize the index system with version 1 if it doesn't exist.
+
+        Returns:
+            The name of the active index
+
+        """
+        current_index = await self.get_current_index_name()
+
+        if current_index is None:
+            # First time setup
+            index_name = self._generate_index_name(1)
+
+            # Create the index
+            await self._create_index_with_mapping(index_name)
+
+            # Create the alias
+            await self.client.indices.put_alias(index=index_name, name=self.alias_name)
+
+            logger.info(
+                "Initialized index system with %(index_name) -> %(alias_name)",
+                {"index_name": index_name, "alias_name": self.alias_name},
+            )
+            return index_name
+        logger.info(
+            "Index system already initialized: %(current_index) -> %(alias_name)",
+            {"current_index": current_index, "alias_name": self.alias_name},
+        )
+        return current_index
+
+    async def migrate(
+        self,
+        *,
+        force: bool = False,
+        delete_old: bool = False,
+        verify_count: bool = True,
+    ) -> str | None:
+        """
+        Migrate to a new index version if the mapping has changed.
+
+        Args:
+            force: Force migration even if mappings appear identical
+            delete_old: Delete the old index after successful migration
+            verify_count: Verify document counts match after migration
+
+        Returns:
+            New index name if migration occurred, None otherwise
+
+        """
+        current_index = await self.get_current_index_name()
+
+        if current_index is None:
+            # No existing index, initialize instead
+            return await self.initialize()
+
+        # Check if migration is needed
+        if not force:
+            needs_migration = await self._check_mapping_differences(current_index)
+            if not needs_migration:
+                logger.info("No mapping differences detected, skipping migration")
+                return None
+        current_version = await self.get_current_version(current_index)
+        if current_version is None:
+            msg = "Current index version could not be determined"
+            raise RuntimeError(msg)
+
+        # Create new versioned index
+        new_version = current_version + 1
+        new_index = self._generate_index_name(new_version)
+
+        logger.info(
+            "Starting migration from %(current_index)s to %(new_index)s",
+            {
+                "current_index": current_index,
+                "new_index": new_index,
+            },
+        )
+
+        # Create new index with updated mapping
+        await self._create_index_with_mapping(new_index)
+
+        # Reindex data
+        await self._reindex_data(current_index, new_index)
+
+        # Verify migration if requested
+        if verify_count:
+            await self._verify_migration(current_index, new_index)
+
+        # Switch alias atomically
+        await self._switch_alias(current_index, new_index)
+
+        # Delete old index if requested
+        if delete_old:
+            await self._delete_index_safely(current_index)
+
+        logger.info(f"Migration completed successfully to {new_index}")
+        return new_index
+
+    async def _check_mapping_differences(self, current_index: str) -> bool:
+        """
+        Check if there are mapping differences between current index and document class.
+
+        Args:
+            current_index: Name of the current index
+
+        Returns:
+            True if differences detected, False otherwise
+        """
+        try:
+            # Get current mapping
+            current_mapping = await self.client.indices.get_mapping(index=current_index)
+            current_props = current_mapping[current_index]["mappings"].get(
+                "properties", {}
+            )
+
+            # Get new mapping from document class
+            # This is a simplified check - you might want to make this more sophisticated
+            new_mapping = self.document_class._doc_type.mapping
+            new_props = new_mapping.to_dict().get("properties", {})
+
+            # Basic comparison - you might want to deep compare
+            return current_props != new_props
+
+        except Exception as e:
+            logger.warning(f"Could not compare mappings: {e}")
+            return True  # Assume migration needed if we can't compare
+
+    async def _reindex_data(self, source_index: str, dest_index: str) -> None:
+        """
+        Reindex data from source to destination index.
+
+        Args:
+            source_index: Source index name
+            dest_index: Destination index name
+        """
+        logger.info(f"Reindexing from {source_index} to {dest_index}")
+
+        # Get document count for progress tracking
+        count_response = await self.client.count(index=source_index)
+        total_docs = count_response["count"]
+
+        if total_docs == 0:
+            logger.info("No documents to reindex")
+            return
+
+        logger.info(f"Reindexing {total_docs} documents...")
+
+        # Perform reindex
+        response = await self.client.reindex(
+            source={"index": source_index, "size": self.batch_size},
+            dest={"index": dest_index},
+            wait_for_completion=True,
+        )
+
+        logger.info(f"Reindexed {response['total']} documents in {response['took']}ms")
+
+    async def _verify_migration(self, source_index: str, dest_index: str) -> None:
+        """
+        Verify that migration was successful by comparing document counts.
+
+        Args:
+            source_index: Source index name
+            dest_index: Destination index name
+
+        Raises:
+            RuntimeError: If document counts don't match
+        """
+        source_count = await self.client.count(index=source_index)
+        dest_count = await self.client.count(index=dest_index)
+
+        if source_count["count"] != dest_count["count"]:
+            raise RuntimeError(
+                f"Document count mismatch: source={source_count['count']}, "
+                f"dest={dest_count['count']}"
+            )
+
+        logger.info(
+            f"Verification successful: {dest_count['count']} documents migrated"
+        )
+
+    async def _switch_alias(self, old_index: str, new_index: str) -> None:
+        """
+        Atomically switch the alias from old to new index.
+
+        Args:
+            old_index: Current index name
+            new_index: New index name
+        """
+        actions = [
+            {"remove": {"index": old_index, "alias": self.alias_name}},
+            {"add": {"index": new_index, "alias": self.alias_name}},
+        ]
+
+        await self.client.indices.update_aliases(body={"actions": actions})
+        logger.info(f"Switched alias {self.alias_name} from {old_index} to {new_index}")
+
+    async def _delete_index_safely(self, index_name: str) -> None:
+        """
+        Safely delete an index after confirming it's not in use.
+
+        Args:
+            index_name: Name of index to delete
+        """
+        # Check if index has any aliases
+        try:
+            alias_info = await self.client.indices.get_alias(index=index_name)
+            if index_name in alias_info and alias_info[index_name]["aliases"]:
+                logger.warning(
+                    f"Index {index_name} still has aliases, skipping deletion"
+                )
+                return
+        except NotFoundError:
+            pass
+
+        # Delete the index
+        await self.client.indices.delete(index=index_name)
+        logger.info(f"Deleted old index: {index_name}")
+
+    async def rollback(self, target_version: Optional[int] = None) -> str:
+        """
+        Rollback to a previous version or the previous version if not specified.
+
+        Args:
+            target_version: Version to rollback to (defaults to current - 1)
+
+        Returns:
+            The index name that was rolled back to
+
+        Raises:
+            ValueError: If target version doesn't exist
+        """
+        current_index = await self.get_current_index_name()
+        if current_index is None:
+            msg = "Cannot rollback: no current index found"
+            raise ValueError(msg)
+
+        current_version = await self.get_current_version(index_name=current_index)
+
+        if current_version is None or current_version == 1:
+            raise ValueError("Cannot rollback: no previous version available")
+
+        if target_version is None:
+            target_version = current_version - 1
+
+        target_index = self._generate_index_name(target_version)
+
+        # Check if target index exists
+        if not await self.client.indices.exists(index=target_index):
+            raise ValueError(f"Target index {target_index} does not exist")
+
+        # Switch alias back
+        await self._switch_alias(current_index, target_index)
+
+        logger.info(f"Rolled back from {current_index} to {target_index}")
+        return target_index
+
+    async def get_migration_history(self) -> dict[str, Any]:
+        """
+        Get information about all versions of the index.
+
+        Returns:
+            Dictionary with migration history information
+        """
+        pattern = f"{self.base_index_name}_{self.version_prefix}*"
+        indices_info = await self.client.indices.get(index=pattern)
+
+        history = {}
+        current_index = await self.get_current_index_name()
+
+        for index_name, info in indices_info.items():
+            version_str = index_name.split(f"_{self.version_prefix}")[-1]
+            try:
+                version = int(version_str)
+                count_response = await self.client.count(index=index_name)
+
+                history[index_name] = {
+                    "version": version,
+                    "is_current": index_name == current_index,
+                    "created": info["settings"]["index"]["creation_date"],
+                    "document_count": count_response["count"],
+                    "size_in_bytes": info.get("settings", {})
+                    .get("index", {})
+                    .get("size_in_bytes"),
+                }
+            except ValueError:
+                continue
+
+        return history
