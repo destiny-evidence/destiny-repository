@@ -89,6 +89,9 @@ class AzureServiceBusBroker(AsyncBroker):
         self.credential: DefaultAzureCredential | None = None
         self.auto_lock_renewer: AutoLockRenewer | None = None
 
+        self._send_lock = asyncio.Lock()
+        self._receive_lock = asyncio.Lock()
+
     async def startup(self) -> None:
         """Initialize connections and create queues if needed."""
         await super().startup()
@@ -170,11 +173,13 @@ class AzureServiceBusBroker(AsyncBroker):
 
         if delay is None:
             # Send message directly to main queue
-            await self.sender.send_messages(service_bus_message)
+            async with self._send_lock:
+                await self.sender.send_messages(service_bus_message)
         else:
             # Use Azure's built-in scheduled messages feature
             scheduled_time = datetime.now(UTC) + timedelta(seconds=delay)
-            await self.sender.schedule_messages(service_bus_message, scheduled_time)
+            async with self._send_lock:
+                await self.sender.schedule_messages(service_bus_message, scheduled_time)
 
     async def listen(self) -> AsyncGenerator[AckableMessage, None]:
         """
@@ -191,7 +196,8 @@ class AzureServiceBusBroker(AsyncBroker):
         while True:
             try:
                 # Receive a batch of messages
-                batch_messages = await self.receiver.receive_messages()
+                async with self._receive_lock:
+                    batch_messages = await self.receiver.receive_messages()
 
                 # Process each message
                 for sb_message in batch_messages:
@@ -201,7 +207,8 @@ class AzureServiceBusBroker(AsyncBroker):
                         sb_message: ServiceBusReceivedMessage = sb_message,
                     ) -> None:
                         if self.receiver is not None:
-                            await self.receiver.complete_message(sb_message)
+                            async with self._receive_lock:
+                                await self.receiver.complete_message(sb_message)
                         else:
                             logger.error(
                                 "Receiver is None. Cannot complete the message."

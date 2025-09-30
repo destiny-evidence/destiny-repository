@@ -144,7 +144,7 @@ async def import_reference(
                 remaining_retries - 1,
             )
         else:
-            logger.info("No remaining retries for import batch, marking as failed.")
+            logger.info("No remaining retries for reference import, marking as failed.")
         return
 
     if (

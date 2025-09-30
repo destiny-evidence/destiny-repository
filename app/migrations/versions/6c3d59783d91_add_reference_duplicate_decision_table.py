@@ -2,7 +2,7 @@
 add reference_duplicate_decision table
 
 Revision ID: 6c3d59783d91
-Revises: 8fc1a39aad48
+Revises: e28cce22a108
 Create Date: 2025-09-11 05:57:52.289905+00:00
 
 """
@@ -15,7 +15,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '6c3d59783d91'
-down_revision: Union[str, None] = '8fc1a39aad48'
+down_revision: Union[str, None] = 'e28cce22a108'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -34,6 +34,7 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['canonical_reference_id'], ['reference.id'], ),
+    sa.ForeignKeyConstraint(['enhancement_id'], ['enhancement.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index('ix_reference_duplicate_decision_reference_id', 'reference_duplicate_decision', ['reference_id'], unique=False)
