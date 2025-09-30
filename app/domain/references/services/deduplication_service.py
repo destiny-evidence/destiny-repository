@@ -132,10 +132,6 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         _duplicate_determination = (
             duplicate_determination
             if duplicate_determination
-            else DuplicateDetermination.UNSEARCHABLE
-            if not CandidateDuplicateSearchFieldsProjection.get_from_reference(
-                reference
-            ).searchable
             else DuplicateDetermination.PENDING
         )
         reference_duplicate_decision = ReferenceDuplicateDecision(
@@ -157,8 +153,16 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         reference = await self.sql_uow.references.get_by_pk(
             reference_duplicate_decision.reference_id
         )
+        search_fields = CandidateDuplicateSearchFieldsProjection.get_from_reference(
+            reference
+        )
+        if not search_fields.searchable:
+            return await self.sql_uow.reference_duplicate_decisions.update_by_pk(
+                reference_duplicate_decision.id,
+                duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
+            )
         search_result = await self.es_uow.references.search_for_candidate_duplicates(
-            CandidateDuplicateSearchFieldsProjection.get_from_reference(reference),
+            search_fields,
             reference_id=reference.id,
         )
 
@@ -236,6 +240,16 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         self, new_decision: ReferenceDuplicateDecision
     ) -> tuple[ReferenceDuplicateDecision, bool]:
         """Apply the persistence changes from the new duplicate decision."""
+        if (
+            new_decision.duplicate_determination
+            not in DuplicateDetermination.get_terminal_states()
+        ):
+            msg = (
+                "Duplicate decision must be in a terminal state to be mapped. "
+                f"Got {new_decision.duplicate_determination}."
+            )
+            raise DeduplicationValueError(msg)
+
         reference = await self.sql_uow.references.get_by_pk(
             new_decision.reference_id,
             preload=["duplicate_decision", "canonical_reference"],
@@ -246,7 +260,11 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         decision_changed = True
 
         # Remap active decision if needed and handle other cases (flattened if/else)
-        if active_decision and (
+        if new_decision.duplicate_determination == DuplicateDetermination.UNSEARCHABLE:
+            new_decision.active_decision = True
+            if active_decision:
+                active_decision.active_decision = False
+        elif active_decision and (
             (
                 # Reference was duplicate but is now canonical
                 new_decision.duplicate_determination == DuplicateDetermination.CANONICAL

@@ -2,11 +2,13 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from destiny_sdk.enhancements import Authorship, BibliographicMetadataEnhancement
 from destiny_sdk.identifiers import DOIIdentifier, OtherIdentifier
 
 from app.core.exceptions import DeduplicationValueError
 from app.domain.references.models.models import (
     DuplicateDetermination,
+    Enhancement,
     ExternalIdentifierType,
     LinkedExternalIdentifier,
     Reference,
@@ -31,6 +33,28 @@ def reference_with_identifiers():
                 reference_id=uuid.uuid4(),
             )
         ],
+    )
+
+
+@pytest.fixture
+def searchable_reference(reference_with_identifiers):
+    return reference_with_identifiers.copy(
+        update={
+            "enhancements": [
+                Enhancement(
+                    source="test",
+                    visibility="public",
+                    content=BibliographicMetadataEnhancement(
+                        authorship=[
+                            Authorship(display_name="John Doe", position="first")
+                        ],
+                        publication_year=2025,
+                        title="Maybe a duplicate reference, maybe not",
+                    ),
+                    reference_id=reference_with_identifiers.id,
+                )
+            ]
+        }
     )
 
 
@@ -103,7 +127,7 @@ async def test_register_duplicate_decision_for_reference_happy_path(
         reference_with_identifiers
     )
     assert result.reference_id == reference_with_identifiers.id
-    assert result.duplicate_determination == DuplicateDetermination.UNSEARCHABLE
+    assert result.duplicate_determination == DuplicateDetermination.PENDING
 
 
 @pytest.mark.asyncio
@@ -123,7 +147,7 @@ async def test_register_duplicate_decision_invalid_combination(
 
 
 @pytest.mark.asyncio
-async def test_nominate_candidate_duplicates_candidates_found(
+async def test_nominate_candidate_insufficient_reference(
     reference_with_identifiers, anti_corruption_service, fake_uow, fake_repository
 ):
     decision = ReferenceDuplicateDecision(
@@ -145,6 +169,34 @@ async def test_nominate_candidate_duplicates_candidates_found(
         return_value=candidate_result
     )
     result = await service.nominate_candidate_duplicates(decision)
+    assert result.duplicate_determination == DuplicateDetermination.UNSEARCHABLE
+    assert not result.candidate_duplicate_ids
+    service.es_uow.references.search_for_candidate_duplicates.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_nominate_candidate_duplicates_candidates_found(
+    searchable_reference, anti_corruption_service, fake_uow, fake_repository
+):
+    decision = ReferenceDuplicateDecision(
+        reference_id=searchable_reference.id,
+        duplicate_determination=DuplicateDetermination.PENDING,
+    )
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(
+            reference_duplicate_decisions=fake_repository([decision]),
+            references=fake_repository([searchable_reference]),
+        ),
+    )
+
+    # Patch service.es_uow to mock search_for_candidate_duplicates
+    service.es_uow = MagicMock()
+    candidate_result = [MagicMock(id=uuid.uuid4())]
+    service.es_uow.references.search_for_candidate_duplicates = AsyncMock(
+        return_value=candidate_result
+    )
+    result = await service.nominate_candidate_duplicates(decision)
     assert result.duplicate_determination == DuplicateDetermination.NOMINATED
     assert result.candidate_duplicate_ids == [candidate_result[0].id]
     service.es_uow.references.search_for_candidate_duplicates.assert_awaited()
@@ -152,16 +204,16 @@ async def test_nominate_candidate_duplicates_candidates_found(
 
 @pytest.mark.asyncio
 async def test_nominate_candidate_duplicates_no_candidates(
-    reference_with_identifiers, anti_corruption_service, fake_uow, fake_repository
+    searchable_reference, anti_corruption_service, fake_uow, fake_repository
 ):
     decision = ReferenceDuplicateDecision(
-        reference_id=reference_with_identifiers.id,
+        reference_id=searchable_reference.id,
         duplicate_determination=DuplicateDetermination.PENDING,
     )
     service = DeduplicationService(
         anti_corruption_service,
         fake_uow(
-            references=fake_repository([reference_with_identifiers]),
+            references=fake_repository([searchable_reference]),
             reference_duplicate_decisions=fake_repository([decision]),
         ),
     )
