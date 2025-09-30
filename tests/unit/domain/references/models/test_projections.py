@@ -357,7 +357,7 @@ class TestCandidateDuplicateSearchFieldsProjection:
         assert result_empty.title is None
         assert result_empty.publication_year is None
         assert result_empty.authors == []
-        assert not result_empty.searchable
+        assert not result_empty.is_searchable
 
         # Test with None enhancements
         reference_none = Reference(
@@ -373,7 +373,7 @@ class TestCandidateDuplicateSearchFieldsProjection:
         assert result_none.title is None
         assert result_none.publication_year is None
         assert result_none.authors == []
-        assert not result_none.searchable
+        assert not result_none.is_searchable
 
 
 class TestDeduplicatedReferenceProjection:
