@@ -1,10 +1,11 @@
-import logging
-from typing import Any, Optional
+from typing import Any
 
 from elasticsearch import AsyncElasticsearch, NotFoundError
-from elasticsearch.dsl import AsyncDocument, Index
+from elasticsearch.dsl import AsyncDocument
 
-logger = logging.getLogger(__name__)
+from app.core.telemetry.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class IndexMigrationManager:
@@ -92,7 +93,7 @@ class IndexMigrationManager:
         await self.document_class.init(index=index_name, using=self.client)
         logger.info("Created index: %s", index_name)
 
-    async def initialize(self) -> str:
+    async def initialize_index(self) -> str:
         """
         Initialize the index system with version 1 if it doesn't exist.
 
@@ -113,13 +114,15 @@ class IndexMigrationManager:
             await self.client.indices.put_alias(index=index_name, name=self.alias_name)
 
             logger.info(
-                "Initialized index system with %(index_name) -> %(alias_name)",
-                {"index_name": index_name, "alias_name": self.alias_name},
+                "Initialized index system with %s -> %s",
+                index_name,
+                self.alias_name,
             )
             return index_name
         logger.info(
-            "Index system already initialized: %(current_index) -> %(alias_name)",
-            {"current_index": current_index, "alias_name": self.alias_name},
+            "Index system already initialized: %s -> %s",
+            current_index,
+            self.alias_name,
         )
         return current_index
 
@@ -146,7 +149,7 @@ class IndexMigrationManager:
 
         if current_index is None:
             # No existing index, initialize instead
-            return await self.initialize()
+            return await self.initialize_index()
 
         # Check if migration is needed
         if not force:
@@ -200,6 +203,7 @@ class IndexMigrationManager:
 
         Returns:
             True if differences detected, False otherwise
+
         """
         try:
             # Get current mapping
@@ -227,6 +231,7 @@ class IndexMigrationManager:
         Args:
             source_index: Source index name
             dest_index: Destination index name
+
         """
         logger.info(f"Reindexing from {source_index} to {dest_index}")
 
@@ -259,6 +264,7 @@ class IndexMigrationManager:
 
         Raises:
             RuntimeError: If document counts don't match
+
         """
         source_count = await self.client.count(index=source_index)
         dest_count = await self.client.count(index=dest_index)
@@ -280,6 +286,7 @@ class IndexMigrationManager:
         Args:
             old_index: Current index name
             new_index: New index name
+
         """
         actions = [
             {"remove": {"index": old_index, "alias": self.alias_name}},
@@ -295,6 +302,7 @@ class IndexMigrationManager:
 
         Args:
             index_name: Name of index to delete
+
         """
         # Check if index has any aliases
         try:
@@ -311,7 +319,7 @@ class IndexMigrationManager:
         await self.client.indices.delete(index=index_name)
         logger.info(f"Deleted old index: {index_name}")
 
-    async def rollback(self, target_version: Optional[int] = None) -> str:
+    async def rollback(self, target_version: int | None = None) -> str:
         """
         Rollback to a previous version or the previous version if not specified.
 
@@ -323,6 +331,7 @@ class IndexMigrationManager:
 
         Raises:
             ValueError: If target version doesn't exist
+
         """
         current_index = await self.get_current_index_name()
         if current_index is None:
@@ -355,6 +364,7 @@ class IndexMigrationManager:
 
         Returns:
             Dictionary with migration history information
+
         """
         pattern = f"{self.base_index_name}_{self.version_prefix}*"
         indices_info = await self.client.indices.get(index=pattern)
