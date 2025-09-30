@@ -865,6 +865,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
         return reference_duplicate_decision, decision_changed
 
+    @sql_unit_of_work
     async def get_pending_enhancements_for_robot(
         self, robot_id: UUID, limit: int
     ) -> list[PendingEnhancement]:
