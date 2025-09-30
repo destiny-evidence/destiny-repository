@@ -8,7 +8,6 @@ import pytest
 from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
-from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
@@ -27,11 +26,15 @@ from app.core.exceptions import (
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
     EnhancementRequestStatus,
-    EnhancementType,
+    PendingEnhancementStatus,
     Visibility,
 )
 from app.domain.references.models.sql import (
+    EnhancementRequest,
     ExternalIdentifier,
+)
+from app.domain.references.models.sql import (
+    PendingEnhancement as SQLPendingEnhancement,
 )
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.service import ReferenceService
@@ -62,6 +65,7 @@ def app() -> FastAPI:
 
     app.include_router(references.reference_router, prefix="/v1")
     app.include_router(references.enhancement_request_router, prefix="/v1")
+    app.include_router(references.robot_enhancement_batch_router, prefix="/v1")
 
     return app
 
@@ -110,37 +114,9 @@ async def add_robot(session: AsyncSession) -> SQLRobot:
     return robot
 
 
-def robot_result_enhancement(
-    enhancement_request_id: UUID4, reference_id: UUID4
-) -> dict:
-    """Construct a RobotResult for creating ehancments."""
-    return {
-        "request_id": f"{enhancement_request_id}",
-        "enhancement": {
-            "reference_id": f"{reference_id}",
-            "source": "robot",
-            "visibility": Visibility.RESTRICTED,
-            "robot_version": "0.0.1",
-            "content": {
-                "enhancement_type": EnhancementType.ANNOTATION,
-                "annotations": [
-                    {
-                        "scheme": "example:toy",
-                        "annotation_type": "boolean",
-                        "value": True,
-                        "label": "toy",
-                        "data": {"toy": "Cabbage Patch Kid"},
-                    }
-                ],
-            },
-        },
-    }
-
-
 async def test_request_batch_enhancement_happy_path(
     session: AsyncSession,
     client: AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test requesting a enhancement for multiple references."""
     # Add references to the database
@@ -151,13 +127,6 @@ async def test_request_batch_enhancement_happy_path(
         "reference_ids": [str(reference_1.id), str(reference_2.id)],
         "robot_id": f"{robot.id}",
     }
-
-    mock_process = AsyncMock(return_value=None)
-    monkeypatch.setattr(
-        ReferenceService,
-        "collect_and_dispatch_references_for_enhancement",
-        mock_process,
-    )
 
     with patch("app.core.telemetry.fastapi.bound_contextvars") as mock_bound:
         response = await client.post(
@@ -176,7 +145,6 @@ async def test_request_batch_enhancement_happy_path(
 
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()
-    mock_process.assert_awaited_once()
 
 
 async def test_add_robot_automation_happy_path(
@@ -441,3 +409,125 @@ async def test_get_robot_automations_with_automations(
     robot_ids = {uuid.UUID(automation["robot_id"]) for automation in response_data}
     expected_robot_ids = {robot.id, robot.id}
     assert robot_ids == expected_robot_ids
+
+
+async def add_enhancement_request(
+    session: AsyncSession, robot: SQLRobot, reference: SQLReference
+) -> EnhancementRequest:
+    """Add an enhancement request to the database."""
+    enhancement_request = EnhancementRequest(
+        reference_ids=[reference.id],
+        robot_id=robot.id,
+        request_status=EnhancementRequestStatus.RECEIVED,
+    )
+    session.add(enhancement_request)
+    await session.commit()
+    return enhancement_request
+
+
+async def add_pending_enhancement(
+    session: AsyncSession,
+    robot: SQLRobot,
+    reference: SQLReference,
+    enhancement_request: EnhancementRequest,
+) -> SQLPendingEnhancement:
+    """Add a pending enhancement to the database."""
+    pending_enhancement = SQLPendingEnhancement(
+        reference_id=reference.id,
+        robot_id=robot.id,
+        enhancement_request_id=enhancement_request.id,
+        status=PendingEnhancementStatus.PENDING,
+    )
+    session.add(pending_enhancement)
+    await session.commit()
+    return pending_enhancement
+
+
+async def test_request_robot_enhancement_batch(
+    session: AsyncSession,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test requesting a batch of pending enhancements for a robot."""
+    # Set up test data
+    robot = await add_robot(session)
+    reference = await add_reference(session)
+    enhancement_request = await add_enhancement_request(session, robot, reference)
+    await add_pending_enhancement(session, robot, reference, enhancement_request)
+
+    # Mock the service methods
+    mock_get_pending = AsyncMock(return_value=[])
+    mock_create_batch = AsyncMock()
+
+    monkeypatch.setattr(
+        ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
+    )
+    monkeypatch.setattr(
+        ReferenceService, "create_robot_enhancement_batch", mock_create_batch
+    )
+
+    response = await client.post(
+        f"/v1/robot-enhancement-batch/?robot_id={robot.id}&limit=10"
+    )
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    mock_get_pending.assert_awaited_once_with(robot_id=robot.id, limit=10)
+
+
+async def test_request_robot_enhancement_batch_limit_exceeded(
+    session: AsyncSession,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test requesting a batch with limit exceeding maximum allowed."""
+    robot = await add_robot(session)
+
+    mock_get_pending = AsyncMock(return_value=[])
+    monkeypatch.setattr(
+        ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
+    )
+
+    # Request with a very high limit
+    response = await client.post(
+        f"/v1/robot-enhancement-batch/?robot_id={robot.id}&limit=99999"
+    )
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    # Should be called with the default max limit, not the requested limit
+    mock_get_pending.assert_awaited_once()
+    call_args = mock_get_pending.call_args
+    assert call_args.kwargs["limit"] == 10000  # Should be capped at max limit
+
+
+async def test_request_robot_enhancement_batch_invalid_robot_id(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test requesting a batch with invalid robot ID format."""
+    mock_get_pending = AsyncMock(return_value=[])
+    monkeypatch.setattr(
+        ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
+    )
+
+    response = await client.post(
+        "/v1/robot-enhancement-batch/?robot_id=invalid-uuid&limit=10"
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    mock_get_pending.assert_not_awaited()
+
+
+async def test_request_robot_enhancement_batch_missing_robot_id(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test requesting a batch without robot_id parameter."""
+    mock_get_pending = AsyncMock(return_value=[])
+    monkeypatch.setattr(
+        ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
+    )
+
+    response = await client.post("/v1/robot-enhancement-batch/?limit=10")
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    mock_get_pending.assert_not_awaited()

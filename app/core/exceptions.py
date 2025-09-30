@@ -6,7 +6,7 @@ from typing import Any, Self
 import destiny_sdk
 from fastapi import HTTPException
 from opentelemetry.trace import StatusCode
-from sqlalchemy.exc import IntegrityError as SQLAlchemyIntegriyError
+from sqlalchemy.exc import IntegrityError as SQLAlchemyIntegrityError
 
 from app.core.telemetry.attributes import set_span_status
 
@@ -94,6 +94,22 @@ class SQLNotFoundError(NotFoundError):
         super().__init__(detail, *args)
 
 
+class SQLValueError(DestinyRepositoryError):
+    """Exception for when a value is invalid for a SQL operation."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the SQLValueError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        self.detail = detail
+        super().__init__(detail, *args)
+
+
 class IntegrityError(DestinyRepositoryError):
     """Exception for when a change would violate data integrity."""
 
@@ -136,7 +152,7 @@ class SQLIntegrityError(IntegrityError):
 
     @classmethod
     def from_sqlalchemy_integrity_error(
-        cls, error: SQLAlchemyIntegriyError, lookup_model: str
+        cls, error: SQLAlchemyIntegrityError, lookup_model: str
     ) -> Self:
         """
         Construct an SQLIntegrityError from an IntegrityError raised by SQLAlchemy.
