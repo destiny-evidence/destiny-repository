@@ -19,27 +19,40 @@ Robot Automations
         alt On Import Batch
             DR->>DR: Ingest References
             DR->>ES: Percolate new References
-            loop For each matching robot
-                DR->>R: Batch Enhancement Request with matching References
+            DR->>DR: Create EnhancementRequests for matching robots
+            loop Continuous polling
+                R->>DR: POST /robot-enhancement-batches/ : Poll for work
+                DR->>R: RobotEnhancementBatch (if pending enhancements available)
             end
         else On Batch Enhancement
             DR->>DR: Ingest Enhancements
             DR->>ES: Percolate new Enhancements
-            loop For each matching robot
-                DR->>R: Batch Enhancement Request with matching References
+            DR->>DR: Create EnhancementRequests for matching robots
+            loop Continuous polling
+                R->>DR: POST /robot-enhancement-batches/ : Poll for work
+                DR->>R: RobotEnhancementBatch (if pending enhancements available)
             end
         end
 
 .. mermaid::
 
-    flowchart LR
-        G_R([Reference]) --> G_R1[Ingest Reference]
-        G_R1 --> G_P[(Persistence)]
-        G_R1 --> G_AUTO{Robot Automation Percolation}
-        G_AUTO --> G_ROBOT[["Robot(s)"]]
-        G_ROBOT --> G_R2[Ingest Enhancement]
-        G_R2 --> G_P
-        G_R2 --> G_AUTO
+    flowchart TD
+        subgraph Repository
+            G_R([Reference]) --> G_R1[Ingest Reference]
+            G_R1 --> G_P[(Persistence)]
+            G_R1 --> G_AUTO{Robot Automation Percolation}
+            G_AUTO --> G_REQ[Create EnhancementRequests]
+            G_REQ --> G_P[(Persistence)]
+            G_REPO_PROC[Ingest Enhancement] --> G_P
+        end
+        subgraph "Robot(s)"
+            G_POLL[Robot Polling] --> G_BATCH[Fetch RobotEnhancementBatch]
+            G_P --> G_BATCH
+            G_BATCH --> G_ROBOT_PROC[Process Batch]
+            G_ROBOT_PROC --> G_UPLOAD[Upload Results]
+            G_UPLOAD --> G_REPO[Notify Repository]
+        end
+        G_REPO --> G_REPO_PROC
 
 
 
@@ -47,9 +60,9 @@ Robot Automations
 Context
 -------
 
-Robot automations allow :doc:`Batch Enhancement Requests <requesting-batch-enhancements>` to be automatically dispatched based on criteria on incoming references or enhancements. This is achieved through a :attr:`percolator query <libs.sdk.src.destiny_sdk.robots.RobotAutomation.query>` registered by the robot owner in the data repository using the `/enhancement-requests/automations/` endpoint.
+Robot automations allow :doc:`Enhancement Requests <requesting-batch-enhancements>` to be automatically triggered based on criteria on incoming references or enhancements. This is achieved through a :attr:`percolator query <libs.sdk.src.destiny_sdk.robots.RobotAutomation.query>` registered by the robot owner in the data repository using the `/enhancement-requests/automations/` endpoint.
 
-A batch of imports or enhancements will be processed together, meaning that automated robots will receive a single batch request containing all references or enhancements that matched the automation criteria.
+When references or enhancements match the automation criteria, the data repository creates `EnhancementRequest` objects for the matching robots. Robots can discover and process work through polling. When a robot polls for work, the repository creates a `RobotEnhancementBatch` on-demand containing available pending enhancements for that robot, up to a configurable batch size limit.
 
 Percolation
 -----------
@@ -63,7 +76,7 @@ Importantly, the percolator query matches on **changesets**. On a reference impo
 Safeguards
 ----------
 
-There is a simple cycle-checker in place to prevent a batch enhancement request from triggering an automatic enhancement request to the same robot.
+There is a simple cycle-checker in place to prevent an enhancement request from triggering an automatic enhancement request for the same robot.
 
 Cycles involving multiple robots are however possible, so caution should be taken when considering robot automation criteria.
 
