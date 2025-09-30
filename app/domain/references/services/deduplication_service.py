@@ -135,7 +135,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             else DuplicateDetermination.UNSEARCHABLE
             if not CandidateDuplicateSearchFieldsProjection.get_from_reference(
                 reference
-            ).searchable
+            ).is_searchable
             else DuplicateDetermination.PENDING
         )
         reference_duplicate_decision = ReferenceDuplicateDecision(
