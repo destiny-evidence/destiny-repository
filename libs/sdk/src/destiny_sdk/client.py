@@ -107,7 +107,7 @@ class Client:
         :rtype: RobotEnhancementBatchRead
         """
         response = self.session.post(
-            f"/robot-enhancement-batch/{robot_enhancement_batch_result.request_id}/results/",
+            f"/robot-enhancement-batches/{robot_enhancement_batch_result.request_id}/results/",
             json=robot_enhancement_batch_result.model_dump(mode="json"),
         )
         response.raise_for_status()
@@ -130,7 +130,7 @@ class Client:
         :rtype: RobotEnhancementBatch | None
         """
         response = self.session.post(
-            "/robot-enhancement-batch/",
+            "/robot-enhancement-batches/",
             params={"robot_id": str(robot_id), "limit": limit},
         )
         # HTTP 204 No Content indicates no batches available
