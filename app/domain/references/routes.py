@@ -168,8 +168,8 @@ enhancement_request_router = APIRouter(
     ],
 )
 robot_enhancement_batch_router = APIRouter(
-    prefix="/robot-enhancement-batch",
-    tags=["robot-enhancement-batch"],
+    prefix="/robot-enhancement-batches",
+    tags=["robot-enhancement-batches"],
     dependencies=[
         Depends(enhancement_request_hybrid_auth),
         Depends(PayloadAttributeTracer("robot_id")),

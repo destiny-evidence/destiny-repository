@@ -509,7 +509,7 @@ async def test_request_robot_enhancement_batch(
     )
 
     response = await client.post(
-        f"/v1/robot-enhancement-batch/?robot_id={robot.id}&limit=10"
+        f"/v1/robot-enhancement-batches/?robot_id={robot.id}&limit=10"
     )
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
@@ -531,7 +531,7 @@ async def test_request_robot_enhancement_batch_limit_exceeded(
 
     # Request with a very high limit
     response = await client.post(
-        f"/v1/robot-enhancement-batch/?robot_id={robot.id}&limit=99999"
+        f"/v1/robot-enhancement-batches/?robot_id={robot.id}&limit=99999"
     )
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
@@ -552,7 +552,7 @@ async def test_request_robot_enhancement_batch_invalid_robot_id(
     )
 
     response = await client.post(
-        "/v1/robot-enhancement-batch/?robot_id=invalid-uuid&limit=10"
+        "/v1/robot-enhancement-batches/?robot_id=invalid-uuid&limit=10"
     )
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
@@ -569,7 +569,7 @@ async def test_request_robot_enhancement_batch_missing_robot_id(
         ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
     )
 
-    response = await client.post("/v1/robot-enhancement-batch/?limit=10")
+    response = await client.post("/v1/robot-enhancement-batches/?limit=10")
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     mock_get_pending.assert_not_awaited()
@@ -592,7 +592,7 @@ async def test_get_robot_enhancement_batch_happy_path(
     )
 
     response = await client.get(
-        f"/v1/robot-enhancement-batch/{robot_enhancement_batch.id}/"
+        f"/v1/robot-enhancement-batches/{robot_enhancement_batch.id}/"
     )
 
     assert response.status_code == status.HTTP_200_OK
@@ -604,6 +604,6 @@ async def test_get_robot_enhancement_batch_happy_path(
 
 async def test_get_robot_enhancement_batch_nonexistent_batch(client: AsyncClient):
     """Test getting a robot enhancement batch that does not exist."""
-    response = await client.get(f"/v1/robot-enhancement-batch/{uuid.uuid4()}/")
+    response = await client.get(f"/v1/robot-enhancement-batces/{uuid.uuid4()}/")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
