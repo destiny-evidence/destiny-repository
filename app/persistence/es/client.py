@@ -55,21 +55,6 @@ class AsyncESClientManager:
                 msg = "No valid Elasticsearch configuration provided."
                 raise ValueError(msg)
 
-        for index in indices:
-            exists = await self._client.indices.exists(index=index.Index.name)
-            if not exists:
-                logger.info("Creating index", index=index.Index.name)
-                try:
-                    await index.init(using=self._client)
-                except BadRequestError as e:
-                    # Handle race condition where index was created between check/init
-                    if "resource_already_exists_exception" in str(e):
-                        logger.info(
-                            "Index already exists, skipping", index=index.Index.name
-                        )
-                    else:
-                        raise
-
     async def close(self) -> None:
         """Close the Elasticsearch client."""
         if self._client is not None:
@@ -85,7 +70,7 @@ class AsyncESClientManager:
         try:
             yield self._client
         finally:
-            pass  # Optionally handle per-request cleanup
+            await self.close()
 
 
 es_manager = AsyncESClientManager()
