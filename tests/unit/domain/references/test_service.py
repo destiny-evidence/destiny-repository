@@ -1,5 +1,6 @@
 """Unit tests for the ReferenceService class."""
 
+import json
 import uuid
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -21,10 +22,13 @@ from app.domain.references.models.models import (
     EnhancementRequestStatus,
     ExternalIdentifierAdapter,
     LinkedExternalIdentifier,
+    PendingEnhancement,
+    PendingEnhancementStatus,
     Reference,
     ReferenceDuplicateDecision,
     ReferenceWithChangeset,
     RobotAutomationPercolationResult,
+    RobotEnhancementBatch,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.service import ReferenceService
@@ -36,6 +40,7 @@ from app.domain.robots.service import RobotService
 from app.domain.robots.services.anti_corruption_service import (
     RobotAntiCorruptionService,
 )
+from app.persistence.blob.models import BlobStorageFile
 
 
 @pytest.fixture
@@ -193,10 +198,39 @@ async def test_add_enhancement_derived_from_enhancement_for_different_reference(
         **fake_enhancement_data,
     )
 
-    with pytest.raises(
-        InvalidParentEnhancementError, match="different parent reference"
-    ):
+    with pytest.raises(InvalidParentEnhancementError, match="same reference tree"):
         await service.add_enhancement(enhancement_to_add)
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_derived_from_enhancement_for_duplicate_reference(
+    fake_repository, fake_uow, fake_enhancement_data
+):
+    dup_ref_id = uuid.uuid4()
+    dummy_reference = Reference(
+        id=uuid.uuid4(), duplicate_references=[Reference(id=dup_ref_id)]
+    )
+    repo_refs = fake_repository(init_entries=[dummy_reference])
+
+    dummy_parent_enhancement = Enhancement(
+        reference_id=dup_ref_id,  # Derived from an enhancement from a duplicate ref
+        **fake_enhancement_data,
+    )
+
+    repo_enhs = fake_repository(init_entries=[dummy_parent_enhancement])
+    uow = fake_uow(references=repo_refs, enhancements=repo_enhs)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+
+    enhancement_to_add = Enhancement(
+        reference_id=dummy_reference.id,  # different reference id
+        derived_from=[dummy_parent_enhancement.id],
+        **fake_enhancement_data,
+    )
+
+    reference = await service.add_enhancement(enhancement_to_add)
+    assert reference.enhancements[0]["id"] == enhancement_to_add.id
 
 
 @pytest.mark.asyncio
@@ -206,8 +240,9 @@ async def test_register_reference_enhancement_request(fake_repository, fake_uow)
     """
     reference_ids = [uuid.uuid4(), uuid.uuid4()]
     robot_id = uuid.uuid4()
+    request_id = uuid.uuid4()
     enhancement_request = EnhancementRequest(
-        id=uuid.uuid4(),
+        id=request_id,
         reference_ids=reference_ids,
         robot_id=robot_id,
         enhancement_parameters={"param": "value"},
@@ -217,10 +252,12 @@ async def test_register_reference_enhancement_request(fake_repository, fake_uow)
     fake_references = fake_repository(
         init_entries=[Reference(id=ref_id) for ref_id in reference_ids]
     )
+    fake_pending_enhancements = fake_repository()
 
     uow = fake_uow(
         enhancement_requests=fake_requests,
         references=fake_references,
+        pending_enhancements=fake_pending_enhancements,
     )
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
@@ -235,6 +272,13 @@ async def test_register_reference_enhancement_request(fake_repository, fake_uow)
     assert created_request == stored_request
     assert created_request.reference_ids == reference_ids
     assert created_request.enhancement_parameters == {"param": "value"}
+
+    pending_enhancements_records = await fake_pending_enhancements.get_all()
+    assert len(pending_enhancements_records) == len(reference_ids)
+    for pending_enhancement in pending_enhancements_records:
+        assert pending_enhancement.robot_id == robot_id
+        assert pending_enhancement.enhancement_request_id == request_id
+        assert pending_enhancement.reference_id in reference_ids
 
 
 @pytest.mark.asyncio
@@ -835,3 +879,75 @@ async def test_get_reference_changesets_from_enhancements(fake_uow, fake_reposit
         enhancement_1.id,
         enhancement_2.id,
     ]
+
+
+@pytest.mark.asyncio
+async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_robot):
+    """Test the creation of a robot enhancement batch."""
+    mock_blob_repository = AsyncMock()
+    mock_blob_repository.upload_file_to_blob_storage.return_value = BlobStorageFile(
+        location="minio",
+        container="test",
+        filename="test.jsonl",
+        path="robot_enhancement_batch_reference_data",
+    )
+
+    references = [Reference(id=uuid.uuid4()) for _ in range(3)]
+    pending_enhancements = [
+        PendingEnhancement(
+            reference_id=ref.id,
+            robot_id=test_robot.id,
+            enhancement_request_id=uuid.uuid4(),
+        )
+        for ref in references
+    ]
+
+    # Create a specialized fake references repository with get_hydrated method
+    class FakeReferencesRepository(fake_repository):
+        async def get_hydrated(
+            self,
+            reference_ids: list,
+            enhancement_types: list | None = None,
+            external_identifier_types: list | None = None,
+        ) -> list:
+            """Get hydrated references by IDs (simplified for testing)."""
+            return await self.get_by_pks(reference_ids)
+
+    uow = fake_uow(
+        references=FakeReferencesRepository(init_entries=references),
+        pending_enhancements=fake_repository(init_entries=pending_enhancements),
+        robot_enhancement_batches=fake_repository(),
+    )
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+
+    created_batch = await service.create_robot_enhancement_batch(
+        robot_id=test_robot.id,
+        pending_enhancements=pending_enhancements,
+        blob_repository=mock_blob_repository,
+    )
+
+    assert isinstance(created_batch, RobotEnhancementBatch)
+    assert created_batch.robot_id == test_robot.id
+
+    for pe in pending_enhancements:
+        updated_pe = await uow.pending_enhancements.get_by_pk(pe.id)
+        assert updated_pe.status == PendingEnhancementStatus.ACCEPTED
+        assert updated_pe.robot_enhancement_batch_id == created_batch.id
+
+    mock_blob_repository.upload_file_to_blob_storage.assert_awaited_once()
+
+    args, kwargs = mock_blob_repository.upload_file_to_blob_storage.call_args
+    filestream = kwargs["content"]
+    file_content = await filestream.read()
+    content_lines = file_content.getvalue().decode().strip().split("\n")
+
+    # Verify we have the correct number of references and each has the expected ID
+    assert len(content_lines) == len(references)
+    for i, line in enumerate(content_lines):
+        data = json.loads(line)
+        assert data["id"] == str(references[i].id)
+
+    assert created_batch.reference_data_file is not None
+    assert created_batch.reference_data_file.endswith(".jsonl")

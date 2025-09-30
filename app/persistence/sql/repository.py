@@ -5,7 +5,8 @@ from typing import Generic
 from uuid import UUID
 
 from opentelemetry import trace
-from sqlalchemy import select
+from pydantic import UUID4
+from sqlalchemy import inspect, select, update
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import (
@@ -17,7 +18,11 @@ from sqlalchemy.orm import (
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from app.core.config import get_settings
-from app.core.exceptions import SQLIntegrityError, SQLNotFoundError
+from app.core.exceptions import (
+    SQLIntegrityError,
+    SQLNotFoundError,
+    SQLValueError,
+)
 from app.core.telemetry.attributes import (
     Attributes,
     trace_attribute,
@@ -70,7 +75,7 @@ class GenericAsyncSqlRepository(
 
     def _get_relationship_loads(
         self,
-        preload: list[GenericSQLPreloadableType],
+        preload: list[GenericSQLPreloadableType] | None = None,
         depth: int = 1,
     ) -> list[_AbstractLoad]:
         """
@@ -84,6 +89,9 @@ class GenericAsyncSqlRepository(
             A list of ORM loading options configured for the relationships
 
         """
+        if not preload:
+            return []
+
         loaders: list[_AbstractLoad] = []
 
         for attribute_name in preload:
@@ -135,6 +143,22 @@ class GenericAsyncSqlRepository(
 
         return loaders
 
+    def _validate_fields_exist(self, field_names: list[str]) -> None:
+        """
+        Validate provided field names exist on the persistence model.
+
+        Raises SQLValueError if any are invalid.
+        """
+        mapper = inspect(self._persistence_cls)
+        valid_columns = {c.key for c in mapper.column_attrs}
+        invalid_fields = [key for key in field_names if key not in valid_columns]
+        if invalid_fields:
+            msg = (
+                f"Invalid field(s) for {self._persistence_cls.__name__}: "
+                f"{invalid_fields}"
+            )
+            raise SQLValueError(msg)
+
     @trace_repository_method(tracer)
     async def get_by_pk(
         self, pk: UUID, preload: list[GenericSQLPreloadableType] | None = None
@@ -151,10 +175,7 @@ class GenericAsyncSqlRepository(
 
         """
         trace_attribute(Attributes.DB_PK, str(pk))
-        options = []
-        if preload:
-            options.extend(self._get_relationship_loads(preload))
-
+        options = self._get_relationship_loads(preload)
         query = (
             select(self._persistence_cls)
             .where(self._persistence_cls.id == pk)
@@ -192,10 +213,7 @@ class GenericAsyncSqlRepository(
         - SQLNotFoundError: If any of the records do not exist.
 
         """
-        options = []
-        if preload:
-            options.extend(self._get_relationship_loads(preload))
-
+        options = self._get_relationship_loads(preload)
         query = (
             select(self._persistence_cls)
             .where(self._persistence_cls.id.in_(pks))
@@ -235,11 +253,7 @@ class GenericAsyncSqlRepository(
         - list[GenericDomainModelType]: A list of domain models.
 
         """
-        options = []
-
-        if preload:
-            options.extend(self._get_relationship_loads(preload))
-
+        options = self._get_relationship_loads(preload)
         query = select(self._persistence_cls).options(*options)
         result = await self._session.execute(query)
         return [ref.to_domain(preload=preload) for ref in result.scalars().all()]
@@ -369,6 +383,31 @@ class GenericAsyncSqlRepository(
         return persistence.to_domain()
 
     @trace_repository_method(tracer)
+    async def bulk_add(
+        self, records: list[GenericDomainModelType]
+    ) -> list[GenericDomainModelType]:
+        """
+        Add multiple records to the repository in bulk.
+
+        Args:
+        - records (list[T]): The records to be persisted.
+
+        """
+        trace_attribute(Attributes.DB_RECORD_COUNT, len(records))
+        persistence_objects = [
+            self._persistence_cls.from_domain(record) for record in records
+        ]
+        try:
+            self._session.add_all(persistence_objects)
+            await self._session.flush()
+        except IntegrityError as e:
+            raise SQLIntegrityError.from_sqlalchemy_integrity_error(
+                e, self._persistence_cls.__name__
+            ) from e
+
+        return [p.to_domain() for p in persistence_objects]
+
+    @trace_repository_method(tracer)
     async def merge(self, record: GenericDomainModelType) -> GenericDomainModelType:
         """
         Merge a record into the repository.
@@ -414,3 +453,155 @@ class GenericAsyncSqlRepository(
         query = select(self._persistence_cls.id)
         result = await self._session.execute(query)
         return [row[0] for row in result.fetchall()]
+
+    @trace_repository_method(tracer)
+    async def bulk_update(self, pks: list[UUID4], **kwargs: object) -> int:
+        """
+        Bulk update records by their primary keys.
+
+        Args:
+        - pks (list[UUID4]): The primary keys of records to update.
+        - kwargs (object): The attributes to update.
+
+        Returns:
+        - int: The number of records updated.
+
+        Raises:
+        - SQLIntegrityError: If the update violates a constraint.
+        - SQLValueError: If field names in kwargs do not exist on the persistence model.
+
+        """
+        trace_attribute(Attributes.DB_RECORD_COUNT, len(pks))
+        trace_attribute(Attributes.DB_PARAMS, list(kwargs.keys()))
+
+        if not pks:
+            return 0
+
+        # Validate all field names exist on the persistence model
+        self._validate_fields_exist(list(kwargs.keys()))
+
+        if not kwargs:
+            return 0
+
+        try:
+            stmt = (
+                update(self._persistence_cls)
+                .where(self._persistence_cls.id.in_(pks))
+                .values(**kwargs)
+            )
+            result = await self._session.execute(stmt)
+            await self._session.flush()
+        except IntegrityError as e:
+            raise SQLIntegrityError.from_sqlalchemy_integrity_error(
+                e, self._persistence_cls.__name__
+            ) from e
+        else:
+            return result.rowcount or 0
+
+    @trace_repository_method(tracer)
+    async def bulk_update_by_filter(
+        self, filter_conditions: dict[str, object], **kwargs: object
+    ) -> int:
+        """
+        Bulk update records by filter conditions.
+
+        Args:
+        - filter_conditions (dict[str, object]): The conditions to filter records.
+          None values will be matched using SQL IS NULL.
+        - kwargs (object): The attributes to update. Can include None values.
+
+        Returns:
+        - int: The number of records updated.
+
+        Raises:
+        - SQLIntegrityError: If the update violates a constraint.
+        - SQLValueError: If field names do not exist on the persistence model.
+
+        Examples:
+        - Update status to FAILED for all records with robot_enhancement_batch_id=123:
+          bulk_update_by_filter({"robot_enhancement_batch_id": 123}, status="FAILED")
+
+        - Update records where some_field is NULL:
+          bulk_update_by_filter({"some_field": None}, new_value="updated")
+
+        - Set a field to NULL:
+          bulk_update_by_filter({"id": 123}, some_field=None)
+
+        """
+        # Trace filter conditions and update parameters
+        all_field_keys = list({**filter_conditions, **kwargs}.keys())
+        trace_attribute(Attributes.DB_PARAMS, all_field_keys)
+
+        if not filter_conditions or not kwargs:
+            return 0
+
+        # Validate all field names exist on the persistence model
+        all_field_names = list({**filter_conditions, **kwargs}.keys())
+        self._validate_fields_exist(all_field_names)
+
+        try:
+            stmt = update(self._persistence_cls).values(**kwargs)
+
+            for field_name, value in filter_conditions.items():
+                field = getattr(self._persistence_cls, field_name)
+                if value is None:
+                    stmt = stmt.where(field.is_(None))
+                else:
+                    stmt = stmt.where(field == value)
+
+            result = await self._session.execute(stmt)
+            await self._session.flush()
+        except IntegrityError as e:
+            raise SQLIntegrityError.from_sqlalchemy_integrity_error(
+                e, self._persistence_cls.__name__
+            ) from e
+        else:
+            return result.rowcount or 0
+
+    @trace_repository_method(tracer)
+    async def find(
+        self,
+        order_by: str | None = None,
+        limit: int | None = None,
+        preload: list[GenericSQLPreloadableType] | None = None,
+        **filters: object,
+    ) -> list[GenericDomainModelType]:
+        """
+        Find records based on provided field filters.
+
+        Args:
+        - limit (int | None): Maximum number of records to return.
+        - order_by (str | None): Field name to order the results by.
+        - preload (list[str]): A list of attributes to preload using a join.
+        - **filters**: Field filters (name -> value).
+          Only fields on the model are applied. None values match using SQL IS NULL.
+
+        Returns:
+        - list[GenericDomainModelType]: A list of domain models matching the filters.
+
+        """
+        options = self._get_relationship_loads(preload)
+
+        # Validate filter and order_by field names
+        fields_to_validate = list(filters.keys())
+        if order_by:
+            fields_to_validate.append(order_by)
+        self._validate_fields_exist(fields_to_validate)
+
+        query = select(self._persistence_cls).options(*options)
+
+        for field_name, value in filters.items():
+            field = getattr(self._persistence_cls, field_name)
+            if value is None:
+                query = query.where(field.is_(None))
+            else:
+                query = query.where(field == value)
+
+        if order_by:
+            query = query.order_by(getattr(self._persistence_cls, order_by))
+
+        if limit is not None:
+            query = query.limit(limit)
+
+        result = await self._session.execute(query)
+        return [record.to_domain(preload=preload) for record in result.scalars().all()]
