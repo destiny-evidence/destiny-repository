@@ -156,7 +156,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         search_fields = CandidateDuplicateSearchFieldsProjection.get_from_reference(
             reference
         )
-        if not search_fields.searchable:
+        if not search_fields.is_searchable:
             return await self.sql_uow.reference_duplicate_decisions.update_by_pk(
                 reference_duplicate_decision.id,
                 duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
