@@ -44,6 +44,17 @@ _cwd = pathlib.Path.cwd()
 app_port = 8000
 
 
+def print_logs(name: str, container: DockerContainer):
+    """Print the logs of a container."""
+    # This is relatively unwieldy. Future debuggers may find it useful
+    # to pipe to files or honeycomb, depending on the size of the tests.
+    logger.info(
+        "%s logs:\n%s",
+        name,
+        container._container.logs().decode("utf-8"),  # noqa: SLF001
+    )
+
+
 @pytest.fixture(scope="session")
 def postgres():
     """Postgres container with alembic migrations applied."""
@@ -61,7 +72,7 @@ async def pg_sessionmanager(
     postgres: PostgresContainer,
 ):
     """Build shared session manager for tests."""
-    db_manager.init(DatabaseConfig(db_url=postgres.get_connection_url()), "e2e")
+    db_manager.init(DatabaseConfig(db_url=postgres.get_connection_url()), "test")
     # can add another init (redis, etc...)
     yield db_manager
     await db_manager.close()
@@ -202,7 +213,7 @@ def _add_env(
                 }
             ),
         )
-        .with_env("ENV", "e2e")
+        .with_env("ENV", "test")
         .with_env("AZURE_APPLICATION_ID", "dummy")
         .with_env("AZURE_TENANT_ID", "dummy")
     )
@@ -235,6 +246,7 @@ async def worker(
                 "app.tasks:broker",
                 "--tasks-pattern",
                 "app/**/tasks.py",
+                "--fs-discover",
             ]
         )
         .with_env("APP_NAME", "destiny-worker")
@@ -244,7 +256,10 @@ async def worker(
     )
     with worker as container:
         logger.info("Worker container ready.")
-        yield container
+        try:
+            yield container
+        finally:
+            print_logs("Worker", container)
 
 
 @pytest.fixture(scope="session")
@@ -294,8 +309,7 @@ async def app(  # noqa: PLR0913
         try:
             yield container
         finally:
-            logs = container.get_logs()
-            logger.info("App container logs:\n%s", logs)
+            print_logs("App", container)
 
 
 @pytest.fixture(scope="session")

@@ -612,11 +612,15 @@ docs = [
     { name = "sphinxcontrib-mermaid" },
 ]
 e2e = [
+    { name = "aiohttp" },
     { name = "httpx" },
     { name = "psycopg" },
     { name = "pytest" },
     { name = "pytest-order" },
     { name = "testcontainers", extra = ["minio", "rabbitmq"] },
+]
+test = [
+    { name = "factory-boy" },
 ]
 
 [package.metadata]
@@ -676,12 +680,14 @@ docs = [
     { name = "sphinxcontrib-mermaid", specifier = ">=1.0.0,<2" },
 ]
 e2e = [
+    { name = "aiohttp", specifier = ">=3.12.3" },
     { name = "httpx", specifier = ">=0.28.1,<0.29" },
     { name = "psycopg", specifier = ">=3.2.6,<4" },
     { name = "pytest", specifier = ">=8.3.4,<9" },
     { name = "pytest-order", specifier = ">=1.3.0,<2" },
     { name = "testcontainers", extras = ["elasticsearch", "minio", "postgres", "rabbitmq"], specifier = ">=4.13.1" },
 ]
+test = [{ name = "factory-boy", specifier = ">=3.3.3" }]
 
 [[package]]
 name = "destiny-sdk"
@@ -844,6 +850,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/0b/9f/a65090624ecf468cdca03533906e7c69ed7588582240cfe7cc9e770b50eb/exceptiongroup-1.3.0.tar.gz", hash = "sha256:b241f5885f560bc56a59ee63ca4c6a8bfa46ae4ad651af316d4e81817bb9fd88", size = 29749, upload-time = "2025-05-10T17:42:51.123Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/36/f4/c6e662dade71f56cd2f3735141b265c3c79293c109549c1e6933b0651ffc/exceptiongroup-1.3.0-py3-none-any.whl", hash = "sha256:4d111e6e0c13d0644cad6ddaa7ed0261a0b36971f6d23e7ec9b4b9097da78a10", size = 16674, upload-time = "2025-05-10T17:42:49.33Z" },
+]
+
+[[package]]
+name = "factory-boy"
+version = "3.3.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "faker" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ba/98/75cacae9945f67cfe323829fc2ac451f64517a8a330b572a06a323997065/factory_boy-3.3.3.tar.gz", hash = "sha256:866862d226128dfac7f2b4160287e899daf54f2612778327dd03d0e2cb1e3d03", size = 164146, upload-time = "2025-02-03T09:49:04.433Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/27/8d/2bc5f5546ff2ccb3f7de06742853483ab75bf74f36a92254702f8baecc79/factory_boy-3.3.3-py2.py3-none-any.whl", hash = "sha256:1c39e3289f7e667c4285433f305f8d506efc2fe9c73aaea4151ebd5cdea394fc", size = 37036, upload-time = "2025-02-03T09:49:01.659Z" },
 ]
 
 [[package]]
