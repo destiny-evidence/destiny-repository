@@ -345,7 +345,7 @@ class Settings(BaseSettings):
         description="The log level for the application.",
     )
 
-    max_reference_duplicate_depth: int = Field(
+    max_reference_duplicate_depth: Literal[2] = Field(
         default=2,
         description=(
             "The maximum depth to which reference duplicates are propagated. A depth "
