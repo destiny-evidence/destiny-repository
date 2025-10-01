@@ -418,7 +418,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
             basic_auth=(os.environ["ES_USER"], os.environ["ES_PASS"]),
             ca_certs=os.environ["ES_CA_PATH"],
         )
-        es_index = "destiny-repository-e2e-reference"
+        es_index = "reference"
         es.indices.refresh(
             index=es_index
         )  # Ensure the index is refreshed before searching

@@ -169,7 +169,7 @@ def test_complete_enhancement_workflow():  # noqa: C901, PLR0915
         basic_auth=(os.environ["ES_USER"], os.environ["ES_PASS"]),
         ca_certs=os.environ["ES_CA_PATH"],
     )
-    es_index = "destiny-repository-e2e-reference"
+    es_index = "reference"
 
     @retry(stop=stop_after_attempt(5), wait=wait_fixed(1))
     def check_reference_enhancements() -> None:
