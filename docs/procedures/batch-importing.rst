@@ -104,17 +104,6 @@ The references file provided to each batch must be in the `jsonl`_ format. Each 
 
 Sample files can be found in the ``.minio/data`` directory.
 
-Collision Handling
-------------------
-
-If an imported reference has the same identifier as an existing reference, the collision will be handled according to the :class:`CollisionStrategy <libs.sdk.src.destiny_sdk.enhancements.CollisionStrategy>`.
-
-The default strategy is to do nothing and notify the importer in the batch's :attr:`failure_details <libs.sdk.src.destiny_sdk.imports.ImportBatchSummary.failure_details>`. This allows the importer to "follow up" these records with an alternate strategy if desired.
-
-Identifier collisions are identified on the combination of ``identifier_type`` and ``identifier``, with ``other_identifier_name`` also used if ``identifier_type`` is ``"other"``.
-
-Enhancement updates are performed on the combination of ``enhancement_type`` and ``source``.
-
 Sample
 ------
 
