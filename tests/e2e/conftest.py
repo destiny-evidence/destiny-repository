@@ -39,8 +39,8 @@ testcontainers.rabbitmq.RabbitMqContainer.readiness_probe = lambda self: self
 logger = logging.getLogger(__name__)
 
 _cwd = pathlib.Path.cwd()
+logger.info("Current working directory: %s", _cwd)
 
-# Attempt to avoid port collisions in CI
 app_port = 8000
 
 
@@ -213,7 +213,9 @@ def _add_env(
                 }
             ),
         )
+        .with_env("FEATURE_FLAGS", json.dumps({"deduplication": True}))
         .with_env("ENV", "test")
+        .with_env("TESTS_USE_RABBITMQ", "true")
         .with_env("AZURE_APPLICATION_ID", "dummy")
         .with_env("AZURE_TENANT_ID", "dummy")
     )

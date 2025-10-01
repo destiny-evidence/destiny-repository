@@ -7,12 +7,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import httpx
 import pytest
 from aiohttp import web
 from destiny_sdk.enhancements import EnhancementFileInput
 from destiny_sdk.references import ReferenceFileInput
 
-from tests.e2e.factories import ReferenceFactory
+from app.domain.robots.models.models import Robot
+from tests.e2e.factories import ReferenceFactory, RobotFactory
 
 if TYPE_CHECKING:
     from app.domain.references.models.models import Reference
@@ -91,3 +93,37 @@ def get_import_file_signed_url():
             tempdir.cleanup()
 
     return _upload
+
+
+@pytest.fixture
+async def robot(destiny_client_v1: httpx.AsyncClient) -> Robot:
+    """Create a robot."""
+    robot: Robot = RobotFactory.build()
+    response = await destiny_client_v1.post(
+        "/robots/",
+        json={
+            "name": robot.name,
+            "description": robot.description,
+            "base_url": str(robot.base_url),
+            "owner": robot.owner,
+        },
+    )
+    assert response.status_code == 201
+    data = response.json()
+    return Robot(**data)
+
+
+@pytest.fixture
+async def robot_automation_on_all_imports(
+    destiny_client_v1: httpx.AsyncClient, robot: Robot
+) -> uuid.UUID:
+    """Create a robot automation that runs on all imports."""
+    response = await destiny_client_v1.post(
+        "/enhancement-requests/automations/",
+        json={
+            "robot_id": str(robot.id),
+            "query": {"match_all": {}},
+        },
+    )
+    assert response.status_code == 201
+    return robot.id

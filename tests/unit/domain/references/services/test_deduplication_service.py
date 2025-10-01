@@ -71,7 +71,7 @@ async def test_find_exact_duplicate_happy_path(
     repo = fake_repository([candidate])
     uow = fake_uow(references=repo)
     uow.references.find_with_identifiers = AsyncMock(return_value=[candidate])
-    service = DeduplicationService(anti_corruption_service, uow)
+    service = DeduplicationService(anti_corruption_service, uow, fake_uow())
     result = await service.find_exact_duplicate(reference_with_identifiers)
     assert result == candidate
     # No longer a subset
@@ -87,7 +87,7 @@ async def test_find_exact_duplicate_no_identifiers(
 ):
     ref = Reference(id=uuid.uuid4(), identifiers=None)
     uow = fake_uow(references=fake_repository())
-    service = DeduplicationService(anti_corruption_service, uow)
+    service = DeduplicationService(anti_corruption_service, uow, fake_uow())
     with pytest.raises(DeduplicationValueError):
         await service.find_exact_duplicate(ref)
 
@@ -110,7 +110,7 @@ async def test_find_exact_duplicate_only_other_identifier(
         ],
     )
     uow = fake_uow(references=fake_repository())
-    service = DeduplicationService(anti_corruption_service, uow)
+    service = DeduplicationService(anti_corruption_service, uow, fake_uow())
     result = await service.find_exact_duplicate(ref)
     assert result is None
 
@@ -122,6 +122,7 @@ async def test_register_duplicate_decision_for_reference_happy_path(
     service = DeduplicationService(
         anti_corruption_service,
         fake_uow(reference_duplicate_decisions=fake_repository()),
+        fake_uow(),
     )
     result = await service.register_duplicate_decision_for_reference(
         reference_with_identifiers
@@ -137,6 +138,7 @@ async def test_register_duplicate_decision_invalid_combination(
     service = DeduplicationService(
         anti_corruption_service,
         fake_uow(reference_duplicate_decisions=fake_repository()),
+        fake_uow(),
     )
     with pytest.raises(DeduplicationValueError):
         await service.register_duplicate_decision_for_reference(
@@ -160,6 +162,7 @@ async def test_nominate_candidate_insufficient_reference(
             reference_duplicate_decisions=fake_repository([decision]),
             references=fake_repository([reference_with_identifiers]),
         ),
+        fake_uow(),
     )
 
     # Patch service.es_uow to mock search_for_candidate_duplicates
@@ -188,6 +191,7 @@ async def test_nominate_candidate_duplicates_candidates_found(
             reference_duplicate_decisions=fake_repository([decision]),
             references=fake_repository([searchable_reference]),
         ),
+        fake_uow(),
     )
 
     # Patch service.es_uow to mock search_for_candidate_duplicates
@@ -216,6 +220,7 @@ async def test_nominate_candidate_duplicates_no_candidates(
             references=fake_repository([searchable_reference]),
             reference_duplicate_decisions=fake_repository([decision]),
         ),
+        fake_uow(),
     )
     # Patch service.es_uow to mock search_for_candidate_duplicates
     service.es_uow = MagicMock()
@@ -252,6 +257,7 @@ async def test_determine_and_map_duplicate_happy_path(
             references=ref_repo,
             reference_duplicate_decisions=dec_repo,
         ),
+        fake_uow(),
     )
     # Split: determine then map
     determined = await service.determine_duplicate_from_candidates(decision)
@@ -293,6 +299,7 @@ async def test_determine_and_map_duplicate_no_change(
             references=ref_repo,
             reference_duplicate_decisions=dec_repo,
         ),
+        fake_uow(),
     )
     # Split: determine then map
     determined = await service.determine_duplicate_from_candidates(decision)
@@ -326,6 +333,7 @@ async def test_determine_no_op_terminal(
             references=ref_repo,
             reference_duplicate_decisions=dec_repo,
         ),
+        fake_uow(),
     )
     determined = await service.determine_duplicate_from_candidates(decision)
     assert determined == decision
@@ -359,6 +367,7 @@ async def test_determine_and_map_duplicate_decoupled_canonical_change(
             references=ref_repo,
             reference_duplicate_decisions=dec_repo,
         ),
+        fake_uow(),
     )
     determined = await service.determine_duplicate_from_candidates(decision)
     out_decision, decision_changed = await service.map_duplicate_decision(determined)
@@ -406,6 +415,7 @@ async def test_determine_and_map_duplicate_decoupled_different_canonical(
             references=ref_repo,
             reference_duplicate_decisions=dec_repo,
         ),
+        fake_uow(),
     )
     determined = await service.determine_duplicate_from_candidates(decision)
     out_decision, decision_changed = await service.map_duplicate_decision(determined)
@@ -452,6 +462,7 @@ async def test_determine_and_map_duplicate_decoupled_chain_length(
             references=ref_repo,
             reference_duplicate_decisions=dec_repo,
         ),
+        fake_uow(),
     )  # Patch settings.max_reference_duplicate_depth to 2
     service.__class__.settings = MagicMock(max_reference_duplicate_depth=2)
 
@@ -492,6 +503,7 @@ async def test_determine_and_map_duplicate_now_duplicate(
             references=ref_repo,
             reference_duplicate_decisions=dec_repo,
         ),
+        fake_uow(),
     )
     determined = await service.determine_duplicate_from_candidates(decision)
     out_decision, decision_changed = await service.map_duplicate_decision(determined)

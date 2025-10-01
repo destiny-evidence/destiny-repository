@@ -34,9 +34,10 @@ from app.domain.references.models.models import (
     Reference,
     Visibility,
 )
+from app.domain.robots.models.models import Robot
 
 fake = Faker()
-max_list_length = 5
+max_list_length = 3
 
 
 class DOIIdentifierFactory(factory.Factory):
@@ -221,3 +222,14 @@ class ReferenceFactory(factory.Factory):
             ]
         else:
             self.enhancements = extracted
+
+
+class RobotFactory(factory.Factory):
+    class Meta:
+        model = Robot
+
+    id = factory.LazyFunction(uuid.uuid4)
+    base_url = factory.Faker("url")
+    description = factory.Faker("sentence")
+    name = factory.Faker("name")
+    owner = factory.Faker("company")

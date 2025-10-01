@@ -86,7 +86,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self._ingestion_service = IngestionService(anti_corruption_service, sql_uow)
         self._enhancement_service = EnhancementService(anti_corruption_service, sql_uow)
         self._deduplication_service = DeduplicationService(
-            anti_corruption_service, sql_uow
+            anti_corruption_service, sql_uow, es_uow
         )
         self._synchronizer = Synchronizer(sql_uow, es_uow)
 

@@ -340,6 +340,14 @@ class Settings(BaseSettings):
         description="The environment the app is running in.",
     )
 
+    tests_use_rabbitmq: bool = Field(
+        default=False,
+        description=(
+            "Whether to use RabbitMQ for tests. Only used in test environment. "
+            "If false, uses in-memory broker."
+        ),
+    )
+
     log_level: LogLevel = Field(
         default=LogLevel.INFO,
         description="The log level for the application.",

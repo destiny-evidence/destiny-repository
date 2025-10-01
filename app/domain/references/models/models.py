@@ -562,7 +562,7 @@ class CandidateDuplicateSearchFields(ProjectedBaseModel):
     )
 
     @property
-    def searchable(self) -> bool:
+    def is_searchable(self) -> bool:
         """Whether the projection has the minimum fields required for matching."""
         return all((self.publication_year, self.authors, self.title))
 

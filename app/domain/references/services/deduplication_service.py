@@ -23,6 +23,7 @@ from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.service import GenericService
+from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 logger = get_logger(__name__)
@@ -37,9 +38,10 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         self,
         anti_corruption_service: ReferenceAntiCorruptionService,
         sql_uow: AsyncSqlUnitOfWork,
+        es_uow: AsyncESUnitOfWork,
     ) -> None:
         """Initialize the service with a unit of work."""
-        super().__init__(anti_corruption_service, sql_uow)
+        super().__init__(anti_corruption_service, sql_uow, es_uow)
 
     async def find_exact_duplicate(self, reference: Reference) -> Reference | None:
         """
@@ -151,12 +153,13 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
     ) -> ReferenceDuplicateDecision:
         """Get candidate duplicate references for the given decision."""
         reference = await self.sql_uow.references.get_by_pk(
-            reference_duplicate_decision.reference_id
+            reference_duplicate_decision.reference_id,
+            preload=["enhancements", "identifiers"],
         )
         search_fields = CandidateDuplicateSearchFieldsProjection.get_from_reference(
             reference
         )
-        if not search_fields.searchable:
+        if not search_fields.is_searchable:
             return await self.sql_uow.reference_duplicate_decisions.update_by_pk(
                 reference_duplicate_decision.id,
                 duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
