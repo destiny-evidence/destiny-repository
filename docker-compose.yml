@@ -203,6 +203,30 @@ services:
       timeout: 10s
       retries: 120
 
+  es_index_setup:
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    build:
+      context: .
+      args:
+        UV_INSTALL_DEV: "true"
+    volumes:
+      - ./app:/app/app
+      - ./libs/sdk:/app/libs/sdk
+      - certs:/app/certs
+    env_file:
+      - .env
+    environment:
+      MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
+      DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
+      MINIO_CONFIG: '{"HOST":"fs:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass"}'
+      ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
+      APP_NAME: elasticsearch-index-setup
+    networks:
+      - default
+    entrypoint: python -m app.utils.es_migration
+
   kibana:
     profiles: ["search"]
     depends_on:

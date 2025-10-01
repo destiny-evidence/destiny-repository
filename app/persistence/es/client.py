@@ -4,7 +4,6 @@ import contextlib
 from collections.abc import AsyncIterator
 
 from elasticsearch import AsyncElasticsearch
-from elasticsearch.exceptions import BadRequestError
 
 from app.core.config import ESConfig
 from app.core.telemetry.logger import get_logger
@@ -70,7 +69,7 @@ class AsyncESClientManager:
         try:
             yield self._client
         finally:
-            await self.close()
+            pass  # Optionally handle per-request cleanup
 
 
 es_manager = AsyncESClientManager()

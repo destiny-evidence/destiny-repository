@@ -1,9 +1,10 @@
+"""Elasticsearch migration."""
+
 import asyncio
 
-from app.domain.references.models.es import ReferenceDocument
-from app.persistence.es.client import es_manager
-from app.persistence.es.migration import IndexMigrationManager
 from app.core.config import get_settings
+from app.persistence.es.client import es_manager, indices
+from app.persistence.es.migration import IndexMigrationManager
 
 
 async def run_initialization() -> None:
@@ -13,8 +14,11 @@ async def run_initialization() -> None:
     await es_manager.init(es_config)
 
     async with es_manager.client() as client:
-        manager = IndexMigrationManager(ReferenceDocument, "reference", client)
-        await manager.initialize_index()
+        for index in indices:
+            manager = IndexMigrationManager(index, index.Index.name, client)
+            await manager.initialize_index()
+
+    await es_manager.close()
 
 
 if __name__ == "__main__":
