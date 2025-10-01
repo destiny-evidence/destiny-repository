@@ -32,7 +32,7 @@ class DestinyRepositoryError(Exception):
             detail=detail,
             exception=self,
         )
-        self.detail = detail
+        self.detail = detail or "No detail provided."
         super().__init__(detail, *args)
 
 
