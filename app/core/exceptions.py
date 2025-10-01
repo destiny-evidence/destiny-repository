@@ -32,6 +32,7 @@ class DestinyRepositoryError(Exception):
             detail=detail,
             exception=self,
         )
+        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -62,7 +63,6 @@ class NotFoundError(DestinyRepositoryError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -106,7 +106,6 @@ class SQLValueError(DestinyRepositoryError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -122,7 +121,6 @@ class IntegrityError(DestinyRepositoryError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -198,7 +196,6 @@ class ESError(DestinyRepositoryError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -214,7 +211,6 @@ class InvalidPayloadError(DestinyRepositoryError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -258,7 +254,6 @@ class ESMalformedDocumentError(ESError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -274,7 +269,6 @@ class WrongReferenceError(InvalidPayloadError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -290,7 +284,6 @@ class InvalidParentEnhancementError(InvalidPayloadError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -355,7 +348,6 @@ class RobotUnreachableError(DestinyRepositoryError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -371,7 +363,6 @@ class RobotEnhancementError(DestinyRepositoryError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -486,7 +477,6 @@ class SQLPreloadError(DestinyRepositoryError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
