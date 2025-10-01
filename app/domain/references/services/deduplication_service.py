@@ -203,7 +203,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
         Temporary implementation: takes the first candidate as the duplicate.
         This is the one with the highest score in the candidate nomination stage.
-        This proofs out the flow but should not be used in production.
+        This completes the flow but should not be used in production.
 
         :param reference_duplicate_decision: The decision to determine duplicates for.
         :type reference_duplicate_decision: ReferenceDuplicateDecision

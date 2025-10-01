@@ -9,19 +9,39 @@ Reference Deduplication
 Terminology & Concepts
 ----------------------
 
-Duplicating references are grouped together. Each group has one canonical reference and zero or more duplicates.
+Duplicate references are grouped together. Each group has one canonical reference and zero or more duplicates.
 
-When we search, we look for a canonical reference to which to attach the incoming reference as a duplicate. If we cannot find a canonical reference, the incoming reference becomes a canonical reference with no duplicates.
+When we search, we look for a canonical reference to which to attach the incoming reference as a duplicate. If we cannot find a canonical reference, the incoming reference becomes a canonical reference with no duplicates. We search for canonical references when we :doc:`Import a Reference <batch-importing>` (with work pending to also search when we ingest a relevant enhancement).
 
-- A **duplicate decision** is the outcome of the deduplication process for a given reference. A reference has at most one *active* duplicate decision, but may have multiple historical decisions. See :class:`ReferenceDuplicateDecision <app.domain.references.models.models.ReferenceDuplicateDecision>` for more.
 - A **canonical** reference is the primary reference of a group of duplicates. The choice of canonical reference is arbitrary, at least for now. The `Deduplicated Projection`_ is the same regardless of canonical choice. A canonical reference has an active duplicate decision of :attr:`Canonical <app.domain.references.models.models.DuplicateDetermination.CANONICAL>`.
 - A **duplicate** reference is a reference which has been determined to be a duplicate of a canonical reference. A duplicate reference has an active duplicate decision of :attr:`Duplicate <app.domain.references.models.models.DuplicateDetermination.DUPLICATE>`.
+- A **duplicate decision** is the outcome of the deduplication process for a given reference. A reference has at most one *active* duplicate decision, but may have multiple historical decisions. For instance, a canonical reference has an active decision of canonical. See :class:`ReferenceDuplicateDecision <app.domain.references.models.models.ReferenceDuplicateDecision>` for more.
 - A **candidate** duplicate is a reference which has been identified as a potential canonical of an incoming reference, but has not yet been compared in detail.
 - An **exact** duplicate is a reference which has an identical supersetting reference already present in the repository. These are not imported, but a duplicate decision is still registered for them with :attr:`Exact Duplicate <app.domain.references.models.models.DuplicateDetermination.EXACT_DUPLICATE>`.
 
-It may also help to think of a group of duplicating references as a `star graph <https://en.wikipedia.org/wiki/Star_(graph_theory)>`_. The canonical reference is the center of the star, and all duplicates point to it. Duplicates do not point to other duplicates (more on that in `Action Decision`_).
+It may also help to think of a group of duplicating references as a star graph. The canonical reference is the center of the star, and all duplicates point to it. Duplicates do not point to other duplicates (more on that in `Action Decision`_).
+..mermaid ::
 
-Note also that deduplication doesn't necessarily occur at import time, it may also be incurred from a new enhancement.
+    flowchart BT
+        D1(Duplicate)
+        D2(Duplicate)
+        D3(Duplicate)
+        D4(Duplicate)
+        D5(Duplicate)
+        D6(Duplicate)
+        D7(Duplicate)
+        C[Canonical]
+
+        D1 --> C
+        D2 --> C
+        D3 --> C
+        D4 --> C
+        D5 --> C
+        D6 --> C
+        D7 --> C
+
+
+Note also that deduplication doesn't necessarily occur at import time, it may also be triggered by a new enhancement.
 
 High Level Process
 ------------------
@@ -37,6 +57,7 @@ High Level Process
         CF{"Candidate(s) Found?"}
         DD[[Deep Deduplication]]
         A[[Action Decision]]
+        DP>Deduplicated Projection]
 
         T-->CS
         CS-->CF
@@ -45,13 +66,15 @@ High Level Process
         DD-->A
         R-->P
         P-.->|Queue|T
+        A~~~DP
+
 
 There are four key steps:
 
 - `Candidate Selection`_ - a high-recall, low-precision search to find potential canonical references.
 - `Deep Deduplication`_ - a high-precision comparison of the incoming reference against each candidate to determine if it duplicates the candidate.
 - `Action Decision`_ - deciding what to do with the reference based on the deduplication results.
-- `Deduplicated Projection`_ - the final representation of the deduplicated reference.
+- `Deduplicated Projection`_ - the output of the process, the final representation of the deduplicated reference.
 
 Candidate Selection
 -------------------
@@ -60,12 +83,12 @@ Candidate Selection
 
     flowchart LR
 
-        D[Duplicate Decision]
-        SF[Project Search Fields]
-        ES[(Search Against Elasticsearch)]
-        C{One or more candidates?}
-        CR[Decision = Canonical]
-        DD[Proceed to Deep Deduplication]
+        D["Duplicate Decision"]
+        SF["Project Search Fields"]
+        ES[("Search Against ES")]
+        C{"One or more candidates?"}
+        CR["Decision = Canonical"]
+        DD["Deep Dedup"]
 
         D-->SF
         SF-->ES
@@ -92,8 +115,8 @@ Deep Deduplication
     flowchart LR
 
         D[Duplicate Decision]
-        R[Get All Relevant References]
-        DD[[Perform Deep Deduplication]]
+        R[Get References]
+        DD[[Perform Deep Dedup]]
         C[Canonical Found?]
         A[Proceed to Actioning]
         M([Raise for Manual Review])
@@ -106,7 +129,7 @@ Deep Deduplication
 
 If candidate canonicals are found, each is compared in detail against the incoming reference to determine if they are true duplicates. This step prioritizes precision over recall, aiming to minimize false positives.
 
-This algorithm is still being built out. For now, we proof out the flow with:
+This algorithm is still being built out. For now, we have a placeholder that we will update in the future:
 
 .. automethod:: app.domain.references.services.deduplication_service.DeduplicationService.__placeholder_duplicate_determinator
 
@@ -131,12 +154,12 @@ The bold lines in the flowchart indicate what we expect to be nominal flow.
 
     flowchart LR
 
-        N[New Decision]
-        C1{Active Decision Exists?}
-        C2{Active Decision == New Decision?}
-        C3{Active Decision is Canonical, New Decision is Duplicate?}
-        C4{New Decision is Canonical?}
-        C5{New Decision's Canonical Reference is Canonical?}
+        N["New Decision (N)"]
+        C1{"Active Decision Exists? (A)"}
+        C2{A == N?}
+        C3{A Canonical & N Duplicate?}
+        C4{N is Canonical?}
+        C5{N's Canonical is Canonical?}
         T[[Activate New Decision]]
         M([Mark for Manual Handling])
 
@@ -172,7 +195,7 @@ Also note this projected view is reversible, data provenance is preserved throug
 
 See also:
 
-.. automethod:: app.domain.references.models.projections.CandidateCanonicalSearchFieldsProjection.get_from_reference
+.. automethod:: app.domain.references.models.projections.DeduplicatedReferenceProjection.get_from_reference
 
 .. _exact-duplicates:
 
