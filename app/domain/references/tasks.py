@@ -384,6 +384,11 @@ async def process_reference_duplicate_decision(
                     "Created automatic enhancement request",
                     enhancement_request_id=str(request.id),
                 )
+        else:
+            logger.info(
+                "No change to active decision, skipping automations",
+                reference_id=str(reference_duplicate_decision.reference_id),
+            )
 
 
 @tracer.start_as_current_span("Detect and dispatch robot automations")

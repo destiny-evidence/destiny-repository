@@ -172,7 +172,7 @@ class LinkedExternalIdentifierFactory(factory.Factory):
             ]
         )
     )
-    reference_id = factory.SelfAttribute("..id")
+    reference_id = factory.LazyFunction(uuid.uuid4)
 
 
 class EnhancementFactory(factory.Factory):
@@ -193,7 +193,7 @@ class EnhancementFactory(factory.Factory):
             ]
         )
     )
-    reference_id = factory.SelfAttribute("..id")
+    reference_id = factory.LazyFunction(uuid.uuid4)
 
 
 class ReferenceFactory(factory.Factory):
