@@ -679,6 +679,16 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         return self
 
 
+class ReferenceWithChangeset(Reference):
+    """Reference model with a delta included."""
+
+    delta_reference: Reference = Field(
+        description=(
+            "The changeset that was applied to the reference. This is purely additive."
+        )
+    )
+
+
 class PendingEnhancementStatus(StrEnum):
     """
     The status of a pending enhancement.
