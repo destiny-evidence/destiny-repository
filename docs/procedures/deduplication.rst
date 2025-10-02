@@ -42,7 +42,7 @@ It may also help to think of a group of duplicating references as a star graph. 
         D7 --> C
 
 
-Note also that deduplication doesn't necessarily occur at import time, it may also be triggered by a new enhancement.
+Note also that deduplication doesn't necessarily occur at import time, it may also be triggered manually or by a new enhancement.
 
 High Level Process
 ------------------
