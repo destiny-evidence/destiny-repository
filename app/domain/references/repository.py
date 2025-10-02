@@ -21,7 +21,7 @@ from app.domain.references.models.es import (
     RobotAutomationPercolationDocument,
 )
 from app.domain.references.models.models import (
-    CandidateDuplicateSearchFields,
+    CandidateCanonicalSearchFields,
     ExternalIdentifierType,
     GenericExternalIdentifier,
     PendingEnhancementStatus,
@@ -209,9 +209,9 @@ class ReferenceESRepository(
         )
 
     @trace_repository_method(tracer)
-    async def search_for_candidate_duplicates(
+    async def search_for_candidate_canonicals(
         self,
-        search_fields: CandidateDuplicateSearchFields,
+        search_fields: CandidateCanonicalSearchFields,
         reference_id: UUID,
     ) -> list[ESSearchResult]:
         """
@@ -219,15 +219,21 @@ class ReferenceESRepository(
 
         This is a high-recall search strategy.
 
-        NOT TESTED/EVALUATED. I threw this together as a proof of concept, this must
+        NOT TESTED/EVALUATED. Thrown together as a proof of concept, this must
         be polished and evaluated before use.
-        The proof of concept does:
-        - MUST: Fuzzy match on title (requires 50% of terms to match)
-        - SHOULD: partial match on authors list (requires 50% of authors to match)
-        - FILTER: Publication year within ±1 year range (non-scoring)
 
-        Open question: do we want to filter on duplicate decision? EG only search
-        against at-rest references?
+        The proof of concept does:
+
+        - MUST: fuzzy match on title (requires 50% of terms to match)
+        - SHOULD: partial match on authors list (requires 50% of authors to match)
+        - FILTER: publication year within ±1 year range (non-scoring)
+
+        :param search_fields: The search fields of the potential duplicate.
+        :type search_fields: CandidateCanonicalSearchFields
+        :param reference_id: The ID of the potential duplicate.
+        :type reference_id: UUID
+        :return: A list of search results with IDs and scores.
+        :rtype: list[ESSearchResult]
         """
         search = (
             AsyncSearch(using=self._client)

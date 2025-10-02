@@ -9,7 +9,8 @@ This section documents the repository codebase itself.
 
    structure
    config
-   persistence/blob
    models/imports
    models/references
    models/robots
+   persistence/blob
+   persistence/models
