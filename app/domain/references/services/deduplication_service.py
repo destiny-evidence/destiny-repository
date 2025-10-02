@@ -5,7 +5,7 @@ from typing import Literal
 
 from opentelemetry import trace
 
-from app.core.config import get_settings
+from app.core.config import Environment, get_settings
 from app.core.exceptions import DeduplicationValueError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
@@ -138,16 +138,13 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         reference_duplicate_decision = ReferenceDuplicateDecision(
             reference_id=reference.id,
             enhancement_id=enhancement_id,
-            duplicate_determination=(
-                duplicate_determination
-                if duplicate_determination
-                else DuplicateDetermination.UNSEARCHABLE
-                if not CandidateCanonicalSearchFieldsProjection.get_from_reference(
-                    reference
-                ).is_searchable
-                else DuplicateDetermination.PENDING
-            ),
+            duplicate_determination=duplicate_determination
+            if duplicate_determination
+            else DuplicateDetermination.PENDING,
             canonical_reference_id=canonical_reference_id,
+            # If exact duplicate passed in, the decision is terminal and hence active
+            active_decision=duplicate_determination
+            == DuplicateDetermination.EXACT_DUPLICATE,
         )
         return await self.sql_uow.reference_duplicate_decisions.add(
             reference_duplicate_decision
@@ -210,11 +207,18 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         :return: The result of the duplicate determination.
         :rtype: ReferenceDuplicateDeterminationResult
         """
-        return ReferenceDuplicateDeterminationResult(
-            duplicate_determination=DuplicateDetermination.DUPLICATE,
-            canonical_reference_id=reference_duplicate_decision.candidate_canonical_ids[
-                0
-            ],
+        return (
+            ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.DUPLICATE,
+                canonical_reference_id=reference_duplicate_decision.candidate_canonical_ids[
+                    0
+                ],
+            )
+            if settings.env in (Environment.E2E, Environment.TEST)
+            and reference_duplicate_decision.candidate_canonical_ids
+            else ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.UNRESOLVED
+            )
         )
 
     async def determine_canonical_from_candidates(

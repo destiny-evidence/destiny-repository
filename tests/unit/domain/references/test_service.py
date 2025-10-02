@@ -2,9 +2,10 @@
 
 import json
 import uuid
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from destiny_sdk.references import ReferenceFileInput
 
 from app.core.config import ESPercolationOperation
 from app.core.exceptions import (
@@ -24,6 +25,7 @@ from app.domain.references.models.models import (
     RobotAutomationPercolationResult,
     RobotEnhancementBatch,
 )
+from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -191,10 +193,39 @@ async def test_add_enhancement_derived_from_enhancement_for_different_reference(
         **fake_enhancement_data,
     )
 
-    with pytest.raises(
-        InvalidParentEnhancementError, match="different parent reference"
-    ):
+    with pytest.raises(InvalidParentEnhancementError, match="same reference tree"):
         await service.add_enhancement(enhancement_to_add)
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_derived_from_enhancement_for_duplicate_reference(
+    fake_repository, fake_uow, fake_enhancement_data
+):
+    dup_ref_id = uuid.uuid4()
+    dummy_reference = Reference(
+        id=uuid.uuid4(), duplicate_references=[Reference(id=dup_ref_id)]
+    )
+    repo_refs = fake_repository(init_entries=[dummy_reference])
+
+    dummy_parent_enhancement = Enhancement(
+        reference_id=dup_ref_id,  # Derived from an enhancement from a duplicate ref
+        **fake_enhancement_data,
+    )
+
+    repo_enhs = fake_repository(init_entries=[dummy_parent_enhancement])
+    uow = fake_uow(references=repo_refs, enhancements=repo_enhs)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+
+    enhancement_to_add = Enhancement(
+        reference_id=dummy_reference.id,  # different reference id
+        derived_from=[dummy_parent_enhancement.id],
+        **fake_enhancement_data,
+    )
+
+    reference = await service.add_enhancement(enhancement_to_add)
+    assert reference.enhancements[0]["id"] == enhancement_to_add.id
 
 
 @pytest.mark.asyncio
@@ -431,9 +462,15 @@ async def test_collect_and_dispatch_references_for_enhancement_enhancement_not_p
 
 
 @pytest.mark.asyncio
-async def test_ingest_reference_calls_validation_and_merges(fake_repository, fake_uow):
+@pytest.mark.deduplication_legacy
+async def test_ingest_reference_calls_validation_and_merges_legacy(
+    fake_repository, fake_uow, monkeypatch
+):
     """Test ReferenceService.ingest_reference calls validation and merges reference."""
-    from unittest.mock import AsyncMock, patch
+
+    monkeypatch.setattr(
+        "app.domain.references.service.settings.feature_flags.deduplication", False
+    )
 
     dummy_validation_result = AsyncMock()
     dummy_reference = AsyncMock()
@@ -460,6 +497,75 @@ async def test_ingest_reference_calls_validation_and_merges(fake_repository, fak
         mock_validate.assert_awaited_once_with("{}", 1, None)
         mock_merge.assert_awaited_once_with(dummy_reference)
         assert result == dummy_validation_result
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("find_exact_duplicate_return", "should_merge", "expected_decision_id"),
+    [
+        (None, True, "decision-id"),
+        (Mock(id="reference-id"), False, None),
+    ],
+)
+async def test_ingest_reference_deduplication_enabled(
+    fake_repository,
+    fake_uow,
+    find_exact_duplicate_return,
+    should_merge,
+    expected_decision_id,
+):
+    """Test ingestion pathing."""
+
+    repo = fake_repository()
+    uow = fake_uow(references=repo)
+    es_uow = fake_uow()
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, es_uow
+    )
+
+    dummy_decision = Mock()
+    dummy_decision.id = "decision-id"
+
+    # Create a minimal valid ReferenceFileInput instance
+    dummy_reference_input = ReferenceFileInput(
+        visibility="public",
+        identifiers=[{"identifier": "W1234", "identifier_type": "open_alex"}],
+        enhancements=[],
+    )
+    dummy_parsed = ReferenceCreateResult(reference=dummy_reference_input)
+
+    mock_reference = Mock(id="reference-id")
+
+    # Patch deduplication service methods
+    with (
+        patch.object(
+            service._deduplication_service,  # noqa: SLF001
+            "register_duplicate_decision_for_reference",
+            AsyncMock(return_value=dummy_decision),
+        ) as mock_register,
+        patch.object(service, "_merge_reference", AsyncMock()) as mock_merge,
+        patch.object(
+            service._anti_corruption_service,  # noqa: SLF001
+            "reference_from_sdk_file_input",
+            Mock(return_value=mock_reference),
+        ),
+        patch.object(
+            ReferenceCreateResult, "from_raw", Mock(return_value=dummy_parsed)
+        ),
+        patch.object(
+            service._deduplication_service,  # noqa: SLF001
+            "find_exact_duplicate",
+            AsyncMock(return_value=find_exact_duplicate_return),
+        ) as mock_find,
+    ):
+        result = await service.ingest_reference("{}", 1, None)
+        mock_find.assert_awaited_once()
+        mock_register.assert_awaited_once()
+        if should_merge:
+            mock_merge.assert_awaited_once_with(mock_reference)
+        else:
+            mock_merge.assert_not_awaited()
+        assert getattr(result, "duplicate_decision_id", None) == expected_decision_id
 
 
 @pytest.mark.asyncio

@@ -36,11 +36,18 @@ class CandidateCanonicalSearchFieldsProjection(
         try:
             title, publication_year = None, None
             authorship: list[destiny_sdk.enhancements.Authorship] = []
-            for enhancement in reference.enhancements or []:
-                # NB at present we have no way of discriminating between multiple
-                # bibliographic enhancements, nor are they ordered. This takes a
-                # random one (but hydrates in the case of one bibliographic enhancement
-                # missing a field while the other has it present).
+            # NB at present we have no way of discriminating between multiple
+            # bibliographic enhancements, nor are they ordered. This takes a
+            # random one, preferencing the canonical reference itself,
+            # (but hydrates in the case of one bibliographic enhancement
+            # missing a field while the other has it present).
+            for enhancement in sorted(
+                reference.enhancements or [],
+                # This preferences the canonical reference's enhancements
+                # over those of its duplicates.
+                key=lambda e: e.reference_id == reference.id,
+                reverse=True,
+            ):
                 if (
                     enhancement.content.enhancement_type
                     == EnhancementType.BIBLIOGRAPHIC
