@@ -331,10 +331,7 @@ async def process_reference_duplicate_decision(
         reference_duplicate_decision_id=str(reference_duplicate_decision_id),
     )
     name_span(f"Process reference duplicate decision {reference_duplicate_decision_id}")
-    async with (
-        get_sql_unit_of_work() as sql_uow,
-        get_es_unit_of_work() as es_uow,
-    ):
+    async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
         reference_anti_corruption_service = ReferenceAntiCorruptionService(
             blob_repository
