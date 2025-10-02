@@ -1,12 +1,13 @@
+# Greatly simplified Dockerfile for end-to-end tests
+# Does not do the recommended multi-stage build that the primary Dockerfile
+# does as building via the Docker python SDK does not support buildkit,
+# which means we cannot mount the cache.
+
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y libpq-dev gcc
-
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock ./
 COPY libs/sdk ./libs/sdk
 COPY app/ ./app
-COPY uv.lock pyproject.toml ./
 
-# Doesn't use mounts to allow python to build the image (docker-py doesn't support buildkit)
-RUN uv sync --locked --dev
+RUN uv sync --locked
