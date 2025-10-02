@@ -4,7 +4,7 @@ import asyncio
 
 from app.core.config import get_settings
 from app.persistence.es.client import es_manager, indices
-from app.persistence.es.migration import IndexMigrationManager
+from app.persistence.es.migration import IndexManager
 
 
 async def run_initialization() -> None:
@@ -15,7 +15,7 @@ async def run_initialization() -> None:
 
     async with es_manager.client() as client:
         for index in indices:
-            manager = IndexMigrationManager(index, index.Index.name, client)
+            manager = IndexManager(index, index.Index.name, client)
             await manager.initialize_index()
 
     await es_manager.close()

@@ -16,14 +16,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import AuthRole, AuthScope
 from app.core.config import DatabaseConfig, get_settings
-from app.persistence.es.client import AsyncESClientManager, es_manager
+from app.persistence.es.client import AsyncESClientManager, es_manager, indices
+from app.persistence.es.migration import IndexManager
 from app.persistence.sql.persistence import Base
 from app.persistence.sql.session import (
     AsyncDatabaseSessionManager,
     db_manager,
 )
 from tests.db_utils import alembic_config_from_url, tmp_database
-from tests.es_utils import create_test_indices, delete_test_indices
 
 settings = get_settings()
 MIGRATION_TASK: asyncio.Task | None = None
@@ -196,6 +196,11 @@ async def es_client(
 ) -> AsyncGenerator[AsyncElasticsearch, None]:
     """Yield the ES client for the test and cleanup indices after."""
     async with es_manager_for_tests.client() as client:
-        await create_test_indices(client)
+        index_managers = [
+            IndexManager(index, index.Index.name, client) for index in indices
+        ]
+        for index_manager in index_managers:
+            await index_manager.initialize_index()
         yield client
-        await delete_test_indices(client)
+        for index_manager in index_managers:
+            await index_manager.delete_current_index_unsafe()

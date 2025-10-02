@@ -1,3 +1,5 @@
+"""Index manager for an elasticsearch index."""
+
 from typing import Any
 
 from elasticsearch import AsyncElasticsearch, NotFoundError
@@ -8,9 +10,11 @@ from app.core.telemetry.logger import get_logger
 logger = get_logger(__name__)
 
 
-class IndexMigrationManager:
+class IndexManager:
     """
-    Manages Elasticsearch index migrations with versioning and zero-downtime upgrades.
+    Manages Elasticsearch indicies.
+
+    Including migrations with versioning and zero-downtime upgrades.
 
     Uses an alias to point to the current active index version, allowing seamless
     migrations by creating new indices and switching the alias atomically.
@@ -30,7 +34,7 @@ class IndexMigrationManager:
         Args:
             document_class: The AsyncDocument subclass defining the mapping
             alias_name: The alias name (defaults to document_class._index._name)
-            client: AsyncElasticsearch client (uses document_class default if not provided)
+            client: AsyncElasticsearch client (defaults document_class client)
             version_prefix: Prefix for version numbers in index names
             batch_size: Batch size for reindexing operations
 
@@ -77,6 +81,15 @@ class IndexMigrationManager:
             return indices[0] if indices else None
         except NotFoundError:
             return None
+
+    async def delete_current_index_unsafe(self) -> None:
+        """
+        Delete the current index with no failsafes. Reninitalising.
+
+        Note that reiniting after this would result in v1 being used again.
+        """
+        current_index_name = await self.get_current_index_name()
+        self.client.indices.delete(index=current_index_name)
 
     def _generate_index_name(self, version: int) -> str:
         """Generate a versioned index name."""

@@ -30,6 +30,7 @@ from app.domain.references.models.sql import (
     RobotAutomation as SQLRobotAutomation,
 )
 from app.domain.robots.models.sql import Robot as SQLRobot
+from app.persistence.es.migration import IndexManager
 from app.system import routes as system_routes
 from app.tasks import broker
 
@@ -37,10 +38,11 @@ from app.tasks import broker
 async def sub_test_reference_index_initial_rebuild(
     client: AsyncClient,
     es_client: AsyncElasticsearch,
-    index_name: str,
+    index_manager: IndexManager,
     reference_id: uuid.UUID,
 ) -> None:
     """Sub-test: Test reference index repair with rebuild=True."""
+    index_name = index_manager.alias_name
     # Test repair with rebuild
     response = await client.post(
         f"/system/indices/{index_name}/repair/",
@@ -81,12 +83,13 @@ async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
     client: AsyncClient,
     es_client: AsyncElasticsearch,
     session: AsyncSession,
-    index_name: str,
+    index_manager: IndexManager,
     reference_id: uuid.UUID,
     reference: SQLReference,
 ) -> None:
     """Sub-test: Test reference index repair with rebuild=False after SQL update."""
     # Update SQL data - change visibility and add another identifier
+    index_name = index_manager.alias_name
     reference.visibility = Visibility.RESTRICTED
     new_identifier = SQLExternalIdentifier(
         id=uuid.uuid4(),
@@ -134,14 +137,14 @@ async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
 async def sub_test_robot_automation_initial_rebuild(
     client: AsyncClient,
     es_client: AsyncElasticsearch,
-    index_name: str,
+    index_manager: IndexManager,
     automation_id: uuid.UUID,
     robot_id: uuid.UUID,
 ) -> None:
     """Sub-test: Test robot automation index repair with rebuild=True."""
     # Test repair with rebuild
     response = await client.post(
-        f"/system/indices/{index_name}/repair/",
+        f"/system/indices/{index_manager.alias_name}/repair/",
         params={"rebuild": True, "service": "elastic"},
     )
 
@@ -149,13 +152,14 @@ async def sub_test_robot_automation_initial_rebuild(
     response_data = response.json()
     assert response_data["status"] == "ok"
     assert "Repair task for index" in response_data["message"]
-    assert index_name in response_data["message"]
+    assert index_manager.alias_name in response_data["message"]
 
     # Wait for the task to complete
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()
 
     # Verify index still exists after rebuild
+    index_name = await index_manager.get_current_index_name()
     exists = await es_client.indices.exists(index=index_name)
     assert exists
 
@@ -180,13 +184,15 @@ async def sub_test_robot_automation_update_without_rebuild(  # noqa: PLR0913
     client: AsyncClient,
     es_client: AsyncElasticsearch,
     session: AsyncSession,
-    index_name: str,
+    index_manager: IndexManager,
     automation_id: uuid.UUID,
     robot_id: uuid.UUID,
     automation: SQLRobotAutomation,
 ) -> None:
     """Sub-test: Test robot automation repair with rebuild=False after SQL update."""
     # Update SQL data - modify the robot automation query
+    index_name = index_manager.alias_name
+
     automation.query = {
         "bool": {
             "should": [
@@ -277,7 +283,8 @@ async def test_repair_reference_index_with_rebuild(
     index_name = ReferenceDocument.Index.name
 
     # Ensure index exists first
-    await ReferenceDocument.init(using=es_client)
+    index_manager = IndexManager(ReferenceDocument, index_name, es_client)
+    await index_manager.initialize_index()
 
     # Add sample data to SQL
     reference_id = uuid.uuid4()
@@ -320,10 +327,10 @@ async def test_repair_reference_index_with_rebuild(
 
     # Run sub-tests
     await sub_test_reference_index_initial_rebuild(
-        client, es_client, index_name, reference_id
+        client, es_client, index_manager, reference_id
     )
     await sub_test_reference_index_update_without_rebuild(
-        client, es_client, session, index_name, reference_id, reference
+        client, es_client, session, index_manager, reference_id, reference
     )
 
 
@@ -336,7 +343,10 @@ async def test_repair_robot_automation_percolation_index_with_rebuild(
     index_name = RobotAutomationPercolationDocument.Index.name
 
     # Ensure index exists first
-    await RobotAutomationPercolationDocument.init(using=es_client)
+    index_manager = IndexManager(
+        RobotAutomationPercolationDocument, index_name, es_client
+    )
+    await index_manager.initialize_index()
 
     # Add sample robot and robot automation to SQL
     robot_id = uuid.uuid4()
@@ -376,10 +386,10 @@ async def test_repair_robot_automation_percolation_index_with_rebuild(
 
     # Run sub-tests
     await sub_test_robot_automation_initial_rebuild(
-        client, es_client, index_name, automation_id, robot_id
+        client, es_client, index_manager, automation_id, robot_id
     )
     await sub_test_robot_automation_update_without_rebuild(
-        client, es_client, session, index_name, automation_id, robot_id, automation
+        client, es_client, session, index_manager, automation_id, robot_id, automation
     )
 
 
@@ -398,7 +408,7 @@ async def test_repair_nonexistent_index(
     response_data = response.json()
     assert (
         response_data["detail"]
-        == "meta:index with index_name non-existent-index does not exist."
+        == "meta:index with alias non-existent-index does not exist."
     )
 
 
