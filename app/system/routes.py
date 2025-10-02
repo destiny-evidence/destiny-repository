@@ -29,6 +29,7 @@ from app.domain.references.tasks import (
     repair_robot_automation_percolation_index,
 )
 from app.persistence.es.client import get_client
+from app.persistence.es.migration import IndexManager
 from app.persistence.es.persistence import GenericESPersistence
 from app.persistence.sql.session import get_session
 from app.system.healthcheck import HealthCheckOptions, healthcheck
@@ -84,13 +85,13 @@ async def get_healthcheck(
 
 
 @router.post(
-    "/indices/{index_name}/repair/",
+    "/indices/{alias}/repair/",
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(system_utility_auth)],
 )
 async def repair_elasticsearch_index(
     es_client: Annotated[AsyncElasticsearch, Depends(get_client)],
-    index_name: Annotated[str, Path(..., description="Name of the index to repair.")],
+    alias: Annotated[str, Path(..., description="The alias of the index to repair")],
     *,
     service: Annotated[
         str,
@@ -116,26 +117,30 @@ async def repair_elasticsearch_index(
 
     # If we add another persistence service, move this to a function.
     try:
-        index, repair_task = _indices[index_name]
+        index, repair_task = _indices[alias]
     except KeyError as exc:
         raise ESNotFoundError(
-            detail=f"Index {index_name} not found.",
+            detail=f"Index {alias} not found.",
             lookup_model="meta:index",
-            lookup_value=index_name,
-            lookup_type="index_name",
+            lookup_value=alias,
+            lookup_type="alias",
         ) from exc
 
     if rebuild:
-        logger.info("Destroying index", index=index_name)
-        await index._index.delete(using=es_client)  # noqa: SLF001
-        logger.info("Recreating index", index=index_name)
-        await index.init(using=es_client)
+        index_manager = IndexManager(
+            index, index.Index.name, es_client
+        )  # This should not be recreated every time.
+
+        logger.info("Destroying index", index=alias)
+        await index_manager.delete_current_index_unsafe()
+        logger.info("Recreating index", index=alias)
+        await index_manager.initialize_index()
 
     await queue_task_with_trace(repair_task)
     return JSONResponse(
         content={
             "status": "ok",
-            "message": f"Repair task for index {index_name} has been initiated.",
+            "message": f"Repair task for index {alias} has been initiated.",
         },
         status_code=status.HTTP_202_ACCEPTED,
     )
