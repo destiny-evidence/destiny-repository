@@ -247,7 +247,7 @@ class AzureJwtAuth(AuthMethod):
         application_id: str,
         scope: StrEnum | None = None,
         role: StrEnum | None = None,
-        cache_ttl: int = 60 * 60 * 24,
+        cache_ttl: int = CACHE_TTL,
     ) -> None:
         """
         Initialize the dependency.
