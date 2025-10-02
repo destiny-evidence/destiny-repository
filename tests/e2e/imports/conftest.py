@@ -14,6 +14,7 @@ from destiny_sdk.enhancements import EnhancementFileInput
 from destiny_sdk.references import ReferenceFileInput
 
 from app.domain.robots.models.models import Robot
+from tests.e2e.conftest import host_name
 from tests.e2e.factories import ReferenceFactory
 
 if TYPE_CHECKING:
@@ -83,8 +84,7 @@ def get_import_file_signed_url():
         site = web.TCPSite(runner, "0.0.0.0", 0)  # noqa: S104
         await site.start()
         port = site._server.sockets[0].getsockname()[1]  # type: ignore[union-attr, attr-defined]  # noqa: SLF001
-        host_ip = "host.docker.internal"
-        url = f"http://{host_ip}:{port}/{name}"
+        url = f"http://{host_name}:{port}/{name}"
 
         try:
             yield url
