@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import pathlib
 import textwrap
 import uuid
@@ -53,6 +54,7 @@ logger.info("Current working directory: %s", _cwd)
 
 app_port = 8000
 bucket_name = "test"
+host_name = os.getenv("DOCKER_HOSTNAME", "host.docker.internal")
 
 
 def print_logs(name: str, container: DockerContainer):
@@ -77,8 +79,8 @@ def minio_proxy():
     Yield a simple proxy container for MinIO signed URLs.
 
     MinIO signed URLs are signed with the connection URL.
-    App->MinIO uses host.docker.internal connection URL.
-    Tests cannot access host.docker.internal (without special hosts.etc configuration).
+    App->MinIO uses `host_name` connection URL.
+    Tests cannot access `host_name` (without special hosts.etc configuration).
     This tiny proxy container fetches the signed URL and serves it on localhost.
     Uses only Python standard library.
     """
@@ -291,7 +293,7 @@ def _add_env(
             "MESSAGE_BROKER_URL",
             f"amqp://guest:guest@{(
                 rabbitmq.get_container_host_ip()
-                .replace('localhost', 'host.docker.internal')
+                .replace('localhost', host_name)
             )}:{rabbitmq.get_exposed_port(5672)}/",
         )
         .with_env(
@@ -299,7 +301,7 @@ def _add_env(
             json.dumps(
                 {
                     "DB_URL": postgres.get_connection_url().replace(
-                        "localhost", "host.docker.internal"
+                        "localhost", host_name
                     )
                 }
             ),
@@ -308,9 +310,7 @@ def _add_env(
             "MINIO_CONFIG",
             json.dumps(
                 {
-                    "HOST": minio_config["endpoint"].replace(
-                        "localhost", "host.docker.internal"
-                    ),
+                    "HOST": minio_config["endpoint"].replace("localhost", host_name),
                     "ACCESS_KEY": minio_config["access_key"],
                     "SECRET_KEY": minio_config["secret_key"],
                     "BUCKET": bucket_name,
@@ -322,7 +322,7 @@ def _add_env(
             json.dumps(
                 {
                     "ES_INSECURE_URL": elasticsearch.get_url().replace(
-                        "localhost", "host.docker.internal"
+                        "localhost", host_name
                     )
                 }
             ),

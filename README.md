@@ -229,4 +229,4 @@ End-to-end testing is run separately. Note they require your docker daemon to be
 uv run pytest tests/e2e
 ```
 
-Add the `--build` flag to rebuild the application image if required. This isn't generally necessary as the code is mounted but is useful when things like Dockerfiles or uv dependencies change.
+When first running, add the `--build` flag to build the application image. This can also be used to rebuild the image - not generally necessary as the code is mounted but is useful when things like Dockerfiles or uv dependencies change.
