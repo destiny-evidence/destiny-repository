@@ -20,7 +20,8 @@ When we search, we look for a canonical reference to which to attach the incomin
 - An **exact** duplicate is a reference which has an identical supersetting reference already present in the repository. These are not imported, but a duplicate decision is still registered for them with :attr:`Exact Duplicate <app.domain.references.models.models.DuplicateDetermination.EXACT_DUPLICATE>`.
 
 It may also help to think of a group of duplicating references as a star graph. The canonical reference is the center of the star, and all duplicates point to it. Duplicates do not point to other duplicates (more on that in `Action Decision`_).
-..mermaid ::
+
+.. mermaid::
 
     flowchart BT
         D1(Duplicate)
