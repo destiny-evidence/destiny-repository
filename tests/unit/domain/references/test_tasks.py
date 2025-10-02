@@ -82,9 +82,32 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
     )
 
 
-async def test_validate_and_import_robot_enhancement_batch_result(
-    monkeypatch,
-):
+@pytest.fixture
+def mock_sql_uow_cm(monkeypatch):
+    cm = AsyncMock()
+    cm.__aenter__.return_value = AsyncMock()
+    cm.__aexit__.return_value = AsyncMock()
+    monkeypatch.setattr(
+        "app.domain.references.tasks.get_sql_unit_of_work",
+        lambda: cm,
+    )
+    return cm
+
+
+@pytest.fixture
+def mock_es_uow_cm(monkeypatch):
+    cm = AsyncMock()
+    cm.__aenter__.return_value = AsyncMock()
+    cm.__aexit__.return_value = AsyncMock()
+    monkeypatch.setattr(
+        "app.domain.references.tasks.get_es_unit_of_work",
+        lambda: cm,
+    )
+    return cm
+
+
+@pytest.mark.usefixtures("mock_sql_uow_cm", "mock_es_uow_cm")
+async def test_validate_and_import_robot_enhancement_batch_result(monkeypatch):
     """Test the task successfully validates and imports a robot enhancement batch."""
 
     robot_enhancement_batch_id = uuid.uuid4()
@@ -113,14 +136,6 @@ async def test_validate_and_import_robot_enhancement_batch_result(
 
     mock_detect_and_dispatch = AsyncMock(return_value=[])
 
-    monkeypatch.setattr(
-        "app.domain.references.tasks.get_sql_unit_of_work",
-        AsyncMock(return_value=AsyncMock()),
-    )
-    monkeypatch.setattr(
-        "app.domain.references.tasks.get_es_unit_of_work",
-        AsyncMock(return_value=AsyncMock()),
-    )
     monkeypatch.setattr(
         "app.domain.references.tasks.get_blob_repository",
         AsyncMock(return_value=AsyncMock()),
@@ -175,6 +190,7 @@ async def test_validate_and_import_robot_enhancement_batch_result(
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_sql_uow_cm", "mock_es_uow_cm")
 async def test_validate_and_import_robot_enhancement_batch_result_handles_exceptions(
     monkeypatch,
 ):
@@ -202,14 +218,6 @@ async def test_validate_and_import_robot_enhancement_batch_result_handles_except
     validate_method.side_effect = Exception(error_message)
 
     monkeypatch.setattr(
-        "app.domain.references.tasks.get_sql_unit_of_work",
-        AsyncMock(return_value=AsyncMock()),
-    )
-    monkeypatch.setattr(
-        "app.domain.references.tasks.get_es_unit_of_work",
-        AsyncMock(return_value=AsyncMock()),
-    )
-    monkeypatch.setattr(
         "app.domain.references.tasks.get_blob_repository",
         AsyncMock(return_value=AsyncMock()),
     )
@@ -228,6 +236,7 @@ async def test_validate_and_import_robot_enhancement_batch_result_handles_except
     )
 
 
+@pytest.mark.usefixtures("mock_sql_uow_cm", "mock_es_uow_cm")
 @pytest.mark.asyncio
 async def test_validate_and_import_robot_enhancement_batch_result_indexing_failure(
     monkeypatch,
@@ -254,14 +263,6 @@ async def test_validate_and_import_robot_enhancement_batch_result_indexing_failu
 
     mock_reference_service.index_references.side_effect = Exception("Indexing failed")
 
-    monkeypatch.setattr(
-        "app.domain.references.tasks.get_sql_unit_of_work",
-        AsyncMock(return_value=AsyncMock()),
-    )
-    monkeypatch.setattr(
-        "app.domain.references.tasks.get_es_unit_of_work",
-        AsyncMock(return_value=AsyncMock()),
-    )
     monkeypatch.setattr(
         "app.domain.references.tasks.get_blob_repository",
         AsyncMock(return_value=AsyncMock()),

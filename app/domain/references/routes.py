@@ -168,8 +168,8 @@ enhancement_request_router = APIRouter(
     ],
 )
 robot_enhancement_batch_router = APIRouter(
-    prefix="/robot-enhancement-batch",
-    tags=["robot-enhancement-batch"],
+    prefix="/robot-enhancement-batches",
+    tags=["robot-enhancement-batches"],
     dependencies=[
         Depends(enhancement_request_hybrid_auth),
         Depends(PayloadAttributeTracer("robot_id")),
@@ -327,6 +327,31 @@ async def request_robot_enhancement_batch(
         blob_repository=blob_repository,
     )
 
+    return await anti_corruption_service.robot_enhancement_batch_to_sdk_robot(
+        robot_enhancement_batch
+    )
+
+
+@robot_enhancement_batch_router.get(
+    "/{robot_enhancement_batch_id}/",
+    response_model=destiny_sdk.robots.RobotEnhancementBatch,
+    summary="Get an existing batch of references to enhance",
+)
+async def get_robot_enhancement_batch(
+    robot_enhancement_batch_id: uuid.UUID,
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+) -> destiny_sdk.robots.RobotEnhancementBatch:
+    """
+    Request an existing batch of references to enhance.
+
+    This endpoint is used by robots to refresh signed urls on enhancement batches.
+    """
+    robot_enhancement_batch = await reference_service.get_robot_enhancement_batch(
+        robot_enhancement_batch_id
+    )
     return await anti_corruption_service.robot_enhancement_batch_to_sdk_robot(
         robot_enhancement_batch
     )

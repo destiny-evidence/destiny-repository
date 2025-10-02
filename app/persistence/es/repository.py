@@ -136,8 +136,18 @@ class GenericAsyncESRepository(
 
         :param pk: The primary key of the record to delete.
         :type pk: UUID4
+        :return: None
+        :rtype: None
+
+        :raises ESNotFoundError: If the record does not exist.
         """
         trace_attribute(Attributes.DB_PK, str(pk))
         record = await self._persistence_cls.get(id=str(pk), using=self._client)
-        if record:
-            await record.delete(using=self._client)
+        if not record:
+            raise ESNotFoundError(
+                detail=f"Unable to find {self._persistence_cls.__name__} with pk {pk}",
+                lookup_model=self._persistence_cls.__name__,
+                lookup_type="id",
+                lookup_value=pk,
+            )
+        await record.delete(using=self._client)

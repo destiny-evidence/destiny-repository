@@ -144,7 +144,24 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         content: str,
         line_number: int,
     ) -> tuple[ImportResult, UUID | None]:
-        """Import a reference and persist it to the database."""
+        """
+        Import a single reference, updating the import result as we go.
+
+        :param reference_service: The reference service to use for ingestion.
+        :type reference_service: ReferenceService
+        :param import_result: The import result to update.
+        :type import_result: app.domain.imports.models.models.ImportResult
+        :param collision_strategy: The collision strategy to use. To be deprecated.
+        :type collision_strategy: CollisionStrategy
+        :param content: The content of the reference to import.
+        :type content: str
+        :param line_number: The line number of the reference in the import file.
+        :type line_number: int
+        :return: The updated import result, and the duplicate decision id if one was
+                 created. Duplicate decision ids are only created if deduplication is
+                 enabled and the reference is successfully imported.
+        :rtype: tuple[app.domain.imports.models.models.ImportResult, UUID | None]
+        """
         import_result = await self.update_import_result(
             import_result.id, status=ImportResultStatus.STARTED
         )
@@ -193,10 +210,10 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                     import_result.id,
                     status=ImportResultStatus.COMPLETED,
                 ), None
-            msg = """
-Reference was not created, discarded or failed.
-This should not happen.
-"""
+            msg = (
+                "Reference was not created, discarded or failed. "
+                "This should not happen."
+            )
             raise RuntimeError(msg)
 
         if not reference_result.reference:
