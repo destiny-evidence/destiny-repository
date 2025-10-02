@@ -10,7 +10,7 @@ on:
       - "**.rst"
 
 jobs:
-  tests:
+  e2e-tests:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -22,7 +22,10 @@ jobs:
 
       - name: Load .env.example into environment
         # This isn't actually used in the testing but helps in the setup
-        run: cp .env.example .env
+        run: |
+          cp .env.example .env
+          mkdir -p .certs
+          echo 'dummy certificate for CI only' > .certs/ca.crt
 
       - name: Set up python
         uses: actions/setup-python@v5
