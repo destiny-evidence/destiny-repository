@@ -99,11 +99,12 @@ class DuplicateDetermination(StrEnum):
     UNSEARCHABLE = auto()
     """
     [TERMINAL] The reference does not have sufficient metadata to be
-    automatically matched to other references.
+    automatically matched to other references, or the duplicate detection
+    process has been explicitly disabled.
     """
     DECOUPLED = auto()
     """
-    [TERMINAL] A decision has been made, but needs further attention. This could
+    A decision has been made, but needs further attention. This could
     be due to a change in the canonical mapping, or a chain of duplicates longer
     than allowed.
     """
