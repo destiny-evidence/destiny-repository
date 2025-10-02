@@ -103,7 +103,7 @@ async def test_register_duplicate_decision_for_reference_happy_path(
         reference_with_identifiers
     )
     assert result.reference_id == reference_with_identifiers.id
-    assert result.duplicate_determination == DuplicateDetermination.UNSEARCHABLE
+    assert result.duplicate_determination == DuplicateDetermination.PENDING
 
 
 @pytest.mark.asyncio
