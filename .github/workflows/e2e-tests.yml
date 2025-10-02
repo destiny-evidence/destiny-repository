@@ -1,4 +1,4 @@
-name: Tests
+name: E2E Tests
 
 on:
   push:
@@ -19,6 +19,10 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+
+      - name: Load .env.example into environment
+        # This isn't actually used in the testing but helps in the setup
+        run: cp .env.example .env
 
       - name: Set up python
         uses: actions/setup-python@v5
