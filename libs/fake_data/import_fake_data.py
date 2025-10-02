@@ -119,7 +119,6 @@ def import_fake_data(filename: str, callback_id: str) -> None:
         json={
             "storage_url": f"http://host.docker.internal:8001/{filename}",
             "callback_url": f"http://host.docker.internal:8001/complete/{callback_id}",
-            "collision_strategy": "overwrite",
         },
     ).json()
     logger.info(f"Registered batch: {batch['id']} for file: {filename}")

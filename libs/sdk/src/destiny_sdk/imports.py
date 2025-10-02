@@ -38,38 +38,6 @@ class ImportBatchStatus(StrEnum):
     """Processing has been completed."""
 
 
-class CollisionStrategy(StrEnum):
-    """
-    The strategy to use when an identifier collision is detected.
-
-    Identifier collisions are detected on ``identifier_type`` and ``identifier``
-    (and ``other_identifier_name`` where relevant) already present in the database.
-
-    Enhancement collisions are detected on an entry with matching ``enhancement_type``
-    and ``source`` already being present on the collided reference.
-    """
-
-    DISCARD = auto()
-    """Do nothing with the incoming reference."""
-    FAIL = auto()
-    """
-    Do nothing with the incoming reference and mark it as failed. This allows the
-    importing process to 'follow up' on the failure.
-    """
-    MERGE_AGGRESSIVE = auto()
-    """Prioritize the incoming reference's identifiers and enhancements in the merge."""
-    MERGE_DEFENSIVE = auto()
-    """Prioritize the existing reference's identifiers and enhancements in the merge."""
-    APPEND = auto()
-    """Performs an aggressive merge of identifiers, and an append of enhancements."""
-    OVERWRITE = auto()
-    """
-    Performs an aggressive merge of identifiers, and an overwrite of enhancements
-    (deleting existing and recreating what is imported). This should be used sparingly
-    and carefully.
-    """
-
-
 class ImportResultStatus(StrEnum):
     """Describes the status of an import result."""
 
@@ -156,16 +124,6 @@ class ImportRecordRead(_ImportRecordBase):
 class _ImportBatchBase(BaseModel):
     """The base class for import batches."""
 
-    collision_strategy: CollisionStrategy = Field(
-        default=CollisionStrategy.FAIL,
-        deprecated=True,
-        description="""
-The strategy to use for each reference when an identifier collision occurs.
-Default is `fail`, which allows the importing process to "follow up" on the collision.
-This field is marked for deprecation and will be removed imminently in favour of
-repository-owned deduplication.
-        """,
-    )
     storage_url: HttpUrl = Field(
         description="""
 The URL at which the set of references for this batch are stored. The file is a jsonl

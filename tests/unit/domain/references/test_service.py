@@ -474,7 +474,7 @@ async def test_collect_and_dispatch_references_for_enhancement_enhancement_not_p
         (Mock(id="reference-id"), False, None),
     ],
 )
-async def test_ingest_reference_deduplication_enabled(
+async def test_ingest_reference(
     fake_repository,
     fake_uow,
     find_exact_duplicate_return,
@@ -525,7 +525,7 @@ async def test_ingest_reference_deduplication_enabled(
             AsyncMock(return_value=find_exact_duplicate_return),
         ) as mock_find,
     ):
-        result = await service.ingest_reference("{}", 1, None)
+        result = await service.ingest_reference("{}", 1)
         mock_find.assert_awaited_once()
         mock_register.assert_awaited_once()
         if should_merge:

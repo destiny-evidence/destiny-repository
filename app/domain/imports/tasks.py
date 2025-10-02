@@ -19,13 +19,11 @@ from app.domain.imports.service import ImportService
 from app.domain.imports.services.anti_corruption_service import (
     ImportAntiCorruptionService,
 )
-from app.domain.references.models.models import ReferenceWithChangeset
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.references.tasks import (
-    detect_and_dispatch_robot_automations,
     process_reference_duplicate_decision,
 )
 from app.persistence.blob.repository import BlobRepository
@@ -110,7 +108,6 @@ async def import_reference(
         import_result, duplicate_decision_id = await import_service.import_reference(
             reference_service,
             import_result,
-            import_result.import_batch.collision_strategy,
             content,
             line_number,
         )
