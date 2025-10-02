@@ -76,22 +76,16 @@ services:
     entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover
   toy-robot:
     build: https://github.com/destiny-evidence/toy-robot.git
+    profiles: ["e2e"]
+    depends_on:
+      app:
+        condition: service_healthy
     environment:
       DESTINY_REPOSITORY_URL: "http://app:8000/v1"
       ENV: "test"
       ROBOT_ID: "1ee5aa1f-3248-4d21-9fee-718d4ff0ba5f" # Just a dummy, won't be used.
       ROBOT_SECRET: "dummy"
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import socket; sock = socket.create_connection(('localhost',8001), 2); sock.close()",
-        ]
-      interval: 10s
-      timeout: 10s
-      retries: 5
+
   e2e:
     profiles: ["e2e"]
     build:
@@ -107,7 +101,7 @@ services:
       app:
         condition: service_healthy
       toy-robot:
-        condition: service_healthy
+        condition: service_started
     environment:
       DB_URL: "postgresql+psycopg://localuser:localpass@db:5432/destiny_dev"
       REPO_URL: "http://app:8000/v1"

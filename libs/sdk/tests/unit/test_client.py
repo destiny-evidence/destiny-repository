@@ -50,7 +50,7 @@ def test_verify_hmac_headers_sent(
 
     httpx_mock.add_response(
         url=fake_destiny_repository_url
-        + "/robot-enhancement-batch/"
+        + "/robot-enhancement-batches/"
         + f"{fake_batch_result.request_id}/results/",
         method="POST",
         match_headers={
