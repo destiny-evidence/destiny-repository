@@ -716,13 +716,13 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> ReferenceDuplicateDecision:
         """Process a reference duplicate decision."""
         reference_duplicate_decision = (
-            await self._deduplication_service.nominate_candidate_duplicates(
+            await self._deduplication_service.nominate_candidate_canonicals(
                 reference_duplicate_decision
             )
         )
 
         reference_duplicate_decision = (
-            await self._deduplication_service.determine_duplicate_from_candidates(
+            await self._deduplication_service.determine_canonical_from_candidates(
                 reference_duplicate_decision
             )
         )

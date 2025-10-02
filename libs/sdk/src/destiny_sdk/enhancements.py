@@ -15,20 +15,18 @@ class EnhancementType(StrEnum):
     The type of enhancement.
 
     This is used to identify the type of enhancement in the `Enhancement` class.
-
-    **Allowed values**:
-    - `bibliographic`: Bibliographic metadata.
-    - `abstract`: The abstract of a reference.
-    - `annotation`: A free-form enhancement for tagging with labels.
-    - `locations`: Locations where the reference can be found.
-    - `full_text`: The full text of the reference. (To be implemeted)
     """
 
     BIBLIOGRAPHIC = auto()
+    """Bibliographic metadata."""
     ABSTRACT = auto()
+    """The abstract of a reference."""
     ANNOTATION = auto()
+    """A free-form enhancement for tagging with labels."""
     LOCATION = auto()
+    """Locations where the reference can be found."""
     FULL_TEXT = auto()
+    """The full text of the reference. (To be implemented)"""
 
 
 class AuthorPosition(StrEnum):
@@ -36,16 +34,14 @@ class AuthorPosition(StrEnum):
     The position of an author in a list of authorships.
 
     Maps to the data from OpenAlex.
-
-    **Allowed values**:
-    - `first`: The first author.
-    - `middle`: Any middle author
-    - `last`: The last author
     """
 
     FIRST = auto()
+    """The first author."""
     MIDDLE = auto()
+    """Any middle author."""
     LAST = auto()
+    """The last author."""
 
 
 class Authorship(BaseModel):
@@ -104,18 +100,14 @@ other works have cited this work
 
 
 class AbstractProcessType(StrEnum):
-    """
-    The process used to acquire the abstract.
-
-    **Allowed values**:
-    - `uninverted`
-    - `closed_api`
-    - `other`
-    """
+    """The process used to acquire the abstract."""
 
     UNINVERTED = auto()
+    """uninverted"""
     CLOSED_API = auto()
+    """closed_api"""
     OTHER = auto()
+    """other"""
 
 
 class AbstractContentEnhancement(BaseModel):
@@ -142,16 +134,15 @@ class AnnotationType(StrEnum):
     The type of annotation.
 
     This is used to identify the type of annotation in the `Annotation` class.
-
-    **Allowed values**:
-    - `boolean`: An annotation which is the boolean application of a label across a
-    reference.
-    - `score`: An annotation which is a score for a label across a reference,
-    without a boolean value.
     """
 
     BOOLEAN = auto()
+    """An annotation which is the boolean application of a label across a reference."""
     SCORE = auto()
+    """
+    An annotation which is a score for a label across a reference, without a boolean
+    value.
+    """
 
 
 class ScoreAnnotation(BaseModel):
@@ -227,22 +218,22 @@ class DriverVersion(StrEnum):
     The version based on the DRIVER guidelines versioning scheme.
 
     (Borrowed from OpenAlex)
-
-    Allowed values:
-    - `publishedVersion`: The document's version of record. This is the most
-    authoritative version.
-    - `acceptedVersion`: The document after having completed peer review and being
-    officially accepted for publication. It will lack publisher formatting, but the
-    content should be interchangeable with the that of the publishedVersion.
-    - `submittedVersion`: the document as submitted to the publisher by the authors, but
-    before peer-review. Its content may differ significantly from that of the accepted
-    article.
     """
 
     PUBLISHED_VERSION = "publishedVersion"
+    """The document's version of record. This is the most authoritative version."""
     ACCEPTED_VERSION = "acceptedVersion"
+    """
+    The document after having completed peer review and being officially accepted for
+    publication. It will lack publisher formatting, but the content should be
+    interchangeable with that of the publishedVersion.
+    """
     SUBMITTED_VERSION = "submittedVersion"
+    """
+    The document as submitted to the publisher by the authors, but before peer-review.
+    Its content may differ significantly from that of the accepted article."""
     OTHER = "other"
+    """Other version."""
 
 
 class Location(BaseModel):

@@ -127,7 +127,7 @@ class Client:
         :type limit: int
         :return: The RobotEnhancementBatch object from the response, or None if no
             batches available
-        :rtype: RobotEnhancementBatch | None
+        :rtype: destiny_sdk.robots.RobotEnhancementBatch | None
         """
         response = self.session.post(
             "/robot-enhancement-batches/",

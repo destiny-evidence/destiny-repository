@@ -16,7 +16,7 @@ from app.domain.references.models.models import (
     RobotAutomation,
 )
 from app.domain.references.models.projections import (
-    CandidateDuplicateSearchFieldsProjection,
+    CandidateCanonicalSearchFieldsProjection,
 )
 from app.domain.references.repository import (
     ReferenceESRepository,
@@ -574,10 +574,10 @@ async def test_robot_automation_percolation(
             raise ValueError(msg)
 
 
-async def test_duplicate_candidate_search(
+async def test_canonical_candidate_search(
     es_reference_repository: ReferenceESRepository, reference: Reference
 ):
-    """Test searching for candidate duplicate references by fingerprint."""
+    """Test searching for candidate canonical references by fingerprint."""
     # Create two similar references that should match the fingerprint
     matching_ref1 = reference.model_copy(update={"id": uuid.uuid4()})
 
@@ -649,16 +649,16 @@ async def test_duplicate_candidate_search(
         index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
     )
 
-    # Test the search_for_candidate_duplicates method
-    results = await es_reference_repository.search_for_candidate_duplicates(
-        CandidateDuplicateSearchFieldsProjection.get_from_reference(matching_ref1),
+    # Test the search_for_candidate_canonicals method
+    results = await es_reference_repository.search_for_candidate_canonicals(
+        CandidateCanonicalSearchFieldsProjection.get_from_reference(matching_ref1),
         reference_id=matching_ref1.id,
     )
 
     assert {reference.id for reference in results} == {matching_ref2.id}
 
-    results = await es_reference_repository.search_for_candidate_duplicates(
-        CandidateDuplicateSearchFieldsProjection.get_from_reference(non_matching_ref),
+    results = await es_reference_repository.search_for_candidate_canonicals(
+        CandidateCanonicalSearchFieldsProjection.get_from_reference(non_matching_ref),
         reference_id=non_matching_ref.id,
     )
     assert not results
