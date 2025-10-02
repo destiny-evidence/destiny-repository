@@ -144,7 +144,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 else DuplicateDetermination.UNSEARCHABLE
                 if not CandidateCanonicalSearchFieldsProjection.get_from_reference(
                     reference
-                ).searchable
+                ).is_searchable
                 else DuplicateDetermination.PENDING
             ),
             canonical_reference_id=canonical_reference_id,

@@ -343,18 +343,20 @@ class Reference(
         :rtype: bool
         """
 
-        def _create_hash_set(
-            objs: list[Enhancement] | list[LinkedExternalIdentifier] | None,
-        ) -> set[int]:
-            return {obj.hash_data() for obj in (objs or [])}
+        def _supersets(
+            superset: list[Enhancement] | list[LinkedExternalIdentifier] | None,
+            subset: list[Enhancement] | list[LinkedExternalIdentifier] | None,
+        ) -> bool:
+            """Return True if superset contains all elements of subset."""
+            return {obj.hash_data() for obj in (superset or [])} >= {
+                obj.hash_data() for obj in (subset or [])
+            }
 
         # Find anything in the reference that is not in self
         return (
             reference.visibility == self.visibility
-            and _create_hash_set(reference.enhancements)
-            == _create_hash_set(self.enhancements)
-            and _create_hash_set(reference.identifiers)
-            == _create_hash_set(self.identifiers)
+            and _supersets(self.enhancements, reference.enhancements)
+            and _supersets(self.identifiers, reference.identifiers)
         )
 
 
@@ -572,8 +574,8 @@ class CandidateCanonicalSearchFields(ProjectedBaseModel):
     )
 
     @property
-    def searchable(self) -> bool:
-        """Whether the projection has the minimum fields required for matching."""
+    def is_searchable(self) -> bool:
+        """Whether the projection has the fields required to search for candidates."""
         return all((self.publication_year, self.authors, self.title))
 
 

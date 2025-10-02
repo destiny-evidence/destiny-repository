@@ -140,7 +140,7 @@ reference per line.
 Each reference may have identifiers or enhancements attached, as
 required by the robot.
 If the URL expires, a new one can be generated using
-``GET /robot-enhancement-batch/{batch_id}/``.
+``GET /robot-enhancement-batches/{batch_id}/``.
 """
     )
     result_storage_url: HttpUrl = Field(
@@ -149,7 +149,7 @@ The URL at which the set of enhancements are to be stored. The file is to be a j
 with each line formatted according to
 :class:`EnhancementResultEntry <libs.sdk.src.destiny_sdk.robots.EnhancementResultEntry>`.
 If the URL expires, a new one can be generated using
-``GET /robot-enhancement-batch/{batch_id}/``.
+``GET /robot-enhancement-batches/{batch_id}/``.
 """  # noqa: E501
     )
     extra_fields: dict | None = Field(
@@ -298,7 +298,7 @@ with each line formatted according to
 :class:`EnhancementResultEntry <libs.sdk.src.destiny_sdk.robots.EnhancementResultEntry>`.
 This field is only relevant to robots.
 If the URL expires, a new one can be generated using
-``GET /robot-enhancement-batch/{batch_id}/``.
+``GET /robot-enhancement-batches/{batch_id}/``.
         """,  # noqa: E501
     )
     validation_result_url: HttpUrl | None = Field(
@@ -308,7 +308,7 @@ The URL at which the result of the enhancement request is stored.
 This file is a txt file, one line per reference, with either an error
 or a success message.
 If the URL expires, a new one can be generated using
-``GET /robot-enhancement-batch/{batch_id}/``.
+``GET /robot-enhancement-batches/{batch_id}/``.
         """,
     )
     error: str | None = Field(

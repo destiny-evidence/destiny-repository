@@ -655,7 +655,7 @@ async def test_canonical_candidate_search(
         reference_id=matching_ref1.id,
     )
 
-    assert {r.id for r in results} == {matching_ref2.id}
+    assert {reference.id for reference in results} == {matching_ref2.id}
 
     results = await es_reference_repository.search_for_candidate_canonicals(
         CandidateCanonicalSearchFieldsProjection.get_from_reference(non_matching_ref),
