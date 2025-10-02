@@ -184,6 +184,7 @@ class FakeUnitOfWork:
         enhancement_requests=None,
         robots=None,
         robot_automations=None,
+        reference_duplicate_decisions=None,
         pending_enhancements=None,
         robot_enhancement_batches=None,
     ):
@@ -196,6 +197,7 @@ class FakeUnitOfWork:
         self.enhancement_requests = enhancement_requests
         self.robots = robots
         self.robot_automations = robot_automations
+        self.reference_duplicate_decisions = reference_duplicate_decisions
         self.pending_enhancements = pending_enhancements
         self.robot_enhancement_batches = robot_enhancement_batches
         self.committed = False

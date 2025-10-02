@@ -30,6 +30,7 @@ from app.domain.references.models.models import (
     PendingEnhancement,
     PendingEnhancementStatus,
     Reference,
+    ReferenceDuplicateDecision,
     RobotAutomation,
     RobotAutomationPercolationResult,
     RobotEnhancementBatch,
@@ -42,6 +43,7 @@ from app.domain.references.repository import (
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.deduplication_service import DeduplicationService
 from app.domain.references.services.enhancement_service import (
     EnhancementService,
     ProcessedResults,
@@ -77,6 +79,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         super().__init__(anti_corruption_service, sql_uow, es_uow)
         self._ingestion_service = IngestionService(anti_corruption_service, sql_uow)
         self._enhancement_service = EnhancementService(anti_corruption_service, sql_uow)
+        self._deduplication_service = DeduplicationService(
+            anti_corruption_service, sql_uow
+        )
 
     @sql_unit_of_work
     async def get_reference(self, reference_id: UUID) -> Reference:
@@ -90,10 +95,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_id, preload=["identifiers", "enhancements"]
         )
 
+    async def _sync_reference_to_es(self, reference_id: UUID) -> Reference:
+        """Upsert a single reference to Elasticsearch from SQL."""
+        return await self.es_uow.references.add(await self._get_reference(reference_id))
+
     async def _merge_reference(self, reference: Reference) -> Reference:
         """Persist a reference with an existing SQL & ES UOW."""
         db_reference = await self.sql_uow.references.merge(reference)
-        await self.es_uow.references.add(reference)
+        await self._sync_reference_to_es(db_reference.id)
         return db_reference
 
     @sql_unit_of_work
@@ -736,6 +745,51 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         # level exception handler, so we don't need to handle it here.
         automation = await self.sql_uow.robot_automations.merge(automation)
         return await self.save_robot_automation(automation)
+
+    @sql_unit_of_work
+    async def get_reference_duplicate_decision(
+        self,
+        reference_duplicate_decision_id: UUID,
+    ) -> ReferenceDuplicateDecision:
+        """Get a reference duplicate decision by id."""
+        return await self.sql_uow.reference_duplicate_decisions.get_by_pk(
+            reference_duplicate_decision_id
+        )
+
+    @sql_unit_of_work
+    @es_unit_of_work
+    async def process_reference_duplicate_decision(
+        self,
+        reference_duplicate_decision: ReferenceDuplicateDecision,
+    ) -> ReferenceDuplicateDecision:
+        """Process a reference duplicate decision."""
+        reference_duplicate_decision = (
+            await self._deduplication_service.nominate_candidate_duplicates(
+                reference_duplicate_decision
+            )
+        )
+
+        reference_duplicate_decision = (
+            await self._deduplication_service.determine_duplicate_from_candidates(
+                reference_duplicate_decision
+            )
+        )
+
+        reference_duplicate_decision = (
+            await self._deduplication_service.map_duplicate_decision(
+                reference_duplicate_decision
+            )
+        )
+
+        if reference_duplicate_decision.active_decision:
+            await self._sync_reference_to_es(reference_duplicate_decision.reference_id)
+            if reference_duplicate_decision.canonical_reference_id:
+                # Canonical reference may have an updated projection
+                await self._sync_reference_to_es(
+                    reference_duplicate_decision.canonical_reference_id
+                )
+
+        return reference_duplicate_decision
 
     @sql_unit_of_work
     async def get_pending_enhancements_for_robot(

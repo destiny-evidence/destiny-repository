@@ -2,7 +2,7 @@
 
 import uuid
 from enum import StrEnum, auto
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 import destiny_sdk
 
@@ -96,8 +96,9 @@ class DuplicateDetermination(StrEnum):
     - `unresolved`: Automatic attempts to resolve the duplicate were unsuccessful.
     - `unsearchable`: The reference does not have sufficient metadata to be
         automatically matched to other references.
-    - `decoupled`: The existing duplicate mapping has been changed/removed based on new
-        information and the references involved require special attention.
+    - `decoupled`: A decision has been made, but needs further attention. This could be
+        due to a change in the canonical mapping, or a chain of duplicates longer
+        than allowed.
     """
 
     PENDING = auto()
@@ -116,7 +117,6 @@ class DuplicateDetermination(StrEnum):
             cls.DUPLICATE,
             cls.EXACT_DUPLICATE,
             cls.CANONICAL,
-            cls.UNRESOLVED,
             cls.UNSEARCHABLE,
             cls.DECOUPLED,
         }
@@ -280,6 +280,85 @@ class Reference(
 
         return
 
+    @property
+    def canonical(self) -> bool | None:
+        """
+        Pessimistically check if this reference is the canonical version.
+
+        Returns None if no duplicate decision is present, either due to not being
+        preloaded or still pending.
+        """
+        if not self.duplicate_decision:
+            return None
+        return (
+            self.duplicate_decision.duplicate_determination
+            == DuplicateDetermination.CANONICAL
+        )
+
+    @property
+    def canonical_like(self) -> bool:
+        """
+        Optimistically check if this reference is the canonical version.
+
+        Only returns False if the reference is a determined duplicate. Pending,
+        unresolved and not-preloaded duplicate decisions are treated as canonical-like.
+        """
+        if not self.duplicate_decision:
+            return True
+        return (
+            self.duplicate_decision.duplicate_determination
+            != DuplicateDetermination.DUPLICATE
+        )
+
+    @property
+    def canonical_chain_length(self) -> int:
+        """
+        Get the length of the canonical chain for this reference.
+
+        This is the number of references in the chain from this reference to
+        the root canonical reference, including this reference.
+
+        Requires canonical_reference to be preloaded, will always return 1 if not.
+        """
+        return 1 + (
+            self.canonical_reference.canonical_chain_length
+            if self.canonical_reference
+            else 0
+        )
+
+    def is_superset(
+        self,
+        reference: "Reference",
+    ) -> bool:
+        """
+        Check if this Reference is a superset of the given Reference.
+
+        This compares enhancements, identifiers and visibility, removing
+        contextual differences (eg database ids), to verify if the content
+        is identical.
+
+        :param reference: The reference to compare against.
+        :type reference: Reference
+        :return: True if the given Reference is a subset of this Reference, else False.
+        :rtype: bool
+        """
+
+        def _supersets(
+            superset: list[Enhancement] | list[LinkedExternalIdentifier] | None,
+            subset: list[Enhancement] | list[LinkedExternalIdentifier] | None,
+        ) -> bool:
+            """Return True if superset contains all elements of subset."""
+            return {obj.hash_data() for obj in (superset or [])} >= {
+                obj.hash_data() for obj in (subset or [])
+            }
+
+        # Find anything in the reference that is not in self
+        return (
+            reference.visibility == self.visibility
+            and _supersets(self.enhancements, reference.enhancements)
+            and _supersets(self.identifiers, reference.identifiers)
+        )
+
 
 class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
     """External identifier model with database attributes included."""
@@ -294,6 +373,10 @@ class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
         default=None,
         description="The reference this identifier identifies.",
     )
+
+    def hash_data(self) -> int:
+        """Contentwise hash of the identifier, excluding relationships."""
+        return hash(self.identifier.model_dump_json(exclude_none=True))
 
 
 class GenericExternalIdentifier(DomainBaseModel):
@@ -362,6 +445,14 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
         None,
         description="The reference this enhancement is associated with.",
     )
+
+    def hash_data(self) -> int:
+        """Contentwise hash of the enhancement, excluding relationships."""
+        return hash(
+            self.model_dump_json(
+                exclude={"id", "reference_id", "reference"}, exclude_none=True
+            )
+        )
 
 
 class EnhancementRequest(DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin):
@@ -477,6 +568,41 @@ class CandidateDuplicateSearchFields(ProjectedBaseModel):
     def is_searchable(self) -> bool:
         """Whether the projection has the fields required to search for candidates."""
         return all((self.publication_year, self.authors, self.title))
+
+
+class ReferenceDuplicateDeterminationResult(BaseModel):
+    """Model representing the result of a duplicate determination."""
+
+    duplicate_determination: Literal[
+        DuplicateDetermination.CANONICAL,
+        DuplicateDetermination.DUPLICATE,
+        DuplicateDetermination.UNRESOLVED,
+    ]
+    canonical_reference_id: UUID4 | None = Field(
+        default=None,
+        description="The ID of the determined canonical reference.",
+    )
+    detail: str | None = Field(
+        default=None,
+        description="Optional detail about the determination process, particularly"
+        " where the determination is UNRESOLVED.",
+    )
+
+    @model_validator(mode="after")
+    def check_canonical_reference_id_populated_iff_canonical(self) -> Self:
+        """Assert that canonical must exist if and only if decision is duplicate."""
+        if (
+            self.canonical_reference_id
+            is not None
+            == (self.duplicate_determination == DuplicateDetermination.DUPLICATE)
+        ):
+            msg = (
+                "canonical_reference_id must be populated if and only if "
+                "duplicate_determination is DUPLICATE"
+            )
+            raise ValueError(msg)
+
+        return self
 
 
 class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):

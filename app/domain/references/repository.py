@@ -1,14 +1,16 @@
 """Repositories for references and associated models."""
 
+import math
 from abc import ABC
 from collections.abc import Sequence
 from typing import Literal
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
+from elasticsearch.dsl import AsyncSearch, Q
 from opentelemetry import trace
 from pydantic import UUID4
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -19,16 +21,17 @@ from app.domain.references.models.es import (
     RobotAutomationPercolationDocument,
 )
 from app.domain.references.models.models import (
-    Enhancement as DomainEnhancement,
-)
-from app.domain.references.models.models import (
-    EnhancementRequest as DomainEnhancementRequest,
-)
-from app.domain.references.models.models import (
+    CandidateDuplicateSearchFields,
     ExternalIdentifierType,
     GenericExternalIdentifier,
     PendingEnhancementStatus,
     RobotAutomationPercolationResult,
+)
+from app.domain.references.models.models import (
+    Enhancement as DomainEnhancement,
+)
+from app.domain.references.models.models import (
+    EnhancementRequest as DomainEnhancementRequest,
 )
 from app.domain.references.models.models import (
     LinkedExternalIdentifier as DomainExternalIdentifier,
@@ -69,6 +72,7 @@ from app.domain.references.models.sql import RobotAutomation as SQLRobotAutomati
 from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
+from app.persistence.es.persistence import ESSearchResult
 from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
@@ -153,6 +157,42 @@ class ReferenceSQLRepository(
             for db_reference in db_references
         ]
 
+    @trace_repository_method(tracer)
+    async def find_with_identifiers(
+        self,
+        identifiers: list[GenericExternalIdentifier],
+        preload: list[_reference_sql_preloadable] | None = None,
+    ) -> list[DomainReference]:
+        """Find references that possess ALL of the given identifiers."""
+        options = []
+        if preload:
+            options.extend(self._get_relationship_loads(preload))
+
+        query = (
+            select(SQLReference)
+            .where(
+                *[
+                    SQLReference.identifiers.any(
+                        and_(
+                            SQLExternalIdentifier.identifier_type
+                            == identifier.identifier_type,
+                            SQLExternalIdentifier.identifier == identifier.identifier,
+                            SQLExternalIdentifier.other_identifier_name
+                            == identifier.other_identifier_name,
+                        )
+                    )
+                    for identifier in identifiers
+                ]
+            )
+            .options(*options)
+        )
+
+        result = await self._session.execute(query)
+        db_references = result.unique().scalars().all()
+        return [
+            db_reference.to_domain(preload=preload) for db_reference in db_references
+        ]
+
 
 class ReferenceESRepository(
     GenericAsyncESRepository[DomainReference, ReferenceDocument],
@@ -166,6 +206,74 @@ class ReferenceESRepository(
             client,
             DomainReference,
             ReferenceDocument,
+        )
+
+    @trace_repository_method(tracer)
+    async def search_for_candidate_duplicates(
+        self,
+        search_fields: CandidateDuplicateSearchFields,
+        reference_id: UUID,
+    ) -> list[ESSearchResult]:
+        """
+        Fuzzy match candidate fingerprints to existing references.
+
+        This is a high-recall search strategy.
+
+        NOT TESTED/EVALUATED. I threw this together as a proof of concept, this must
+        be polished and evaluated before use.
+        The proof of concept does:
+        - MUST: Fuzzy match on title (requires 50% of terms to match)
+        - SHOULD: partial match on authors list (requires 50% of authors to match)
+        - FILTER: Publication year within ±1 year range (non-scoring)
+        """
+        search = (
+            AsyncSearch(using=self._client)
+            .doc_type(self._persistence_cls)
+            .query(
+                Q(
+                    "bool",
+                    must=[
+                        Q(
+                            "match",
+                            title={
+                                "query": search_fields.title,
+                                "fuzziness": "AUTO",
+                                "boost": 2.0,
+                                "operator": "or",
+                                "minimum_should_match": "50%",
+                            },
+                        )
+                    ],
+                    should=[
+                        Q("match", authors=author) for author in search_fields.authors
+                    ],
+                    filter=[
+                        Q(
+                            "range",
+                            publication_year={
+                                "gte": search_fields.publication_year - 1,
+                                "lte": search_fields.publication_year + 1,
+                            },
+                        )
+                    ]
+                    if search_fields.publication_year
+                    else [],
+                    must_not=[Q("ids", values=[reference_id])],
+                    minimum_should_match=math.floor(0.5 * len(search_fields.authors)),
+                )
+            )
+            .source(fields=False)
+        )
+
+        response = await search.execute()
+
+        return sorted(
+            [
+                ESSearchResult(id=hit.meta.id, score=hit.meta.score)
+                for hit in response.hits
+            ],
+            key=lambda result: result.score,
+            reverse=True,
         )
 
 

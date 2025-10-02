@@ -345,14 +345,13 @@ class Settings(BaseSettings):
         description="The log level for the application.",
     )
 
-    max_reference_duplicate_depth: int = Field(
+    max_reference_duplicate_depth: Literal[2] = Field(
         default=2,
         description=(
-            "Duplicate matches are fuzzy and so are not necessarily one-to-many with "
-            "a single depth. See ``Reference.merge()`` implementation for more. This "
-            "is the maximum duplicate depth, any deeper duplicate detections will be "
-            "flagged for manual resolution instead of automatically resolved."
-            "NOTE: The default value of 2 implies that chains are not allowed."
+            "The maximum depth to which reference duplicates are propagated. A depth "
+            "of 2, as in the default, means only direct duplicates are allowed. Higher "
+            "values allow for duplicate chaining, at the significant cost of "
+            "performance and data model complexity."
         ),
     )
 
