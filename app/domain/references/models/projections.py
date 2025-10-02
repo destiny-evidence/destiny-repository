@@ -5,7 +5,7 @@ import destiny_sdk
 from app.core.exceptions import ProjectionError
 from app.domain.base import GenericProjection
 from app.domain.references.models.models import (
-    CandidateDuplicateSearchFields,
+    CandidateCanonicalSearchFields,
     EnhancementRequest,
     EnhancementRequestStatus,
     EnhancementType,
@@ -14,8 +14,8 @@ from app.domain.references.models.models import (
 )
 
 
-class CandidateDuplicateSearchFieldsProjection(
-    GenericProjection[CandidateDuplicateSearchFields]
+class CandidateCanonicalSearchFieldsProjection(
+    GenericProjection[CandidateCanonicalSearchFields]
 ):
     """Projection functions for candidate selection used in duplicate detection."""
 
@@ -23,8 +23,16 @@ class CandidateDuplicateSearchFieldsProjection(
     def get_from_reference(
         cls,
         reference: Reference,
-    ) -> CandidateDuplicateSearchFields:
-        """Get the candidate duplicate search fields from a reference."""
+    ) -> CandidateCanonicalSearchFields:
+        """
+        Get the candidate canonical search fields from a reference.
+
+        :param reference: The reference to project from.
+        :type reference: app.domain.references.models.models.Reference
+        :raises ProjectionError: If the projection fails.
+        :return: The projected candidate canonical search fields.
+        :rtype: CandidateCanonicalSearchFields
+        """
         try:
             title, publication_year = None, None
             authorship: list[destiny_sdk.enhancements.Authorship] = []
@@ -67,10 +75,10 @@ class CandidateDuplicateSearchFieldsProjection(
                 title = title.strip()
 
         except Exception as exc:
-            msg = "Failed to project CandidateDuplicateSearchFields from Reference"
+            msg = "Failed to project CandidateCanonicalSearchFields from Reference"
             raise ProjectionError(msg) from exc
 
-        return CandidateDuplicateSearchFields(
+        return CandidateCanonicalSearchFields(
             title=title,
             authors=[author.display_name.strip() for author in authorship],
             publication_year=publication_year,
@@ -84,6 +92,14 @@ class DeduplicatedReferenceProjection(GenericProjection[Reference]):
     A deduplicated reference contains all the enhancements and identifiers of its
     duplicates, and is flattened to remove its duplicates. This makes it compatible
     with a SDK reference.
+
+    TODO: Handle reference-level visibility.
+
+    :param reference: The reference to project from.
+    :type reference: app.domain.references.models.models.Reference
+    :raises ProjectionError: If the projection fails.
+    :return: The projected deduplicated reference.
+    :rtype: Reference
     """
 
     @classmethod

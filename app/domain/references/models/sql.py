@@ -490,7 +490,7 @@ class ReferenceDuplicateDecision(
         UUID, ForeignKey("enhancement.id"), nullable=True
     )
     active_decision: Mapped[bool] = mapped_column(nullable=False, default=True)
-    candidate_duplicate_ids: Mapped[list[uuid.UUID]] = mapped_column(
+    candidate_canonical_ids: Mapped[list[uuid.UUID]] = mapped_column(
         ARRAY(UUID), nullable=True
     )
     duplicate_determination: Mapped[DuplicateDetermination] = mapped_column(
@@ -530,7 +530,7 @@ class ReferenceDuplicateDecision(
             reference_id=domain_obj.reference_id,
             enhancement_id=domain_obj.enhancement_id,
             active_decision=domain_obj.active_decision,
-            candidate_duplicate_ids=domain_obj.candidate_duplicate_ids,
+            candidate_canonical_ids=domain_obj.candidate_canonical_ids,
             canonical_reference_id=domain_obj.canonical_reference_id,
             duplicate_determination=domain_obj.duplicate_determination,
             detail=domain_obj.detail,
@@ -546,7 +546,7 @@ class ReferenceDuplicateDecision(
             reference_id=self.reference_id,
             enhancement_id=self.enhancement_id,
             active_decision=self.active_decision,
-            candidate_duplicate_ids=self.candidate_duplicate_ids,
+            candidate_canonical_ids=self.candidate_canonical_ids,
             canonical_reference_id=self.canonical_reference_id,
             duplicate_determination=self.duplicate_determination,
             detail=self.detail,

@@ -17,7 +17,7 @@ from app.domain.references.models.models import (
     ReferenceDuplicateDeterminationResult,
 )
 from app.domain.references.models.projections import (
-    CandidateDuplicateSearchFieldsProjection,
+    CandidateCanonicalSearchFieldsProjection,
 )
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -45,11 +45,17 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         """
         Find exact duplicate references for the given reference.
 
-        This is _not_ part of the regular deduplication flow but is used to circumvent
+        This is *not* part of the regular deduplication flow but is used to circumvent
         importing and processing redundant references.
 
-        Exact duplicates are defined in ``Reference.is_superset()``. A reference may
-        have more than one exact duplicate, this just returns the first.
+        Exact duplicates are defined in
+        :attr:`app.domain.references.models.models.Reference.is_superset()`.
+        A reference may have more than one exact duplicate, this just returns the first.
+
+        :param reference: The reference to find duplicates for.
+        :type reference: app.domain.references.models.models.Reference
+        :return: The supersetting reference, or None if no duplicate was found.
+        :rtype: app.domain.references.models.models.Reference | None
         """
         if not reference.identifiers:
             msg = "Reference must have identifiers to find duplicates."
@@ -107,12 +113,12 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         Register a duplicate decision for a reference.
 
         :param reference: The reference to register the duplicate decision for.
-        :type reference: Reference
-        :param enhancement_id: The enhancement ID triggering with the duplicate decision
-            , defaults to None
+        :type reference: app.domain.references.models.models.Reference
+        :param enhancement_id: The enhancement ID triggering with the duplicate
+            decision, defaults to None
         :type enhancement_id: uuid.UUID | None, optional
         :param duplicate_determination: Flag indicating if a reference was an exact
-        duplicate and not imported, defaults to None
+            duplicate and not imported, defaults to None
         :type duplicate_determination: Literal[DuplicateDetermination.EXACT_DUPLICATE]
             | None, optional
         :param canonical_reference_id: The canonical reference ID this reference is an
@@ -136,7 +142,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 duplicate_determination
                 if duplicate_determination
                 else DuplicateDetermination.UNSEARCHABLE
-                if not CandidateDuplicateSearchFieldsProjection.get_from_reference(
+                if not CandidateCanonicalSearchFieldsProjection.get_from_reference(
                     reference
                 ).is_searchable
                 else DuplicateDetermination.PENDING
@@ -147,15 +153,25 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision
         )
 
-    async def nominate_candidate_duplicates(
+    async def nominate_candidate_canonicals(
         self, reference_duplicate_decision: ReferenceDuplicateDecision
     ) -> ReferenceDuplicateDecision:
-        """Get candidate duplicate references for the given decision."""
+        """
+        Nominate candidate canonical references for the given decision.
+
+        This uses the search strategy in
+        :attr:`app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals`.
+
+        :param reference_duplicate_decision: The decision to find candidates for.
+        :type reference_duplicate_decision: ReferenceDuplicateDecision
+        :return: The updated decision with candidate IDs and status.
+        :rtype: ReferenceDuplicateDecision
+        """
         reference = await self.sql_uow.references.get_by_pk(
             reference_duplicate_decision.reference_id
         )
-        search_result = await self.es_uow.references.search_for_candidate_duplicates(
-            CandidateDuplicateSearchFieldsProjection.get_from_reference(reference),
+        search_result = await self.es_uow.references.search_for_candidate_canonicals(
+            CandidateCanonicalSearchFieldsProjection.get_from_reference(reference),
             reference_id=reference.id,
         )
 
@@ -172,7 +188,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision = (
                 await self.sql_uow.reference_duplicate_decisions.update_by_pk(
                     reference_duplicate_decision.id,
-                    candidate_duplicate_ids=[result.id for result in search_result],
+                    candidate_canonical_ids=[result.id for result in search_result],
                     duplicate_determination=DuplicateDetermination.NOMINATED,
                 )
             )
@@ -187,19 +203,31 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
         Temporary implementation: takes the first candidate as the duplicate.
         This is the one with the highest score in the candidate nomination stage.
-        This proofs out the flow but should not be used in production.
+        This completes the flow but should not be used in production.
+
+        :param reference_duplicate_decision: The decision to determine duplicates for.
+        :type reference_duplicate_decision: ReferenceDuplicateDecision
+        :return: The result of the duplicate determination.
+        :rtype: ReferenceDuplicateDeterminationResult
         """
         return ReferenceDuplicateDeterminationResult(
             duplicate_determination=DuplicateDetermination.DUPLICATE,
-            canonical_reference_id=reference_duplicate_decision.candidate_duplicate_ids[
+            canonical_reference_id=reference_duplicate_decision.candidate_canonical_ids[
                 0
             ],
         )
 
-    async def determine_duplicate_from_candidates(
+    async def determine_canonical_from_candidates(
         self, reference_duplicate_decision: ReferenceDuplicateDecision
     ) -> ReferenceDuplicateDecision:
-        """Determine a duplicate reference from its candidates."""
+        """
+        Determine a canonical reference from its candidates.
+
+        :param reference_duplicate_decision: The decision to determine duplicates for.
+        :type reference_duplicate_decision: ReferenceDuplicateDecision
+        :return: The updated decision with the determination result.
+        :rtype: ReferenceDuplicateDecision
+        """
         if (
             reference_duplicate_decision.duplicate_determination
             in DuplicateDetermination.get_terminal_states()
@@ -222,7 +250,14 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
     async def map_duplicate_decision(
         self, new_decision: ReferenceDuplicateDecision
     ) -> ReferenceDuplicateDecision:
-        """Apply the persistence changes from the new duplicate decision."""
+        """
+        Apply the persistence changes from the new duplicate decision.
+
+        :param new_decision: The new decision to apply.
+        :type new_decision: ReferenceDuplicateDecision
+        :return: The applied decision.
+        :rtype: ReferenceDuplicateDecision
+        """
         reference = await self.sql_uow.references.get_by_pk(
             new_decision.reference_id,
             preload=["duplicate_decision", "canonical_reference"],

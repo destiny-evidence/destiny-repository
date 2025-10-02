@@ -30,32 +30,28 @@ ExternalIdentifierAdapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
 
 
 class EnhancementRequestStatus(StrEnum):
-    """
-    The status of an enhancement request.
-
-    **Allowed values**:
-    - `received`: Enhancement request has been received by the repo.
-    - `accepted`: Enhancement request has been accepted by the robot.
-    - `processing`: Enhancement request is being processed by the robot.
-    - `rejected`: Enhancement request has been rejected by the robot.
-    - `partial_failed`: Some enhancements failed to create.
-    - `failed`: All enhancements failed to create.
-    - `importing`: Enhancements have been received by the repo and are being imported.
-    - `indexing`: Enhancements have been imported and are being indexed.
-    - `indexing_failed`: Enhancements have been imported but indexing failed.
-    - `completed`: All enhancements have been created.
-    """
+    """The status of an enhancement request."""
 
     RECEIVED = auto()
+    """Enhancement request has been received by the repo."""
     ACCEPTED = auto()
+    """Enhancement request has been accepted by the robot."""
     PROCESSING = auto()
+    """Enhancement request is being processed by the robot."""
     REJECTED = auto()
+    """Enhancement request has been rejected by the robot."""
     PARTIAL_FAILED = auto()
+    """Some enhancements failed to create."""
     FAILED = auto()
+    """All enhancements failed to create."""
     IMPORTING = auto()
+    """Enhancements have been received by the repo and are being imported."""
     INDEXING = auto()
+    """Enhancements have been imported and are being indexed."""
     INDEXING_FAILED = auto()
+    """Enhancements have been imported but indexing failed."""
     COMPLETED = auto()
+    """All enhancements have been created."""
 
 
 class Visibility(StrEnum):
@@ -66,17 +62,14 @@ class Visibility(StrEnum):
     restricted (generally due to copyright constraints from publishers).
 
     TODO: Implement data governance layer to manage this.
-
-    **Allowed values**:
-
-    - `public`: Visible to the general public without authentication.
-    - `restricted`: Requires authentication to be visible.
-    - `hidden`: Is not visible, but may be passed to data mining processes.
     """
 
     PUBLIC = auto()
+    """Visible to the general public without authentication."""
     RESTRICTED = auto()
+    """Requires authentication to be visible."""
     HIDDEN = auto()
+    """Is not visible, but may be passed to data mining processes."""
 
 
 class DuplicateDetermination(StrEnum):
@@ -84,31 +77,37 @@ class DuplicateDetermination(StrEnum):
     The determination of whether a reference is a duplicate.
 
     This encodes both a status and a determination.
-
-    **Allowed values**:
-    - `pending`: The duplicate status is still being determined.
-    - `nominated`: Candidate duplicates have been identified for the reference and
-        it is being further deduplicated.
-    - `duplicate`: The reference is a duplicate of another reference.
-    - `exact_duplicate`: The reference is an identical subset of another reference
-        and has been removed. This is rare and generally occurs in repeated imports.
-    - `canonical`: The reference is not a duplicate of another reference.
-    - `unresolved`: Automatic attempts to resolve the duplicate were unsuccessful.
-    - `unsearchable`: The reference does not have sufficient metadata to be
-        automatically matched to other references.
-    - `decoupled`: A decision has been made, but needs further attention. This could be
-        due to a change in the canonical mapping, or a chain of duplicates longer
-        than allowed.
     """
 
     PENDING = auto()
+    """The duplicate status is still being determined."""
     NOMINATED = auto()
+    """
+    Candidate canonicals have been identified for the reference and it is being
+    further deduplicated.
+    """
     DUPLICATE = auto()
+    """[TERMINAL] The reference is a duplicate of another reference."""
     EXACT_DUPLICATE = auto()
+    """
+    [TERMINAL] The reference is an identical subset of another reference and has been
+    removed. This is rare and generally occurs in repeated imports.
+    """
     CANONICAL = auto()
+    """[TERMINAL] The reference is not a duplicate of another reference."""
     UNRESOLVED = auto()
+    """Automatic attempts to resolve the duplicate were unsuccessful."""
     UNSEARCHABLE = auto()
+    """
+    [TERMINAL] The reference does not have sufficient metadata to be
+    automatically matched to other references.
+    """
     DECOUPLED = auto()
+    """
+    [TERMINAL] A decision has been made, but needs further attention. This could
+    be due to a change in the canonical mapping, or a chain of duplicates longer
+    than allowed.
+    """
 
     @classmethod
     def get_terminal_states(cls) -> set["DuplicateDetermination"]:
@@ -334,8 +333,9 @@ class Reference(
         Check if this Reference is a superset of the given Reference.
 
         This compares enhancements, identifiers and visibility, removing
-        contextual differences (eg database ids), to verify if the content
-        is identical.
+        persistence differences (eg database ids), to verify if the content
+        is identical. If the given Reference has *anything* unique, this will
+        return False.
 
         :param reference: The reference to compare against.
         :type reference: Reference
@@ -549,8 +549,17 @@ class RobotAutomationPercolationResult(BaseModel):
     reference_ids: set[UUID4]
 
 
-class CandidateDuplicateSearchFields(ProjectedBaseModel):
-    """Model representing fields used for candidate selection."""
+class CandidateCanonicalSearchFields(ProjectedBaseModel):
+    """
+    Projection representing fields used for candidate canonical selection.
+
+    This model is a projection of
+    :class:`app.domain.references.models.models.Reference`.
+
+    This is injected into the root of Elasticsearch Reference documents for easy
+    searching. The search implementation lives at
+    :attr:`app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals`.
+    """
 
     publication_year: int | None = Field(
         default=None,
@@ -619,9 +628,9 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         default=False,
         description="Whether this is the active decision for the reference.",
     )
-    candidate_duplicate_ids: list[UUID4] = Field(
+    candidate_canonical_ids: list[UUID4] = Field(
         default_factory=list,
-        description="A list of candidate duplicate IDs for the reference.",
+        description="A list of candidate canonical IDs for the reference.",
     )
     duplicate_determination: DuplicateDetermination = Field(
         default=DuplicateDetermination.PENDING,
