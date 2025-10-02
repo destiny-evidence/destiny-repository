@@ -198,16 +198,15 @@ class ReferenceDomainMixin(InnerDoc):
 class ReferenceCandidateCanonicalMixin(InnerDoc):
     """Mixin to project Reference fields relevant to deduplication."""
 
-    if settings.feature_flags.deduplication:
-        title: str | None = mapped_field(Text(required=False), default=None)
-        authors: list[str] | None = mapped_field(
-            Text(required=False),
-            default=None,
-        )
-        publication_year: int | None = mapped_field(
-            Integer(required=False),
-            default=None,
-        )
+    title: str | None = mapped_field(Text(required=False), default=None)
+    authors: list[str] | None = mapped_field(
+        Text(required=False),
+        default=None,
+    )
+    publication_year: int | None = mapped_field(
+        Integer(required=False),
+        default=None,
+    )
 
     @classmethod
     def from_projection(cls, projection: CandidateCanonicalSearchFields) -> Self:
@@ -246,11 +245,7 @@ class ReferenceDocument(
             # Ignoring easier than chaining __init__ methods IMO.
             meta={"id": domain_obj.id},  # type: ignore[call-arg]
             **ReferenceDomainMixin.from_domain(domain_obj).to_dict(),
-            **(
-                ReferenceCandidateCanonicalMixin.from_domain(domain_obj).to_dict()
-                if settings.feature_flags.deduplication
-                else {}
-            ),
+            **ReferenceCandidateCanonicalMixin.from_domain(domain_obj).to_dict(),
         )
 
     def to_domain(self) -> Reference:

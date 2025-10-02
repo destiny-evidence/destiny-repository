@@ -327,7 +327,7 @@ def _add_env(
                 }
             ),
         )
-        .with_env("FEATURE_FLAGS", json.dumps({"deduplication": True}))
+        .with_env("FEATURE_FLAGS", json.dumps({}))
         .with_env("ENV", "test")
         .with_env("TESTS_USE_RABBITMQ", "true")
         .with_env("AZURE_APPLICATION_ID", "dummy")

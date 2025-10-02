@@ -16,7 +16,6 @@ from uuid import UUID
 
 import httpx
 from destiny_sdk.imports import (
-    CollisionStrategy,
     ImportBatchIn,
     ImportBatchRead,
     ImportBatchSummary,
@@ -57,7 +56,6 @@ def register_import_batch(
     response = client.post(
         f"/imports/records/{import_record_id}/batches/",
         json=ImportBatchIn(
-            collision_strategy=CollisionStrategy.MERGE_DEFENSIVE,
             storage_url=file_url,
         ).model_dump(mode="json"),
     )
