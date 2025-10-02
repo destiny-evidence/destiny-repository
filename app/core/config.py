@@ -345,6 +345,17 @@ class Settings(BaseSettings):
         description="The log level for the application.",
     )
 
+    max_reference_duplicate_depth: int = Field(
+        default=2,
+        description=(
+            "Duplicate matches are fuzzy and so are not necessarily one-to-many with "
+            "a single depth. See ``Reference.merge()`` implementation for more. This "
+            "is the maximum duplicate depth, any deeper duplicate detections will be "
+            "flagged for manual resolution instead of automatically resolved."
+            "NOTE: The default value of 2 implies that chains are not allowed."
+        ),
+    )
+
     @property
     def running_locally(self) -> bool:
         """Return True if the app is running locally."""

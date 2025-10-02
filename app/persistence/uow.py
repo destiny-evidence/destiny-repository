@@ -16,6 +16,7 @@ from app.domain.references.repository import (
     EnhancementRequestRepositoryBase,
     ExternalIdentifierRepositoryBase,
     PendingEnhancementRepositoryBase,
+    ReferenceDuplicateDecisionRepositoryBase,
     ReferenceRepositoryBase,
     RobotAutomationRepositoryBase,
     RobotEnhancementBatchRepositoryBase,
@@ -38,6 +39,7 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
     enhancement_requests: EnhancementRequestRepositoryBase
     robots: RobotRepositoryBase
     robot_automations: RobotAutomationRepositoryBase
+    reference_duplicate_decisions: ReferenceDuplicateDecisionRepositoryBase
     pending_enhancements: PendingEnhancementRepositoryBase
     robot_enhancement_batches: RobotEnhancementBatchRepositoryBase
 
@@ -49,6 +51,7 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
         "enhancement_requests",
         "robots",
         "robot_automations",
+        "reference_duplicate_decisions",
         "pending_enhancements",
         "robot_enhancement_batches",
     }

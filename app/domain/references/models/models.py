@@ -14,6 +14,7 @@ from pydantic import (
     BaseModel,
     Field,
     TypeAdapter,
+    model_validator,
 )
 
 from app.core.telemetry.logger import get_logger
@@ -78,8 +79,52 @@ class Visibility(StrEnum):
     HIDDEN = auto()
 
 
+class DuplicateDetermination(StrEnum):
+    """
+    The determination of whether a reference is a duplicate.
+
+    This encodes both a status and a determination.
+
+    **Allowed values**:
+    - `pending`: The duplicate status is still being determined.
+    - `nominated`: Candidate duplicates have been identified for the reference and
+        it is being further deduplicated.
+    - `duplicate`: The reference is a duplicate of another reference.
+    - `exact_duplicate`: The reference is an identical subset of another reference
+        and has been removed. This is rare and generally occurs in repeated imports.
+    - `canonical`: The reference is not a duplicate of another reference.
+    - `unresolved`: Automatic attempts to resolve the duplicate were unsuccessful.
+    - `unsearchable`: The reference does not have sufficient metadata to be
+        automatically matched to other references.
+    - `decoupled`: The existing duplicate mapping has been changed/removed based on new
+        information and the references involved require special attention.
+    """
+
+    PENDING = auto()
+    NOMINATED = auto()
+    DUPLICATE = auto()
+    EXACT_DUPLICATE = auto()
+    CANONICAL = auto()
+    UNRESOLVED = auto()
+    UNSEARCHABLE = auto()
+    DECOUPLED = auto()
+
+    @classmethod
+    def get_terminal_states(cls) -> set["DuplicateDetermination"]:
+        """Return the set of terminal DuplicateDetermination states."""
+        return {
+            cls.DUPLICATE,
+            cls.EXACT_DUPLICATE,
+            cls.CANONICAL,
+            cls.UNRESOLVED,
+            cls.UNSEARCHABLE,
+            cls.DECOUPLED,
+        }
+
+
 class Reference(
     DomainBaseModel,
+    ProjectedBaseModel,  # References can self-project to the same structure
     SQLAttributeMixin,
 ):
     """Core reference model with database attributes included."""
@@ -95,6 +140,22 @@ class Reference(
     enhancements: list["Enhancement"] | None = Field(
         default=None,
         description="A list of enhancements for the reference",
+    )
+
+    duplicate_decision: "ReferenceDuplicateDecision | None" = Field(
+        default=None,
+        description="The current active duplicate decision for this reference. If None,"
+        " either duplicate_decision has not been preloaded or the duplicate status"
+        " is pending.",
+    )
+
+    canonical_reference: "Reference | None" = Field(
+        default=None,
+        description="The canonical reference that this reference is a duplicate of",
+    )
+    duplicate_references: list["Reference"] | None = Field(
+        default=None,
+        description="A list of references that this reference duplicates",
     )
 
     async def merge(  # noqa: PLR0912
@@ -395,6 +456,77 @@ class RobotAutomationPercolationResult(BaseModel):
 
     robot_id: UUID4
     reference_ids: set[UUID4]
+
+
+class CandidateDuplicateSearchFields(ProjectedBaseModel):
+    """Model representing fields used for candidate selection."""
+
+    publication_year: int | None = Field(
+        default=None,
+        description="The publication year of the reference.",
+    )
+    authors: list[str] = Field(
+        default_factory=list, description="The authors of the reference."
+    )
+    title: str | None = Field(
+        default=None,
+        description="The title of the reference.",
+    )
+
+    @property
+    def is_searchable(self) -> bool:
+        """Whether the projection has the fields required to search for candidates."""
+        return all((self.publication_year, self.authors, self.title))
+
+
+class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
+    """Model representing a decision on whether a reference is a duplicate."""
+
+    reference_id: UUID4 = Field(description="The ID of the reference being evaluated.")
+    enhancement_id: UUID4 | None = Field(
+        default=None,
+        description=(
+            "The ID of the enhancement that triggered this duplicate decision, if any."
+        ),
+    )
+    active_decision: bool = Field(
+        default=False,
+        description="Whether this is the active decision for the reference.",
+    )
+    candidate_duplicate_ids: list[UUID4] = Field(
+        default_factory=list,
+        description="A list of candidate duplicate IDs for the reference.",
+    )
+    duplicate_determination: DuplicateDetermination = Field(
+        default=DuplicateDetermination.PENDING,
+        description="The duplicate status of the reference.",
+    )
+    canonical_reference_id: UUID4 | None = Field(
+        default=None,
+        description="The ID of the canonical reference this reference duplicates.",
+    )
+    detail: str | None = Field(
+        default=None,
+        description="Optional additional detail about the decision.",
+    )
+
+    @model_validator(mode="after")
+    def check_canonical_reference_id_populated_iff_duplicate(self) -> Self:
+        """Assert that canonical must exist if and only if decision is duplicate."""
+        if (self.canonical_reference_id is not None) != (
+            self.duplicate_determination
+            in (
+                DuplicateDetermination.DUPLICATE,
+                DuplicateDetermination.EXACT_DUPLICATE,
+            )
+        ):
+            msg = (
+                "canonical_reference_id must be populated if and only if "
+                "duplicate_determination is DUPLICATE or EXACT_DUPLICATE"
+            )
+            raise ValueError(msg)
+
+        return self
 
 
 class PendingEnhancementStatus(StrEnum):
