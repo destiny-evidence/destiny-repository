@@ -197,7 +197,6 @@ class Environment(StrEnum):
     DEVELOPMENT = auto()
     LOCAL = auto()
     TEST = auto()
-    E2E = auto()
 
 
 class LogLevel(StrEnum):
@@ -366,7 +365,7 @@ class Settings(BaseSettings):
     @property
     def running_locally(self) -> bool:
         """Return True if the app is running locally."""
-        return self.env in (Environment.LOCAL, Environment.TEST, Environment.E2E)
+        return self.env in (Environment.LOCAL, Environment.TEST)
 
     @property
     def default_blob_location(self) -> str:

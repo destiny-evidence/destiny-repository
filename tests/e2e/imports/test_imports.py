@@ -15,7 +15,7 @@ from app.domain.references.models.models import (
     DuplicateDetermination,
     PendingEnhancementStatus,
 )
-from tests.e2e.imports.utils import (
+from tests.e2e.utils import (
     poll_batch_status,
     poll_duplicate_process,
     poll_pending_enhancement,
@@ -33,7 +33,16 @@ async def test_happy_import(  # noqa: PLR0913
     ],
     robot_automation_on_all_imports: UUID,
 ):
-    """Test a simple import of references."""
+    """
+    Test a simple import of references.
+
+    Checks:
+    - All references are successfully imported
+    - Deduplication decisions are made
+    - Pending enhancements are created for the imported references
+        (based on always-passing automation)
+    - References are present in all persistence implementations
+    """
     n_refs = 10
     async with get_import_file_signed_url(
         generate_sdk_reference_file_inputs(n_refs)

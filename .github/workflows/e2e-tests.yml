@@ -1,4 +1,4 @@
-name: E2E Tests
+name: Tests
 
 on:
   push:
@@ -10,89 +10,32 @@ on:
       - "**.rst"
 
 jobs:
-  e2e-tests:
+  tests:
     runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        python-version:
+          - "3.12"
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Checkout source
+        uses: actions/checkout@v4
 
-      - name: Create .env file
-        run: |
-          cat <<EOF > .env
-          APP_NAME=destiny-repository-e2e-tests
-          DB_CONFIG=overwritten-in-docker-compose-e2e
-          ES_CONFIG=overwritten-in-docker-compose-e2e
-          AZURE_APPLICATION_ID=00000000-0000-0000-0000-000000000000
-          AZURE_LOGIN_URL=https://login.microsoftonline.com
-          AZURE_TENANT_ID=00000000-0000-0000-0000-000000000000
-          CLI_CLIENT_ID=00000000-0000-0000-0000-000000000000
-          MESSAGE_BROKER_URL=overwritten-in-docker-compose-e2e
-          MESSAGE_BROKER_NAMESPACE=destiny-repository-staging.servicebus.windows.net
-          MESSAGE_BROKER_QUEUE_NAME=taskiq
-          ELASTIC_MEM_LIMIT=1073741824 # 1GiB for those playing at home
-          ELASTIC_STACK_VERSION=9.0.0
-          ELASTIC_PASSWORD="destiny"
-          LICENSE=basic
-          ES_PORT=9200
-          KIBANA_PORT=5601
-          KIBANA_PASSWORD="destiny"
-          ES_CLUSTER_NAME="docker-cluster"
-          OTEL_ENABLED=false
-          EOF
-
-      - name: Install Docker Compose
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
-
-      - name: Remove database volume
-        run: |
-          # Had a weird issue with the DB persisting data between runs, sporadically
-          docker compose down -v
-          docker volume rm destiny-repository_db_data || true
-
-      - name: Build
-        run: |
-          docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile e2e up -d
-
-      - name: Wait for e2e container to finish
-        run: |
-          timeout=60
-          elapsed=0
-          while [ "$(docker inspect -f '{{.State.Status}}' destiny-repository-e2e-1 2>/dev/null)" != "exited" ]; do
-            sleep 5
-            elapsed=$((elapsed + 5))
-            if [ $elapsed -ge $timeout ]; then
-              echo "E2E container did not finish within 1 minute, timing out"
-              exit 1
-            fi
-          done
-
-      - name: Collect all logs
-        if: always()
-        run: |
-          sleep 5
-          # Save full logs from all services
-          docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile e2e logs > logs.txt
-
-      - name: Save logs to artifact
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Set up python
+        uses: actions/setup-python@v5
         with:
-          name: e2e-logs
-          path: logs.txt
+          python-version: ${{matrix.python-version}}
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
-      - name: Check e2e container exit code
-        run: |
-          EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' destiny-repository-e2e-1)
-          grep -E "e2e|repository|e2e-task-worker" logs.txt
-          if [ "$EXIT_CODE" -ne 0 ]; then
-            echo "E2E tests failed with exit code $EXIT_CODE"
-            exit 1
-          fi
-          echo "E2E tests passed"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.7.14"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-      - name: Clean up Docker Compose
-        if: always()
-        run: docker compose down -v
+      - name: Install the project
+        run: uv sync --locked --group test
+
+      - name: Run test with pytest via uv
+        run: uv run pytest tests/e2e

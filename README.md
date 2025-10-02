@@ -230,20 +230,10 @@ Tests are in the [tests](/tests) directory. They are run using `pytest`
 uv run pytest
 ```
 
-End-to-end testing is run separately in a containerised context:
+End-to-end testing is run separately. Note they require your docker daemon to be running and visible.
 
 ```sh
-docker compose  -f docker-compose.yml -f docker-compose.e2e.yml down -v \
-&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile e2e up -d --force-recreate \
-&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs -f --tail=0 e2e app worker
+uv run pytest tests/e2e
 ```
 
-Note in some circumstances you may need to add the `--build` flag to the `up` command above.
-
-If you wish to inspect the E2E tests' instrumentation, you must mix in the observable compose file:
-
-```sh
-docker compose down -v \
-&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml -f docker-compose.observable.yml --profile e2e up -d --force-recreate \
-&& docker compose -f docker-compose.yml -f docker-compose.e2e.yml -f docker-compose.observable.yml logs -f --tail=0 e2e app worker
-```
+Add the `--build` flag to rebuild the application image if required. This isn't generally necessary as the code is mounted but is useful when things like Dockerfiles or uv dependencies change.

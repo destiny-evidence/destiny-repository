@@ -88,7 +88,7 @@ async def poll_duplicate_process(
         {"reference_id": reference_id},
     )
     decision = pg_result.mappings().first()
-    print(decision)
+
     if (
         not decision
         or decision["duplicate_determination"]
@@ -99,7 +99,7 @@ async def poll_duplicate_process(
     return decision
 
 
-@retry(stop=stop_after_attempt(10), wait=wait_fixed(2), reraise=True)
+@retry(stop=stop_after_attempt(5), wait=wait_fixed(1), reraise=True)
 async def poll_pending_enhancement(
     session: AsyncSession, reference_id: UUID, robot_id: UUID
 ) -> Mapping:
@@ -113,7 +113,7 @@ async def poll_pending_enhancement(
     )
     pending_enhancement = pg_result.mappings().first()
     if not pending_enhancement:
-        msg = "Pending enhancement not yet complete"
+        msg = "Pending enhancement does not yet exist"
         raise Exception(msg)  # noqa: TRY002
     return pending_enhancement
 
@@ -162,7 +162,7 @@ async def import_references(
         ),
         {"import_batch_id": import_batch_id},
     )
-    reference_ids = {row[0] for row in pg_result.fetchall()}
+    reference_ids = {row[0] for row in pg_result.all()}
     for reference_id in reference_ids:
         await poll_duplicate_process(pg_session, reference_id)
 

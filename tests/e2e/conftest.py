@@ -3,6 +3,8 @@
 import json
 import logging
 import pathlib
+import textwrap
+import uuid
 
 import httpx
 import pytest
@@ -10,6 +12,8 @@ import testcontainers.elasticsearch
 import testcontainers.rabbitmq
 from alembic.command import upgrade
 from elasticsearch import AsyncElasticsearch
+from minio import Minio
+from sqlalchemy.ext.asyncio import AsyncSession
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.docker_client import DockerClient
 from testcontainers.core.wait_strategies import HttpWaitStrategy, LogMessageWaitStrategy
@@ -19,13 +23,19 @@ from testcontainers.postgres import PostgresContainer
 from testcontainers.rabbitmq import RabbitMqContainer
 
 from app.core.config import DatabaseConfig
+from app.domain.references.models.sql import Reference as SQLReference
+from app.domain.robots.models.models import Robot
 from app.persistence.sql.session import (
     AsyncDatabaseSessionManager,
     db_manager,
 )
 from tests.db_utils import alembic_config_from_url, clean_tables
+from tests.e2e.factories import ReferenceFactory, RobotFactory
 from tests.es_utils import clean_test_indices, create_test_indices, delete_test_indices
 
+#####################
+# Dirty fiddly bits #
+#####################
 # Monkeypatch testcontainers.elasticsearch._environment_by_version for elastic v9
 testcontainers.elasticsearch._environment_by_version = lambda _: {  # noqa: SLF001
     "xpack.security.enabled": "false"
@@ -42,6 +52,7 @@ _cwd = pathlib.Path.cwd()
 logger.info("Current working directory: %s", _cwd)
 
 app_port = 8000
+bucket_name = "test"
 
 
 def print_logs(name: str, container: DockerContainer):
@@ -53,6 +64,83 @@ def print_logs(name: str, container: DockerContainer):
         name,
         container._container.logs().decode("utf-8"),  # noqa: SLF001
     )
+
+
+###########################
+# Infrastructure Fixtures #
+###########################
+
+
+@pytest.fixture(scope="session")
+def minio_proxy():
+    """
+    Yield a simple proxy container for MinIO signed URLs.
+
+    MinIO signed URLs are signed with the connection URL.
+    App->MinIO uses host.docker.internal connection URL.
+    Tests cannot access host.docker.internal (without special hosts.etc configuration).
+    This tiny proxy container fetches the signed URL and serves it on localhost.
+    Uses only Python standard library.
+    """
+    proxy_script = textwrap.dedent("""
+        import http.server
+        import socketserver
+        import urllib.request
+        import urllib.parse
+
+        class ProxyHandler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path.startswith('/health'):
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(b'{"status":"ok"}')
+                    return
+                self._proxy()
+
+            def do_PUT(self):
+                self._proxy()
+
+            def _proxy(self):
+                parsed = urllib.parse.urlparse(self.path)
+                query_params = urllib.parse.parse_qs(parsed.query)
+                url = query_params['url'][0]
+                content_length = int(self.headers.get('Content-Length', 0))
+                body = self.rfile.read(content_length) if content_length > 0 else None
+                req = urllib.request.Request(url, data=body, method=self.command)
+                for header in ['Content-Type', 'Content-Length']:
+                    if header in self.headers:
+                        req.add_header(header, self.headers[header])
+                with urllib.request.urlopen(req) as resp:
+                    self.send_response(resp.status)
+                    for k, v in resp.headers.items():
+                        self.send_header(k, v)
+                    self.end_headers()
+                    self.wfile.write(resp.read())
+
+        if __name__ == "__main__":
+            with socketserver.TCPServer(("0.0.0.0", 8080), ProxyHandler) as httpd:
+                httpd.serve_forever()
+    """)
+
+    container = (
+        DockerContainer("python:3.11-slim")
+        .with_command(["python", "-c", proxy_script])
+        .with_exposed_ports(8080)
+        .waiting_for(HttpWaitStrategy(port=8080, path="/health"))
+    )
+    with container as proxy:
+        yield proxy
+
+
+@pytest.fixture(scope="session")
+async def minio_proxy_client(minio_proxy: DockerContainer):
+    """Yield a client for the minio proxy."""
+    host = minio_proxy.get_container_host_ip()
+    port = minio_proxy.get_exposed_port(8080)
+    url = f"http://{host}:{port}/proxy"
+    logger.info("Creating httpx client for MinIO proxy at %s", url)
+    async with httpx.AsyncClient(base_url=url) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
@@ -106,7 +194,15 @@ async def pg_lifecycle(pg_sessionmanager: AsyncDatabaseSessionManager):
 async def elasticsearch():
     """Elasticsearch container with default credentials."""
     logger.info("Creating Elasticsearch container...")
-    with ElasticSearchContainer("elasticsearch:9.1.4", mem_limit="2G") as elasticsearch:
+    with ElasticSearchContainer(
+        "elasticsearch:9.1.4",
+        # If elasticsearch is failing to start, check the container logs. Exit code 137
+        # means out of memory. Annoyingly, this either means:
+        # - Docker daemon doesn't have enough memory allocated (mem_limit is too high)
+        # - Elasticsearch doesn't have enough memory allocated (mem_limit is too low)
+        # Fun!
+        mem_limit="2g",
+    ) as elasticsearch:
         logger.info("Creating Elasticsearch indices...")
         async with AsyncElasticsearch(elasticsearch.get_url()) as client:
             await create_test_indices(client)
@@ -140,6 +236,23 @@ def minio():
     with MinioContainer("minio/minio") as minio:
         logger.info("MinIO container ready.")
         yield minio
+
+
+@pytest.fixture(autouse=True)
+def minio_lifecycle(minio: MinioContainer):
+    """Clean buckets around each test."""
+    config = minio.get_config()
+    client = Minio(
+        endpoint=config["endpoint"],
+        access_key=config["access_key"],
+        secret_key=config["secret_key"],
+        secure=False,
+    )
+    client.make_bucket(bucket_name)
+    yield
+    for obj in client.list_objects(bucket_name, recursive=True):
+        client.remove_object(bucket_name, obj.object_name)
+    client.remove_bucket(bucket_name)
 
 
 @pytest.fixture(scope="session")
@@ -200,6 +313,7 @@ def _add_env(
                     ),
                     "ACCESS_KEY": minio_config["access_key"],
                     "SECRET_KEY": minio_config["secret_key"],
+                    "BUCKET": bucket_name,
                 }
             ),
         )
@@ -333,3 +447,41 @@ def pytest_addoption(parser: pytest.Parser):
         help="Rebuild the destiny image. Helps when uv dependencies have changed. "
         "Code changes will be picked up automatically without needing this flag.",
     )
+
+
+#################
+# Data Fixtures #
+#################
+
+
+@pytest.fixture
+async def robot(destiny_client_v1: httpx.AsyncClient) -> Robot:
+    """Create a robot."""
+    robot: Robot = RobotFactory.build()
+    response = await destiny_client_v1.post(
+        "/robots/",
+        json={
+            "name": robot.name,
+            "description": robot.description,
+            "base_url": str(robot.base_url),
+            "owner": robot.owner,
+        },
+    )
+    assert response.status_code == 201
+    data = response.json()
+    return Robot(**data)
+
+
+@pytest.fixture
+async def add_references(pg_session: AsyncSession):
+    """Create some references."""
+
+    async def _make(n: int) -> set[uuid.UUID]:
+        references = [ReferenceFactory.build() for _ in range(n)]
+        for reference in references:
+            sql_reference = SQLReference.from_domain(reference)
+            pg_session.add(sql_reference)
+        await pg_session.commit()
+        return {reference.id for reference in references}
+
+    return _make

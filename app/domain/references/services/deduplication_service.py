@@ -210,7 +210,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                     0
                 ],
             )
-            if settings.env in (Environment.E2E, Environment.TEST)
+            if settings.env == Environment.TEST
             and reference_duplicate_decision.candidate_duplicate_ids
             else ReferenceDuplicateDeterminationResult(
                 duplicate_determination=DuplicateDetermination.UNRESOLVED

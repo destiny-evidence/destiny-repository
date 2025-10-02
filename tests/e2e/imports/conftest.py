@@ -14,7 +14,7 @@ from destiny_sdk.enhancements import EnhancementFileInput
 from destiny_sdk.references import ReferenceFileInput
 
 from app.domain.robots.models.models import Robot
-from tests.e2e.factories import ReferenceFactory, RobotFactory
+from tests.e2e.factories import ReferenceFactory
 
 if TYPE_CHECKING:
     from app.domain.references.models.models import Reference
@@ -93,24 +93,6 @@ def get_import_file_signed_url():
             tempdir.cleanup()
 
     return _upload
-
-
-@pytest.fixture
-async def robot(destiny_client_v1: httpx.AsyncClient) -> Robot:
-    """Create a robot."""
-    robot: Robot = RobotFactory.build()
-    response = await destiny_client_v1.post(
-        "/robots/",
-        json={
-            "name": robot.name,
-            "description": robot.description,
-            "base_url": str(robot.base_url),
-            "owner": robot.owner,
-        },
-    )
-    assert response.status_code == 201
-    data = response.json()
-    return Robot(**data)
 
 
 @pytest.fixture
