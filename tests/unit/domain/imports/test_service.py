@@ -29,7 +29,7 @@ BATCH_ID = uuid.uuid4()
 
 
 @pytest.fixture
-async def import_result():
+def import_result():
     return ImportResult(
         id=RESULT_ID,
         import_batch_id=BATCH_ID,
