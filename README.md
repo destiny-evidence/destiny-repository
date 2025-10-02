@@ -63,13 +63,6 @@ brew install minio-mc
 
 This can be accessed at localhost:9001 or automatically seeded using the below:
 
-```sh
-chmod +x ./.minio/seed_fileserver.sh
-./.minio/seed_fileserver.sh
-```
-
-Seeding also creates a configuration file at `.minio/presigned_urls.json` which can be used to pass to the application as storage URLs.
-
 #### Seeding the database
 
 We have a database seed in `.db_seed` to give us some local data to work with and to test out migrations, load this in with
