@@ -8,6 +8,7 @@ import pytest
 from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
+from pydantic import HttpUrl
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
@@ -29,16 +30,21 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     Visibility,
 )
+from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import (
-    EnhancementRequest,
     ExternalIdentifier,
 )
 from app.domain.references.models.sql import (
     PendingEnhancement as SQLPendingEnhancement,
 )
 from app.domain.references.models.sql import Reference as SQLReference
+from app.domain.references.models.sql import (
+    RobotEnhancementBatch as SQLRobotEnhancementBatch,
+)
 from app.domain.references.service import ReferenceService
 from app.domain.robots.models.sql import Robot as SQLRobot
+from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
+from app.persistence.blob.repository import BlobRepository
 from app.tasks import broker
 
 # Use the database session in all tests to set up the database manager.
@@ -92,6 +98,25 @@ async def client(
         yield client
 
 
+@pytest.fixture
+def mock_blob_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Use a mock blob repository for generating signed urls."""
+
+    class MockBlobRepository(BlobRepository):
+        async def get_signed_url(
+            self,
+            file: BlobStorageFile,
+            interaction_type: BlobSignedUrlType,
+        ) -> HttpUrl:
+            return HttpUrl(f"http://signed/{file.filename}/{interaction_type}")
+
+    monkeypatch.setattr(
+        references,
+        "BlobRepository",
+        MockBlobRepository,
+    )
+
+
 async def add_reference(session: AsyncSession) -> SQLReference:
     """Add a reference to the database."""
     reference = SQLReference(visibility=Visibility.RESTRICTED)
@@ -112,6 +137,55 @@ async def add_robot(session: AsyncSession) -> SQLRobot:
     session.add(robot)
     await session.commit()
     return robot
+
+
+async def add_enhancement_request(
+    session: AsyncSession, robot: SQLRobot, reference: SQLReference
+) -> SQLEnhancementRequest:
+    """Add an enhancement request to the database."""
+    enhancement_request = SQLEnhancementRequest(
+        reference_ids=[reference.id],
+        robot_id=robot.id,
+        request_status=EnhancementRequestStatus.RECEIVED,
+    )
+    session.add(enhancement_request)
+    await session.commit()
+    return enhancement_request
+
+
+async def add_pending_enhancement(
+    session: AsyncSession,
+    reference: SQLReference,
+    enhancement_request: SQLEnhancementRequest,
+) -> SQLPendingEnhancement:
+    """Add a pending enhancement to the database."""
+    pending_enhancement = SQLPendingEnhancement(
+        reference_id=reference.id,
+        robot_id=enhancement_request.robot_id,
+        enhancement_request_id=enhancement_request.id,
+        status=PendingEnhancementStatus.PENDING,
+    )
+    session.add(pending_enhancement)
+    await session.commit()
+    return pending_enhancement
+
+
+async def add_robot_enhancement_batch(
+    session: AsyncSession, pending_enhancement: SQLPendingEnhancement
+):
+    """Add a robot enhancement batch to the database."""
+    robot_enhancement_batch = SQLRobotEnhancementBatch(
+        robot_id=pending_enhancement.robot_id,
+        pending_enhancements=[pending_enhancement],
+        reference_data_file="minio://destiny-repository/robot_enhancement_batch_reference_data/some_fake_reference_data.jsonl",
+        result_file="minio://destiny-repository/enhancement_result/some_fake_enhancement_results.jsonl",
+    )
+    pending_enhancement.robot_enhancement_batch_id = robot_enhancement_batch.id
+
+    session.add(robot_enhancement_batch)
+    session.add(pending_enhancement)
+    await session.commit()
+    return robot_enhancement_batch
 
 
 async def test_request_batch_enhancement_happy_path(
@@ -411,38 +485,6 @@ async def test_get_robot_automations_with_automations(
     assert robot_ids == expected_robot_ids
 
 
-async def add_enhancement_request(
-    session: AsyncSession, robot: SQLRobot, reference: SQLReference
-) -> EnhancementRequest:
-    """Add an enhancement request to the database."""
-    enhancement_request = EnhancementRequest(
-        reference_ids=[reference.id],
-        robot_id=robot.id,
-        request_status=EnhancementRequestStatus.RECEIVED,
-    )
-    session.add(enhancement_request)
-    await session.commit()
-    return enhancement_request
-
-
-async def add_pending_enhancement(
-    session: AsyncSession,
-    robot: SQLRobot,
-    reference: SQLReference,
-    enhancement_request: EnhancementRequest,
-) -> SQLPendingEnhancement:
-    """Add a pending enhancement to the database."""
-    pending_enhancement = SQLPendingEnhancement(
-        reference_id=reference.id,
-        robot_id=robot.id,
-        enhancement_request_id=enhancement_request.id,
-        status=PendingEnhancementStatus.PENDING,
-    )
-    session.add(pending_enhancement)
-    await session.commit()
-    return pending_enhancement
-
-
 async def test_request_robot_enhancement_batch(
     session: AsyncSession,
     client: AsyncClient,
@@ -453,7 +495,7 @@ async def test_request_robot_enhancement_batch(
     robot = await add_robot(session)
     reference = await add_reference(session)
     enhancement_request = await add_enhancement_request(session, robot, reference)
-    await add_pending_enhancement(session, robot, reference, enhancement_request)
+    await add_pending_enhancement(session, reference, enhancement_request)
 
     # Mock the service methods
     mock_get_pending = AsyncMock(return_value=[])
@@ -467,7 +509,7 @@ async def test_request_robot_enhancement_batch(
     )
 
     response = await client.post(
-        f"/v1/robot-enhancement-batch/?robot_id={robot.id}&limit=10"
+        f"/v1/robot-enhancement-batches/?robot_id={robot.id}&limit=10"
     )
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
@@ -489,7 +531,7 @@ async def test_request_robot_enhancement_batch_limit_exceeded(
 
     # Request with a very high limit
     response = await client.post(
-        f"/v1/robot-enhancement-batch/?robot_id={robot.id}&limit=99999"
+        f"/v1/robot-enhancement-batches/?robot_id={robot.id}&limit=99999"
     )
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
@@ -510,7 +552,7 @@ async def test_request_robot_enhancement_batch_invalid_robot_id(
     )
 
     response = await client.post(
-        "/v1/robot-enhancement-batch/?robot_id=invalid-uuid&limit=10"
+        "/v1/robot-enhancement-batches/?robot_id=invalid-uuid&limit=10"
     )
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
@@ -527,7 +569,41 @@ async def test_request_robot_enhancement_batch_missing_robot_id(
         ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
     )
 
-    response = await client.post("/v1/robot-enhancement-batch/?limit=10")
+    response = await client.post("/v1/robot-enhancement-batches/?limit=10")
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     mock_get_pending.assert_not_awaited()
+
+
+async def test_get_robot_enhancement_batch_happy_path(
+    session: AsyncSession,
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
+):
+    """Test getting an existing robot batch by id."""
+    robot = await add_robot(session)
+    reference = await add_reference(session)
+    enhancement_request = await add_enhancement_request(session, robot, reference)
+    pending_enhancement = await add_pending_enhancement(
+        session, reference, enhancement_request
+    )
+    robot_enhancement_batch = await add_robot_enhancement_batch(
+        session, pending_enhancement
+    )
+
+    response = await client.get(
+        f"/v1/robot-enhancement-batches/{robot_enhancement_batch.id}/"
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+
+    response_data = response.json()
+    assert response_data["id"] == str(robot_enhancement_batch.id)
+    assert "signed" in response_data["reference_storage_url"]
+
+
+async def test_get_robot_enhancement_batch_nonexistent_batch(client: AsyncClient):
+    """Test getting a robot enhancement batch that does not exist."""
+    response = await client.get(f"/v1/robot-enhancement-batces/{uuid.uuid4()}/")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND

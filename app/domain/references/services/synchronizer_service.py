@@ -1,6 +1,7 @@
 """Service to synchronize Reference models between persistence implementations."""
 
 from collections.abc import AsyncGenerator, Iterable
+from typing import ClassVar
 from uuid import UUID
 
 from opentelemetry.trace import get_tracer
@@ -23,19 +24,21 @@ logger = get_logger(__name__)
 class ReferenceSynchronizer(GenericSynchronizer[Reference]):
     """Service to synchronize Reference models between persistences."""
 
+    _required_preloads: ClassVar[list] = [
+        "identifiers",
+        "enhancements",
+        "canonical_reference",
+        "duplicate_references",
+        "duplicate_decision",
+    ]
+
     @tracer.start_as_current_span("Sync Reference SQL->ES")
     async def sql_to_es(self, reference_id: UUID) -> Reference:
         """Synchronize a reference from SQL to Elasticsearch."""
         trace_attribute(Attributes.DB_PK, str(reference_id))
         reference = await self.sql_uow.references.get_by_pk(
             reference_id,
-            preload=[
-                "identifiers",
-                "enhancements",
-                "canonical_reference",
-                "duplicate_references",
-                "duplicate_decision",
-            ],
+            preload=self._required_preloads,
         )
 
         if not settings.feature_flags.deduplication:
@@ -78,13 +81,7 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
             ):
                 references = await self.sql_uow.references.get_by_pks(
                     reference_id_chunk,
-                    preload=[
-                        "identifiers",
-                        "enhancements",
-                        "canonical_reference",
-                        "duplicate_references",
-                        "duplicate_decision",
-                    ],
+                    preload=self._required_preloads,
                 )
                 for reference in references:
                     if not settings.feature_flags.deduplication:
