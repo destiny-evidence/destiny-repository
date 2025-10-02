@@ -426,7 +426,6 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
     )
 
     __table_args__ = (
-        Index("ix_pending_enhancement_robot_id_status", "robot_id", "status"),
         Index(
             "ix_pending_enhancement_enhancement_request_id_status",
             "enhancement_request_id",
@@ -435,9 +434,9 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
         Index(
             "ix_pending_enhancement_robot_polling",
             "robot_id",
-            "robot_enhancement_batch_id",
             "status",
             "created_at",
+            postgresql_where="robot_enhancement_batch_id IS NULL",
         ),
         Index(
             "ix_pending_enhancement_robot_enhancement_batch_id",
