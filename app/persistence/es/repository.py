@@ -4,14 +4,15 @@ import contextlib
 from abc import ABC
 from collections.abc import AsyncGenerator
 from typing import Generic, Never
+from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch, NotFoundError
 from elasticsearch.dsl.exceptions import UnknownDslObject
 from elasticsearch.exceptions import BadRequestError
 from opentelemetry import trace
-from pydantic import UUID4
 
 from app.core.exceptions import ESError, ESMalformedDocumentError, ESNotFoundError
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.repository import trace_repository_method
 from app.persistence.es.generics import GenericESPersistenceType
 from app.persistence.generics import GenericDomainModelType
@@ -52,7 +53,7 @@ class GenericAsyncESRepository(
 
     @trace_repository_method(tracer)
     async def get_by_pk(
-        self, pk: UUID4, preload: list[Never] | None = None
+        self, pk: UUID, preload: list[Never] | None = None
     ) -> GenericDomainModelType:
         """
         Get a record using its primary key.
@@ -62,6 +63,7 @@ class GenericAsyncESRepository(
         :return: The retrieved record.
         :rtype: GenericDomainModelType
         """
+        trace_attribute(Attributes.DB_PK, str(pk))
         if preload:
             msg = "Preloading is not supported in Elasticsearch repositories."
             raise ESError(msg)
@@ -107,7 +109,7 @@ class GenericAsyncESRepository(
     async def add_bulk(
         self,
         get_records: AsyncGenerator[GenericDomainModelType, None],
-    ) -> None:
+    ) -> int:
         """
         Add multiple records to the repository in bulk, memory-efficiently.
 
@@ -122,6 +124,30 @@ class GenericAsyncESRepository(
             async for record in get_records:
                 yield self._persistence_cls.from_domain(record)
 
-        await self._persistence_cls.bulk(
+        added, _ = await self._persistence_cls.bulk(
             es_record_translation_generator(), using=self._client
         )
+        return added
+
+    @trace_repository_method(tracer)
+    async def delete_by_pk(self, pk: UUID) -> None:
+        """
+        Delete a record using its primary key.
+
+        :param pk: The primary key of the record to delete.
+        :type pk: UUID4
+        :return: None
+        :rtype: None
+
+        :raises ESNotFoundError: If the record does not exist.
+        """
+        trace_attribute(Attributes.DB_PK, str(pk))
+        record = await self._persistence_cls.get(id=str(pk), using=self._client)
+        if not record:
+            raise ESNotFoundError(
+                detail=f"Unable to find {self._persistence_cls.__name__} with pk {pk}",
+                lookup_model=self._persistence_cls.__name__,
+                lookup_type="id",
+                lookup_value=pk,
+            )
+        await record.delete(using=self._client)

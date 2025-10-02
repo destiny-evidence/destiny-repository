@@ -6,7 +6,7 @@ from typing import Any, Self
 import destiny_sdk
 from fastapi import HTTPException
 from opentelemetry.trace import StatusCode
-from sqlalchemy.exc import IntegrityError as SQLAlchemyIntegriyError
+from sqlalchemy.exc import IntegrityError as SQLAlchemyIntegrityError
 
 from app.core.telemetry.attributes import set_span_status
 
@@ -150,7 +150,7 @@ class SQLIntegrityError(IntegrityError):
 
     @classmethod
     def from_sqlalchemy_integrity_error(
-        cls, error: SQLAlchemyIntegriyError, lookup_model: str
+        cls, error: SQLAlchemyIntegrityError, lookup_model: str
     ) -> Self:
         """
         Construct an SQLIntegrityError from an IntegrityError raised by SQLAlchemy.

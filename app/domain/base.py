@@ -29,6 +29,11 @@ class DomainBaseModel(BaseModel):
         self.model_validate(self.model_dump(mode="json"))
 
 
+GenericDomainBaseModelType = TypeVar(
+    "GenericDomainBaseModelType", bound=DomainBaseModel
+)
+
+
 class SQLAttributeMixin(BaseModel):
     """
     Mixin for SQLAlchemy attributes.
