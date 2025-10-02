@@ -467,44 +467,6 @@ async def test_collect_and_dispatch_references_for_enhancement_enhancement_not_p
 
 
 @pytest.mark.asyncio
-@pytest.mark.deduplication_legacy
-async def test_ingest_reference_calls_validation_and_merges_legacy(
-    fake_repository, fake_uow, monkeypatch
-):
-    """Test ReferenceService.ingest_reference calls validation and merges reference."""
-
-    monkeypatch.setattr(
-        "app.domain.references.service.settings.feature_flags.deduplication", False
-    )
-
-    dummy_validation_result = AsyncMock()
-    dummy_reference = AsyncMock()
-    dummy_validation_result.reference = dummy_reference
-    dummy_validation_result.errors = []
-    dummy_validation_result.reference_id = "fake-id"
-
-    repo = fake_repository()
-    uow = fake_uow(references=repo)
-    es_uow = fake_uow()
-    service = ReferenceService(
-        ReferenceAntiCorruptionService(fake_repository()), uow, es_uow
-    )
-
-    with (
-        patch.object(
-            service._ingestion_service,  # noqa: SLF001
-            "validate_and_collide_reference",
-            AsyncMock(return_value=(dummy_validation_result, dummy_reference)),
-        ) as mock_validate,
-        patch.object(service, "_merge_reference", AsyncMock()) as mock_merge,
-    ):
-        result = await service.ingest_reference("{}", 1, None)
-        mock_validate.assert_awaited_once_with("{}", 1, None)
-        mock_merge.assert_awaited_once_with(dummy_reference)
-        assert result == dummy_validation_result
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("find_exact_duplicate_return", "should_merge", "expected_decision_id"),
     [

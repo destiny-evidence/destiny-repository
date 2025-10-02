@@ -136,30 +136,3 @@ async def import_reference(
                 process_reference_duplicate_decision,
                 duplicate_decision_id,
             )
-
-        if not settings.feature_flags.deduplication and (
-            import_result.status
-            in (
-                ImportResultStatus.COMPLETED,
-                ImportResultStatus.PARTIALLY_FAILED,
-            )
-            and import_result.reference_id
-        ):
-            logger.info("Creating automatic enhancements for imported references")
-            # Calling reference_service here is bad but this is temporary until
-            # deduplication is fully rolled out.
-            reference = await reference_service.get_reference(
-                import_result.reference_id
-            )
-            requests = await detect_and_dispatch_robot_automations(
-                reference_service=reference_service,
-                reference=ReferenceWithChangeset(
-                    **reference.model_dump(), delta_reference=reference
-                ),
-                source_str=f"ImportResult:{import_result.id}",
-            )
-            for request in requests:
-                logger.info(
-                    "Created automatic enhancement request",
-                    enhancement_request_id=str(request.id),
-                )

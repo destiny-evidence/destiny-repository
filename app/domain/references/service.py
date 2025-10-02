@@ -294,19 +294,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self, record_str: str, entry_ref: int, collision_strategy: CollisionStrategy
     ) -> ReferenceCreateResult | None:
         """Ingest a reference from a file."""
-        if not settings.feature_flags.deduplication:
-            # Back-compatible merging on simple collision and merge strategy
-            # Removing this can also remove IngestionService entirely
-            (
-                validation_result,
-                reference,
-            ) = await self._ingestion_service.validate_and_collide_reference(
-                record_str, entry_ref, collision_strategy
-            )
-            if reference:
-                await self._merge_reference(reference)
-            return validation_result
-
         # Full deduplication flow
         reference_create_result = ReferenceCreateResult.from_raw(record_str, entry_ref)
         if not reference_create_result.reference:
