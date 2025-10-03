@@ -15,6 +15,7 @@ from destiny_sdk.references import ReferenceFileInput
 from elasticsearch import AsyncElasticsearch
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from tenacity import Retrying, stop_after_attempt, wait_fixed
 
 from app.domain.references.models.es import ReferenceDocument
 from app.domain.references.models.models import (
@@ -22,6 +23,12 @@ from app.domain.references.models.models import (
     Enhancement,
     PendingEnhancementStatus,
     Reference,
+)
+from app.domain.references.models.sql import (
+    Reference as SQLReference,
+)
+from app.domain.references.models.sql import (
+    ReferenceDuplicateDecision as SQLReferenceDuplicateDecision,
 )
 from app.domain.robots.models.models import Robot
 from tests.e2e.factories import (
@@ -95,6 +102,27 @@ def canonical_reference(canonical_bibliographic_enhancement: Enhancement) -> Ref
     )
 
 
+@pytest.fixture
+def duplicate_reference(
+    canonical_reference: Reference,
+    automation_triggering_annotation_enhancement: Enhancement,
+) -> Reference:
+    """Get a slightly mutated canonical reference to be a duplicate."""
+    duplicate = canonical_reference.model_copy(deep=True)
+    assert duplicate.enhancements
+    assert duplicate.enhancements[0]
+    assert isinstance(
+        duplicate.enhancements[0].content, BibliographicMetadataEnhancement
+    )
+    duplicate.enhancements[0].content.title = "A Study on the Effects of Testing!"
+    assert duplicate.enhancements[0].content.authorship
+    duplicate.enhancements[0].content.authorship[0] = Authorship(
+        display_name="Jayne Doe", position="first"
+    )
+    duplicate.enhancements.append(automation_triggering_annotation_enhancement)
+    return duplicate
+
+
 # ruff: noqa: E501
 @pytest.fixture
 async def robot_automation_on_specific_enhancement(
@@ -148,6 +176,7 @@ async def robot_automation_on_specific_enhancement(
 async def test_import_exact_duplicate(
     destiny_client_v1: httpx.AsyncClient,
     pg_session: AsyncSession,
+    es_client: AsyncElasticsearch,
     get_import_file_signed_url: Callable[
         [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
     ],
@@ -157,6 +186,7 @@ async def test_import_exact_duplicate(
     await import_references(
         destiny_client_v1,
         pg_session,
+        es_client,
         [canonical_reference],
         get_import_file_signed_url,
     )
@@ -169,6 +199,7 @@ async def test_import_exact_duplicate(
         await import_references(
             destiny_client_v1,
             pg_session,
+            es_client,
             [exact_duplicate_reference],
             get_import_file_signed_url,
         )
@@ -195,7 +226,7 @@ async def test_import_duplicate(  # noqa: PLR0913
         [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
     ],
     canonical_reference: Reference,
-    automation_triggering_annotation_enhancement: Enhancement,
+    duplicate_reference: Reference,
     robot_automation_on_specific_enhancement: uuid.UUID,
 ):
     """Test importing a duplicate reference."""
@@ -203,29 +234,19 @@ async def test_import_duplicate(  # noqa: PLR0913
         await import_references(
             destiny_client_v1,
             pg_session,
+            es_client,
             [canonical_reference],
             get_import_file_signed_url,
         )
     ).pop()
 
     # Mutate the canonical reference a bit to make sure it's not an exact duplicate.
-    duplicate = canonical_reference.model_copy(deep=True)
-    assert duplicate.enhancements
-    assert duplicate.enhancements[0]
-    assert isinstance(
-        duplicate.enhancements[0].content, BibliographicMetadataEnhancement
-    )
-    duplicate.enhancements[0].content.title = "A Study on the Effects of Testing!"
-    assert duplicate.enhancements[0].content.authorship
-    duplicate.enhancements[0].content.authorship[0] = Authorship(
-        display_name="Jayne Doe", position="first"
-    )
-    duplicate.enhancements.append(automation_triggering_annotation_enhancement)
     duplicate_reference_id = (
         await import_references(
             destiny_client_v1,
             pg_session,
-            [duplicate],
+            es_client,
+            [duplicate_reference],
             get_import_file_signed_url,
         )
     ).pop()
@@ -298,6 +319,7 @@ async def test_import_non_duplicate(
             await import_references(
                 destiny_client_v1,
                 pg_session,
+                es_client,
                 [reference],
                 get_import_file_signed_url=get_import_file_signed_url,
             )
@@ -335,3 +357,98 @@ async def test_import_non_duplicate(
         "canonical",
         "unsearchable",
     }
+
+
+async def test_canonical_becomes_duplicate(  # noqa: PLR0913
+    destiny_client_v1: httpx.AsyncClient,
+    pg_session: AsyncSession,
+    es_client: AsyncElasticsearch,
+    get_import_file_signed_url: Callable[
+        [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
+    ],
+    canonical_reference: Reference,
+    duplicate_reference: Reference,
+):
+    """Verify behaviour when a canonical-like reference becomes a duplicate."""
+    canonical_reference_id = (
+        await import_references(
+            destiny_client_v1,
+            pg_session,
+            es_client,
+            [canonical_reference],
+            get_import_file_signed_url,
+        )
+    ).pop()
+
+    # Manually insert the duplicate reference to avoid side effects
+    pg_session.add(SQLReference.from_domain(duplicate_reference))
+    pg_session.add(
+        SQLReferenceDuplicateDecision(
+            id=(canonical_decision_id := uuid.uuid4()),
+            reference_id=duplicate_reference.id,
+            duplicate_determination=DuplicateDetermination.CANONICAL,
+            active_decision=True,
+        )
+    )
+    await pg_session.commit()
+
+    # Index it to elasticsearch
+    await destiny_client_v1.post(f"/indices/{ReferenceDocument.Index.name}/repair/")
+    for retry in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(1)):
+        with retry:
+            await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+            es_result = await es_client.search(
+                index=ReferenceDocument.Index.name,
+                query={"match_all": {}},
+            )
+            if es_result["hits"]["total"]["value"] == 2:
+                assert {hit["_id"] for hit in es_result["hits"]["hits"]} == {
+                    str(canonical_reference_id),
+                    str(duplicate_reference.id),
+                }
+                break
+    else:
+        pytest.fail("Elasticsearch documents did not appear in time")
+
+    # Now deduplicate the duplicate again and check downstream
+    await destiny_client_v1.post(
+        "/references/duplicate-decisions/",
+        json={
+            "references": [str(duplicate_reference.id)],
+        },
+    )
+
+    # Check the decisions
+    duplicate_decision = await poll_duplicate_process(
+        pg_session,
+        duplicate_reference.id,
+        required_state=DuplicateDetermination.DUPLICATE,
+    )
+    assert (
+        duplicate_decision["duplicate_determination"]
+        == DuplicateDetermination.DUPLICATE
+    )
+    assert duplicate_decision["canonical_reference_id"] == canonical_reference_id
+    old_decision = await pg_session.get(
+        SQLReferenceDuplicateDecision, canonical_decision_id
+    )
+    assert old_decision
+    assert not old_decision.active_decision
+
+    # Check that the Elasticsearch index contains only the canonical.
+    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+    es_result = await es_client.search(
+        index=ReferenceDocument.Index.name,
+        query={
+            "terms": {
+                "_id": [
+                    str(canonical_reference_id),
+                    str(duplicate_reference.id),
+                ]
+            }
+        },
+    )
+    assert es_result["hits"]["total"]["value"] == 1
+    assert es_result["hits"]["hits"][0]["_id"] == str(canonical_reference_id)
+    es_source = es_result["hits"]["hits"][0]["_source"]
+    assert es_source["duplicate_determination"] == DuplicateDetermination.CANONICAL

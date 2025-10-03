@@ -8,10 +8,12 @@ from uuid import UUID
 import httpx
 from destiny_sdk.enhancements import EnhancementFileInput
 from destiny_sdk.references import ReferenceFileInput
+from elasticsearch import AsyncElasticsearch
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import retry, stop_after_attempt, wait_fixed
 
+from app.domain.references.models.es import ReferenceDocument
 from app.domain.references.models.models import DuplicateDetermination, Reference
 
 
@@ -82,22 +84,26 @@ async def poll_batch_status(
 async def poll_duplicate_process(
     session: AsyncSession,
     reference_id: UUID,
+    required_state: DuplicateDetermination | None = None,
 ) -> Mapping:
-    """Poll the duplicate process until it reaches a terminal status."""
+    """Poll the duplicate process until it is active."""
     pg_result = await session.execute(
         text(
             "SELECT * FROM reference_duplicate_decision "
-            "WHERE reference_id=:reference_id;"
+            "WHERE reference_id=:reference_id "
+            "AND active_decision;"
         ),
         {"reference_id": reference_id},
     )
     decision = pg_result.mappings().first()
 
-    if (
-        not decision
-        or decision["duplicate_determination"]
-        not in DuplicateDetermination.get_terminal_states()
-    ):
+    expected_states = (
+        {required_state}
+        if required_state
+        else DuplicateDetermination.get_terminal_states()
+    )
+
+    if not decision or decision["duplicate_determination"] not in expected_states:
         msg = "Duplicate process not yet complete"
         raise TestPollingExhaustedError(msg)
     return decision
@@ -125,6 +131,7 @@ async def poll_pending_enhancement(
 async def import_references(
     client: httpx.AsyncClient,
     pg_session: AsyncSession,
+    es_client: AsyncElasticsearch,
     references: list[Reference],
     get_import_file_signed_url: Callable[
         [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
@@ -169,5 +176,7 @@ async def import_references(
     reference_ids = {row[0] for row in pg_result.all()}
     for reference_id in reference_ids:
         await poll_duplicate_process(pg_session, reference_id)
+
+    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
 
     return reference_ids
