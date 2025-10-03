@@ -63,7 +63,7 @@ Requests typically transition from ``RECEIVED`` directly to ``PROCESSING`` when 
 
 For Robots
 ----------
-See :doc:`Robot Registration <robot-registration>` for details on how robots are registered. Robots poll for batches of references assigned to them for enhancement (robot enhancement batches). Each batch is provided in the :attr:`reference_storage_url <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.reference_storage_url>` file.
+See :doc:`Robot Registration <robot-registration>` for details on how robots are registered. Robots poll for batches of references assigned to them for enhancement (robot enhancement batches). Each reference is provided in the :attr:`reference_storage_url <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.reference_storage_url>` file.
 
 Robot Implementation
 ~~~~~~~~~~~~~~~~~~~~
