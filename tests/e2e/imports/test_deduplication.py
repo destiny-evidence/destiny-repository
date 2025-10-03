@@ -1,11 +1,16 @@
 """End-to-end tests for import deduplication."""
 
+import uuid
 from collections.abc import Callable
 from contextlib import _AsyncGeneratorContextManager
 
 import httpx
 import pytest
-from destiny_sdk.enhancements import Authorship, BibliographicMetadataEnhancement
+from destiny_sdk.enhancements import (
+    Authorship,
+    BibliographicMetadataEnhancement,
+    BooleanAnnotation,
+)
 from destiny_sdk.references import ReferenceFileInput
 from elasticsearch import AsyncElasticsearch
 from sqlalchemy import text
@@ -15,16 +20,24 @@ from app.domain.references.models.es import ReferenceDocument
 from app.domain.references.models.models import (
     DuplicateDetermination,
     Enhancement,
+    PendingEnhancementStatus,
     Reference,
 )
+from app.domain.robots.models.models import Robot
 from tests.e2e.factories import (
+    AnnotationEnhancementFactory,
     BibliographicMetadataEnhancementFactory,
+    BooleanAnnotationFactory,
     DOIIdentifierFactory,
     EnhancementFactory,
     LinkedExternalIdentifierFactory,
     ReferenceFactory,
 )
-from tests.e2e.utils import import_references, poll_duplicate_process
+from tests.e2e.utils import (
+    import_references,
+    poll_duplicate_process,
+    poll_pending_enhancement,
+)
 
 
 @pytest.fixture
@@ -37,6 +50,28 @@ def canonical_bibliographic_enhancement() -> BibliographicMetadataEnhancement:
             Authorship(display_name="John Smith", position="last"),
         ],
         publication_year=2025,
+    )
+
+
+@pytest.fixture
+def automation_triggering_annotation() -> BooleanAnnotation:
+    """Get a pre-defined annotation that triggers robot automation."""
+    return BooleanAnnotationFactory.build(
+        value=True,
+        scheme="Trigger Robot Automation",
+        label="test-robot-automation",
+    )
+
+
+@pytest.fixture
+def automation_triggering_annotation_enhancement(
+    automation_triggering_annotation: BooleanAnnotation,
+) -> Enhancement:
+    """Get a pre-defined enhancement that triggers robot automation."""
+    return EnhancementFactory.build(
+        content=AnnotationEnhancementFactory.build(
+            annotations=[automation_triggering_annotation]
+        ),
     )
 
 
@@ -59,7 +94,57 @@ def canonical_reference(canonical_bibliographic_enhancement: Enhancement) -> Ref
     )
 
 
-async def test_import_duplicates(
+# ruff: noqa: E501
+@pytest.fixture
+async def robot_automation_on_specific_enhancement(
+    destiny_client_v1: httpx.AsyncClient,
+    robot: Robot,
+    automation_triggering_annotation: BooleanAnnotation,
+) -> uuid.UUID:
+    """Create a robot automation that runs on specific enhancements."""
+    response = await destiny_client_v1.post(
+        "/enhancement-requests/automations/",
+        json={
+            "robot_id": str(robot.id),
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "nested": {
+                                "path": "changeset.enhancements.content.annotations",
+                                "query": {
+                                    "bool": {
+                                        "must": [
+                                            {
+                                                "term": {
+                                                    "changeset.enhancements.content.annotations.label": automation_triggering_annotation.label
+                                                }
+                                            },
+                                            {
+                                                "term": {
+                                                    "changeset.enhancements.content.annotations.scheme": automation_triggering_annotation.scheme
+                                                }
+                                            },
+                                            {
+                                                "term": {
+                                                    "changeset.enhancements.content.annotations.value": automation_triggering_annotation.value
+                                                }
+                                            },
+                                        ]
+                                    }
+                                },
+                            }
+                        },
+                    ],
+                }
+            },
+        },
+    )
+    assert response.status_code == 201
+    return robot.id
+
+
+async def test_import_duplicates(  # noqa: PLR0913
     destiny_client_v1: httpx.AsyncClient,
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
@@ -67,6 +152,8 @@ async def test_import_duplicates(
         [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
     ],
     canonical_reference: Reference,
+    automation_triggering_annotation_enhancement: Enhancement,
+    robot_automation_on_specific_enhancement: uuid.UUID,
 ):
     """Test importing a duplicate reference."""
     canonical_reference_id = (
@@ -118,6 +205,7 @@ async def test_import_duplicates(
     duplicate.enhancements[0].content.authorship[0] = Authorship(
         display_name="Jayne Doe", position="first"
     )
+    duplicate.enhancements.append(automation_triggering_annotation_enhancement)
     duplicate_reference_id = (
         await import_references(
             destiny_client_v1,
@@ -165,3 +253,13 @@ async def test_import_duplicates(
         "A Study on the Effects of Testing!",
     }
     assert authors >= {"Jayne Doe", "Jane Doe", "John Smith"}
+
+    # Finally, check that the robot automation was triggered on the canonical reference
+    # by the near duplicate's annotation enhancement.
+    pe = await poll_pending_enhancement(
+        pg_session,
+        reference_id=canonical_reference_id,
+        robot_id=robot_automation_on_specific_enhancement,
+    )
+    assert pe["status"].casefold() == PendingEnhancementStatus.PENDING.casefold()
+    assert not pe["robot_enhancement_batch_id"]
