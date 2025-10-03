@@ -147,6 +147,7 @@ async def robot_automation_on_specific_enhancement(
 async def test_import_exact_duplicate(
     destiny_client_v1: httpx.AsyncClient,
     pg_session: AsyncSession,
+    es_client: AsyncElasticsearch,
     get_import_file_signed_url: Callable[
         [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
     ],
@@ -159,6 +160,7 @@ async def test_import_exact_duplicate(
         [canonical_reference],
         get_import_file_signed_url,
     )
+    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
 
     # Mutate to make it a subsetting reference
     exact_duplicate_reference = canonical_reference.model_copy(deep=True)
@@ -206,6 +208,7 @@ async def test_import_duplicate(  # noqa: PLR0913
             get_import_file_signed_url,
         )
     ).pop()
+    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
 
     # Mutate the canonical reference a bit to make sure it's not an exact duplicate.
     duplicate = canonical_reference.model_copy(deep=True)
