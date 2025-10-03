@@ -15,6 +15,10 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 from app.domain.references.models.models import DuplicateDetermination, Reference
 
 
+class TestPollingExhaustedError(Exception):
+    """Error raised when polling fails."""
+
+
 async def submit_happy_import_batch(
     client: httpx.AsyncClient, storage_url: str, import_record_id: UUID | None = None
 ) -> tuple[UUID, UUID]:
@@ -70,7 +74,7 @@ async def poll_batch_status(
         "partially_failed",
     ):
         msg = "Batch not yet complete"
-        raise Exception(msg)  # noqa: TRY002
+        raise TestPollingExhaustedError(msg)
     return summary
 
 
@@ -95,7 +99,7 @@ async def poll_duplicate_process(
         not in DuplicateDetermination.get_terminal_states()
     ):
         msg = "Duplicate process not yet complete"
-        raise Exception(msg)  # noqa: TRY002
+        raise TestPollingExhaustedError(msg)
     return decision
 
 
@@ -114,7 +118,7 @@ async def poll_pending_enhancement(
     pending_enhancement = pg_result.mappings().first()
     if not pending_enhancement:
         msg = "Pending enhancement does not yet exist"
-        raise Exception(msg)  # noqa: TRY002
+        raise TestPollingExhaustedError(msg)
     return pending_enhancement
 
 

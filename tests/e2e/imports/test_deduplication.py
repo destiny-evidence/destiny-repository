@@ -34,6 +34,7 @@ from tests.e2e.factories import (
     ReferenceFactory,
 )
 from tests.e2e.utils import (
+    TestPollingExhaustedError,
     import_references,
     poll_duplicate_process,
     poll_pending_enhancement,
@@ -278,3 +279,59 @@ async def test_import_duplicate(  # noqa: PLR0913
     )
     assert pe["status"].casefold() == PendingEnhancementStatus.PENDING.casefold()
     assert not pe["robot_enhancement_batch_id"]
+
+
+async def test_import_non_duplicate(
+    destiny_client_v1: httpx.AsyncClient,
+    pg_session: AsyncSession,
+    es_client: AsyncElasticsearch,
+    get_import_file_signed_url: Callable[
+        [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
+    ],
+    robot_automation_on_specific_enhancement: uuid.UUID,
+):
+    """Test importing a non-duplicate reference."""
+    references = ReferenceFactory.build_batch(2)
+    # Import sequentially to be absolutely sure they're tested against each other.
+    reference_ids = {
+        (
+            await import_references(
+                destiny_client_v1,
+                pg_session,
+                [reference],
+                get_import_file_signed_url=get_import_file_signed_url,
+            )
+        ).pop()
+        for reference in references
+    }
+
+    for reference_id in reference_ids:
+        duplicate_decision = await poll_duplicate_process(pg_session, reference_id)
+        assert duplicate_decision["duplicate_determination"] in (
+            DuplicateDetermination.CANONICAL,
+            DuplicateDetermination.UNSEARCHABLE,
+        )
+        assert duplicate_decision["canonical_reference_id"] is None
+
+        with pytest.raises(TestPollingExhaustedError):
+            await poll_pending_enhancement(
+                pg_session,
+                reference_id=reference_id,
+                robot_id=robot_automation_on_specific_enhancement,
+            )
+
+    # Check that the Elasticsearch index contains the reference as-is.
+    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+    es_result = await es_client.search(
+        index=ReferenceDocument.Index.name,
+        query={"match_all": {}},
+    )
+    assert es_result["hits"]["total"]["value"] == 2
+    assert {hit["_id"] for hit in es_result["hits"]["hits"]} == {
+        str(reference_id) for reference_id in reference_ids
+    }
+    references = [hit["_source"] for hit in es_result["hits"]["hits"]]
+    assert {reference["duplicate_determination"] for reference in references} <= {
+        "canonical",
+        "unsearchable",
+    }
