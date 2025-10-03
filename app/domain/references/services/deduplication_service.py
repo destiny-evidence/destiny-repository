@@ -105,7 +105,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
     async def register_duplicate_decision_for_reference(
         self,
-        reference: Reference,
+        reference_id: uuid.UUID,
         enhancement_id: uuid.UUID | None = None,
         duplicate_determination: Literal[DuplicateDetermination.EXACT_DUPLICATE]
         | None = None,
@@ -143,7 +143,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             else DuplicateDetermination.PENDING
         )
         reference_duplicate_decision = ReferenceDuplicateDecision(
-            reference_id=reference.id,
+            reference_id=reference_id,
             enhancement_id=enhancement_id,
             duplicate_determination=_duplicate_determination,
             canonical_reference_id=canonical_reference_id,

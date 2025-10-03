@@ -770,3 +770,12 @@ class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):
         default=None,
         description="The pending enhancements in this batch.",
     )
+
+
+class ReferenceIds(BaseModel):
+    """Model representing a list of reference IDs."""
+
+    reference_ids: list[UUID4] = Field(
+        ...,
+        description="A list of reference IDs.",
+    )

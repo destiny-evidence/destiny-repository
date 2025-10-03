@@ -18,6 +18,7 @@ from app.core.exceptions import (
 )
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
+from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
     DuplicateDetermination,
@@ -327,7 +328,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 canonical_reference_id=str(canonical_reference.id),
             )
             await self._deduplication_service.register_duplicate_decision_for_reference(
-                reference=reference,
+                reference_id=reference.id,
                 duplicate_determination=DuplicateDetermination.EXACT_DUPLICATE,
                 canonical_reference_id=canonical_reference.id,
             )
@@ -335,7 +336,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
         duplicate_decision = (
             await self._deduplication_service.register_duplicate_decision_for_reference(
-                reference=reference
+                reference_id=reference.id
             )
         )
         await self._merge_reference(reference)
@@ -938,4 +939,25 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self._enhancement_service.build_robot_enhancement_batch(
             robot_enhancement_batch=robot_enhancement_batch,
             reference_data_file=reference_data_file,
+        )
+
+    @sql_unit_of_work
+    async def invoke_deduplication_for_references(
+        self,
+        reference_ids: list[UUID],
+    ) -> None:
+        """Invoke deduplication for a list of references."""
+
+        async def _register_and_queue(reference_id: UUID) -> None:
+            """Coroutine to register and queue deduplication."""
+            reference_duplicate_decision = await self._deduplication_service.register_duplicate_decision_for_reference(  # noqa: E501
+                reference_id=reference_id
+            )
+            await queue_task_with_trace(
+                ("app.domain.references.tasks", "process_reference_duplicate_decision"),
+                reference_duplicate_decision_id=reference_duplicate_decision.id,
+            )
+
+        await asyncio.gather(
+            *[_register_and_queue(reference_id) for reference_id in reference_ids]
         )
