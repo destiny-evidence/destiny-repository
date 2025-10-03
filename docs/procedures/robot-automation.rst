@@ -44,6 +44,7 @@ Robot Automations
             G_AUTO --> G_REQ[Create EnhancementRequests]
             G_REQ --> G_P[(Persistence)]
             G_REPO_PROC[Ingest Enhancement] --> G_P
+            G_REPO_PROC --> G_AUTO
         end
         subgraph "Robot(s)"
             G_POLL[Robot Polling] --> G_BATCH[Fetch RobotEnhancementBatch]

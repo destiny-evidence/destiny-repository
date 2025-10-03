@@ -10,7 +10,7 @@ Requesting Enhancements
 Enhancement Request Flow
 -------------------------
 
-Robots receive and process enhancement requests using a polling-based approach where the robot actively polls the repository for pending enhancement batches.
+Robots retrieve and process enhancement requests using a polling-based approach where the robot actively polls the repository for pending enhancement batches.
 
 
 For Requesters
@@ -33,7 +33,6 @@ User Request Flow
         participant Data Repository
         User->>Data Repository: POST /enhancement-requests/ : EnhancementRequestIn
         Data Repository-->>Data Repository: Register enhancement request
-        Data Repository->>+Blob Storage: Store requested references and dependent data
         Note over Data Repository: Request status: RECEIVED
         Data Repository-->>User: EnhancementRequestRead (request_id, status)
         Note over User: User can periodically check status
@@ -64,12 +63,12 @@ Requests typically transition from ``RECEIVED`` directly to ``PROCESSING`` when 
 
 For Robots
 ----------
-Robots during registration should indicate their required enhancements and identifiers to derive requested enhancements. This process is yet to be fully defined but will live here: :doc:`Robot Registration <robot-registration>`. These are provided to the robot in the :attr:`reference_storage_url <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.reference_storage_url>` file with the requested references.
+See :doc:`Robot Registration <robot-registration>` for details on how robots are registered. Robots poll for batches of references assigned to them for enhancement (robot enhancement batches). Each batch is provided in the :attr:`reference_storage_url <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.reference_storage_url>` file.
 
 Robot Implementation
 ~~~~~~~~~~~~~~~~~~~~
 
-Robots actively poll the repository for pending enhancement batches using the SDK client.
+Robots actively poll the repository for robot enhancement batches using the SDK client.
 
 Robot Processing Flow
 ^^^^^^^^^^^^^^^^^^^^^
@@ -82,6 +81,7 @@ Robot Processing Flow
         participant Robot
         Note over Data Repository: Enhancement request is RECEIVED
         Robot->>Data Repository: POST /robot-enhancement-batches/ : Poll for batches
+        Data Repository->>+Blob Storage: Store requested references and dependent data
         Data Repository->>Robot: RobotEnhancementBatch (batch of references)
         Note over Data Repository: Request status: PROCESSING
         Blob Storage->>Robot: GET reference_storage_url (download references)
@@ -111,7 +111,7 @@ To implement a polling-based robot:
 
 1. **Poll for batches**: Use :meth:`Client.poll_robot_enhancement_batch() <libs.sdk.src.destiny_sdk.client.Client.poll_robot_enhancement_batch>` to retrieve pending batches. The method returns a :class:`RobotEnhancementBatch <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch>` object or ``None`` if no batches are available.
 
-2. **Process references**: Download the references from the :attr:`reference_storage_url <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.reference_storage_url>`. Each line in the file is a JSON-serialized :class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>` object.
+2. **Process references**: Download the references from the :attr:`reference_storage_url <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.reference_storage_url>`. Each line in the file is a JSON-serialized :class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>` object, which can be parsed using :meth:`Reference.from_jsonl() <libs.sdk.src.destiny_sdk.references.Reference.from_jsonl>`.
 
 3. **Create enhancements**: Process each reference and create :class:`Enhancement <libs.sdk.src.destiny_sdk.enhancements.Enhancement>` objects or :class:`LinkedRobotError <libs.sdk.src.destiny_sdk.robots.LinkedRobotError>` objects for failed references.
 
