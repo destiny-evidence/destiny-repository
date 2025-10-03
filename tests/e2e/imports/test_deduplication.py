@@ -144,31 +144,24 @@ async def robot_automation_on_specific_enhancement(
     return robot.id
 
 
-async def test_import_duplicates(  # noqa: PLR0913
+async def test_import_exact_duplicate(
     destiny_client_v1: httpx.AsyncClient,
     pg_session: AsyncSession,
-    es_client: AsyncElasticsearch,
     get_import_file_signed_url: Callable[
         [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
     ],
     canonical_reference: Reference,
-    automation_triggering_annotation_enhancement: Enhancement,
-    robot_automation_on_specific_enhancement: uuid.UUID,
 ):
-    """Test importing a duplicate reference."""
-    canonical_reference_id = (
-        await import_references(
-            destiny_client_v1,
-            pg_session,
-            [canonical_reference],
-            get_import_file_signed_url,
-        )
-    ).pop()
+    """Test importing an exact duplicate reference."""
+    await import_references(
+        destiny_client_v1,
+        pg_session,
+        [canonical_reference],
+        get_import_file_signed_url,
+    )
 
-    # First, an exact duplicate. Check that the decision is correct and that the
-    # reference is not imported.
+    # Mutate to make it a subsetting reference
     exact_duplicate_reference = canonical_reference.model_copy(deep=True)
-    # Make it a subsetting reference
     assert exact_duplicate_reference.enhancements
     exact_duplicate_reference.enhancements.pop()
     exact_duplicate_reference_id = (
@@ -192,8 +185,29 @@ async def test_import_duplicates(  # noqa: PLR0913
     )
     assert pg_result.scalar_one() == 0
 
-    # Now, a near duplicate. Modify it a small amount and check the decision is correct
-    # and that the reference is imported.
+
+async def test_import_duplicate(  # noqa: PLR0913
+    destiny_client_v1: httpx.AsyncClient,
+    pg_session: AsyncSession,
+    es_client: AsyncElasticsearch,
+    get_import_file_signed_url: Callable[
+        [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
+    ],
+    canonical_reference: Reference,
+    automation_triggering_annotation_enhancement: Enhancement,
+    robot_automation_on_specific_enhancement: uuid.UUID,
+):
+    """Test importing a duplicate reference."""
+    canonical_reference_id = (
+        await import_references(
+            destiny_client_v1,
+            pg_session,
+            [canonical_reference],
+            get_import_file_signed_url,
+        )
+    ).pop()
+
+    # Mutate the canonical reference a bit to make sure it's not an exact duplicate.
     duplicate = canonical_reference.model_copy(deep=True)
     assert duplicate.enhancements
     assert duplicate.enhancements[0]
@@ -214,6 +228,7 @@ async def test_import_duplicates(  # noqa: PLR0913
             get_import_file_signed_url,
         )
     ).pop()
+
     duplicate_decision = await poll_duplicate_process(
         pg_session, duplicate_reference_id
     )
