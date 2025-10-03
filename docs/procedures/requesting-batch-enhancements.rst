@@ -84,7 +84,7 @@ Robot Processing Flow
         Data Repository->>+Blob Storage: Store requested references and dependent data
         Data Repository->>Robot: RobotEnhancementBatch (batch of references)
         Note over Data Repository: Request status: PROCESSING
-        Blob Storage->>Robot: GET reference_storage_url (download references)
+        Blob Storage->>-Robot: GET reference_storage_url (download references)
         Robot-->>Robot: Process references and create enhancements
         alt More batches available
             Robot->>Data Repository: POST /robot-enhancement-batches/ : Poll for next batch
