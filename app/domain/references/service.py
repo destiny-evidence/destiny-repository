@@ -16,7 +16,9 @@ from app.core.exceptions import (
     RobotUnreachableError,
     SQLNotFoundError,
 )
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
+from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
     DuplicateDetermination,
@@ -86,7 +88,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self._ingestion_service = IngestionService(anti_corruption_service, sql_uow)
         self._enhancement_service = EnhancementService(anti_corruption_service, sql_uow)
         self._deduplication_service = DeduplicationService(
-            anti_corruption_service, sql_uow
+            anti_corruption_service, sql_uow, es_uow
         )
         self._synchronizer = Synchronizer(sql_uow, es_uow)
 
@@ -313,6 +315,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference = self._anti_corruption_service.reference_from_sdk_file_input(
             reference_create_result.reference
         )
+        reference_create_result.reference_id = reference.id
+        trace_attribute(Attributes.REFERENCE_ID, str(reference.id))
 
         canonical_reference = await self._deduplication_service.find_exact_duplicate(
             reference
@@ -324,7 +328,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 canonical_reference_id=str(canonical_reference.id),
             )
             await self._deduplication_service.register_duplicate_decision_for_reference(
-                reference=reference,
+                reference_id=reference.id,
                 duplicate_determination=DuplicateDetermination.EXACT_DUPLICATE,
                 canonical_reference_id=canonical_reference.id,
             )
@@ -332,7 +336,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
         duplicate_decision = (
             await self._deduplication_service.register_duplicate_decision_for_reference(
-                reference=reference
+                reference_id=reference.id
             )
         )
         await self._merge_reference(reference)
@@ -370,7 +374,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         ]
 
         if pending_enhancements_to_create:
-            return await self.sql_uow.pending_enhancements.bulk_add(
+            return await self.sql_uow.pending_enhancements.add_bulk(
                 pending_enhancements_to_create
             )
 
@@ -936,3 +940,26 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             robot_enhancement_batch=robot_enhancement_batch,
             reference_data_file=reference_data_file,
         )
+
+    @sql_unit_of_work
+    async def invoke_deduplication_for_references(
+        self,
+        reference_ids: list[UUID],
+    ) -> None:
+        """Invoke deduplication for a list of references."""
+        reference_duplicate_decisions = (
+            await self.sql_uow.reference_duplicate_decisions.add_bulk(
+                [
+                    ReferenceDuplicateDecision(
+                        reference_id=reference_id,
+                        duplicate_determination=DuplicateDetermination.PENDING,
+                    )
+                    for reference_id in reference_ids
+                ]
+            )
+        )
+        for decision in reference_duplicate_decisions:
+            await queue_task_with_trace(
+                ("app.domain.references.tasks", "process_reference_duplicate_decision"),
+                reference_duplicate_decision_id=decision.id,
+            )

@@ -15,22 +15,6 @@ services:
       - default
       - signoz-net
 
-  toy-robot:
-    profiles: ["e2e"]
-    environment:
-      OTEL_ENABLED: "true"
-      OTEL_SERVICE_NAME: "toy-robot-e2e"
-      OTEL_TRACES_EXPORTER: "otlp"
-      OTEL_METRICS_EXPORTER: "otlp"
-      OTEL_LOGS_EXPORTER: "otlp"
-      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
-      # OTEL_EXPORTER_OTLP_ENDPOINT: "http://signoz-otel-collector:4317"
-      OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true"
-      OTEL_RESOURCE_ATTRIBUTES: "service.name=toy-robot-e2e,service.version=1.0.0"
-    networks:
-      - default
-      - signoz-net
-
 networks:
   signoz-net:
     external: true

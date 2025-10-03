@@ -162,7 +162,7 @@ async def abstract_robot_automation() -> RobotAutomation:
                         "nested": {
                             "path": "changeset.identifiers",
                             "query": {
-                                "term": {"changeset.identifiers.identifier_type": "DOI"}
+                                "term": {"changeset.identifiers.identifier_type": "doi"}
                             },
                         }
                     }
@@ -333,7 +333,7 @@ async def test_es_repository_update_existing(
     assert len(updated_reference.enhancements or []) == 0
 
 
-async def test_bulk_add(
+async def test_add_bulk(
     es_reference_repository: ReferenceESRepository, reference: Reference
 ):
     """Test bulk adding multiple references."""
