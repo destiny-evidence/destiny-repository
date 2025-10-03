@@ -199,8 +199,8 @@ enhancement_request_automation_router = APIRouter(
     ],
 )
 deduplication_router = APIRouter(
-    prefix="/deduplication",
-    tags=["deduplication"],
+    prefix="/duplicate-decisions",
+    tags=["duplicate-decisions"],
     dependencies=[Depends(reference_deduplication_auth)],
 )
 
@@ -529,6 +529,10 @@ async def invoke_deduplication_for_references(
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
 ) -> None:
     """Invoke the deduplication process."""
+    logger.info(
+        "Invoking deduplication for references.",
+        n_references=len(reference_ids.reference_ids),
+    )
     await reference_service.invoke_deduplication_for_references(
         reference_ids.reference_ids
     )

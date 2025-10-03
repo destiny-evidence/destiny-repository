@@ -374,7 +374,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         ]
 
         if pending_enhancements_to_create:
-            return await self.sql_uow.pending_enhancements.bulk_add(
+            return await self.sql_uow.pending_enhancements.add_bulk(
                 pending_enhancements_to_create
             )
 
@@ -947,17 +947,19 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference_ids: list[UUID],
     ) -> None:
         """Invoke deduplication for a list of references."""
-
-        async def _register_and_queue(reference_id: UUID) -> None:
-            """Coroutine to register and queue deduplication."""
-            reference_duplicate_decision = await self._deduplication_service.register_duplicate_decision_for_reference(  # noqa: E501
-                reference_id=reference_id
+        reference_duplicate_decisions = (
+            await self.sql_uow.reference_duplicate_decisions.add_bulk(
+                [
+                    ReferenceDuplicateDecision(
+                        reference_id=reference_id,
+                        duplicate_determination=DuplicateDetermination.PENDING,
+                    )
+                    for reference_id in reference_ids
+                ]
             )
+        )
+        for decision in reference_duplicate_decisions:
             await queue_task_with_trace(
                 ("app.domain.references.tasks", "process_reference_duplicate_decision"),
-                reference_duplicate_decision_id=reference_duplicate_decision.id,
+                reference_duplicate_decision_id=decision.id,
             )
-
-        await asyncio.gather(
-            *[_register_and_queue(reference_id) for reference_id in reference_ids]
-        )
