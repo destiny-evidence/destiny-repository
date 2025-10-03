@@ -36,6 +36,7 @@ from app.domain.references.models.models import (
     EnhancementRequestStatus,
     ExternalIdentifierSearch,
     PendingEnhancementStatus,
+    ReferenceIds,
 )
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
@@ -129,6 +130,17 @@ def choose_auth_strategy_reference_reader() -> AuthMethod:
     )
 
 
+def choose_auth_strategy_reference_deduplicator() -> AuthMethod:
+    """Choose reader scope auth strategy for our authorization."""
+    return choose_auth_strategy(
+        tenant_id=settings.azure_tenant_id,
+        application_id=settings.azure_application_id,
+        auth_scope=AuthScope.REFERENCE_DEDUPLICATOR,
+        auth_role=AuthRole.REFERENCE_DEDUPLICATOR,
+        bypass_auth=settings.running_locally,
+    )
+
+
 # NB hybrid_auth is not easily wrapped in CachingStrategyAuth because of the robot
 # service dependency.
 # May be revisited with https://github.com/destiny-evidence/destiny-repository/issues/199
@@ -151,6 +163,9 @@ async def enhancement_request_hybrid_auth(
 
 reference_reader_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_reference_reader,
+)
+reference_deduplication_auth = CachingStrategyAuth(
+    selector=choose_auth_strategy_reference_deduplicator,
 )
 
 
@@ -182,6 +197,11 @@ enhancement_request_automation_router = APIRouter(
         Depends(enhancement_request_hybrid_auth),
         Depends(PayloadAttributeTracer("robot_id")),
     ],
+)
+deduplication_router = APIRouter(
+    prefix="/duplicate-decisions",
+    tags=["duplicate-decisions"],
+    dependencies=[Depends(reference_deduplication_auth)],
 )
 
 
@@ -498,3 +518,24 @@ async def fulfill_robot_enhancement_batch(
     return await anti_corruption_service.robot_enhancement_batch_to_sdk(
         robot_enhancement_batch
     )
+
+
+@deduplication_router.post(
+    "/",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def invoke_deduplication_for_references(
+    reference_ids: ReferenceIds,
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+) -> None:
+    """Invoke the deduplication process."""
+    logger.info(
+        "Invoking deduplication for references.",
+        n_references=len(reference_ids.reference_ids),
+    )
+    await reference_service.invoke_deduplication_for_references(
+        reference_ids.reference_ids
+    )
+
+
+reference_router.include_router(deduplication_router)

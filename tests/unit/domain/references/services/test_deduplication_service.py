@@ -125,7 +125,7 @@ async def test_register_duplicate_decision_for_reference_happy_path(
         fake_uow(),
     )
     result = await service.register_duplicate_decision_for_reference(
-        reference_with_identifiers
+        reference_with_identifiers.id
     )
     assert result.reference_id == reference_with_identifiers.id
     assert result.duplicate_determination == DuplicateDetermination.PENDING
@@ -142,7 +142,7 @@ async def test_register_duplicate_decision_invalid_combination(
     )
     with pytest.raises(DeduplicationValueError):
         await service.register_duplicate_decision_for_reference(
-            reference_with_identifiers,
+            reference_with_identifiers.id,
             duplicate_determination=DuplicateDetermination.EXACT_DUPLICATE,
             canonical_reference_id=None,
         )

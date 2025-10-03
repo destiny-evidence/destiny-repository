@@ -31,7 +31,7 @@ class FakeRepository:
         self.repository[record.id] = record
         return record
 
-    async def bulk_add(
+    async def add_bulk(
         self, records: list[DummyDomainSQLModel]
     ) -> list[DummyDomainSQLModel]:
         """Add multiple records to the repository in bulk."""
