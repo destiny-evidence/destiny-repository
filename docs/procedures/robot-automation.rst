@@ -37,11 +37,11 @@ Robot Automations
 .. mermaid::
 
     flowchart TD
-        subgraph Repository
+    subgraph Repository
             G_R([Reference]) --> G_R1[Ingest Reference]
-            G_R1 --> G_P[(Persistence)]
             G_R1 --> G_AUTO{Robot Automation Percolation}
             G_AUTO --> G_REQ[Create EnhancementRequests]
+            G_R1 --> G_P[(Persistence)]
             G_REQ --> G_P[(Persistence)]
             G_REPO_PROC[Ingest Enhancement] --> G_P
             G_REPO_PROC --> G_AUTO
