@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import AuthRole, AuthScope
 from app.core.config import DatabaseConfig, get_settings
 from app.persistence.es.client import AsyncESClientManager, es_manager, indices
-from app.persistence.es.migration import IndexManager
+from app.persistence.es.index_manager import IndexManager
 from app.persistence.sql.persistence import Base
 from app.persistence.sql.session import (
     AsyncDatabaseSessionManager,

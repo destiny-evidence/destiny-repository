@@ -4,7 +4,7 @@ import asyncio
 
 from app.core.config import get_settings
 from app.persistence.es.client import es_manager, indices
-from app.persistence.es.migration import IndexManager
+from app.persistence.es.index_manager import IndexManager
 
 
 async def run_initialization() -> None:

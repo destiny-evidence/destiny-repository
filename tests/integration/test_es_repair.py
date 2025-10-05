@@ -30,7 +30,7 @@ from app.domain.references.models.sql import (
     RobotAutomation as SQLRobotAutomation,
 )
 from app.domain.robots.models.sql import Robot as SQLRobot
-from app.persistence.es.migration import IndexManager
+from app.persistence.es.index_manager import IndexManager
 from app.system import routes as system_routes
 from app.tasks import broker
 

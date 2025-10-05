@@ -1,11 +1,14 @@
 """Index manager for an elasticsearch index."""
 
+from collections.abc import Coroutine
 from typing import Any
 
 from elasticsearch import AsyncElasticsearch, NotFoundError
 from elasticsearch.dsl import AsyncDocument
+from taskiq import AsyncTaskiqDecoratedTask
 
 from app.core.telemetry.logger import get_logger
+from app.core.telemetry.taskiq import queue_task_with_trace
 
 logger = get_logger(__name__)
 
@@ -20,11 +23,13 @@ class IndexManager:
     migrations by creating new indices and switching the alias atomically.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         document_class: type[AsyncDocument],
         alias_name: str,
         client: AsyncElasticsearch,
+        repair_task: AsyncTaskiqDecoratedTask[..., Coroutine[Any, Any, None]]
+        | None = None,
         version_prefix: str = "v",
         batch_size: int = 1000,
     ) -> None:
@@ -34,13 +39,15 @@ class IndexManager:
         Args:
             document_class: The AsyncDocument subclass defining the mapping
             alias_name: The alias name (defaults to document_class._index._name)
-            client: AsyncElasticsearch client (defaults document_class client)
+            client: AsyncElasticsearch client
+            repair_task: Asynchronous task used to repair an index (defaults None)
             version_prefix: Prefix for version numbers in index names
             batch_size: Batch size for reindexing operations
 
         """
         self.document_class = document_class
         self.client = client
+        self.repair_task = repair_task
         self.batch_size = batch_size
         self.version_prefix = version_prefix
 
@@ -67,6 +74,13 @@ class IndexManager:
             )
             return None
 
+    async def repair_index(self) -> None:
+        """Repair the index."""
+        if not self.repair_task:
+            msg = f"No index repair task found for {self.alias_name}"
+            raise NotFoundError(msg)
+        await queue_task_with_trace(self.repair_task)
+
     async def get_current_index_name(self) -> str | None:
         """
         Get the name of the current index pointed to by the alias.
@@ -82,14 +96,37 @@ class IndexManager:
         except NotFoundError:
             return None
 
-    async def delete_current_index_unsafe(self) -> None:
+    async def delete_and_recreate_index(self) -> None:
         """
-        Delete the current index with no failsafes. Reninitalising.
+        Delete and recreate the current index.
 
-        Note that reiniting after this would result in v1 being used again.
+        This is used by the system router to allow downtime rebuilds of indices.
         """
         current_index_name = await self.get_current_index_name()
-        self.client.indices.delete(index=current_index_name)
+
+        if not current_index_name:
+            msg = f"Index with alias {self.alias_name} has not been initialised."
+            raise NotFoundError(msg)
+
+        logger.info("Destroying index", index=current_index_name)
+        await self.delete_current_index_unsafe()
+
+        logger.info("Recreating index", index=current_index_name)
+        await self._create_index_with_mapping(current_index_name)
+
+        # Reapply alias
+        await self.client.indices.put_alias(
+            index=current_index_name, name=self.alias_name
+        )
+
+    async def delete_current_index_unsafe(self) -> None:
+        """
+        Delete the index with no failsafes.
+
+        Calling initialise_index after this will reset to v1.
+        """
+        current_index_name = await self.get_current_index_name()
+        await self.client.indices.delete(index=current_index_name)
 
     def _generate_index_name(self, version: int) -> str:
         """Generate a versioned index name."""
@@ -226,7 +263,8 @@ class IndexManager:
             )
 
             # Get new mapping from document class
-            # This is a simplified check - you might want to make this more sophisticated
+            # This is a simplified check
+            # you might want to make this more sophisticated
             new_mapping = self.document_class._doc_type.mapping
             new_props = new_mapping.to_dict().get("properties", {})
 
