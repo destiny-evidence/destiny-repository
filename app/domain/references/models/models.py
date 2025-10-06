@@ -652,11 +652,13 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
             in (
                 DuplicateDetermination.DUPLICATE,
                 DuplicateDetermination.EXACT_DUPLICATE,
+                DuplicateDetermination.DECOUPLED,
             )
         ):
             msg = (
                 "canonical_reference_id must be populated if and only if "
-                "duplicate_determination is DUPLICATE or EXACT_DUPLICATE"
+                "duplicate_determination is DUPLICATE, EXACT_DUPLICATE"
+                " or DECOUPLED"
             )
             raise ValueError(msg)
 

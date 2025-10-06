@@ -21,6 +21,16 @@ class TestPollingExhaustedError(Exception):
     """Error raised when polling fails."""
 
 
+async def refresh_reference_index(es_client: AsyncElasticsearch) -> None:
+    """
+    Refresh the reference index.
+
+    This just compresses race conditions in tests that check ES state immediately
+    after an operation that modifies it.
+    """
+    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+
+
 async def submit_happy_import_batch(
     client: httpx.AsyncClient, storage_url: str, import_record_id: UUID | None = None
 ) -> tuple[UUID, UUID]:
@@ -96,7 +106,6 @@ async def poll_duplicate_process(
         {"reference_id": reference_id},
     )
     decision = pg_result.mappings().first()
-
     expected_states = (
         {required_state}
         if required_state
@@ -162,6 +171,8 @@ async def import_references(
         )
         summary = await poll_batch_status(client, import_record_id, import_batch_id)
 
+    await refresh_reference_index(es_client)
+
     assert summary["import_batch_status"] == "completed"
     assert summary["results"]["completed"] == len(references)
 
@@ -177,6 +188,6 @@ async def import_references(
     for reference_id in reference_ids:
         await poll_duplicate_process(pg_session, reference_id)
 
-    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+    await refresh_reference_index(es_client)
 
     return reference_ids

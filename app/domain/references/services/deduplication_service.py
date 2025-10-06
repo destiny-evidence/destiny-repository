@@ -299,7 +299,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             )
             or (
                 # Reference was duplicate but is now duplicate of a different canonical
-                new_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
+                new_decision.duplicate_determination
+                == active_decision.duplicate_determination
+                == DuplicateDetermination.DUPLICATE
                 and active_decision.canonical_reference_id
                 != new_decision.canonical_reference_id
             )

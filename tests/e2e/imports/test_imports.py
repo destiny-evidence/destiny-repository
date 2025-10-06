@@ -19,6 +19,7 @@ from tests.e2e.utils import (
     poll_batch_status,
     poll_duplicate_process,
     poll_pending_enhancement,
+    refresh_reference_index,
     submit_happy_import_batch,
 )
 
@@ -65,7 +66,7 @@ async def test_happy_import(  # noqa: PLR0913
     assert len(reference_ids) == n_refs
 
     # Check the references are in Elasticsearch
-    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+    await refresh_reference_index(es_client)
     es_result = await es_client.count(index=ReferenceDocument.Index.name)
     assert es_result["count"] == n_refs
 

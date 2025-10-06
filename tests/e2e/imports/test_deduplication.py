@@ -45,6 +45,7 @@ from tests.e2e.utils import (
     import_references,
     poll_duplicate_process,
     poll_pending_enhancement,
+    refresh_reference_index,
 )
 
 
@@ -262,7 +263,6 @@ async def test_import_duplicate(  # noqa: PLR0913
 
     # Check that the Elasticsearch index contains only the canonical, with the near
     # duplicate's data merged in.
-    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
     es_result = await es_client.search(
         index=ReferenceDocument.Index.name,
         query={
@@ -343,7 +343,6 @@ async def test_import_non_duplicate(
             )
 
     # Check that the Elasticsearch index contains the reference as-is.
-    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
     es_result = await es_client.search(
         index=ReferenceDocument.Index.name,
         query={"match_all": {}},
@@ -388,33 +387,33 @@ async def test_canonical_becomes_duplicate(  # noqa: PLR0913
             reference_id=duplicate_reference.id,
             duplicate_determination=DuplicateDetermination.CANONICAL,
             active_decision=True,
+            candidate_canonical_ids=[],
         )
     )
     await pg_session.commit()
 
     # Index it to elasticsearch
-    await destiny_client_v1.post(f"/indices/{ReferenceDocument.Index.name}/repair/")
+    await destiny_client_v1.post(
+        f"/system/indices/{ReferenceDocument.Index.name}/repair/"
+    )
     for retry in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(1)):
         with retry:
-            await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+            await refresh_reference_index(es_client)
             es_result = await es_client.search(
                 index=ReferenceDocument.Index.name,
                 query={"match_all": {}},
             )
-            if es_result["hits"]["total"]["value"] == 2:
-                assert {hit["_id"] for hit in es_result["hits"]["hits"]} == {
-                    str(canonical_reference_id),
-                    str(duplicate_reference.id),
-                }
-                break
-    else:
-        pytest.fail("Elasticsearch documents did not appear in time")
+            assert es_result["hits"]["total"]["value"] == 2
+            assert {hit["_id"] for hit in es_result["hits"]["hits"]} == {
+                str(canonical_reference_id),
+                str(duplicate_reference.id),
+            }
 
     # Now deduplicate the duplicate again and check downstream
     await destiny_client_v1.post(
         "/references/duplicate-decisions/",
         json={
-            "references": [str(duplicate_reference.id)],
+            "reference_ids": [str(duplicate_reference.id)],
         },
     )
 
