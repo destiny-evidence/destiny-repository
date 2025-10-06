@@ -128,7 +128,7 @@ async def repair_elasticsearch_index(
         ) from exc
 
     if rebuild:
-        await index_manager.delete_and_recreate_index()
+        await index_manager.rebuild_index()
 
     await index_manager.repair_index()
     return JSONResponse(

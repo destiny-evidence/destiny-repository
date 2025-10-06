@@ -74,13 +74,6 @@ class IndexManager:
             )
             return None
 
-    async def repair_index(self) -> None:
-        """Repair the index."""
-        if not self.repair_task:
-            msg = f"No index repair task found for {self.alias_name}"
-            raise NotFoundError(msg)
-        await queue_task_with_trace(self.repair_task)
-
     async def get_current_index_name(self) -> str | None:
         """
         Get the name of the current index pointed to by the alias.
@@ -96,11 +89,12 @@ class IndexManager:
         except NotFoundError:
             return None
 
-    async def delete_and_recreate_index(self) -> None:
+    async def rebuild_index(self) -> None:
         """
-        Delete and recreate the current index.
+        Rebuild the current index.
 
-        This is used by the system router to allow downtime rebuilds of indices.
+        Delete and then recreate the index with the same name.
+        This is used by the system router to trigger downtime rebuilds of indices.
         """
         current_index_name = await self.get_current_index_name()
 
@@ -118,6 +112,13 @@ class IndexManager:
         await self.client.indices.put_alias(
             index=current_index_name, name=self.alias_name
         )
+
+    async def repair_index(self) -> None:
+        """Repair the index."""
+        if not self.repair_task:
+            msg = f"No index repair task found for {self.alias_name}"
+            raise NotFoundError(msg)
+        await queue_task_with_trace(self.repair_task)
 
     async def delete_current_index_unsafe(self) -> None:
         """
@@ -241,7 +242,7 @@ class IndexManager:
         if delete_old:
             await self._delete_index_safely(current_index)
 
-        logger.info(f"Migration completed successfully to {new_index}")
+        logger.info("Migration completed successfully to %s", new_index)
         return new_index
 
     async def _check_mapping_differences(self, current_index: str) -> bool:
@@ -272,7 +273,7 @@ class IndexManager:
             return current_props != new_props
 
         except Exception as e:
-            logger.warning(f"Could not compare mappings: {e}")
+            logger.warning("Could not compare mappings: %s", str(e))
             return True  # Assume migration needed if we can't compare
 
     async def _reindex_data(self, source_index: str, dest_index: str) -> None:
@@ -284,7 +285,7 @@ class IndexManager:
             dest_index: Destination index name
 
         """
-        logger.info(f"Reindexing from {source_index} to {dest_index}")
+        logger.info("Reindexing from %s to %s", source_index, dest_index)
 
         # Get document count for progress tracking
         count_response = await self.client.count(index=source_index)
@@ -294,7 +295,7 @@ class IndexManager:
             logger.info("No documents to reindex")
             return
 
-        logger.info(f"Reindexing {total_docs} documents...")
+        logger.info("Reindexing %s documents...", total_docs)
 
         # Perform reindex
         response = await self.client.reindex(
@@ -303,7 +304,9 @@ class IndexManager:
             wait_for_completion=True,
         )
 
-        logger.info(f"Reindexed {response['total']} documents in {response['took']}ms")
+        logger.info(
+            "Reindexed %s documents in %s ms", response["total"], response["took"]
+        )
 
     async def _verify_migration(self, source_index: str, dest_index: str) -> None:
         """
@@ -321,13 +324,14 @@ class IndexManager:
         dest_count = await self.client.count(index=dest_index)
 
         if source_count["count"] != dest_count["count"]:
-            raise RuntimeError(
+            msg = (
                 f"Document count mismatch: source={source_count['count']}, "
                 f"dest={dest_count['count']}"
             )
+            raise RuntimeError(msg)
 
         logger.info(
-            f"Verification successful: {dest_count['count']} documents migrated"
+            "Verification successful: %s documents migrated", dest_count["count"]
         )
 
     async def _switch_alias(self, old_index: str, new_index: str) -> None:
@@ -345,7 +349,9 @@ class IndexManager:
         ]
 
         await self.client.indices.update_aliases(body={"actions": actions})
-        logger.info(f"Switched alias {self.alias_name} from {old_index} to {new_index}")
+        logger.info(
+            "Switched alias %s from %s to %s", self.alias_name, old_index, new_index
+        )
 
     async def _delete_index_safely(self, index_name: str) -> None:
         """
@@ -360,7 +366,7 @@ class IndexManager:
             alias_info = await self.client.indices.get_alias(index=index_name)
             if index_name in alias_info and alias_info[index_name]["aliases"]:
                 logger.warning(
-                    f"Index {index_name} still has aliases, skipping deletion"
+                    "Index %s still has aliases, skipping deletion", index_name
                 )
                 return
         except NotFoundError:
@@ -368,7 +374,7 @@ class IndexManager:
 
         # Delete the index
         await self.client.indices.delete(index=index_name)
-        logger.info(f"Deleted old index: {index_name}")
+        logger.info("Deleted old index: %s", index_name)
 
     async def rollback(self, target_version: int | None = None) -> str:
         """
@@ -392,7 +398,8 @@ class IndexManager:
         current_version = await self.get_current_version(index_name=current_index)
 
         if current_version is None or current_version == 1:
-            raise ValueError("Cannot rollback: no previous version available")
+            msg = "Cannot rollback: no previous version available"
+            raise ValueError(msg)
 
         if target_version is None:
             target_version = current_version - 1
@@ -401,12 +408,13 @@ class IndexManager:
 
         # Check if target index exists
         if not await self.client.indices.exists(index=target_index):
-            raise ValueError(f"Target index {target_index} does not exist")
+            msg = f"Target index {target_index} does not exist"
+            raise ValueError(msg)
 
         # Switch alias back
         await self._switch_alias(current_index, target_index)
 
-        logger.info(f"Rolled back from {current_index} to {target_index}")
+        logger.info("Rolled back from %s to %s", current_index, target_index)
         return target_index
 
     async def get_migration_history(self) -> dict[str, Any]:
