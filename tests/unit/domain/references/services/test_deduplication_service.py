@@ -507,16 +507,10 @@ async def test_determine_and_map_duplicate_now_duplicate(
     )
     determined = await service.determine_canonical_from_candidates(decision)
     out_decision, decision_changed = await service.map_duplicate_decision(determined)
-    assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
-    assert (
-        "Decouple reason: Existing duplicate decision changed." in out_decision.detail
-    )
+    assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
     assert decision_changed is True
     old_decision = await dec_repo.get_by_pk(active_decision.id)
-    assert old_decision.active_decision
+    assert not old_decision.active_decision
     out_decision = await dec_repo.get_by_pk(out_decision.id)
-    assert not out_decision.active_decision
-    assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
-    assert (
-        "Decouple reason: Existing duplicate decision changed." in out_decision.detail
-    )
+    assert out_decision.active_decision
+    assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE

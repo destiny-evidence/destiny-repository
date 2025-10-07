@@ -536,17 +536,6 @@ class RobotAutomationESRepository(
             RobotAutomationPercolationDocument,
         )
 
-    async def add(self, obj: DomainRobotAutomation) -> DomainRobotAutomation:
-        """
-        Add a robot automation to the repository and index it for percolation.
-
-        Wraps the base add method to ensure the index is refreshed.
-
-        :param obj: The robot automation domain object to add.
-        :type obj: DomainRobotAutomation
-        """
-        return await super().add(obj)
-
     @trace_repository_method(tracer)
     async def percolate(
         self,

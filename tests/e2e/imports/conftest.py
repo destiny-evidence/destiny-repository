@@ -16,8 +16,8 @@ from elasticsearch import AsyncElasticsearch
 
 from app.domain.robots.models.models import Robot
 from tests.e2e.conftest import host_name
-from tests.e2e.factories import ReferenceFactory
-from tests.e2e.utils import refresh_reference_index
+from tests.e2e.utils import refresh_robot_automation_index
+from tests.factories import ReferenceFactory
 
 if TYPE_CHECKING:
     from app.domain.references.models.models import Reference
@@ -110,5 +110,5 @@ async def robot_automation_on_all_imports(
         },
     )
     assert response.status_code == 201
-    await refresh_reference_index(es_client)
+    await refresh_robot_automation_index(es_client)
     return robot.id

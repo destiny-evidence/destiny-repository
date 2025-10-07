@@ -32,7 +32,15 @@ from app.domain.references.models.sql import (
     ReferenceDuplicateDecision as SQLReferenceDuplicateDecision,
 )
 from app.domain.robots.models.models import Robot
-from tests.e2e.factories import (
+from tests.e2e.utils import (
+    TestPollingExhaustedError,
+    import_references,
+    poll_duplicate_process,
+    poll_pending_enhancement,
+    refresh_reference_index,
+    refresh_robot_automation_index,
+)
+from tests.factories import (
     AnnotationEnhancementFactory,
     BibliographicMetadataEnhancementFactory,
     BooleanAnnotationFactory,
@@ -40,13 +48,6 @@ from tests.e2e.factories import (
     EnhancementFactory,
     LinkedExternalIdentifierFactory,
     ReferenceFactory,
-)
-from tests.e2e.utils import (
-    TestPollingExhaustedError,
-    import_references,
-    poll_duplicate_process,
-    poll_pending_enhancement,
-    refresh_reference_index,
 )
 
 
@@ -187,7 +188,7 @@ async def robot_automation_on_specific_enhancement(
         },
     )
     assert response.status_code == 201
-    await refresh_reference_index(es_client)
+    await refresh_robot_automation_index(es_client)
     return robot.id
 
 

@@ -142,6 +142,11 @@ async def reference() -> Reference:
                 "visibility": "public",
             },
         ],
+        duplicate_decision={
+            "reference_id": r,
+            "duplicate_determination": "canonical",
+            "active_decision": True,
+        },
     )
 
 

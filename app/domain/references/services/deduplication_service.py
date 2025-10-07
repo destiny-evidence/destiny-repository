@@ -325,10 +325,17 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 + (new_decision.detail if new_decision.detail else "")
             )
         else:
-            # Either no active decision or the mapping is the same.
+            # Either:
+            # - No active decision
+            # - Decision is the same
+            # - Decision is moving from canonical to duplicate
             # Just update the active decision to record the consistent state.
             if active_decision:
-                decision_changed = False
+                if (
+                    active_decision.duplicate_determination
+                    == new_decision.duplicate_determination
+                ):
+                    decision_changed = False
                 active_decision.active_decision = False
             new_decision.active_decision = True
 

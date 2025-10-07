@@ -31,8 +31,8 @@ from app.persistence.sql.session import (
     db_manager,
 )
 from tests.db_utils import alembic_config_from_url, clean_tables
-from tests.e2e.factories import ReferenceFactory, RobotFactory
 from tests.es_utils import clean_test_indices, create_test_indices, delete_test_indices
+from tests.factories import ReferenceFactory, RobotFactory
 
 #####################
 # Dirty fiddly bits #
