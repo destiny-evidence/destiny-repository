@@ -107,11 +107,7 @@ async def poll_duplicate_process(
             ReferenceDuplicateDecision.duplicate_determination == required_state
         )
     else:
-        query = query.where(
-            ReferenceDuplicateDecision.duplicate_determination.in_(
-                DuplicateDetermination.get_terminal_states()
-            )
-        )
+        query = query.where(ReferenceDuplicateDecision.active_decision)
     result = await session.execute(query)
     try:
         decision = result.scalar_one()

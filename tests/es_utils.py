@@ -32,3 +32,4 @@ async def clean_test_indices(client: AsyncElasticsearch):
                 body={"query": {"match_all": {}}},
                 conflicts="proceed",
             )
+            await client.indices.refresh(index=index.Index.name)

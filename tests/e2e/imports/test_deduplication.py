@@ -1,5 +1,6 @@
 """End-to-end tests for import deduplication."""
 
+import asyncio
 import uuid
 from collections.abc import Callable
 from contextlib import _AsyncGeneratorContextManager
@@ -90,8 +91,8 @@ def canonical_reference(canonical_bibliographic_enhancement: Enhancement) -> Ref
     return ReferenceFactory.build(
         enhancements=[
             EnhancementFactory.build(content=canonical_bibliographic_enhancement),
-            # Some other enhancement
-            EnhancementFactory.build(),
+            # Another annotation enhancement for fun
+            EnhancementFactory.build(content=AnnotationEnhancementFactory.build()),
         ],
         identifiers=[
             # Make sure we have at least one non-other identifier
@@ -109,7 +110,7 @@ def duplicate_reference(
     automation_triggering_annotation_enhancement: Enhancement,
 ) -> Reference:
     """Get a slightly mutated canonical reference to be a duplicate."""
-    duplicate = canonical_reference.model_copy(deep=True)
+    duplicate = canonical_reference.model_copy(deep=True, update={"id": uuid.uuid4()})
     assert duplicate.enhancements
     assert isinstance(
         duplicate.enhancements[0].content, BibliographicMetadataEnhancement
@@ -128,11 +129,12 @@ def non_duplicate_reference(
     canonical_reference: Reference,
 ) -> Reference:
     """Get a slightly mutated canonical reference to definitely not be a duplicate."""
-    duplicate = canonical_reference.model_copy(deep=True)
+    duplicate = canonical_reference.model_copy(deep=True, update={"id": uuid.uuid4()})
     assert duplicate.enhancements
     assert isinstance(
         duplicate.enhancements[0].content, BibliographicMetadataEnhancement
     )
+    assert duplicate.enhancements[0].content.publication_year
     duplicate.enhancements[0].content.publication_year -= 10
     return duplicate
 
@@ -218,12 +220,8 @@ async def test_import_exact_duplicate(
             get_import_file_signed_url,
         )
     ).pop()
-    duplicate_decision = await poll_duplicate_process(
-        pg_session, exact_duplicate_reference_id
-    )
-    assert (
-        duplicate_decision.duplicate_determination
-        == DuplicateDetermination.EXACT_DUPLICATE
+    await poll_duplicate_process(
+        pg_session, exact_duplicate_reference_id, DuplicateDetermination.EXACT_DUPLICATE
     )
     pg_result = await pg_session.execute(
         text("SELECT COUNT(*) FROM reference WHERE id=:id;"),
@@ -266,10 +264,7 @@ async def test_import_duplicate(  # noqa: PLR0913
     ).pop()
 
     duplicate_decision = await poll_duplicate_process(
-        pg_session, duplicate_reference_id
-    )
-    assert (
-        duplicate_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
+        pg_session, duplicate_reference_id, DuplicateDetermination.DUPLICATE
     )
     assert duplicate_decision.canonical_reference_id == canonical_reference_id
 
@@ -342,10 +337,8 @@ async def test_import_non_duplicate(  # noqa: PLR0913
     }
 
     for reference_id in reference_ids:
-        duplicate_decision = await poll_duplicate_process(pg_session, reference_id)
-        assert (
-            duplicate_decision.duplicate_determination
-            == DuplicateDetermination.CANONICAL
+        duplicate_decision = await poll_duplicate_process(
+            pg_session, reference_id, DuplicateDetermination.CANONICAL
         )
         assert duplicate_decision.canonical_reference_id is None
 
@@ -372,6 +365,9 @@ async def test_import_non_duplicate(  # noqa: PLR0913
     }
 
 
+# NB tests below this line are probably best placed in `enhancements.test_deduplication.py`,
+# with new enhancements triggering the changes, but at time of writing the enhancement->dedup
+# trigger is not yet implemented.
 async def test_canonical_becomes_duplicate(  # noqa: PLR0913
     destiny_client_v1: httpx.AsyncClient,
     pg_session: AsyncSession,
@@ -526,6 +522,79 @@ async def test_duplicate_becomes_canonical(  # noqa: PLR0913
 
     old_decision = await pg_session.get(
         SQLReferenceDuplicateDecision, non_canonical_decision_id
+    )
+    assert old_decision
+    assert old_decision.active_decision
+
+
+async def test_duplicate_change(  # noqa: PLR0913
+    destiny_client_v1: httpx.AsyncClient,
+    pg_session: AsyncSession,
+    es_client: AsyncElasticsearch,
+    get_import_file_signed_url: Callable[
+        [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
+    ],
+    canonical_reference: Reference,
+    duplicate_reference: Reference,
+    non_duplicate_reference: Reference,
+):
+    """
+    Verify behaviour when a duplicate-like reference becomes a different duplicate.
+
+    We point duplicate->non_duplicate, then the process changes it to duplicate->canonical.
+    """
+    # First import the canonical and non-duplicate references. Both will register as canonical.
+    canonical_reference_id, non_duplicate_reference_id = [
+        (
+            await import_references(
+                destiny_client_v1,
+                pg_session,
+                es_client,
+                [reference],
+                get_import_file_signed_url,
+            )
+        ).pop()
+        for reference in (canonical_reference, non_duplicate_reference)
+    ]
+
+    # Now manually import the duplicate reference to avoid side effects
+    # Manually insert the duplicate reference to avoid side effects
+    pg_session.add(SQLReference.from_domain(duplicate_reference))
+    pg_session.add(
+        SQLReferenceDuplicateDecision(
+            id=(duplicate_decision_id := uuid.uuid4()),
+            reference_id=duplicate_reference.id,
+            duplicate_determination=DuplicateDetermination.DUPLICATE,
+            active_decision=True,
+            candidate_canonical_ids=[],
+            canonical_reference_id=non_duplicate_reference_id,
+        )
+    )
+    await pg_session.commit()
+
+    # Deduplicate the duplicate again and check downstream
+    await destiny_client_v1.post(
+        "/references/duplicate-decisions/",
+        json={
+            "reference_ids": [str(duplicate_reference.id)],
+        },
+    )
+
+    await asyncio.sleep(5)
+
+    # Check the decisions
+    duplicate_decision = await poll_duplicate_process(
+        pg_session,
+        duplicate_reference.id,
+        required_state=DuplicateDetermination.DECOUPLED,
+    )
+    assert duplicate_decision.detail
+    assert "Existing duplicate decision changed" in duplicate_decision.detail
+    assert duplicate_decision.canonical_reference_id == canonical_reference_id
+    assert not duplicate_decision.active_decision
+
+    old_decision = await pg_session.get(
+        SQLReferenceDuplicateDecision, duplicate_decision_id
     )
     assert old_decision
     assert old_decision.active_decision

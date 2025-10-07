@@ -185,11 +185,6 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             search_fields,
             reference_id=reference.id,
         )
-        logger.info(
-            "Nominated",
-            reference_id=reference.id,
-            results=[r.id for r in search_result],
-        )
 
         if not search_result:
             reference_duplicate_decision = (

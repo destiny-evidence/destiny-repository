@@ -268,7 +268,7 @@ class ReferenceESRepository(
                     ]
                     if search_fields.publication_year
                     else [],
-                    must_not=[Q("ids", values=[str(reference_id)])],
+                    must_not=[Q("ids", values=[reference_id])],
                     minimum_should_match=math.floor(0.5 * len(search_fields.authors)),
                 )
             )

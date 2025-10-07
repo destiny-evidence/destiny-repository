@@ -125,3 +125,4 @@ async def clean_tables(conn: AsyncConnection) -> None:
     # BUT DELETE FROM query does not reset any AUTO_INCREMENT counters
     for table in reversed(Base.metadata.sorted_tables):
         await conn.execute(table.delete())
+    await conn.commit()
