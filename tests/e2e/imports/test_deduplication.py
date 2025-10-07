@@ -143,6 +143,7 @@ def non_duplicate_reference(
 @pytest.fixture
 async def robot_automation_on_specific_enhancement(
     destiny_client_v1: httpx.AsyncClient,
+    es_client: AsyncElasticsearch,
     robot: Robot,
     automation_triggering_annotation: BooleanAnnotation,
 ) -> uuid.UUID:
@@ -186,6 +187,7 @@ async def robot_automation_on_specific_enhancement(
         },
     )
     assert response.status_code == 201
+    await refresh_reference_index(es_client)
     return robot.id
 
 
