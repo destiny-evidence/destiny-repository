@@ -111,7 +111,6 @@ def duplicate_reference(
     """Get a slightly mutated canonical reference to be a duplicate."""
     duplicate = canonical_reference.model_copy(deep=True)
     assert duplicate.enhancements
-    assert duplicate.enhancements[0]
     assert isinstance(
         duplicate.enhancements[0].content, BibliographicMetadataEnhancement
     )
@@ -121,6 +120,20 @@ def duplicate_reference(
         display_name="Jayne Doe", position="first"
     )
     duplicate.enhancements.append(automation_triggering_annotation_enhancement)
+    return duplicate
+
+
+@pytest.fixture
+def non_duplicate_reference(
+    canonical_reference: Reference,
+) -> Reference:
+    """Get a slightly mutated canonical reference to definitely not be a duplicate."""
+    duplicate = canonical_reference.model_copy(deep=True)
+    assert duplicate.enhancements
+    assert isinstance(
+        duplicate.enhancements[0].content, BibliographicMetadataEnhancement
+    )
+    duplicate.enhancements[0].content.publication_year -= 10
     return duplicate
 
 
@@ -209,7 +222,7 @@ async def test_import_exact_duplicate(
         pg_session, exact_duplicate_reference_id
     )
     assert (
-        duplicate_decision["duplicate_determination"]
+        duplicate_decision.duplicate_determination
         == DuplicateDetermination.EXACT_DUPLICATE
     )
     pg_result = await pg_session.execute(
@@ -256,10 +269,9 @@ async def test_import_duplicate(  # noqa: PLR0913
         pg_session, duplicate_reference_id
     )
     assert (
-        duplicate_decision["duplicate_determination"]
-        == DuplicateDetermination.DUPLICATE
+        duplicate_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
     )
-    assert duplicate_decision["canonical_reference_id"] == canonical_reference_id
+    assert duplicate_decision.canonical_reference_id == canonical_reference_id
 
     # Check that the Elasticsearch index contains only the canonical, with the near
     # duplicate's data merged in.
@@ -302,7 +314,7 @@ async def test_import_duplicate(  # noqa: PLR0913
     assert not pe["robot_enhancement_batch_id"]
 
 
-async def test_import_non_duplicate(
+async def test_import_non_duplicate(  # noqa: PLR0913
     destiny_client_v1: httpx.AsyncClient,
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
@@ -310,6 +322,8 @@ async def test_import_non_duplicate(
         [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
     ],
     robot_automation_on_specific_enhancement: uuid.UUID,
+    canonical_reference: Reference,
+    non_duplicate_reference: Reference,
 ):
     """Test importing a non-duplicate reference."""
     references = ReferenceFactory.build_batch(2)
@@ -324,16 +338,16 @@ async def test_import_non_duplicate(
                 get_import_file_signed_url=get_import_file_signed_url,
             )
         ).pop()
-        for reference in references
+        for reference in [canonical_reference, non_duplicate_reference]
     }
 
     for reference_id in reference_ids:
         duplicate_decision = await poll_duplicate_process(pg_session, reference_id)
-        assert duplicate_decision["duplicate_determination"] in (
-            DuplicateDetermination.CANONICAL,
-            DuplicateDetermination.UNSEARCHABLE,
+        assert (
+            duplicate_decision.duplicate_determination
+            == DuplicateDetermination.CANONICAL
         )
-        assert duplicate_decision["canonical_reference_id"] is None
+        assert duplicate_decision.canonical_reference_id is None
 
         with pytest.raises(TestPollingExhaustedError):
             await poll_pending_enhancement(
@@ -424,10 +438,9 @@ async def test_canonical_becomes_duplicate(  # noqa: PLR0913
         required_state=DuplicateDetermination.DUPLICATE,
     )
     assert (
-        duplicate_decision["duplicate_determination"]
-        == DuplicateDetermination.DUPLICATE
+        duplicate_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
     )
-    assert duplicate_decision["canonical_reference_id"] == canonical_reference_id
+    assert duplicate_decision.canonical_reference_id == canonical_reference_id
     old_decision = await pg_session.get(
         SQLReferenceDuplicateDecision, canonical_decision_id
     )
@@ -451,3 +464,68 @@ async def test_canonical_becomes_duplicate(  # noqa: PLR0913
     assert es_result["hits"]["hits"][0]["_id"] == str(canonical_reference_id)
     es_source = es_result["hits"]["hits"][0]["_source"]
     assert es_source["duplicate_determination"] == DuplicateDetermination.CANONICAL
+
+
+async def test_duplicate_becomes_canonical(  # noqa: PLR0913
+    destiny_client_v1: httpx.AsyncClient,
+    pg_session: AsyncSession,
+    es_client: AsyncElasticsearch,
+    get_import_file_signed_url: Callable[
+        [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
+    ],
+    canonical_reference: Reference,
+    non_duplicate_reference: Reference,
+):
+    """Verify behaviour when a duplicate reference becomes canonical."""
+    # First import the canonical and duplicate references
+    canonical_reference_id = (
+        await import_references(
+            destiny_client_v1,
+            pg_session,
+            es_client,
+            [canonical_reference],
+            get_import_file_signed_url,
+        )
+    ).pop()
+
+    # Directly import the non-duplicate reference to avoid side effects
+    pg_session.add(SQLReference.from_domain(non_duplicate_reference))
+    pg_session.add(
+        SQLReferenceDuplicateDecision(
+            id=(non_canonical_decision_id := uuid.uuid4()),
+            reference_id=non_duplicate_reference.id,
+            duplicate_determination=DuplicateDetermination.DUPLICATE,
+            canonical_reference_id=canonical_reference_id,
+            active_decision=True,
+            candidate_canonical_ids=[canonical_reference_id],
+        )
+    )
+    await pg_session.commit()
+
+    # Now deduplicate the non-duplicate again and check downstream
+    await destiny_client_v1.post(
+        "/references/duplicate-decisions/",
+        json={
+            "reference_ids": [str(non_duplicate_reference.id)],
+        },
+    )
+
+    # Check the decisions
+    duplicate_decision = await poll_duplicate_process(
+        pg_session,
+        non_duplicate_reference.id,
+        required_state=DuplicateDetermination.DECOUPLED,
+    )
+    assert (
+        duplicate_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
+    )
+    assert duplicate_decision.detail
+    assert "Existing duplicate decision changed" in duplicate_decision.detail
+    assert not duplicate_decision.canonical_reference_id
+    assert not duplicate_decision.active_decision
+
+    old_decision = await pg_session.get(
+        SQLReferenceDuplicateDecision, non_canonical_decision_id
+    )
+    assert old_decision
+    assert old_decision.active_decision

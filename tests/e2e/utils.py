@@ -9,12 +9,14 @@ import httpx
 from destiny_sdk.enhancements import EnhancementFileInput
 from destiny_sdk.references import ReferenceFileInput
 from elasticsearch import AsyncElasticsearch
-from sqlalchemy import text
+from sqlalchemy import select, text
+from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 from app.domain.references.models.es import ReferenceDocument
 from app.domain.references.models.models import DuplicateDetermination, Reference
+from app.domain.references.models.sql import ReferenceDuplicateDecision
 
 
 class TestPollingExhaustedError(Exception):
@@ -95,26 +97,28 @@ async def poll_duplicate_process(
     session: AsyncSession,
     reference_id: UUID,
     required_state: DuplicateDetermination | None = None,
-) -> Mapping:
-    """Poll the duplicate process until it is active."""
-    pg_result = await session.execute(
-        text(
-            "SELECT * FROM reference_duplicate_decision "
-            "WHERE reference_id=:reference_id "
-            "AND active_decision;"
-        ),
-        {"reference_id": reference_id},
+) -> ReferenceDuplicateDecision:
+    """Poll the duplicate process until it is in the required state."""
+    query = select(ReferenceDuplicateDecision).where(
+        ReferenceDuplicateDecision.reference_id == reference_id,
     )
-    decision = pg_result.mappings().first()
-    expected_states = (
-        {required_state}
-        if required_state
-        else DuplicateDetermination.get_terminal_states()
-    )
+    if required_state:
+        query = query.where(
+            ReferenceDuplicateDecision.duplicate_determination == required_state
+        )
+    else:
+        query = query.where(
+            ReferenceDuplicateDecision.duplicate_determination.in_(
+                DuplicateDetermination.get_terminal_states()
+            )
+        )
+    result = await session.execute(query)
+    try:
+        decision = result.scalar_one()
+    except NoResultFound as exc:
+        msg = "Reference duplicate decision not yet in required state"
+        raise TestPollingExhaustedError(msg) from exc
 
-    if not decision or decision["duplicate_determination"] not in expected_states:
-        msg = "Duplicate process not yet complete"
-        raise TestPollingExhaustedError(msg)
     return decision
 
 
