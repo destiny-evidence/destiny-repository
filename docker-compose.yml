@@ -227,7 +227,7 @@ services:
       APP_NAME: elasticsearch-index-setup
     networks:
       - default
-    entrypoint: python -m app.utils.es_migration
+    entrypoint: python -m app.utils.es_index_setup
 
   kibana:
     profiles: ["search"]
