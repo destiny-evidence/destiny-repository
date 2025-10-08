@@ -169,7 +169,7 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_STACK_VERSION}
     volumes:
       - certs:/usr/share/elasticsearch/config/certs
-      - esdata01:/usr/share/elasticsearch/data
+      - esdata:/usr/share/elasticsearch/data
     ports:
       - ${ES_PORT}:9200
     environment:
@@ -227,7 +227,7 @@ services:
       APP_NAME: elasticsearch-index-setup
     networks:
       - default
-    entrypoint: python -m app.utils.es_index_setup
+    entrypoint: python -m app.utils.es_migration
 
   kibana:
     profiles: ["search"]
@@ -260,7 +260,7 @@ services:
 volumes:
   certs:
     driver: local
-  esdata01:
+  esdata:
     driver: local
   kibanadata:
     driver: local

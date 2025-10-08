@@ -1,5 +1,6 @@
 """Index manager for an elasticsearch index."""
 
+import asyncio
 from collections.abc import Coroutine
 from typing import Any
 
@@ -180,15 +181,13 @@ class IndexManager:
     async def migrate(
         self,
         *,
-        force: bool = False,
-        delete_old: bool = False,
+        delete_old: bool = True,
         verify_count: bool = True,
     ) -> str | None:
         """
         Migrate to a new index version if the mapping has changed.
 
         Args:
-            force: Force migration even if mappings appear identical
             delete_old: Delete the old index after successful migration
             verify_count: Verify document counts match after migration
 
@@ -202,12 +201,6 @@ class IndexManager:
             # No existing index, initialize instead
             return await self.initialize_index()
 
-        # Check if migration is needed
-        if not force:
-            needs_migration = await self._check_mapping_differences(current_index)
-            if not needs_migration:
-                logger.info("No mapping differences detected, skipping migration")
-                return None
         current_version = await self.get_current_version(current_index)
         if current_version is None:
             msg = "Current index version could not be determined"
@@ -217,23 +210,19 @@ class IndexManager:
         new_version = current_version + 1
         new_index = self._generate_index_name(new_version)
 
-        logger.info(
-            "Starting migration from %(current_index)s to %(new_index)s",
-            {
-                "current_index": current_index,
-                "new_index": new_index,
-            },
-        )
+        logger.info("Starting migration from %s to %s", current_index, new_index)
 
-        # Create new index with updated mapping
-        await self._create_index_with_mapping(new_index)
+        # Create new index
+        await self._create_index_with_mapping(index_name=new_index)
 
         # Reindex data
-        await self._reindex_data(current_index, new_index)
+        await self._reindex_data(source_index=current_index, dest_index=new_index)
 
         # Verify migration if requested
         if verify_count:
-            await self._verify_migration(current_index, new_index)
+            await self._verify_migration(
+                source_index=current_index, dest_index=new_index
+            )
 
         # Switch alias atomically
         await self._switch_alias(current_index, new_index)
@@ -244,37 +233,6 @@ class IndexManager:
 
         logger.info("Migration completed successfully to %s", new_index)
         return new_index
-
-    async def _check_mapping_differences(self, current_index: str) -> bool:
-        """
-        Check if there are mapping differences between current index and document class.
-
-        Args:
-            current_index: Name of the current index
-
-        Returns:
-            True if differences detected, False otherwise
-
-        """
-        try:
-            # Get current mapping
-            current_mapping = await self.client.indices.get_mapping(index=current_index)
-            current_props = current_mapping[current_index]["mappings"].get(
-                "properties", {}
-            )
-
-            # Get new mapping from document class
-            # This is a simplified check
-            # you might want to make this more sophisticated
-            new_mapping = self.document_class._doc_type.mapping
-            new_props = new_mapping.to_dict().get("properties", {})
-
-            # Basic comparison - you might want to deep compare
-            return current_props != new_props
-
-        except Exception as e:
-            logger.warning("Could not compare mappings: %s", str(e))
-            return True  # Assume migration needed if we can't compare
 
     async def _reindex_data(self, source_index: str, dest_index: str) -> None:
         """
@@ -297,15 +255,26 @@ class IndexManager:
 
         logger.info("Reindexing %s documents...", total_docs)
 
-        # Perform reindex
+        # Trigger a reindex task
         response = await self.client.reindex(
             source={"index": source_index, "size": self.batch_size},
             dest={"index": dest_index},
-            wait_for_completion=True,
+            wait_for_completion=False,
         )
 
+        # The task management API is in technical previewn at time of writing
+        # But has been in technical preview for four major versions.
+        # So we're probably fine. Some nasty logs though.
+        # TODO(Jack): not ugly polling.  # noqa: TD003
+        task = await self.client.tasks.get(task_id=response["task"])
+        while not task["completed"]:
+            await asyncio.sleep(5)  # Configure this
+            task = await self.client.tasks.get(task_id=response["task"])
+
         logger.info(
-            "Reindexed %s documents in %s ms", response["total"], response["took"]
+            "Reindexed %s documents in %s ms",
+            task["response"]["total"],
+            task["response"]["took"],
         )
 
     async def _verify_migration(self, source_index: str, dest_index: str) -> None:
