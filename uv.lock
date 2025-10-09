@@ -575,7 +575,7 @@ requires-dist = [
     { name = "taskiq", extras = ["reload"], specifier = ">=0.11.16,<0.12" },
     { name = "taskiq-aio-pika", specifier = ">=0.4.1,<0.5" },
     { name = "tenacity", specifier = ">=9.1.2" },
-    { name = "uvloop", specifier = ">=0.21.0,<0.22" },
+    { name = "uvloop", specifier = ">=0.21.0" },
 ]
 
 [package.metadata.requires-dev]

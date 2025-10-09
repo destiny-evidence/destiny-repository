@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Generic
 
 from opentelemetry import trace
-from pydantic import UUID7
+from pydantic import UUID4, UUID7
 
 from app.core.telemetry.attributes import Attributes
 from app.core.telemetry.repository import trace_repository_method
@@ -26,13 +26,13 @@ class GenericAsyncRepository(
     @abstractmethod
     @trace_repository_method(tracer)
     async def get_by_pk(
-        self, pk: UUID7, preload: list[Any] | None = None
+        self, pk: UUID4 | UUID7, preload: list[Any] | None = None
     ) -> GenericDomainModelType:
         """
         Get a record using its primary key.
 
         Args:
-        - pk (UUID7): The primary key to use to look up the record.
+        - pk (UUID4 | UUID7): The primary key to use to look up the record.
         - preload (list[Any]): A list of attributes to preload.
 
         """
