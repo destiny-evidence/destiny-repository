@@ -162,7 +162,7 @@ async def abstract_robot_automation() -> RobotAutomation:
                         "nested": {
                             "path": "changeset.identifiers",
                             "query": {
-                                "term": {"changeset.identifiers.identifier_type": "DOI"}
+                                "term": {"changeset.identifiers.identifier_type": "doi"}
                             },
                         }
                     }

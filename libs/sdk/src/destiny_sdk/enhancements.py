@@ -351,7 +351,12 @@ class EnhancementFileInput(BaseModel):
     visibility: Visibility = Field(
         description="The level of visibility of the enhancement"
     )
-    enhancement_type: EnhancementType = Field(description="The type of enhancement.")
+    enhancement_type: EnhancementType | None = Field(
+        default=None,
+        deprecated=True,
+        description="The type of enhancement. "
+        "Deprecated in favour of content.enhancement_type.",
+    )
     robot_version: str | None = Field(
         default=None,
         description="The version of the robot that generated the content.",
