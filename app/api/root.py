@@ -69,9 +69,7 @@ def register_api(
         ).read_text(encoding="utf-8"),
         version="1.0.0",
         lifespan=lifespan,
-        middleware=[
-            Middleware(LoggerMiddleware),
-        ],
+        middleware=[Middleware(LoggerMiddleware)],
         exception_handlers={
             NotFoundError: not_found_exception_handler,
             IntegrityError: integrity_exception_handler,
