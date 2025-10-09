@@ -1,10 +1,11 @@
 """Send authenticated requests to Destiny Repository."""
 
 import time
+import uuid
 from collections.abc import Generator
 
 import httpx
-from pydantic import UUID4, UUID7, HttpUrl
+from pydantic import HttpUrl
 
 from destiny_sdk.robots import (
     EnhancementRequestRead,
@@ -22,7 +23,7 @@ class HMACSigningAuth(httpx.Auth):
 
     requires_request_body = True
 
-    def __init__(self, secret_key: str, client_id: UUID4 | UUID7) -> None:
+    def __init__(self, secret_key: str, client_id: uuid.UUID) -> None:
         """
         Initialize the client.
 
@@ -61,7 +62,7 @@ class Client:
     """
 
     def __init__(
-        self, base_url: HttpUrl, secret_key: str, client_id: UUID4 | UUID7
+        self, base_url: HttpUrl, secret_key: str, client_id: uuid.UUID
     ) -> None:
         """
         Initialize the client.
@@ -116,7 +117,7 @@ class Client:
         return RobotEnhancementBatchRead.model_validate(response.json())
 
     def poll_robot_enhancement_batch(
-        self, robot_id: UUID4 | UUID7, limit: int = 10
+        self, robot_id: uuid.UUID, limit: int = 10
     ) -> RobotEnhancementBatch | None:
         """
         Poll for a robot enhancement batch.
@@ -124,7 +125,7 @@ class Client:
         Signs the request with the client's secret key.
 
         :param robot_id: The ID of the robot to poll for
-        :type robot_id: UUID4 | UUID7
+        :type robot_id: uuid.UUID
         :param limit: The maximum number of pending enhancements to return
         :type limit: int
         :return: The RobotEnhancementBatch object from the response, or None if no

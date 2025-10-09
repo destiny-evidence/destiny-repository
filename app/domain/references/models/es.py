@@ -14,7 +14,6 @@ from elasticsearch.dsl import (
     Text,
     mapped_field,
 )
-from pydantic import UUID4, UUID7
 
 from app.core.config import get_settings
 from app.domain.references.models.models import (
@@ -57,7 +56,7 @@ class ExternalIdentifierDocument(InnerDoc):
             ),
         )
 
-    def to_domain(self, reference_id: UUID4 | UUID7) -> LinkedExternalIdentifier:
+    def to_domain(self, reference_id: uuid.UUID) -> LinkedExternalIdentifier:
         """Convert the persistence model into a Domain ExternalIdentifier object."""
         return LinkedExternalIdentifier(
             reference_id=reference_id,
@@ -107,7 +106,7 @@ class EnhancementContentDocument(InnerDoc):
 class EnhancementDocument(InnerDoc):
     """Persistence model for enhancements in Elasticsearch."""
 
-    id: UUID4 | UUID7 = mapped_field(Keyword(required=True, index=True))
+    id: uuid.UUID = mapped_field(Keyword(required=True, index=True))
     visibility: Visibility = mapped_field(Keyword(required=True))
     source: str = mapped_field(Keyword(required=True))
     robot_version: str | None = mapped_field(Keyword())
@@ -128,7 +127,7 @@ class EnhancementDocument(InnerDoc):
             ),
         )
 
-    def to_domain(self, reference_id: UUID4 | UUID7) -> Enhancement:
+    def to_domain(self, reference_id: uuid.UUID) -> Enhancement:
         """Create a domain model from this persistence model."""
         return Enhancement(
             id=self.id,

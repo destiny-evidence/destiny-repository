@@ -3,7 +3,6 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from pydantic import UUID4, UUID7
 
 from app.domain.references.models.models import (
     EnhancementRequest,
@@ -179,9 +178,7 @@ async def test_process_enhancement_result_happy_path(fake_uow, fake_repository):
     assert updated.request_status == EnhancementRequestStatus.COMPLETED
 
 
-def make_enhancement_result_entry(
-    reference_id: UUID4 | UUID7, *, as_error: bool
-) -> str:
+def make_enhancement_result_entry(reference_id: uuid.UUID, *, as_error: bool) -> str:
     """
     Helper to create a EnhancementResultEntry jsonl line (Enhancement or
     LinkedRobotError) with correct annotation structure.

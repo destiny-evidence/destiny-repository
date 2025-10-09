@@ -3,8 +3,8 @@
 import hashlib
 import hmac
 import time
+import uuid
 from typing import Protocol, Self
-from uuid import UUID
 
 from fastapi import HTTPException, Request, status
 from pydantic import UUID4, UUID7, BaseModel
@@ -29,7 +29,7 @@ class AuthException(HTTPException):
 
 
 def create_signature(
-    secret_key: str, request_body: bytes, client_id: UUID4 | UUID7, timestamp: float
+    secret_key: str, request_body: bytes, client_id: uuid.UUID, timestamp: float
 ) -> str:
     """
     Create an HMAC signature using SHA256.
@@ -39,7 +39,7 @@ def create_signature(
     :param request_body: request body to be encrypted
     :type request_body: bytes
     :param client_id: client id to include in hmac
-    :type: UUID4 | UUID7
+    :type: uuid.UUID
     :param timestamp: timestamp for when the request is sent
     :type: float
     :return: encrypted hexdigest of the request body with the secret key
@@ -108,7 +108,7 @@ class HMACAuthorizationHeaders(BaseModel):
             )
 
         try:
-            UUID(client_id)
+            uuid.UUID(client_id)
         except (ValueError, TypeError) as exc:
             raise AuthException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

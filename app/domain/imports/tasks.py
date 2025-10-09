@@ -1,10 +1,10 @@
 """Import tasks module for the DESTINY Climate and Health Repository API."""
 
+import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from opentelemetry import trace
-from pydantic import UUID4, UUID7
 
 from app.core.telemetry.attributes import (
     Attributes,
@@ -70,7 +70,7 @@ async def get_reference_service(
 
 
 @broker.task
-async def distribute_import_batch(import_batch_id: UUID4 | UUID7) -> None:
+async def distribute_import_batch(import_batch_id: uuid.UUID) -> None:
     """Async logic for processing an import batch."""
     name_span(f"Distribute import batch {import_batch_id}")
     trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_batch_id))
@@ -83,7 +83,7 @@ async def distribute_import_batch(import_batch_id: UUID4 | UUID7) -> None:
 
 @broker.task
 async def import_reference(
-    import_result_id: UUID4 | UUID7,
+    import_result_id: uuid.UUID,
     content: str,
     line_number: int,
     remaining_retries: int,
