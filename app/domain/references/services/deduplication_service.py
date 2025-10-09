@@ -231,7 +231,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             if settings.env == Environment.TEST
             and reference_duplicate_decision.candidate_canonical_ids
             else ReferenceDuplicateDeterminationResult(
-                duplicate_determination=DuplicateDetermination.UNRESOLVED
+                duplicate_determination=DuplicateDetermination.UNSEARCHABLE
             )
         )
 
@@ -271,11 +271,20 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         """
         Apply the persistence changes from the new duplicate decision.
 
+        If the new decision is not terminal, it is not made active.
+
         :param new_decision: The new decision to apply.
         :type new_decision: ReferenceDuplicateDecision
         :return: The applied decision and whether it changed.
         :rtype: tuple[ReferenceDuplicateDecision, bool]
         """
+        if (
+            new_decision.duplicate_determination
+            not in DuplicateDetermination.get_terminal_states()
+        ):
+            msg = "Only terminal duplicate determinations can be mapped."
+            raise DeduplicationValueError(msg)
+
         reference = await self.sql_uow.references.get_by_pk(
             new_decision.reference_id,
             preload=["duplicate_decision", "canonical_reference"],
@@ -285,7 +294,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         # Preset to True, will be flipped if not changed
         decision_changed = True
 
-        # Remap active decision if needed and handle other cases (flattened if/else)
+        # Remap active decision if needed and handle other cases
         if new_decision.duplicate_determination == DuplicateDetermination.UNSEARCHABLE:
             new_decision.active_decision = True
             if active_decision:

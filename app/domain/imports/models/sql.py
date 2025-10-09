@@ -18,15 +18,14 @@ from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.imports.models.models import (
-    CollisionStrategy,
-    ImportRecordStatus,
-    ImportResultStatus,
-)
-from app.domain.imports.models.models import (
     ImportBatch as DomainImportBatch,
 )
 from app.domain.imports.models.models import (
     ImportRecord as DomainImportRecord,
+)
+from app.domain.imports.models.models import (
+    ImportRecordStatus,
+    ImportResultStatus,
 )
 from app.domain.imports.models.models import (
     ImportResult as DomainImportResult,
@@ -104,13 +103,6 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
         UUID, ForeignKey("import_record.id"), nullable=False
     )
 
-    collision_strategy: Mapped[CollisionStrategy] = mapped_column(
-        ENUM(
-            *[strategy.value for strategy in CollisionStrategy],
-            name="collision_strategy",
-        ),
-        nullable=False,
-    )
     storage_url: Mapped[str] = mapped_column(String, nullable=False)
 
     import_record: Mapped["ImportRecord"] = relationship(
@@ -135,7 +127,6 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
         return cls(
             id=domain_obj.id,
             import_record_id=domain_obj.import_record_id,
-            collision_strategy=domain_obj.collision_strategy,
             storage_url=str(domain_obj.storage_url),
         )
 
@@ -147,7 +138,6 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
         return DomainImportBatch(
             id=self.id,
             import_record_id=self.import_record_id,
-            collision_strategy=self.collision_strategy,
             storage_url=HttpUrl(self.storage_url),
             import_record=self.import_record.to_domain()
             if "import_record" in (preload or [])

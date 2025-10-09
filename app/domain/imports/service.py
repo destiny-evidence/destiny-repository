@@ -14,7 +14,6 @@ from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.imports.models.models import (
-    CollisionStrategy,
     ImportBatch,
     ImportRecord,
     ImportRecordStatus,
@@ -140,7 +139,6 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         self,
         reference_service: ReferenceService,
         import_result: ImportResult,
-        collision_strategy: CollisionStrategy,
         content: str,
         line_number: int,
     ) -> tuple[ImportResult, UUID | None]:
@@ -151,8 +149,6 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         :type reference_service: ReferenceService
         :param import_result: The import result to update.
         :type import_result: app.domain.imports.models.models.ImportResult
-        :param collision_strategy: The collision strategy to use. To be deprecated.
-        :type collision_strategy: CollisionStrategy
         :param content: The content of the reference to import.
         :type content: str
         :param line_number: The line number of the reference in the import file.
@@ -168,7 +164,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
 
         try:
             reference_result = await reference_service.ingest_reference(
-                content, line_number, collision_strategy
+                content, line_number
             )
         except SQLIntegrityError as exc:
             # This handles the case where files loaded in parallel cause a conflict at
@@ -200,21 +196,6 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                 status=ImportResultStatus.FAILED,
                 failure_details="Uncaught exception at the repository.",
             ), None
-
-        if (
-            not reference_result
-        ):  # Can remove this block once we have full deduplication flow
-            if collision_strategy == CollisionStrategy.DISCARD:
-                # Reference was discarded
-                return await self.update_import_result(
-                    import_result.id,
-                    status=ImportResultStatus.COMPLETED,
-                ), None
-            msg = (
-                "Reference was not created, discarded or failed. "
-                "This should not happen."
-            )
-            raise RuntimeError(msg)
 
         if not reference_result.reference:
             # Reference was not created
