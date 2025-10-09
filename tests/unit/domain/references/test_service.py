@@ -48,7 +48,7 @@ def test_robot():
 
 @pytest.mark.asyncio
 async def test_get_reference_happy_path(fake_repository, fake_uow):
-    dummy_id = uuid.uuid4()
+    dummy_id = uuid.uuid7()
     dummy_reference = Reference(id=dummy_id)
     repo = fake_repository(init_entries=[dummy_reference])
     uow = fake_uow(references=repo)
@@ -66,14 +66,14 @@ async def test_get_reference_not_found(fake_repository, fake_uow):
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
-    dummy_id = uuid.uuid4()
+    dummy_id = uuid.uuid7()
     with pytest.raises(SQLNotFoundError):
         await service.get_reference(dummy_id)
 
 
 @pytest.mark.asyncio
 async def test_add_identifier_happy_path(fake_repository, fake_uow):
-    dummy_id = uuid.uuid4()
+    dummy_id = uuid.uuid7()
     dummy_reference = Reference(id=dummy_id)
     repo_refs = fake_repository(init_entries=[dummy_reference])
     repo_ids = fake_repository()
@@ -97,7 +97,7 @@ async def test_add_identifier_reference_not_found(fake_repository, fake_uow):
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
-    dummy_id = uuid.uuid4()
+    dummy_id = uuid.uuid7()
     fake_identifier_create = ExternalIdentifierAdapter.validate_python(
         {"identifier": "W1234", "identifier_type": "open_alex"}
     )
@@ -109,7 +109,7 @@ async def test_add_identifier_reference_not_found(fake_repository, fake_uow):
 async def test_add_enhancement_happy_path(
     fake_repository, fake_uow, fake_enhancement_data
 ):
-    dummy_reference = Reference(id=uuid.uuid4())
+    dummy_reference = Reference(id=uuid.uuid7())
     repo_refs = fake_repository(init_entries=[dummy_reference])
     uow = fake_uow(references=repo_refs)
     service = ReferenceService(
@@ -138,7 +138,7 @@ async def test_add_enhancement_reference_does_not_exist(
     )
 
     enhancement_to_add = Enhancement(
-        reference_id=uuid.uuid4(),  # Doesn't exist
+        reference_id=uuid.uuid7(),  # Doesn't exist
         **fake_enhancement_data,
     )
 
@@ -150,7 +150,7 @@ async def test_add_enhancement_reference_does_not_exist(
 async def test_add_enhancement_derived_from_does_not_exist(
     fake_repository, fake_uow, fake_enhancement_data
 ):
-    dummy_reference = Reference(id=uuid.uuid4())
+    dummy_reference = Reference(id=uuid.uuid7())
     repo_refs = fake_repository(init_entries=[dummy_reference])
     uow = fake_uow(references=repo_refs, enhancements=fake_repository())
     service = ReferenceService(
@@ -159,7 +159,7 @@ async def test_add_enhancement_derived_from_does_not_exist(
 
     enhancement_to_add = Enhancement(
         reference_id=dummy_reference.id,
-        derived_from=[uuid.uuid4()],
+        derived_from=[uuid.uuid7()],
         **fake_enhancement_data,
     )
 
@@ -171,11 +171,11 @@ async def test_add_enhancement_derived_from_does_not_exist(
 async def test_add_enhancement_derived_from_enhancement_for_different_reference(
     fake_repository, fake_uow, fake_enhancement_data
 ):
-    dummy_reference = Reference(id=uuid.uuid4())
+    dummy_reference = Reference(id=uuid.uuid7())
     repo_refs = fake_repository(init_entries=[dummy_reference])
 
     dummy_parent_enhancement = Enhancement(
-        reference_id=uuid.uuid4(),  # Not the reference we'll enhance
+        reference_id=uuid.uuid7(),  # Not the reference we'll enhance
         **fake_enhancement_data,
     )
 
@@ -202,9 +202,9 @@ async def test_register_reference_enhancement_request(fake_repository, fake_uow)
     """
     Test the happy path for registering an enhancement request.
     """
-    reference_ids = [uuid.uuid4(), uuid.uuid4()]
-    robot_id = uuid.uuid4()
-    request_id = uuid.uuid4()
+    reference_ids = [uuid.uuid7(), uuid.uuid7()]
+    robot_id = uuid.uuid7()
+    request_id = uuid.uuid7()
     enhancement_request = EnhancementRequest(
         id=request_id,
         reference_ids=reference_ids,
@@ -252,11 +252,11 @@ async def test_register_reference_enhancement_request_missing_pk(
     """
     Test registering an enhancement request with a missing reference ID.
     """
-    reference_ids = [uuid.uuid4(), uuid.uuid4()]
-    missing_reference_id = uuid.uuid4()
-    robot_id = uuid.uuid4()
+    reference_ids = [uuid.uuid7(), uuid.uuid7()]
+    missing_reference_id = uuid.uuid7()
+    robot_id = uuid.uuid7()
     enhancement_request = EnhancementRequest(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         reference_ids=[*reference_ids, missing_reference_id],
         robot_id=robot_id,
         enhancement_parameters={"param": "value"},
@@ -291,7 +291,7 @@ async def test_collect_and_dispatch_references_for_enhancement_happy_path(
     mock_blob_repository = AsyncMock()
     mock_blob_repository.get_signed_url.return_value = "http://127.0.0.1:8001"
 
-    reference_ids = [uuid.uuid4() for _ in range(3)]
+    reference_ids = [uuid.uuid7() for _ in range(3)]
 
     enhancement_request = EnhancementRequest(
         reference_ids=reference_ids,
@@ -340,7 +340,7 @@ async def test_collect_and_dispatch_references_for_enhancement_robot_unreachable
     mock_blob_repository = AsyncMock()
     mock_blob_repository.get_signed_url.return_value = "http://127.0.0.1:8001"
 
-    reference_ids = [uuid.uuid4() for _ in range(3)]
+    reference_ids = [uuid.uuid7() for _ in range(3)]
 
     enhancement_request = EnhancementRequest(
         reference_ids=reference_ids,
@@ -389,7 +389,7 @@ async def test_collect_and_dispatch_references_for_enhancement_enhancement_not_p
     mock_blob_repository = AsyncMock()
     mock_blob_repository.get_signed_url.return_value = "http://127.0.0.1:8001"
 
-    reference_ids = [uuid.uuid4() for _ in range(3)]
+    reference_ids = [uuid.uuid7() for _ in range(3)]
 
     enhancement_request = EnhancementRequest(
         reference_ids=reference_ids,
@@ -473,14 +473,14 @@ async def test_detect_robot_automations(
         {ESPercolationOperation.ROBOT_AUTOMATION: 2},
     )
 
-    reference_id = uuid.uuid4()
-    robot_id = uuid.uuid4()
+    reference_id = uuid.uuid7()
+    robot_id = uuid.uuid7()
 
     enhancement = Enhancement(reference_id=reference_id, **fake_enhancement_data)
     hydrated_references = [
         Reference(id=reference_id, visibility="public", enhancements=[enhancement]),
-        Reference(id=uuid.uuid4(), visibility="public", enhancements=[enhancement]),
-        Reference(id=uuid.uuid4(), visibility="public", enhancements=[enhancement]),
+        Reference(id=uuid.uuid7(), visibility="public", enhancements=[enhancement]),
+        Reference(id=uuid.uuid7(), visibility="public", enhancements=[enhancement]),
     ]
 
     # Extend the fake repository with get_hydrated and percolation
@@ -544,12 +544,12 @@ async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_ro
         path="robot_enhancement_batch_reference_data",
     )
 
-    references = [Reference(id=uuid.uuid4()) for _ in range(3)]
+    references = [Reference(id=uuid.uuid7()) for _ in range(3)]
     pending_enhancements = [
         PendingEnhancement(
             reference_id=ref.id,
             robot_id=test_robot.id,
-            enhancement_request_id=uuid.uuid4(),
+            enhancement_request_id=uuid.uuid7(),
         )
         for ref in references
     ]

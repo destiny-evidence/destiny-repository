@@ -4,7 +4,7 @@ from abc import abstractmethod
 from typing import Generic, Self
 
 from elasticsearch.dsl import AsyncDocument
-from pydantic import UUID4, BaseModel
+from pydantic import UUID7, BaseModel
 
 from app.core.config import get_settings
 from app.persistence.generics import GenericDomainModelType
@@ -50,5 +50,5 @@ class GenericESPersistence(
 class ESSearchResult(BaseModel):
     """Simple class for id<->score mapping in Elasticsearch search results."""
 
-    id: UUID4
+    id: UUID7
     score: float

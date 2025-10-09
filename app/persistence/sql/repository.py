@@ -4,7 +4,7 @@ from abc import ABC
 from typing import Generic
 
 from opentelemetry import trace
-from pydantic import UUID4
+from pydantic import UUID7
 from sqlalchemy import inspect, select, update
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -160,13 +160,13 @@ class GenericAsyncSqlRepository(
 
     @trace_repository_method(tracer)
     async def get_by_pk(
-        self, pk: UUID4, preload: list[GenericSQLPreloadableType] | None = None
+        self, pk: UUID7, preload: list[GenericSQLPreloadableType] | None = None
     ) -> GenericDomainModelType:
         """
         Get a record using its primary key.
 
         Args:
-        - pk (UUID4): The primary key to use to look up the record.
+        - pk (UUID7): The primary key to use to look up the record.
         - preload (list[str]): A list of attributes to preload using a join.
 
         Raises:
@@ -194,13 +194,13 @@ class GenericAsyncSqlRepository(
 
     @trace_repository_method(tracer)
     async def get_by_pks(
-        self, pks: list[UUID4], preload: list[GenericSQLPreloadableType] | None = None
+        self, pks: list[UUID7], preload: list[GenericSQLPreloadableType] | None = None
     ) -> list[GenericDomainModelType]:
         """
         Get records using their primary keys.
 
         Args:
-        - pks (list[UUID4]): The primary keys to use to look up the records.
+        - pks (list[UUID7]): The primary keys to use to look up the records.
         - preload (list[str]): A list of attributes to preload using a join.
 
         Returns:
@@ -256,12 +256,12 @@ class GenericAsyncSqlRepository(
         return [ref.to_domain(preload=preload) for ref in result.scalars().all()]
 
     @trace_repository_method(tracer)
-    async def verify_pk_existence(self, pks: list[UUID4]) -> None:
+    async def verify_pk_existence(self, pks: list[UUID7]) -> None:
         """
         Check if every pk exists in the database.
 
         Args:
-            pks (list[UUID4]): List of primary keys to check.
+            pks (list[UUID7]): List of primary keys to check.
 
         Raises:
             SQLNotFoundError: If any of the records do not exist.
@@ -285,12 +285,12 @@ class GenericAsyncSqlRepository(
             )
 
     @trace_repository_method(tracer)
-    async def update_by_pk(self, pk: UUID4, **kwargs: object) -> GenericDomainModelType:
+    async def update_by_pk(self, pk: UUID7, **kwargs: object) -> GenericDomainModelType:
         """
         Update a record using its primary key.
 
         Args:
-        - pk (UUID4): The primary key to use to look up the record.
+        - pk (UUID7): The primary key to use to look up the record.
         - kwargs (object): The attributes to update.
 
         Raises:
@@ -325,12 +325,12 @@ class GenericAsyncSqlRepository(
         return persistence.to_domain()
 
     @trace_repository_method(tracer)
-    async def delete_by_pk(self, pk: UUID4) -> None:
+    async def delete_by_pk(self, pk: UUID7) -> None:
         """
         Delete a record using its primary key.
 
         Args:
-        - pk (UUID4): The primary key to use to look up the record.
+        - pk (UUID7): The primary key to use to look up the record.
 
         """
         trace_attribute(Attributes.DB_PK, str(pk))
@@ -436,7 +436,7 @@ class GenericAsyncSqlRepository(
         return persistence.to_domain()
 
     @trace_repository_method(tracer)
-    async def get_all_pks(self) -> list[UUID4]:
+    async def get_all_pks(self) -> list[UUID7]:
         """
         Get all primary keys in the repository.
 
@@ -444,7 +444,7 @@ class GenericAsyncSqlRepository(
         method that requires primary keys.
 
         Returns:
-        - list[UUID4]: A list of all primary keys in the repository.
+        - list[UUID7]: A list of all primary keys in the repository.
 
         """
         query = select(self._persistence_cls.id)
@@ -452,12 +452,12 @@ class GenericAsyncSqlRepository(
         return [row[0] for row in result.fetchall()]
 
     @trace_repository_method(tracer)
-    async def bulk_update(self, pks: list[UUID4], **kwargs: object) -> int:
+    async def bulk_update(self, pks: list[UUID7], **kwargs: object) -> int:
         """
         Bulk update records by their primary keys.
 
         Args:
-        - pks (list[UUID4]): The primary keys of records to update.
+        - pks (list[UUID7]): The primary keys of records to update.
         - kwargs (object): The attributes to update.
 
         Returns:

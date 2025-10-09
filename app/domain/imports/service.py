@@ -4,7 +4,7 @@ import httpx
 from asyncpg.exceptions import DeadlockDetectedError  # type: ignore[import-untyped]
 from opentelemetry import trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from pydantic import UUID4
+from pydantic import UUID7
 from sqlalchemy.exc import DBAPIError
 
 from app.core.config import get_settings
@@ -44,24 +44,24 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow)
 
-    async def _get_import_record(self, import_record_id: UUID4) -> ImportRecord:
+    async def _get_import_record(self, import_record_id: UUID7) -> ImportRecord:
         """Get a single import by id."""
         return await self.sql_uow.imports.get_by_pk(import_record_id)
 
     @sql_unit_of_work
-    async def get_import_record(self, import_record_id: UUID4) -> ImportRecord:
+    async def get_import_record(self, import_record_id: UUID7) -> ImportRecord:
         """Get a single import by id."""
         return await self._get_import_record(import_record_id)
 
     @sql_unit_of_work
-    async def get_import_record_with_batches(self, pk: UUID4) -> ImportRecord:
+    async def get_import_record_with_batches(self, pk: UUID7) -> ImportRecord:
         """Get a single import, eager loading its batches."""
         return await self.sql_uow.imports.get_by_pk(
             pk, preload=["batches", "ImportBatch.status"]
         )
 
     @sql_unit_of_work
-    async def get_import_batch(self, import_batch_id: UUID4) -> ImportBatch:
+    async def get_import_batch(self, import_batch_id: UUID7) -> ImportBatch:
         """Get a single import batch."""
         return await self.sql_uow.imports.batches.get_by_pk(
             import_batch_id, preload=["status"]
@@ -70,7 +70,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
     @sql_unit_of_work
     async def get_import_result(
         self,
-        import_result_id: UUID4,
+        import_result_id: UUID7,
     ) -> ImportResult:
         """Get a single import result by id."""
         return await self.sql_uow.imports.batches.results.get_by_pk(import_result_id)
@@ -78,7 +78,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
     @sql_unit_of_work
     async def get_import_result_with_batch(
         self,
-        import_result_id: UUID4,
+        import_result_id: UUID7,
     ) -> ImportResult:
         """Get a single import result by id."""
         return await self.sql_uow.imports.batches.results.get_by_pk(
@@ -87,8 +87,8 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
 
     @sql_unit_of_work
     async def get_imported_references_from_batch(
-        self, import_batch_id: UUID4
-    ) -> set[UUID4]:
+        self, import_batch_id: UUID7
+    ) -> set[UUID7]:
         """Get all imported references from a batch."""
         results = await self.sql_uow.imports.batches.results.get_by_filter(
             import_batch_id=import_batch_id,
@@ -103,7 +103,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
 
     @sql_unit_of_work
     async def get_import_batch_with_results(
-        self, import_batch_id: UUID4
+        self, import_batch_id: UUID7
     ) -> ImportBatch:
         """Get a single import batch with preloaded results."""
         return await self.sql_uow.imports.batches.get_by_pk(
@@ -130,7 +130,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
 
     @sql_unit_of_work
     async def update_import_result(
-        self, import_result_id: UUID4, **kwargs: object
+        self, import_result_id: UUID7, **kwargs: object
     ) -> ImportResult:
         """Update the status of an import result."""
         return await self.sql_uow.imports.batches.results.update_by_pk(
@@ -251,7 +251,7 @@ This should not happen.
     @sql_unit_of_work
     async def get_import_results(
         self,
-        import_batch_id: UUID4,
+        import_batch_id: UUID7,
         result_status: ImportResultStatus | None = None,
     ) -> list[ImportResult]:
         """Get a list of results for an import batch."""
@@ -261,7 +261,7 @@ This should not happen.
         )
 
     @sql_unit_of_work
-    async def finalise_record(self, import_record_id: UUID4) -> None:
+    async def finalise_record(self, import_record_id: UUID7) -> None:
         """Finalise an import record."""
         await self.sql_uow.imports.update_by_pk(
             import_record_id, status=ImportRecordStatus.COMPLETED

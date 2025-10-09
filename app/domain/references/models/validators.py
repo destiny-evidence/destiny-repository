@@ -10,7 +10,7 @@ from typing import Self
 from uuid import UUID
 
 import destiny_sdk
-from pydantic import UUID4, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import UUID7, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
@@ -153,7 +153,7 @@ class ReferenceCreateResult(BaseModel):
         default_factory=list,
         description="A list of errors encountered during the creation process",
     )
-    reference_id: UUID4 | None = Field(
+    reference_id: UUID7 | None = Field(
         default=None,
         description="The ID of the created reference, if created",
     )

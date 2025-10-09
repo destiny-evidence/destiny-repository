@@ -9,7 +9,7 @@ from uuid import UUID
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import AsyncSearch, Q
 from opentelemetry import trace
-from pydantic import UUID4
+from pydantic import UUID7
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -450,7 +450,7 @@ class EnhancementRequestSQLRepository(
         )
 
     async def get_pending_enhancement_status_set(
-        self, enhancement_request_id: UUID4
+        self, enhancement_request_id: UUID7
     ) -> set[PendingEnhancementStatus]:
         """
         Get current underlying statuses for an enhancement request.
@@ -470,7 +470,7 @@ class EnhancementRequestSQLRepository(
 
     async def get_by_pk(
         self,
-        pk: UUID4,
+        pk: UUID7,
         preload: list[EnhancementRequestSQLPreloadable] | None = None,
     ) -> DomainEnhancementRequest:
         """Override to include derived enhancement request status."""

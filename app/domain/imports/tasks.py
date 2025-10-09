@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from opentelemetry import trace
-from pydantic import UUID4
+from pydantic import UUID7
 
 from app.core.telemetry.attributes import (
     Attributes,
@@ -70,7 +70,7 @@ async def get_reference_service(
 
 
 @broker.task
-async def distribute_import_batch(import_batch_id: UUID4) -> None:
+async def distribute_import_batch(import_batch_id: UUID7) -> None:
     """Async logic for processing an import batch."""
     name_span(f"Distribute import batch {import_batch_id}")
     trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_batch_id))
@@ -83,7 +83,7 @@ async def distribute_import_batch(import_batch_id: UUID4) -> None:
 
 @broker.task
 async def import_reference(
-    import_result_id: UUID4, content: str, line_number: int, remaining_retries: int
+    import_result_id: UUID7, content: str, line_number: int, remaining_retries: int
 ) -> None:
     """Async logic for importing a reference."""
     name_span(f"Import line {line_number}")

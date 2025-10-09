@@ -89,7 +89,7 @@ async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
     # Update SQL data - change visibility and add another identifier
     reference.visibility = Visibility.RESTRICTED
     new_identifier = SQLExternalIdentifier(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         reference_id=reference_id,
         identifier_type="pm_id",
         identifier="12345678",
@@ -280,7 +280,7 @@ async def test_repair_reference_index_with_rebuild(
     await ReferenceDocument.init(using=es_client)
 
     # Add sample data to SQL
-    reference_id = uuid.uuid4()
+    reference_id = uuid.uuid7()
     reference = SQLReference(
         id=reference_id,
         visibility=Visibility.PUBLIC,
@@ -289,7 +289,7 @@ async def test_repair_reference_index_with_rebuild(
 
     # Add identifier
     identifier = SQLExternalIdentifier(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         reference_id=reference_id,
         identifier_type="doi",
         identifier="10.1234/test-reference",
@@ -298,7 +298,7 @@ async def test_repair_reference_index_with_rebuild(
 
     # Add enhancement
     enhancement = SQLEnhancement(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         reference_id=reference_id,
         visibility=Visibility.PUBLIC,
         source="test_source",
@@ -339,7 +339,7 @@ async def test_repair_robot_automation_percolation_index_with_rebuild(
     await RobotAutomationPercolationDocument.init(using=es_client)
 
     # Add sample robot and robot automation to SQL
-    robot_id = uuid.uuid4()
+    robot_id = uuid.uuid7()
     robot = SQLRobot(
         id=robot_id,
         base_url="http://test-robot.com/",
@@ -352,7 +352,7 @@ async def test_repair_robot_automation_percolation_index_with_rebuild(
     await session.commit()
 
     # Add robot automation
-    automation_id = uuid.uuid4()
+    automation_id = uuid.uuid7()
     automation = SQLRobotAutomation(
         id=automation_id,
         robot_id=robot_id,

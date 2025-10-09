@@ -3,7 +3,7 @@
 from enum import StrEnum, auto
 from typing import Annotated, Literal
 
-from pydantic import UUID4, BaseModel, Field, field_validator
+from pydantic import UUID7, BaseModel, Field, field_validator
 
 
 class ExternalIdentifierType(StrEnum):
@@ -102,6 +102,6 @@ class LinkedExternalIdentifier(BaseModel):
         description="The identifier of the reference.",
         discriminator="identifier_type",
     )
-    reference_id: UUID4 = Field(
+    reference_id: UUID7 = Field(
         description="The ID of the reference this identifier identifies."
     )

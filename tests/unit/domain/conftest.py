@@ -1,4 +1,4 @@
-from uuid import UUID, uuid4
+from uuid import UUID, uuid7
 
 import pytest
 
@@ -242,7 +242,7 @@ def fake_import_batch():
     def _fake_import_batch(
         id: UUID, status: ImportBatchStatus, import_results: list[ImportResult]
     ) -> ImportBatch:
-        import_record_id = uuid4()
+        import_record_id = uuid7()
 
         return ImportBatch(
             id=id,
