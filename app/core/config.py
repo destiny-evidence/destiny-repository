@@ -185,6 +185,8 @@ class OTelConfig(BaseModel):
     log_endpoint: HttpUrl
     api_key: str | None = None
 
+    timeout: int = 30
+
     # Flags to control low-level automatic instrumentation
     instrument_sql: bool = False
 
