@@ -55,6 +55,7 @@ logger.info("Current working directory: %s", _cwd)
 app_port = 8000
 bucket_name = "test"
 host_name = os.getenv("DOCKER_HOSTNAME", "host.docker.internal")
+container_prefix = "e2e"
 
 
 def print_logs(name: str, container: DockerContainer):
@@ -128,6 +129,7 @@ def minio_proxy():
         DockerContainer("python:3.11-slim")
         .with_command(["python", "-c", proxy_script])
         .with_exposed_ports(8080)
+        .with_name(f"{container_prefix}-minio-proxy")
         .waiting_for(HttpWaitStrategy(port=8080, path="/health"))
     )
     with container as proxy:
@@ -149,7 +151,9 @@ async def minio_proxy_client(minio_proxy: DockerContainer):
 def postgres():
     """Postgres container with alembic migrations applied."""
     logger.info("Creating Postgres container...")
-    with PostgresContainer("postgres:17", driver="asyncpg") as postgres:
+    with PostgresContainer("postgres:17", driver="asyncpg").with_name(
+        f"{container_prefix}-postgres"
+    ) as postgres:
         logger.info("Applying alembic migrations.")
         alembic_config = alembic_config_from_url(postgres.get_connection_url())
         upgrade(alembic_config, "head")
@@ -204,7 +208,7 @@ async def elasticsearch():
         # - Elasticsearch doesn't have enough memory allocated (mem_limit is too low)
         # Fun!
         mem_limit="2g",
-    ) as elasticsearch:
+    ).with_name(f"{container_prefix}-elasticsearch") as elasticsearch:
         logger.info("Creating Elasticsearch indices...")
         async with AsyncElasticsearch(elasticsearch.get_url()) as client:
             await create_test_indices(client)
@@ -235,7 +239,7 @@ async def es_lifecycle(elasticsearch: ElasticSearchContainer):
 def minio():
     """MinIO container with default credentials."""
     logger.info("Starting MinIO container...")
-    with MinioContainer("minio/minio") as minio:
+    with MinioContainer("minio/minio").with_name(f"{container_prefix}-minio") as minio:
         logger.info("MinIO container ready.")
         yield minio
 
@@ -261,9 +265,11 @@ def minio_lifecycle(minio: MinioContainer):
 def rabbitmq():
     """RabbitMQ container."""
     logger.info("Creating RabbitMQ container...")
-    with RabbitMqContainer("rabbitmq:3-management", port=5672).waiting_for(
-        LogMessageWaitStrategy("Server startup complete")
-    ) as rabbitmq:
+    with (
+        RabbitMqContainer("rabbitmq:3-management", port=5672)
+        .waiting_for(LogMessageWaitStrategy("Server startup complete"))
+        .with_name(f"{container_prefix}-rabbitmq") as rabbitmq
+    ):
         logger.info("RabbitMQ container ready.")
         yield rabbitmq
 
@@ -353,6 +359,7 @@ async def worker(
             rabbitmq,
             minio,
         )
+        .with_name(f"{container_prefix}-worker")
         .with_command(
             [
                 "uv",
@@ -398,6 +405,7 @@ async def app(  # noqa: PLR0913
             minio,
         )
         .with_env("APP_NAME", "destiny-app")
+        .with_name(f"{container_prefix}-app")
         .with_exposed_ports(app_port)
         .with_command(
             [

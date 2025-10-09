@@ -230,3 +230,5 @@ uv run pytest tests/e2e
 ```
 
 When first running, add the `--build` flag to build the application image. This can also be used to rebuild the image - not generally necessary as the code is mounted but is useful when things like Dockerfiles or uv dependencies change.
+
+Add `--log-level-cli info` to see logs from the app and worker containers alongside the test output.
