@@ -19,6 +19,7 @@ from tests.e2e.utils import (
     poll_batch_status,
     poll_duplicate_process,
     poll_pending_enhancement,
+    refresh_reference_index,
     submit_happy_import_batch,
 )
 
@@ -65,7 +66,7 @@ async def test_happy_import(  # noqa: PLR0913
     assert len(reference_ids) == n_refs
 
     # Check the references are in Elasticsearch
-    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+    await refresh_reference_index(es_client)
     es_result = await es_client.count(index=ReferenceDocument.Index.name)
     assert es_result["count"] == n_refs
 
@@ -73,11 +74,11 @@ async def test_happy_import(  # noqa: PLR0913
     # unsearchable (as the data is random so may not have everything required).
     for reference in reference_ids:
         decision = await poll_duplicate_process(pg_session, reference)
-        assert decision["duplicate_determination"] in (
+        assert decision.duplicate_determination in (
             DuplicateDetermination.CANONICAL,
             DuplicateDetermination.UNSEARCHABLE,
         )
-        assert decision["active_decision"]
+        assert decision.active_decision
 
     # Check automations have triggered
     for reference in reference_ids:

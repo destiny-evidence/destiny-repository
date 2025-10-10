@@ -8,11 +8,42 @@ from uuid import UUID
 import httpx
 from destiny_sdk.enhancements import EnhancementFileInput
 from destiny_sdk.references import ReferenceFileInput
-from sqlalchemy import text
+from elasticsearch import AsyncElasticsearch
+from sqlalchemy import select, text
+from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import retry, stop_after_attempt, wait_fixed
 
+from app.domain.references.models.es import (
+    ReferenceDocument,
+    RobotAutomationPercolationDocument,
+)
 from app.domain.references.models.models import DuplicateDetermination, Reference
+from app.domain.references.models.sql import ReferenceDuplicateDecision
+
+
+class TestPollingExhaustedError(Exception):
+    """Error raised when polling fails."""
+
+
+async def refresh_reference_index(es_client: AsyncElasticsearch) -> None:
+    """
+    Refresh the reference index.
+
+    This just compresses race conditions in tests that check ES state immediately
+    after an operation that modifies it.
+    """
+    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+
+
+async def refresh_robot_automation_index(es_client: AsyncElasticsearch) -> None:
+    """
+    Refresh the robot automation index.
+
+    This just compresses race conditions in tests that check ES state immediately
+    after an operation that modifies it.
+    """
+    await es_client.indices.refresh(index=RobotAutomationPercolationDocument.Index.name)
 
 
 async def submit_happy_import_batch(
@@ -70,7 +101,7 @@ async def poll_batch_status(
         "partially_failed",
     ):
         msg = "Batch not yet complete"
-        raise Exception(msg)  # noqa: TRY002
+        raise TestPollingExhaustedError(msg)
     return summary
 
 
@@ -78,24 +109,25 @@ async def poll_batch_status(
 async def poll_duplicate_process(
     session: AsyncSession,
     reference_id: UUID,
-) -> Mapping:
-    """Poll the duplicate process until it reaches a terminal status."""
-    pg_result = await session.execute(
-        text(
-            "SELECT * FROM reference_duplicate_decision "
-            "WHERE reference_id=:reference_id;"
-        ),
-        {"reference_id": reference_id},
+    required_state: DuplicateDetermination | None = None,
+) -> ReferenceDuplicateDecision:
+    """Poll the duplicate process until it is in the required state."""
+    query = select(ReferenceDuplicateDecision).where(
+        ReferenceDuplicateDecision.reference_id == reference_id,
     )
-    decision = pg_result.mappings().first()
+    if required_state:
+        query = query.where(
+            ReferenceDuplicateDecision.duplicate_determination == required_state
+        )
+    else:
+        query = query.where(ReferenceDuplicateDecision.active_decision)
+    result = await session.execute(query)
+    try:
+        decision = result.scalar_one()
+    except NoResultFound as exc:
+        msg = "Reference duplicate decision not yet in required state"
+        raise TestPollingExhaustedError(msg) from exc
 
-    if (
-        not decision
-        or decision["duplicate_determination"]
-        not in DuplicateDetermination.get_terminal_states()
-    ):
-        msg = "Duplicate process not yet complete"
-        raise Exception(msg)  # noqa: TRY002
     return decision
 
 
@@ -114,13 +146,14 @@ async def poll_pending_enhancement(
     pending_enhancement = pg_result.mappings().first()
     if not pending_enhancement:
         msg = "Pending enhancement does not yet exist"
-        raise Exception(msg)  # noqa: TRY002
+        raise TestPollingExhaustedError(msg)
     return pending_enhancement
 
 
 async def import_references(
     client: httpx.AsyncClient,
     pg_session: AsyncSession,
+    es_client: AsyncElasticsearch,
     references: list[Reference],
     get_import_file_signed_url: Callable[
         [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
@@ -151,6 +184,8 @@ async def import_references(
         )
         summary = await poll_batch_status(client, import_record_id, import_batch_id)
 
+    await refresh_reference_index(es_client)
+
     assert summary["import_batch_status"] == "completed"
     assert summary["results"]["completed"] == len(references)
 
@@ -165,5 +200,7 @@ async def import_references(
     reference_ids = {row[0] for row in pg_result.all()}
     for reference_id in reference_ids:
         await poll_duplicate_process(pg_session, reference_id)
+
+    await refresh_reference_index(es_client)
 
     return reference_ids
