@@ -11,6 +11,7 @@ from destiny_sdk.enhancements import EnhancementContent, EnhancementType  # noqa
 from destiny_sdk.identifiers import ExternalIdentifier, ExternalIdentifierType
 from pydantic import (
     UUID4,
+    UUID7,
     BaseModel,
     Field,
     TypeAdapter,
@@ -534,7 +535,7 @@ class RobotAutomation(DomainBaseModel, SQLAttributeMixin):
     is sent to the specified robot to perform the enhancement.
     """
 
-    robot_id: UUID4 = Field(
+    robot_id: UUID4 | UUID7 = Field(
         description="The ID of the robot that will be used to enhance the reference."
     )
     query: dict[str, Any] = Field(
@@ -545,8 +546,8 @@ class RobotAutomation(DomainBaseModel, SQLAttributeMixin):
 class RobotAutomationPercolationResult(BaseModel):
     """Result of a percolation query against RobotAutomations."""
 
-    robot_id: UUID4
-    reference_ids: set[UUID4]
+    robot_id: UUID4 | UUID7
+    reference_ids: set[UUID4 | UUID7]
 
 
 class CandidateCanonicalSearchFields(ProjectedBaseModel):
@@ -587,7 +588,7 @@ class ReferenceDuplicateDeterminationResult(BaseModel):
         DuplicateDetermination.DUPLICATE,
         DuplicateDetermination.UNRESOLVED,
     ]
-    canonical_reference_id: UUID4 | None = Field(
+    canonical_reference_id: UUID4 | UUID7 | None = Field(
         default=None,
         description="The ID of the determined canonical reference.",
     )
@@ -617,8 +618,10 @@ class ReferenceDuplicateDeterminationResult(BaseModel):
 class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
     """Model representing a decision on whether a reference is a duplicate."""
 
-    reference_id: UUID4 = Field(description="The ID of the reference being evaluated.")
-    enhancement_id: UUID4 | None = Field(
+    reference_id: UUID4 | UUID7 = Field(
+        description="The ID of the reference being evaluated."
+    )
+    enhancement_id: UUID4 | UUID7 | None = Field(
         default=None,
         description=(
             "The ID of the enhancement that triggered this duplicate decision, if any."
@@ -628,7 +631,7 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         default=False,
         description="Whether this is the active decision for the reference.",
     )
-    candidate_canonical_ids: list[UUID4] = Field(
+    candidate_canonical_ids: list[UUID4 | UUID7] = Field(
         default_factory=list,
         description="A list of candidate canonical IDs for the reference.",
     )
@@ -636,7 +639,7 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         default=DuplicateDetermination.PENDING,
         description="The duplicate status of the reference.",
     )
-    canonical_reference_id: UUID4 | None = Field(
+    canonical_reference_id: UUID4 | UUID7 | None = Field(
         default=None,
         description="The ID of the canonical reference this reference duplicates.",
     )
@@ -690,22 +693,22 @@ class PendingEnhancementStatus(StrEnum):
 class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
     """A pending enhancement."""
 
-    reference_id: UUID4 = Field(
+    reference_id: UUID4 | UUID7 = Field(
         ...,
         description="The ID of the reference to be enhanced.",
     )
-    robot_id: UUID4 = Field(
+    robot_id: UUID4 | UUID7 = Field(
         ...,
         description="The ID of the robot that will perform the enhancement.",
     )
-    enhancement_request_id: UUID4 = Field(
+    enhancement_request_id: UUID4 | UUID7 = Field(
         ...,
         description=(
             "The ID of the batch enhancement request that this pending enhancement"
             " belongs to."
         ),
     )
-    robot_enhancement_batch_id: UUID4 | None = Field(
+    robot_enhancement_batch_id: UUID4 | UUID7 | None = Field(
         default=None,
         description=(
             "The ID of the robot enhancement batch that this pending enhancement"
@@ -721,7 +724,7 @@ class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
 class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):
     """A batch of references to be enhanced by a robot."""
 
-    robot_id: UUID4 = Field(
+    robot_id: UUID4 | UUID7 = Field(
         ...,
         description="The ID of the robot that will perform the enhancement.",
     )

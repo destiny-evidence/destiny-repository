@@ -57,12 +57,12 @@ def bibliographic_enhancement(sample_authorship):
     )
 
     return Enhancement(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         source="test_source",
         visibility=Visibility.PUBLIC,
         robot_version="1.0.0",
         content=content,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid.uuid7(),
     )
 
 
@@ -76,11 +76,11 @@ def abstract_enhancement():
     )
 
     return Enhancement(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         source="test_source",
         visibility=Visibility.PUBLIC,
         content=content,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid.uuid7(),
     )
 
 
@@ -92,9 +92,9 @@ def doi_identifier():
         identifier_type=ExternalIdentifierType.DOI,
     )
     return LinkedExternalIdentifier(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         identifier=identifier,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid.uuid7(),
     )
 
 
@@ -106,9 +106,9 @@ def pubmed_identifier():
         identifier_type=ExternalIdentifierType.PM_ID,
     )
     return LinkedExternalIdentifier(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         identifier=identifier,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid.uuid7(),
     )
 
 
@@ -120,9 +120,9 @@ def openalex_identifier():
         identifier_type=ExternalIdentifierType.OPEN_ALEX,
     )
     return LinkedExternalIdentifier(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         identifier=identifier,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid.uuid7(),
     )
 
 
@@ -135,9 +135,9 @@ def other_identifier():
         other_identifier_name="ISBN",
     )
     return LinkedExternalIdentifier(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         identifier=identifier,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid.uuid7(),
     )
 
 
@@ -145,7 +145,7 @@ def other_identifier():
 def reference_with_enhancements(bibliographic_enhancement, abstract_enhancement):
     """Create a reference with enhancements."""
     return Reference(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         visibility=Visibility.PUBLIC,
         enhancements=[bibliographic_enhancement, abstract_enhancement],
         identifiers=[],
@@ -158,7 +158,7 @@ def reference_with_identifiers(
 ):
     """Create a reference with identifiers."""
     return Reference(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         visibility=Visibility.PUBLIC,
         enhancements=[],
         identifiers=[
@@ -175,7 +175,7 @@ def complete_reference(
     bibliographic_enhancement, abstract_enhancement, doi_identifier, pubmed_identifier
 ):
     """Create a reference with both enhancements and identifiers."""
-    ref_id = uuid.uuid4()
+    ref_id = uuid.uuid7()
 
     # Update enhancement reference IDs to match
     bibliographic_enhancement.reference_id = ref_id
@@ -224,11 +224,11 @@ class TestCandidateCanonicalSearchFieldsProjection:
         )
 
         enhancement1 = Enhancement(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             source="test_source",
             visibility=Visibility.PUBLIC,
             content=content1,
-            reference_id=uuid.uuid4(),
+            reference_id=uuid.uuid7(),
         )
 
         # Test 2: Publication date fallback when publication_year is None
@@ -240,11 +240,11 @@ class TestCandidateCanonicalSearchFieldsProjection:
         )
 
         enhancement2 = Enhancement(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             source="fallback_source",
             visibility=Visibility.PUBLIC,
             content=content2,
-            reference_id=uuid.uuid4(),
+            reference_id=uuid.uuid7(),
         )
 
         # Test 3: Multiple enhancements with hydration behavior
@@ -254,11 +254,11 @@ class TestCandidateCanonicalSearchFieldsProjection:
         )
 
         enhancement3 = Enhancement(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             source="hydration_source1",
             visibility=Visibility.PUBLIC,
             content=content3,
-            reference_id=uuid.uuid4(),
+            reference_id=uuid.uuid7(),
         )
 
         content4 = destiny_sdk.enhancements.BibliographicMetadataEnhancement(
@@ -269,16 +269,16 @@ class TestCandidateCanonicalSearchFieldsProjection:
         )
 
         enhancement4 = Enhancement(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             source="hydration_source2",
             visibility=Visibility.PUBLIC,
             content=content4,
-            reference_id=uuid.uuid4(),
+            reference_id=uuid.uuid7(),
         )
 
         # Test complete enhancement
         reference1 = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[enhancement1],
             identifiers=[],
@@ -297,7 +297,7 @@ class TestCandidateCanonicalSearchFieldsProjection:
 
         # Test publication date fallback
         reference2 = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[enhancement2],
             identifiers=[],
@@ -310,7 +310,7 @@ class TestCandidateCanonicalSearchFieldsProjection:
 
         # Test multiple enhancements hydration
         reference3 = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[enhancement3, enhancement4],
             identifiers=[],
@@ -327,7 +327,7 @@ class TestCandidateCanonicalSearchFieldsProjection:
         """Test extracting candidacy fingerprint with no or None enhancements."""
         # Test with empty enhancements list
         reference_empty = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[],
             identifiers=[],
@@ -343,7 +343,7 @@ class TestCandidateCanonicalSearchFieldsProjection:
 
         # Test with None enhancements
         reference_none = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=None,
             identifiers=[],
@@ -378,27 +378,27 @@ class TestDeduplicatedReferenceProjection:
         """Test deduplication with duplicate references."""
         # Create duplicate reference
         duplicate_enhancement = Enhancement(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             source="duplicate_source",
             visibility=Visibility.PUBLIC,
             content=destiny_sdk.enhancements.BibliographicMetadataEnhancement(
                 enhancement_type=EnhancementType.BIBLIOGRAPHIC,
                 title="Duplicate Title",
             ),
-            reference_id=uuid.uuid4(),
+            reference_id=uuid.uuid7(),
         )
 
         duplicate_identifier = LinkedExternalIdentifier(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             identifier=destiny_sdk.identifiers.DOIIdentifier(
                 identifier="10.1000/duplicate",
                 identifier_type=ExternalIdentifierType.DOI,
             ),
-            reference_id=uuid.uuid4(),
+            reference_id=uuid.uuid7(),
         )
 
         duplicate_reference = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[duplicate_enhancement],
             identifiers=[duplicate_identifier],
@@ -435,7 +435,7 @@ class TestDeduplicatedReferenceProjection:
     def test_get_from_reference_none_enhancements_preserved(self):
         """Test that None enhancements are preserved (not preloaded)."""
         reference = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=None,  # Not preloaded
             identifiers=[],
@@ -449,7 +449,7 @@ class TestDeduplicatedReferenceProjection:
     def test_get_from_reference_none_identifiers_preserved(self):
         """Test that None identifiers are preserved (not preloaded)."""
         reference = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[],
             identifiers=None,  # Not preloaded
@@ -464,18 +464,18 @@ class TestDeduplicatedReferenceProjection:
         """Test deduplication with nested duplicate references."""
         # Create a nested duplicate
         nested_enhancement = Enhancement(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             source="nested_source",
             visibility=Visibility.PUBLIC,
             content=destiny_sdk.enhancements.BibliographicMetadataEnhancement(
                 enhancement_type=EnhancementType.BIBLIOGRAPHIC,
                 title="Nested Title",
             ),
-            reference_id=uuid.uuid4(),
+            reference_id=uuid.uuid7(),
         )
 
         nested_reference = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[nested_enhancement],
             identifiers=[],
@@ -484,18 +484,18 @@ class TestDeduplicatedReferenceProjection:
 
         # Create intermediate duplicate with nested duplicate
         intermediate_enhancement = Enhancement(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             source="intermediate_source",
             visibility=Visibility.PUBLIC,
             content=destiny_sdk.enhancements.BibliographicMetadataEnhancement(
                 enhancement_type=EnhancementType.BIBLIOGRAPHIC,
                 title="Intermediate Title",
             ),
-            reference_id=uuid.uuid4(),
+            reference_id=uuid.uuid7(),
         )
 
         intermediate_reference = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[intermediate_enhancement],
             identifiers=[],

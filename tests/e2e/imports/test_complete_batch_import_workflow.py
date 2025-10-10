@@ -178,7 +178,7 @@ def test_complete_batch_import_workflow():  # noqa: PLR0915
         assert response.status_code == 422
         # 2.c: Wrong import record
         response = client.post(
-            f"/imports/records/{(u := uuid.uuid4())}/batches/",
+            f"/imports/records/{(u := uuid.uuid7())}/batches/",
             json={
                 "storage_url": url,
             },

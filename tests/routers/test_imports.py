@@ -376,6 +376,6 @@ async def test_missing_import_record(
     session.add(valid_import)
     await session.commit()
 
-    response = await client.get(f"/v1/imports/records/{(_id:=uuid.uuid4())}/batches/")
+    response = await client.get(f"/v1/imports/records/{(_id:=uuid.uuid7())}/batches/")
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.json()["detail"] == f"ImportRecord with id {_id} does not exist."

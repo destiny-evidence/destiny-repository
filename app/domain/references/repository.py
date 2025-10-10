@@ -1,15 +1,14 @@
 """Repositories for references and associated models."""
 
 import math
+import uuid
 from abc import ABC
 from collections.abc import Sequence
 from typing import Literal
-from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import AsyncSearch, Q
 from opentelemetry import trace
-from pydantic import UUID4
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -116,7 +115,7 @@ class ReferenceSQLRepository(
     @trace_repository_method(tracer)
     async def get_hydrated(
         self,
-        reference_ids: list[UUID],
+        reference_ids: list[uuid.UUID],
         enhancement_types: list[str] | None = None,
         external_identifier_types: list[str] | None = None,
     ) -> list[DomainReference]:
@@ -212,7 +211,7 @@ class ReferenceESRepository(
     async def search_for_candidate_canonicals(
         self,
         search_fields: CandidateCanonicalSearchFields,
-        reference_id: UUID,
+        reference_id: uuid.UUID,
     ) -> list[ESSearchResult]:
         """
         Fuzzy match candidate fingerprints to existing references.
@@ -450,7 +449,7 @@ class EnhancementRequestSQLRepository(
         )
 
     async def get_pending_enhancement_status_set(
-        self, enhancement_request_id: UUID4
+        self, enhancement_request_id: uuid.UUID
     ) -> set[PendingEnhancementStatus]:
         """
         Get current underlying statuses for an enhancement request.
@@ -470,7 +469,7 @@ class EnhancementRequestSQLRepository(
 
     async def get_by_pk(
         self,
-        pk: UUID4,
+        pk: uuid.UUID,
         preload: list[EnhancementRequestSQLPreloadable] | None = None,
     ) -> DomainEnhancementRequest:
         """Override to include derived enhancement request status."""

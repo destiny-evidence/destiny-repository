@@ -19,13 +19,13 @@ def test_bibliographic_metadata_enhancement_valid():
         title="Test Title",
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         source="test_source",
         visibility="public",
         robot_version="1.0",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.BIBLIOGRAPHIC,
         content=bibliographic,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid.uuid7(),
     )
     assert (
         enhancement.content.enhancement_type
@@ -41,13 +41,13 @@ def test_abstract_content_enhancement_valid():
         abstract="This is a test abstract.",
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         source="test_source",
         visibility="public",
         robot_version="2.0",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.ABSTRACT,
         content=abstract_content,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid.uuid7(),
     )
     assert enhancement.content.abstract == "This is a test abstract."
 
@@ -67,13 +67,13 @@ def test_annotation_enhancement_valid():
         annotations=[annotation1],
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         source="test_source",
         visibility="public",
         robot_version="1.5",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.ANNOTATION,
         content=annotations_content,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid.uuid7(),
     )
     assert enhancement.content.annotations[0].label == "Machine Learning"
 
@@ -93,13 +93,13 @@ def test_location_enhancement_valid():
         locations=[location],
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         source="test_source",
         visibility="public",
         robot_version="1.2",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.LOCATION,
         content=location_content,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid.uuid7(),
     )
     assert enhancement.content.locations[0].license == "cc-by"
 

@@ -1,11 +1,10 @@
 """Import tasks module for the DESTINY Climate and Health Repository API."""
 
+import uuid
 from collections.abc import AsyncGenerator, Iterable
 from contextlib import asynccontextmanager
-from uuid import UUID
 
 from opentelemetry import trace
-from pydantic import UUID4
 from structlog.contextvars import bound_contextvars
 
 from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
@@ -85,7 +84,7 @@ async def get_robot_request_dispatcher() -> RobotRequestDispatcher:
 
 @broker.task
 async def collect_and_dispatch_references_for_enhancement(
-    enhancement_request_id: UUID4,
+    enhancement_request_id: uuid.UUID,
 ) -> None:
     """Async logic for dispatching a enhancement request."""
     logger.info("Processing enhancement request")
@@ -128,7 +127,7 @@ async def collect_and_dispatch_references_for_enhancement(
 
 @broker.task
 async def validate_and_import_enhancement_result(
-    enhancement_request_id: UUID4,
+    enhancement_request_id: uuid.UUID,
 ) -> None:
     """Async logic for validating and importing an enhancement result."""
     logger.info("Processing enhancement request result")
@@ -204,7 +203,7 @@ async def validate_and_import_enhancement_result(
 
 @broker.task
 async def validate_and_import_robot_enhancement_batch_result(
-    robot_enhancement_batch_id: UUID,
+    robot_enhancement_batch_id: uuid.UUID,
 ) -> None:
     """Async logic for validating and importing a robot enhancement batch result."""
     logger.info("Processing robot enhancement batch result")
@@ -323,7 +322,7 @@ async def repair_robot_automation_percolation_index() -> None:
 
 @broker.task
 async def process_reference_duplicate_decision(
-    reference_duplicate_decision_id: UUID4,
+    reference_duplicate_decision_id: uuid.UUID,
 ) -> None:
     """Task to process a reference duplicate decision."""
     logger.info(
@@ -358,10 +357,10 @@ async def process_reference_duplicate_decision(
 @tracer.start_as_current_span("Detect and dispatch robot automations")
 async def detect_and_dispatch_robot_automations(
     reference_service: ReferenceService,
-    reference_ids: Iterable[UUID4] | None = None,
-    enhancement_ids: Iterable[UUID4] | None = None,
+    reference_ids: Iterable[uuid.UUID] | None = None,
+    enhancement_ids: Iterable[uuid.UUID] | None = None,
     source_str: str | None = None,
-    skip_robot_id: UUID4 | None = None,
+    skip_robot_id: uuid.UUID | None = None,
 ) -> list[EnhancementRequest]:
     """
     Request default enhancements for a set of references.

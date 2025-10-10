@@ -26,14 +26,14 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
     Test the detect_and_dispatch_robot_automations task distributor.
     Only tests function signatures, functionality itself is tested in the service layer.
     """
-    in_reference_ids = {uuid.uuid4(), uuid.uuid4()}
-    in_enhancement_ids = {uuid.uuid4(), uuid.uuid4()}
-    robot_id = uuid.uuid4()
+    in_reference_ids = {uuid.uuid7(), uuid.uuid7()}
+    in_enhancement_ids = {uuid.uuid7(), uuid.uuid7()}
+    robot_id = uuid.uuid7()
 
     expected_request = EnhancementRequest(
         reference_ids=in_reference_ids,
         robot_id=robot_id,
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         status="RECEIVED",
         source="test_source",
     )
@@ -109,11 +109,11 @@ def mock_es_uow_cm(monkeypatch):
 async def test_validate_and_import_robot_enhancement_batch_result(monkeypatch):
     """Test the task successfully validates and imports a robot enhancement batch."""
 
-    robot_enhancement_batch_id = uuid.uuid4()
-    robot_id = uuid.uuid4()
-    imported_enhancement_ids = {uuid.uuid4(), uuid.uuid4()}
-    successful_pending_enhancement_ids = {uuid.uuid4(), uuid.uuid4()}
-    failed_pending_enhancement_ids = {uuid.uuid4()}
+    robot_enhancement_batch_id = uuid.uuid7()
+    robot_id = uuid.uuid7()
+    imported_enhancement_ids = {uuid.uuid7(), uuid.uuid7()}
+    successful_pending_enhancement_ids = {uuid.uuid7(), uuid.uuid7()}
+    failed_pending_enhancement_ids = {uuid.uuid7()}
 
     mock_reference_service = AsyncMock()
     mock_reference_service.get_robot_enhancement_batch.return_value = (
@@ -199,14 +199,14 @@ async def test_validate_and_import_robot_enhancement_batch_result_handles_except
     This test verifies that when validation fails, the batch is marked as failed
     and the error is properly recorded - the key error handling behavior.
     """
-    robot_enhancement_batch_id = uuid.uuid4()
+    robot_enhancement_batch_id = uuid.uuid7()
     error_message = "Validation failed"
 
     mock_reference_service = AsyncMock()
     mock_reference_service.get_robot_enhancement_batch.return_value = (
         RobotEnhancementBatch(
             id=robot_enhancement_batch_id,
-            robot_id=uuid.uuid4(),
+            robot_id=uuid.uuid7(),
             pending_enhancements=[],
         )
     )
@@ -241,22 +241,22 @@ async def test_validate_and_import_robot_enhancement_batch_result_indexing_failu
     monkeypatch,
 ):
     """Test that indexing failures are properly handled without failing the batch."""
-    robot_enhancement_batch_id = uuid.uuid4()
+    robot_enhancement_batch_id = uuid.uuid7()
 
     mock_reference_service = AsyncMock()
 
     mock_batch = AsyncMock()
     mock_batch.id = robot_enhancement_batch_id
-    mock_batch.robot_id = uuid.uuid4()
-    mock_batch.pending_enhancements = [AsyncMock(reference_id=uuid.uuid4())]
+    mock_batch.robot_id = uuid.uuid7()
+    mock_batch.pending_enhancements = [AsyncMock(reference_id=uuid.uuid7())]
     mock_reference_service.get_robot_enhancement_batch.return_value = mock_batch
 
     validate_method = (
         mock_reference_service.validate_and_import_robot_enhancement_batch_result
     )
     validate_method.return_value = (
-        {uuid.uuid4()},  # imported_enhancement_ids
-        {uuid.uuid4()},  # successful_pending_enhancement_ids
+        {uuid.uuid7()},  # imported_enhancement_ids
+        {uuid.uuid7()},  # successful_pending_enhancement_ids
         set(),  # failed_pending_enhancement_ids
     )
 

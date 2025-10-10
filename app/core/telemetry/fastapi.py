@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 
 from fastapi import Request, Response
 from opentelemetry import trace
-from starlette.applications import Starlette
+from starlette.applications import ASGIApp
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Match
 from structlog.contextvars import (
@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 class FastAPITracingMiddleware(BaseHTTPMiddleware):
     """Middleware class to add query and path parameters to OpenTelemetry spans."""
 
-    def __init__(self, app: Starlette) -> None:
+    def __init__(self, app: ASGIApp) -> None:
         """
         Initialize the tracing middleware.
 

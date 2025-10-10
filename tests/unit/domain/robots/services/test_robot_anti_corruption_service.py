@@ -35,7 +35,7 @@ class TestRobotAntiCorruptionService:
     def robot_data(self):
         """Create SDK Robot test data."""
         return destiny_sdk.robots.Robot(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             name="Test Robot",
             base_url="https://example.com/robot",
             description="A test robot for unit testing",
@@ -46,7 +46,7 @@ class TestRobotAntiCorruptionService:
     def domain_robot(self):
         """Create a domain Robot instance."""
         return Robot(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             name="Test Robot",
             base_url=HttpUrl("https://example.com/robot"),
             description="A test robot for unit testing",

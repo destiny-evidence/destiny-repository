@@ -28,7 +28,7 @@ def _create_client() -> Client:
     return Client(
         base_url=HttpUrl(repo_url),
         secret_key="dummy_secret_key",
-        client_id=uuid.uuid4(),
+        client_id=uuid.uuid7(),
     )
 
 

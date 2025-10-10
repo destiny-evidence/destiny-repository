@@ -19,7 +19,7 @@ class DummyDomainRobot:
 
 @pytest.mark.asyncio
 async def test_robot_to_and_from_domain():
-    robot_id = uuid.uuid4()
+    robot_id = uuid.uuid7()
     dummy_robot = DummyDomainRobot(
         id=robot_id,
         base_url=HttpUrl("http://127.0.0.1:8000"),

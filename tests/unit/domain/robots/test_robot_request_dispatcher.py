@@ -25,7 +25,7 @@ def frozen_time(monkeypatch):
 @pytest.fixture
 def robot():
     return Robot(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         base_url="http://www.theres-a-robot-here.com/",
         client_secret="secret-secret",
         description="it's a robot",
@@ -41,8 +41,8 @@ async def test_send_enhancement_request_to_robot_happy_path(
     robot,
 ):
     enhancement_request = EnhancementRequest(
-        id=uuid.uuid4(),
-        reference_ids=[uuid.uuid4()],
+        id=uuid.uuid7(),
+        reference_ids=[uuid.uuid7()],
         robot_id=robot.id,
         enhancement_parameters={},
     )
@@ -87,8 +87,8 @@ async def test_send_enhancement_request_to_robot_request_error(httpx_mock, robot
     httpx_mock.add_exception(httpx.ConnectError(message="All connections refused"))
 
     enhancement_request = EnhancementRequest(
-        id=uuid.uuid4(),
-        reference_ids=[uuid.uuid4()],
+        id=uuid.uuid7(),
+        reference_ids=[uuid.uuid7()],
         robot_id=robot.id,
         enhancement_parameters={},
     )
@@ -114,8 +114,8 @@ async def test_send_enhancement_request_to_robot_503_response(httpx_mock, robot)
     httpx_mock.add_response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
     enhancement_request = EnhancementRequest(
-        id=uuid.uuid4(),
-        reference_ids=[uuid.uuid4()],
+        id=uuid.uuid7(),
+        reference_ids=[uuid.uuid7()],
         robot_id=robot.id,
         enhancement_parameters={},
     )
@@ -143,8 +143,8 @@ async def test_send_enhancement_request_to_robot_400_response(httpx_mock, robot)
     )
 
     enhancement_request = EnhancementRequest(
-        id=uuid.uuid4(),
-        reference_ids=[uuid.uuid4()],
+        id=uuid.uuid7(),
+        reference_ids=[uuid.uuid7()],
         robot_id=robot.id,
         enhancement_parameters={},
     )

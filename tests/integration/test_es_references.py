@@ -48,11 +48,11 @@ async def es_robot_automation_repository(
 async def reference() -> Reference:
     """Fixture to create a sample reference."""
     return Reference(
-        id=(r := uuid.uuid4()),
+        id=(r := uuid.uuid7()),
         visibility="public",
         identifiers=[
             {
-                "id": uuid.uuid4(),
+                "id": uuid.uuid7(),
                 "reference_id": r,
                 "identifier": {
                     "identifier_type": "pm_id",
@@ -60,7 +60,7 @@ async def reference() -> Reference:
                 },
             },
             {
-                "id": uuid.uuid4(),
+                "id": uuid.uuid7(),
                 "reference_id": r,
                 "identifier": {
                     "identifier_type": "doi",
@@ -68,7 +68,7 @@ async def reference() -> Reference:
                 },
             },
             {
-                "id": uuid.uuid4(),
+                "id": uuid.uuid7(),
                 "reference_id": r,
                 "identifier": {
                     "identifier_type": "other",
@@ -79,7 +79,7 @@ async def reference() -> Reference:
         ],
         enhancements=[
             {
-                "id": uuid.uuid4(),
+                "id": uuid.uuid7(),
                 "reference_id": r,
                 "content": {
                     "enhancement_type": "annotation",
@@ -98,7 +98,7 @@ async def reference() -> Reference:
                 "visibility": "public",
             },
             {
-                "id": uuid.uuid4(),
+                "id": uuid.uuid7(),
                 "reference_id": r,
                 "content": {
                     "enhancement_type": "location",
@@ -112,7 +112,7 @@ async def reference() -> Reference:
                 "visibility": "public",
             },
             {
-                "id": uuid.uuid4(),
+                "id": uuid.uuid7(),
                 "reference_id": r,
                 "content": {
                     "enhancement_type": "bibliographic",
@@ -153,7 +153,7 @@ async def abstract_robot_automation() -> RobotAutomation:
     and do not have an abstract enhancement.
     """
     return RobotAutomation(
-        robot_id=uuid.uuid4(),
+        robot_id=uuid.uuid7(),
         query={
             "bool": {
                 "must": [
@@ -192,7 +192,7 @@ async def in_out_robot_automation() -> RobotAutomation:
     are abstracts themselves.
     """
     return RobotAutomation(
-        robot_id=uuid.uuid4(),
+        robot_id=uuid.uuid7(),
         query={
             "bool": {
                 "should": [
@@ -276,7 +276,7 @@ async def taxonomy_robot_automation() -> RobotAutomation:
         }
 
     return RobotAutomation(
-        robot_id=uuid.uuid4(),
+        robot_id=uuid.uuid7(),
         query={
             "bool": {
                 "should": [
@@ -343,7 +343,7 @@ async def test_es_repository_not_found(
 ):
     """Test that getting a non-existent reference raises an error."""
     with pytest.raises(ESNotFoundError):
-        await es_reference_repository.get_by_pk(uuid.uuid4())
+        await es_reference_repository.get_by_pk(uuid.uuid7())
 
 
 async def test_es_repository_update_existing(
@@ -374,7 +374,7 @@ async def test_bulk_add(
 
     async def yield_reference() -> AsyncGenerator[Reference, None]:
         for _ in range(5):
-            ref_ids.append(uuid.uuid4())
+            ref_ids.append(uuid.uuid7())
             yield reference.model_copy(
                 update={"visibility": "public", "id": ref_ids[-1]}
             )
@@ -403,8 +403,8 @@ async def test_robot_automation_percolation(
 
     # Build a bunch of reference/enhancement variants
     abstract_enhancement = Enhancement(
-        id=uuid.uuid4(),
-        reference_id=uuid.uuid4(),
+        id=uuid.uuid7(),
+        reference_id=uuid.uuid7(),
         content={
             "enhancement_type": "abstract",
             "abstract": "This is a test abstract.",
@@ -414,8 +414,8 @@ async def test_robot_automation_percolation(
         visibility="public",
     )
     positive_in_out_annotation_enhancement = Enhancement(
-        id=uuid.uuid4(),
-        reference_id=uuid.uuid4(),
+        id=uuid.uuid7(),
+        reference_id=uuid.uuid7(),
         content={
             "enhancement_type": "annotation",
             "annotations": [
@@ -431,8 +431,8 @@ async def test_robot_automation_percolation(
         visibility="public",
     )
     negative_in_out_annotation_enhancement = Enhancement(
-        id=uuid.uuid4(),
-        reference_id=uuid.uuid4(),
+        id=uuid.uuid7(),
+        reference_id=uuid.uuid7(),
         content={
             "enhancement_type": "annotation",
             "annotations": [
@@ -448,8 +448,8 @@ async def test_robot_automation_percolation(
         visibility="public",
     )
     existential_in_out_annotation_enhancement = Enhancement(
-        id=uuid.uuid4(),
-        reference_id=uuid.uuid4(),
+        id=uuid.uuid7(),
+        reference_id=uuid.uuid7(),
         content={
             "enhancement_type": "annotation",
             "annotations": [
@@ -467,13 +467,13 @@ async def test_robot_automation_percolation(
     reference_no_abstract = reference.model_copy()
     reference_with_abstract = reference.model_copy(
         update={
-            "id": uuid.uuid4(),
+            "id": uuid.uuid7(),
             "enhancements": [*reference.enhancements, abstract_enhancement],  # type: ignore[misc]
         }
     )
     reference_no_abstract_no_doi = reference_no_abstract.model_copy(
         update={
-            "id": uuid.uuid4(),
+            "id": uuid.uuid7(),
             "identifiers": [
                 identifier
                 for identifier in (reference_no_abstract.identifiers or [])
@@ -484,7 +484,7 @@ async def test_robot_automation_percolation(
     # Add the abstract enhancement to the reference with no abstract
     reference_no_abstract_in_domain = reference.model_copy(
         update={
-            "id": uuid.uuid4(),
+            "id": uuid.uuid7(),
             "enhancements": [
                 *reference.enhancements,
                 positive_in_out_annotation_enhancement,
@@ -493,7 +493,7 @@ async def test_robot_automation_percolation(
     )
     reference_with_abstract_in_domain = reference_with_abstract.model_copy(
         update={
-            "id": uuid.uuid4(),
+            "id": uuid.uuid7(),
             "enhancements": [
                 *reference_with_abstract.enhancements,
                 positive_in_out_annotation_enhancement,
@@ -502,7 +502,7 @@ async def test_robot_automation_percolation(
     )
     reference_with_abstract_in_domain_two = reference_with_abstract.model_copy(
         update={
-            "id": uuid.uuid4(),
+            "id": uuid.uuid7(),
             "enhancements": [
                 *reference_with_abstract.enhancements,
                 existential_in_out_annotation_enhancement,
@@ -511,7 +511,7 @@ async def test_robot_automation_percolation(
     )
     reference_with_abstract_out_of_domain = reference_with_abstract.model_copy(
         update={
-            "id": uuid.uuid4(),
+            "id": uuid.uuid7(),
             "enhancements": [
                 *reference_with_abstract.enhancements,
                 negative_in_out_annotation_enhancement,
@@ -579,17 +579,17 @@ async def test_canonical_candidate_search(
 ):
     """Test searching for candidate canonical references by fingerprint."""
     # Create two similar references that should match the fingerprint
-    matching_ref1 = reference.model_copy(update={"id": uuid.uuid4()})
+    matching_ref1 = reference.model_copy(update={"id": uuid.uuid7()})
 
     # Similar reference with slight variations
     matching_ref2 = reference.model_copy(
         update={
-            "id": uuid.uuid4(),
+            "id": uuid.uuid7(),
             "enhancements": [
                 enhancement.model_copy(
                     update={
-                        "id": uuid.uuid4(),
-                        "reference_id": uuid.uuid4(),
+                        "id": uuid.uuid7(),
+                        "reference_id": uuid.uuid7(),
                         "content": (
                             enhancement.content.model_copy(
                                 update={
@@ -610,12 +610,12 @@ async def test_canonical_candidate_search(
     # Create a completely different reference that should not match
     non_matching_ref = reference.model_copy(
         update={
-            "id": uuid.uuid4(),
+            "id": uuid.uuid7(),
             "enhancements": [
                 enhancement.model_copy(
                     update={
-                        "id": uuid.uuid4(),
-                        "reference_id": uuid.uuid4(),
+                        "id": uuid.uuid7(),
+                        "reference_id": uuid.uuid7(),
                         "content": (
                             enhancement.content.model_copy(
                                 update={
