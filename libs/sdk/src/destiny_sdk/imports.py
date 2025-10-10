@@ -158,9 +158,12 @@ class _ImportBatchBase(BaseModel):
 
     collision_strategy: CollisionStrategy = Field(
         default=CollisionStrategy.FAIL,
+        deprecated=True,
         description="""
 The strategy to use for each reference when an identifier collision occurs.
 Default is `fail`, which allows the importing process to "follow up" on the collision.
+This field is marked for deprecation and will be removed imminently in favour of
+repository-owned deduplication.
         """,
     )
     storage_url: HttpUrl = Field(
@@ -173,7 +176,7 @@ with each line formatted according to
     callback_url: HttpUrl | None = Field(
         default=None,
         deprecated=True,
-        description="This field is currently a no-op.",
+        description="This field is currently a no-op and will be removed imminently.",
     )
 
 

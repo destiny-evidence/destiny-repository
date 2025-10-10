@@ -216,12 +216,19 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
     )
 
     __table_args__ = (
-        UniqueConstraint(
+        # Tree index for fast searching of identifiers or types
+        Index(
+            "ix_external_identifier_type",
             "identifier_type",
             "identifier",
+            postgresql_where=(identifier_type != ExternalIdentifierType.OTHER),
+        ),
+        Index(
+            "ix_external_identifier_type_other",
+            "identifier_type",
             "other_identifier_name",
-            name="uix_external_identifier",
-            postgresql_nulls_not_distinct=True,
+            "identifier",
+            postgresql_where=(identifier_type == ExternalIdentifierType.OTHER),
         ),
         Index("ix_external_identifier_reference_id", "reference_id"),
     )
@@ -518,6 +525,11 @@ class ReferenceDuplicateDecision(
         Index(
             "ix_reference_duplicate_decision_reference_id",
             "reference_id",
+        ),
+        # For getting decisions by state eg needing manual resolution
+        Index(
+            "ix_reference_duplicate_decision_duplicate_determination",
+            "duplicate_determination",
         ),
     )
 

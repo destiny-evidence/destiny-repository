@@ -18,6 +18,7 @@ from app.core.exceptions import (
 from app.core.telemetry.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
+    DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
@@ -110,49 +111,35 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Persist a reference."""
         return await self._merge_reference(reference)
 
-    async def _add_enhancement(
-        self, enhancement: Enhancement, *, enforce_enhancement_tree: bool = True
-    ) -> Reference:
+    async def _add_enhancement(self, enhancement: Enhancement) -> Reference:
         """
         Add an enhancement to a reference.
 
         :param enhancement: The enhancement to add
         :type enhancement: Enhancement
-        :param enforce_enhancement_tree: Whether the enhancement's parents must be
-        from the same reference. If False, will still verify the enhancement's
-        parents exist without the ownership check. This should be True unless you have
-        a good reason not to. An example of a good reason is duplicating an enhancement
-        to another reference, which should point back at the source enhancement.
-        :type enforce_enhancement_tree: bool
         """
         reference = await self.sql_uow.references.get_by_pk(
-            enhancement.reference_id, preload=["enhancements", "identifiers"]
+            enhancement.reference_id,
+            preload=["enhancements", "identifiers", "duplicate_references"],
         )
 
         if enhancement.derived_from:
+            valid_derived_reference_ids = {
+                ref.id for ref in reference.duplicate_references or []
+            } | {reference.id}
             try:
-                if enforce_enhancement_tree:
-                    parent_enhancements = await self.sql_uow.enhancements.get_by_pks(
-                        enhancement.derived_from
+                parent_enhancements = await self.sql_uow.enhancements.get_by_pks(
+                    enhancement.derived_from
+                )
+                if not all(
+                    e.reference_id in valid_derived_reference_ids
+                    for e in parent_enhancements
+                ):
+                    detail = (
+                        "All parent enhancements must belong to the same reference "
+                        "tree as the child enhancement."
                     )
-
-                    invalid_derived_from_ids = [
-                        str(parent.id)
-                        for parent in parent_enhancements
-                        if parent.reference_id != enhancement.reference_id
-                    ]
-
-                    if invalid_derived_from_ids:
-                        detail = (
-                            f"Parent enhancements {",".join(invalid_derived_from_ids)} "
-                            "are for a different parent reference"
-                        )
-                        raise InvalidParentEnhancementError(detail=detail)
-                else:
-                    await self.sql_uow.enhancements.verify_pk_existence(
-                        enhancement.derived_from
-                    )
-
+                    raise InvalidParentEnhancementError(detail)
             except SQLNotFoundError as e:
                 detail = f"Enhancements with ids {e.lookup_value} do not exist."
                 raise InvalidParentEnhancementError(detail) from e
@@ -165,7 +152,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def add_enhancement(self, enhancement: Enhancement) -> Reference:
         """Add an enhancement to a reference."""
-        return await self._add_enhancement(enhancement, enforce_enhancement_tree=True)
+        return await self._add_enhancement(enhancement)
 
     async def _get_hydrated_references(
         self,
@@ -238,15 +225,52 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self, record_str: str, entry_ref: int, collision_strategy: CollisionStrategy
     ) -> ReferenceCreateResult | None:
         """Ingest a reference from a file."""
-        (
-            validation_result,
-            reference,
-        ) = await self._ingestion_service.validate_and_collide_reference(
-            record_str, entry_ref, collision_strategy
+        if not settings.feature_flags.deduplication:
+            # Back-compatible merging on simple collision and merge strategy
+            # Removing this can also remove IngestionService entirely
+            (
+                validation_result,
+                reference,
+            ) = await self._ingestion_service.validate_and_collide_reference(
+                record_str, entry_ref, collision_strategy
+            )
+            if reference:
+                await self._merge_reference(reference)
+            return validation_result
+
+        # Full deduplication flow
+        reference_create_result = ReferenceCreateResult.from_raw(record_str, entry_ref)
+        if not reference_create_result.reference:
+            return reference_create_result
+        reference = self._anti_corruption_service.reference_from_sdk_file_input(
+            reference_create_result.reference
         )
-        if reference:
-            await self._merge_reference(reference)
-        return validation_result
+
+        canonical_reference = await self._deduplication_service.find_exact_duplicate(
+            reference
+        )
+        if canonical_reference:
+            logger.info(
+                "Exact duplicate found during ingestion",
+                reference_id=str(reference.id),
+                canonical_reference_id=str(canonical_reference.id),
+            )
+            await self._deduplication_service.register_duplicate_decision_for_reference(
+                reference=reference,
+                duplicate_determination=DuplicateDetermination.EXACT_DUPLICATE,
+                canonical_reference_id=canonical_reference.id,
+            )
+            return reference_create_result
+
+        duplicate_decision = (
+            await self._deduplication_service.register_duplicate_decision_for_reference(
+                reference=reference
+            )
+        )
+        await self._merge_reference(reference)
+        reference_create_result.duplicate_decision_id = duplicate_decision.id
+
+        return reference_create_result
 
     @sql_unit_of_work
     async def register_reference_enhancement_request(
@@ -426,7 +450,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> tuple[bool, str]:
         """Handle the import of a single batch enhancement result entry."""
         try:
-            await self._add_enhancement(enhancement, enforce_enhancement_tree=True)
+            await self._add_enhancement(enhancement)
         except SQLNotFoundError:
             return (
                 False,

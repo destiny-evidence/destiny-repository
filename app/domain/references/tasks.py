@@ -350,9 +350,34 @@ async def process_reference_duplicate_decision(
         with bound_contextvars(
             reference_id=str(reference_duplicate_decision.reference_id),
         ):
-            await reference_service.process_reference_duplicate_decision(
-                reference_duplicate_decision
+            reference_duplicate_decision = (
+                await reference_service.process_reference_duplicate_decision(
+                    reference_duplicate_decision
+                )
             )
+            logger.info(
+                "Processed reference duplicate decision",
+                active_decision=reference_duplicate_decision.active_decision,
+                determination=reference_duplicate_decision.duplicate_determination,
+            )
+
+            if reference_duplicate_decision.active_decision:
+                requests = await detect_and_dispatch_robot_automations(
+                    reference_service=reference_service,
+                    reference_ids=[
+                        # Automate on the canonical reference if it exists,
+                        # otherwise the base reference (which is either a canonical
+                        # reference or needing more information to deduplicate).
+                        reference_duplicate_decision.canonical_reference_id
+                        or reference_duplicate_decision.reference_id
+                    ],
+                    source_str=f"DuplicateDecision:{reference_duplicate_decision.id}",
+                )
+                for request in requests:
+                    logger.info(
+                        "Created automatic enhancement request",
+                        enhancement_request_id=str(request.id),
+                    )
 
 
 @tracer.start_as_current_span("Detect and dispatch robot automations")

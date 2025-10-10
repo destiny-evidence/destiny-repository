@@ -117,7 +117,6 @@ class DuplicateDetermination(StrEnum):
             cls.EXACT_DUPLICATE,
             cls.CANONICAL,
             cls.UNSEARCHABLE,
-            cls.DECOUPLED,
         }
 
 
@@ -658,6 +657,22 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
             msg = (
                 "canonical_reference_id must be populated if and only if "
                 "duplicate_determination is DUPLICATE or EXACT_DUPLICATE"
+            )
+            raise ValueError(msg)
+
+        return self
+
+    @model_validator(mode="after")
+    def check_active_decision_is_terminal(self) -> Self:
+        """Assert that active decisions are only set for terminal states."""
+        if (
+            self.active_decision
+            and self.duplicate_determination
+            not in DuplicateDetermination.get_terminal_states()
+        ):
+            msg = (
+                "Decision can only be active if terminal: "
+                f"{self.duplicate_determination}"
             )
             raise ValueError(msg)
 
