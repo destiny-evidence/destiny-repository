@@ -1,0 +1,22 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="libs.sdk.src.destiny_sdk.identifiers.DOIIdentifier
+
+An external identifier representing a DOI.
+" alt="" coords="817,5,1201,89"/>
+<area shape="rect" id="node2" title="libs.sdk.src.destiny_sdk.identifiers.LinkedExternalIdentifier
+
+An external identifier which identifies a reference.
+" alt="" coords="5,175,632,259"/>
+<area shape="rect" id="node3" title="libs.sdk.src.destiny_sdk.identifiers.OpenAlexIdentifier
+
+An external identifier representing an OpenAlex ID.
+" alt="" coords="781,137,1237,221"/>
+<area shape="rect" id="node4" title="libs.sdk.src.destiny_sdk.identifiers.OtherIdentifier
+
+An external identifier not otherwise defined by the repository.
+" alt="" coords="776,270,1243,382"/>
+<area shape="rect" id="node5" title="libs.sdk.src.destiny_sdk.identifiers.PubMedIdentifier
+
+An external identifier representing a PubMed ID.
+" alt="" coords="805,431,1213,515"/>
+</map>
