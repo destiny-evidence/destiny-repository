@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import pathlib
-import textwrap
 import uuid
 
 import httpx
@@ -85,49 +84,11 @@ def minio_proxy():
     This tiny proxy container fetches the signed URL and serves it on localhost.
     Uses only Python standard library.
     """
-    proxy_script = textwrap.dedent("""
-        import http.server
-        import socketserver
-        import urllib.request
-        import urllib.parse
-
-        class ProxyHandler(http.server.BaseHTTPRequestHandler):
-            def do_GET(self):
-                if self.path.startswith('/health'):
-                    self.send_response(200)
-                    self.end_headers()
-                    self.wfile.write(b'{"status":"ok"}')
-                    return
-                self._proxy()
-
-            def do_PUT(self):
-                self._proxy()
-
-            def _proxy(self):
-                parsed = urllib.parse.urlparse(self.path)
-                query_params = urllib.parse.parse_qs(parsed.query)
-                url = query_params['url'][0]
-                content_length = int(self.headers.get('Content-Length', 0))
-                body = self.rfile.read(content_length) if content_length > 0 else None
-                req = urllib.request.Request(url, data=body, method=self.command)
-                for header in ['Content-Type', 'Content-Length']:
-                    if header in self.headers:
-                        req.add_header(header, self.headers[header])
-                with urllib.request.urlopen(req) as resp:
-                    self.send_response(resp.status)
-                    for k, v in resp.headers.items():
-                        self.send_header(k, v)
-                    self.end_headers()
-                    self.wfile.write(resp.read())
-
-        if __name__ == "__main__":
-            with socketserver.TCPServer(("0.0.0.0", 8080), ProxyHandler) as httpd:
-                httpd.serve_forever()
-    """)
-
+    proxy_script_path = str(_cwd / "tests/e2e/_minio_proxy.py")
     container = (
         DockerContainer("python:3.11-slim")
-        .with_command(["python", "-c", proxy_script])
+        .with_command(["python", "/proxy.py"])
+        .with_volume_mapping(proxy_script_path, "/proxy.py")
         .with_exposed_ports(8080)
         .with_name(f"{container_prefix}-minio-proxy")
         .waiting_for(HttpWaitStrategy(port=8080, path="/health"))
