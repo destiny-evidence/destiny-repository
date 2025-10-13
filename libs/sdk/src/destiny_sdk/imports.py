@@ -131,11 +131,6 @@ with each line formatted according to
 :class:`ReferenceFileInput <libs.sdk.src.destiny_sdk.references.ReferenceFileInput>`.
     """,
     )
-    callback_url: HttpUrl | None = Field(
-        default=None,
-        deprecated=True,
-        description="This field is currently a no-op and will be removed imminently.",
-    )
 
 
 class ImportBatchIn(_ImportBatchBase):

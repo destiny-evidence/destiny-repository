@@ -13,8 +13,6 @@ Not implemented:
 
 Note:
 - The file format is well-formed per the documentation
-- This sample purely imports - you can also update using existing identifiers and a
-  different collision strategy
 
 Example command to run (NB most are relevant to the blob storage, not the API):
 ACCOUNT_NAME=destinyrepositorystag \
