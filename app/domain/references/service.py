@@ -726,19 +726,19 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         # from the canonical reference, which is not necessarily true.
         #
         # Consider the below scenario:
-        # - Robot is processing enhancement E for reference A
-        # - Through some other process, Reference A is marked as duplicate of B
-        # - Automations are fired for B with A as the changeset. If the canonical
+        # - Robot is processing enhancement E for reference D
+        # - Through some other process, Reference D is marked as duplicate of C
+        # - Automations are fired for C with D as the changeset. If the canonical
         #   reference needs a version of E, it can now get it with more context.
         # - Robot processes and returns E
-        # We would rather automate on E derived from B than E derived from A.
+        # We would rather automate on E derived from C than E derived from D.
         #
         # For a concrete-ish example:
         # - E is a domain inclusion example, requiring a DOI and an abstract
-        # - A provides a DOI and a partial abstract
-        # - B provides a better abstract but no DOI
-        # - We'd rather automate downstream on B with an E derived from B than A
-        # - Alternatively, if B already has an E, then A's E is redundant
+        # - D provides a DOI and a partial abstract
+        # - C provides a better abstract but no DOI
+        # - We'd rather automate downstream on C with an E derived from D than C
+        # - Alternatively, if C already has an E, then D's E is redundant
         #
         # This also retains the option to enhance duplicates independently if
         # needed (relevant automations will need to not filter for
