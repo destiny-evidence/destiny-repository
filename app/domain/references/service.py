@@ -1,8 +1,7 @@
 """The service for interacting with and managing references."""
 
-import asyncio
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from uuid import UUID
 
 from app.core.config import (
@@ -122,6 +121,31 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         return DeduplicatedReferenceProjection.get_from_reference(reference)
 
+    async def _get_deduplicated_references(
+        self, reference_ids: Collection[UUID]
+    ) -> list[Reference]:
+        """
+        Get the deduplicated reference for a given reference.
+
+        :param reference_id: The ID of the reference to get the deduplicated view for.
+        :type reference_id: UUID
+        :return: The deduplicated reference.
+        :rtype: Reference
+        """
+        references = await self.sql_uow.references.get_by_pks(
+            reference_ids,
+            preload=[
+                "identifiers",
+                "enhancements",
+                "duplicate_decision",
+                "duplicate_references",
+            ],
+        )
+        return [
+            DeduplicatedReferenceProjection.get_from_reference(reference)
+            for reference in references
+        ]
+
     async def _get_deduplicated_canonical_reference(
         self, reference_id: UUID
     ) -> Reference:
@@ -136,16 +160,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """
         reference = await self.sql_uow.references.get_by_pk(
             reference_id,
-            preload=[
-                "identifiers",
-                "enhancements",
-                "duplicate_decision",
-                "duplicate_references",
-            ],
+            preload=["duplicate_decision"],
         )
 
         if reference.canonical_like:
-            return DeduplicatedReferenceProjection.get_from_reference(reference)
+            return await self._get_deduplicated_reference(reference.id)
 
         if (
             not reference.duplicate_decision
@@ -182,7 +201,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         return ReferenceWithChangeset(
             **canonical_reference.model_dump(),
-            delta_reference=reference,
+            changeset=reference,
         )
 
     async def _merge_reference(self, reference: Reference) -> Reference:
@@ -702,23 +721,45 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         See the note in docstring of detect_robot_automations().
         """
         enhancements = await self.sql_uow.enhancements.get_by_pks(enhancement_ids)
-        canonical_references: list[Reference] = await asyncio.gather(
-            *[
-                self._get_deduplicated_reference(enhancement.reference_id)
-                for enhancement in enhancements
-            ]
+        # Note: we do not bubble up to automate on the canonical reference here.
+        # That may present a false assumption that the enhancement has been derived
+        # from the canonical reference, which is not necessarily true.
+        #
+        # Consider the below scenario:
+        # - Robot is processing enhancement E for reference A
+        # - Through some other process, Reference A is marked as duplicate of B
+        # - Automations are fired for B with A as the changeset. If the canonical
+        #   reference needs a version of E, it can now get it with more context.
+        # - Robot processes and returns E
+        # We would rather automate on E derived from B than E derived from A.
+        #
+        # For a concrete-ish example:
+        # - E is a domain inclusion example, requiring a DOI and an abstract
+        # - A provides a DOI and a partial abstract
+        # - B provides a better abstract but no DOI
+        # - We'd rather automate downstream on B with an E derived from B than A
+        # - Alternatively, if B already has an E, then A's E is redundant
+        #
+        # This also retains the option to enhance duplicates independently if
+        # needed (relevant automations will need to not filter for
+        # duplicate_determination=canonical).
+        #
+        # TL;DR the preferred pathway for automation originates from a canonical
+        # enhancement or a duplicate decision. This logic still allows for an
+        # automation path on a duplicate reference but doesn't go up to the canonical.
+
+        references: list[Reference] = await self._get_deduplicated_references(
+            [enhancement.reference_id for enhancement in enhancements]
         )
         return [
             ReferenceWithChangeset(
-                **canonical_reference.model_dump(),
-                delta_reference=Reference(
+                **reference.model_dump(),
+                changeset=Reference(
                     id=enhancement.reference_id,
                     enhancements=[enhancement],
                 ),
             )
-            for enhancement, canonical_reference in zip(
-                enhancements, canonical_references, strict=True
-            )
+            for enhancement, reference in zip(enhancements, references, strict=True)
         ]
 
     @es_unit_of_work

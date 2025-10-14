@@ -28,7 +28,7 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
     Test the detect_and_dispatch_robot_automations task distributor.
     Only tests function signatures, functionality itself is tested in the service layer.
     """
-    reference = ReferenceWithChangeset(delta_reference=Reference())
+    reference = ReferenceWithChangeset(changeset=Reference())
     in_enhancement_ids = {uuid.uuid4(), uuid.uuid4()}
     robot_id = uuid.uuid4()
 

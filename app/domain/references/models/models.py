@@ -682,7 +682,7 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
 class ReferenceWithChangeset(Reference):
     """Reference model with a delta included."""
 
-    delta_reference: Reference = Field(
+    changeset: Reference = Field(
         description=(
             "The changeset that was applied to the reference. This is purely additive."
         )

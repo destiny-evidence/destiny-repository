@@ -154,7 +154,7 @@ async def import_reference(
             requests = await detect_and_dispatch_robot_automations(
                 reference_service=reference_service,
                 reference=ReferenceWithChangeset(
-                    **reference.model_dump(), delta_reference=reference
+                    **reference.model_dump(), changeset=reference
                 ),
                 source_str=f"ImportResult:{import_result.id}",
             )

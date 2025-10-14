@@ -627,7 +627,7 @@ async def test_detect_robot_automations(
     )
     results = await service.detect_robot_automations(
         reference=ReferenceWithChangeset(
-            **reference_2.model_dump(), delta_reference=reference_2
+            **reference_2.model_dump(), changeset=reference_2
         ),
         enhancement_ids=[enhancement.id],
     )
@@ -819,8 +819,8 @@ async def test_get_canonical_reference_with_implied_changeset(
     canonical = await service._get_deduplicated_canonical_reference(duplicate_id)  # noqa: SLF001
     result = await service.get_canonical_reference_with_implied_changeset(duplicate_id)
     assert isinstance(result, ReferenceWithChangeset)
-    assert result.delta_reference == duplicate_reference
-    assert result.model_dump(exclude={"delta_reference"}) == canonical.model_dump()
+    assert result.changeset == duplicate_reference
+    assert result.model_dump(exclude={"changeset"}) == canonical.model_dump()
 
 
 async def test_get_reference_changesets_from_enhancements(fake_uow, fake_repository):
@@ -885,7 +885,7 @@ async def test_get_reference_changesets_from_enhancements(fake_uow, fake_reposit
     )
     assert len(changesets) == 2
     assert [cs.id for cs in changesets] == [reference_1_id, reference_2_id]
-    assert [cs.delta_reference.enhancements[0].id for cs in changesets] == [
+    assert [cs.changeset.enhancements[0].id for cs in changesets] == [
         enhancement_1.id,
         enhancement_2.id,
     ]
