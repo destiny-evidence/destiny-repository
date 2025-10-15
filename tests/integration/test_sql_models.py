@@ -22,6 +22,7 @@ from app.domain.imports.models.sql import (
 )
 from app.domain.imports.repository import (
     ImportBatchSQLRepository,
+    ImportRecordSQLRepository,
     ImportResultSQLRepository,
 )
 from app.domain.references.models.models import (
@@ -421,3 +422,92 @@ async def test_enhancement_request_status_projection(
         assert loaded_request.request_status == EnhancementRequestStatus.RECEIVED
     else:
         assert loaded_request.request_status == expected_status
+
+
+async def test_multiple_import_batch_status_projection(
+    session: AsyncSession,
+):
+    """Test ImportBatch status projection logic for multiple batches."""
+    record_id = uuid.uuid4()
+    record = ImportRecord(
+        id=record_id,
+        searched_at=datetime.datetime.now(tz=datetime.UTC),
+        processor_name="test",
+        processor_version="1.0",
+        status=ImportRecordStatus.STARTED,
+        expected_reference_count=-1,
+        source_name="test",
+    )
+    session.add(record)
+
+    batch1_id = uuid.uuid4()
+    batch1 = ImportBatch(
+        id=batch1_id,
+        import_record_id=record_id,
+        collision_strategy=CollisionStrategy.OVERWRITE,
+        storage_url="https://example.com/bucket1",
+    )
+    session.add(batch1)
+
+    batch2_id = uuid.uuid4()
+    batch2 = ImportBatch(
+        id=batch2_id,
+        import_record_id=record_id,
+        collision_strategy=CollisionStrategy.OVERWRITE,
+        storage_url="https://example.com/bucket2",
+    )
+    session.add(batch2)
+
+    # Batch 1 results
+    session.add_all(
+        [
+            ImportResult(
+                id=uuid.uuid4(),
+                import_batch_id=batch1_id,
+                status=ImportResultStatus.COMPLETED,
+                reference_id=None,
+                failure_details=None,
+            ),
+            ImportResult(
+                id=uuid.uuid4(),
+                import_batch_id=batch1_id,
+                status=ImportResultStatus.FAILED,
+                reference_id=None,
+                failure_details=None,
+            ),
+        ]
+    )
+
+    # Batch 2 results
+    session.add_all(
+        [
+            ImportResult(
+                id=uuid.uuid4(),
+                import_batch_id=batch2_id,
+                status=ImportResultStatus.STARTED,
+                reference_id=None,
+                failure_details=None,
+            ),
+            ImportResult(
+                id=uuid.uuid4(),
+                import_batch_id=batch2_id,
+                status=ImportResultStatus.CREATED,
+                reference_id=None,
+                failure_details=None,
+            ),
+        ]
+    )
+
+    await session.flush()
+    await session.commit()
+
+    repo = ImportRecordSQLRepository(
+        session, ImportBatchSQLRepository(session, ImportResultSQLRepository(session))
+    )
+    import_record = await repo.get_by_pk(
+        record_id, preload=["batches", "ImportBatch.status"]
+    )
+    assert {batch.status for batch in (import_record.batches or [])} == {
+        ImportBatchStatus.PARTIALLY_FAILED,
+        ImportBatchStatus.STARTED,
+    }
