@@ -358,6 +358,12 @@ async def process_reference_duplicate_decision(
                 reference_duplicate_decision
             )
 
+            logger.info(
+                "Processed reference duplicate decision",
+                active_decision=reference_duplicate_decision.active_decision,
+                determination=reference_duplicate_decision.duplicate_determination,
+            )
+
             if reference_duplicate_decision.active_decision and decision_changed:
                 reference = await reference_service.get_canonical_reference_with_implied_changeset(  # noqa: E501
                     reference_duplicate_decision.reference_id
@@ -372,10 +378,10 @@ async def process_reference_duplicate_decision(
                         "Created automatic enhancement request",
                         enhancement_request_id=str(request.id),
                     )
+            else:
                 logger.info(
-                    "Processed reference duplicate decision",
-                    active_decision=reference_duplicate_decision.active_decision,
-                    determination=reference_duplicate_decision.duplicate_determination,
+                    "No change to active decision, skipping automations",
+                    reference_id=str(reference_duplicate_decision.reference_id),
                 )
 
 

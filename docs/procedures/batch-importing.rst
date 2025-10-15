@@ -102,7 +102,7 @@ File Format
 
 The references file provided to each batch must be in the `jsonl`_ format. Each line is a JSON object in the :class:`ReferenceFileInput <libs.sdk.src.destiny_sdk.references.ReferenceFileInput>` format.
 
-Sample files can be found in the ``.minio/data`` directory.
+Sample files can be found in the ``libs/sdk/tests/unit/test_data/`` directory.
 
 Sample
 ------

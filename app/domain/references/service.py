@@ -15,6 +15,7 @@ from app.core.exceptions import (
     RobotUnreachableError,
     SQLNotFoundError,
 )
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
@@ -85,7 +86,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self._ingestion_service = IngestionService(anti_corruption_service, sql_uow)
         self._enhancement_service = EnhancementService(anti_corruption_service, sql_uow)
         self._deduplication_service = DeduplicationService(
-            anti_corruption_service, sql_uow
+            anti_corruption_service, sql_uow, es_uow
         )
         self._synchronizer = Synchronizer(sql_uow, es_uow)
 
@@ -341,6 +342,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference = self._anti_corruption_service.reference_from_sdk_file_input(
             reference_create_result.reference
         )
+        reference_create_result.reference_id = reference.id
+        trace_attribute(Attributes.REFERENCE_ID, str(reference.id))
 
         canonical_reference = await self._deduplication_service.find_exact_duplicate(
             reference

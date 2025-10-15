@@ -23,7 +23,7 @@ broker: AsyncBroker = AzureServiceBusBroker(
     max_lock_renewal_duration=settings.message_lock_renewal_duration,
 )
 
-if settings.env in (Environment.LOCAL, Environment.E2E):
+if settings.env == Environment.LOCAL or settings.tests_use_rabbitmq:
     from opentelemetry.instrumentation.aio_pika import AioPikaInstrumentor
 
     AioPikaInstrumentor().instrument()
