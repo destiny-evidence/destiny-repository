@@ -1,8 +1,7 @@
 """The service for interacting with and managing references."""
 
-import asyncio
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from uuid import UUID
 
 from app.core.config import (
@@ -98,23 +97,19 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_id, preload=["identifiers", "enhancements"]
         )
 
-    async def _get_deduplicated_reference(
-        self, reference_id: UUID, *, find_canonical: bool = True
-    ) -> Reference:
+    async def _get_deduplicated_references(
+        self, reference_ids: Collection[UUID]
+    ) -> list[Reference]:
         """
         Get the deduplicated reference for a given reference.
 
         :param reference_id: The ID of the reference to get the deduplicated view for.
         :type reference_id: UUID
-        :param find_canonical: If True and a duplicate reference is provided, will find
-        and return the canonical reference's deduplicated view. If False, will flatten
-        the reference at the provided level. Defaults to True.
-        :type find_canonical: bool
         :return: The deduplicated reference.
         :rtype: Reference
         """
-        reference = await self.sql_uow.references.get_by_pk(
-            reference_id,
+        references = await self.sql_uow.references.get_by_pks(
+            reference_ids,
             preload=[
                 "identifiers",
                 "enhancements",
@@ -122,8 +117,41 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 "duplicate_references",
             ],
         )
-        if reference.canonical_like or not find_canonical:
-            return DeduplicatedReferenceProjection.get_from_reference(reference)
+        return [
+            DeduplicatedReferenceProjection.get_from_reference(reference)
+            for reference in references
+        ]
+
+    async def _get_deduplicated_reference(self, reference_id: UUID) -> Reference:
+        """
+        Get the deduplicated reference for a given reference.
+
+        :param reference_id: The ID of the reference to get the deduplicated view for.
+        :type reference_id: UUID
+        :return: The deduplicated reference.
+        :rtype: Reference
+        """
+        return (await self._get_deduplicated_references([reference_id]))[0]
+
+    async def _get_deduplicated_canonical_reference(
+        self, reference_id: UUID
+    ) -> Reference:
+        """
+        Get the deduplicated canonical reference for a given reference ID.
+
+        If the given reference is a duplicate, this will return the deduplicated view
+        of its canonical reference.
+
+        :param reference_id: The ID of the reference to get the deduplicated view for.
+        :type reference_id: UUID
+        """
+        reference = await self.sql_uow.references.get_by_pk(
+            reference_id,
+            preload=["duplicate_decision"],
+        )
+
+        if reference.canonical_like:
+            return await self._get_deduplicated_reference(reference.id)
 
         if (
             not reference.duplicate_decision
@@ -135,7 +163,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
             raise RuntimeError(msg)
 
-        return await self._get_deduplicated_reference(
+        return await self._get_deduplicated_canonical_reference(
             reference.duplicate_decision.canonical_reference_id
         )
 
@@ -155,12 +183,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference = await self.sql_uow.references.get_by_pk(
             reference_id, preload=["identifiers", "enhancements", "duplicate_decision"]
         )
-        canonical_reference = await self._get_deduplicated_reference(
-            reference_id, find_canonical=True
+        deduplicated_canonical_reference = (
+            await self._get_deduplicated_canonical_reference(reference_id)
         )
         return ReferenceWithChangeset(
-            **canonical_reference.model_dump(),
-            delta_reference=reference,
+            **deduplicated_canonical_reference.model_dump(),
+            changeset=reference,
         )
 
     async def _merge_reference(self, reference: Reference) -> Reference:
@@ -669,24 +697,26 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         See the note in docstring of detect_robot_automations().
         """
         enhancements = await self.sql_uow.enhancements.get_by_pks(enhancement_ids)
-        canonical_references: list[Reference] = await asyncio.gather(
-            *[
-                self._get_deduplicated_reference(
-                    enhancement.reference_id, find_canonical=False
-                )
-                for enhancement in enhancements
-            ]
+        # Enhancements are always automated against the references they're imported on.
+        # In most cases this will be the canonical reference, triggered by automation.
+        # Some edge cases exist where enhancements are added to duplicates, and so we
+        # automate on the duplicate. See the robot automation procedure docs for more.
+
+        deduplicated_references: list[
+            Reference
+        ] = await self._get_deduplicated_references(
+            [enhancement.reference_id for enhancement in enhancements]
         )
         return [
             ReferenceWithChangeset(
-                **canonical_reference.model_dump(),
-                delta_reference=Reference(
+                **reference.model_dump(),
+                changeset=Reference(
                     id=enhancement.reference_id,
                     enhancements=[enhancement],
                 ),
             )
-            for enhancement, canonical_reference in zip(
-                enhancements, canonical_references, strict=True
+            for enhancement, reference in zip(
+                enhancements, deduplicated_references, strict=True
             )
         ]
 

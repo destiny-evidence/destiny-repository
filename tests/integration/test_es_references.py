@@ -462,45 +462,41 @@ async def test_robot_automation_percolation(
 
     percolatable_documents: list[ReferenceWithChangeset] = [
         ReferenceWithChangeset(
-            **reference_no_abstract.model_dump(), delta_reference=reference_no_abstract
+            **reference_no_abstract.model_dump(), changeset=reference_no_abstract
         ),
         ReferenceWithChangeset(
             **reference_with_abstract.model_dump(),
-            delta_reference=reference_with_abstract,
+            changeset=reference_with_abstract,
         ),
         ReferenceWithChangeset(
             **reference_no_abstract_no_doi.model_dump(),
-            delta_reference=reference_no_abstract_no_doi,
+            changeset=reference_no_abstract_no_doi,
         ),
         ReferenceWithChangeset(
             **reference_no_abstract_in_domain.model_dump(),
-            delta_reference=reference_no_abstract_in_domain,
+            changeset=reference_no_abstract_in_domain,
         ),
         ReferenceWithChangeset(
             **reference_with_abstract_in_domain.model_dump(),
-            delta_reference=reference_with_abstract_in_domain,
+            changeset=reference_with_abstract_in_domain,
         ),
         ReferenceWithChangeset(
             **reference_with_abstract_out_of_domain.model_dump(),
-            delta_reference=reference_with_abstract_out_of_domain,
+            changeset=reference_with_abstract_out_of_domain,
         ),
         ReferenceWithChangeset(
             id=abstract_enhancement.reference_id,
-            delta_reference=Reference(enhancements=[abstract_enhancement]),
+            changeset=Reference(enhancements=[abstract_enhancement]),
         ),
         ReferenceWithChangeset(
             id=positive_in_out_annotation_enhancement.reference_id,
             enhancements=[abstract_enhancement],
-            delta_reference=Reference(
-                enhancements=[positive_in_out_annotation_enhancement]
-            ),
+            changeset=Reference(enhancements=[positive_in_out_annotation_enhancement]),
         ),
         ReferenceWithChangeset(
             id=negative_in_out_annotation_enhancement.reference_id,
             enhancements=[abstract_enhancement],
-            delta_reference=Reference(
-                enhancements=[negative_in_out_annotation_enhancement]
-            ),
+            changeset=Reference(enhancements=[negative_in_out_annotation_enhancement]),
         ),
     ]
 

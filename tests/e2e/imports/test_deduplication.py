@@ -17,14 +17,14 @@ from app.domain.references.models.models import (
     Enhancement,
     Reference,
 )
-from tests.e2e.factories import (
+from tests.e2e.utils import import_references, poll_duplicate_process
+from tests.factories import (
     BibliographicMetadataEnhancementFactory,
     DOIIdentifierFactory,
     EnhancementFactory,
     LinkedExternalIdentifierFactory,
     ReferenceFactory,
 )
-from tests.e2e.utils import import_references, poll_duplicate_process
 
 
 @pytest.fixture

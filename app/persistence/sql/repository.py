@@ -1,6 +1,7 @@
 """Generic repositories define expected functionality."""
 
 from abc import ABC
+from collections.abc import Collection
 from typing import Generic
 from uuid import UUID
 
@@ -196,7 +197,7 @@ class GenericAsyncSqlRepository(
     @trace_repository_method(tracer)
     async def get_by_pks(
         self,
-        pks: list[UUID],
+        pks: Collection[UUID],
         preload: list[GenericSQLPreloadableType] | None = None,
     ) -> list[GenericDomainModelType]:
         """

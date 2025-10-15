@@ -314,5 +314,5 @@ class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
             query=None,
             robot_id=None,
             reference=ReferenceDomainMixin.from_domain(percolatable),
-            changeset=ReferenceDomainMixin.from_domain(percolatable.delta_reference),
+            changeset=ReferenceDomainMixin.from_domain(percolatable.changeset),
         )

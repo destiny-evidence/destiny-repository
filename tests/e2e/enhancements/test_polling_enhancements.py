@@ -17,7 +17,7 @@ from pydantic import HttpUrl
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 
 from app.domain.robots.models.models import Robot
-from tests.e2e.factories import EnhancementFactory
+from tests.factories import EnhancementFactory
 
 
 def _create_client(repo_url: HttpUrl) -> Client:

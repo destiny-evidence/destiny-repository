@@ -15,7 +15,7 @@ from destiny_sdk.references import ReferenceFileInput
 
 from app.domain.robots.models.models import Robot
 from tests.e2e.conftest import host_name
-from tests.e2e.factories import ReferenceFactory
+from tests.factories import ReferenceFactory
 
 if TYPE_CHECKING:
     from app.domain.references.models.models import Reference

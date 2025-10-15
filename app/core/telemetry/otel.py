@@ -70,6 +70,7 @@ def configure_otel(
             endpoint=str(config.trace_endpoint),
             # Dataset is inferred from resource.service_name
             headers=headers,
+            timeout=config.timeout,
         ),
     )
     if not config.instrument_sql:
@@ -95,6 +96,7 @@ def configure_otel(
                 OTLPMetricExporter(
                     endpoint=str(config.meter_endpoint),
                     headers=headers | {"x-honeycomb-dataset": "metrics-repository"},
+                    timeout=config.timeout,
                 )
             )
         ],
@@ -107,6 +109,7 @@ def configure_otel(
     exporter = OTLPLogExporter(
         endpoint=str(config.log_endpoint),
         headers=headers,
+        timeout=config.timeout,
     )
     logger_provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
 

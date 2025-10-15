@@ -2,7 +2,6 @@
 """Factories for creating test domain models."""
 
 import random
-import uuid
 
 import factory
 from destiny_sdk.enhancements import (
@@ -71,31 +70,31 @@ class OtherIdentifierFactory(factory.Factory):
     other_identifier_name = factory.Faker("company")
 
 
+class AuthorshipFactory(factory.Factory):
+    class Meta:
+        model = Authorship
+
+    display_name = factory.Faker("name")
+    position = factory.Faker("enum", enum_cls=AuthorPosition)
+    orcid = factory.Faker("uuid4")
+
+
 class BibliographicMetadataEnhancementFactory(factory.Factory):
     class Meta:
         model = BibliographicMetadataEnhancement
 
     enhancement_type = EnhancementType.BIBLIOGRAPHIC
     authorship = factory.LazyFunction(
-        lambda: fake.random_elements(
-            [
-                Authorship(
-                    display_name=fake.name(),
-                    position=fake.enum(AuthorPosition),
-                    orcid=fake.uuid4() if fake.pybool() else None,
-                )
-            ],
-            length=fake.pyint(min_value=1, max_value=max_list_length),
+        lambda: AuthorshipFactory.build_batch(
+            fake.pyint(min_value=1, max_value=max_list_length)
         )
     )
-    cited_by_count = factory.LazyFunction(
-        lambda: fake.pyint(min_value=0, max_value=1000)
-    )
-    created_date = factory.LazyFunction(lambda: fake.date_this_century())
-    publication_date = factory.LazyFunction(lambda: fake.date_this_century())
-    publication_year = factory.LazyFunction(lambda: int(fake.year()))
+    cited_by_count = factory.Faker("pyint", min_value=0, max_value=1000)
+    created_date = factory.Faker("date_this_century")
+    publication_date = factory.Faker("date_this_century")
+    publication_year = factory.Faker("year")
     publisher = factory.Faker("company")
-    title = factory.LazyFunction(lambda: fake.sentence(nb_words=6))
+    title = factory.Faker("sentence", nb_words=6)
 
 
 class AbstractContentEnhancementFactory(factory.Factory):
@@ -103,8 +102,32 @@ class AbstractContentEnhancementFactory(factory.Factory):
         model = AbstractContentEnhancement
 
     enhancement_type = EnhancementType.ABSTRACT
-    process = factory.LazyFunction(lambda: fake.enum(AbstractProcessType))
+    process = factory.Faker("enum", enum_cls=AbstractProcessType)
     abstract = factory.LazyFunction(lambda: "\n".join(fake.paragraphs(nb=3)))
+
+
+class BooleanAnnotationFactory(factory.Factory):
+    class Meta:
+        model = BooleanAnnotation
+
+    annotation_type = AnnotationType.BOOLEAN
+    scheme = factory.Faker("word")
+    label = factory.Faker("word")
+    value = factory.Faker("pybool")
+    score = factory.Faker("pyfloat", min_value=0, max_value=1)
+    data = factory.Faker("pydict", value_types=[str])
+
+
+class ScoreAnnotationFactory(factory.Factory):
+    class Meta:
+        model = ScoreAnnotation
+
+    annotation_type = AnnotationType.SCORE
+    scheme = factory.Faker("word")
+    label = factory.Faker("word")
+    value = factory.Faker("pybool")
+    score = factory.Faker("pyfloat", min_value=0, max_value=1)
+    data = factory.Faker("pydict", value_types=[str])
 
 
 class AnnotationEnhancementFactory(factory.Factory):
@@ -115,26 +138,24 @@ class AnnotationEnhancementFactory(factory.Factory):
     annotations = factory.LazyFunction(
         lambda: fake.random_elements(
             [
-                BooleanAnnotation(
-                    annotation_type=AnnotationType.BOOLEAN,
-                    scheme=fake.word(),
-                    label=fake.word(),
-                    value=fake.pybool(),
-                    score=fake.pyfloat(0, 1),
-                    data=fake.pydict(value_types=[str]),
-                ),
-                ScoreAnnotation(
-                    annotation_type=AnnotationType.SCORE,
-                    scheme=fake.word(),
-                    label=fake.word(),
-                    value=fake.pybool(),
-                    score=fake.pyfloat(0, 1),
-                    data=fake.pydict(value_types=[str]),
-                ),
+                BooleanAnnotationFactory(),
+                ScoreAnnotationFactory(),
             ],
             length=fake.pyint(1, max_list_length),
         )
     )
+
+
+class LocationFactory(factory.Factory):
+    class Meta:
+        model = Location
+
+    is_oa = factory.Faker("pybool")
+    version = factory.Faker("enum", enum_cls=DriverVersion)
+    landing_page_url = factory.Faker("url")
+    pdf_url = factory.Faker("url")
+    license = factory.Faker("license_plate")
+    extra = factory.Faker("pydict", value_types=[str])
 
 
 class LocationEnhancementFactory(factory.Factory):
@@ -143,17 +164,7 @@ class LocationEnhancementFactory(factory.Factory):
 
     enhancement_type = EnhancementType.LOCATION
     locations = factory.LazyFunction(
-        lambda: [
-            Location(
-                is_oa=fake.pybool(),
-                version=fake.enum(DriverVersion),
-                landing_page_url=fake.url(),
-                pdf_url=fake.url(),
-                license=fake.license_plate(),  # why not
-                extra=fake.pydict(value_types=[str]),
-            )
-            for _ in range(fake.pyint(1, max_list_length))
-        ]
+        lambda: LocationFactory.build_batch(fake.pyint(1, max_list_length))
     )
 
 
@@ -161,7 +172,7 @@ class LinkedExternalIdentifierFactory(factory.Factory):
     class Meta:
         model = LinkedExternalIdentifier
 
-    id = factory.LazyFunction(uuid.uuid4)
+    id = factory.Faker("uuid4")
     identifier = factory.LazyFunction(
         lambda: fake.random_element(
             [
@@ -172,17 +183,17 @@ class LinkedExternalIdentifierFactory(factory.Factory):
             ]
         )
     )
-    reference_id = factory.LazyFunction(uuid.uuid4)
+    reference_id = factory.Faker("uuid4")
 
 
 class EnhancementFactory(factory.Factory):
     class Meta:
         model = Enhancement
 
-    id = factory.LazyFunction(uuid.uuid4)
+    id = factory.Faker("uuid4")
     source = factory.Faker("company")
     visibility = Visibility.PUBLIC
-    robot_version = factory.LazyFunction(lambda: fake.numerify("%!!.%!!.%!!"))
+    robot_version = factory.Faker("numerify", text="%!!.%!!.%!!")
     content = factory.LazyFunction(
         lambda: fake.random_element(
             [
@@ -193,15 +204,15 @@ class EnhancementFactory(factory.Factory):
             ]
         )
     )
-    reference_id = factory.LazyFunction(uuid.uuid4)
+    reference_id = factory.Faker("uuid4")
 
 
 class ReferenceFactory(factory.Factory):
     class Meta:
         model = Reference
 
-    id = factory.LazyFunction(uuid.uuid4)
-    visibility = Visibility.PUBLIC
+    id = factory.Faker("uuid4")
+    visibility = factory.Faker("enum", enum_cls=Visibility)
 
     @factory.post_generation
     def identifiers(self, create, extracted, **kwargs):  # noqa: ANN001, ANN003, ARG002
@@ -228,7 +239,7 @@ class RobotFactory(factory.Factory):
     class Meta:
         model = Robot
 
-    id = factory.LazyFunction(uuid.uuid4)
+    id = factory.Faker("uuid4")
     base_url = factory.Faker("url")
     description = factory.Faker("sentence")
     name = factory.Faker("name")
