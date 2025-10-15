@@ -87,7 +87,7 @@ There are two scenarios that can trigger percolation:
 Structure
 ---------
 
-Each percolated document contains two fields: ``reference`` and ``changeset``. Both of these fields map to :class:`Reference <app.domain.references.models.models.Reference>` objects. ``reference`` is the complete reference, deduplicated, and ``changeset`` is the delta that was just applied. The repository is append-only, and so is the ``changeset`` - it only represents newly available information to the reference.
+Each percolated document contains two fields: ``reference`` and ``changeset``. Both of these fields map to :class:`Reference <app.domain.references.models.models.Reference>` objects. ``reference`` is the complete reference, deduplicated, and ``changeset`` is the change that was just applied. The repository is append-only, and so is the ``changeset`` - it only represents newly available information to the reference.
 
 Automations trigger on ``reference`` - note the implications of this below.
 

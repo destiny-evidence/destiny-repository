@@ -680,7 +680,7 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
 
 
 class ReferenceWithChangeset(Reference):
-    """Reference model with a delta included."""
+    """Reference model with a changeset included."""
 
     changeset: Reference = Field(
         description=(
