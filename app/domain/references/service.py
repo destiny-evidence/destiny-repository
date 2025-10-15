@@ -101,26 +101,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_id, preload=["identifiers", "enhancements"]
         )
 
-    async def _get_deduplicated_reference(self, reference_id: UUID) -> Reference:
-        """
-        Get the deduplicated reference for a given reference.
-
-        :param reference_id: The ID of the reference to get the deduplicated view for.
-        :type reference_id: UUID
-        :return: The deduplicated reference.
-        :rtype: Reference
-        """
-        reference = await self.sql_uow.references.get_by_pk(
-            reference_id,
-            preload=[
-                "identifiers",
-                "enhancements",
-                "duplicate_decision",
-                "duplicate_references",
-            ],
-        )
-        return DeduplicatedReferenceProjection.get_from_reference(reference)
-
     async def _get_deduplicated_references(
         self, reference_ids: Collection[UUID]
     ) -> list[Reference]:
@@ -145,6 +125,17 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             DeduplicatedReferenceProjection.get_from_reference(reference)
             for reference in references
         ]
+
+    async def _get_deduplicated_reference(self, reference_id: UUID) -> Reference:
+        """
+        Get the deduplicated reference for a given reference.
+
+        :param reference_id: The ID of the reference to get the deduplicated view for.
+        :type reference_id: UUID
+        :return: The deduplicated reference.
+        :rtype: Reference
+        """
+        return (await self._get_deduplicated_references([reference_id]))[0]
 
     async def _get_deduplicated_canonical_reference(
         self, reference_id: UUID
@@ -196,11 +187,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference = await self.sql_uow.references.get_by_pk(
             reference_id, preload=["identifiers", "enhancements", "duplicate_decision"]
         )
-        canonical_reference = await self._get_deduplicated_canonical_reference(
-            reference_id
+        deduplicated_canonical_reference = (
+            await self._get_deduplicated_canonical_reference(reference_id)
         )
         return ReferenceWithChangeset(
-            **canonical_reference.model_dump(),
+            **deduplicated_canonical_reference.model_dump(),
             changeset=reference,
         )
 
@@ -748,7 +739,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         # enhancement or a duplicate decision. This logic still allows for an
         # automation path on a duplicate reference but doesn't go up to the canonical.
 
-        references: list[Reference] = await self._get_deduplicated_references(
+        deduplicated_references: list[
+            Reference
+        ] = await self._get_deduplicated_references(
             [enhancement.reference_id for enhancement in enhancements]
         )
         return [
@@ -759,7 +752,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     enhancements=[enhancement],
                 ),
             )
-            for enhancement, reference in zip(enhancements, references, strict=True)
+            for enhancement, reference in zip(
+                enhancements, deduplicated_references, strict=True
+            )
         ]
 
     @es_unit_of_work
