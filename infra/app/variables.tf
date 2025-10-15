@@ -248,3 +248,9 @@ variable "honeycomb_alert_slack_channel" {
   type        = string
   default     = "#destiny-alerts"
 }
+
+variable "feature_flags" {
+  description = "Feature flags for the application"
+  type        = map(bool)
+  default     = {}
+}

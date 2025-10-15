@@ -97,7 +97,7 @@ locals {
     },
     {
       name  = "FEATURE_FLAGS"
-      value = jsonencode({})
+      value = jsonencode(var.feature_flags)
     }
   ]
 
