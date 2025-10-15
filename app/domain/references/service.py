@@ -713,31 +713,40 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """
         enhancements = await self.sql_uow.enhancements.get_by_pks(enhancement_ids)
         # Note: we do not bubble up to automate on the canonical reference here.
-        # That may present a false assumption that the enhancement has been derived
-        # from the canonical reference, which is not necessarily true.
+        # Most likely, if we are fulfilling an enhancement here on a duplicate, some
+        # other process has changed the duplicate determination between request &
+        # fulfillment.
         #
-        # Consider the below scenario:
-        # - Robot is processing enhancement E for reference D
-        # - Through some other process, Reference D is marked as duplicate of C
-        # - Automations are fired for C with D as the changeset. If the canonical
-        #   reference needs a version of E, it can now get it with more context.
-        # - Robot processes and returns E
-        # We would rather automate on E derived from C than E derived from D.
+        # Here are the broad justifying statements:
+        # [A]: Enhancements should be generated on canonical references where possible
+        #      as this provides the most context to the enhancing robot.
+        # [B]: Because this reference is a duplicate, we can be confident that
+        #      automations were triggered on the canonical reference when the duplicate
+        #      decision was made.
+        # Thus:
+        # - Because of A, we would rather not trigger automation on enhancements derived
+        #   purely from a duplicate reference.
+        # - Because of B, we can be confident that there is no missed automation pathway
+        #   by not bubbling up the automation trigger to the canonical reference.
         #
-        # For a concrete-ish example:
+        # For a concrete-ish example (there are many forms this could take):
         # - E is a domain inclusion example, requiring a DOI and an abstract
-        # - D provides a DOI and a partial abstract
-        # - C provides a better abstract but no DOI
-        # - We'd rather automate downstream on C with an E derived from D than C
-        # - Alternatively, if C already has an E, then D's E is redundant
+        # - C is an existing reference with a good abstract but no DOI
+        # - D is a newly ingested reference with a DOI and a partial abstract
+        # - D is imported and incorrectly marked as canonical.
+        # - Automation is fired on D and sent to robot to add E (let's call this E(D))
+        # - A new duplicate decision is made marking D as duplicate of C
+        # - Automation is fired on C with D as the changeset (let's call this E(C,D))
+        #   - This is statement [B] above
+        # - Robot processes and returns E(D) on D
+        #   - We automate E(D) on D
+        #   - (Likely this is a no-op as most automations will filter for canonicals)
+        # - Robot processes and returns E(C,D) on C
+        #   - We automate E(C,D) on C (our preferred path per [A])
         #
-        # This also retains the option to enhance duplicates independently if
-        # needed (relevant automations will need to not filter for
-        # duplicate_determination=canonical).
-        #
-        # TL;DR the preferred pathway for automation originates from a canonical
-        # enhancement or a duplicate decision. This logic still allows for an
-        # automation path on a duplicate reference but doesn't go up to the canonical.
+        # N.B. this also retains the option to enhance duplicates independently if
+        # desired (relevant automations will need to not filter for
+        # duplicate_determination=canonical, this is just a niche bonus).
 
         deduplicated_references: list[
             Reference
