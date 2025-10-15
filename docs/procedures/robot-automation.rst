@@ -24,6 +24,10 @@ Robot Automations
                 loop For each matching robot
                     DR->>R: Enhancement Request with matching References
                 end
+                loop Continuous polling
+                    R->>DR: POST /robot-enhancement-batches/ : Poll for work
+                    DR->>R: RobotEnhancementBatch (if pending enhancements available)
+                end
             end
         else On Batch Enhancement
             DR->>DR: Ingest Enhancements
@@ -31,18 +35,32 @@ Robot Automations
             loop For each matching robot
                 DR->>R: Enhancement Request with matching References
             end
+            loop Continuous polling
+                R->>DR: POST /robot-enhancement-batches/ : Poll for work
+                DR->>R: RobotEnhancementBatch (if pending enhancements available)
+            end
         end
 
 .. mermaid::
 
-    flowchart LR
-        G_R([Reference]) --> G_R1[Ingest Reference]
-        G_R1 --> G_P[(Persistence)]
-        G_R1 --> G_AUTO{Robot Automation Percolation}
-        G_AUTO --> G_ROBOT[["Robot(s)"]]
-        G_ROBOT --> G_R2[Ingest Enhancement]
-        G_R2 --> G_P
-        G_R2 --> G_AUTO
+    flowchart TD
+    subgraph Repository
+            G_R([Reference]) --> G_R1[Ingest Reference]
+            G_R1 --> G_AUTO{Robot Automation Percolation}
+            G_AUTO --> G_REQ[Create EnhancementRequests]
+            G_R1 --> G_P[(Persistence)]
+            G_REQ --> G_P[(Persistence)]
+            G_REPO_PROC[Ingest Enhancement] --> G_P
+            G_REPO_PROC --> G_AUTO
+        end
+        subgraph "Robot(s)"
+            G_POLL[Robot Polling] --> G_BATCH[Fetch RobotEnhancementBatch]
+            G_P --> G_BATCH
+            G_BATCH --> G_ROBOT_PROC[Process Batch]
+            G_ROBOT_PROC --> G_UPLOAD[Upload Results]
+            G_UPLOAD --> G_REPO[Notify Repository]
+        end
+        G_REPO --> G_REPO_PROC
 
 
 
@@ -50,9 +68,9 @@ Robot Automations
 Context
 -------
 
-Robot automations allow :doc:`Batch Enhancement Requests <requesting-batch-enhancements>` to be automatically dispatched based on criteria on incoming references or enhancements. This is achieved through a :attr:`percolator query <libs.sdk.src.destiny_sdk.robots.RobotAutomation.query>` registered by the robot owner in the data repository using the `/enhancement-requests/automations/` endpoint.
+Robot automations allow :doc:`Enhancement Requests <requesting-batch-enhancements>` to be automatically triggered based on criteria on incoming references or enhancements. This is achieved through a :attr:`percolator query <libs.sdk.src.destiny_sdk.robots.RobotAutomation.query>` registered by the robot owner in the data repository using the `/enhancement-requests/automations/` endpoint.
 
-A batch of enhancements will be processed together, meaning that automated robots will receive a single batch request containing all enhancements that matched the automation criteria.
+When references or enhancements match the automation criteria, the data repository creates `EnhancementRequest` objects for the matching robots. Robots can discover and process work through polling. When a robot polls for work, the repository creates a `RobotEnhancementBatch` on-demand containing available pending enhancements for that robot, up to a configurable batch size limit.
 
 Percolation
 -----------
@@ -69,7 +87,7 @@ There are two scenarios that can trigger percolation:
 Structure
 ---------
 
-Each percolated document contains two fields: ``reference`` and ``changeset``. Both of these fields map to :class:`Reference <app.domain.references.models.models.Reference>` objects. ``reference`` is the complete reference, deduplicated, and ``changeset`` is the delta that was just applied. The repository is append-only, and so is the ``changeset`` - it only represents newly available information to the reference.
+Each percolated document contains two fields: ``reference`` and ``changeset``. Both of these fields map to :class:`Reference <app.domain.references.models.models.Reference>` objects. ``reference`` is the complete reference, deduplicated, and ``changeset`` is the change that was just applied. The repository is append-only, and so is the ``changeset`` - it only represents newly available information to the reference.
 
 Automations trigger on ``reference`` - note the implications of this below.
 
@@ -94,7 +112,7 @@ The active :class:`DuplicateDetermination <app.domain.references.models.models.D
 Safeguards
 ----------
 
-There is a simple cycle-checker in place to prevent a batch enhancement request from triggering an automatic enhancement request to the same robot.
+There is a simple cycle-checker in place to prevent an enhancement request from triggering an automatic enhancement request for the same robot.
 
 Cycles involving multiple robots are however possible, so caution should be taken when considering robot automation criteria.
 
@@ -106,7 +124,7 @@ The following examples are used in DESTINY to orchestrate robot automations.
 Request Missing Abstract
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-This percolator query matches on references that don't have an abstract and have received a DOI.
+This percolator query matches on imported references that don't have an abstract and have received a DOI.
 
 .. code-block:: json
 
@@ -142,7 +160,7 @@ This percolator query matches on references that don't have an abstract and have
 Request Domain Inclusion Annotation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-This percolator query matches on new references that have received an abstract. This is an example of how the orchestration starts to piece together - if the above automation is executed, and an abstract is created, this automation will then be triggered.
+This percolator query matches on references that have received an abstract. This might either be on import, or on addition of a new abstract enhancement. This is an example of how the orchestration starts to piece together - if the above automation is executed, and an abstract is created, this automation will then be triggered.
 
 .. code-block:: json
 
@@ -162,3 +180,67 @@ This percolator query matches on new references that have received an abstract. 
             ],
         }
     }
+
+
+Advanced Rationale
+------------------
+
+Automating enhancements added to duplicates
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When an enhancement is added to a duplicate, we trigger enhancements on the duplicate reference, not on the canonical reference.
+
+Most likely, if we are fulfilling an enhancement on a duplicate, some other process has updated the duplicate determination between request & fulfillment.
+
+.. note::
+
+    This also retains the option to enhance duplicates independently if desired (relevant automations will need to not filter for ``duplicate_determination=canonical``; this is just a niche bonus).
+
+Justification
+"""""""""""""
+
+The rationale for this behavior is as follows:
+
+- **[A]** Enhancements should be generated on canonical references where possible, as this provides the most context to the enhancing robot.
+- **[B]** Because this reference is a duplicate, we can be confident that automations were triggered on the canonical reference when the duplicate decision was made.
+
+Thus:
+
+- Because of [A], we would rather not trigger automation on enhancements derived purely from a duplicate reference.
+- Because of [B], we can be confident that there is no missed automation pathway by not bubbling up the automation trigger to the canonical reference.
+
+Example scenario
+""""""""""""""""
+
+
+#. E is a domain inclusion example, requiring a DOI and an abstract.
+#. C is an existing reference with a good abstract but no DOI.
+#. D is a newly ingested reference with a DOI and a partial abstract.
+#. D is imported and incorrectly marked as canonical.
+#. Automation is fired on D and sent to the robot to add E (let's call this E(D)).
+#. A new duplicate decision is made marking D as a duplicate of C.
+#. Automation is fired on C with D as the changeset (let's call this E(C, D)). This is statement [B] above.
+#. Robot processes and returns E(D) on D:
+#. We automate E(D) on D. (Likely this is a no-op as most automations will filter for canonicals.)
+#. Robot processes and returns E(C, D) on C:
+#. We automate E(C, D) on C (our preferred path per [A]).
+
+.. mermaid::
+
+    sequenceDiagram
+        participant I as External
+        participant D as Reference D (has DOI, bad abstract)
+        participant C as Reference C (no DOI, good abstract)
+        participant R as Robot
+
+
+        I->>D: Import D, mark as canonical (incorrectly)
+        D->>R: Fire automation for E(D) based on import of D
+        I->>D: Deduplication reruns and marks D as duplicate of C
+        C->>R: Fire automation for E(C,D) based on duplicate decision ([B])
+        R->>D: Process & return E(D)
+        D-->>D: Automate E(D) on D
+        Note over D: Likely terminal
+        R->>C: Process & return E(C, D)
+        C-->>C: Automate E(C,D) on D
+        Note over C: Preferred automation route ([A])

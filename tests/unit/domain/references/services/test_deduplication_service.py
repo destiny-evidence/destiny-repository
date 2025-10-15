@@ -264,7 +264,7 @@ async def test_determine_and_map_duplicate_happy_path(
     out_decision, decision_changed = await service.map_duplicate_decision(determined)
     assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
     assert out_decision.canonical_reference_id == candidate_id
-    assert decision_changed is True
+    assert decision_changed
     out_decision = await dec_repo.get_by_pk(out_decision.id)
     assert out_decision.active_decision
     assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
@@ -375,7 +375,7 @@ async def test_determine_and_map_duplicate_decoupled_canonical_change(
     assert (
         "Decouple reason: Existing duplicate decision changed." in out_decision.detail
     )
-    assert decision_changed is True
+    assert decision_changed
     out_decision = await dec_repo.get_by_pk(out_decision.id)
     assert not out_decision.active_decision
     assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
@@ -423,7 +423,7 @@ async def test_determine_and_map_duplicate_decoupled_different_canonical(
     assert (
         "Decouple reason: Existing duplicate decision changed." in out_decision.detail
     )
-    assert decision_changed is True
+    assert decision_changed
 
 
 @pytest.mark.asyncio
@@ -470,7 +470,7 @@ async def test_determine_and_map_duplicate_decoupled_chain_length(
     out_decision, decision_changed = await service.map_duplicate_decision(determined)
     assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
     assert "Decouple reason: Max duplicate chain length reached." in out_decision.detail
-    assert decision_changed is True
+    assert decision_changed
 
 
 @pytest.mark.asyncio
@@ -508,7 +508,7 @@ async def test_determine_and_map_duplicate_now_duplicate(
     determined = await service.determine_canonical_from_candidates(decision)
     out_decision, decision_changed = await service.map_duplicate_decision(determined)
     assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
-    assert decision_changed is True
+    assert decision_changed
     old_decision = await dec_repo.get_by_pk(active_decision.id)
     assert not old_decision.active_decision
     out_decision = await dec_repo.get_by_pk(out_decision.id)

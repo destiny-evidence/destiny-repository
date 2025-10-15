@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import pathlib
-import textwrap
 import uuid
 
 import httpx
@@ -55,6 +54,7 @@ logger.info("Current working directory: %s", _cwd)
 app_port = 8000
 bucket_name = "test"
 host_name = os.getenv("DOCKER_HOSTNAME", "host.docker.internal")
+container_prefix = "e2e"
 
 
 def print_logs(name: str, container: DockerContainer):
@@ -84,50 +84,13 @@ def minio_proxy():
     This tiny proxy container fetches the signed URL and serves it on localhost.
     Uses only Python standard library.
     """
-    proxy_script = textwrap.dedent("""
-        import http.server
-        import socketserver
-        import urllib.request
-        import urllib.parse
-
-        class ProxyHandler(http.server.BaseHTTPRequestHandler):
-            def do_GET(self):
-                if self.path.startswith('/health'):
-                    self.send_response(200)
-                    self.end_headers()
-                    self.wfile.write(b'{"status":"ok"}')
-                    return
-                self._proxy()
-
-            def do_PUT(self):
-                self._proxy()
-
-            def _proxy(self):
-                parsed = urllib.parse.urlparse(self.path)
-                query_params = urllib.parse.parse_qs(parsed.query)
-                url = query_params['url'][0]
-                content_length = int(self.headers.get('Content-Length', 0))
-                body = self.rfile.read(content_length) if content_length > 0 else None
-                req = urllib.request.Request(url, data=body, method=self.command)
-                for header in ['Content-Type', 'Content-Length']:
-                    if header in self.headers:
-                        req.add_header(header, self.headers[header])
-                with urllib.request.urlopen(req) as resp:
-                    self.send_response(resp.status)
-                    for k, v in resp.headers.items():
-                        self.send_header(k, v)
-                    self.end_headers()
-                    self.wfile.write(resp.read())
-
-        if __name__ == "__main__":
-            with socketserver.TCPServer(("0.0.0.0", 8080), ProxyHandler) as httpd:
-                httpd.serve_forever()
-    """)
-
+    proxy_script_path = str(_cwd / "tests/e2e/_minio_proxy.py")
     container = (
         DockerContainer("python:3.11-slim")
-        .with_command(["python", "-c", proxy_script])
+        .with_command(["python", "/proxy.py"])
+        .with_volume_mapping(proxy_script_path, "/proxy.py")
         .with_exposed_ports(8080)
+        .with_name(f"{container_prefix}-minio-proxy")
         .waiting_for(HttpWaitStrategy(port=8080, path="/health"))
     )
     with container as proxy:
@@ -149,7 +112,9 @@ async def minio_proxy_client(minio_proxy: DockerContainer):
 def postgres():
     """Postgres container with alembic migrations applied."""
     logger.info("Creating Postgres container...")
-    with PostgresContainer("postgres:17", driver="asyncpg") as postgres:
+    with PostgresContainer("postgres:17", driver="asyncpg").with_name(
+        f"{container_prefix}-postgres"
+    ) as postgres:
         logger.info("Applying alembic migrations.")
         alembic_config = alembic_config_from_url(postgres.get_connection_url())
         upgrade(alembic_config, "head")
@@ -204,7 +169,7 @@ async def elasticsearch():
         # - Elasticsearch doesn't have enough memory allocated (mem_limit is too low)
         # Fun!
         mem_limit="2g",
-    ) as elasticsearch:
+    ).with_name(f"{container_prefix}-elasticsearch") as elasticsearch:
         logger.info("Creating Elasticsearch indices...")
         async with AsyncElasticsearch(elasticsearch.get_url()) as client:
             await create_test_indices(client)
@@ -235,7 +200,7 @@ async def es_lifecycle(elasticsearch: ElasticSearchContainer):
 def minio():
     """MinIO container with default credentials."""
     logger.info("Starting MinIO container...")
-    with MinioContainer("minio/minio") as minio:
+    with MinioContainer("minio/minio").with_name(f"{container_prefix}-minio") as minio:
         logger.info("MinIO container ready.")
         yield minio
 
@@ -261,9 +226,11 @@ def minio_lifecycle(minio: MinioContainer):
 def rabbitmq():
     """RabbitMQ container."""
     logger.info("Creating RabbitMQ container...")
-    with RabbitMqContainer("rabbitmq:3-management", port=5672).waiting_for(
-        LogMessageWaitStrategy("Server startup complete")
-    ) as rabbitmq:
+    with (
+        RabbitMqContainer("rabbitmq:3-management", port=5672)
+        .waiting_for(LogMessageWaitStrategy("Server startup complete"))
+        .with_name(f"{container_prefix}-rabbitmq") as rabbitmq
+    ):
         logger.info("RabbitMQ container ready.")
         yield rabbitmq
 
@@ -353,6 +320,7 @@ async def worker(
             rabbitmq,
             minio,
         )
+        .with_name(f"{container_prefix}-worker")
         .with_command(
             [
                 "uv",
@@ -398,6 +366,7 @@ async def app(  # noqa: PLR0913
             minio,
         )
         .with_env("APP_NAME", "destiny-app")
+        .with_name(f"{container_prefix}-app")
         .with_exposed_ports(app_port)
         .with_command(
             [

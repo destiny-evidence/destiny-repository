@@ -627,7 +627,7 @@ async def test_detect_robot_automations(
     )
     results = await service.detect_robot_automations(
         reference=ReferenceWithChangeset(
-            **reference_2.model_dump(), delta_reference=reference_2
+            **reference_2.model_dump(), changeset=reference_2
         ),
         enhancement_ids=[enhancement.id],
     )
@@ -695,7 +695,7 @@ def get_duplicate_reference():
 
 
 @pytest.mark.asyncio
-async def test_get_deduplicated_reference_canonical(
+async def test_get_deduplicated_canonical_reference(
     fake_repository, fake_uow, canonical_reference
 ):
     refs = fake_repository([canonical_reference])
@@ -703,14 +703,16 @@ async def test_get_deduplicated_reference_canonical(
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
-    canonical = await service._get_deduplicated_reference(canonical_reference.id)  # noqa: SLF001
+    canonical = await service._get_deduplicated_canonical_reference(  # noqa: SLF001
+        canonical_reference.id
+    )
     assert canonical.id == canonical_reference.id
     assert len(canonical.enhancements) == 1
     assert len(canonical.identifiers) == 0
 
 
 @pytest.mark.asyncio
-async def test_get_deduplicated_reference_with_duplicates(
+async def test_get_deduplicated_canonical_reference_with_duplicates(
     fake_repository, fake_uow, canonical_reference, get_duplicate_reference
 ):
     duplicate_reference = get_duplicate_reference(canonical_reference.id)
@@ -720,7 +722,9 @@ async def test_get_deduplicated_reference_with_duplicates(
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
-    canonical = await service._get_deduplicated_reference(canonical_reference.id)  # noqa: SLF001
+    canonical = await service._get_deduplicated_canonical_reference(  # noqa: SLF001
+        canonical_reference.id
+    )
     assert canonical.id == canonical_reference.id
     assert len(canonical.enhancements) == 1
     assert len(canonical.identifiers) == 1
@@ -737,13 +741,15 @@ async def test_get_deduplicated_reference_duplicate_to_canonical(
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
-    canonical = await service._get_deduplicated_reference(duplicate_reference.id)  # noqa: SLF001
+    canonical = await service._get_deduplicated_canonical_reference(  # noqa: SLF001
+        duplicate_reference.id
+    )
     assert canonical.id == canonical_reference.id
     assert len(canonical.enhancements) == 1
     assert len(canonical.identifiers) == 1
 
     duplicate = await service._get_deduplicated_reference(  # noqa: SLF001
-        duplicate_reference.id, find_canonical=False
+        duplicate_reference.id
     )
     assert duplicate.id == duplicate_reference.id
     assert len(duplicate.enhancements) == 0
@@ -751,7 +757,7 @@ async def test_get_deduplicated_reference_duplicate_to_canonical(
 
 
 @pytest.mark.asyncio
-async def test_get_deduplicated_reference_duplicate_chain(
+async def test_get_deduplicated_canonical_reference_duplicate_chain(
     fake_repository, fake_uow, canonical_reference, get_duplicate_reference
 ):
     intermediate_reference = get_duplicate_reference(canonical_reference.id)
@@ -765,12 +771,16 @@ async def test_get_deduplicated_reference_duplicate_chain(
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
-    canonical = await service._get_deduplicated_reference(duplicate_reference.id)  # noqa: SLF001
+    canonical = await service._get_deduplicated_canonical_reference(  # noqa: SLF001
+        duplicate_reference.id
+    )
     assert canonical.id == canonical_reference.id
     assert len(canonical.enhancements) == 1
     assert len(canonical.identifiers) == 2
 
-    canonical = await service._get_deduplicated_reference(intermediate_reference.id)  # noqa: SLF001
+    canonical = await service._get_deduplicated_canonical_reference(  # noqa: SLF001
+        intermediate_reference.id
+    )
     assert canonical.id == canonical_reference.id
     assert len(canonical.enhancements) == 1
     assert len(canonical.identifiers) == 2
@@ -806,11 +816,11 @@ async def test_get_canonical_reference_with_implied_changeset(
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
-    canonical = await service._get_deduplicated_reference(duplicate_id)  # noqa: SLF001
+    canonical = await service._get_deduplicated_canonical_reference(duplicate_id)  # noqa: SLF001
     result = await service.get_canonical_reference_with_implied_changeset(duplicate_id)
     assert isinstance(result, ReferenceWithChangeset)
-    assert result.delta_reference == duplicate_reference
-    assert result.model_dump(exclude={"delta_reference"}) == canonical.model_dump()
+    assert result.changeset == duplicate_reference
+    assert result.model_dump(exclude={"changeset"}) == canonical.model_dump()
 
 
 async def test_get_reference_changesets_from_enhancements(fake_uow, fake_repository):
@@ -875,7 +885,7 @@ async def test_get_reference_changesets_from_enhancements(fake_uow, fake_reposit
     )
     assert len(changesets) == 2
     assert [cs.id for cs in changesets] == [reference_1_id, reference_2_id]
-    assert [cs.delta_reference.enhancements[0].id for cs in changesets] == [
+    assert [cs.changeset.enhancements[0].id for cs in changesets] == [
         enhancement_1.id,
         enhancement_2.id,
     ]

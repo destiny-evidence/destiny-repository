@@ -580,7 +580,7 @@ class RobotAutomationESRepository(
             robot_automation_percolation_results.append(
                 RobotAutomationPercolationResult(
                     robot_id=result.robot_id,
-                    reference_ids={match.id for match in matches},
+                    reference_ids={reference.id for reference in matches},
                 )
             )
 
