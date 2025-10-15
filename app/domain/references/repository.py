@@ -25,6 +25,7 @@ from app.domain.references.models.models import (
     ExternalIdentifierType,
     GenericExternalIdentifier,
     PendingEnhancementStatus,
+    ReferenceWithChangeset,
     RobotAutomationPercolationResult,
 )
 from app.domain.references.models.models import (
@@ -524,13 +525,13 @@ class RobotAutomationESRepository(
     @trace_repository_method(tracer)
     async def percolate(
         self,
-        percolatables: Sequence[DomainReference | DomainEnhancement],
+        percolatables: Sequence[ReferenceWithChangeset],
     ) -> list[RobotAutomationPercolationResult]:
         """
         Percolate documents against the percolation queries in Elasticsearch.
 
         :param percolatables: A list of percolatable domain objects.
-        :type percolatables: list[DomainReference | DomainEnhancement]
+        :type percolatables: list[ReferenceWithChangeset]
         :return: The results of the percolation.
         :rtype: list[RobotAutomationPercolationResult]
         """
@@ -558,17 +559,14 @@ class RobotAutomationESRepository(
             RobotAutomationPercolationResult
         ] = []
         for result in results:
-            matches: list[DomainReference | DomainEnhancement] = [
+            matches: list[ReferenceWithChangeset] = [
                 percolatables[slot]
                 for slot in result.meta.fields["_percolator_document_slot"]
             ]
-            reference_ids = {
-                match.id if isinstance(match, DomainReference) else match.reference_id
-                for match in matches
-            }
             robot_automation_percolation_results.append(
                 RobotAutomationPercolationResult(
-                    robot_id=result.robot_id, reference_ids=reference_ids
+                    robot_id=result.robot_id,
+                    reference_ids={reference.id for reference in matches},
                 )
             )
 

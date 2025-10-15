@@ -5,9 +5,10 @@ import uuid
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from destiny_sdk.enhancements import BibliographicMetadataEnhancement
+from destiny_sdk.identifiers import DOIIdentifier
 from destiny_sdk.references import ReferenceFileInput
 
-from app.core.config import ESPercolationOperation
 from app.core.exceptions import (
     InvalidParentEnhancementError,
     RobotEnhancementError,
@@ -15,13 +16,17 @@ from app.core.exceptions import (
     SQLNotFoundError,
 )
 from app.domain.references.models.models import (
+    DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
     ExternalIdentifierAdapter,
+    LinkedExternalIdentifier,
     PendingEnhancement,
     PendingEnhancementStatus,
     Reference,
+    ReferenceDuplicateDecision,
+    ReferenceWithChangeset,
     RobotAutomationPercolationResult,
     RobotEnhancementBatch,
 )
@@ -570,38 +575,30 @@ async def test_ingest_reference_deduplication_enabled(
 
 @pytest.mark.asyncio
 async def test_detect_robot_automations(
-    fake_repository, fake_uow, fake_enhancement_data, monkeypatch
+    fake_repository, fake_uow, fake_enhancement_data
 ):
     """Test the detection of robot automations for references."""
-    # Patch settings to test chunking
-    monkeypatch.setattr(
-        "app.domain.references.service.settings.es_percolation_chunk_size_override",
-        {ESPercolationOperation.ROBOT_AUTOMATION: 2},
-    )
-
     reference_id = uuid.uuid4()
     robot_id = uuid.uuid4()
 
     enhancement = Enhancement(reference_id=reference_id, **fake_enhancement_data)
-    hydrated_references = [
-        Reference(id=reference_id, visibility="public", enhancements=[enhancement]),
-        Reference(id=uuid.uuid4(), visibility="public", enhancements=[enhancement]),
-        Reference(id=uuid.uuid4(), visibility="public", enhancements=[enhancement]),
-    ]
+    reference = Reference(
+        id=reference_id,
+        visibility="public",
+        enhancements=[enhancement],
+        duplicate_references=[],
+    )
+    reference_2 = Reference(
+        id=uuid.uuid4(),
+        visibility="public",
+        enhancements=[enhancement],
+    )
 
     # Extend the fake repository with get_hydrated and percolation
     class FakeRepo(fake_repository):
         def __init__(self, init_entries=None):
             super().__init__(init_entries=init_entries)
             self.hydrated_references = init_entries
-
-        async def get_hydrated(
-            self,
-            reference_ids,
-            enhancement_types=None,
-            external_identifier_types=None,
-        ):
-            return await self.get_by_pks(reference_ids)
 
         async def percolate(self, documents):
             # Returns a match on all documents against one robot
@@ -616,7 +613,7 @@ async def test_detect_robot_automations(
             ]
 
     fake_enhancements_repo = fake_repository([enhancement])
-    fake_references_repo = FakeRepo(hydrated_references)
+    fake_references_repo = FakeRepo([reference, reference_2])
     fake_robot_automations_repo = FakeRepo()
 
     sql_uow = fake_uow(
@@ -629,14 +626,269 @@ async def test_detect_robot_automations(
         ReferenceAntiCorruptionService(fake_repository), sql_uow=sql_uow, es_uow=es_uow
     )
     results = await service.detect_robot_automations(
-        reference_ids=[r.id for r in hydrated_references],
+        reference=ReferenceWithChangeset(
+            **reference_2.model_dump(), changeset=reference_2
+        ),
         enhancement_ids=[enhancement.id],
     )
     assert len(results) == 1
     assert results[0].robot_id == robot_id
-    # Checks that the robot automations were marged (shared reference id on the
-    # enhancement and a reference)
-    assert len(results[0].reference_ids) == 3
+    assert len(results[0].reference_ids) == 2
+
+
+@pytest.fixture
+def canonical_reference():
+    canonical_id = uuid.uuid4()
+    content = BibliographicMetadataEnhancement(
+        title="Test Title",
+        authorship=[],
+        publication_year=2024,
+        publication_date=None,
+    )
+    enhancement = Enhancement(
+        id=uuid.uuid4(),
+        reference_id=canonical_id,
+        source="unit-test",
+        visibility="public",
+        robot_version=None,
+        derived_from=None,
+        content=content,
+    )
+    return Reference(
+        id=canonical_id,
+        visibility="public",
+        enhancements=[enhancement],
+        identifiers=[],
+        duplicate_decision=ReferenceDuplicateDecision(
+            reference_id=canonical_id,
+            duplicate_determination=DuplicateDetermination.CANONICAL,
+        ),
+        duplicate_references=[],
+    )
+
+
+@pytest.fixture
+def get_duplicate_reference():
+    def _make(canonical_id):
+        duplicate_id = uuid.uuid4()
+        return Reference(
+            id=duplicate_id,
+            visibility="public",
+            enhancements=[],
+            identifiers=[
+                LinkedExternalIdentifier(
+                    reference_id=duplicate_id,
+                    identifier=DOIIdentifier(
+                        identifier="10.1234/example.doi",
+                    ),
+                )
+            ],
+            duplicate_decision=ReferenceDuplicateDecision(
+                reference_id=duplicate_id,
+                duplicate_determination=DuplicateDetermination.DUPLICATE,
+                canonical_reference_id=canonical_id,
+            ),
+            duplicate_references=[],
+        )
+
+    return _make
+
+
+@pytest.mark.asyncio
+async def test_get_deduplicated_canonical_reference(
+    fake_repository, fake_uow, canonical_reference
+):
+    refs = fake_repository([canonical_reference])
+    uow = fake_uow(references=refs)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+    canonical = await service._get_deduplicated_canonical_reference(  # noqa: SLF001
+        canonical_reference.id
+    )
+    assert canonical.id == canonical_reference.id
+    assert len(canonical.enhancements) == 1
+    assert len(canonical.identifiers) == 0
+
+
+@pytest.mark.asyncio
+async def test_get_deduplicated_canonical_reference_with_duplicates(
+    fake_repository, fake_uow, canonical_reference, get_duplicate_reference
+):
+    duplicate_reference = get_duplicate_reference(canonical_reference.id)
+    canonical_reference.duplicate_references = [duplicate_reference]
+    refs = fake_repository([canonical_reference, duplicate_reference])
+    uow = fake_uow(references=refs)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+    canonical = await service._get_deduplicated_canonical_reference(  # noqa: SLF001
+        canonical_reference.id
+    )
+    assert canonical.id == canonical_reference.id
+    assert len(canonical.enhancements) == 1
+    assert len(canonical.identifiers) == 1
+
+
+@pytest.mark.asyncio
+async def test_get_deduplicated_reference_duplicate_to_canonical(
+    fake_repository, fake_uow, canonical_reference, get_duplicate_reference
+):
+    duplicate_reference = get_duplicate_reference(canonical_reference.id)
+    canonical_reference.duplicate_references = [duplicate_reference]
+    refs = fake_repository([canonical_reference, duplicate_reference])
+    uow = fake_uow(references=refs)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+    canonical = await service._get_deduplicated_canonical_reference(  # noqa: SLF001
+        duplicate_reference.id
+    )
+    assert canonical.id == canonical_reference.id
+    assert len(canonical.enhancements) == 1
+    assert len(canonical.identifiers) == 1
+
+    duplicate = await service._get_deduplicated_reference(  # noqa: SLF001
+        duplicate_reference.id
+    )
+    assert duplicate.id == duplicate_reference.id
+    assert len(duplicate.enhancements) == 0
+    assert len(duplicate.identifiers) == 1
+
+
+@pytest.mark.asyncio
+async def test_get_deduplicated_canonical_reference_duplicate_chain(
+    fake_repository, fake_uow, canonical_reference, get_duplicate_reference
+):
+    intermediate_reference = get_duplicate_reference(canonical_reference.id)
+    duplicate_reference = get_duplicate_reference(intermediate_reference.id)
+    canonical_reference.duplicate_references = [intermediate_reference]
+    intermediate_reference.duplicate_references = [duplicate_reference]
+    refs = fake_repository(
+        [canonical_reference, intermediate_reference, duplicate_reference]
+    )
+    uow = fake_uow(references=refs)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+    canonical = await service._get_deduplicated_canonical_reference(  # noqa: SLF001
+        duplicate_reference.id
+    )
+    assert canonical.id == canonical_reference.id
+    assert len(canonical.enhancements) == 1
+    assert len(canonical.identifiers) == 2
+
+    canonical = await service._get_deduplicated_canonical_reference(  # noqa: SLF001
+        intermediate_reference.id
+    )
+    assert canonical.id == canonical_reference.id
+    assert len(canonical.enhancements) == 1
+    assert len(canonical.identifiers) == 2
+
+
+async def test_get_canonical_reference_with_implied_changeset(
+    fake_uow, fake_repository
+):
+    """Test getting canonical reference and implied changeset."""
+    duplicate_id = uuid.uuid4()
+    canonical_id = uuid.uuid4()
+    duplicate_reference = Reference(
+        id=duplicate_id,
+        visibility="public",
+        duplicate_decision=ReferenceDuplicateDecision(
+            reference_id=duplicate_id,
+            duplicate_determination=DuplicateDetermination.DUPLICATE,
+            canonical_reference_id=canonical_id,
+        ),
+        duplicate_references=[],
+    )
+    canonical_reference = Reference(
+        id=canonical_id,
+        visibility="public",
+        duplicate_decision=ReferenceDuplicateDecision(
+            reference_id=duplicate_id,
+            duplicate_determination=DuplicateDetermination.CANONICAL,
+        ),
+        duplicate_references=[duplicate_reference],
+    )
+    refs = fake_repository([canonical_reference, duplicate_reference])
+    uow = fake_uow(references=refs)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+    canonical = await service._get_deduplicated_canonical_reference(duplicate_id)  # noqa: SLF001
+    result = await service.get_canonical_reference_with_implied_changeset(duplicate_id)
+    assert isinstance(result, ReferenceWithChangeset)
+    assert result.changeset == duplicate_reference
+    assert result.model_dump(exclude={"changeset"}) == canonical.model_dump()
+
+
+async def test_get_reference_changesets_from_enhancements(fake_uow, fake_repository):
+    """Test getting reference changesets from enhancements."""
+    reference_1_id, reference_2_id = uuid.uuid4(), uuid.uuid4()
+    enhancement_1 = Enhancement(
+        id=uuid.uuid4(),
+        reference_id=reference_1_id,
+        source="unit-test",
+        visibility="public",
+        robot_version=None,
+        derived_from=None,
+        content=BibliographicMetadataEnhancement(
+            title="Test Title 1",
+            authorship=[],
+            publication_year=2023,
+            publication_date=None,
+        ),
+    )
+    enhancement_2 = Enhancement(
+        id=uuid.uuid4(),
+        reference_id=reference_2_id,
+        source="unit-test",
+        visibility="public",
+        robot_version=None,
+        derived_from=None,
+        content=BibliographicMetadataEnhancement(
+            title="Test Title 2",
+            authorship=[],
+            publication_year=2024,
+            publication_date=None,
+        ),
+    )
+    fake_enhancements_repo = fake_repository([enhancement_1, enhancement_2])
+    fake_references_repo = fake_repository(
+        [
+            Reference(
+                id=reference_1_id,
+                visibility="public",
+                enhancements=[],
+                duplicate_references=[],
+            ),
+            Reference(
+                id=reference_2_id,
+                visibility="public",
+                enhancements=[],
+                duplicate_references=[],
+            ),
+        ]
+    )
+    sql_uow = fake_uow(
+        references=fake_references_repo,
+        enhancements=fake_enhancements_repo,
+    )
+    es_uow = fake_uow()
+
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository), sql_uow=sql_uow, es_uow=es_uow
+    )
+    changesets = await service._get_reference_changesets_from_enhancements(  # noqa: SLF001
+        [enhancement_1.id, enhancement_2.id]
+    )
+    assert len(changesets) == 2
+    assert [cs.id for cs in changesets] == [reference_1_id, reference_2_id]
+    assert [cs.changeset.enhancements[0].id for cs in changesets] == [
+        enhancement_1.id,
+        enhancement_2.id,
+    ]
 
 
 @pytest.mark.asyncio

@@ -135,15 +135,18 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 "canonical_reference_id must be provided."
             )
             raise DeduplicationValueError(msg)
+        _duplicate_determination = (
+            duplicate_determination
+            if duplicate_determination
+            else DuplicateDetermination.PENDING
+        )
         reference_duplicate_decision = ReferenceDuplicateDecision(
             reference_id=reference.id,
             enhancement_id=enhancement_id,
-            duplicate_determination=duplicate_determination
-            if duplicate_determination
-            else DuplicateDetermination.PENDING,
+            duplicate_determination=_duplicate_determination,
             canonical_reference_id=canonical_reference_id,
             # If exact duplicate passed in, the decision is terminal and hence active
-            active_decision=duplicate_determination
+            active_decision=_duplicate_determination
             == DuplicateDetermination.EXACT_DUPLICATE,
         )
         return await self.sql_uow.reference_duplicate_decisions.add(
@@ -167,8 +170,16 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         reference = await self.sql_uow.references.get_by_pk(
             reference_duplicate_decision.reference_id
         )
+        search_fields = CandidateCanonicalSearchFieldsProjection.get_from_reference(
+            reference
+        )
+        if not search_fields.is_searchable:
+            return await self.sql_uow.reference_duplicate_decisions.update_by_pk(
+                reference_duplicate_decision.id,
+                duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
+            )
         search_result = await self.es_uow.references.search_for_candidate_canonicals(
-            CandidateCanonicalSearchFieldsProjection.get_from_reference(reference),
+            search_fields,
             reference_id=reference.id,
         )
 
@@ -253,14 +264,14 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
     async def map_duplicate_decision(
         self, new_decision: ReferenceDuplicateDecision
-    ) -> ReferenceDuplicateDecision:
+    ) -> tuple[ReferenceDuplicateDecision, bool]:
         """
         Apply the persistence changes from the new duplicate decision.
 
         :param new_decision: The new decision to apply.
         :type new_decision: ReferenceDuplicateDecision
-        :return: The applied decision.
-        :rtype: ReferenceDuplicateDecision
+        :return: The applied decision and whether it changed.
+        :rtype: tuple[ReferenceDuplicateDecision, bool]
         """
         reference = await self.sql_uow.references.get_by_pk(
             new_decision.reference_id,
@@ -268,8 +279,15 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         )
         active_decision = reference.duplicate_decision
 
+        # Preset to True, will be flipped if not changed
+        decision_changed = True
+
         # Remap active decision if needed and handle other cases (flattened if/else)
-        if active_decision and (
+        if new_decision.duplicate_determination == DuplicateDetermination.UNSEARCHABLE:
+            new_decision.active_decision = True
+            if active_decision:
+                active_decision.active_decision = False
+        elif active_decision and (
             (
                 # Reference was duplicate but is now canonical
                 new_decision.duplicate_determination == DuplicateDetermination.CANONICAL
@@ -305,10 +323,15 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             # Either no active decision or the mapping is the same.
             # Just update the active decision to record the consistent state.
             if active_decision:
+                decision_changed = False
                 active_decision.active_decision = False
             new_decision.active_decision = True
 
         # Update in-place, it's just easier
         if active_decision:
             await self.sql_uow.reference_duplicate_decisions.merge(active_decision)
-        return await self.sql_uow.reference_duplicate_decisions.merge(new_decision)
+        new_decision = await self.sql_uow.reference_duplicate_decisions.merge(
+            new_decision
+        )
+
+        return new_decision, decision_changed
