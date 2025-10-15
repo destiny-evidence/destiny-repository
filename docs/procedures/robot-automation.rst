@@ -124,7 +124,7 @@ The following examples are used in DESTINY to orchestrate robot automations.
 Request Missing Abstract
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-This percolator query matches on references that don't have an abstract and have received a DOI.
+This percolator query matches on imported references that don't have an abstract and have received a DOI.
 
 .. code-block:: json
 
@@ -160,7 +160,7 @@ This percolator query matches on references that don't have an abstract and have
 Request Domain Inclusion Annotation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-This percolator query matches on new references that have received an abstract. This is an example of how the orchestration starts to piece together - if the above automation is executed, and an abstract is created, this automation will then be triggered.
+This percolator query matches on references that have received an abstract. This might either be on import, or on addition of a new abstract enhancement. This is an example of how the orchestration starts to piece together - if the above automation is executed, and an abstract is created, this automation will then be triggered.
 
 .. code-block:: json
 
