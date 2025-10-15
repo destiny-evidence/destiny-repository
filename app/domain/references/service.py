@@ -712,41 +712,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         See the note in docstring of detect_robot_automations().
         """
         enhancements = await self.sql_uow.enhancements.get_by_pks(enhancement_ids)
-        # Note: we do not bubble up to automate on the canonical reference here.
-        # Most likely, if we are fulfilling an enhancement here on a duplicate, some
-        # other process has changed the duplicate determination between request &
-        # fulfillment.
-        #
-        # Here are the broad justifying statements:
-        # [A]: Enhancements should be generated on canonical references where possible
-        #      as this provides the most context to the enhancing robot.
-        # [B]: Because this reference is a duplicate, we can be confident that
-        #      automations were triggered on the canonical reference when the duplicate
-        #      decision was made.
-        # Thus:
-        # - Because of A, we would rather not trigger automation on enhancements derived
-        #   purely from a duplicate reference.
-        # - Because of B, we can be confident that there is no missed automation pathway
-        #   by not bubbling up the automation trigger to the canonical reference.
-        #
-        # For a concrete-ish example (there are many forms this could take):
-        # - E is a domain inclusion example, requiring a DOI and an abstract
-        # - C is an existing reference with a good abstract but no DOI
-        # - D is a newly ingested reference with a DOI and a partial abstract
-        # - D is imported and incorrectly marked as canonical.
-        # - Automation is fired on D and sent to robot to add E (let's call this E(D))
-        # - A new duplicate decision is made marking D as duplicate of C
-        # - Automation is fired on C with D as the changeset (let's call this E(C,D))
-        #   - This is statement [B] above
-        # - Robot processes and returns E(D) on D
-        #   - We automate E(D) on D
-        #   - (Likely this is a no-op as most automations will filter for canonicals)
-        # - Robot processes and returns E(C,D) on C
-        #   - We automate E(C,D) on C (our preferred path per [A])
-        #
-        # N.B. this also retains the option to enhance duplicates independently if
-        # desired (relevant automations will need to not filter for
-        # duplicate_determination=canonical, this is just a niche bonus).
+        # Enhancements are always automated against the references they're imported on.
+        # In most cases this will be the canonical reference, triggered by automation.
+        # Some edge cases exist where enhancements are added to duplicates, and so we
+        # automate on the duplicate. See the robot automation procedure docs for more.
 
         deduplicated_references: list[
             Reference

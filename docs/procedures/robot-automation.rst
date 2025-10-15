@@ -180,3 +180,67 @@ This percolator query matches on references that have received an abstract. This
             ],
         }
     }
+
+
+Advanced Rationale
+------------------
+
+Automating enhancements added to duplicates
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When an enhancement is added to a duplicate, we trigger enhancements on the duplicate reference, not on the canonical reference.
+
+Most likely, if we are fulfilling an enhancement on a duplicate, some other process has updated the duplicate determination between request & fulfillment.
+
+.. note::
+
+    This also retains the option to enhance duplicates independently if desired (relevant automations will need to not filter for ``duplicate_determination=canonical``; this is just a niche bonus).
+
+Justification
+"""""""""""""
+
+The rationale for this behavior is as follows:
+
+- **[A]** Enhancements should be generated on canonical references where possible, as this provides the most context to the enhancing robot.
+- **[B]** Because this reference is a duplicate, we can be confident that automations were triggered on the canonical reference when the duplicate decision was made.
+
+Thus:
+
+- Because of [A], we would rather not trigger automation on enhancements derived purely from a duplicate reference.
+- Because of [B], we can be confident that there is no missed automation pathway by not bubbling up the automation trigger to the canonical reference.
+
+Example scenario
+""""""""""""""""
+
+
+#. E is a domain inclusion example, requiring a DOI and an abstract.
+#. C is an existing reference with a good abstract but no DOI.
+#. D is a newly ingested reference with a DOI and a partial abstract.
+#. D is imported and incorrectly marked as canonical.
+#. Automation is fired on D and sent to the robot to add E (let's call this E(D)).
+#. A new duplicate decision is made marking D as a duplicate of C.
+#. Automation is fired on C with D as the changeset (let's call this E(C, D)). This is statement [B] above.
+#. Robot processes and returns E(D) on D:
+#. We automate E(D) on D. (Likely this is a no-op as most automations will filter for canonicals.)
+#. Robot processes and returns E(C, D) on C:
+#. We automate E(C, D) on C (our preferred path per [A]).
+
+.. mermaid::
+
+    sequenceDiagram
+        participant I as External
+        participant D as Reference D (has DOI, bad abstract)
+        participant C as Reference C (no DOI, good abstract)
+        participant R as Robot
+
+
+        I->>D: Import D, mark as canonical (incorrectly)
+        D->>R: Fire automation for E(D) based on import of D
+        I->>D: Deduplication reruns and marks D as duplicate of C
+        C->>R: Fire automation for E(C,D) based on duplicate decision ([B])
+        R->>D: Process & return E(D)
+        D-->>D: Automate E(D) on D
+        Note over D: Likely terminal
+        R->>C: Process & return E(C, D)
+        C-->>C: Automate E(C,D) on D
+        Note over C: Preferred automation route ([A])
