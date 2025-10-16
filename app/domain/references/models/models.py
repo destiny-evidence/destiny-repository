@@ -525,6 +525,10 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
     @model_validator(mode="after")
     def check_canonical_reference_id_populated_iff_duplicate(self) -> Self:
         """Assert that canonical must exist if and only if decision is duplicate."""
+        if self.duplicate_determination == DuplicateDetermination.DECOUPLED:
+            # Allow ambiguous state for decoupled decisions as they are complex,
+            # requiring human intervention.
+            return self
         if (self.canonical_reference_id is not None) != (
             self.duplicate_determination
             in (
@@ -534,7 +538,8 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         ):
             msg = (
                 "canonical_reference_id must be populated if and only if "
-                "duplicate_determination is DUPLICATE or EXACT_DUPLICATE"
+                "duplicate_determination is DUPLICATE, EXACT_DUPLICATE"
+                " or DECOUPLED"
             )
             raise ValueError(msg)
 
@@ -647,4 +652,13 @@ class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):
     pending_enhancements: list[PendingEnhancement] | None = Field(
         default=None,
         description="The pending enhancements in this batch.",
+    )
+
+
+class ReferenceIds(BaseModel):
+    """Model representing a list of reference IDs."""
+
+    reference_ids: list[UUID4] = Field(
+        ...,
+        description="A list of reference IDs.",
     )

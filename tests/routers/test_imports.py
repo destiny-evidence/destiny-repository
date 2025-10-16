@@ -9,6 +9,7 @@ import pytest
 from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
@@ -32,6 +33,8 @@ from app.domain.imports.models.sql import (
     ImportResult as SQLImportResult,
 )
 from app.domain.imports.service import ImportService
+from app.domain.references import routes as references
+from app.domain.references.models.sql import ReferenceDuplicateDecision
 from app.tasks import broker
 
 # Use the database session in all tests to set up the database manager.
@@ -53,6 +56,7 @@ def app() -> FastAPI:
         }
     )
     app.include_router(imports.router, prefix="/v1")
+    app.include_router(references.reference_router, prefix="/v1")
     return app
 
 
@@ -373,3 +377,43 @@ async def test_missing_import_record(
     response = await client.get(f"/v1/imports/records/{(_id:=uuid.uuid4())}/batches/")
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.json()["detail"] == f"ImportRecord with id {_id} does not exist."
+
+
+async def test_deduplicate_references(
+    client: AsyncClient,
+    session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> None:
+    """
+    Test that we can deduplicate references for an import record.
+
+    NB this test takes advantage of the fact that duplicate_decision doesn't
+    FK to Reference (see app.domain.references.models.sql.ReferenceDuplicateDecision
+    for more). If that changes, this test will need seeding.
+    """
+    mock_queue = AsyncMock()
+    monkeypatch.setattr(
+        "app.domain.references.service.queue_task_with_trace", mock_queue
+    )
+
+    ref_ids = {uuid.uuid4(), uuid.uuid4(), uuid.uuid4()}
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json={"reference_ids": [str(r) for r in ref_ids]},
+    )
+    assert response.status_code == status.HTTP_202_ACCEPTED
+
+    # Assert queue_task_with_trace was called 3 times with correct IDs
+    assert mock_queue.call_count == 3
+    called_ids = {
+        call.kwargs["reference_duplicate_decision_id"]
+        for call in mock_queue.call_args_list
+    }
+
+    data = await session.execute(select(ReferenceDuplicateDecision))
+    results = data.scalars().all()
+    assert len(results) == 3
+    assert {r.reference_id for r in results} == ref_ids
+    assert {r.duplicate_determination for r in results} == {"pending"}
+    assert {r.id for r in results} == called_ids
