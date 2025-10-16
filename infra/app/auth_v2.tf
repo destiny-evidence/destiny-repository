@@ -8,6 +8,7 @@ resource "random_uuid" "external_directory_importer_role" {}
 resource "random_uuid" "external_directory_reference_reader_role" {}
 resource "random_uuid" "external_directory_robot_writer_role" {}
 resource "random_uuid" "external_directory_enhancement_request_writer_role" {}
+resource "random_uuid" "external_directory_reference_deduplicator_role" {}
 
 # Unique UUIDs for oauth2_permission_scope (delegated permissions)
 resource "random_uuid" "external_directory_administrator_scope" {}
@@ -15,6 +16,7 @@ resource "random_uuid" "external_directory_importer_scope" {}
 resource "random_uuid" "external_directory_reference_reader_scope" {}
 resource "random_uuid" "external_directory_robot_writer_scope" {}
 resource "random_uuid" "external_directory_enhancement_request_writer_scope" {}
+resource "random_uuid" "external_directory_reference_deduplicator_scope" {}
 
 # AD application for destiny repository
 # App scopes to allow various functions (i.e. imports) should be added as oauth2_permission_scope here
@@ -75,6 +77,15 @@ resource "azuread_application" "external_directory_destiny_repository" {
       user_consent_description   = "Allow you to register robots and rotate robot client secrets"
       user_consent_display_name  = "Robot Writer"
     }
+    oauth2_permission_scope {
+      admin_consent_description  = "Allow the app to deduplicate references as the signed-in user"
+      admin_consent_display_name = "Reference Deduplicator as user"
+      id                         = random_uuid.external_directory_reference_deduplicator_scope.result
+      type                       = "User"
+      value                      = "reference.deduplicator.all"
+      user_consent_description   = "Allow you to deduplicate references"
+      user_consent_display_name  = "Reference Deduplicator"
+    }
   }
 
   lifecycle {
@@ -124,6 +135,26 @@ resource "azuread_application_app_role" "external_directory_enhancement_request_
   display_name         = "Enhancement Request Writer"
   role_id              = random_uuid.external_directory_enhancement_request_writer_role.result
   value                = "enhancement_request.writer"
+}
+
+resource "azuread_application_app_role" "external_directory_robot_writer" {
+  provider             = azuread.external_directory
+  application_id       = azuread_application.external_directory_destiny_repository.id
+  allowed_member_types = ["Application"]
+  description          = "Can register robots and rotate robot client secrets"
+  display_name         = "Robot Writer"
+  role_id              = random_uuid.external_directory_robot_writer_role.result
+  value                = "robot.writer"
+}
+
+resource "azuread_application_app_role" "external_directory_reference_deduplicator" {
+  provider             = azuread.external_directory
+  application_id       = azuread_application.external_directory_destiny_repository.id
+  allowed_member_types = ["Application"]
+  description          = "Can deduplicate references"
+  display_name         = "Reference Deduplicator"
+  role_id              = random_uuid.external_directory_reference_deduplicator_role.result
+  value                = "reference.deduplicator"
 }
 
 resource "azuread_service_principal" "external_directory_destiny_repository" {
@@ -176,6 +207,7 @@ resource "azuread_application_api_access" "external_directory_destiny_repository
     random_uuid.external_directory_reference_reader_scope.result,
     random_uuid.external_directory_enhancement_request_writer_scope.result,
     random_uuid.external_directory_robot_writer_scope.result,
+    random_uuid.external_directory_reference_deduplicator_scope.result,
   ]
 }
 
