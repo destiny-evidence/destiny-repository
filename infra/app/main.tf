@@ -50,11 +50,11 @@ locals {
     },
     {
       name  = "AZURE_APPLICATION_ID"
-      value = azuread_application.external_directory_destiny_repository.client_id
+      value = azuread_application.destiny_repository.client_id
     },
     {
       name  = "AZURE_TENANT_ID"
-      value = var.external_directory_tenant_id
+      value = var.azure_tenant_id
     },
     {
       name = "DB_CONFIG",
