@@ -18,7 +18,6 @@ from app.core.exceptions import (
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
-from app.domain.imports.models.models import CollisionStrategy
 from app.domain.references.models.models import (
     DuplicateDetermination,
     Enhancement,
@@ -53,9 +52,6 @@ from app.domain.references.services.enhancement_service import (
     EnhancementService,
     ProcessedResults,
 )
-from app.domain.references.services.ingestion_service import (
-    IngestionService,
-)
 from app.domain.references.services.synchronizer_service import (
     Synchronizer,
 )
@@ -85,7 +81,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
-        self._ingestion_service = IngestionService(anti_corruption_service, sql_uow)
         self._enhancement_service = EnhancementService(anti_corruption_service, sql_uow)
         self._deduplication_service = DeduplicationService(
             anti_corruption_service, sql_uow, es_uow
@@ -321,22 +316,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     @es_unit_of_work
     async def ingest_reference(
-        self, record_str: str, entry_ref: int, collision_strategy: CollisionStrategy
-    ) -> ReferenceCreateResult | None:
+        self, record_str: str, entry_ref: int
+    ) -> ReferenceCreateResult:
         """Ingest a reference from a file."""
-        if not settings.feature_flags.deduplication:
-            # Back-compatible merging on simple collision and merge strategy
-            # Removing this can also remove IngestionService entirely
-            (
-                validation_result,
-                reference,
-            ) = await self._ingestion_service.validate_and_collide_reference(
-                record_str, entry_ref, collision_strategy
-            )
-            if reference:
-                await self._merge_reference(reference)
-            return validation_result
-
         # Full deduplication flow
         reference_create_result = ReferenceCreateResult.from_raw(record_str, entry_ref)
         if not reference_create_result.reference:

@@ -19,13 +19,11 @@ from app.domain.imports.service import ImportService
 from app.domain.imports.services.anti_corruption_service import (
     ImportAntiCorruptionService,
 )
-from app.domain.references.models.models import ReferenceWithChangeset
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.references.tasks import (
-    detect_and_dispatch_robot_automations,
     process_reference_duplicate_decision,
 )
 from app.persistence.blob.repository import BlobRepository
@@ -110,7 +108,6 @@ async def import_reference(
         import_result, duplicate_decision_id = await import_service.import_reference(
             reference_service,
             import_result,
-            import_result.import_batch.collision_strategy,
             content,
             line_number,
         )
@@ -136,30 +133,3 @@ async def import_reference(
                 process_reference_duplicate_decision,
                 duplicate_decision_id,
             )
-
-        if not settings.feature_flags.deduplication and (
-            import_result.status
-            in (
-                ImportResultStatus.COMPLETED,
-                ImportResultStatus.PARTIALLY_FAILED,
-            )
-            and import_result.reference_id
-        ):
-            logger.info("Creating automatic enhancements for imported references")
-            # Calling reference_service here is bad but this is temporary until
-            # deduplication is fully rolled out.
-            reference = await reference_service.get_reference(
-                import_result.reference_id
-            )
-            requests = await detect_and_dispatch_robot_automations(
-                reference_service=reference_service,
-                reference=ReferenceWithChangeset(
-                    **reference.model_dump(), changeset=reference
-                ),
-                source_str=f"ImportResult:{import_result.id}",
-            )
-            for request in requests:
-                logger.info(
-                    "Created automatic enhancement request",
-                    enhancement_request_id=str(request.id),
-                )

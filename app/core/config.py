@@ -232,8 +232,6 @@ class UploadFile(StrEnum):
 class FeatureFlags(BaseModel):
     """Feature flags for the application."""
 
-    deduplication: bool = False
-
 
 class Settings(BaseSettings):
     """Settings model for API."""

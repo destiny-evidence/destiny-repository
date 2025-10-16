@@ -157,7 +157,6 @@ class EPPIParser:
                     source=parser_source,
                     visibility=Visibility.PUBLIC,
                     content=content,
-                    enhancement_type=content.enhancement_type,
                     robot_version=robot_version,
                 )
                 for content in enhancement_contents
