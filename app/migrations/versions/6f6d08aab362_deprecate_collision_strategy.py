@@ -34,6 +34,7 @@ def upgrade() -> None:
         ),
         server_default="deprecated",
     )
+    connection.commit()
     # ### end Alembic commands ###
 
 
