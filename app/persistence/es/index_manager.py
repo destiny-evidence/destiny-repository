@@ -128,7 +128,10 @@ class IndexManager:
         Calling initialise_index after this will reset to v1.
         """
         current_index_name = await self.get_current_index_name()
-        await self.client.indices.delete(index=current_index_name)
+        if not current_index_name:
+            logger.info("No index initialised, will not attempt to delete")
+        else:
+            await self.client.indices.delete(index=current_index_name)
 
     def _generate_index_name(self, version: int) -> str:
         """Generate a versioned index name."""

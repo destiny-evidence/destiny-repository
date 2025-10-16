@@ -1,6 +1,9 @@
 """Tests for the elasticsearch index manager."""
 
-from elasticsearch import AsyncElasticsearch
+from collections.abc import AsyncGenerator
+from typing import Self
+
+import pytest
 from elasticsearch.dsl import (
     Keyword,
     mapped_field,
@@ -8,6 +11,7 @@ from elasticsearch.dsl import (
 from pydantic import Field
 
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
+from app.persistence.es.client import AsyncESClientManager
 from app.persistence.es.index_manager import IndexManager
 from app.persistence.es.persistence import GenericESPersistence
 
@@ -35,31 +39,96 @@ class DummyDocument(
 
         name = "dummy"
 
+    class Meta:
+        """Allow unmapped fields in the document."""
 
-async def test_initialise_es_index_happy_path(es_client: AsyncElasticsearch):
+        dynamic = True
+
+    @classmethod
+    def from_domain(cls, domain_obj: Dummy) -> Self:
+        """Create a persistence model from a domain model."""
+        return cls(
+            meta={"id": str(domain_obj.id)},  # type: ignore[call-arg]
+            note=domain_obj.note,
+        )
+
+    def to_domain(self) -> Dummy:
+        """Create a domain model from this persistence model."""
+        return Dummy(id=self.meta.id, note=self.note)
+
+
+@pytest.fixture
+async def index_manager(
+    es_manager_for_tests: AsyncESClientManager,
+) -> AsyncGenerator[IndexManager, None]:
+    """
+    Fixture for an index manager for the DummyDocument.
+
+    Cleans up its index at the end of of the test.
+    """
+    async with es_manager_for_tests.client() as client:
+        index_manager = IndexManager(DummyDocument, DummyDocument.Index.name, client)
+        # Cleanup any hanging index
+        await index_manager.delete_current_index_unsafe()
+
+        yield index_manager
+
+        await index_manager.delete_current_index_unsafe()
+
+
+async def test_initialise_es_index_happy_path(index_manager: IndexManager):
     """Test that we can initalise an index for a GenericESPersistence."""
-    index_exists = await es_client.indices.exists(index=DummyDocument.Index.name)
+    # Assert that the index does not exist
+    index_exists = await index_manager.client.indices.exists(
+        index=DummyDocument.Index.name
+    )
     assert not index_exists
 
-    index_manager = IndexManager(
-        document_class=DummyDocument,
-        alias_name=DummyDocument.Index.name,
-        client=es_client,
-    )
-
+    # Initialise the index
     await index_manager.initialize_index()
 
     # Check we've created a versioned index
     versioned_index_name = await index_manager.get_current_index_name()
-    versioned_index_exists = await es_client.indices.exists(index=versioned_index_name)
+    versioned_index_exists = await index_manager.client.indices.exists(
+        index=versioned_index_name
+    )
     assert versioned_index_exists
 
     # Check that the correct alias has been applied
     assert DummyDocument.Index.name == index_manager.alias_name
-    alias_exists = await es_client.indices.exists_alias(
+    alias_exists = await index_manager.client.indices.exists_alias(
         name=index_manager.alias_name, index=versioned_index_name
     )
     assert alias_exists
 
-    # Clean up - remove this later, should be done elsewhere
-    await index_manager.delete_current_index_unsafe()
+    # Assert that the current version is 1
+    current_version = await index_manager.get_current_version()
+    assert current_version == 1
+
+
+async def test_initialise_es_index_is_idempotent(index_manager: IndexManager):
+    """Make sure that subsequent intialisation calls have no impact."""
+    await index_manager.initialize_index()
+
+    # Get the current index name so we can verify it doesn't change
+    index_name = await index_manager.get_current_index_name()
+
+    # Add a document to the index so we can check for it
+    # after reinitialising
+    dummy_doc = DummyDocument.from_domain(Dummy(note="test document"))
+    doc_added = await dummy_doc.save(using=index_manager.client, validate=True)
+    assert doc_added == "created"
+
+    # Refresh the index to ensure document available
+    await index_manager.client.indices.refresh(index=index_manager.alias_name)
+
+    # Call the initialisation again
+    await index_manager.initialize_index()
+
+    # Verify the current index name has not changed
+    new_index_name = await index_manager.get_current_index_name()
+    assert new_index_name == index_name
+
+    # Assert the count of documents has not changed
+    count = await index_manager.client.count(index=index_manager.alias_name)
+    assert count["count"] == 1
