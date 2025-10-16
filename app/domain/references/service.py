@@ -33,6 +33,7 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     Reference,
     ReferenceDuplicateDecision,
+    ReferenceIds,
     ReferenceWithChangeset,
     RobotAutomation,
     RobotAutomationPercolationResult,
@@ -974,7 +975,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def invoke_deduplication_for_references(
         self,
-        reference_ids: list[UUID],
+        reference_ids: ReferenceIds,
     ) -> None:
         """Invoke deduplication for a list of references."""
         reference_duplicate_decisions = (
@@ -984,7 +985,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                         reference_id=reference_id,
                         duplicate_determination=DuplicateDetermination.PENDING,
                     )
-                    for reference_id in reference_ids
+                    for reference_id in reference_ids.reference_ids
                 ]
             )
         )

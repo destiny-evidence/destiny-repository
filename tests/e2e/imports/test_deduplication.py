@@ -1,6 +1,5 @@
 """End-to-end tests for import deduplication."""
 
-import asyncio
 import uuid
 from collections.abc import Callable
 from contextlib import _AsyncGeneratorContextManager
@@ -66,7 +65,11 @@ def canonical_bibliographic_enhancement() -> BibliographicMetadataEnhancement:
 
 @pytest.fixture
 def automation_triggering_annotation() -> BooleanAnnotation:
-    """Get a pre-defined annotation that triggers robot automation."""
+    """
+    Get a pre-defined annotation that will be used to trigger a robot automation.
+
+    See robot_automation_on_specific_enhancement below for the corresponding robot automation.
+    """
     return BooleanAnnotationFactory.build(
         value=True,
         scheme="Trigger Robot Automation",
@@ -584,8 +587,6 @@ async def test_duplicate_change(  # noqa: PLR0913
             "reference_ids": [str(duplicate_reference.id)],
         },
     )
-
-    await asyncio.sleep(5)
 
     # Check the decisions
     duplicate_decision = await poll_duplicate_process(

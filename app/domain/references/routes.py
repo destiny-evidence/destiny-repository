@@ -533,9 +533,7 @@ async def invoke_deduplication_for_references(
         "Invoking deduplication for references.",
         n_references=len(reference_ids.reference_ids),
     )
-    await reference_service.invoke_deduplication_for_references(
-        reference_ids.reference_ids
-    )
+    await reference_service.invoke_deduplication_for_references(reference_ids)
 
 
 reference_router.include_router(deduplication_router)
