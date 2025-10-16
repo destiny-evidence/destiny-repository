@@ -19,3 +19,17 @@ async def delete_test_indices(client: AsyncElasticsearch):
         exists = await client.indices.exists(index=index.Index.name)
         if exists:
             await client.indices.delete(index=index.Index.name)
+
+
+async def clean_test_indices(client: AsyncElasticsearch):
+    """Delete all documents from all indices after tests."""
+    for index in indices:
+        exists = await client.indices.exists(index=index.Index.name)
+        if exists:
+            await client.indices.refresh(index=index.Index.name)
+            await client.delete_by_query(
+                index=index.Index.name,
+                body={"query": {"match_all": {}}},
+                conflicts="proceed",
+            )
+            await client.indices.refresh(index=index.Index.name)

@@ -185,6 +185,8 @@ class OTelConfig(BaseModel):
     log_endpoint: HttpUrl
     api_key: str | None = None
 
+    timeout: int = 30
+
     # Flags to control low-level automatic instrumentation
     instrument_sql: bool = False
 
@@ -197,7 +199,6 @@ class Environment(StrEnum):
     DEVELOPMENT = auto()
     LOCAL = auto()
     TEST = auto()
-    E2E = auto()
 
 
 class LogLevel(StrEnum):
@@ -224,13 +225,12 @@ class ESPercolationOperation(StrEnum):
 class UploadFile(StrEnum):
     """Enum for upload file types."""
 
-    BATCH_ENHANCEMENT_REQUEST_REFERENCE_DATA = auto()
+    ENHANCEMENT_REQUEST_REFERENCE_DATA = auto()
+    ROBOT_ENHANCEMENT_REFERENCE_DATA = auto()
 
 
 class FeatureFlags(BaseModel):
     """Feature flags for the application."""
-
-    deduplication: bool = False
 
 
 class Settings(BaseSettings):
@@ -260,6 +260,13 @@ class Settings(BaseSettings):
     cli_client_id: str | None = None
     app_name: str
 
+    max_pending_enhancements_batch_size: int = Field(
+        default=10000,
+        description=(
+            "Maximum number of pending enhancements to return in a single batch."
+        ),
+    )
+
     default_es_indexing_chunk_size: int = Field(
         default=1000,
         description=(
@@ -284,10 +291,10 @@ class Settings(BaseSettings):
         description=("Override the default Elasticsearch percolation chunk size."),
     )
 
-    import_batch_retry_count: int = Field(
+    import_reference_retry_count: int = Field(
         default=3,
         description=(
-            "Number of times to retry processing an import batch before marking it as "
+            "Number of times to retry importing a reference before marking it as "
             "failed. We only retry on errors we are confident can be resolved - eg "
             "network issues or inconsistent database state being loaded in parallel."
         ),
@@ -332,15 +339,33 @@ class Settings(BaseSettings):
         description="The environment the app is running in.",
     )
 
+    tests_use_rabbitmq: bool = Field(
+        default=False,
+        description=(
+            "Whether to use RabbitMQ for tests. Only used in test environment. "
+            "If false, uses in-memory broker."
+        ),
+    )
+
     log_level: LogLevel = Field(
         default=LogLevel.INFO,
         description="The log level for the application.",
     )
 
+    max_reference_duplicate_depth: Literal[2] = Field(
+        default=2,
+        description=(
+            "The maximum depth to which reference duplicates are propagated. A depth "
+            "of 2, as in the default, means only direct duplicates are allowed. Higher "
+            "values allow for duplicate chaining, at the significant cost of "
+            "performance and data model complexity."
+        ),
+    )
+
     @property
     def running_locally(self) -> bool:
         """Return True if the app is running locally."""
-        return self.env in (Environment.LOCAL, Environment.TEST, Environment.E2E)
+        return self.env in (Environment.LOCAL, Environment.TEST)
 
     @property
     def default_blob_location(self) -> str:

@@ -3,19 +3,20 @@
 import uuid
 from typing import Any, Self
 
-from sqlalchemy import UUID, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import UUID, Enum, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
+from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.config import get_settings
+from app.core.exceptions import SQLPreloadError
 from app.domain.references.models.models import (
-    BatchEnhancementRequest as DomainBatchEnhancementRequest,
-)
-from app.domain.references.models.models import (
-    BatchEnhancementRequestStatus,
+    DuplicateDetermination,
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
+    PendingEnhancementStatus,
     Visibility,
 )
 from app.domain.references.models.models import (
@@ -28,13 +29,29 @@ from app.domain.references.models.models import (
     LinkedExternalIdentifier as DomainExternalIdentifier,
 )
 from app.domain.references.models.models import (
+    PendingEnhancement as DomainPendingEnhancement,
+)
+from app.domain.references.models.models import (
     Reference as DomainReference,
+)
+from app.domain.references.models.models import (
+    ReferenceDuplicateDecision as DomainReferenceDuplicateDecision,
 )
 from app.domain.references.models.models import (
     RobotAutomation as DomainRobotAutomation,
 )
+from app.domain.references.models.models import (
+    RobotEnhancementBatch as DomainRobotEnhancementBatch,
+)
 from app.persistence.blob.models import BlobStorageFile
-from app.persistence.sql.persistence import GenericSQLPersistence
+from app.persistence.sql.generics import GenericSQLPreloadableType
+from app.persistence.sql.persistence import (
+    GenericSQLPersistence,
+    RelationshipInfo,
+    RelationshipLoadType,
+)
+
+settings = get_settings()
 
 
 class Reference(GenericSQLPersistence[DomainReference]):
@@ -63,6 +80,48 @@ class Reference(GenericSQLPersistence[DomainReference]):
     enhancements: Mapped[list["Enhancement"]] = relationship(
         "Enhancement", back_populates="reference", cascade="all, delete, delete-orphan"
     )
+    duplicate_decision: Mapped["ReferenceDuplicateDecision"] = relationship(
+        "ReferenceDuplicateDecision",
+        primaryjoin="and_("
+        "Reference.id==foreign(ReferenceDuplicateDecision.reference_id), "
+        "ReferenceDuplicateDecision.active_decision==True)",
+        viewonly=True,
+    )
+
+    # When using a self-referential relationship, SQLAlchemy requires information
+    # about how far to take the recursion (As it needs to perform n+1 joins for n-depth
+    # searching, but doesn't know n).
+    # Also see:
+    # - https://docs.sqlalchemy.org/en/20/orm/self_referential.html#configuring-self-referential-eager-loading
+    canonical_reference: Mapped["Reference"] = relationship(
+        "Reference",
+        secondary="reference_duplicate_decision",
+        primaryjoin="and_("
+        "Reference.id==ReferenceDuplicateDecision.reference_id, "
+        "ReferenceDuplicateDecision.active_decision==True)",
+        secondaryjoin="Reference.id==ReferenceDuplicateDecision.canonical_reference_id",
+        uselist=False,
+        viewonly=True,
+        info=RelationshipInfo(
+            max_recursion_depth=settings.max_reference_duplicate_depth - 1,
+            load_type=RelationshipLoadType.SELECTIN,
+            back_populates="duplicate_references",
+        ).model_dump(),
+    )
+    duplicate_references: Mapped[list["Reference"]] = relationship(
+        "Reference",
+        secondary="reference_duplicate_decision",
+        primaryjoin="Reference.id==ReferenceDuplicateDecision.canonical_reference_id",
+        secondaryjoin="and_("
+        "Reference.id==ReferenceDuplicateDecision.reference_id, "
+        "ReferenceDuplicateDecision.active_decision==True)",
+        viewonly=True,
+        info=RelationshipInfo(
+            max_recursion_depth=settings.max_reference_duplicate_depth - 1,
+            load_type=RelationshipLoadType.SELECTIN,
+            back_populates="canonical_reference",
+        ).model_dump(),
+    )
 
     @classmethod
     def from_domain(cls, domain_obj: DomainReference) -> Self:
@@ -80,18 +139,51 @@ class Reference(GenericSQLPersistence[DomainReference]):
             ],
         )
 
-    def to_domain(self, preload: list[str] | None = None) -> DomainReference:
+    def to_domain(
+        self, preload: list[GenericSQLPreloadableType] | None = None
+    ) -> DomainReference:
         """Convert the persistence model into a Domain Reference object."""
-        return DomainReference(
-            id=self.id,
-            visibility=self.visibility,
-            identifiers=[identifier.to_domain() for identifier in self.identifiers]
-            if "identifiers" in (preload or [])
-            else None,
-            enhancements=[enhancement.to_domain() for enhancement in self.enhancements]
-            if "enhancements" in (preload or [])
-            else None,
-        )
+        try:
+            return DomainReference(
+                id=self.id,
+                visibility=self.visibility,
+                identifiers=[identifier.to_domain() for identifier in self.identifiers]
+                if "identifiers" in (preload or [])
+                else None,
+                enhancements=[
+                    enhancement.to_domain() for enhancement in self.enhancements
+                ]
+                if "enhancements" in (preload or [])
+                else None,
+                # Note we don't propagate the opposite side of the duplicate self-join
+                # to avoid infinite recursion. Having both sides of the relationship in
+                # preload will still return the tree on both sides but won't attempt to
+                # double back.
+                canonical_reference=self.canonical_reference.to_domain(
+                    preload=[p for p in (preload or []) if p != "duplicate_references"]
+                )
+                if "canonical_reference" in (preload or []) and self.canonical_reference
+                else None,
+                duplicate_references=[
+                    reference.to_domain(
+                        preload=[
+                            p for p in (preload or []) if p != "canonical_reference"
+                        ]
+                    )
+                    for reference in self.duplicate_references
+                ]
+                if "duplicate_references" in (preload or [])
+                else None,
+                duplicate_decision=self.duplicate_decision.to_domain()
+                if "duplicate_decision" in (preload or []) and self.duplicate_decision
+                else None,
+            )
+        except MissingGreenlet as exc:
+            msg = (
+                "Trying to preload a missing relationship. This may be due to "
+                "a deeper reference duplicate depth than specified in settings."
+            )
+            raise SQLPreloadError(msg) from exc
 
 
 class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
@@ -124,12 +216,19 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
     )
 
     __table_args__ = (
-        UniqueConstraint(
+        # Tree index for fast searching of identifiers or types
+        Index(
+            "ix_external_identifier_type",
             "identifier_type",
             "identifier",
+            postgresql_where=(identifier_type != ExternalIdentifierType.OTHER),
+        ),
+        Index(
+            "ix_external_identifier_type_other",
+            "identifier_type",
             "other_identifier_name",
-            name="uix_external_identifier",
-            postgresql_nulls_not_distinct=True,
+            "identifier",
+            postgresql_where=(identifier_type == ExternalIdentifierType.OTHER),
         ),
         Index("ix_external_identifier_reference_id", "reference_id"),
     )
@@ -147,7 +246,9 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
             else None,
         )
 
-    def to_domain(self, preload: list[str] | None = None) -> DomainExternalIdentifier:
+    def to_domain(
+        self, preload: list[GenericSQLPreloadableType] | None = None
+    ) -> DomainExternalIdentifier:
         """Convert the persistence model into a Domain ExternalIdentifier object."""
         return DomainExternalIdentifier(
             id=self.id,
@@ -222,7 +323,9 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             content=domain_obj.content.model_dump(mode="json"),
         )
 
-    def to_domain(self, preload: list[str] | None = None) -> DomainEnhancement:
+    def to_domain(
+        self, preload: list[GenericSQLPreloadableType] | None = None
+    ) -> DomainEnhancement:
         """Convert the persistence model into a Domain Enhancement object."""
         return DomainEnhancement(
             id=self.id,
@@ -240,7 +343,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
 
 class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
     """
-    SQL Persistence model for an EnhancementRequest.
+    SQL Persistence model for a EnhancementRequest.
 
     This is used in the repository layer to pass data between the domain and the
     database.
@@ -248,80 +351,14 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
 
     __tablename__ = "enhancement_request"
 
-    reference_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("reference.id"), nullable=False
-    )
+    reference_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID), nullable=False)
 
     robot_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
 
     request_status: Mapped[EnhancementRequestStatus] = mapped_column(
         ENUM(
             *[status.value for status in EnhancementRequestStatus],
-            name="request_status",
-        )
-    )
-
-    source: Mapped[str | None] = mapped_column(String, nullable=True)
-
-    enhancement_parameters: Mapped[dict[str, Any] | None] = mapped_column(
-        JSONB, nullable=True
-    )
-
-    error: Mapped[str | None] = mapped_column(String, nullable=True)
-
-    reference: Mapped["Reference"] = relationship("Reference")
-
-    @classmethod
-    def from_domain(cls, domain_obj: DomainEnhancementRequest) -> Self:
-        """Create a persistence model from a domain Enhancement object."""
-        return cls(
-            id=domain_obj.id,
-            reference_id=domain_obj.reference_id,
-            robot_id=domain_obj.robot_id,
-            request_status=domain_obj.request_status,
-            source=domain_obj.source,
-            enhancement_parameters=domain_obj.enhancement_parameters
-            if domain_obj.enhancement_parameters
-            else None,
-            error=domain_obj.error,
-        )
-
-    def to_domain(self, preload: list[str] | None = None) -> DomainEnhancementRequest:
-        """Convert the persistence model into a Domain Enhancement object."""
-        return DomainEnhancementRequest(
-            id=self.id,
-            reference_id=self.reference_id,
-            robot_id=self.robot_id,
-            request_status=self.request_status,
-            source=self.source,
-            enhancement_parameters=self.enhancement_parameters
-            if self.enhancement_parameters
-            else {},
-            error=self.error,
-            reference=self.reference.to_domain()
-            if "reference" in (preload or [])
-            else None,
-        )
-
-
-class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementRequest]):
-    """
-    SQL Persistence model for a BatchEnhancementRequest.
-
-    This is used in the repository layer to pass data between the domain and the
-    database.
-    """
-
-    __tablename__ = "batch_enhancement_request"
-
-    reference_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID), nullable=False)
-
-    robot_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
-
-    request_status: Mapped[BatchEnhancementRequestStatus] = mapped_column(
-        ENUM(
-            *[status.value for status in BatchEnhancementRequestStatus],
-            name="batch_enhancement_request_status",
+            name="enhancement_request_status",
         )
     )
 
@@ -335,10 +372,15 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
     result_file: Mapped[str | None] = mapped_column(String, nullable=True)
     validation_result_file: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    pending_enhancements: Mapped[list["PendingEnhancement"]] = relationship(
+        "PendingEnhancement",
+        back_populates="enhancement_request",
+    )
+
     error: Mapped[str | None] = mapped_column(String, nullable=True)
 
     @classmethod
-    def from_domain(cls, domain_obj: DomainBatchEnhancementRequest) -> Self:
+    def from_domain(cls, domain_obj: DomainEnhancementRequest) -> Self:
         """Create a persistence model from a domain Enhancement object."""
         return cls(
             id=domain_obj.id,
@@ -359,14 +401,18 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             validation_result_file=domain_obj.validation_result_file.to_sql()
             if domain_obj.validation_result_file
             else None,
+            pending_enhancements=[
+                PendingEnhancement.from_domain(pe)
+                for pe in (domain_obj.pending_enhancements or [])
+            ],
         )
 
     def to_domain(
         self,
-        preload: list[str] | None = None,  # noqa: ARG002
-    ) -> DomainBatchEnhancementRequest:
+        preload: list[GenericSQLPreloadableType] | None = None,
+    ) -> DomainEnhancementRequest:
         """Convert the persistence model into a Domain Enhancement object."""
-        return DomainBatchEnhancementRequest(
+        return DomainEnhancementRequest(
             id=self.id,
             reference_ids=self.reference_ids,
             robot_id=self.robot_id,
@@ -385,6 +431,9 @@ class BatchEnhancementRequest(GenericSQLPersistence[DomainBatchEnhancementReques
             validation_result_file=BlobStorageFile.from_sql(self.validation_result_file)
             if self.validation_result_file
             else None,
+            pending_enhancements=[pe.to_domain() for pe in self.pending_enhancements]
+            if "pending_enhancements" in (preload or [])
+            else [],
         )
 
 
@@ -423,11 +472,247 @@ class RobotAutomation(GenericSQLPersistence[DomainRobotAutomation]):
 
     def to_domain(
         self,
-        preload: list[str] | None = None,  # noqa: ARG002
+        preload: list[GenericSQLPreloadableType] | None = None,  # noqa: ARG002
     ) -> DomainRobotAutomation:
         """Convert the persistence model into a Domain RobotAutomation object."""
         return DomainRobotAutomation(
             id=self.id,
             robot_id=self.robot_id,
             query=self.query,
+        )
+
+
+class ReferenceDuplicateDecision(
+    GenericSQLPersistence[DomainReferenceDuplicateDecision]
+):
+    """SQL Persistence model for a Reference Duplicate Decision."""
+
+    __tablename__ = "reference_duplicate_decision"
+
+    # NB not foreign keys as can also refer to a reference that is not
+    # imported, for instance an exact duplicate.
+    reference_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
+    enhancement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("enhancement.id"), nullable=True
+    )
+    active_decision: Mapped[bool] = mapped_column(nullable=False, default=True)
+    candidate_canonical_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID), nullable=True
+    )
+    duplicate_determination: Mapped[DuplicateDetermination] = mapped_column(
+        ENUM(
+            *[status.value for status in DuplicateDetermination],
+            name="duplicate_determination",
+        )
+    )
+    canonical_reference_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("reference.id"),
+        nullable=True,
+    )
+    detail: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    __table_args__ = (
+        # Unique constraint to ensure only one active decision per reference
+        Index(
+            "uix_reference_one_active_decision_constraint",
+            "reference_id",
+            "active_decision",
+            unique=True,
+            postgresql_where=active_decision.is_(True),
+        ),
+        # For getting all decisions for a reference
+        Index(
+            "ix_reference_duplicate_decision_reference_id",
+            "reference_id",
+        ),
+        # For getting decisions by state eg needing manual resolution
+        Index(
+            "ix_reference_duplicate_decision_duplicate_determination",
+            "duplicate_determination",
+        ),
+    )
+
+    @classmethod
+    def from_domain(cls, domain_obj: DomainReferenceDuplicateDecision) -> Self:
+        """Create a persistence model from a domain object."""
+        return cls(
+            id=domain_obj.id,
+            reference_id=domain_obj.reference_id,
+            enhancement_id=domain_obj.enhancement_id,
+            active_decision=domain_obj.active_decision,
+            candidate_canonical_ids=domain_obj.candidate_canonical_ids,
+            canonical_reference_id=domain_obj.canonical_reference_id,
+            duplicate_determination=domain_obj.duplicate_determination,
+            detail=domain_obj.detail,
+        )
+
+    def to_domain(
+        self,
+        preload: list[GenericSQLPreloadableType] | None = None,  # noqa: ARG002
+    ) -> DomainReferenceDuplicateDecision:
+        """Convert the persistence model into a Domain object."""
+        return DomainReferenceDuplicateDecision(
+            id=self.id,
+            reference_id=self.reference_id,
+            enhancement_id=self.enhancement_id,
+            active_decision=self.active_decision,
+            candidate_canonical_ids=self.candidate_canonical_ids,
+            canonical_reference_id=self.canonical_reference_id,
+            duplicate_determination=self.duplicate_determination,
+            detail=self.detail,
+        )
+
+
+class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
+    """
+    SQL Persistence model for a PendingEnhancement.
+
+    This is used in the repository layer to pass data between the domain and the
+    database.
+    """
+
+    __tablename__ = "pending_enhancement"
+
+    reference_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("reference.id"), nullable=False
+    )
+    robot_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("robot.id"), nullable=False
+    )
+    enhancement_request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("enhancement_request.id"), nullable=False
+    )
+    robot_enhancement_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("robot_enhancement_batch.id"), nullable=True
+    )
+    status: Mapped[PendingEnhancementStatus] = mapped_column(
+        Enum(PendingEnhancementStatus),
+        nullable=False,
+        default=PendingEnhancementStatus.PENDING,
+    )
+
+    robot_enhancement_batch: Mapped["RobotEnhancementBatch"] = relationship(
+        "RobotEnhancementBatch", back_populates="pending_enhancements"
+    )
+
+    enhancement_request: Mapped["EnhancementRequest"] = relationship(
+        "EnhancementRequest", back_populates="pending_enhancements"
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_pending_enhancement_enhancement_request_id_status",
+            "enhancement_request_id",
+            "status",
+        ),
+        Index(
+            "ix_pending_enhancement_robot_polling",
+            "robot_id",
+            "status",
+            "created_at",
+            postgresql_where="robot_enhancement_batch_id IS NULL",
+        ),
+        Index(
+            "ix_pending_enhancement_robot_enhancement_batch_id",
+            "robot_enhancement_batch_id",
+        ),
+    )
+
+    @classmethod
+    def from_domain(cls, domain_obj: DomainPendingEnhancement) -> Self:
+        """Create a persistence model from a domain PendingEnhancement object."""
+        return cls(
+            id=domain_obj.id,
+            reference_id=domain_obj.reference_id,
+            robot_id=domain_obj.robot_id,
+            enhancement_request_id=domain_obj.enhancement_request_id,
+            robot_enhancement_batch_id=domain_obj.robot_enhancement_batch_id,
+            status=domain_obj.status,
+        )
+
+    def to_domain(
+        self,
+        preload: list[GenericSQLPreloadableType] | None = None,  # noqa: ARG002
+    ) -> DomainPendingEnhancement:
+        """Convert the persistence model into a Domain PendingEnhancement object."""
+        return DomainPendingEnhancement(
+            id=self.id,
+            reference_id=self.reference_id,
+            robot_id=self.robot_id,
+            enhancement_request_id=self.enhancement_request_id,
+            robot_enhancement_batch_id=self.robot_enhancement_batch_id,
+            status=self.status,
+        )
+
+
+class RobotEnhancementBatch(GenericSQLPersistence[DomainRobotEnhancementBatch]):
+    """
+    SQL Persistence model for a RobotEnhancementBatch.
+
+    This is used in the repository layer to pass data between the domain and the
+    database.
+    """
+
+    __tablename__ = "robot_enhancement_batch"
+
+    robot_id: Mapped[uuid.UUID] = mapped_column(
+        UUID, ForeignKey("robot.id"), nullable=False
+    )
+    reference_data_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    result_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    validation_result_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    pending_enhancements: Mapped[list["PendingEnhancement"]] = relationship(
+        "PendingEnhancement",
+        back_populates="robot_enhancement_batch",
+        cascade="save-update, merge",
+    )
+
+    @classmethod
+    def from_domain(cls, domain_obj: DomainRobotEnhancementBatch) -> Self:
+        """Create a persistence model from a domain RobotEnhancementBatch object."""
+        return cls(
+            id=domain_obj.id,
+            robot_id=domain_obj.robot_id,
+            reference_data_file=domain_obj.reference_data_file.to_sql()
+            if domain_obj.reference_data_file
+            else None,
+            result_file=domain_obj.result_file.to_sql()
+            if domain_obj.result_file
+            else None,
+            validation_result_file=domain_obj.validation_result_file.to_sql()
+            if domain_obj.validation_result_file
+            else None,
+            error=domain_obj.error,
+            pending_enhancements=[
+                PendingEnhancement.from_domain(pe)
+                for pe in domain_obj.pending_enhancements
+            ]
+            if domain_obj.pending_enhancements
+            else [],
+        )
+
+    def to_domain(
+        self,
+        preload: list[GenericSQLPreloadableType] | None = None,
+    ) -> DomainRobotEnhancementBatch:
+        """Convert the persistence model into a Domain RobotEnhancementBatch object."""
+        return DomainRobotEnhancementBatch(
+            id=self.id,
+            robot_id=self.robot_id,
+            reference_data_file=BlobStorageFile.from_sql(self.reference_data_file)
+            if self.reference_data_file
+            else None,
+            result_file=BlobStorageFile.from_sql(self.result_file)
+            if self.result_file
+            else None,
+            validation_result_file=BlobStorageFile.from_sql(self.validation_result_file)
+            if self.validation_result_file
+            else None,
+            error=self.error,
+            pending_enhancements=[pe.to_domain() for pe in self.pending_enhancements]
+            if "pending_enhancements" in (preload or [])
+            else [],
         )

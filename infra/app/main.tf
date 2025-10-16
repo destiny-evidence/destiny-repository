@@ -96,10 +96,8 @@ locals {
       value = var.telemetry_enabled
     },
     {
-      name = "FEATURE_FLAGS"
-      value = jsonencode({
-        deduplication = var.feature_flag_deduplication
-      })
+      name  = "FEATURE_FLAGS"
+      value = jsonencode(var.feature_flags)
     }
   ]
 

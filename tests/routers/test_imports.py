@@ -9,6 +9,7 @@ import pytest
 from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
@@ -16,9 +17,7 @@ from app.api.exception_handlers import not_found_exception_handler
 from app.core.config import Environment
 from app.core.exceptions import NotFoundError
 from app.domain.imports import routes as imports
-from app.domain.imports import tasks as import_tasks
 from app.domain.imports.models.models import (
-    CollisionStrategy,
     ImportBatch,
     ImportBatchStatus,
     ImportRecordStatus,
@@ -34,8 +33,8 @@ from app.domain.imports.models.sql import (
     ImportResult as SQLImportResult,
 )
 from app.domain.imports.service import ImportService
-from app.domain.references.models.sql import Reference as SQLReference
-from app.domain.references.service import ReferenceService
+from app.domain.references import routes as references
+from app.domain.references.models.sql import ReferenceDuplicateDecision
 from app.tasks import broker
 
 # Use the database session in all tests to set up the database manager.
@@ -57,6 +56,7 @@ def app() -> FastAPI:
         }
     )
     app.include_router(imports.router, prefix="/v1")
+    app.include_router(references.reference_router, prefix="/v1")
     return app
 
 
@@ -160,13 +160,9 @@ async def test_create_batch_for_import(
     session.add(valid_import)
     await session.commit()
 
-    # Mock the ImportService.process_batch call
+    # Mock the ImportService.distribute_import_batch call
     mock_process = AsyncMock(return_value=None)
-    monkeypatch.setattr(ImportService, "process_batch", mock_process)
-
-    # Mock the task call (we'll call it ourselves later)
-    mock_kiq = AsyncMock()
-    monkeypatch.setattr(import_tasks.process_import_batch, "kiq", mock_kiq)
+    monkeypatch.setattr(ImportService, "distribute_import_batch", mock_process)
 
     batch_params = {"storage_url": "https://example.com/batch_data.json"}
     response = await client.post(
@@ -176,96 +172,17 @@ async def test_create_batch_for_import(
     assert response.json()["import_record_id"] == str(valid_import.id)
     assert response.json()["status"] == ImportBatchStatus.CREATED
     assert response.json().items() >= batch_params.items()
-    mock_kiq.assert_awaited_once()
-    assert mock_kiq.call_args[1]["import_batch_id"] == uuid.UUID(response.json()["id"])
-    assert mock_kiq.call_args[1]["remaining_retries"] == 3
 
-    # Mock the results of the process_batch call
-    session.add(r1 := SQLReference(id=uuid.uuid4(), visibility="public"))
-    session.add(r2 := SQLReference(id=uuid.uuid4(), visibility="public"))
-    session.add(r3 := SQLReference(id=uuid.uuid4(), visibility="public"))
-    session.add(r4 := SQLReference(id=uuid.uuid4(), visibility="public"))
-    session.add(
-        SQLImportResult(
-            import_batch_id=response.json()["id"],
-            status=ImportResultStatus.COMPLETED,
-            reference_id=r1.id,
-        )
-    )
-    session.add(
-        SQLImportResult(
-            import_batch_id=response.json()["id"],
-            status=ImportResultStatus.PARTIALLY_FAILED,
-            reference_id=r2.id,
-        )
-    )
-    session.add(
-        SQLImportResult(
-            import_batch_id=response.json()["id"],
-            status=ImportResultStatus.FAILED,
-            reference_id=r3.id,
-        )
-    )
-    session.add(
-        SQLImportBatch(
-            id=(b2 := uuid.uuid4()),
-            import_record_id=valid_import.id,
-            collision_strategy=CollisionStrategy.FAIL,
-            status=ImportBatchStatus.COMPLETED,
-            storage_url="https://example.com/batch_data2.json",
-        )
-    )
-    session.add(
-        SQLImportResult(
-            import_batch_id=b2,
-            status=ImportResultStatus.COMPLETED,
-            reference_id=r4.id,
-        )
-    )
-    await session.commit()
-
-    # Call the task and check its steps now we've handled some side-effects
-    monkeypatch.undo()
-
-    # Mock the ImportService.process_batch call
-    mock_process = AsyncMock(return_value=ImportBatchStatus.INDEXING)
-    monkeypatch.setattr(ImportService, "process_batch", mock_process)
-
-    mock_index = AsyncMock()
-    monkeypatch.setattr(
-        ReferenceService,
-        "index_references",
-        mock_index,
-    )
-
-    mock_robot_automation = AsyncMock()
-    monkeypatch.setattr(
-        import_tasks,
-        "detect_and_dispatch_robot_automations",
-        mock_robot_automation,
-    )
-
-    await import_tasks.process_import_batch.kiq(
-        import_batch_id=response.json()["id"], remaining_retries=3
-    )
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()  # Wait for all async tasks to complete
     mock_process.assert_awaited_once()
+
     assert mock_process.call_args[0][0] == ImportBatch(
         id=uuid.UUID(response.json()["id"]),
         import_record_id=valid_import.id,
-        collision_strategy=CollisionStrategy.FAIL,
         status=ImportBatchStatus.CREATED,
         storage_url="https://example.com/batch_data.json",
     )
-    mock_index.assert_awaited_once_with(
-        reference_ids={r1.id, r2.id},
-    )
-    mock_robot_automation.assert_awaited_once()
-    assert mock_robot_automation.call_args[1]["reference_ids"] == {
-        r1.id,
-        r2.id,
-    }
 
 
 async def test_get_batches(
@@ -276,15 +193,11 @@ async def test_get_batches(
     await session.commit()
     batch1 = SQLImportBatch(
         import_record_id=valid_import.id,
-        collision_strategy=CollisionStrategy.FAIL,
-        status=ImportBatchStatus.CREATED,
         storage_url="https://some.url/file.json",
     )
     session.add(batch1)
     batch2 = SQLImportBatch(
         import_record_id=valid_import.id,
-        collision_strategy=CollisionStrategy.FAIL,
-        status=ImportBatchStatus.CREATED,
         storage_url="https://files.storage/something.json",
     )
     session.add(batch2)
@@ -293,6 +206,7 @@ async def test_get_batches(
     response = await client.get(f"/v1/imports/records/{valid_import.id}/batches/")
     assert response.status_code == status.HTTP_200_OK
     assert len(response.json()) == 2
+    assert response.json()[0]["status"] == "created"
 
 
 async def test_get_import_batch_summary(
@@ -303,8 +217,6 @@ async def test_get_import_batch_summary(
     await session.commit()
     batch = SQLImportBatch(
         import_record_id=valid_import.id,
-        collision_strategy=CollisionStrategy.FAIL,
-        status=ImportBatchStatus.CREATED,
         storage_url="https://some.url/file.json",
     )
     session.add(batch)
@@ -338,8 +250,8 @@ async def test_get_import_batch_summary(
         ImportResultStatus.FAILED.value: 1,
         ImportResultStatus.PARTIALLY_FAILED.value: 1,
         ImportResultStatus.COMPLETED.value: 0,
-        ImportResultStatus.CANCELLED.value: 0,
         ImportResultStatus.STARTED.value: 0,
+        ImportResultStatus.RETRYING.value: 0,
     }
     assert response.json()["failure_details"] == [
         "Some failure details.",
@@ -355,8 +267,6 @@ async def test_get_import_results(
     await session.commit()
     batch = SQLImportBatch(
         import_record_id=valid_import.id,
-        collision_strategy=CollisionStrategy.FAIL,
-        status=ImportBatchStatus.CREATED,
         storage_url="https://some.url/file.json",
     )
     session.add(batch)
@@ -467,3 +377,43 @@ async def test_missing_import_record(
     response = await client.get(f"/v1/imports/records/{(_id:=uuid.uuid4())}/batches/")
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.json()["detail"] == f"ImportRecord with id {_id} does not exist."
+
+
+async def test_deduplicate_references(
+    client: AsyncClient,
+    session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> None:
+    """
+    Test that we can deduplicate references for an import record.
+
+    NB this test takes advantage of the fact that duplicate_decision doesn't
+    FK to Reference (see app.domain.references.models.sql.ReferenceDuplicateDecision
+    for more). If that changes, this test will need seeding.
+    """
+    mock_queue = AsyncMock()
+    monkeypatch.setattr(
+        "app.domain.references.service.queue_task_with_trace", mock_queue
+    )
+
+    ref_ids = {uuid.uuid4(), uuid.uuid4(), uuid.uuid4()}
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json={"reference_ids": [str(r) for r in ref_ids]},
+    )
+    assert response.status_code == status.HTTP_202_ACCEPTED
+
+    # Assert queue_task_with_trace was called 3 times with correct IDs
+    assert mock_queue.call_count == 3
+    called_ids = {
+        call.kwargs["reference_duplicate_decision_id"]
+        for call in mock_queue.call_args_list
+    }
+
+    data = await session.execute(select(ReferenceDuplicateDecision))
+    results = data.scalars().all()
+    assert len(results) == 3
+    assert {r.reference_id for r in results} == ref_ids
+    assert {r.duplicate_determination for r in results} == {"pending"}
+    assert {r.id for r in results} == called_ids

@@ -1,13 +1,10 @@
 """The service for interacting with and managing references."""
 
 from collections import defaultdict
-from collections.abc import AsyncGenerator, Iterable
-
-import destiny_sdk
-from pydantic import UUID4
+from collections.abc import Collection, Iterable
+from uuid import UUID
 
 from app.core.config import (
-    ESIndexingOperation,
     ESPercolationOperation,
     UploadFile,
     get_settings,
@@ -17,13 +14,12 @@ from app.core.exceptions import (
     RobotEnhancementError,
     RobotUnreachableError,
     SQLNotFoundError,
-    WrongReferenceError,
 )
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
-from app.domain.imports.models.models import CollisionStrategy
+from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
-    BatchEnhancementRequest,
-    BatchEnhancementRequestStatus,
+    DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
@@ -32,21 +28,33 @@ from app.domain.references.models.models import (
     ExternalIdentifierSearch,
     ExternalIdentifierType,
     LinkedExternalIdentifier,
+    PendingEnhancement,
+    PendingEnhancementStatus,
     Reference,
+    ReferenceDuplicateDecision,
+    ReferenceIds,
+    ReferenceWithChangeset,
     RobotAutomation,
     RobotAutomationPercolationResult,
+    RobotEnhancementBatch,
 )
+from app.domain.references.models.projections import DeduplicatedReferenceProjection
 from app.domain.references.models.validators import ReferenceCreateResult
+from app.domain.references.repository import (
+    EnhancementRequestSQLPreloadable,
+    RobotEnhancementBatchSQLPreloadable,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
-from app.domain.references.services.batch_enhancement_service import (
-    BatchEnhancementService,
+from app.domain.references.services.deduplication_service import DeduplicationService
+from app.domain.references.services.enhancement_service import (
+    EnhancementService,
+    ProcessedResults,
 )
-from app.domain.references.services.ingestion_service import (
-    IngestionService,
+from app.domain.references.services.synchronizer_service import (
+    Synchronizer,
 )
-from app.domain.robots.models.models import Robot
 from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
@@ -69,63 +77,180 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         anti_corruption_service: ReferenceAntiCorruptionService,
         sql_uow: AsyncSqlUnitOfWork,
-        es_uow: AsyncESUnitOfWork | None = None,
+        es_uow: AsyncESUnitOfWork,
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
-        self._ingestion_service = IngestionService(anti_corruption_service, sql_uow)
-        self._batch_enhancement_service = BatchEnhancementService(
-            anti_corruption_service, sql_uow
+        self._enhancement_service = EnhancementService(anti_corruption_service, sql_uow)
+        self._deduplication_service = DeduplicationService(
+            anti_corruption_service, sql_uow, es_uow
         )
+        self._synchronizer = Synchronizer(sql_uow, es_uow)
 
     @sql_unit_of_work
-    async def get_reference(self, reference_id: UUID4) -> Reference:
+    async def get_reference(self, reference_id: UUID) -> Reference:
         """Get a single reference by id."""
         return await self._get_reference(reference_id)
 
-    async def _get_reference(self, reference_id: UUID4) -> Reference:
+    async def _get_reference(self, reference_id: UUID) -> Reference:
         """Get a single reference by id without using the unit of work."""
         # This method is used internally and does not use the unit of work.
         return await self.sql_uow.references.get_by_pk(
             reference_id, preload=["identifiers", "enhancements"]
         )
 
-    async def _add_enhancement(
-        self, reference_id: UUID4, enhancement: Enhancement
+    async def _get_deduplicated_references(
+        self, reference_ids: Collection[UUID]
+    ) -> list[Reference]:
+        """
+        Get the deduplicated reference for a given reference.
+
+        :param reference_id: The ID of the reference to get the deduplicated view for.
+        :type reference_id: UUID
+        :return: The deduplicated reference.
+        :rtype: Reference
+        """
+        references = await self.sql_uow.references.get_by_pks(
+            reference_ids,
+            preload=[
+                "identifiers",
+                "enhancements",
+                "duplicate_decision",
+                "duplicate_references",
+            ],
+        )
+        return [
+            DeduplicatedReferenceProjection.get_from_reference(reference)
+            for reference in references
+        ]
+
+    async def _get_deduplicated_reference(self, reference_id: UUID) -> Reference:
+        """
+        Get the deduplicated reference for a given reference.
+
+        :param reference_id: The ID of the reference to get the deduplicated view for.
+        :type reference_id: UUID
+        :return: The deduplicated reference.
+        :rtype: Reference
+        """
+        return (await self._get_deduplicated_references([reference_id]))[0]
+
+    async def _get_deduplicated_canonical_reference(
+        self, reference_id: UUID
     ) -> Reference:
-        """Add an enhancement to a reference."""
-        # This method is used internally and does not use the unit of work.
-        if enhancement.reference_id != reference_id:
-            detail = "Enhancement is for a different reference than requested."
-            raise WrongReferenceError(detail)
+        """
+        Get the deduplicated canonical reference for a given reference ID.
+
+        If the given reference is a duplicate, this will return the deduplicated view
+        of its canonical reference.
+
+        :param reference_id: The ID of the reference to get the deduplicated view for.
+        :type reference_id: UUID
+        """
+        reference = await self.sql_uow.references.get_by_pk(
+            reference_id,
+            preload=["duplicate_decision"],
+        )
+
+        if reference.canonical_like:
+            return await self._get_deduplicated_reference(reference.id)
+
+        if (
+            not reference.duplicate_decision
+            or not reference.duplicate_decision.canonical_reference_id
+        ):
+            msg = (
+                "Reference is not canonical but has no canonical reference id. "
+                "This should not happen."
+            )
+            raise RuntimeError(msg)
+
+        return await self._get_deduplicated_canonical_reference(
+            reference.duplicate_decision.canonical_reference_id
+        )
+
+    @sql_unit_of_work
+    async def get_canonical_reference_with_implied_changeset(
+        self, reference_id: UUID
+    ) -> ReferenceWithChangeset:
+        """
+        Get a canonical reference with its implied changeset per its duplicate decision.
+
+        This is used after a duplicate decision as an automation trigger.
+
+        If a reference is canonical, its implied changeset is itself.
+        If a reference is a duplicate, its implied changeset is again itself, but the
+        base reference is the deduplicated projection of its canonical reference.
+        """
+        reference = await self.sql_uow.references.get_by_pk(
+            reference_id, preload=["identifiers", "enhancements", "duplicate_decision"]
+        )
+        deduplicated_canonical_reference = (
+            await self._get_deduplicated_canonical_reference(reference_id)
+        )
+        return ReferenceWithChangeset(
+            **deduplicated_canonical_reference.model_dump(),
+            changeset=reference,
+        )
+
+    async def _merge_reference(self, reference: Reference) -> Reference:
+        """Persist a reference with an existing SQL & ES UOW."""
+        db_reference = await self.sql_uow.references.merge(reference)
+        await self._synchronizer.references.sql_to_es(db_reference.id)
+        return db_reference
+
+    @sql_unit_of_work
+    @es_unit_of_work
+    async def merge_reference(self, reference: Reference) -> Reference:
+        """Persist a reference."""
+        return await self._merge_reference(reference)
+
+    async def _add_enhancement(self, enhancement: Enhancement) -> Reference:
+        """
+        Add an enhancement to a reference.
+
+        :param enhancement: The enhancement to add
+        :type enhancement: Enhancement
+        """
+        reference = await self.sql_uow.references.get_by_pk(
+            enhancement.reference_id,
+            preload=["enhancements", "identifiers", "duplicate_references"],
+        )
 
         if enhancement.derived_from:
+            valid_derived_reference_ids = {
+                ref.id for ref in reference.duplicate_references or []
+            } | {reference.id}
             try:
-                await self.sql_uow.enhancements.verify_pk_existence(
+                parent_enhancements = await self.sql_uow.enhancements.get_by_pks(
                     enhancement.derived_from
                 )
+                if not all(
+                    e.reference_id in valid_derived_reference_ids
+                    for e in parent_enhancements
+                ):
+                    detail = (
+                        "All parent enhancements must belong to the same reference "
+                        "tree as the child enhancement."
+                    )
+                    raise InvalidParentEnhancementError(detail)
             except SQLNotFoundError as e:
                 detail = f"Enhancements with ids {e.lookup_value} do not exist."
                 raise InvalidParentEnhancementError(detail) from e
 
-        reference = await self.sql_uow.references.get_by_pk(
-            reference_id, preload=["enhancements", "identifiers"]
-        )
         # This uses SQLAlchemy to treat References as an aggregate of enhancements.
         # All considered this is a naive implementation, but it works for now.
         reference.enhancements = [*(reference.enhancements or []), *[enhancement]]
         return await self.sql_uow.references.merge(reference)
 
     @sql_unit_of_work
-    async def add_enhancement(
-        self, reference_id: UUID4, enhancement: Enhancement
-    ) -> Reference:
+    async def add_enhancement(self, enhancement: Enhancement) -> Reference:
         """Add an enhancement to a reference."""
-        return await self._add_enhancement(reference_id, enhancement)
+        return await self._add_enhancement(enhancement)
 
     async def _get_hydrated_references(
         self,
-        reference_ids: list[UUID4],
+        reference_ids: list[UUID],
         enhancement_types: list[EnhancementType] | None = None,
         external_identifier_types: list[ExternalIdentifierType] | None = None,
     ) -> list[Reference]:
@@ -147,7 +272,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
     async def _get_jsonl_hydrated_references(
         self,
-        reference_ids: list[UUID4],
+        reference_ids: list[UUID],
     ) -> list[str]:
         """Get a list of JSONL strings for hydrated references by id."""
         return [
@@ -156,19 +281,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         ]
 
     @sql_unit_of_work
-    async def get_hydrated_references(
-        self,
-        reference_ids: list[UUID4],
-        enhancement_types: list[EnhancementType] | None = None,
-        external_identifier_types: list[ExternalIdentifierType] | None = None,
-    ) -> list[Reference]:
-        """Get a list of references with enhancements and identifiers by id."""
-        return await self._get_hydrated_references(
-            reference_ids, enhancement_types, external_identifier_types
-        )
-
-    @sql_unit_of_work
-    async def get_all_reference_ids(self) -> list[UUID4]:
+    async def get_all_reference_ids(self) -> list[UUID]:
         """Get all reference IDs from the database."""
         return await self.sql_uow.references.get_all_pks()
 
@@ -189,13 +302,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     @sql_unit_of_work
-    async def register_reference(self) -> Reference:
-        """Create a new reference."""
-        return await self.sql_uow.references.add(Reference())
-
-    @sql_unit_of_work
     async def add_identifier(
-        self, reference_id: UUID4, identifier: ExternalIdentifier
+        self, reference_id: UUID, identifier: ExternalIdentifier
     ) -> LinkedExternalIdentifier:
         """Register an identifier, persisting it to the database."""
         reference = await self.sql_uow.references.get_by_pk(reference_id)
@@ -205,248 +313,126 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         return await self.sql_uow.external_identifiers.add(db_identifier)
 
-    async def _get_enhancement_request(
-        self,
-        enhancement_request_id: UUID4,
-    ) -> EnhancementRequest:
-        """Get an enhancement request by request id."""
-        return await self.sql_uow.enhancement_requests.get_by_pk(enhancement_request_id)
-
+    @sql_unit_of_work
+    @es_unit_of_work
     async def ingest_reference(
-        self, record_str: str, entry_ref: int, collision_strategy: CollisionStrategy
-    ) -> ReferenceCreateResult | None:
+        self, record_str: str, entry_ref: int
+    ) -> ReferenceCreateResult:
         """Ingest a reference from a file."""
-        return await self._ingestion_service.ingest_reference(
-            record_str, entry_ref, collision_strategy
+        # Full deduplication flow
+        reference_create_result = ReferenceCreateResult.from_raw(record_str, entry_ref)
+        if not reference_create_result.reference:
+            return reference_create_result
+        reference = self._anti_corruption_service.reference_from_sdk_file_input(
+            reference_create_result.reference
         )
+        reference_create_result.reference_id = reference.id
+        trace_attribute(Attributes.REFERENCE_ID, str(reference.id))
 
-    async def _register_enhancement_request(
-        self,
-        enhancement_request: EnhancementRequest,
-        robot_service: RobotService,
-    ) -> tuple[Reference, Robot]:
-        """Create a new enhancement request."""
-        reference = await self.sql_uow.references.get_by_pk(
-            enhancement_request.reference_id, preload=["identifiers", "enhancements"]
+        canonical_reference = await self._deduplication_service.find_exact_duplicate(
+            reference
         )
+        if canonical_reference:
+            logger.info(
+                "Exact duplicate found during ingestion",
+                reference_id=str(reference.id),
+                canonical_reference_id=str(canonical_reference.id),
+            )
+            await self._deduplication_service.register_duplicate_decision_for_reference(
+                reference_id=reference.id,
+                duplicate_determination=DuplicateDetermination.EXACT_DUPLICATE,
+                canonical_reference_id=canonical_reference.id,
+            )
+            return reference_create_result
 
-        robot = await robot_service.get_robot(enhancement_request.robot_id)
-
-        enhancement_request = await self.sql_uow.enhancement_requests.add(
-            enhancement_request
+        duplicate_decision = (
+            await self._deduplication_service.register_duplicate_decision_for_reference(
+                reference_id=reference.id
+            )
         )
+        await self._merge_reference(reference)
+        reference_create_result.duplicate_decision_id = duplicate_decision.id
 
-        return reference, robot
+        return reference_create_result
 
     @sql_unit_of_work
-    async def register_enhancement_request(
+    async def register_reference_enhancement_request(
         self,
         enhancement_request: EnhancementRequest,
-        robot_service: RobotService,
-    ) -> tuple[Reference, Robot]:
-        """Register an enhancement request and return the reference and robot."""
-        return await self._register_enhancement_request(
-            enhancement_request=enhancement_request,
-            robot_service=robot_service,
-        )
-
-    async def _dispatch_enhancement_request(
-        self,
-        enhancement_request: EnhancementRequest,
-        reference: Reference,
-        robot: Robot,
-        robot_request_dispatcher: RobotRequestDispatcher,
     ) -> EnhancementRequest:
-        """Dispatch an enhancement request to a robot."""
-        robot_request = destiny_sdk.robots.RobotRequest(
-            id=enhancement_request.id,
-            reference=self._anti_corruption_service.reference_to_sdk(reference),
-            extra_fields=enhancement_request.enhancement_parameters,
-        )
-
-        try:
-            await robot_request_dispatcher.send_enhancement_request_to_robot(
-                endpoint="/single/", robot=robot, robot_request=robot_request
-            )
-        except RobotUnreachableError as exception:
-            return await self.sql_uow.enhancement_requests.update_by_pk(
-                enhancement_request.id,
-                request_status=EnhancementRequestStatus.FAILED,
-                error=exception.detail,
-            )
-        except RobotEnhancementError as exception:
-            return await self.sql_uow.enhancement_requests.update_by_pk(
-                enhancement_request.id,
-                request_status=EnhancementRequestStatus.REJECTED,
-                error=exception.detail,
-            )
-
-        return await self.sql_uow.enhancement_requests.update_by_pk(
-            enhancement_request.id,
-            request_status=EnhancementRequestStatus.ACCEPTED,
-        )
-
-    @sql_unit_of_work
-    async def dispatch_enhancement_request(
-        self,
-        enhancement_request: EnhancementRequest,
-        reference: Reference,
-        robot: Robot,
-        robot_request_dispatcher: RobotRequestDispatcher,
-    ) -> EnhancementRequest:
-        """Dispatch an enhancement request to a robot."""
-        return await self._dispatch_enhancement_request(
-            enhancement_request=enhancement_request,
-            reference=reference,
-            robot=robot,
-            robot_request_dispatcher=robot_request_dispatcher,
-        )
-
-    async def _request_reference_enhancement(
-        self,
-        enhancement_request: EnhancementRequest,
-        robot_service: RobotService,
-        robot_request_dispatcher: RobotRequestDispatcher,
-    ) -> EnhancementRequest:
-        """Create an enhancement request and send it to robot using an existing UOW."""
-        reference, robot = await self._register_enhancement_request(
-            enhancement_request=enhancement_request,
-            robot_service=robot_service,
-        )
-        logger.info(
-            "Dispatching enhancement request",
-            enhancement_request_id=enhancement_request.id,
-            robot_id=robot.id,
-        )
-        return await self._dispatch_enhancement_request(
-            enhancement_request=enhancement_request,
-            reference=reference,
-            robot=robot,
-            robot_request_dispatcher=robot_request_dispatcher,
-        )
-
-    async def request_reference_enhancement(
-        self,
-        enhancement_request: EnhancementRequest,
-        robot_service: RobotService,
-        robot_request_dispatcher: RobotRequestDispatcher,
-    ) -> EnhancementRequest:
-        """Create an enhancement request and send it to the robot."""
-        reference, robot = await self.register_enhancement_request(
-            enhancement_request=enhancement_request,
-            robot_service=robot_service,
-        )
-
-        return await self.dispatch_enhancement_request(
-            enhancement_request=enhancement_request,
-            reference=reference,
-            robot=robot,
-            robot_request_dispatcher=robot_request_dispatcher,
-        )
-
-    @sql_unit_of_work
-    async def register_batch_reference_enhancement_request(
-        self,
-        enhancement_request: BatchEnhancementRequest,
-    ) -> BatchEnhancementRequest:
-        """Create a batch enhancement request."""
+        """Create an enhancement request."""
         await self.sql_uow.references.verify_pk_existence(
             enhancement_request.reference_ids
         )
 
-        # Add any extra parameters here!
+        await self.sql_uow.enhancement_requests.add(enhancement_request)
 
-        return await self.sql_uow.batch_enhancement_requests.add(enhancement_request)
+        await self._create_pending_enhancements(enhancement_request)
+
+        return enhancement_request
+
+    async def _create_pending_enhancements(
+        self, enhancement_request: EnhancementRequest
+    ) -> list[PendingEnhancement]:
+        """Create a batch enhancement request."""
+        pending_enhancements_to_create = [
+            PendingEnhancement(
+                reference_id=ref_id,
+                robot_id=enhancement_request.robot_id,
+                enhancement_request_id=enhancement_request.id,
+            )
+            for ref_id in enhancement_request.reference_ids
+        ]
+
+        if pending_enhancements_to_create:
+            return await self.sql_uow.pending_enhancements.add_bulk(
+                pending_enhancements_to_create
+            )
+
+        return []
 
     @sql_unit_of_work
     async def get_enhancement_request(
         self,
-        enhancement_request_id: UUID4,
+        enhancement_request_id: UUID,
+        preload: list[EnhancementRequestSQLPreloadable] | None = None,
     ) -> EnhancementRequest:
-        """Get an enhancement request by request id."""
-        return await self._get_enhancement_request(enhancement_request_id)
-
-    @sql_unit_of_work
-    async def get_batch_enhancement_request(
-        self,
-        batch_enhancement_request_id: UUID4,
-    ) -> BatchEnhancementRequest:
         """Get a batch enhancement request by request id."""
-        return await self.sql_uow.batch_enhancement_requests.get_by_pk(
-            batch_enhancement_request_id
+        return await self.sql_uow.enhancement_requests.get_by_pk(
+            enhancement_request_id, preload=preload
         )
 
     @sql_unit_of_work
-    async def create_reference_enhancement_from_request(
+    async def get_robot_enhancement_batch(
         self,
-        enhancement_request_id: UUID4,
-        enhancement: Enhancement,
-        robot_service: RobotService,
-        robot_request_dispatcher: RobotRequestDispatcher,
-    ) -> EnhancementRequest:
-        """Finalise the creation of an enhancement against a reference."""
-        enhancement_request = await self._get_enhancement_request(
-            enhancement_request_id
-        )
-
-        await self._add_enhancement(enhancement_request.reference_id, enhancement)
-
-        await self.index_reference(
-            reference=await self._get_reference(enhancement_request.reference_id)
-        )
-
-        for robot_automation in await self._detect_robot_automations(
-            enhancement_ids=[enhancement.id],
-        ):
-            if robot_automation.robot_id == enhancement_request.robot_id:
-                logger.warning(
-                    "Detected robot automation loop, skipping."
-                    " This is likely a problem in the percolating query.",
-                    robot_id=robot_automation.robot_id,
-                    source=f"EnhancementRequest:{enhancement_request.id}",
-                )
-                continue
-            logger.info(
-                "Detected robot automation for enhancement",
-                robot_id=robot_automation.robot_id,
-                n_references=len(robot_automation.reference_ids),
-            )
-            await self._request_reference_enhancement(
-                EnhancementRequest(
-                    reference_id=enhancement_request.reference_id,
-                    robot_id=robot_automation.robot_id,
-                    source=f"EnhancementRequest:{enhancement_request.id}",
-                ),
-                robot_service=robot_service,
-                robot_request_dispatcher=robot_request_dispatcher,
-            )
-
-        return await self.sql_uow.enhancement_requests.update_by_pk(
-            enhancement_request.id,
-            request_status=EnhancementRequestStatus.COMPLETED,
+        robot_enhancement_batch_id: UUID,
+        preload: list[RobotEnhancementBatchSQLPreloadable] | None = None,
+    ) -> RobotEnhancementBatch:
+        """Get a robot enhancement batch by batch id."""
+        return await self.sql_uow.robot_enhancement_batches.get_by_pk(
+            robot_enhancement_batch_id, preload=preload
         )
 
     @sql_unit_of_work
-    async def mark_enhancement_request_failed(
-        self, enhancement_request_id: UUID4, error: str
-    ) -> EnhancementRequest:
-        """Mark an enhancement request as failed and supply error message."""
-        return await self.sql_uow.enhancement_requests.update_by_pk(
-            pk=enhancement_request_id,
-            request_status=EnhancementRequestStatus.FAILED,
-            error=error,
-        )
-
-    @sql_unit_of_work
-    async def collect_and_dispatch_references_for_batch_enhancement(
+    async def get_enhancement_request_with_calculated_status(
         self,
-        batch_enhancement_request: BatchEnhancementRequest,
+        enhancement_request_id: UUID,
+    ) -> EnhancementRequest:
+        """Get an enhancement request with calculated status."""
+        return await self.sql_uow.enhancement_requests.get_by_pk(
+            enhancement_request_id, preload=["status"]
+        )
+
+    @sql_unit_of_work
+    async def collect_and_dispatch_references_for_enhancement(
+        self,
+        enhancement_request: EnhancementRequest,
         robot_service: RobotService,
         robot_request_dispatcher: RobotRequestDispatcher,
         blob_repository: BlobRepository,
     ) -> None:
         """Collect and dispatch references for batch enhancement."""
-        robot = await robot_service.get_robot(batch_enhancement_request.robot_id)
+        robot = await robot_service.get_robot(enhancement_request.robot_id)
         file_stream = FileStream(
             self._get_jsonl_hydrated_references,
             [
@@ -454,17 +440,17 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     "reference_ids": reference_id_chunk,
                 }
                 for reference_id_chunk in list_chunker(
-                    batch_enhancement_request.reference_ids,
+                    enhancement_request.reference_ids,
                     settings.upload_file_chunk_size_override.get(
-                        UploadFile.BATCH_ENHANCEMENT_REQUEST_REFERENCE_DATA,
+                        UploadFile.ENHANCEMENT_REQUEST_REFERENCE_DATA,
                         settings.default_upload_file_chunk_size,
                     ),
                 )
             ],
         )
 
-        robot_request = await self._batch_enhancement_service.build_robot_request(
-            blob_repository, file_stream, batch_enhancement_request
+        robot_request = await self._enhancement_service.build_robot_request(
+            blob_repository, file_stream, enhancement_request
         )
 
         try:
@@ -474,83 +460,80 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 robot_request=robot_request,
             )
         except RobotUnreachableError as exception:
-            await self.sql_uow.batch_enhancement_requests.update_by_pk(
-                batch_enhancement_request.id,
-                request_status=BatchEnhancementRequestStatus.FAILED,
+            await self.sql_uow.enhancement_requests.update_by_pk(
+                enhancement_request.id,
+                request_status=EnhancementRequestStatus.FAILED,
                 error=exception.detail,
             )
         except RobotEnhancementError as exception:
-            await self.sql_uow.batch_enhancement_requests.update_by_pk(
-                batch_enhancement_request.id,
-                request_status=BatchEnhancementRequestStatus.REJECTED,
+            await self.sql_uow.enhancement_requests.update_by_pk(
+                enhancement_request.id,
+                request_status=EnhancementRequestStatus.REJECTED,
                 error=exception.detail,
             )
         else:
-            await self.sql_uow.batch_enhancement_requests.update_by_pk(
-                batch_enhancement_request.id,
-                request_status=BatchEnhancementRequestStatus.ACCEPTED,
+            await self.sql_uow.enhancement_requests.update_by_pk(
+                enhancement_request.id,
+                request_status=EnhancementRequestStatus.ACCEPTED,
             )
 
     @sql_unit_of_work
-    async def validate_and_import_batch_enhancement_result(
+    async def validate_and_import_enhancement_result(
         self,
-        batch_enhancement_request: BatchEnhancementRequest,
+        enhancement_request: EnhancementRequest,
         blob_repository: BlobRepository,
-    ) -> tuple[BatchEnhancementRequestStatus, set[UUID4]]:
+    ) -> tuple[EnhancementRequestStatus, set[UUID]]:
         """
-        Validate and import the result of a batch enhancement request.
+        Validate and import the result of a enhancement request.
 
         This process:
-        - streams the result of the batch enhancement request line-by-line
+        - streams the result of the enhancement request line-by-line
         - adds the enhancement to the database
         - streams the validation result to the blob storage service line-by-line
         - does some final validation of missing references and updates the request
         """
         # Mutable set to track imported enhancement IDs
-        imported_enhancement_ids: set[UUID4] = set()
+        imported_enhancement_ids: set[UUID] = set()
         validation_result_file = await blob_repository.upload_file_to_blob_storage(
             content=FileStream(
-                generator=self._batch_enhancement_service.process_batch_enhancement_result(
+                generator=self._enhancement_service.process_enhancement_result(
                     blob_repository=blob_repository,
-                    batch_enhancement_request=batch_enhancement_request,
-                    add_enhancement=self.handle_batch_enhancement_result_entry,
+                    enhancement_request=enhancement_request,
+                    add_enhancement=self.handle_enhancement_result_entry,
                     imported_enhancement_ids=imported_enhancement_ids,
                 )
             ),
-            path="batch_enhancement_result",
-            filename=f"{batch_enhancement_request.id}_repo.jsonl",
+            path="enhancement_result",
+            filename=f"{enhancement_request.id}_repo.jsonl",
         )
 
-        await self._batch_enhancement_service.add_validation_result_file_to_batch_enhancement_request(  # noqa: E501
-            batch_enhancement_request.id, validation_result_file
+        await (
+            self._enhancement_service.add_validation_result_file_to_enhancement_request(
+                enhancement_request.id, validation_result_file
+            )
         )
 
         # This is a bit hacky - we retrieve the terminal status from the import,
         # and then set to indexing. Essentially using the SQL UOW as a transport
         # from the blob generator to this layer.
-        batch_enhancement_request = (
-            await self.sql_uow.batch_enhancement_requests.get_by_pk(
-                batch_enhancement_request.id
-            )
+        enhancement_request = await self.sql_uow.enhancement_requests.get_by_pk(
+            enhancement_request.id
         )
-        terminal_status = batch_enhancement_request.request_status
+        terminal_status = enhancement_request.request_status
 
-        await self.sql_uow.batch_enhancement_requests.update_by_pk(
-            batch_enhancement_request.id,
-            request_status=BatchEnhancementRequestStatus.INDEXING,
+        await self.sql_uow.enhancement_requests.update_by_pk(
+            enhancement_request.id,
+            request_status=EnhancementRequestStatus.INDEXING,
         )
         return terminal_status, imported_enhancement_ids
 
-    async def handle_batch_enhancement_result_entry(
+    async def handle_enhancement_result_entry(
         self,
         enhancement: Enhancement,
     ) -> tuple[bool, str]:
         """Handle the import of a single batch enhancement result entry."""
         try:
-            await self._add_enhancement(
-                enhancement.reference_id,
-                enhancement,
-            )
+            await self._add_enhancement(enhancement)
         except SQLNotFoundError:
             return (
                 False,
@@ -573,103 +556,185 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     @sql_unit_of_work
-    async def mark_batch_enhancement_request_failed(
+    async def mark_enhancement_request_failed(
         self,
-        batch_enhancement_request_id: UUID4,
+        enhancement_request_id: UUID,
         error: str,
-    ) -> BatchEnhancementRequest:
+    ) -> EnhancementRequest:
         """Mark a batch enhancement request as failed and supply error message."""
-        return (
-            await self._batch_enhancement_service.mark_batch_enhancement_request_failed(
-                batch_enhancement_request_id, error
-            )
+        return await self._enhancement_service.mark_enhancement_request_failed(
+            enhancement_request_id, error
         )
 
     @sql_unit_of_work
-    async def update_batch_enhancement_request_status(
+    async def validate_and_import_robot_enhancement_batch_result(
         self,
-        batch_enhancement_request_id: UUID4,
-        status: BatchEnhancementRequestStatus,
-    ) -> BatchEnhancementRequest:
-        """Update a batch enhancement request."""
-        return await self._batch_enhancement_service.update_batch_enhancement_request_status(  # noqa: E501
-            batch_enhancement_request_id, status
+        robot_enhancement_batch: RobotEnhancementBatch,
+        blob_repository: BlobRepository,
+    ) -> tuple[set[UUID], set[UUID], set[UUID]]:
+        """
+        Validate and import the result of a robot enhancement batch.
+
+        This process:
+        - streams the result of the robot enhancement batch line-by-line
+        - adds the enhancement to the database
+        - streams the validation result to the blob storage service line-by-line
+        - does some final validation of missing references and updates the request
+        """
+        if not robot_enhancement_batch.result_file:
+            msg = "Robot enhancement batch has no result file. This should not happen."
+            raise RuntimeError(msg)
+
+        pending_enhancements = robot_enhancement_batch.pending_enhancements
+        if not pending_enhancements:
+            pending_enhancements = await self.sql_uow.pending_enhancements.find(
+                robot_enhancement_batch_id=robot_enhancement_batch.id
+            )
+
+        # Mutable sets to track imported enhancement IDs and pending enhancement IDs
+        results = ProcessedResults(
+            imported_enhancement_ids=set(),
+            successful_pending_enhancement_ids=set(),
+            failed_pending_enhancement_ids=set(),
         )
 
+        validation_result_file = await blob_repository.upload_file_to_blob_storage(
+            content=FileStream(
+                generator=self._enhancement_service.process_robot_enhancement_batch_result(
+                    blob_repository=blob_repository,
+                    result_file=robot_enhancement_batch.result_file,
+                    pending_enhancements=pending_enhancements,
+                    add_enhancement=self.handle_enhancement_result_entry,
+                    results=results,
+                )
+            ),
+            path="enhancement_result",
+            filename=f"{robot_enhancement_batch.id}_repo.jsonl",
+        )
+
+        await self._enhancement_service.add_validation_result_file_to_robot_enhancement_batch(  # noqa: E501
+            robot_enhancement_batch.id, validation_result_file
+        )
+
+        return (
+            results.imported_enhancement_ids,
+            results.successful_pending_enhancement_ids,
+            results.failed_pending_enhancement_ids,
+        )
+
+    @sql_unit_of_work
+    async def mark_robot_enhancement_batch_failed(
+        self,
+        robot_enhancement_batch_id: UUID,
+        error: str,
+    ) -> RobotEnhancementBatch:
+        """Mark a robot enhancement batch as failed and supply error message."""
+        return await self._enhancement_service.mark_robot_enhancement_batch_failed(
+            robot_enhancement_batch_id, error
+        )
+
+    @sql_unit_of_work
+    async def update_enhancement_request_status(
+        self,
+        enhancement_request_id: UUID,
+        status: EnhancementRequestStatus,
+    ) -> EnhancementRequest:
+        """Update a batch enhancement request."""
+        return await self._enhancement_service.update_enhancement_request_status(
+            enhancement_request_id, status
+        )
+
+    @sql_unit_of_work
+    async def update_pending_enhancements_status(
+        self,
+        pending_enhancement_ids: list[UUID],
+        status: PendingEnhancementStatus,
+    ) -> int:
+        """Update pending enhancements status."""
+        return await self._enhancement_service.update_pending_enhancements_status(
+            pending_enhancement_ids, status
+        )
+
+    @sql_unit_of_work
+    async def update_pending_enhancements_status_for_robot_enhancement_batch(
+        self,
+        robot_enhancement_batch_id: UUID,
+        status: PendingEnhancementStatus,
+    ) -> int:
+        """Update pending enhancements status for a robot enhancement batch."""
+        pending_enhancements = await self.sql_uow.pending_enhancements.find(
+            robot_enhancement_batch_id=robot_enhancement_batch_id
+        )
+
+        if pending_enhancements:
+            return await self._enhancement_service.update_pending_enhancements_status(
+                [pe.id for pe in pending_enhancements], status
+            )
+
+        return 0
+
+    @sql_unit_of_work
     @es_unit_of_work
     async def index_references(
         self,
-        reference_ids: Iterable[UUID4],
+        reference_ids: Iterable[UUID],
     ) -> None:
         """Index references in Elasticsearch."""
-        ids = list(reference_ids)
-        chunk_size = settings.es_indexing_chunk_size_override.get(
-            ESIndexingOperation.REFERENCE_IMPORT,
-            settings.default_es_indexing_chunk_size,
-        )
-
-        logger.info(
-            "Indexing references in Elasticsearch",
-            n_references=len(ids),
-            chunk_size=chunk_size,
-        )
-
-        async def reference_generator() -> AsyncGenerator[Reference, None]:
-            """Generate references for indexing."""
-            for reference_id_chunk in list_chunker(
-                ids,
-                chunk_size,
-            ):
-                references = await self.get_hydrated_references(reference_id_chunk)
-                for reference in references:
-                    yield reference
-
-        await self.es_uow.references.add_bulk(reference_generator())
-
-    @es_unit_of_work
-    async def index_reference(
-        self,
-        reference: Reference,
-    ) -> None:
-        """Index a single reference in Elasticsearch."""
-        await self.es_uow.references.add(reference)
+        await self._synchronizer.references.bulk_sql_to_es(reference_ids)
 
     async def repopulate_reference_index(self) -> None:
         """Index ALL references in Elasticsearch."""
         reference_ids = await self.get_all_reference_ids()
         await self.index_references(reference_ids)
 
-    @es_unit_of_work
-    async def save_robot_automation(
-        self, automation: RobotAutomation
-    ) -> RobotAutomation:
-        """Add an automation to a robot."""
-        await self.es_uow.robot_automations.add(automation)
-        return automation
+    async def _get_reference_changesets_from_enhancements(
+        self,
+        enhancement_ids: list[UUID],
+    ) -> list[ReferenceWithChangeset]:
+        """
+        Get the reference changeset from an incoming enhancement.
+
+        This is a temporary adapter, to eventually be superseded by direct passing of
+        ReferenceWithChangeset from the enhancing process.
+        See the note in docstring of detect_robot_automations().
+        """
+        enhancements = await self.sql_uow.enhancements.get_by_pks(enhancement_ids)
+        # Enhancements are always automated against the references they're imported on.
+        # In most cases this will be the canonical reference, triggered by automation.
+        # Some edge cases exist where enhancements are added to duplicates, and so we
+        # automate on the duplicate. See the robot automation procedure docs for more.
+
+        deduplicated_references: list[
+            Reference
+        ] = await self._get_deduplicated_references(
+            [enhancement.reference_id for enhancement in enhancements]
+        )
+        return [
+            ReferenceWithChangeset(
+                **reference.model_dump(),
+                changeset=Reference(
+                    id=enhancement.reference_id,
+                    enhancements=[enhancement],
+                ),
+            )
+            for enhancement, reference in zip(
+                enhancements, deduplicated_references, strict=True
+            )
+        ]
 
     @es_unit_of_work
     async def _detect_robot_automations(
         self,
-        reference_ids: Iterable[UUID4] | None = None,
-        enhancement_ids: Iterable[UUID4] | None = None,
+        reference: ReferenceWithChangeset | None = None,
+        enhancement_ids: Iterable[UUID] | None = None,
     ) -> list[RobotAutomationPercolationResult]:
         """Detect and dispatch robot automations for an added reference/enhancement."""
         robot_automations: list[RobotAutomationPercolationResult] = []
 
-        if reference_ids:
-            for reference_id_chunk in list_chunker(
-                list(reference_ids),
-                settings.es_percolation_chunk_size_override.get(
-                    ESPercolationOperation.ROBOT_AUTOMATION,
-                    settings.default_es_percolation_chunk_size,
-                ),
-            ):
-                references = await self.sql_uow.references.get_by_pks(
-                    reference_id_chunk, preload=["identifiers", "enhancements"]
-                )
-                robot_automations.extend(
-                    await self.es_uow.robot_automations.percolate(references)
-                )
+        if reference:
+            robot_automations.extend(
+                await self.es_uow.robot_automations.percolate([reference])
+            )
         if enhancement_ids:
             for enhancement_id_chunk in list_chunker(
                 list(enhancement_ids),
@@ -678,15 +743,16 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     settings.default_es_percolation_chunk_size,
                 ),
             ):
-                enhancements = await self.sql_uow.enhancements.get_by_pks(
-                    enhancement_id_chunk,
-                )
                 robot_automations.extend(
-                    await self.es_uow.robot_automations.percolate(enhancements)
+                    await self.es_uow.robot_automations.percolate(
+                        await self._get_reference_changesets_from_enhancements(
+                            enhancement_id_chunk
+                        )
+                    )
                 )
 
         # Merge robot_automations on robot_id
-        robot_automations_dict: dict[UUID4, set[UUID4]] = defaultdict(set)
+        robot_automations_dict: dict[UUID, set[UUID]] = defaultdict(set)
         for automation in robot_automations:
             robot_automations_dict[automation.robot_id] |= automation.reference_ids
 
@@ -701,12 +767,20 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def detect_robot_automations(
         self,
-        reference_ids: Iterable[UUID4] | None = None,
-        enhancement_ids: Iterable[UUID4] | None = None,
+        reference: ReferenceWithChangeset | None = None,
+        enhancement_ids: Iterable[UUID] | None = None,
     ) -> list[RobotAutomationPercolationResult]:
-        """Detect robot automations for a set of references or enhancements."""
+        """
+        Detect robot automations for a set of references or enhancements.
+
+        NB this is currently in a bit of an asymmetric state. Imports are processed
+        per-reference, and enhancement fulfillments are processed per-batch. If/when we
+        process enhancements per-reference, then the enhancement_ids parameter and
+        translation can be removed in favour of directly passing in a
+        ReferenceWithChangeset.
+        """
         return await self._detect_robot_automations(
-            reference_ids=reference_ids, enhancement_ids=enhancement_ids
+            reference=reference, enhancement_ids=enhancement_ids
         )
 
     @sql_unit_of_work
@@ -720,7 +794,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         We assume the scale is small enough that we can do this naively.
         """
         for robot_automation in await self.sql_uow.robot_automations.get_all():
-            await self.es_uow.robot_automations.add(robot_automation)
+            await self._synchronizer.robot_automations.sql_to_es(robot_automation.id)
 
     @sql_unit_of_work
     async def get_robot_automations(self) -> list[RobotAutomation]:
@@ -728,11 +802,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self.sql_uow.robot_automations.get_all()
 
     @sql_unit_of_work
-    async def get_robot_automation(self, automation_id: UUID4) -> RobotAutomation:
+    async def get_robot_automation(self, automation_id: UUID) -> RobotAutomation:
         """Get a robot automation by id."""
         return await self.sql_uow.robot_automations.get_by_pk(automation_id)
 
     @sql_unit_of_work
+    @es_unit_of_work
     async def add_robot_automation(
         self, robot_service: RobotService, automation: RobotAutomation
     ) -> RobotAutomation:
@@ -744,9 +819,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         # some handy validation against the index itself. This is caught with an API-
         # level exception handler, so we don't need to handle it here.
         await self.sql_uow.robot_automations.add(automation)
-        return await self.save_robot_automation(automation)
+        return await self._synchronizer.robot_automations.sql_to_es(automation.id)
 
     @sql_unit_of_work
+    @es_unit_of_work
     async def update_robot_automation(
         self,
         automation: RobotAutomation,
@@ -761,4 +837,142 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         # some handy validation against the index itself. This is caught with an API-
         # level exception handler, so we don't need to handle it here.
         automation = await self.sql_uow.robot_automations.merge(automation)
-        return await self.save_robot_automation(automation)
+        return await self._synchronizer.robot_automations.sql_to_es(automation.id)
+
+    @sql_unit_of_work
+    async def get_reference_duplicate_decision(
+        self,
+        reference_duplicate_decision_id: UUID,
+    ) -> ReferenceDuplicateDecision:
+        """Get a reference duplicate decision by id."""
+        return await self.sql_uow.reference_duplicate_decisions.get_by_pk(
+            reference_duplicate_decision_id
+        )
+
+    @sql_unit_of_work
+    @es_unit_of_work
+    async def process_reference_duplicate_decision(
+        self,
+        reference_duplicate_decision: ReferenceDuplicateDecision,
+    ) -> tuple[ReferenceDuplicateDecision, bool]:
+        """Process a reference duplicate decision."""
+        reference_duplicate_decision = (
+            await self._deduplication_service.nominate_candidate_canonicals(
+                reference_duplicate_decision
+            )
+        )
+
+        reference_duplicate_decision = (
+            await self._deduplication_service.determine_canonical_from_candidates(
+                reference_duplicate_decision
+            )
+        )
+
+        (
+            reference_duplicate_decision,
+            decision_changed,
+        ) = await self._deduplication_service.map_duplicate_decision(
+            reference_duplicate_decision
+        )
+
+        if reference_duplicate_decision.active_decision:
+            await self._synchronizer.references.sql_to_es(
+                reference_duplicate_decision.reference_id
+            )
+
+        return reference_duplicate_decision, decision_changed
+
+    @sql_unit_of_work
+    async def get_pending_enhancements_for_robot(
+        self, robot_id: UUID, limit: int
+    ) -> list[PendingEnhancement]:
+        """Get pending enhancements for a robot."""
+        return await self.sql_uow.pending_enhancements.find(
+            robot_id=robot_id,
+            robot_enhancement_batch_id=None,
+            status=PendingEnhancementStatus.PENDING,
+            order_by="created_at",
+            limit=limit,
+        )
+
+    @sql_unit_of_work
+    async def create_robot_enhancement_batch(
+        self,
+        robot_id: UUID,
+        pending_enhancements: list[PendingEnhancement],
+        blob_repository: BlobRepository,
+    ) -> RobotEnhancementBatch:
+        """
+        Create a robot enhancement batch.
+
+        Args:
+            robot_id (UUID): The ID of the robot.
+            pending_enhancements (list[PendingEnhancement]): The list of pending
+                enhancements to include in the batch.
+            blob_repository (BlobRepository): The blob repository.
+
+        Returns:
+            RobotEnhancementBatch: The created robot enhancement batch.
+
+        """
+        robot_enhancement_batch = RobotEnhancementBatch(robot_id=robot_id)
+
+        await self.sql_uow.robot_enhancement_batches.add(robot_enhancement_batch)
+
+        pending_enhancement_ids = [pe.id for pe in pending_enhancements]
+        if pending_enhancement_ids:
+            await self.sql_uow.pending_enhancements.bulk_update(
+                pks=pending_enhancement_ids,
+                status=PendingEnhancementStatus.ACCEPTED,
+                robot_enhancement_batch_id=robot_enhancement_batch.id,
+            )
+
+        file_stream = FileStream(
+            self._get_jsonl_hydrated_references,
+            [
+                {
+                    "reference_ids": reference_id_chunk,
+                }
+                for reference_id_chunk in list_chunker(
+                    [p.reference_id for p in pending_enhancements],
+                    settings.upload_file_chunk_size_override.get(
+                        UploadFile.ROBOT_ENHANCEMENT_REFERENCE_DATA,
+                        settings.default_upload_file_chunk_size,
+                    ),
+                )
+            ],
+        )
+
+        reference_data_file = await blob_repository.upload_file_to_blob_storage(
+            content=file_stream,
+            path="robot_enhancement_batch_reference_data",
+            filename=f"{robot_enhancement_batch.id}.jsonl",
+        )
+
+        return await self._enhancement_service.build_robot_enhancement_batch(
+            robot_enhancement_batch=robot_enhancement_batch,
+            reference_data_file=reference_data_file,
+        )
+
+    @sql_unit_of_work
+    async def invoke_deduplication_for_references(
+        self,
+        reference_ids: ReferenceIds,
+    ) -> None:
+        """Invoke deduplication for a list of references."""
+        reference_duplicate_decisions = (
+            await self.sql_uow.reference_duplicate_decisions.add_bulk(
+                [
+                    ReferenceDuplicateDecision(
+                        reference_id=reference_id,
+                        duplicate_determination=DuplicateDetermination.PENDING,
+                    )
+                    for reference_id in reference_ids.reference_ids
+                ]
+            )
+        )
+        for decision in reference_duplicate_decisions:
+            await queue_task_with_trace(
+                ("app.domain.references.tasks", "process_reference_duplicate_decision"),
+                reference_duplicate_decision_id=decision.id,
+            )

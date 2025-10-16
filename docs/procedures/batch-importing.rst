@@ -26,12 +26,23 @@ References are bulk imported using batches per the following process:
         loop Each batch
             I ->> SP: Upload Enriched References File
             SP -->> I: Upload Success (file url)
-            I ->>+ R: POST /imports/records/<record id>/batches/ : Register Batch (file url, callback url, import id)
+            I ->>+ R: POST /imports/records/<record id>/batches/ : Register Batch (file url, import id)
             R -->> I: Batch Enqueued(batch id)
             R ->> SP: Download References File (file url)
-            SP -->> R: Enriched References
-            R ->> R: Persist Enriched References
-            R ->>- I: POST <callback url> : ImportBatchSummary
+            loop Each record in file, concurrently
+                R ->> R: Process Record
+                alt Record Success
+                    R ->> R: Check if Exact Duplicate
+                    alt Not an Exact Duplicate
+                        R ->> R: Import Reference and Enhancements
+                        R ->> R: Register ImportResult (success)
+                        R -->> R: Register & Enqueue Deduplication
+                    end
+                else Record Failure
+                    R ->> R: Register ImportResult (failure, failure details)
+                end
+            end
+            I ->>R: GET /imports/records/<record id>/batches/<batch id>/ : Poll for import batch status
             I ->> S: Delete Enhancement Batch (file url)
         end
         I ->> R: POST /imports/records/<record_id>/finalise/ Finalise Import
@@ -41,8 +52,14 @@ In words, the interaction with the repository is as follows:
 - The importer registers the import with the repository, providing metadata about the import.
 - The importer uploads the enriched references file to a storage provider (e.g. Azure blob storage).
 - The importer registers a batch with the repository, providing the URL of the enriched references file.
-- In the background, the repository downloads the file from the storage provider and processes it.
-- Once the processing is done, the repository notifies the importer via a callback URL, providing a summary of the batch processing.
+- In the background, the repository downloads the file from the storage provider and processes it. Each record is processed individually and asynchronously. Processing consists of:
+
+  - Validating the reference.
+  - Checking for :ref:`Exact Duplicates <exact-duplicates>`.
+  - Importing the reference and its enhancements.
+  - Queueing the reference for :doc:`Reference Deduplication <deduplication>`.
+
+- The importer polls the repository for the status of the batch. A `ImportBatchSummary <libs.sdk.src.destiny_sdk.imports.ImportBatchSummary>`_ can be requested from `/imports/records/<record_id>/batches/<batch_id>/summary/` which shows the statuses of the underlying imports.
 - The importer repeats this for each file that needs processing.
 - Once all batches are processed, the importer finalises the import with the repository.
 
@@ -85,23 +102,7 @@ File Format
 
 The references file provided to each batch must be in the `jsonl`_ format. Each line is a JSON object in the :class:`ReferenceFileInput <libs.sdk.src.destiny_sdk.references.ReferenceFileInput>` format.
 
-Sample files can be found in the ``.minio/data`` directory.
-
-Callbacks
----------
-
-An optional callback parameter can be provided where the importer can receive a POST request with the batch summary (:class:`ImportBatchSummary <libs.sdk.src.destiny_sdk.imports.ImportBatchSummary>`) once the batch has finished processing.
-
-Collision Handling
-------------------
-
-If an imported reference has the same identifier as an existing reference, the collision will be handled according to the :class:`CollisionStrategy <libs.sdk.src.destiny_sdk.enhancements.CollisionStrategy>`.
-
-The default strategy is to do nothing and notify the importer in the batch's :attr:`failure_details <libs.sdk.src.destiny_sdk.imports.ImportBatchSummary.failure_details>`. This allows the importer to "follow up" these records with an alternate strategy if desired.
-
-Identifier collisions are identified on the combination of ``identifier_type`` and ``identifier``, with ``other_identifier_name`` also used if ``identifier_type`` is ``"other"``.
-
-Enhancement updates are performed on the combination of ``enhancement_type`` and ``source``.
+Sample files can be found in the ``libs/sdk/tests/unit/test_data/`` directory.
 
 Sample
 ------

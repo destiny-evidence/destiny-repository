@@ -8,8 +8,8 @@ Procedures and guidelines for interacting with the DESTINY repository.
     :caption: Contents:
 
     batch-importing
-    requesting-single-enhancements
     requesting-batch-enhancements
+    deduplication
     robot-registration
     robot-automation
     destiny-reference-flow

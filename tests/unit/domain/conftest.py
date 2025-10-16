@@ -16,14 +16,28 @@ class DummyDomainSQLModel(DomainBaseModel, SQLAttributeMixin): ...
 
 
 class FakeRepository:
-    def __init__(self, init_entries: list[DummyDomainSQLModel] | None = None):
+    def __init__(
+        self,
+        init_entries: list[DummyDomainSQLModel] | None = None,
+        **child_repositories,
+    ):
         self.repository: dict[UUID, DummyDomainSQLModel] = {
             e.id: e for e in init_entries or []
         }
+        for key, value in child_repositories.items():
+            self.__setattr__(key, value)
 
     async def add(self, record: DummyDomainSQLModel) -> DummyDomainSQLModel:
         self.repository[record.id] = record
         return record
+
+    async def add_bulk(
+        self, records: list[DummyDomainSQLModel]
+    ) -> list[DummyDomainSQLModel]:
+        """Add multiple records to the repository in bulk."""
+        for record in records:
+            self.repository[record.id] = record
+        return records
 
     async def get_by_pk(
         self, pk: UUID, preload: list[str] | None = None
@@ -130,6 +144,33 @@ class FakeRepository:
             raise RuntimeError(error)
         return record
 
+    async def get_all(self) -> list[DummyDomainSQLModel]:
+        """Get all records from the repository."""
+        return list(self.repository.values())
+
+    async def find(self, **kwargs) -> list[DummyDomainSQLModel]:
+        """Find records matching the given criteria."""
+        results = []
+        for record in self.repository.values():
+            match = True
+            for key, value in kwargs.items():
+                if not hasattr(record, key) or getattr(record, key) != value:
+                    match = False
+                    break
+            if match:
+                results.append(record)
+        return results
+
+    async def bulk_update(self, pks: list[UUID], **kwargs: object) -> int:
+        """Update multiple records in the repository in bulk."""
+        updated_count = 0
+        for pk in pks:
+            if pk in self.repository:
+                for key, value in kwargs.items():
+                    setattr(self.repository[pk], key, value)
+                updated_count += 1
+        return updated_count
+
 
 class FakeUnitOfWork:
     def __init__(
@@ -141,9 +182,11 @@ class FakeUnitOfWork:
         external_identifiers=None,
         enhancements=None,
         enhancement_requests=None,
-        batch_enhancement_requests=None,
         robots=None,
         robot_automations=None,
+        reference_duplicate_decisions=None,
+        pending_enhancements=None,
+        robot_enhancement_batches=None,
     ):
         self.batches = batches
         self.imports = imports
@@ -152,9 +195,11 @@ class FakeUnitOfWork:
         self.external_identifiers = external_identifiers
         self.enhancements = enhancements
         self.enhancement_requests = enhancement_requests
-        self.batch_enhancement_requests = batch_enhancement_requests
         self.robots = robots
         self.robot_automations = robot_automations
+        self.reference_duplicate_decisions = reference_duplicate_decisions
+        self.pending_enhancements = pending_enhancements
+        self.robot_enhancement_batches = robot_enhancement_batches
         self.committed = False
 
     async def __aenter__(self):

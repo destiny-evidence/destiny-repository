@@ -40,6 +40,7 @@ class Attributes(StrEnum):
     DB_OPERATION_NAME = db_attributes.DB_OPERATION_NAME
     DB_PK = _db_attributes.DB_QUERY_PARAMETER_TEMPLATE + ".pk"
     DB_PARAMS = _db_attributes.DB_QUERY_PARAMETER_TEMPLATE
+    DB_RECORD_COUNT = "db.record_count"
 
     # Deployment attributes
     DEPLOYMENT_ENVIRONMENT = _deployment_attributes.DEPLOYMENT_ENVIRONMENT
@@ -78,7 +79,7 @@ class Attributes(StrEnum):
     REFERENCE_ID = "app.reference.id"
     ENHANCEMENT_ID = "app.enhancement.id"
     ENHANCEMENT_REQUEST_ID = "app.enhancement_request.id"
-    BATCH_ENHANCEMENT_REQUEST_ID = "app.batch_enhancement_request.id"
+    ROBOT_ENHANCEMENT_BATCH_ID = "app.robot_enhancement_batch.id"
     ROBOT_ID = "app.robot.id"
     ROBOT_AUTOMATION_ID = "app.robot_automation.id"
 

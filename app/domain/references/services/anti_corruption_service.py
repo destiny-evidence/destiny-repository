@@ -7,14 +7,14 @@ from pydantic import ValidationError
 
 from app.core.exceptions import DomainToSDKError, SDKToDomainError
 from app.domain.references.models.models import (
-    BatchEnhancementRequest,
-    BatchRobotResultValidationEntry,
     Enhancement,
     EnhancementRequest,
     ExternalIdentifierAdapter,
     LinkedExternalIdentifier,
     Reference,
     RobotAutomation,
+    RobotEnhancementBatch,
+    RobotResultValidationEntry,
 )
 from app.domain.service import GenericAntiCorruptionService
 from app.persistence.blob.models import BlobSignedUrlType
@@ -140,17 +140,6 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         else:
             return enhancement
 
-    def enhancement_request_to_sdk(
-        self, enhancement_request: EnhancementRequest
-    ) -> destiny_sdk.robots.EnhancementRequestRead:
-        """Convert the enhancement request to a EnhancementRequest SDK model."""
-        try:
-            return destiny_sdk.robots.EnhancementRequestRead.model_validate(
-                enhancement_request.model_dump()
-            )
-        except ValidationError as exception:
-            raise DomainToSDKError(errors=exception.errors()) from exception
-
     def enhancement_request_from_sdk(
         self,
         enhancement_request_in: destiny_sdk.robots.EnhancementRequestIn,
@@ -166,28 +155,13 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         else:
             return enhancement_request
 
-    def batch_enhancement_request_from_sdk(
+    async def enhancement_request_to_sdk(
         self,
-        enhancement_request_in: destiny_sdk.robots.BatchEnhancementRequestIn,
-    ) -> BatchEnhancementRequest:
-        """Create a BatchEnhancementRequest from the SDK model."""
+        enhancement_request: EnhancementRequest,
+    ) -> destiny_sdk.robots.EnhancementRequestRead:
+        """Convert the enhancement request to the SDK model."""
         try:
-            enhancement_request = BatchEnhancementRequest.model_validate(
-                enhancement_request_in.model_dump()
-            )
-            enhancement_request.check_serializability()
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-        else:
-            return enhancement_request
-
-    async def batch_enhancement_request_to_sdk(
-        self,
-        enhancement_request: BatchEnhancementRequest,
-    ) -> destiny_sdk.robots.BatchEnhancementRequestRead:
-        """Convert the batch enhancement request to the SDK model."""
-        try:
-            return destiny_sdk.robots.BatchEnhancementRequestRead.model_validate(
+            return destiny_sdk.robots.EnhancementRequestRead.model_validate(
                 enhancement_request.model_dump()
                 | {
                     "reference_data_url": await self._blob_repository.get_signed_url(
@@ -212,13 +186,13 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
 
-    async def batch_enhancement_request_to_sdk_robot(
+    async def enhancement_request_to_sdk_robot(
         self,
-        enhancement_request: BatchEnhancementRequest,
-    ) -> destiny_sdk.robots.BatchRobotRequest:
-        """Convert the batch robot request to the SDK model."""
+        enhancement_request: EnhancementRequest,
+    ) -> destiny_sdk.robots.RobotRequest:
+        """Convert the robot request to the SDK model."""
         try:
-            return destiny_sdk.robots.BatchRobotRequest(
+            return destiny_sdk.robots.RobotRequest(
                 id=enhancement_request.id,
                 reference_storage_url=await self._blob_repository.get_signed_url(
                     enhancement_request.reference_data_file, BlobSignedUrlType.DOWNLOAD
@@ -234,12 +208,66 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
 
-    def batch_robot_result_validation_entry_to_sdk(
-        self, entry: BatchRobotResultValidationEntry
-    ) -> destiny_sdk.robots.BatchRobotResultValidationEntry:
-        """Convert the batch robot result validation entry to the SDK model."""
+    async def robot_enhancement_batch_to_sdk(
+        self,
+        robot_enhancement_batch: "RobotEnhancementBatch",
+    ) -> destiny_sdk.robots.RobotEnhancementBatchRead:
+        """Convert the robot enhancement batch to the SDK model."""
         try:
-            return destiny_sdk.robots.BatchRobotResultValidationEntry.model_validate(
+            return destiny_sdk.robots.RobotEnhancementBatchRead.model_validate(
+                robot_enhancement_batch.model_dump()
+                | {
+                    "reference_data_url": await self._blob_repository.get_signed_url(
+                        robot_enhancement_batch.reference_data_file,
+                        BlobSignedUrlType.DOWNLOAD,
+                    )
+                    if robot_enhancement_batch.reference_data_file
+                    else None,
+                    "result_storage_url": await self._blob_repository.get_signed_url(
+                        robot_enhancement_batch.result_file, BlobSignedUrlType.UPLOAD
+                    )
+                    if robot_enhancement_batch.result_file
+                    else None,
+                    "validation_result_url": await self._blob_repository.get_signed_url(
+                        robot_enhancement_batch.validation_result_file,
+                        BlobSignedUrlType.DOWNLOAD,
+                    )
+                    if robot_enhancement_batch.validation_result_file
+                    else None,
+                },
+            )
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
+
+    async def robot_enhancement_batch_to_sdk_robot(
+        self,
+        robot_enhancement_batch: "RobotEnhancementBatch",
+    ) -> destiny_sdk.robots.RobotEnhancementBatch:
+        """Convert robot enhancement batch to the new SDK RobotEnhancementBatch."""
+        try:
+            return destiny_sdk.robots.RobotEnhancementBatch(
+                id=robot_enhancement_batch.id,
+                reference_storage_url=await self._blob_repository.get_signed_url(
+                    robot_enhancement_batch.reference_data_file,
+                    BlobSignedUrlType.DOWNLOAD,
+                )
+                if robot_enhancement_batch.reference_data_file
+                else None,
+                result_storage_url=await self._blob_repository.get_signed_url(
+                    robot_enhancement_batch.result_file, BlobSignedUrlType.UPLOAD
+                )
+                if robot_enhancement_batch.result_file
+                else None,
+            )
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
+
+    def robot_result_validation_entry_to_sdk(
+        self, entry: RobotResultValidationEntry
+    ) -> destiny_sdk.robots.RobotResultValidationEntry:
+        """Convert the robot result validation entry to the SDK model."""
+        try:
+            return destiny_sdk.robots.RobotResultValidationEntry.model_validate(
                 entry.model_dump()
             )
         except ValidationError as exception:

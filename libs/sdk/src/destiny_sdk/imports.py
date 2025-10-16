@@ -13,98 +13,52 @@ from pydantic import (
 
 
 class ImportRecordStatus(StrEnum):
-    """
-    Describes the status of an import record.
-
-    - `created`: Created, but no processing has started.
-    - `started`: Processing has started on the batch.
-    - `completed`: Processing has been completed.
-    - `cancelled`: Processing was cancelled by calling the API.
-    """
+    """Describes the status of an import record."""
 
     CREATED = auto()
+    """Created, but no processing has started."""
     STARTED = auto()
+    """Processing has started on the batch."""
     COMPLETED = auto()
-    CANCELLED = auto()
+    """Processing has been completed."""
 
 
 class ImportBatchStatus(StrEnum):
-    """
-    Describes the status of an import batch.
-
-    - `created`: Created, but no processing has started.
-    - `started`: Processing has started on the batch.
-    - `failed`: Processing has failed.
-    - `retrying`: Processing has failed, but is being retried.
-    - `indexing`: The imports have been saved and are being indexed.
-    - `indexing_failed`: The imports have been saved but were not indexed.
-    - `completed`: Processing has been completed.
-    - `cancelled`: Processing was cancelled by calling the API.
-    """
+    """Describes the status of an import batch."""
 
     CREATED = auto()
+    """Created, but no processing has started."""
     STARTED = auto()
-    RETRYING = auto()
+    """Processing has started on the batch."""
     FAILED = auto()
-    INDEXING = auto()
-    INDEXING_FAILED = auto()
+    """Processing has failed."""
+    PARTIALLY_FAILED = auto()
+    """Some references succeeded while others failed."""
     COMPLETED = auto()
-    CANCELLED = auto()
-
-
-class CollisionStrategy(StrEnum):
-    """
-    The strategy to use when an identifier collision is detected.
-
-    Identifier collisions are detected on ``identifier_type`` and ``identifier``
-    (and ``other_identifier_name`` where relevant) already present in the database.
-
-    Enhancement collisions are detected on an entry with matching ``enhancement_type``
-    and ``source`` already being present on the collided reference.
-
-    - `discard`: Do nothing with the incoming reference.
-    - `fail`: Do nothing with the incoming reference and mark it as failed. This
-      allows the importing process to "follow up" on the failure.
-    - `merge_aggressive`: Prioritize the incoming reference's identifiers and
-      enhancements in the merge.
-    - `merge_defensive`: Prioritize the existing reference's identifiers and
-      enhancements in the merge.
-    - `append`: Performs an aggressive merge of identifiers, and an append of
-      enhancements.
-    - `overwrite`: Performs an aggressive merge of identifiers, and an overwrite of
-      enhancements (deleting existing and recreating what is imported). This should
-      be used sparingly and carefully.
-    """
-
-    DISCARD = auto()
-    FAIL = auto()
-    MERGE_AGGRESSIVE = auto()
-    MERGE_DEFENSIVE = auto()
-    APPEND = auto()
-    OVERWRITE = auto()
+    """Processing has been completed."""
 
 
 class ImportResultStatus(StrEnum):
-    """
-    Describes the status of an import result.
-
-    - `created`: Created, but no processing has started.
-    - `started`: The reference is currently being processed.
-    - `completed`: The reference has been created.
-    - `partially_failed`: The reference was created but one or more enhancements or
-      identifiers failed to be added. See the result's `failure_details` field for
-      more information.
-    - `failed`: The reference failed to be created. See the result's `failure_details`
-      field for more information.
-    - `cancelled`: Processing was cancelled by calling the API.
-    """
+    """Describes the status of an import result."""
 
     CREATED = auto()
+    """Created, but no processing has started."""
     STARTED = auto()
+    """The reference is currently being processed."""
     COMPLETED = auto()
-    CANCELLED = auto()
+    """The reference has been created."""
     PARTIALLY_FAILED = auto()
+    """
+    The reference was created but one or more enhancements or identifiers failed to
+    be added. See the result's `failure_details` field for more information.
+    """
     FAILED = auto()
+    """
+    The reference failed to be created. See the result's `failure_details` field for
+    more information.
+    """
+    RETRYING = auto()
+    """Processing has failed, but is being retried."""
 
 
 class _ImportRecordBase(BaseModel):
@@ -170,25 +124,12 @@ class ImportRecordRead(_ImportRecordBase):
 class _ImportBatchBase(BaseModel):
     """The base class for import batches."""
 
-    collision_strategy: CollisionStrategy = Field(
-        default=CollisionStrategy.FAIL,
-        description="""
-The strategy to use for each reference when an identifier collision occurs.
-Default is `fail`, which allows the importing process to "follow up" on the collision.
-        """,
-    )
     storage_url: HttpUrl = Field(
         description="""
 The URL at which the set of references for this batch are stored. The file is a jsonl
 with each line formatted according to
 :class:`ReferenceFileInput <libs.sdk.src.destiny_sdk.references.ReferenceFileInput>`.
     """,
-    )
-    callback_url: HttpUrl | None = Field(
-        default=None,
-        description="""
-The URL to which the processor should send a callback when the batch has been processed.
-        """,
     )
 
 

@@ -1,16 +1,24 @@
+# ruff: noqa: E501. These lines are just gonna be long.
 """Integration tests for references in Elasticsearch."""
 
-import unicodedata
 import uuid
 from collections.abc import AsyncGenerator
-from typing import Any
 
 import destiny_sdk
 import pytest
+from destiny_sdk.enhancements import AuthorPosition, Authorship, EnhancementType
 from elasticsearch import AsyncElasticsearch
 
 from app.core.exceptions import ESNotFoundError
-from app.domain.references.models.models import Enhancement, Reference, RobotAutomation
+from app.domain.references.models.models import (
+    Enhancement,
+    Reference,
+    ReferenceWithChangeset,
+    RobotAutomation,
+)
+from app.domain.references.models.projections import (
+    CandidateCanonicalSearchFieldsProjection,
+)
 from app.domain.references.repository import (
     ReferenceESRepository,
     RobotAutomationESRepository,
@@ -109,14 +117,14 @@ async def reference() -> Reference:
                 "reference_id": r,
                 "content": {
                     "enhancement_type": "bibliographic",
-                    "title": " Sample reference Title with whitespace and a funny charactér ",
+                    "title": " Sample reference Title with whitespace and a funny charactér ",
                     "authorship": [
                         {
                             "display_name": "bMiddle author",
                             "position": destiny_sdk.enhancements.AuthorPosition.MIDDLE,
                         },
                         {
-                            "display_name": "aMiddlé author",
+                            "display_name": "aMiddlé author",
                             "position": destiny_sdk.enhancements.AuthorPosition.MIDDLE,
                         },
                         {
@@ -134,6 +142,11 @@ async def reference() -> Reference:
                 "visibility": "public",
             },
         ],
+        duplicate_decision={
+            "reference_id": r,
+            "duplicate_determination": "canonical",
+            "active_decision": True,
+        },
     )
 
 
@@ -142,8 +155,8 @@ async def abstract_robot_automation() -> RobotAutomation:
     """
     Fixture to create a sample abstract robot automation.
 
-    This query matches on references that have a DOI identifier
-    and do not have an abstract enhancement.
+    This query matches on references that have had a DOI identifier added and
+    do not have an abstract enhancement.
     """
     return RobotAutomation(
         robot_id=uuid.uuid4(),
@@ -152,9 +165,9 @@ async def abstract_robot_automation() -> RobotAutomation:
                 "must": [
                     {
                         "nested": {
-                            "path": "reference.identifiers",
+                            "path": "changeset.identifiers",
                             "query": {
-                                "term": {"reference.identifiers.identifier_type": "DOI"}
+                                "term": {"changeset.identifiers.identifier_type": "doi"}
                             },
                         }
                     }
@@ -181,27 +194,24 @@ async def in_out_robot_automation() -> RobotAutomation:
     """
     Fixture to create a sample in-out robot automation.
 
-    This query matches on references that have an abstract and on enhancements which
-    are abstracts themselves.
+    This query matches on changesets that add an abstract enhancement.
     """
     return RobotAutomation(
         robot_id=uuid.uuid4(),
         query={
             "bool": {
-                "should": [
+                "must": [
                     {
                         "nested": {
-                            "path": "reference.enhancements",
+                            "path": "changeset.enhancements",
                             "query": {
                                 "term": {
-                                    "reference.enhancements.content.enhancement_type": "abstract"
+                                    "changeset.enhancements.content.enhancement_type": "abstract"
                                 }
                             },
                         }
                     },
-                    {"term": {"enhancement.content.enhancement_type": "abstract"}},
                 ],
-                "minimum_should_match": 1,
             }
         },
     )
@@ -212,71 +222,40 @@ async def taxonomy_robot_automation() -> RobotAutomation:
     """
     Fixture to create a sample taxonomy robot automation.
 
-    This query matches on references that have a positive in/out annotation and
-    on enhancements which are annotations themselves.
+    This query matches on changesets that add a positive in/out annotation enhancement.
     """
-
-    # ruff: noqa: E501
-    def get_annotation_filter(prefix: str) -> dict[str, Any]:
-        return {
-            "nested": {
-                "path": f"{prefix}.content.annotations",
-                "query": {
-                    "bool": {
-                        "must": [
-                            {
-                                "term": {
-                                    f"{prefix}.content.annotations.label": "in_destiny_domain"
-                                }
-                            },
-                            {
+    return RobotAutomation(
+        robot_id=uuid.uuid4(),
+        query={
+            "bool": {
+                "must": [
+                    {
+                        "nested": {
+                            "path": "changeset.enhancements.content.annotations",
+                            "query": {
                                 "bool": {
-                                    "should": [
+                                    "must": [
                                         {
-                                            "bool": {
-                                                "must_not": [
-                                                    {
-                                                        "term": {
-                                                            f"{prefix}.content.annotations.annotation_type": "boolean"
-                                                        }
-                                                    }
-                                                ]
+                                            "term": {
+                                                "changeset.enhancements.content.annotations.label": "in_destiny_domain"
                                             }
                                         },
                                         {
-                                            "bool": {
-                                                "must": [
-                                                    {
-                                                        "term": {
-                                                            f"{prefix}.content.annotations.annotation_type": "boolean"
-                                                        }
-                                                    },
-                                                    {
-                                                        "term": {
-                                                            f"{prefix}.content.annotations.value": True
-                                                        }
-                                                    },
-                                                ]
+                                            "term": {
+                                                "changeset.enhancements.content.annotations.annotation_type": "boolean"
+                                            }
+                                        },
+                                        {
+                                            "term": {
+                                                "changeset.enhancements.content.annotations.value": True
                                             }
                                         },
                                     ]
                                 }
                             },
-                        ]
-                    }
-                },
-            }
-        }
-
-    return RobotAutomation(
-        robot_id=uuid.uuid4(),
-        query={
-            "bool": {
-                "should": [
-                    get_annotation_filter("reference.enhancements"),
-                    get_annotation_filter("enhancement"),
+                        }
+                    },
                 ],
-                "minimum_should_match": 1,
             }
         },
     )
@@ -286,14 +265,9 @@ async def test_es_repository_cycle(
     es_reference_repository: ReferenceESRepository, reference: Reference
 ):
     """Test saving and getting a reference by primary key from Elasticsearch."""
-    bibliographic_enhancement: destiny_sdk.enhancements.BibliographicMetadataEnhancement = reference.enhancements[  # type: ignore[index]
+    bibliographic_enhancement: destiny_sdk.enhancements.BibliographicMetadataEnhancement = reference.enhancements[
         2
-    ].content
-    assert not unicodedata.is_normalized("NFC", bibliographic_enhancement.title)
-    assert not unicodedata.is_normalized(
-        "NFC",
-        bibliographic_enhancement.authorship[1].display_name,
-    )
+    ].content  # type: ignore[index]
 
     await es_reference_repository.add(reference)
 
@@ -326,16 +300,14 @@ async def test_es_repository_cycle(
     )
     assert (
         raw_es_reference["title"]
-        == "Sample Reference Title With Whitespace And A Funny Charactér"
+        == "Sample reference Title with whitespace and a funny charactér"
     )
-    assert unicodedata.is_normalized("NFC", raw_es_reference["title"])
     assert raw_es_reference["authors"] == [
-        "First Author",
-        "Amiddlé Author",
-        "Bmiddle Author",
-        "Last Author",
+        "First author",
+        "aMiddlé author",
+        "bMiddle author",
+        "Last author",
     ]
-    assert unicodedata.is_normalized("NFC", raw_es_reference["authors"][2])
 
 
 async def test_es_repository_not_found(
@@ -366,7 +338,7 @@ async def test_es_repository_update_existing(
     assert len(updated_reference.enhancements or []) == 0
 
 
-async def test_bulk_add(
+async def test_add_bulk(
     es_reference_repository: ReferenceESRepository, reference: Reference
 ):
     """Test bulk adding multiple references."""
@@ -447,23 +419,6 @@ async def test_robot_automation_percolation(
         source="test_source",
         visibility="public",
     )
-    existential_in_out_annotation_enhancement = Enhancement(
-        id=uuid.uuid4(),
-        reference_id=uuid.uuid4(),
-        content={
-            "enhancement_type": "annotation",
-            "annotations": [
-                {
-                    "annotation_type": "score",
-                    "scheme": "dummy-scheme",
-                    "label": "in_destiny_domain",
-                    "score": 0.75,
-                }
-            ],
-        },
-        source="test_source",
-        visibility="public",
-    )
     reference_no_abstract = reference.model_copy()
     reference_with_abstract = reference.model_copy(
         update={
@@ -500,15 +455,6 @@ async def test_robot_automation_percolation(
             ],  # type: ignore[misc]
         }
     )
-    reference_with_abstract_in_domain_two = reference_with_abstract.model_copy(
-        update={
-            "id": uuid.uuid4(),
-            "enhancements": [
-                *reference_with_abstract.enhancements,
-                existential_in_out_annotation_enhancement,
-            ],  # type: ignore[misc]
-        }
-    )
     reference_with_abstract_out_of_domain = reference_with_abstract.model_copy(
         update={
             "id": uuid.uuid4(),
@@ -519,18 +465,44 @@ async def test_robot_automation_percolation(
         }
     )
 
-    percolatable_documents: list[Reference | Enhancement] = [
-        reference_no_abstract,
-        reference_with_abstract,
-        reference_no_abstract_no_doi,
-        reference_no_abstract_in_domain,
-        reference_with_abstract_in_domain,
-        reference_with_abstract_in_domain_two,
-        reference_with_abstract_out_of_domain,
-        abstract_enhancement,
-        positive_in_out_annotation_enhancement,
-        negative_in_out_annotation_enhancement,
-        existential_in_out_annotation_enhancement,
+    percolatable_documents: list[ReferenceWithChangeset] = [
+        ReferenceWithChangeset(
+            **reference_no_abstract.model_dump(), changeset=reference_no_abstract
+        ),
+        ReferenceWithChangeset(
+            **reference_with_abstract.model_dump(),
+            changeset=reference_with_abstract,
+        ),
+        ReferenceWithChangeset(
+            **reference_no_abstract_no_doi.model_dump(),
+            changeset=reference_no_abstract_no_doi,
+        ),
+        ReferenceWithChangeset(
+            **reference_no_abstract_in_domain.model_dump(),
+            changeset=reference_no_abstract_in_domain,
+        ),
+        ReferenceWithChangeset(
+            **reference_with_abstract_in_domain.model_dump(),
+            changeset=reference_with_abstract_in_domain,
+        ),
+        ReferenceWithChangeset(
+            **reference_with_abstract_out_of_domain.model_dump(),
+            changeset=reference_with_abstract_out_of_domain,
+        ),
+        ReferenceWithChangeset(
+            id=abstract_enhancement.reference_id,
+            changeset=Reference(enhancements=[abstract_enhancement]),
+        ),
+        ReferenceWithChangeset(
+            id=positive_in_out_annotation_enhancement.reference_id,
+            enhancements=[abstract_enhancement],
+            changeset=Reference(enhancements=[positive_in_out_annotation_enhancement]),
+        ),
+        ReferenceWithChangeset(
+            id=negative_in_out_annotation_enhancement.reference_id,
+            enhancements=[abstract_enhancement],
+            changeset=Reference(enhancements=[negative_in_out_annotation_enhancement]),
+        ),
     ]
 
     # This is needed when running in quick succession to ensure the index is ready
@@ -552,11 +524,10 @@ async def test_robot_automation_percolation(
                 reference_no_abstract_in_domain.id,
             }
         elif result.robot_id == in_out_robot_automation.robot_id:
-            # Everything with an abstract
+            # Everything with an abstract in the changeset
             assert result.reference_ids == {
                 reference_with_abstract.id,
                 reference_with_abstract_in_domain.id,
-                reference_with_abstract_in_domain_two.id,
                 reference_with_abstract_out_of_domain.id,
                 abstract_enhancement.reference_id,
             }
@@ -565,10 +536,98 @@ async def test_robot_automation_percolation(
             assert result.reference_ids == {
                 reference_no_abstract_in_domain.id,
                 reference_with_abstract_in_domain.id,
-                reference_with_abstract_in_domain_two.id,
                 positive_in_out_annotation_enhancement.reference_id,
-                existential_in_out_annotation_enhancement.reference_id,
             }
         else:
             msg = f"Unexpected robot ID: {result.robot_id}"
             raise ValueError(msg)
+
+
+async def test_canonical_candidate_search(
+    es_reference_repository: ReferenceESRepository, reference: Reference
+):
+    """Test searching for candidate canonical references by fingerprint."""
+    # Create two similar references that should match the fingerprint
+    matching_ref1 = reference.model_copy(update={"id": uuid.uuid4()})
+
+    # Similar reference with slight variations
+    matching_ref2 = reference.model_copy(
+        update={
+            "id": uuid.uuid4(),
+            "enhancements": [
+                enhancement.model_copy(
+                    update={
+                        "id": uuid.uuid4(),
+                        "reference_id": uuid.uuid4(),
+                        "content": (
+                            enhancement.content.model_copy(
+                                update={
+                                    "title": "Sample Reference Title with Whitespace",
+                                }
+                            )
+                            if enhancement.content.enhancement_type
+                            == EnhancementType.BIBLIOGRAPHIC
+                            else enhancement.content
+                        ),
+                    }
+                )
+                for enhancement in (reference.enhancements or [])
+            ],
+        }
+    )
+
+    # Create a completely different reference that should not match
+    non_matching_ref = reference.model_copy(
+        update={
+            "id": uuid.uuid4(),
+            "enhancements": [
+                enhancement.model_copy(
+                    update={
+                        "id": uuid.uuid4(),
+                        "reference_id": uuid.uuid4(),
+                        "content": (
+                            enhancement.content.model_copy(
+                                update={
+                                    "title": "Completely Different Paper Title",
+                                    "authorship": [
+                                        Authorship(
+                                            display_name="Different Author",
+                                            position=AuthorPosition.FIRST,
+                                        )
+                                    ],
+                                    "publication_year": 2020,
+                                }
+                            )
+                            if enhancement.content.enhancement_type
+                            == EnhancementType.BIBLIOGRAPHIC
+                            else enhancement.content
+                        ),
+                    }
+                )
+                for enhancement in (reference.enhancements or [])
+            ],
+        }
+    )
+
+    # Add all references to the repository
+    await es_reference_repository.add(matching_ref1)
+    await es_reference_repository.add(matching_ref2)
+    await es_reference_repository.add(non_matching_ref)
+
+    await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+        index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
+    )
+
+    # Test the search_for_candidate_canonicals method
+    results = await es_reference_repository.search_for_candidate_canonicals(
+        CandidateCanonicalSearchFieldsProjection.get_from_reference(matching_ref1),
+        reference_id=matching_ref1.id,
+    )
+
+    assert {reference.id for reference in results} == {matching_ref2.id}
+
+    results = await es_reference_repository.search_for_candidate_canonicals(
+        CandidateCanonicalSearchFieldsProjection.get_from_reference(non_matching_ref),
+        reference_id=non_matching_ref.id,
+    )
+    assert not results

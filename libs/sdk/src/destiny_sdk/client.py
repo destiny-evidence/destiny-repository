@@ -7,9 +7,10 @@ import httpx
 from pydantic import UUID4, HttpUrl
 
 from destiny_sdk.robots import (
-    BatchEnhancementRequestRead,
-    BatchRobotResult,
     EnhancementRequestRead,
+    RobotEnhancementBatch,
+    RobotEnhancementBatchRead,
+    RobotEnhancementBatchResult,
     RobotResult,
 )
 
@@ -80,34 +81,61 @@ class Client:
 
         Signs the request with the client's secret key.
 
-        :param robot_result: The Robot Result to send
+        :param robot_result: The RobotResult to send
         :type robot_result: RobotResult
         :return: The EnhancementRequestRead object from the response.
         :rtype: EnhancementRequestRead
         """
         response = self.session.post(
-            f"/enhancement-requests/single-requests/{robot_result.request_id}/results/",
+            f"/enhancement-requests/{robot_result.request_id}/results/",
             json=robot_result.model_dump(mode="json"),
         )
         response.raise_for_status()
         return EnhancementRequestRead.model_validate(response.json())
 
-    def send_batch_robot_result(
-        self, batch_robot_result: BatchRobotResult
-    ) -> BatchEnhancementRequestRead:
+    def send_robot_enhancement_batch_result(
+        self, robot_enhancement_batch_result: RobotEnhancementBatchResult
+    ) -> RobotEnhancementBatchRead:
         """
-        Send a BatchRobotResult to destiny repository.
+        Send a RobotEnhancementBatchResult to destiny repository.
 
         Signs the request with the client's secret key.
 
-        :param batch_robot_result: The Batch Robot Result to send
-        :type batch_robot_result: BatchRobotResult
-        :return: The BatchEnhancementRequestRead object from the response.
-        :rtype: BatchEnhancementRequestRead
+        :param robot_enhancement_batch_result: The RobotEnhancementBatchResult to send
+        :type robot_enhancement_batch_result: RobotEnhancementBatchResult
+        :return: The RobotEnhancementBatchRead object from the response.
+        :rtype: RobotEnhancementBatchRead
         """
         response = self.session.post(
-            f"/enhancement-requests/batch-requests/{batch_robot_result.request_id}/results/",
-            json=batch_robot_result.model_dump(mode="json"),
+            f"/robot-enhancement-batches/{robot_enhancement_batch_result.request_id}/results/",
+            json=robot_enhancement_batch_result.model_dump(mode="json"),
         )
         response.raise_for_status()
-        return BatchEnhancementRequestRead.model_validate(response.json())
+        return RobotEnhancementBatchRead.model_validate(response.json())
+
+    def poll_robot_enhancement_batch(
+        self, robot_id: UUID4, limit: int = 10
+    ) -> RobotEnhancementBatch | None:
+        """
+        Poll for a robot enhancement batch.
+
+        Signs the request with the client's secret key.
+
+        :param robot_id: The ID of the robot to poll for
+        :type robot_id: UUID4
+        :param limit: The maximum number of pending enhancements to return
+        :type limit: int
+        :return: The RobotEnhancementBatch object from the response, or None if no
+            batches available
+        :rtype: destiny_sdk.robots.RobotEnhancementBatch | None
+        """
+        response = self.session.post(
+            "/robot-enhancement-batches/",
+            params={"robot_id": str(robot_id), "limit": limit},
+        )
+        # HTTP 204 No Content indicates no batches available
+        if response.status_code == httpx.codes.NO_CONTENT:
+            return None
+
+        response.raise_for_status()
+        return RobotEnhancementBatch.model_validate(response.json())

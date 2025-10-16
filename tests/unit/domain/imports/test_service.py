@@ -4,10 +4,10 @@ import uuid
 from unittest.mock import AsyncMock
 
 import destiny_sdk
+import httpx
 import pytest
 
 from app.domain.imports.models.models import (
-    CollisionStrategy,
     ImportBatch,
     ImportBatchStatus,
     ImportRecord,
@@ -25,6 +25,15 @@ RECORD_ID = uuid.uuid4()
 REF_ID = uuid.uuid4()
 RESULT_ID = uuid.uuid4()
 BATCH_ID = uuid.uuid4()
+
+
+@pytest.fixture
+def import_result():
+    return ImportResult(
+        id=RESULT_ID,
+        import_batch_id=BATCH_ID,
+        status=ImportResultStatus.CREATED,
+    )
 
 
 @pytest.mark.asyncio
@@ -53,9 +62,11 @@ async def test_register_import(fake_repository, fake_uow):
 
 @pytest.mark.asyncio
 async def test_register_batch(fake_repository, fake_uow, fake_import_record):
-    repo_imports = fake_repository(init_entries=[fake_import_record(RECORD_ID)])
     repo_batches = fake_repository()
-    uow = fake_uow(imports=repo_imports, batches=repo_batches)
+    repo_imports = fake_repository(
+        init_entries=[fake_import_record(RECORD_ID)], batches=repo_batches
+    )
+    uow = fake_uow(imports=repo_imports)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
     batch_to_register = ImportBatch(
@@ -66,15 +77,16 @@ async def test_register_batch(fake_repository, fake_uow, fake_import_record):
 
     import_batch = next(iter(repo_batches.repository.values()))
 
-    assert import_batch.status == ImportBatchStatus.CREATED
     assert import_batch.import_record_id == RECORD_ID
     assert import_batch.import_results is None
 
 
 @pytest.mark.asyncio
-async def test_import_reference_happy_path(fake_repository, fake_uow):
-    repo_results = fake_repository()
-    uow = fake_uow(results=repo_results)
+async def test_import_reference_happy_path(fake_repository, fake_uow, import_result):
+    repo_results = fake_repository([import_result])
+    repo_batches = fake_repository(results=repo_results)
+    repo = fake_repository(batches=repo_batches)
+    uow = fake_uow(imports=repo)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
     fake_reference_service = AsyncMock()
@@ -82,9 +94,7 @@ async def test_import_reference_happy_path(fake_repository, fake_uow):
         reference=destiny_sdk.references.ReferenceFileInput(),
     )
 
-    await service.import_reference(
-        BATCH_ID, CollisionStrategy.FAIL, "nonsense", fake_reference_service, 1
-    )
+    await service.import_reference(fake_reference_service, import_result, "nonsense", 1)
 
     import_result = repo_results.get_first_record()
     assert import_result.id
@@ -92,9 +102,13 @@ async def test_import_reference_happy_path(fake_repository, fake_uow):
 
 
 @pytest.mark.asyncio
-async def test_import_reference_reference_not_created(fake_repository, fake_uow):
-    repo_results = fake_repository()
-    uow = fake_uow(results=repo_results)
+async def test_import_reference_reference_not_created(
+    fake_repository, fake_uow, import_result
+):
+    repo_results = fake_repository([import_result])
+    repo_batches = fake_repository(results=repo_results)
+    repo = fake_repository(batches=repo_batches)
+    uow = fake_uow(imports=repo)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
     import_reference_error = "it bronked"
@@ -104,9 +118,7 @@ async def test_import_reference_reference_not_created(fake_repository, fake_uow)
         errors=[import_reference_error]
     )
 
-    await service.import_reference(
-        BATCH_ID, CollisionStrategy.FAIL, "nonsense", fake_reference_service, 1
-    )
+    await service.import_reference(fake_reference_service, import_result, "nonsense", 1)
 
     import_result = repo_results.get_first_record()
 
@@ -116,10 +128,12 @@ async def test_import_reference_reference_not_created(fake_repository, fake_uow)
 
 @pytest.mark.asyncio
 async def test_import_reference_reference_created_with_errors(
-    fake_repository, fake_uow
+    fake_repository, fake_uow, import_result
 ):
-    repo_results = fake_repository()
-    uow = fake_uow(results=repo_results)
+    repo_results = fake_repository([import_result])
+    repo_batches = fake_repository(results=repo_results)
+    repo = fake_repository(batches=repo_batches)
+    uow = fake_uow(imports=repo)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
     import_reference_error = "it's a bit bronked"
@@ -130,9 +144,7 @@ async def test_import_reference_reference_created_with_errors(
         errors=[import_reference_error],
     )
 
-    await service.import_reference(
-        BATCH_ID, CollisionStrategy.FAIL, "nonsense", fake_reference_service, 1
-    )
+    await service.import_reference(fake_reference_service, import_result, "nonsense", 1)
 
     import_result = repo_results.get_first_record()
     assert import_result.status == ImportResultStatus.PARTIALLY_FAILED
@@ -140,18 +152,118 @@ async def test_import_reference_reference_created_with_errors(
 
 
 @pytest.mark.asyncio
-async def test_add_batch_result(fake_repository, fake_uow):
-    repo_results = fake_repository()
-    uow = fake_uow(results=repo_results)
+async def test_import_reference_sql_integrity_error(
+    fake_repository, fake_uow, import_result
+):
+    """Test SQLIntegrityError handling in import_reference (should retry)."""
+    from app.core.exceptions import SQLIntegrityError
+
+    repo_results = fake_repository([import_result])
+    repo_batches = fake_repository(results=repo_results)
+    repo = fake_repository(batches=repo_batches)
+    uow = fake_uow(imports=repo)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
-    import_result_create = ImportResult(
-        import_batch_id=BATCH_ID, status=ImportResultStatus.CREATED
+    # Provide all required arguments for SQLIntegrityError
+    fake_reference_service = AsyncMock()
+    fake_reference_service.ingest_reference.side_effect = SQLIntegrityError(
+        detail="Integrity error",
+        lookup_model="ImportResult",
+        collision="test-collision",
     )
 
-    import_result = await service.add_batch_result(import_result_create)
+    result, _ = await service.import_reference(
+        fake_reference_service, import_result, "nonsense", 1
+    )
 
-    assert import_result.import_batch_id == BATCH_ID
+    assert result.status == ImportResultStatus.RETRYING
+
+
+@pytest.mark.asyncio
+async def test_distribute_import_batch_happy_path(monkeypatch, fake_uow):
+    """Test distribute_import_batch happy path with multiple lines."""
+
+    # Prepare a fake ImportBatch
+    batch_id = uuid.uuid4()
+    import_batch = ImportBatch(
+        id=batch_id,
+        storage_url="https://fake-storage-url.com",
+        status=ImportBatchStatus.CREATED,
+        import_record_id=uuid.uuid4(),
+    )
+
+    # Prepare lines to be returned by the HTTPX stream
+    lines = ["ref1", "ref2", "ref3"]
+
+    class FakeResponse:
+        def __init__(self, lines):
+            self._lines = lines
+            self._idx = 0
+            self.status_code = 200
+
+        async def aiter_lines(self):
+            for line in self._lines:
+                yield line
+
+        def raise_for_status(self):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    class FakeStreamContext:
+        def __init__(self, response):
+            self._response = response
+
+        async def __aenter__(self):
+            return self._response
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    class FakeClient:
+        def __init__(self, lines):
+            self._lines = lines
+            self._transport = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+        def stream(self, method, url):
+            assert method == "GET"
+            assert url == str(import_batch.storage_url)
+            response = FakeResponse(self._lines)
+            return FakeStreamContext(response)
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda: FakeClient(lines))
+
+    created_results = []
+
+    async def fake_register_result(result):
+        created_results.append(result)
+        return result
+
+    queued_tasks = []
+
+    async def fake_queue_task_with_trace(*args):
+        queued_tasks.append(args)
+
+    service = ImportService(ImportAntiCorruptionService(), fake_uow())
+    monkeypatch.setattr(service, "register_result", fake_register_result)
+    monkeypatch.setattr(
+        "app.domain.imports.service.queue_task_with_trace", fake_queue_task_with_trace
+    )
+
+    await service.distribute_import_batch(import_batch)
+
+    assert len(created_results) == len(lines)
+    assert len(queued_tasks) == len(lines)
 
 
 @pytest.mark.asyncio
@@ -172,8 +284,9 @@ async def test_get_import_batch_summary_batch_completed_no_failures(
     )
 
     repo_batches = fake_repository(init_entries=[fake_completed_batch])
+    repo = fake_repository(batches=repo_batches)
 
-    uow = fake_uow(batches=repo_batches)
+    uow = fake_uow(imports=repo)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
     batch = await service.get_import_batch_with_results(BATCH_ID)
@@ -211,8 +324,9 @@ async def test_get_import_batch_summary_batch_completed_with_failures(
     )
 
     repo_batches = fake_repository(init_entries=[fake_batch])
+    repo = fake_repository(batches=repo_batches)
 
-    uow = fake_uow(batches=repo_batches)
+    uow = fake_uow(imports=repo)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
     batch = await service.get_import_batch_with_results(BATCH_ID)
@@ -248,8 +362,9 @@ async def test_get_import_batch_summary_batch_in_progress(
     )
 
     repo_batches = fake_repository(init_entries=[fake_batch])
+    repo = fake_repository(batches=repo_batches)
 
-    uow = fake_uow(batches=repo_batches)
+    uow = fake_uow(imports=repo)
     service = ImportService(ImportAntiCorruptionService(), uow)
 
     batch = await service.get_import_batch_with_results(BATCH_ID)

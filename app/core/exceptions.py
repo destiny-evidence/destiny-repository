@@ -6,7 +6,7 @@ from typing import Any, Self
 import destiny_sdk
 from fastapi import HTTPException
 from opentelemetry.trace import StatusCode
-from sqlalchemy.exc import IntegrityError as SQLAlchemyIntegriyError
+from sqlalchemy.exc import IntegrityError as SQLAlchemyIntegrityError
 
 from app.core.telemetry.attributes import set_span_status
 
@@ -32,6 +32,7 @@ class DestinyRepositoryError(Exception):
             detail=detail,
             exception=self,
         )
+        self.detail = detail or "No detail provided."
         super().__init__(detail, *args)
 
 
@@ -62,7 +63,6 @@ class NotFoundError(DestinyRepositoryError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -94,6 +94,21 @@ class SQLNotFoundError(NotFoundError):
         super().__init__(detail, *args)
 
 
+class SQLValueError(DestinyRepositoryError):
+    """Exception for when a value is invalid for a SQL operation."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the SQLValueError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
 class IntegrityError(DestinyRepositoryError):
     """Exception for when a change would violate data integrity."""
 
@@ -106,7 +121,6 @@ class IntegrityError(DestinyRepositoryError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -135,8 +149,8 @@ class SQLIntegrityError(IntegrityError):
         super().__init__(detail, *args)
 
     @classmethod
-    def from_sqlacademy_integrity_error(
-        cls, error: SQLAlchemyIntegriyError, lookup_model: str
+    def from_sqlalchemy_integrity_error(
+        cls, error: SQLAlchemyIntegrityError, lookup_model: str
     ) -> Self:
         """
         Construct an SQLIntegrityError from an IntegrityError raised by SQLAlchemy.
@@ -182,7 +196,6 @@ class ESError(DestinyRepositoryError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -198,7 +211,6 @@ class InvalidPayloadError(DestinyRepositoryError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -242,7 +254,6 @@ class ESMalformedDocumentError(ESError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -258,7 +269,6 @@ class WrongReferenceError(InvalidPayloadError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -274,7 +284,6 @@ class InvalidParentEnhancementError(InvalidPayloadError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -339,7 +348,6 @@ class RobotUnreachableError(DestinyRepositoryError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -355,7 +363,6 @@ class RobotEnhancementError(DestinyRepositoryError):
             *args: Additional arguments for the exception.
 
         """
-        self.detail = detail
         super().__init__(detail, *args)
 
 
@@ -456,3 +463,60 @@ class AuthError(destiny_sdk.auth.AuthException):
             detail=detail,
             exception=self,
         )
+
+
+class SQLPreloadError(DestinyRepositoryError):
+    """An exception thrown when requesting a relationship that hasn't been preloaded."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the SQLPreloadError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class ProjectionError(DestinyRepositoryError):
+    """An exception for when we fail to project a domain model."""
+
+    def __init__(self, detail: str) -> None:
+        """
+        Initialize the ProjectionError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+
+        """
+        super().__init__(detail)
+
+
+class DeduplicationError(DestinyRepositoryError):
+    """An exception for when something goes wrong in deduplication."""
+
+    def __init__(self, detail: str) -> None:
+        """
+        Initialize the DeduplicationError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+
+        """
+        super().__init__(detail)
+
+
+class DeduplicationValueError(DeduplicationError, ValueError):
+    """An exception for when a value provided to deduplication is invalid."""
+
+    def __init__(self, detail: str) -> None:
+        """
+        Initialize the DeduplicationValueError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+
+        """
+        super().__init__(detail)
