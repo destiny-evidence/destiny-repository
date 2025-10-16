@@ -21,7 +21,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # Adds 'deprecated' to the enum and sets it as the default value
+    connection = op.get_bind()
     op.execute("ALTER TYPE collision_strategy ADD VALUE IF NOT EXISTS 'deprecated'")
+    op.execute("ALTER TYPE collision_strategy ADD VALUE IF NOT EXISTS 'append'")
+    connection.commit()
     op.alter_column(
         'import_batch',
         'collision_strategy',
