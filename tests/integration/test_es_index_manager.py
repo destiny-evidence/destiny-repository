@@ -182,3 +182,24 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
         index=index_manager.alias_name, id=dummy_doc.meta.id
     )
     assert doc_from_index["found"]
+
+
+async def test_old_index_not_deleted_if_flag_unset(index_manager: IndexManager):
+    """Test that we can leave the old index."""
+    # Initialise the index
+    await index_manager.initialize_index()
+
+    # Get current index name so we can verify it is still there
+    old_index_name = await index_manager.get_current_index_name()
+
+    # Call without delete_old flag
+    await index_manager.migrate()
+
+    old_index_exists = await index_manager.client.indices.exists(index=old_index_name)
+    assert old_index_exists
+
+    # Now delete it
+    await index_manager.client.indices.delete(index=old_index_name)
+
+    old_index_exists = await index_manager.client.indices.exists(index=old_index_name)
+    assert not old_index_exists
