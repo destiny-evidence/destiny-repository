@@ -254,3 +254,14 @@ variable "feature_flags" {
   type        = map(bool)
   default     = {}
 }
+
+
+variable "external_directory_tenant_id" {
+  description = "The tenant ID of the Azure AD where the destiny repository app is registered"
+  type        = string
+}
+
+variable "external_directory_client_id" {
+  description = "The client ID of the Azure AD application for the destiny repository"
+  type        = string
+}
