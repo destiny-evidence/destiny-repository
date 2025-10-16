@@ -190,7 +190,11 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision = (
                 await self.sql_uow.reference_duplicate_decisions.update_by_pk(
                     reference_duplicate_decision.id,
-                    duplicate_determination=DuplicateDetermination.CANONICAL,
+                    # This should simplify to CANONICAL only once the search strategy is
+                    # implemented and evaluated.
+                    duplicate_determination=DuplicateDetermination.CANONICAL
+                    if settings.env == Environment.TEST
+                    else DuplicateDetermination.UNSEARCHABLE,
                 )
             )
         else:
