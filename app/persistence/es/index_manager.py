@@ -184,11 +184,11 @@ class IndexManager:
     async def migrate(
         self,
         *,
-        delete_old: bool = True,
+        delete_old: bool = False,
         verify_count: bool = True,
     ) -> str | None:
         """
-        Migrate to a new index version if the mapping has changed.
+        Migrate to a new index version.
 
         Args:
             delete_old: Delete the old index after successful migration
@@ -274,6 +274,9 @@ class IndexManager:
             await asyncio.sleep(5)  # Configure this
             task = await self.client.tasks.get(task_id=response["task"])
 
+        # Refresh the destination index
+        await self.client.indices.refresh(index=dest_index)
+
         logger.info(
             "Reindexed %s documents in %s ms",
             task["response"]["total"],
@@ -292,6 +295,8 @@ class IndexManager:
             RuntimeError: If document counts don't match
 
         """
+        # TODO(Jack): count seems to be pretty flaky  # noqa: TD003
+        # Geting intermittent failures here
         source_count = await self.client.count(index=source_index)
         dest_count = await self.client.count(index=dest_index)
 

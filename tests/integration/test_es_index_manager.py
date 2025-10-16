@@ -68,6 +68,7 @@ async def index_manager(
     """
     async with es_manager_for_tests.client() as client:
         index_manager = IndexManager(DummyDocument, DummyDocument.Index.name, client)
+
         # Cleanup any hanging index
         await index_manager.delete_current_index_unsafe()
 
@@ -132,3 +133,52 @@ async def test_initialise_es_index_is_idempotent(index_manager: IndexManager):
     # Assert the count of documents has not changed
     count = await index_manager.client.count(index=index_manager.alias_name)
     assert count["count"] == 1
+
+
+async def test_migrate_es_index_happy_path(index_manager: IndexManager):
+    """Test that we can migrate an index."""
+    # Initialise the index
+    await index_manager.initialize_index()
+
+    # Add a document to the index so we can check for it
+    # after reinitialising
+    dummy_doc = DummyDocument.from_domain(Dummy(note="test document"))
+    doc_added = await dummy_doc.save(using=index_manager.client, validate=True)
+    assert doc_added == "created"
+
+    # Refresh the index to ensure document available
+    await index_manager.client.indices.refresh(index=index_manager.alias_name)
+
+    # Get current index name so we can verify it is deleted
+    old_index_name = await index_manager.get_current_index_name()
+
+    # Get current index version so we can verify it is incremented
+    old_version = await index_manager.get_current_version()
+    assert old_version
+
+    await index_manager.migrate(delete_old=True)
+
+    # Verify the old index has been deleted
+    old_index_exists = await index_manager.client.indices.exists(index=old_index_name)
+    assert not old_index_exists
+
+    # Verify the version is not None and has incremented
+    new_version = await index_manager.get_current_version()
+    assert new_version
+    assert new_version == (old_version + 1)
+
+    # Verify the index name has changed
+    new_index_name = await index_manager.get_current_index_name()
+    assert new_index_name == f"{index_manager.alias_name}_v2"
+
+    # Verify the alias exists on the new index
+    alias_exists = await index_manager.client.indices.exists_alias(
+        index=new_index_name, name=index_manager.alias_name
+    )
+    assert alias_exists
+
+    # Verify the document is in new index
+    doc_from_index = await index_manager.client.get(
+        index=index_manager.alias_name, id=dummy_doc.meta.id
+    )
+    assert doc_from_index["found"]
