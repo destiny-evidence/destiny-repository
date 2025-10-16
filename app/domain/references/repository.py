@@ -22,6 +22,7 @@ from app.domain.references.models.es import (
 )
 from app.domain.references.models.models import (
     CandidateCanonicalSearchFields,
+    DuplicateDetermination,
     ExternalIdentifierType,
     GenericExternalIdentifier,
     PendingEnhancementStatus,
@@ -264,7 +265,20 @@ class ReferenceESRepository(
                                 "gte": search_fields.publication_year - 1,
                                 "lte": search_fields.publication_year + 1,
                             },
-                        )
+                        ),
+                        # This filter ensures we only match against references that are
+                        # "at rest". This avoids race conditions where reference B and C
+                        # are being deduplicated at the same time, perhaps creating
+                        # links B->A and C->B - in turn, creating a chain that we do
+                        # not control, which is a no-no.
+                        # Better handling will be needed in the future if/when we fully
+                        # implement chaining (which will require deliberate candidate
+                        # selection against duplicates as well as canonicals, probably
+                        # still "at rest" though).
+                        Q(
+                            "term",
+                            duplicate_determination=DuplicateDetermination.CANONICAL,
+                        ),
                     ]
                     if search_fields.publication_year
                     else [],
@@ -521,19 +535,6 @@ class RobotAutomationESRepository(
             DomainRobotAutomation,
             RobotAutomationPercolationDocument,
         )
-
-    async def add(self, obj: DomainRobotAutomation) -> DomainRobotAutomation:
-        """
-        Add a robot automation to the repository and index it for percolation.
-
-        Wraps the base add method to ensure the index is refreshed.
-
-        :param obj: The robot automation domain object to add.
-        :type obj: DomainRobotAutomation
-        """
-        robot_automation = await super().add(obj)
-        await self._client.indices.refresh(index=self._persistence_cls.Index.name)
-        return robot_automation
 
     @trace_repository_method(tracer)
     async def percolate(

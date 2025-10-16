@@ -105,7 +105,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
     async def register_duplicate_decision_for_reference(
         self,
-        reference: Reference,
+        reference_id: uuid.UUID,
         enhancement_id: uuid.UUID | None = None,
         duplicate_determination: Literal[DuplicateDetermination.EXACT_DUPLICATE]
         | None = None,
@@ -143,7 +143,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             else DuplicateDetermination.PENDING
         )
         reference_duplicate_decision = ReferenceDuplicateDecision(
-            reference_id=reference.id,
+            reference_id=reference_id,
             enhancement_id=enhancement_id,
             duplicate_determination=_duplicate_determination,
             canonical_reference_id=canonical_reference_id,
@@ -299,7 +299,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             )
             or (
                 # Reference was duplicate but is now duplicate of a different canonical
-                new_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
+                new_decision.duplicate_determination
+                == active_decision.duplicate_determination
+                == DuplicateDetermination.DUPLICATE
                 and active_decision.canonical_reference_id
                 != new_decision.canonical_reference_id
             )
@@ -323,10 +325,17 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 + (new_decision.detail if new_decision.detail else "")
             )
         else:
-            # Either no active decision or the mapping is the same.
+            # Either:
+            # - No active decision
+            # - Decision is the same
+            # - Decision is moving from canonical to duplicate
             # Just update the active decision to record the consistent state.
             if active_decision:
-                decision_changed = False
+                if (
+                    active_decision.duplicate_determination
+                    == new_decision.duplicate_determination
+                ):
+                    decision_changed = False
                 active_decision.active_decision = False
             new_decision.active_decision = True
 

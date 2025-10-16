@@ -12,9 +12,11 @@ import pytest
 from aiohttp import web
 from destiny_sdk.enhancements import EnhancementFileInput
 from destiny_sdk.references import ReferenceFileInput
+from elasticsearch import AsyncElasticsearch
 
 from app.domain.robots.models.models import Robot
 from tests.e2e.conftest import host_name
+from tests.e2e.utils import refresh_robot_automation_index
 from tests.factories import ReferenceFactory
 
 if TYPE_CHECKING:
@@ -97,7 +99,7 @@ def get_import_file_signed_url():
 
 @pytest.fixture
 async def robot_automation_on_all_imports(
-    destiny_client_v1: httpx.AsyncClient, robot: Robot
+    destiny_client_v1: httpx.AsyncClient, es_client: AsyncElasticsearch, robot: Robot
 ) -> uuid.UUID:
     """Create a robot automation that runs on all imports."""
     response = await destiny_client_v1.post(
@@ -108,4 +110,5 @@ async def robot_automation_on_all_imports(
         },
     )
     assert response.status_code == 201
+    await refresh_robot_automation_index(es_client)
     return robot.id
