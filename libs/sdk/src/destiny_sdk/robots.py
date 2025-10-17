@@ -330,10 +330,6 @@ class _RobotBase(BaseModel):
     model_config = ConfigDict(extra="forbid")  # Forbid extra fields on robot models
 
     name: str = Field(description="The name of the robot, must be unique.")
-    base_url: HttpUrl = Field(
-        description="The base url of the robot. The robot must implement endpoint"
-        "base_url/batch for batch enhancements of references.",
-    )
     description: str = Field(
         description="Description of the enhancement the robot provides."
     )

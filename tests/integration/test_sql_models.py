@@ -376,7 +376,6 @@ async def test_enhancement_request_status_projection(
             name="Test Robot",
             description="A test robot",
             owner="test@example.com",
-            base_url="https://example.com",
             client_secret="test-secret",
         )
     )
