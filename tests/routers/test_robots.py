@@ -62,7 +62,6 @@ async def client(app: FastAPI) -> AsyncGenerator[AsyncClient]:
 def robot_t_1000():
     """Return dictionary of basic robot fields."""
     return {
-        "base_url": "http://www.mimetic-alloy.com",
         "name": "T-1000",
         "owner": "Skynet",
         "description": "Liquid metal android assassin.",
@@ -73,7 +72,6 @@ def robot_t_1000():
 def robot_t_2000():
     """Return dictionary of basic robot fields."""
     return {
-        "base_url": "http://www.mimetic-alloy.com.au",
         "name": "T-2000",
         "owner": "Skynet 2 Electric Boogaloo",
         "description": "Gas metal android assassin.",
@@ -142,7 +140,6 @@ async def test_update_robot_fails_if_name_is_the_same_as_other_robots(
 ) -> None:
     """Test that trying to update the name of a robot to something non-unique fails."""
     robot_t_800 = {
-        "base_url": "http://www.robotic-endoskeleton.com",
         "name": "T-800",
         "owner": "Skynet",
         "description": "Cyberdyne Systems Model 101",

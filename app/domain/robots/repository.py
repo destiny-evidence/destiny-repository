@@ -81,7 +81,6 @@ class RobotSQLRepository(
                 lookup_value=robot.id,
             )
 
-        persistence.base_url = str(robot.base_url)
         persistence.description = robot.description
         persistence.name = robot.name
         persistence.owner = robot.owner

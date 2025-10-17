@@ -11,20 +11,20 @@ Registering a Robot
         Actor RO as Robot Owner
         participant DR as Data Repository
 
-        RO->>+DR: POST /robots/ : (base_url, description, name, owner)
+        RO->>+DR: POST /robots/ : (description, name, owner)
         DR-->>DR: Register Robot
         DR->>RO: Provisioned Robot : (id, client_secret, parameters)
         Note over RO: Robot Owner configures robot with <br>provided id and client_secret
 
-        RO->>+DR: PUT /robots/<robot_id>/ : (id, new_base_url, new_description, new_name, new_owner)
+        RO->>+DR: PUT /robots/<robot_id>/ : (id, new_description, new_name, new_owner)
         DR-->>DR: Update Robot
-        DR->>RO: Robot(id, new_base_url, new_description, new_name, new_owner)
+        DR->>RO: Robot(id, new_description, new_name, new_owner)
         Note over RO: client_secret not returned on update
 
 
         RO->>DR: Cycle Robot Secret (id)
         DR-->>DR: Cycle Robot Secret
-        DR->>RO: Provisioned Robot (robot_id, base_url, new_client_secret, description, name, owner)
+        DR->>RO: Provisioned Robot (robot_id, new_client_secret, description, name, owner)
         Note over RO: Robot Owner updates robot with <br>new client_secret
 
 For Robot Owners

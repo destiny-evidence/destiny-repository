@@ -19,7 +19,6 @@ from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
-from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 from app.domain.robots.services.anti_corruption_service import (
     RobotAntiCorruptionService,
@@ -76,54 +75,6 @@ async def get_robot_service(
 async def get_blob_repository() -> BlobRepository:
     """Return the blob repository using the provided session."""
     return BlobRepository()
-
-
-async def get_robot_request_dispatcher() -> RobotRequestDispatcher:
-    """Return the robot request dispatcher."""
-    return RobotRequestDispatcher()
-
-
-@broker.task
-async def collect_and_dispatch_references_for_enhancement(
-    enhancement_request_id: UUID,
-) -> None:
-    """Async logic for dispatching a enhancement request."""
-    logger.info("Processing enhancement request")
-    trace_attribute(Attributes.ENHANCEMENT_REQUEST_ID, str(enhancement_request_id))
-    name_span(f"Dispatch enhancement request {enhancement_request_id}")
-    async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
-        blob_repository = await get_blob_repository()
-        reference_anti_corruption_service = ReferenceAntiCorruptionService(
-            blob_repository
-        )
-        robot_anti_corruption_service = RobotAntiCorruptionService()
-        reference_service = await get_reference_service(
-            reference_anti_corruption_service, sql_uow, es_uow
-        )
-        robot_service = await get_robot_service(robot_anti_corruption_service, sql_uow)
-        robot_request_dispatcher = await get_robot_request_dispatcher()
-        enhancement_request = await reference_service.get_enhancement_request(
-            enhancement_request_id
-        )
-        trace_attribute(Attributes.ROBOT_ID, str(enhancement_request.robot_id))
-
-        try:
-            with bound_contextvars(
-                robot_id=str(enhancement_request.robot_id),
-            ):
-                # Collect and dispatch references for the enhancement request
-                await reference_service.collect_and_dispatch_references_for_enhancement(
-                    enhancement_request,
-                    robot_service,
-                    robot_request_dispatcher,
-                    blob_repository,
-                )
-        except Exception as e:
-            logger.exception("Error occurred while creating enhancement request")
-            await reference_service.mark_enhancement_request_failed(
-                enhancement_request_id,
-                str(e),
-            )
 
 
 @broker.task

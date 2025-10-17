@@ -22,8 +22,6 @@ class Robot(GenericSQLPersistence[DomainRobot]):
 
     __tablename__ = "robot"
 
-    base_url: Mapped[str] = mapped_column(String, nullable=False)
-
     client_secret: Mapped[str] = mapped_column(String, nullable=False)
 
     description: Mapped[str] = mapped_column(String, nullable=False)
@@ -47,7 +45,6 @@ class Robot(GenericSQLPersistence[DomainRobot]):
             raise RuntimeError(msg)
         return cls(
             id=domain_obj.id,
-            base_url=str(domain_obj.base_url),
             client_secret=domain_obj.client_secret.get_secret_value(),
             description=domain_obj.description,
             name=domain_obj.name,
@@ -61,7 +58,6 @@ class Robot(GenericSQLPersistence[DomainRobot]):
         """Convert the persistence model indo a Domain Robot object."""
         return DomainRobot(
             id=self.id,
-            base_url=self.base_url,
             client_secret=self.client_secret,
             description=self.description,
             name=self.name,

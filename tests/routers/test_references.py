@@ -128,7 +128,6 @@ async def add_reference(session: AsyncSession) -> SQLReference:
 async def add_robot(session: AsyncSession) -> SQLRobot:
     """Add a robot to the database."""
     robot = SQLRobot(
-        base_url="http://www.test-robot-here.com/",
         client_secret="secret-secret",
         description="description",
         name="name",

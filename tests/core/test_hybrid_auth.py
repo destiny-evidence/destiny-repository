@@ -64,7 +64,6 @@ async def client(hmac_app: FastAPI) -> AsyncGenerator[AsyncClient]:
 async def registered_robot(session: AsyncSession) -> SQLRobot:
     """Create a registered robot for testing."""
     robot = SQLRobot(
-        base_url="https://www.balderdash.org",
         client_secret="secret-secret",
         description="it's a robot",
         name="robot",

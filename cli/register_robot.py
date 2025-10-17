@@ -88,7 +88,6 @@ if __name__ == "__main__":
     try:
         robot_to_register = destiny_sdk.robots.RobotIn(
             name=args.name,
-            base_url=args.base_url,
             description=args.description,
             owner=args.owner,
         )

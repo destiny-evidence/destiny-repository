@@ -432,7 +432,6 @@ async def robot(destiny_client_v1: httpx.AsyncClient) -> Robot:
         json={
             "name": robot.name,
             "description": robot.description,
-            "base_url": str(robot.base_url),
             "owner": robot.owner,
         },
     )

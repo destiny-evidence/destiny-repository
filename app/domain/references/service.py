@@ -11,8 +11,6 @@ from app.core.config import (
 )
 from app.core.exceptions import (
     InvalidParentEnhancementError,
-    RobotEnhancementError,
-    RobotUnreachableError,
     SQLNotFoundError,
 )
 from app.core.telemetry.attributes import Attributes, trace_attribute
@@ -55,7 +53,6 @@ from app.domain.references.services.enhancement_service import (
 from app.domain.references.services.synchronizer_service import (
     Synchronizer,
 )
-from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
 from app.persistence.blob.repository import BlobRepository
@@ -422,60 +419,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self.sql_uow.enhancement_requests.get_by_pk(
             enhancement_request_id, preload=["status"]
         )
-
-    @sql_unit_of_work
-    async def collect_and_dispatch_references_for_enhancement(
-        self,
-        enhancement_request: EnhancementRequest,
-        robot_service: RobotService,
-        robot_request_dispatcher: RobotRequestDispatcher,
-        blob_repository: BlobRepository,
-    ) -> None:
-        """Collect and dispatch references for batch enhancement."""
-        robot = await robot_service.get_robot(enhancement_request.robot_id)
-        file_stream = FileStream(
-            self._get_jsonl_hydrated_references,
-            [
-                {
-                    "reference_ids": reference_id_chunk,
-                }
-                for reference_id_chunk in list_chunker(
-                    enhancement_request.reference_ids,
-                    settings.upload_file_chunk_size_override.get(
-                        UploadFile.ENHANCEMENT_REQUEST_REFERENCE_DATA,
-                        settings.default_upload_file_chunk_size,
-                    ),
-                )
-            ],
-        )
-
-        robot_request = await self._enhancement_service.build_robot_request(
-            blob_repository, file_stream, enhancement_request
-        )
-
-        try:
-            await robot_request_dispatcher.send_enhancement_request_to_robot(
-                endpoint="/batch/",
-                robot=robot,
-                robot_request=robot_request,
-            )
-        except RobotUnreachableError as exception:
-            await self.sql_uow.enhancement_requests.update_by_pk(
-                enhancement_request.id,
-                request_status=EnhancementRequestStatus.FAILED,
-                error=exception.detail,
-            )
-        except RobotEnhancementError as exception:
-            await self.sql_uow.enhancement_requests.update_by_pk(
-                enhancement_request.id,
-                request_status=EnhancementRequestStatus.REJECTED,
-                error=exception.detail,
-            )
-        else:
-            await self.sql_uow.enhancement_requests.update_by_pk(
-                enhancement_request.id,
-                request_status=EnhancementRequestStatus.ACCEPTED,
-            )
 
     @sql_unit_of_work
     async def validate_and_import_enhancement_result(

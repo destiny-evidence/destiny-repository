@@ -240,7 +240,6 @@ class RobotFactory(factory.Factory):
         model = Robot
 
     id = factory.Faker("uuid4")
-    base_url = factory.Faker("url")
     description = factory.Faker("sentence")
     name = factory.Faker("name")
     owner = factory.Faker("company")
