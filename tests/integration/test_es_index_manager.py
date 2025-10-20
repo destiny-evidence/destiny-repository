@@ -69,12 +69,11 @@ async def index_manager(
     async with es_manager_for_tests.client() as client:
         index_manager = IndexManager(DummyDocument, DummyDocument.Index.name, client)
 
-        # Cleanup any hanging index
-        await index_manager.delete_current_index_unsafe()
-
         yield index_manager
 
-        await index_manager.delete_current_index_unsafe()
+        # Cleanup any hanging indices
+        for index in await client.indices.get(index=f"{DummyDocument.Index.name}*"):
+            await client.indices.delete(index=index)
 
 
 async def test_initialise_es_index_happy_path(index_manager: IndexManager):
@@ -203,3 +202,75 @@ async def test_old_index_not_deleted_if_flag_unset(index_manager: IndexManager):
 
     old_index_exists = await index_manager.client.indices.exists(index=old_index_name)
     assert not old_index_exists
+
+
+async def test_rollback_to_previous_version(index_manager: IndexManager):
+    """Test that we can roll back to the previous index version."""
+    # Initialise the index
+    await index_manager.initialize_index()
+
+    # Migrate the index to the next version
+    await index_manager.migrate(delete_old=False)
+
+    # Add a document to the new index to we can confirm is
+    # is _not_ present after we roll back
+    dummy_doc = DummyDocument.from_domain(Dummy(note="test document"))
+    doc_added = await dummy_doc.save(using=index_manager.client, validate=True)
+    assert doc_added == "created"
+
+    # Refresh the index to ensure document available
+    await index_manager.client.indices.refresh(index=index_manager.alias_name)
+
+    # Assert the count of documents in the migrated index is 1
+    count = await index_manager.client.count(index=index_manager.alias_name)
+    assert count["count"] == 1
+
+    # Rollback to previous version
+    await index_manager.rollback()
+
+    # Assert the version is back to the previous version
+    expect_v1 = await index_manager.get_current_version()
+    assert expect_v1
+    assert expect_v1 == 1
+
+    # Assert no documents in index
+    count = await index_manager.client.count(index=index_manager.alias_name)
+    assert count["count"] == 0
+
+
+async def test_we_do_not_to_roll_back_from_version_1(index_manager: IndexManager):
+    """Test that we do not roll back if the current version is version one."""
+    # Initialise the index to version 1
+    await index_manager.initialize_index()
+
+    # Immediately try to roll back to version 0
+    with pytest.raises(ValueError, match="no previous version available"):
+        await index_manager.rollback()
+
+
+async def test_we_do_not_roll_back_past_version_one_from_later_versions(
+    index_manager: IndexManager,
+):
+    """Test that we do not allow rollbacks past version 1."""
+    # Initialise the index to version 1
+    await index_manager.initialize_index()
+
+    # Immediately migrate to v2
+    await index_manager.migrate()
+
+    # Try to roll back two versions to zero
+    with pytest.raises(ValueError, match="cannot target version of zero or earlier"):
+        await index_manager.rollback(target_version=0)
+
+
+async def test_we_do_not_roll_back_to_nonexistent_index(index_manager: IndexManager):
+    """Test that we do not roll back to an index that doesn't exist."""
+    # Initialise the index to version 1
+    await index_manager.initialize_index()
+
+    # Immediately migrate to v2, deleting the v1 index
+    await index_manager.migrate(delete_old=True)
+
+    # Try to roll back two versions to zero
+    with pytest.raises(ValueError, match="Target index dummy_v1 does not exist"):
+        await index_manager.rollback()

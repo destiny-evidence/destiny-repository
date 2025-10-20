@@ -123,6 +123,8 @@ class IndexManager:
 
     async def delete_current_index_unsafe(self) -> None:
         """
+        WARNING: This is a destructive action.
+
         Delete the index with no failsafes.
 
         Calling initialise_index after this will reset to v1.
@@ -295,8 +297,8 @@ class IndexManager:
             RuntimeError: If document counts don't match
 
         """
-        # TODO(Jack): count seems to be pretty flaky  # noqa: TD003
-        # Geting intermittent failures here
+        # TODO(Jack): I have a feeling this will be susceptible to race conditions  # noqa: E501, TD003
+        # Unless writes to both indicies are blocked.
         source_count = await self.client.count(index=source_index)
         dest_count = await self.client.count(index=dest_index)
 
@@ -365,6 +367,7 @@ class IndexManager:
 
         Raises:
             ValueError: If target version doesn't exist
+            ValueError: If the target version is invalid (e.g. 0 or earlier)
 
         """
         current_index = await self.get_current_index_name()
@@ -380,6 +383,10 @@ class IndexManager:
 
         if target_version is None:
             target_version = current_version - 1
+
+        if target_version < 1:
+            msg = "Cannot rollback: cannot target version of zero or earlier."
+            raise ValueError(msg)
 
         target_index = self._generate_index_name(target_version)
 
