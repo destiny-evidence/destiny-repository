@@ -125,7 +125,7 @@ async def test_register_duplicate_decision_for_reference_happy_path(
         fake_uow(),
     )
     result = await service.register_duplicate_decision_for_reference(
-        reference_with_identifiers
+        reference_with_identifiers.id
     )
     assert result.reference_id == reference_with_identifiers.id
     assert result.duplicate_determination == DuplicateDetermination.PENDING
@@ -142,7 +142,7 @@ async def test_register_duplicate_decision_invalid_combination(
     )
     with pytest.raises(DeduplicationValueError):
         await service.register_duplicate_decision_for_reference(
-            reference_with_identifiers,
+            reference_with_identifiers.id,
             duplicate_determination=DuplicateDetermination.EXACT_DUPLICATE,
             canonical_reference_id=None,
         )
@@ -507,16 +507,10 @@ async def test_determine_and_map_duplicate_now_duplicate(
     )
     determined = await service.determine_canonical_from_candidates(decision)
     out_decision, decision_changed = await service.map_duplicate_decision(determined)
-    assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
-    assert (
-        "Decouple reason: Existing duplicate decision changed." in out_decision.detail
-    )
+    assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
     assert decision_changed
     old_decision = await dec_repo.get_by_pk(active_decision.id)
-    assert old_decision.active_decision
+    assert not old_decision.active_decision
     out_decision = await dec_repo.get_by_pk(out_decision.id)
-    assert not out_decision.active_decision
-    assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
-    assert (
-        "Decouple reason: Existing duplicate decision changed." in out_decision.detail
-    )
+    assert out_decision.active_decision
+    assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE

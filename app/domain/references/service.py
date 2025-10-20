@@ -17,7 +17,7 @@ from app.core.exceptions import (
 )
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
-from app.domain.imports.models.models import CollisionStrategy
+from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     DuplicateDetermination,
     Enhancement,
@@ -32,6 +32,7 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     Reference,
     ReferenceDuplicateDecision,
+    ReferenceIds,
     ReferenceWithChangeset,
     RobotAutomation,
     RobotAutomationPercolationResult,
@@ -50,9 +51,6 @@ from app.domain.references.services.deduplication_service import DeduplicationSe
 from app.domain.references.services.enhancement_service import (
     EnhancementService,
     ProcessedResults,
-)
-from app.domain.references.services.ingestion_service import (
-    IngestionService,
 )
 from app.domain.references.services.synchronizer_service import (
     Synchronizer,
@@ -83,7 +81,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
-        self._ingestion_service = IngestionService(anti_corruption_service, sql_uow)
         self._enhancement_service = EnhancementService(anti_corruption_service, sql_uow)
         self._deduplication_service = DeduplicationService(
             anti_corruption_service, sql_uow, es_uow
@@ -319,22 +316,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     @es_unit_of_work
     async def ingest_reference(
-        self, record_str: str, entry_ref: int, collision_strategy: CollisionStrategy
-    ) -> ReferenceCreateResult | None:
+        self, record_str: str, entry_ref: int
+    ) -> ReferenceCreateResult:
         """Ingest a reference from a file."""
-        if not settings.feature_flags.deduplication:
-            # Back-compatible merging on simple collision and merge strategy
-            # Removing this can also remove IngestionService entirely
-            (
-                validation_result,
-                reference,
-            ) = await self._ingestion_service.validate_and_collide_reference(
-                record_str, entry_ref, collision_strategy
-            )
-            if reference:
-                await self._merge_reference(reference)
-            return validation_result
-
         # Full deduplication flow
         reference_create_result = ReferenceCreateResult.from_raw(record_str, entry_ref)
         if not reference_create_result.reference:
@@ -355,7 +339,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 canonical_reference_id=str(canonical_reference.id),
             )
             await self._deduplication_service.register_duplicate_decision_for_reference(
-                reference=reference,
+                reference_id=reference.id,
                 duplicate_determination=DuplicateDetermination.EXACT_DUPLICATE,
                 canonical_reference_id=canonical_reference.id,
             )
@@ -363,7 +347,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
         duplicate_decision = (
             await self._deduplication_service.register_duplicate_decision_for_reference(
-                reference=reference
+                reference_id=reference.id
             )
         )
         await self._merge_reference(reference)
@@ -401,7 +385,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         ]
 
         if pending_enhancements_to_create:
-            return await self.sql_uow.pending_enhancements.bulk_add(
+            return await self.sql_uow.pending_enhancements.add_bulk(
                 pending_enhancements_to_create
             )
 
@@ -969,3 +953,26 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             robot_enhancement_batch=robot_enhancement_batch,
             reference_data_file=reference_data_file,
         )
+
+    @sql_unit_of_work
+    async def invoke_deduplication_for_references(
+        self,
+        reference_ids: ReferenceIds,
+    ) -> None:
+        """Invoke deduplication for a list of references."""
+        reference_duplicate_decisions = (
+            await self.sql_uow.reference_duplicate_decisions.add_bulk(
+                [
+                    ReferenceDuplicateDecision(
+                        reference_id=reference_id,
+                        duplicate_determination=DuplicateDetermination.PENDING,
+                    )
+                    for reference_id in reference_ids.reference_ids
+                ]
+            )
+        )
+        for decision in reference_duplicate_decisions:
+            await queue_task_with_trace(
+                ("app.domain.references.tasks", "process_reference_duplicate_decision"),
+                reference_duplicate_decision_id=decision.id,
+            )

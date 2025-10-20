@@ -384,7 +384,7 @@ class GenericAsyncSqlRepository(
         return persistence.to_domain()
 
     @trace_repository_method(tracer)
-    async def bulk_add(
+    async def add_bulk(
         self, records: list[GenericDomainModelType]
     ) -> list[GenericDomainModelType]:
         """

@@ -41,9 +41,6 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
             preload=self._required_preloads,
         )
 
-        if not settings.feature_flags.deduplication:
-            return await self.es_uow.references.add(reference)
-
         if not reference.canonical_like and reference.canonical_reference:
             # If definitely a duplicate, we don't index and we update the canonical
             await self.es_uow.references.delete_by_pk(reference.id)
@@ -84,9 +81,6 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
                     preload=self._required_preloads,
                 )
                 for reference in references:
-                    if not settings.feature_flags.deduplication:
-                        yield reference
-                        continue
                     if reference.canonical_like:
                         yield DeduplicatedReferenceProjection.get_from_reference(
                             reference

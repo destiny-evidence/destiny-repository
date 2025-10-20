@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import SQLIntegrityError
 from app.domain.imports.models.models import (
-    CollisionStrategy,
     ImportBatchStatus,
     ImportResultStatus,
 )
@@ -266,7 +265,6 @@ async def test_import_batch_status_projection(
     batch = ImportBatch(
         id=batch_id,
         import_record_id=record_id,
-        collision_strategy=CollisionStrategy.OVERWRITE,
         storage_url="https://example.com/bucket",
     )
     session.add(batch)
@@ -444,7 +442,6 @@ async def test_multiple_import_batch_status_projection(
     batch1 = ImportBatch(
         id=batch1_id,
         import_record_id=record_id,
-        collision_strategy=CollisionStrategy.OVERWRITE,
         storage_url="https://example.com/bucket1",
     )
     session.add(batch1)
@@ -453,7 +450,6 @@ async def test_multiple_import_batch_status_projection(
     batch2 = ImportBatch(
         id=batch2_id,
         import_record_id=record_id,
-        collision_strategy=CollisionStrategy.OVERWRITE,
         storage_url="https://example.com/bucket2",
     )
     session.add(batch2)

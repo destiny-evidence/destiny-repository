@@ -47,6 +47,7 @@ class AuthRole(StrEnum):
     ADMINISTRATOR = "administrator"
     IMPORT_WRITER = "import.writer"
     REFERENCE_READER = "reference.reader"
+    REFERENCE_DEDUPLICATOR = "reference.deduplicator"
     ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer"
 
 
@@ -56,6 +57,7 @@ class AuthScope(StrEnum):
     ADMINISTRATOR = "administrator.all"
     IMPORT_WRITER = "import.writer.all"
     REFERENCE_READER = "reference.reader.all"
+    REFERENCE_DEDUPLICATOR = "reference.deduplicator.all"
     ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer.all"
     ROBOT_WRITER = "robot.writer.all"
 
@@ -247,7 +249,7 @@ class AzureJwtAuth(AuthMethod):
         application_id: str,
         scope: StrEnum | None = None,
         role: StrEnum | None = None,
-        cache_ttl: int = 60 * 60 * 24,
+        cache_ttl: int = CACHE_TTL,
     ) -> None:
         """
         Initialize the dependency.

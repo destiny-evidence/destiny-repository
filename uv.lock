@@ -604,6 +604,7 @@ dev = [
     { name = "ruff" },
     { name = "types-cachetools" },
     { name = "types-python-jose" },
+    { name = "vulture" },
 ]
 docs = [
     { name = "autodoc-pydantic", extra = ["erdantic"] },
@@ -670,6 +671,7 @@ dev = [
     { name = "ruff", specifier = ">=0.8.6,<0.9" },
     { name = "types-cachetools", specifier = ">=5.5.0.20240820,<6" },
     { name = "types-python-jose", specifier = ">=3.4.0.20250224,<4" },
+    { name = "vulture", specifier = ">=2.14" },
 ]
 docs = [
     { name = "autodoc-pydantic", extras = ["erdantic"], specifier = ">=2.2.0,<3" },
@@ -689,7 +691,7 @@ test = [
 
 [[package]]
 name = "destiny-sdk"
-version = "0.4.1"
+version = "0.5.0"
 source = { editable = "libs/sdk" }
 dependencies = [
     { name = "cachetools" },
@@ -2722,6 +2724,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/56/2c/444f465fb2c65f40c3a104fd0c495184c4f2336d65baf398e3c75d72ea94/virtualenv-20.31.2.tar.gz", hash = "sha256:e10c0a9d02835e592521be48b332b6caee6887f332c111aa79a09b9e79efc2af", size = 6076316, upload-time = "2025-05-08T17:58:23.811Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f3/40/b1c265d4b2b62b58576588510fc4d1fe60a86319c8de99fd8e9fec617d2c/virtualenv-20.31.2-py3-none-any.whl", hash = "sha256:36efd0d9650ee985f0cad72065001e66d49a6f24eb44d98980f630686243cf11", size = 6057982, upload-time = "2025-05-08T17:58:21.15Z" },
+]
+
+[[package]]
+name = "vulture"
+version = "2.14"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/8e/25/925f35db758a0f9199113aaf61d703de891676b082bd7cf73ea01d6000f7/vulture-2.14.tar.gz", hash = "sha256:cb8277902a1138deeab796ec5bef7076a6e0248ca3607a3f3dee0b6d9e9b8415", size = 58823, upload-time = "2024-12-08T17:39:43.319Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a0/56/0cc15b8ff2613c1d5c3dc1f3f576ede1c43868c1bc2e5ccaa2d4bcd7974d/vulture-2.14-py2.py3-none-any.whl", hash = "sha256:d9a90dba89607489548a49d557f8bac8112bd25d3cbc8aeef23e860811bd5ed9", size = 28915, upload-time = "2024-12-08T17:39:40.573Z" },
 ]
 
 [[package]]

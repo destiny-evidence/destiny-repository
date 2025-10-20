@@ -19,7 +19,6 @@ from pydantic import (
 
 from app.core.telemetry.logger import get_logger
 from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
-from app.domain.imports.models.models import CollisionStrategy
 from app.persistence.blob.models import BlobStorageFile
 
 logger = get_logger(__name__)
@@ -100,11 +99,12 @@ class DuplicateDetermination(StrEnum):
     UNSEARCHABLE = auto()
     """
     [TERMINAL] The reference does not have sufficient metadata to be
-    automatically matched to other references.
+    automatically matched to other references, or the duplicate detection
+    process has been explicitly disabled.
     """
     DECOUPLED = auto()
     """
-    [TERMINAL] A decision has been made, but needs further attention. This could
+    A decision has been made, but needs further attention. This could
     be due to a change in the canonical mapping, or a chain of duplicates longer
     than allowed.
     """
@@ -155,128 +155,6 @@ class Reference(
         default=None,
         description="A list of references that this reference duplicates",
     )
-
-    async def merge(  # noqa: PLR0912
-        self,
-        incoming_reference: Self,
-        collision_strategy: CollisionStrategy,
-    ) -> None:
-        """
-        Merge an incoming reference into this one.
-
-        Args:
-            - existing_reference (Reference): The existing reference.
-            - incoming_reference (Reference): The incoming reference.
-            - collision_strategy (CollisionStrategy): The strategy to use for
-                handling collisions.
-
-        Returns:
-            - Reference: The final reference to be persisted.
-
-        """
-
-        def _get_identifier_key(
-            identifier: ExternalIdentifier,
-        ) -> tuple[str, str | None]:
-            """
-            Get the key for an identifier.
-
-            Args:
-                - identifier (LinkedExternalIdentifier)
-
-            Returns:
-                - tuple[str, str | None]: The key for the identifier.
-
-            """
-            return (
-                identifier.identifier_type,
-                identifier.other_identifier_name
-                if hasattr(identifier, "other_identifier_name")
-                else None,
-            )
-
-        # Graft matching IDs from self to incoming
-        for identifier in incoming_reference.identifiers or []:
-            for existing_identifier in self.identifiers or []:
-                if _get_identifier_key(identifier.identifier) == _get_identifier_key(
-                    existing_identifier.identifier
-                ):
-                    identifier.id = existing_identifier.id
-        for enhancement in incoming_reference.enhancements or []:
-            for existing_enhancement in self.enhancements or []:
-                if (enhancement.content.enhancement_type, enhancement.source) == (
-                    existing_enhancement.content.enhancement_type,
-                    existing_enhancement.source,
-                ):
-                    enhancement.id = existing_enhancement.id
-
-        if not self.identifiers or not incoming_reference.identifiers:
-            msg = "No identifiers found in merge. This should not happen."
-            raise RuntimeError(msg)
-
-        self.enhancements = self.enhancements or []
-        incoming_reference.enhancements = incoming_reference.enhancements or []
-
-        # Merge identifiers
-        if collision_strategy == CollisionStrategy.MERGE_DEFENSIVE:
-            self.identifiers.extend(
-                [
-                    identifier
-                    for identifier in incoming_reference.identifiers
-                    if _get_identifier_key(identifier.identifier)
-                    not in {
-                        _get_identifier_key(identifier.identifier)
-                        for identifier in self.identifiers
-                    }
-                ]
-            )
-        elif collision_strategy in (
-            CollisionStrategy.MERGE_AGGRESSIVE,
-            CollisionStrategy.OVERWRITE,
-            CollisionStrategy.APPEND,
-        ):
-            self.identifiers = [
-                identifier
-                for identifier in self.identifiers
-                if _get_identifier_key(identifier.identifier)
-                not in {
-                    _get_identifier_key(identifier.identifier)
-                    for identifier in incoming_reference.identifiers
-                }
-            ] + incoming_reference.identifiers
-
-        # On an overwrite, we don't preserve the existing enhancements, only identifiers
-        if collision_strategy == CollisionStrategy.OVERWRITE:
-            self.enhancements = incoming_reference.enhancements.copy()
-            return
-
-        # Otherwise, merge enhancements
-        if collision_strategy == CollisionStrategy.APPEND:
-            self.enhancements += incoming_reference.enhancements
-        elif collision_strategy == CollisionStrategy.MERGE_DEFENSIVE:
-            self.enhancements.extend(
-                [
-                    enhancement
-                    for enhancement in incoming_reference.enhancements
-                    if (enhancement.content.enhancement_type, enhancement.source)
-                    not in {
-                        (enhancement.content.enhancement_type, enhancement.source)
-                        for enhancement in self.enhancements
-                    }
-                ]
-            )
-        elif collision_strategy == CollisionStrategy.MERGE_AGGRESSIVE:
-            self.enhancements = [
-                enhancement
-                for enhancement in self.enhancements
-                if (enhancement.content.enhancement_type, enhancement.source)
-                not in {
-                    (enhancement.content.enhancement_type, enhancement.source)
-                    for enhancement in incoming_reference.enhancements
-                }
-            ] + incoming_reference.enhancements
-
-        return
 
     @property
     def canonical(self) -> bool | None:
@@ -647,6 +525,10 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
     @model_validator(mode="after")
     def check_canonical_reference_id_populated_iff_duplicate(self) -> Self:
         """Assert that canonical must exist if and only if decision is duplicate."""
+        if self.duplicate_determination == DuplicateDetermination.DECOUPLED:
+            # Allow ambiguous state for decoupled decisions as they are complex,
+            # requiring human intervention.
+            return self
         if (self.canonical_reference_id is not None) != (
             self.duplicate_determination
             in (
@@ -656,7 +538,8 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         ):
             msg = (
                 "canonical_reference_id must be populated if and only if "
-                "duplicate_determination is DUPLICATE or EXACT_DUPLICATE"
+                "duplicate_determination is DUPLICATE, EXACT_DUPLICATE"
+                " or DECOUPLED"
             )
             raise ValueError(msg)
 
@@ -769,4 +652,13 @@ class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):
     pending_enhancements: list[PendingEnhancement] | None = Field(
         default=None,
         description="The pending enhancements in this batch.",
+    )
+
+
+class ReferenceIds(BaseModel):
+    """Model representing a list of reference IDs."""
+
+    reference_ids: list[UUID4] = Field(
+        ...,
+        description="A list of reference IDs.",
     )
