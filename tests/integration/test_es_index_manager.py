@@ -183,6 +183,24 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
     assert doc_from_index["found"]
 
 
+async def test_we_can_migrate_an_index_with_a_random_name(index_manager: IndexManager):
+    """Test we can migrate if alias points to non-versioned index name."""
+    non_versioned_index_name = "dummy_forever"
+
+    # Create non_versioned index and apply alias index manager will recognise
+    await DummyDocument.init(index=non_versioned_index_name, using=index_manager.client)
+    await index_manager.client.indices.put_alias(
+        index=non_versioned_index_name, name=DummyDocument.Index.name
+    )
+
+    # Migrating should move us over to dummy_v1
+    await index_manager.migrate(delete_old=True)
+
+    current_index_name = await index_manager.get_current_index_name()
+    assert current_index_name
+    assert current_index_name == "dummy_v1"
+
+
 async def test_old_index_not_deleted_if_flag_unset(index_manager: IndexManager):
     """Test that we can leave the old index."""
     # Initialise the index

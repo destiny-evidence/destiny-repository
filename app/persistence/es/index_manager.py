@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 
 class IndexManager:
     """
-    Manages Elasticsearch indicies.
+    Manages an elasticsearch index.
 
     Including migrations with versioning and zero-downtime upgrades.
 
@@ -100,7 +100,7 @@ class IndexManager:
         current_index_name = await self.get_current_index_name()
 
         if not current_index_name:
-            msg = f"Index with alias {self.alias_name} has not been initialised."
+            msg = f"Index with alias {self.alias_name} has not been initialized."
             raise NotFoundError(msg)
 
         # Remove the alias
@@ -120,11 +120,19 @@ class IndexManager:
         )
 
     async def repair_index(self) -> None:
-        """Repair the index."""
+        """Repair the current index."""
         if not self.repair_task:
             msg = f"No index repair task found for {self.alias_name}"
             raise NotFoundError(msg)
         await queue_task_with_trace(self.repair_task)
+
+    async def refresh_index(self) -> None:
+        """Refresh the index."""
+        current_index_name = await self.get_current_index_name()
+        if not current_index_name:
+            msg = f"Index with alias {self.alias_name} has not been initialized."
+            raise NotFoundError(msg)
+        await self.client.indices.refresh(index=current_index_name)
 
     def _generate_index_name(self, version: int) -> str:
         """Generate a versioned index name."""
@@ -143,7 +151,7 @@ class IndexManager:
 
     async def initialize_index(self) -> str:
         """
-        Initialize the index system with version 1 if it doesn't exist.
+        Initialize the index with version 1 if it doesn't exist.
 
         Returns:
             The name of the active index
@@ -192,13 +200,17 @@ class IndexManager:
         current_index = await self.get_current_index_name()
 
         if current_index is None:
-            # No existing index, initialize instead
+            logger.info("No existing index for %s, initialising", self.alias_name)
             return await self.initialize_index()
 
+        # Currently required for backwards compatibility with our
+        # existing index names.
+        # TODO(Jack): Remove once all indices are versioned  # noqa: TD003
         current_version = await self.get_current_version(current_index)
         if current_version is None:
-            msg = "Current index version could not be determined"
-            raise RuntimeError(msg)
+            msg = "Current index does not have a version, will use version 1."
+            logger.info(msg)
+            current_version = 0
 
         # Create new versioned index
         new_version = current_version + 1
@@ -265,14 +277,6 @@ class IndexManager:
             task["response"]["total"],
             task["response"]["took"],
         )
-
-    async def refresh(self) -> None:
-        """Refresh the current index."""
-        current_index_name = await self.get_current_index_name()
-        if current_index_name:
-            await self.client.indices.refresh(index=current_index_name)
-        else:
-            logger.info("No index to referesh.")
 
     async def _switch_alias(self, old_index: str, new_index: str) -> None:
         """
