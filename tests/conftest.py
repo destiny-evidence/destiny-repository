@@ -203,4 +203,5 @@ async def es_client(
             await index_manager.initialize_index()
         yield client
         for index_manager in index_managers:
-            await index_manager.delete_current_index_unsafe()
+            index_name = await index_manager.get_current_index_name()
+            await index_manager.client.indices.delete(index=index_name)

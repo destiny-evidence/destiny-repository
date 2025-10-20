@@ -103,8 +103,13 @@ class IndexManager:
             msg = f"Index with alias {self.alias_name} has not been initialised."
             raise NotFoundError(msg)
 
+        # Remove the alias
+        await self.client.indices.delete_alias(
+            index=current_index_name, name=self.alias_name
+        )
+
         logger.info("Destroying index", index=current_index_name)
-        await self.delete_current_index_unsafe()
+        await self._delete_index_safely(index_name=current_index_name)
 
         logger.info("Recreating index", index=current_index_name)
         await self._create_index_with_mapping(current_index_name)
@@ -120,20 +125,6 @@ class IndexManager:
             msg = f"No index repair task found for {self.alias_name}"
             raise NotFoundError(msg)
         await queue_task_with_trace(self.repair_task)
-
-    async def delete_current_index_unsafe(self) -> None:
-        """
-        WARNING: This is a destructive action.
-
-        Delete the index with no failsafes.
-
-        Calling initialise_index after this will reset to v1.
-        """
-        current_index_name = await self.get_current_index_name()
-        if not current_index_name:
-            logger.info("No index initialised, will not attempt to delete")
-        else:
-            await self.client.indices.delete(index=current_index_name)
 
     def _generate_index_name(self, version: int) -> str:
         """Generate a versioned index name."""
@@ -187,14 +178,12 @@ class IndexManager:
         self,
         *,
         delete_old: bool = False,
-        verify_count: bool = True,
     ) -> str | None:
         """
         Migrate to a new index version.
 
         Args:
             delete_old: Delete the old index after successful migration
-            verify_count: Verify document counts match after migration
 
         Returns:
             New index name if migration occurred, None otherwise
@@ -222,12 +211,6 @@ class IndexManager:
 
         # Reindex data
         await self._reindex_data(source_index=current_index, dest_index=new_index)
-
-        # Verify migration if requested
-        if verify_count:
-            await self._verify_migration(
-                source_index=current_index, dest_index=new_index
-            )
 
         # Switch alias atomically
         await self._switch_alias(current_index, new_index)
@@ -265,6 +248,7 @@ class IndexManager:
             source={"index": source_index, "size": self.batch_size},
             dest={"index": dest_index},
             wait_for_completion=False,
+            refresh=True,
         )
 
         # The task management API is in technical previewn at time of writing
@@ -276,41 +260,10 @@ class IndexManager:
             await asyncio.sleep(5)  # Configure this
             task = await self.client.tasks.get(task_id=response["task"])
 
-        # Refresh the destination index
-        await self.client.indices.refresh(index=dest_index)
-
         logger.info(
             "Reindexed %s documents in %s ms",
             task["response"]["total"],
             task["response"]["took"],
-        )
-
-    async def _verify_migration(self, source_index: str, dest_index: str) -> None:
-        """
-        Verify that migration was successful by comparing document counts.
-
-        Args:
-            source_index: Source index name
-            dest_index: Destination index name
-
-        Raises:
-            RuntimeError: If document counts don't match
-
-        """
-        # TODO(Jack): I have a feeling this will be susceptible to race conditions  # noqa: E501, TD003
-        # Unless writes to both indicies are blocked.
-        source_count = await self.client.count(index=source_index)
-        dest_count = await self.client.count(index=dest_index)
-
-        if source_count["count"] != dest_count["count"]:
-            msg = (
-                f"Document count mismatch: source={source_count['count']}, "
-                f"dest={dest_count['count']}"
-            )
-            raise RuntimeError(msg)
-
-        logger.info(
-            "Verification successful: %s documents migrated", dest_count["count"]
         )
 
     async def _switch_alias(self, old_index: str, new_index: str) -> None:
