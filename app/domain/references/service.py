@@ -1,7 +1,7 @@
 """The service for interacting with and managing references."""
 
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from uuid import UUID
 
 from app.core.config import (
@@ -15,9 +15,11 @@ from app.core.exceptions import (
     RobotUnreachableError,
     SQLNotFoundError,
 )
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
-from app.domain.imports.models.models import CollisionStrategy
+from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
+    DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
@@ -30,10 +32,13 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     Reference,
     ReferenceDuplicateDecision,
+    ReferenceIds,
+    ReferenceWithChangeset,
     RobotAutomation,
     RobotAutomationPercolationResult,
     RobotEnhancementBatch,
 )
+from app.domain.references.models.projections import DeduplicatedReferenceProjection
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.repository import (
     EnhancementRequestSQLPreloadable,
@@ -46,9 +51,6 @@ from app.domain.references.services.deduplication_service import DeduplicationSe
 from app.domain.references.services.enhancement_service import (
     EnhancementService,
     ProcessedResults,
-)
-from app.domain.references.services.ingestion_service import (
-    IngestionService,
 )
 from app.domain.references.services.synchronizer_service import (
     Synchronizer,
@@ -79,10 +81,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
-        self._ingestion_service = IngestionService(anti_corruption_service, sql_uow)
         self._enhancement_service = EnhancementService(anti_corruption_service, sql_uow)
         self._deduplication_service = DeduplicationService(
-            anti_corruption_service, sql_uow
+            anti_corruption_service, sql_uow, es_uow
         )
         self._synchronizer = Synchronizer(sql_uow, es_uow)
 
@@ -98,6 +99,100 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_id, preload=["identifiers", "enhancements"]
         )
 
+    async def _get_deduplicated_references(
+        self, reference_ids: Collection[UUID]
+    ) -> list[Reference]:
+        """
+        Get the deduplicated reference for a given reference.
+
+        :param reference_id: The ID of the reference to get the deduplicated view for.
+        :type reference_id: UUID
+        :return: The deduplicated reference.
+        :rtype: Reference
+        """
+        references = await self.sql_uow.references.get_by_pks(
+            reference_ids,
+            preload=[
+                "identifiers",
+                "enhancements",
+                "duplicate_decision",
+                "duplicate_references",
+            ],
+        )
+        return [
+            DeduplicatedReferenceProjection.get_from_reference(reference)
+            for reference in references
+        ]
+
+    async def _get_deduplicated_reference(self, reference_id: UUID) -> Reference:
+        """
+        Get the deduplicated reference for a given reference.
+
+        :param reference_id: The ID of the reference to get the deduplicated view for.
+        :type reference_id: UUID
+        :return: The deduplicated reference.
+        :rtype: Reference
+        """
+        return (await self._get_deduplicated_references([reference_id]))[0]
+
+    async def _get_deduplicated_canonical_reference(
+        self, reference_id: UUID
+    ) -> Reference:
+        """
+        Get the deduplicated canonical reference for a given reference ID.
+
+        If the given reference is a duplicate, this will return the deduplicated view
+        of its canonical reference.
+
+        :param reference_id: The ID of the reference to get the deduplicated view for.
+        :type reference_id: UUID
+        """
+        reference = await self.sql_uow.references.get_by_pk(
+            reference_id,
+            preload=["duplicate_decision"],
+        )
+
+        if reference.canonical_like:
+            return await self._get_deduplicated_reference(reference.id)
+
+        if (
+            not reference.duplicate_decision
+            or not reference.duplicate_decision.canonical_reference_id
+        ):
+            msg = (
+                "Reference is not canonical but has no canonical reference id. "
+                "This should not happen."
+            )
+            raise RuntimeError(msg)
+
+        return await self._get_deduplicated_canonical_reference(
+            reference.duplicate_decision.canonical_reference_id
+        )
+
+    @sql_unit_of_work
+    async def get_canonical_reference_with_implied_changeset(
+        self, reference_id: UUID
+    ) -> ReferenceWithChangeset:
+        """
+        Get a canonical reference with its implied changeset per its duplicate decision.
+
+        This is used after a duplicate decision as an automation trigger.
+
+        If a reference is canonical, its implied changeset is itself.
+        If a reference is a duplicate, its implied changeset is again itself, but the
+        base reference is the deduplicated projection of its canonical reference.
+        """
+        reference = await self.sql_uow.references.get_by_pk(
+            reference_id, preload=["identifiers", "enhancements", "duplicate_decision"]
+        )
+        deduplicated_canonical_reference = (
+            await self._get_deduplicated_canonical_reference(reference_id)
+        )
+        return ReferenceWithChangeset(
+            **deduplicated_canonical_reference.model_dump(),
+            changeset=reference,
+        )
+
     async def _merge_reference(self, reference: Reference) -> Reference:
         """Persist a reference with an existing SQL & ES UOW."""
         db_reference = await self.sql_uow.references.merge(reference)
@@ -110,49 +205,35 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Persist a reference."""
         return await self._merge_reference(reference)
 
-    async def _add_enhancement(
-        self, enhancement: Enhancement, *, enforce_enhancement_tree: bool = True
-    ) -> Reference:
+    async def _add_enhancement(self, enhancement: Enhancement) -> Reference:
         """
         Add an enhancement to a reference.
 
         :param enhancement: The enhancement to add
         :type enhancement: Enhancement
-        :param enforce_enhancement_tree: Whether the enhancement's parents must be
-        from the same reference. If False, will still verify the enhancement's
-        parents exist without the ownership check. This should be True unless you have
-        a good reason not to. An example of a good reason is duplicating an enhancement
-        to another reference, which should point back at the source enhancement.
-        :type enforce_enhancement_tree: bool
         """
         reference = await self.sql_uow.references.get_by_pk(
-            enhancement.reference_id, preload=["enhancements", "identifiers"]
+            enhancement.reference_id,
+            preload=["enhancements", "identifiers", "duplicate_references"],
         )
 
         if enhancement.derived_from:
+            valid_derived_reference_ids = {
+                ref.id for ref in reference.duplicate_references or []
+            } | {reference.id}
             try:
-                if enforce_enhancement_tree:
-                    parent_enhancements = await self.sql_uow.enhancements.get_by_pks(
-                        enhancement.derived_from
+                parent_enhancements = await self.sql_uow.enhancements.get_by_pks(
+                    enhancement.derived_from
+                )
+                if not all(
+                    e.reference_id in valid_derived_reference_ids
+                    for e in parent_enhancements
+                ):
+                    detail = (
+                        "All parent enhancements must belong to the same reference "
+                        "tree as the child enhancement."
                     )
-
-                    invalid_derived_from_ids = [
-                        str(parent.id)
-                        for parent in parent_enhancements
-                        if parent.reference_id != enhancement.reference_id
-                    ]
-
-                    if invalid_derived_from_ids:
-                        detail = (
-                            f"Parent enhancements {",".join(invalid_derived_from_ids)} "
-                            "are for a different parent reference"
-                        )
-                        raise InvalidParentEnhancementError(detail=detail)
-                else:
-                    await self.sql_uow.enhancements.verify_pk_existence(
-                        enhancement.derived_from
-                    )
-
+                    raise InvalidParentEnhancementError(detail)
             except SQLNotFoundError as e:
                 detail = f"Enhancements with ids {e.lookup_value} do not exist."
                 raise InvalidParentEnhancementError(detail) from e
@@ -165,7 +246,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def add_enhancement(self, enhancement: Enhancement) -> Reference:
         """Add an enhancement to a reference."""
-        return await self._add_enhancement(enhancement, enforce_enhancement_tree=True)
+        return await self._add_enhancement(enhancement)
 
     async def _get_hydrated_references(
         self,
@@ -235,18 +316,44 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     @es_unit_of_work
     async def ingest_reference(
-        self, record_str: str, entry_ref: int, collision_strategy: CollisionStrategy
-    ) -> ReferenceCreateResult | None:
+        self, record_str: str, entry_ref: int
+    ) -> ReferenceCreateResult:
         """Ingest a reference from a file."""
-        (
-            validation_result,
-            reference,
-        ) = await self._ingestion_service.validate_and_collide_reference(
-            record_str, entry_ref, collision_strategy
+        # Full deduplication flow
+        reference_create_result = ReferenceCreateResult.from_raw(record_str, entry_ref)
+        if not reference_create_result.reference:
+            return reference_create_result
+        reference = self._anti_corruption_service.reference_from_sdk_file_input(
+            reference_create_result.reference
         )
-        if reference:
-            await self._merge_reference(reference)
-        return validation_result
+        reference_create_result.reference_id = reference.id
+        trace_attribute(Attributes.REFERENCE_ID, str(reference.id))
+
+        canonical_reference = await self._deduplication_service.find_exact_duplicate(
+            reference
+        )
+        if canonical_reference:
+            logger.info(
+                "Exact duplicate found during ingestion",
+                reference_id=str(reference.id),
+                canonical_reference_id=str(canonical_reference.id),
+            )
+            await self._deduplication_service.register_duplicate_decision_for_reference(
+                reference_id=reference.id,
+                duplicate_determination=DuplicateDetermination.EXACT_DUPLICATE,
+                canonical_reference_id=canonical_reference.id,
+            )
+            return reference_create_result
+
+        duplicate_decision = (
+            await self._deduplication_service.register_duplicate_decision_for_reference(
+                reference_id=reference.id
+            )
+        )
+        await self._merge_reference(reference)
+        reference_create_result.duplicate_decision_id = duplicate_decision.id
+
+        return reference_create_result
 
     @sql_unit_of_work
     async def register_reference_enhancement_request(
@@ -278,7 +385,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         ]
 
         if pending_enhancements_to_create:
-            return await self.sql_uow.pending_enhancements.bulk_add(
+            return await self.sql_uow.pending_enhancements.add_bulk(
                 pending_enhancements_to_create
             )
 
@@ -426,7 +533,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> tuple[bool, str]:
         """Handle the import of a single batch enhancement result entry."""
         try:
-            await self._add_enhancement(enhancement, enforce_enhancement_tree=True)
+            await self._add_enhancement(enhancement)
         except SQLNotFoundError:
             return (
                 False,
@@ -580,29 +687,54 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference_ids = await self.get_all_reference_ids()
         await self.index_references(reference_ids)
 
+    async def _get_reference_changesets_from_enhancements(
+        self,
+        enhancement_ids: list[UUID],
+    ) -> list[ReferenceWithChangeset]:
+        """
+        Get the reference changeset from an incoming enhancement.
+
+        This is a temporary adapter, to eventually be superseded by direct passing of
+        ReferenceWithChangeset from the enhancing process.
+        See the note in docstring of detect_robot_automations().
+        """
+        enhancements = await self.sql_uow.enhancements.get_by_pks(enhancement_ids)
+        # Enhancements are always automated against the references they're imported on.
+        # In most cases this will be the canonical reference, triggered by automation.
+        # Some edge cases exist where enhancements are added to duplicates, and so we
+        # automate on the duplicate. See the robot automation procedure docs for more.
+
+        deduplicated_references: list[
+            Reference
+        ] = await self._get_deduplicated_references(
+            [enhancement.reference_id for enhancement in enhancements]
+        )
+        return [
+            ReferenceWithChangeset(
+                **reference.model_dump(),
+                changeset=Reference(
+                    id=enhancement.reference_id,
+                    enhancements=[enhancement],
+                ),
+            )
+            for enhancement, reference in zip(
+                enhancements, deduplicated_references, strict=True
+            )
+        ]
+
     @es_unit_of_work
     async def _detect_robot_automations(
         self,
-        reference_ids: Iterable[UUID] | None = None,
+        reference: ReferenceWithChangeset | None = None,
         enhancement_ids: Iterable[UUID] | None = None,
     ) -> list[RobotAutomationPercolationResult]:
         """Detect and dispatch robot automations for an added reference/enhancement."""
         robot_automations: list[RobotAutomationPercolationResult] = []
 
-        if reference_ids:
-            for reference_id_chunk in list_chunker(
-                list(reference_ids),
-                settings.es_percolation_chunk_size_override.get(
-                    ESPercolationOperation.ROBOT_AUTOMATION,
-                    settings.default_es_percolation_chunk_size,
-                ),
-            ):
-                references = await self.sql_uow.references.get_by_pks(
-                    reference_id_chunk, preload=["identifiers", "enhancements"]
-                )
-                robot_automations.extend(
-                    await self.es_uow.robot_automations.percolate(references)
-                )
+        if reference:
+            robot_automations.extend(
+                await self.es_uow.robot_automations.percolate([reference])
+            )
         if enhancement_ids:
             for enhancement_id_chunk in list_chunker(
                 list(enhancement_ids),
@@ -611,11 +743,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     settings.default_es_percolation_chunk_size,
                 ),
             ):
-                enhancements = await self.sql_uow.enhancements.get_by_pks(
-                    enhancement_id_chunk,
-                )
                 robot_automations.extend(
-                    await self.es_uow.robot_automations.percolate(enhancements)
+                    await self.es_uow.robot_automations.percolate(
+                        await self._get_reference_changesets_from_enhancements(
+                            enhancement_id_chunk
+                        )
+                    )
                 )
 
         # Merge robot_automations on robot_id
@@ -634,12 +767,20 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def detect_robot_automations(
         self,
-        reference_ids: Iterable[UUID] | None = None,
+        reference: ReferenceWithChangeset | None = None,
         enhancement_ids: Iterable[UUID] | None = None,
     ) -> list[RobotAutomationPercolationResult]:
-        """Detect robot automations for a set of references or enhancements."""
+        """
+        Detect robot automations for a set of references or enhancements.
+
+        NB this is currently in a bit of an asymmetric state. Imports are processed
+        per-reference, and enhancement fulfillments are processed per-batch. If/when we
+        process enhancements per-reference, then the enhancement_ids parameter and
+        translation can be removed in favour of directly passing in a
+        ReferenceWithChangeset.
+        """
         return await self._detect_robot_automations(
-            reference_ids=reference_ids, enhancement_ids=enhancement_ids
+            reference=reference, enhancement_ids=enhancement_ids
         )
 
     @sql_unit_of_work
@@ -713,7 +854,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def process_reference_duplicate_decision(
         self,
         reference_duplicate_decision: ReferenceDuplicateDecision,
-    ) -> ReferenceDuplicateDecision:
+    ) -> tuple[ReferenceDuplicateDecision, bool]:
         """Process a reference duplicate decision."""
         reference_duplicate_decision = (
             await self._deduplication_service.nominate_candidate_canonicals(
@@ -727,10 +868,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
         )
 
-        reference_duplicate_decision = (
-            await self._deduplication_service.map_duplicate_decision(
-                reference_duplicate_decision
-            )
+        (
+            reference_duplicate_decision,
+            decision_changed,
+        ) = await self._deduplication_service.map_duplicate_decision(
+            reference_duplicate_decision
         )
 
         if reference_duplicate_decision.active_decision:
@@ -738,7 +880,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 reference_duplicate_decision.reference_id
             )
 
-        return reference_duplicate_decision
+        return reference_duplicate_decision, decision_changed
 
     @sql_unit_of_work
     async def get_pending_enhancements_for_robot(
@@ -811,3 +953,26 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             robot_enhancement_batch=robot_enhancement_batch,
             reference_data_file=reference_data_file,
         )
+
+    @sql_unit_of_work
+    async def invoke_deduplication_for_references(
+        self,
+        reference_ids: ReferenceIds,
+    ) -> None:
+        """Invoke deduplication for a list of references."""
+        reference_duplicate_decisions = (
+            await self.sql_uow.reference_duplicate_decisions.add_bulk(
+                [
+                    ReferenceDuplicateDecision(
+                        reference_id=reference_id,
+                        duplicate_determination=DuplicateDetermination.PENDING,
+                    )
+                    for reference_id in reference_ids.reference_ids
+                ]
+            )
+        )
+        for decision in reference_duplicate_decisions:
+            await queue_task_with_trace(
+                ("app.domain.references.tasks", "process_reference_duplicate_decision"),
+                reference_duplicate_decision_id=decision.id,
+            )

@@ -1,18 +1,13 @@
+# Greatly simplified Dockerfile for end-to-end tests
+# Does not do the recommended multi-stage build that the primary Dockerfile
+# does as building via the Docker python SDK does not support buildkit,
+# which means we cannot mount the cache.
+
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
-WORKDIR /src
+WORKDIR /app
 
-RUN apt-get update && apt-get install -y libpq-dev gcc
-
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock ./
 COPY libs/sdk ./libs/sdk
+COPY app/ ./app
 
-# Install the project's dependencies using the lockfile and settings
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --locked --no-install-project --dev --group e2e
-
-COPY tests/e2e /e2e
-
-# Place executables in the environment at the front of the path
-ENV PATH="/app/.venv/bin:$PATH"
+RUN uv sync --locked

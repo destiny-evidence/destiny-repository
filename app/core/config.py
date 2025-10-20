@@ -186,6 +186,8 @@ class OTelConfig(BaseModel):
     log_endpoint: HttpUrl
     api_key: str | None = None
 
+    timeout: int = 30
+
     # Flags to control low-level automatic instrumentation
     instrument_sql: bool = False
 
@@ -198,7 +200,6 @@ class Environment(StrEnum):
     DEVELOPMENT = auto()
     LOCAL = auto()
     TEST = auto()
-    E2E = auto()
 
 
 class LogLevel(StrEnum):
@@ -231,8 +232,6 @@ class UploadFile(StrEnum):
 
 class FeatureFlags(BaseModel):
     """Feature flags for the application."""
-
-    deduplication: bool = False
 
 
 class Settings(BaseSettings):
@@ -341,6 +340,14 @@ class Settings(BaseSettings):
         description="The environment the app is running in.",
     )
 
+    tests_use_rabbitmq: bool = Field(
+        default=False,
+        description=(
+            "Whether to use RabbitMQ for tests. Only used in test environment. "
+            "If false, uses in-memory broker."
+        ),
+    )
+
     log_level: LogLevel = Field(
         default=LogLevel.INFO,
         description="The log level for the application.",
@@ -359,7 +366,7 @@ class Settings(BaseSettings):
     @property
     def running_locally(self) -> bool:
         """Return True if the app is running locally."""
-        return self.env in (Environment.LOCAL, Environment.TEST, Environment.E2E)
+        return self.env in (Environment.LOCAL, Environment.TEST)
 
     @property
     def default_blob_location(self) -> str:

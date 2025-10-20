@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from uuid import UUID
 
 from opentelemetry import trace
-from pydantic import UUID4
 from structlog.contextvars import bound_contextvars
 
 from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
@@ -14,6 +13,7 @@ from app.domain.references.models.models import (
     EnhancementRequest,
     EnhancementRequestStatus,
     PendingEnhancementStatus,
+    ReferenceWithChangeset,
 )
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
@@ -85,7 +85,7 @@ async def get_robot_request_dispatcher() -> RobotRequestDispatcher:
 
 @broker.task
 async def collect_and_dispatch_references_for_enhancement(
-    enhancement_request_id: UUID4,
+    enhancement_request_id: UUID,
 ) -> None:
     """Async logic for dispatching a enhancement request."""
     logger.info("Processing enhancement request")
@@ -128,7 +128,7 @@ async def collect_and_dispatch_references_for_enhancement(
 
 @broker.task
 async def validate_and_import_enhancement_result(
-    enhancement_request_id: UUID4,
+    enhancement_request_id: UUID,
 ) -> None:
     """Async logic for validating and importing an enhancement result."""
     logger.info("Processing enhancement request result")
@@ -323,7 +323,7 @@ async def repair_robot_automation_percolation_index() -> None:
 
 @broker.task
 async def process_reference_duplicate_decision(
-    reference_duplicate_decision_id: UUID4,
+    reference_duplicate_decision_id: UUID,
 ) -> None:
     """Task to process a reference duplicate decision."""
     logger.info(
@@ -347,31 +347,64 @@ async def process_reference_duplicate_decision(
         trace_attribute(
             Attributes.REFERENCE_ID, str(reference_duplicate_decision.reference_id)
         )
+
         with bound_contextvars(
             reference_id=str(reference_duplicate_decision.reference_id),
         ):
-            await reference_service.process_reference_duplicate_decision(
+            (
+                reference_duplicate_decision,
+                decision_changed,
+            ) = await reference_service.process_reference_duplicate_decision(
                 reference_duplicate_decision
             )
+
+            logger.info(
+                "Processed reference duplicate decision",
+                active_decision=reference_duplicate_decision.active_decision,
+                determination=reference_duplicate_decision.duplicate_determination,
+            )
+
+            if reference_duplicate_decision.active_decision and decision_changed:
+                reference = await reference_service.get_canonical_reference_with_implied_changeset(  # noqa: E501
+                    reference_duplicate_decision.reference_id
+                )
+                requests = await detect_and_dispatch_robot_automations(
+                    reference_service=reference_service,
+                    reference=reference,
+                    source_str=f"DuplicateDecision:{reference_duplicate_decision.id}",
+                )
+                for request in requests:
+                    logger.info(
+                        "Created automatic enhancement request",
+                        enhancement_request_id=str(request.id),
+                    )
+            else:
+                logger.info(
+                    "No change to active decision, skipping automations",
+                    reference_id=str(reference_duplicate_decision.reference_id),
+                )
 
 
 @tracer.start_as_current_span("Detect and dispatch robot automations")
 async def detect_and_dispatch_robot_automations(
     reference_service: ReferenceService,
-    reference_ids: Iterable[UUID4] | None = None,
-    enhancement_ids: Iterable[UUID4] | None = None,
+    reference: ReferenceWithChangeset | None = None,
+    enhancement_ids: Iterable[UUID] | None = None,
     source_str: str | None = None,
-    skip_robot_id: UUID4 | None = None,
+    skip_robot_id: UUID | None = None,
 ) -> list[EnhancementRequest]:
     """
     Request default enhancements for a set of references.
 
     Technically this is a task distributor, not a task - may live in a higher layer
     later in life.
+
+    NB this is in a transient state, see comments in
+    ReferenceService.detect_robot_automations.
     """
     requests: list[EnhancementRequest] = []
     robot_automations = await reference_service.detect_robot_automations(
-        reference_ids=reference_ids,
+        reference=reference,
         enhancement_ids=enhancement_ids,
     )
     for robot_automation in robot_automations:

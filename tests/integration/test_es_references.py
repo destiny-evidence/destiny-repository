@@ -1,8 +1,8 @@
+# ruff: noqa: E501. These lines are just gonna be long.
 """Integration tests for references in Elasticsearch."""
 
 import uuid
 from collections.abc import AsyncGenerator
-from typing import Any
 
 import destiny_sdk
 import pytest
@@ -13,6 +13,7 @@ from app.core.exceptions import ESNotFoundError
 from app.domain.references.models.models import (
     Enhancement,
     Reference,
+    ReferenceWithChangeset,
     RobotAutomation,
 )
 from app.domain.references.models.projections import (
@@ -141,6 +142,11 @@ async def reference() -> Reference:
                 "visibility": "public",
             },
         ],
+        duplicate_decision={
+            "reference_id": r,
+            "duplicate_determination": "canonical",
+            "active_decision": True,
+        },
     )
 
 
@@ -149,8 +155,8 @@ async def abstract_robot_automation() -> RobotAutomation:
     """
     Fixture to create a sample abstract robot automation.
 
-    This query matches on references that have a DOI identifier
-    and do not have an abstract enhancement.
+    This query matches on references that have had a DOI identifier added and
+    do not have an abstract enhancement.
     """
     return RobotAutomation(
         robot_id=uuid.uuid4(),
@@ -159,9 +165,9 @@ async def abstract_robot_automation() -> RobotAutomation:
                 "must": [
                     {
                         "nested": {
-                            "path": "reference.identifiers",
+                            "path": "changeset.identifiers",
                             "query": {
-                                "term": {"reference.identifiers.identifier_type": "DOI"}
+                                "term": {"changeset.identifiers.identifier_type": "doi"}
                             },
                         }
                     }
@@ -188,27 +194,24 @@ async def in_out_robot_automation() -> RobotAutomation:
     """
     Fixture to create a sample in-out robot automation.
 
-    This query matches on references that have an abstract and on enhancements which
-    are abstracts themselves.
+    This query matches on changesets that add an abstract enhancement.
     """
     return RobotAutomation(
         robot_id=uuid.uuid4(),
         query={
             "bool": {
-                "should": [
+                "must": [
                     {
                         "nested": {
-                            "path": "reference.enhancements",
+                            "path": "changeset.enhancements",
                             "query": {
                                 "term": {
-                                    "reference.enhancements.content.enhancement_type": "abstract"
+                                    "changeset.enhancements.content.enhancement_type": "abstract"
                                 }
                             },
                         }
                     },
-                    {"term": {"enhancement.content.enhancement_type": "abstract"}},
                 ],
-                "minimum_should_match": 1,
             }
         },
     )
@@ -219,71 +222,40 @@ async def taxonomy_robot_automation() -> RobotAutomation:
     """
     Fixture to create a sample taxonomy robot automation.
 
-    This query matches on references that have a positive in/out annotation and
-    on enhancements which are annotations themselves.
+    This query matches on changesets that add a positive in/out annotation enhancement.
     """
-
-    # ruff: noqa: E501
-    def get_annotation_filter(prefix: str) -> dict[str, Any]:
-        return {
-            "nested": {
-                "path": f"{prefix}.content.annotations",
-                "query": {
-                    "bool": {
-                        "must": [
-                            {
-                                "term": {
-                                    f"{prefix}.content.annotations.label": "in_destiny_domain"
-                                }
-                            },
-                            {
+    return RobotAutomation(
+        robot_id=uuid.uuid4(),
+        query={
+            "bool": {
+                "must": [
+                    {
+                        "nested": {
+                            "path": "changeset.enhancements.content.annotations",
+                            "query": {
                                 "bool": {
-                                    "should": [
+                                    "must": [
                                         {
-                                            "bool": {
-                                                "must_not": [
-                                                    {
-                                                        "term": {
-                                                            f"{prefix}.content.annotations.annotation_type": "boolean"
-                                                        }
-                                                    }
-                                                ]
+                                            "term": {
+                                                "changeset.enhancements.content.annotations.label": "in_destiny_domain"
                                             }
                                         },
                                         {
-                                            "bool": {
-                                                "must": [
-                                                    {
-                                                        "term": {
-                                                            f"{prefix}.content.annotations.annotation_type": "boolean"
-                                                        }
-                                                    },
-                                                    {
-                                                        "term": {
-                                                            f"{prefix}.content.annotations.value": True
-                                                        }
-                                                    },
-                                                ]
+                                            "term": {
+                                                "changeset.enhancements.content.annotations.annotation_type": "boolean"
+                                            }
+                                        },
+                                        {
+                                            "term": {
+                                                "changeset.enhancements.content.annotations.value": True
                                             }
                                         },
                                     ]
                                 }
                             },
-                        ]
-                    }
-                },
-            }
-        }
-
-    return RobotAutomation(
-        robot_id=uuid.uuid4(),
-        query={
-            "bool": {
-                "should": [
-                    get_annotation_filter("reference.enhancements"),
-                    get_annotation_filter("enhancement"),
+                        }
+                    },
                 ],
-                "minimum_should_match": 1,
             }
         },
     )
@@ -366,7 +338,7 @@ async def test_es_repository_update_existing(
     assert len(updated_reference.enhancements or []) == 0
 
 
-async def test_bulk_add(
+async def test_add_bulk(
     es_reference_repository: ReferenceESRepository, reference: Reference
 ):
     """Test bulk adding multiple references."""
@@ -447,23 +419,6 @@ async def test_robot_automation_percolation(
         source="test_source",
         visibility="public",
     )
-    existential_in_out_annotation_enhancement = Enhancement(
-        id=uuid.uuid4(),
-        reference_id=uuid.uuid4(),
-        content={
-            "enhancement_type": "annotation",
-            "annotations": [
-                {
-                    "annotation_type": "score",
-                    "scheme": "dummy-scheme",
-                    "label": "in_destiny_domain",
-                    "score": 0.75,
-                }
-            ],
-        },
-        source="test_source",
-        visibility="public",
-    )
     reference_no_abstract = reference.model_copy()
     reference_with_abstract = reference.model_copy(
         update={
@@ -500,15 +455,6 @@ async def test_robot_automation_percolation(
             ],  # type: ignore[misc]
         }
     )
-    reference_with_abstract_in_domain_two = reference_with_abstract.model_copy(
-        update={
-            "id": uuid.uuid4(),
-            "enhancements": [
-                *reference_with_abstract.enhancements,
-                existential_in_out_annotation_enhancement,
-            ],  # type: ignore[misc]
-        }
-    )
     reference_with_abstract_out_of_domain = reference_with_abstract.model_copy(
         update={
             "id": uuid.uuid4(),
@@ -519,18 +465,44 @@ async def test_robot_automation_percolation(
         }
     )
 
-    percolatable_documents: list[Reference | Enhancement] = [
-        reference_no_abstract,
-        reference_with_abstract,
-        reference_no_abstract_no_doi,
-        reference_no_abstract_in_domain,
-        reference_with_abstract_in_domain,
-        reference_with_abstract_in_domain_two,
-        reference_with_abstract_out_of_domain,
-        abstract_enhancement,
-        positive_in_out_annotation_enhancement,
-        negative_in_out_annotation_enhancement,
-        existential_in_out_annotation_enhancement,
+    percolatable_documents: list[ReferenceWithChangeset] = [
+        ReferenceWithChangeset(
+            **reference_no_abstract.model_dump(), changeset=reference_no_abstract
+        ),
+        ReferenceWithChangeset(
+            **reference_with_abstract.model_dump(),
+            changeset=reference_with_abstract,
+        ),
+        ReferenceWithChangeset(
+            **reference_no_abstract_no_doi.model_dump(),
+            changeset=reference_no_abstract_no_doi,
+        ),
+        ReferenceWithChangeset(
+            **reference_no_abstract_in_domain.model_dump(),
+            changeset=reference_no_abstract_in_domain,
+        ),
+        ReferenceWithChangeset(
+            **reference_with_abstract_in_domain.model_dump(),
+            changeset=reference_with_abstract_in_domain,
+        ),
+        ReferenceWithChangeset(
+            **reference_with_abstract_out_of_domain.model_dump(),
+            changeset=reference_with_abstract_out_of_domain,
+        ),
+        ReferenceWithChangeset(
+            id=abstract_enhancement.reference_id,
+            changeset=Reference(enhancements=[abstract_enhancement]),
+        ),
+        ReferenceWithChangeset(
+            id=positive_in_out_annotation_enhancement.reference_id,
+            enhancements=[abstract_enhancement],
+            changeset=Reference(enhancements=[positive_in_out_annotation_enhancement]),
+        ),
+        ReferenceWithChangeset(
+            id=negative_in_out_annotation_enhancement.reference_id,
+            enhancements=[abstract_enhancement],
+            changeset=Reference(enhancements=[negative_in_out_annotation_enhancement]),
+        ),
     ]
 
     # This is needed when running in quick succession to ensure the index is ready
@@ -552,11 +524,10 @@ async def test_robot_automation_percolation(
                 reference_no_abstract_in_domain.id,
             }
         elif result.robot_id == in_out_robot_automation.robot_id:
-            # Everything with an abstract
+            # Everything with an abstract in the changeset
             assert result.reference_ids == {
                 reference_with_abstract.id,
                 reference_with_abstract_in_domain.id,
-                reference_with_abstract_in_domain_two.id,
                 reference_with_abstract_out_of_domain.id,
                 abstract_enhancement.reference_id,
             }
@@ -565,9 +536,7 @@ async def test_robot_automation_percolation(
             assert result.reference_ids == {
                 reference_no_abstract_in_domain.id,
                 reference_with_abstract_in_domain.id,
-                reference_with_abstract_in_domain_two.id,
                 positive_in_out_annotation_enhancement.reference_id,
-                existential_in_out_annotation_enhancement.reference_id,
             }
         else:
             msg = f"Unexpected robot ID: {result.robot_id}"

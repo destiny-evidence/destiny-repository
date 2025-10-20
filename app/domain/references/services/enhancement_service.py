@@ -237,7 +237,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                 ):
                     if not line.strip():
                         continue
-                    validated_result = await EnhancementResultValidator.from_raw(
+                    validated_result = EnhancementResultValidator.from_raw(
                         line, line_no, expected_reference_ids, processed_reference_ids
                     )
                     line_no += 1
@@ -489,7 +489,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                     if not line.strip():
                         continue
 
-                    validated_result = await EnhancementResultValidator.from_raw(
+                    validated_result = EnhancementResultValidator.from_raw(
                         line, line_no, expected_reference_ids, processed_reference_ids
                     )
                     line_no += 1

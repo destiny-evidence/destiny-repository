@@ -351,7 +351,6 @@ class EnhancementFileInput(BaseModel):
     visibility: Visibility = Field(
         description="The level of visibility of the enhancement"
     )
-    enhancement_type: EnhancementType = Field(description="The type of enhancement.")
     robot_version: str | None = Field(
         default=None,
         description="The version of the robot that generated the content.",

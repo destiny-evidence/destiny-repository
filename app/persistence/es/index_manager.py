@@ -266,6 +266,14 @@ class IndexManager:
             task["response"]["took"],
         )
 
+    async def refresh(self) -> None:
+        """Refresh the current index."""
+        current_index_name = await self.get_current_index_name()
+        if current_index_name:
+            await self.client.indices.refresh(index=current_index_name)
+        else:
+            logger.info("No index to referesh.")
+
     async def _switch_alias(self, old_index: str, new_index: str) -> None:
         """
         Atomically switch the alias from old to new index.

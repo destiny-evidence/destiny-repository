@@ -8,6 +8,8 @@ import pytest
 from app.domain.references.models.models import (
     EnhancementRequest,
     PendingEnhancementStatus,
+    Reference,
+    ReferenceWithChangeset,
     RobotAutomationPercolationResult,
     RobotEnhancementBatch,
 )
@@ -26,12 +28,12 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
     Test the detect_and_dispatch_robot_automations task distributor.
     Only tests function signatures, functionality itself is tested in the service layer.
     """
-    in_reference_ids = {uuid.uuid4(), uuid.uuid4()}
+    reference = ReferenceWithChangeset(changeset=Reference())
     in_enhancement_ids = {uuid.uuid4(), uuid.uuid4()}
     robot_id = uuid.uuid4()
 
     expected_request = EnhancementRequest(
-        reference_ids=in_reference_ids,
+        reference_ids=[reference.id],
         robot_id=robot_id,
         id=uuid.uuid4(),
         status="RECEIVED",
@@ -47,7 +49,7 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
     mock_detect_robot_automations = AsyncMock(
         return_value=[
             RobotAutomationPercolationResult(
-                robot_id=robot_id, reference_ids=in_reference_ids
+                robot_id=robot_id, reference_ids=[reference.id]
             )
         ]
     )
@@ -61,7 +63,7 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
         reference_service=ReferenceService(
             ReferenceAntiCorruptionService(fake_repository), fake_uow(), fake_uow()
         ),
-        reference_ids=in_reference_ids,
+        reference=reference,
         enhancement_ids=in_enhancement_ids,
         source_str="test_source",
     )
@@ -69,15 +71,14 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
     assert requests[0] == expected_request
 
     mock_register_request.assert_awaited_once()
-    assert (
-        set(mock_register_request.call_args[1]["enhancement_request"].reference_ids)
-        == in_reference_ids
-    )
+    assert set(
+        mock_register_request.call_args[1]["enhancement_request"].reference_ids
+    ) == {reference.id}
     assert (
         mock_register_request.call_args[1]["enhancement_request"].robot_id == robot_id
     )
     mock_detect_robot_automations.assert_awaited_once_with(
-        reference_ids=in_reference_ids, enhancement_ids=in_enhancement_ids
+        reference=reference, enhancement_ids=in_enhancement_ids
     )
 
 

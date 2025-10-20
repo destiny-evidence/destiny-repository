@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from opentelemetry import trace
 from pydantic import UUID4
 
+from app.core.config import get_settings
 from app.core.telemetry.attributes import (
     Attributes,
     name_span,
@@ -22,7 +23,9 @@ from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
-from app.domain.references.tasks import detect_and_dispatch_robot_automations
+from app.domain.references.tasks import (
+    process_reference_duplicate_decision,
+)
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.es.client import es_manager
 from app.persistence.es.uow import AsyncESUnitOfWork
@@ -32,6 +35,7 @@ from app.tasks import broker
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+settings = get_settings()
 
 
 @asynccontextmanager
@@ -101,10 +105,9 @@ async def import_reference(
             raise RuntimeError(msg)
         trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_result.import_batch_id))
 
-        import_result = await import_service.import_reference(
+        import_result, duplicate_decision_id = await import_service.import_reference(
             reference_service,
             import_result,
-            import_result.import_batch.collision_strategy,
             content,
             line_number,
         )
@@ -125,22 +128,8 @@ async def import_reference(
                 )
             return
 
-        if (
-            import_result.status
-            in (
-                ImportResultStatus.COMPLETED,
-                ImportResultStatus.PARTIALLY_FAILED,
+        if duplicate_decision_id:
+            await queue_task_with_trace(
+                process_reference_duplicate_decision,
+                duplicate_decision_id,
             )
-            and import_result.reference_id
-        ):
-            logger.info("Creating automatic enhancements for imported references")
-            requests = await detect_and_dispatch_robot_automations(
-                reference_service=reference_service,
-                reference_ids=[import_result.reference_id],
-                source_str=f"ImportResult:{import_result.id}",
-            )
-            for request in requests:
-                logger.info(
-                    "Created automatic enhancement request",
-                    enhancement_request_id=str(request.id),
-                )

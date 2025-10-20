@@ -214,6 +214,16 @@ class TestCandidateCanonicalSearchFieldsProjection:
             ),
         ]
 
+        content0 = destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+            enhancement_type=EnhancementType.BIBLIOGRAPHIC,
+            title="Check we don't get this title! This should have a lower priority in "
+            " the projection because it comes from a duplicate.",
+            authorship=sample_authorship,
+            publication_year=2021,
+            publication_date=date(2021, 3, 10),
+            publisher="Science Publishers",
+        )
+
         content1 = destiny_sdk.enhancements.BibliographicMetadataEnhancement(
             enhancement_type=EnhancementType.BIBLIOGRAPHIC,
             title="  Sample Research Paper  ",  # Test title whitespace stripping
@@ -221,6 +231,14 @@ class TestCandidateCanonicalSearchFieldsProjection:
             publication_year=2023,
             publication_date=date(2023, 5, 15),
             publisher="Academic Press",
+        )
+
+        enhancement0 = Enhancement(
+            id=uuid.uuid4(),
+            source="duplicate_source",
+            visibility=Visibility.PUBLIC,
+            content=content0,
+            reference_id=uuid.uuid4(),
         )
 
         enhancement1 = Enhancement(
@@ -278,9 +296,9 @@ class TestCandidateCanonicalSearchFieldsProjection:
 
         # Test complete enhancement
         reference1 = Reference(
-            id=uuid.uuid4(),
+            id=enhancement1.id,
             visibility=Visibility.PUBLIC,
-            enhancements=[enhancement1],
+            enhancements=[enhancement0, enhancement1],
             identifiers=[],
         )
 

@@ -7,10 +7,11 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import sqlalchemy as sa
 from alembic.config import Config as AlembicConfig
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy_utils.functions.orm import quote
 
 from app.core.config import get_settings
+from app.persistence.sql.persistence import Base
 
 settings = get_settings()
 
@@ -110,3 +111,18 @@ async def drop_database_async(db_name: str) -> None:
         await conn.execute(sa.text(text))
 
     await engine.dispose()
+
+
+async def clean_tables(conn: AsyncConnection) -> None:
+    """Delete all data from all tables in the database."""
+    # Clean tables. I tried
+    # 1. Create new database using an empty `migrated_postgres_template` as template
+    # (postgres could copy whole db structure)
+    # 2. Do TRUNCATE after each test.
+    # 3. Do DELETE after each test.
+    # Doing DELETE FROM is the fastest
+    # https://www.lob.com/blog/truncate-vs-delete-efficiently-clearing-data-from-a-postgres-table
+    # BUT DELETE FROM query does not reset any AUTO_INCREMENT counters
+    for table in reversed(Base.metadata.sorted_tables):
+        await conn.execute(table.delete())
+    await conn.commit()

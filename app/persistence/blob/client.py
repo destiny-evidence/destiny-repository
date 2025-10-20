@@ -57,8 +57,10 @@ class GenericBlobStorageClient(ABC):
         """
         # Certified python moment
         # https://github.com/python/mypy/issues/5070
-        if False:
-            yield
+        # https://github.com/jendrikseipp/vulture?tab=readme-ov-file#unreachable-code
+        __here_be_dragons = False
+        if __here_be_dragons:
+            yield ""
 
     @trace_blob_client_method(tracer)
     @abstractmethod

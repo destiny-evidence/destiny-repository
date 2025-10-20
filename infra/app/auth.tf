@@ -2,6 +2,7 @@
 resource "random_uuid" "administrator_role" {}
 resource "random_uuid" "importer_role" {}
 resource "random_uuid" "reference_reader_role" {}
+resource "random_uuid" "reference_deduplicator_role" {}
 resource "random_uuid" "robot_writer_role" {}
 resource "random_uuid" "enhancement_request_writer_role" {}
 
@@ -9,6 +10,7 @@ resource "random_uuid" "enhancement_request_writer_role" {}
 resource "random_uuid" "administrator_scope" {}
 resource "random_uuid" "importer_scope" {}
 resource "random_uuid" "reference_reader_scope" {}
+resource "random_uuid" "reference_deduplicator_scope" {}
 resource "random_uuid" "robot_writer_scope" {}
 resource "random_uuid" "enhancement_request_writer_scope" {}
 
@@ -47,6 +49,15 @@ resource "azuread_application" "destiny_repository" {
       value                      = "reference.reader.all"
       user_consent_description   = "Allow you to view references"
       user_consent_display_name  = "Reference Reader"
+    }
+    oauth2_permission_scope {
+      admin_consent_description  = "Allow the app to deduplicate references as the signed-in user"
+      admin_consent_display_name = "Reference Deduplicator as user"
+      id                         = random_uuid.reference_deduplicator_scope.result
+      type                       = "User"
+      value                      = "reference.deduplicator.all"
+      user_consent_description   = "Allow you to deduplicate references"
+      user_consent_display_name  = "Reference Deduplicator"
     }
 
     oauth2_permission_scope {
@@ -106,6 +117,15 @@ resource "azuread_application_app_role" "reference_reader" {
   value                = "reference.reader"
 }
 
+resource "azuread_application_app_role" "reference_deduplicator" {
+  application_id       = azuread_application.destiny_repository.id
+  allowed_member_types = ["Application"]
+  description          = "Can deduplicate references"
+  display_name         = "Reference Deduplicator"
+  role_id              = random_uuid.reference_deduplicator_role.result
+  value                = "reference.deduplicator"
+}
+
 resource "azuread_application_app_role" "enhancement_request_writer" {
   application_id       = azuread_application.destiny_repository.id
   allowed_member_types = ["Application"]
@@ -159,6 +179,7 @@ resource "azuread_application_api_access" "destiny_repository_auth" {
     random_uuid.reference_reader_scope.result,
     random_uuid.enhancement_request_writer_scope.result,
     random_uuid.robot_writer_scope.result,
+    random_uuid.reference_deduplicator_scope.result,
   ]
 }
 

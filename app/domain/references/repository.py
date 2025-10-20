@@ -22,9 +22,11 @@ from app.domain.references.models.es import (
 )
 from app.domain.references.models.models import (
     CandidateCanonicalSearchFields,
+    DuplicateDetermination,
     ExternalIdentifierType,
     GenericExternalIdentifier,
     PendingEnhancementStatus,
+    ReferenceWithChangeset,
     RobotAutomationPercolationResult,
 )
 from app.domain.references.models.models import (
@@ -263,7 +265,20 @@ class ReferenceESRepository(
                                 "gte": search_fields.publication_year - 1,
                                 "lte": search_fields.publication_year + 1,
                             },
-                        )
+                        ),
+                        # This filter ensures we only match against references that are
+                        # "at rest". This avoids race conditions where reference B and C
+                        # are being deduplicated at the same time, perhaps creating
+                        # links B->A and C->B - in turn, creating a chain that we do
+                        # not control, which is a no-no.
+                        # Better handling will be needed in the future if/when we fully
+                        # implement chaining (which will require deliberate candidate
+                        # selection against duplicates as well as canonicals, probably
+                        # still "at rest" though).
+                        Q(
+                            "term",
+                            duplicate_determination=DuplicateDetermination.CANONICAL,
+                        ),
                     ]
                     if search_fields.publication_year
                     else [],
@@ -524,13 +539,13 @@ class RobotAutomationESRepository(
     @trace_repository_method(tracer)
     async def percolate(
         self,
-        percolatables: Sequence[DomainReference | DomainEnhancement],
+        percolatables: Sequence[ReferenceWithChangeset],
     ) -> list[RobotAutomationPercolationResult]:
         """
         Percolate documents against the percolation queries in Elasticsearch.
 
         :param percolatables: A list of percolatable domain objects.
-        :type percolatables: list[DomainReference | DomainEnhancement]
+        :type percolatables: list[ReferenceWithChangeset]
         :return: The results of the percolation.
         :rtype: list[RobotAutomationPercolationResult]
         """
@@ -558,17 +573,14 @@ class RobotAutomationESRepository(
             RobotAutomationPercolationResult
         ] = []
         for result in results:
-            matches: list[DomainReference | DomainEnhancement] = [
+            matches: list[ReferenceWithChangeset] = [
                 percolatables[slot]
                 for slot in result.meta.fields["_percolator_document_slot"]
             ]
-            reference_ids = {
-                match.id if isinstance(match, DomainReference) else match.reference_id
-                for match in matches
-            }
             robot_automation_percolation_results.append(
                 RobotAutomationPercolationResult(
-                    robot_id=result.robot_id, reference_ids=reference_ids
+                    robot_id=result.robot_id,
+                    reference_ids={reference.id for reference in matches},
                 )
             )
 

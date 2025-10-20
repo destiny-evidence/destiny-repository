@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import SQLIntegrityError
 from app.domain.imports.models.models import (
-    CollisionStrategy,
     ImportBatchStatus,
     ImportResultStatus,
 )
@@ -201,7 +200,7 @@ async def test_reference_get_with_duplicates(session: AsyncSession):
     await dup_repo.update_by_pk(
         b_duplicates_a.id,
         active_decision=True,
-        duplicate_determination=DuplicateDetermination.UNRESOLVED,
+        duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
         canonical_reference_id=None,
     )
     assert (
@@ -265,7 +264,6 @@ async def test_import_batch_status_projection(
     batch = ImportBatch(
         id=batch_id,
         import_record_id=record_id,
-        collision_strategy=CollisionStrategy.OVERWRITE,
         storage_url="https://example.com/bucket",
     )
     session.add(batch)

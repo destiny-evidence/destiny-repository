@@ -16,14 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import AuthRole, AuthScope
 from app.core.config import DatabaseConfig, get_settings
-from app.persistence.es.client import AsyncESClientManager, es_manager, indices
-from app.persistence.es.index_manager import IndexManager
-from app.persistence.sql.persistence import Base
+from app.persistence.es.client import AsyncESClientManager, es_manager
 from app.persistence.sql.session import (
     AsyncDatabaseSessionManager,
     db_manager,
 )
-from tests.db_utils import alembic_config_from_url, tmp_database
+from tests.db_utils import alembic_config_from_url, clean_tables, tmp_database
+from tests.es_utils import create_test_indices, delete_test_indices
 
 settings = get_settings()
 MIGRATION_TASK: asyncio.Task | None = None
@@ -75,22 +74,11 @@ async def session(
     """Yield the session for the test and cleanup tables."""
     engine = sessionmanager_for_tests._engine  # noqa: SLF001
     assert engine
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
 
     async with sessionmanager_for_tests.session() as session:
         yield session
-    # Clean tables. I tried
-    # 1. Create new database using an empty `migrated_postgres_template` as template
-    # (postgres could copy whole db structure)
-    # 2. Do TRUNCATE after each test.
-    # 3. Do DELETE after each test.
-    # Doing DELETE FROM is the fastest
-    # https://www.lob.com/blog/truncate-vs-delete-efficiently-clearing-data-from-a-postgres-table
-    # BUT DELETE FROM query does not reset any AUTO_INCREMENT counters
     async with engine.begin() as conn:
-        for table in reversed(Base.metadata.sorted_tables):
-            await conn.execute(table.delete())
+        await clean_tables(conn)
 
 
 @pytest.fixture
@@ -196,12 +184,6 @@ async def es_client(
 ) -> AsyncGenerator[AsyncElasticsearch, None]:
     """Yield the ES client for the test and cleanup indices after."""
     async with es_manager_for_tests.client() as client:
-        index_managers = [
-            IndexManager(index, index.Index.name, client) for index in indices
-        ]
-        for index_manager in index_managers:
-            await index_manager.initialize_index()
+        await create_test_indices(client)
         yield client
-        for index_manager in index_managers:
-            index_name = await index_manager.get_current_index_name()
-            await index_manager.client.indices.delete(index=index_name)
+        await delete_test_indices(client)
