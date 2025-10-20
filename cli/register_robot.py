@@ -6,7 +6,7 @@ import argparse
 import destiny_sdk
 import httpx
 from fastapi import status
-from pydantic import HttpUrl, ValidationError
+from pydantic import ValidationError
 
 from app.core.config import Environment
 from cli.auth import CLIAuth
@@ -46,14 +46,6 @@ def argument_parser() -> argparse.ArgumentParser:
         "--name",
         type=str,
         help="Name of the robot to register. Must be unique.",
-        required=True,
-    )
-
-    parser.add_argument(
-        "-u",
-        "--base-url",
-        type=HttpUrl,
-        help="Base url where the robot is deployed. Must be a valid HttpUrl.",
         required=True,
     )
 
