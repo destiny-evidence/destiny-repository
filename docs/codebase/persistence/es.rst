@@ -1,5 +1,5 @@
-Blob Storage
-============
+Elasticsearch
+=============
 
 WIP - auto-generated documentation. This can be used to imply the index document structures, but it is recommended to refer to the Elasticsearch instance directly.
 
