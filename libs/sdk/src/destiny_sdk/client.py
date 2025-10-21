@@ -114,7 +114,7 @@ class Client:
         return RobotEnhancementBatchRead.model_validate(response.json())
 
     def poll_robot_enhancement_batch(
-        self, robot_id: UUID4, limit: int = 10
+        self, robot_id: UUID4, limit: int = 10, timeout: int = 60
     ) -> RobotEnhancementBatch | None:
         """
         Poll for a robot enhancement batch.
@@ -132,6 +132,7 @@ class Client:
         response = self.session.post(
             "/robot-enhancement-batches/",
             params={"robot_id": str(robot_id), "limit": limit},
+            timeout=timeout,
         )
         # HTTP 204 No Content indicates no batches available
         if response.status_code == httpx.codes.NO_CONTENT:
