@@ -12,7 +12,6 @@ from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     DuplicateDetermination,
     EnhancementRequest,
-    EnhancementRequestStatus,
     PendingEnhancementStatus,
     ReferenceWithChangeset,
 )
@@ -76,82 +75,6 @@ async def get_robot_service(
 async def get_blob_repository() -> BlobRepository:
     """Return the blob repository using the provided session."""
     return BlobRepository()
-
-
-@broker.task
-async def validate_and_import_enhancement_result(
-    enhancement_request_id: UUID,
-) -> None:
-    """Async logic for validating and importing an enhancement result."""
-    logger.info("Processing enhancement request result")
-    trace_attribute(Attributes.ENHANCEMENT_REQUEST_ID, str(enhancement_request_id))
-    name_span(f"Import enhancement result for request {enhancement_request_id}")
-    async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
-        blob_repository = await get_blob_repository()
-        reference_anti_corruption_service = ReferenceAntiCorruptionService(
-            blob_repository
-        )
-        reference_service = await get_reference_service(
-            reference_anti_corruption_service, sql_uow, es_uow
-        )
-        enhancement_request = await reference_service.get_enhancement_request(
-            enhancement_request_id
-        )
-        trace_attribute(Attributes.ROBOT_ID, str(enhancement_request.robot_id))
-
-        try:
-            with bound_contextvars(
-                robot_id=str(enhancement_request.robot_id),
-            ):
-                # Validate and import the enhancement result
-                (
-                    terminal_status,
-                    imported_enhancement_ids,
-                ) = await reference_service.validate_and_import_enhancement_result(
-                    enhancement_request,
-                    blob_repository,
-                )
-        except Exception as exc:
-            logger.exception(
-                "Error occurred while validating and importing enhancement result"
-            )
-            await reference_service.mark_enhancement_request_failed(
-                enhancement_request_id,
-                str(exc),
-            )
-            return
-
-        # Update elasticsearch index
-        # For now we naively update all references in the request - this is at worse a
-        # superset of the actual enhancement updates.
-
-        await reference_service.update_enhancement_request_status(
-            enhancement_request.id,
-            EnhancementRequestStatus.INDEXING,
-        )
-
-        try:
-            await reference_service.index_references(
-                reference_ids=enhancement_request.reference_ids,
-            )
-            await reference_service.update_enhancement_request_status(
-                enhancement_request.id,
-                terminal_status,
-            )
-        except Exception:
-            logger.exception("Error indexing references in Elasticsearch")
-            await reference_service.update_enhancement_request_status(
-                enhancement_request.id,
-                EnhancementRequestStatus.INDEXING_FAILED,
-            )
-
-        # Perform robot automations
-        await detect_and_dispatch_robot_automations(
-            reference_service,
-            enhancement_ids=imported_enhancement_ids,
-            source_str=f"EnhancementRequest:{enhancement_request.id}",
-            skip_robot_id=enhancement_request.robot_id,
-        )
 
 
 @broker.task
