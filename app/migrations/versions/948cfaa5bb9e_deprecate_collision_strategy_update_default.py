@@ -1,8 +1,8 @@
 """
 deprecate collision_strategy
 
-Revision ID: 6f6d08aab362
-Revises: e2b5649fcd0b
+Revision ID: 948cfaa5bb9e
+Revises: 6f6d08aab362
 Create Date: 2025-10-02 23:27:25.113341+00:00
 
 """
@@ -13,18 +13,14 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '6f6d08aab362'
-down_revision: Union[str, None] = 'e2b5649fcd0b'
+revision: str = '948cfaa5bb9e'
+down_revision: Union[str, None] = '6f6d08aab362'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Adds 'deprecated' to the enum and sets it as the default value
-    connection = op.get_bind()
-    op.execute("ALTER TYPE collision_strategy ADD VALUE IF NOT EXISTS 'deprecated'")
-    op.execute("ALTER TYPE collision_strategy ADD VALUE IF NOT EXISTS 'append'")
-    connection.commit()
+    # Sets 'deprecated' as the default value
     op.alter_column(
         'import_batch',
         'collision_strategy',
@@ -34,7 +30,6 @@ def upgrade() -> None:
         ),
         server_default="deprecated",
     )
-    connection.commit()
     # ### end Alembic commands ###
 
 
