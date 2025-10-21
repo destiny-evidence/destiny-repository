@@ -250,8 +250,14 @@ async def test_reindex_preserves_data_updated_in_source(index_manager: IndexMana
     # Refresh the index to ensure document available
     await index_manager.refresh_index()
 
-    migrated_index = await index_manager.migrate(delete_old=False)
-    assert migrated_index
+    # Create our destination index
+    dest_index_name = "dummy_v2"
+    await DummyDocument.init(index=dest_index_name, using=index_manager.client)
+
+    # Reindex from src to dest
+    await index_manager._reindex_data(  # noqa: SLF001
+        source_index=src_index_name, dest_index=dest_index_name
+    )
 
     # Assert that document in destination index with version 1
     doc_from_index = await index_manager.client.get(
@@ -277,7 +283,7 @@ async def test_reindex_preserves_data_updated_in_source(index_manager: IndexMana
 
     # reindex
     await index_manager._reindex_data(  # noqa: SLF001
-        source_index=src_index_name, dest_index=migrated_index
+        source_index=src_index_name, dest_index=dest_index_name
     )
 
     # Assert that docuemnt in destination index with version 2

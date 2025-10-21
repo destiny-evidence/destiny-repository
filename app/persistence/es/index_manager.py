@@ -197,16 +197,16 @@ class IndexManager:
             New index name if migration occurred, None otherwise
 
         """
-        current_index = await self.get_current_index_name()
+        source_index = await self.get_current_index_name()
 
-        if current_index is None:
+        if source_index is None:
             logger.info("No existing index for %s, initialising", self.alias_name)
             return await self.initialize_index()
 
         # Currently required for backwards compatibility with our
         # existing index names.
         # TODO(Jack): Remove once all indices are versioned  # noqa: TD003
-        current_version = await self.get_current_version(current_index)
+        current_version = await self.get_current_version(source_index)
         if current_version is None:
             msg = "Current index does not have a version, will use version 1."
             logger.info(msg)
@@ -214,25 +214,35 @@ class IndexManager:
 
         # Create new versioned index
         new_version = current_version + 1
-        new_index = self._generate_index_name(new_version)
+        destination_index = self._generate_index_name(new_version)
 
-        logger.info("Starting migration from %s to %s", current_index, new_index)
+        logger.info("Starting migration from %s to %s", source_index, destination_index)
 
-        # Create new index
-        await self._create_index_with_mapping(index_name=new_index)
+        # Create the destination index
+        await self._create_index_with_mapping(index_name=destination_index)
 
         # Reindex data
-        await self._reindex_data(source_index=current_index, dest_index=new_index)
+        await self._reindex_data(
+            source_index=source_index, dest_index=destination_index
+        )
 
-        # Switch alias atomically
-        await self._switch_alias(current_index, new_index)
+        # Switch alias atomically,
+        await self._switch_alias(source_index, destination_index)
+
+        # Block writes to old index
+        await self.client.indices.add_block(index=source_index, block="write")
+
+        # Trigger a second reindex to top up
+        await self._reindex_data(
+            source_index=source_index, dest_index=destination_index
+        )
 
         # Delete old index if requested
         if delete_old:
-            await self._delete_index_safely(current_index)
+            await self._delete_index_safely(source_index)
 
-        logger.info("Migration completed successfully to %s", new_index)
-        return new_index
+        logger.info("Migration completed successfully to %s", destination_index)
+        return destination_index
 
     async def _reindex_data(self, source_index: str, dest_index: str) -> None:
         """
@@ -263,7 +273,7 @@ class IndexManager:
             refresh=True,
         )
 
-        # The task management API is in technical previewn at time of writing
+        # The task management API is in technical preview at time of writing
         # But has been in technical preview for four major versions.
         # So we're probably fine. Some nasty logs though.
         # TODO(Jack): not ugly polling.  # noqa: TD003
@@ -365,37 +375,3 @@ class IndexManager:
 
         logger.info("Rolled back from %s to %s", current_index, target_index)
         return target_index
-
-    async def get_migration_history(self) -> dict[str, Any]:
-        """
-        Get information about all versions of the index.
-
-        Returns:
-            Dictionary with migration history information
-
-        """
-        pattern = f"{self.base_index_name}_{self.version_prefix}*"
-        indices_info = await self.client.indices.get(index=pattern)
-
-        history = {}
-        current_index = await self.get_current_index_name()
-
-        for index_name, info in indices_info.items():
-            version_str = index_name.split(f"_{self.version_prefix}")[-1]
-            try:
-                version = int(version_str)
-                count_response = await self.client.count(index=index_name)
-
-                history[index_name] = {
-                    "version": version,
-                    "is_current": index_name == current_index,
-                    "created": info["settings"]["index"]["creation_date"],
-                    "document_count": count_response["count"],
-                    "size_in_bytes": info.get("settings", {})
-                    .get("index", {})
-                    .get("size_in_bytes"),
-                }
-            except ValueError:
-                continue
-
-        return history
