@@ -71,7 +71,12 @@ async def index_manager(
         for index in await client.indices.get(index=f"{DummyDocument.Index.name}*"):
             await client.indices.delete(index=index)
 
-        index_manager = IndexManager(DummyDocument, DummyDocument.Index.name, client)
+        index_manager = IndexManager(
+            DummyDocument,
+            DummyDocument.Index.name,
+            client,
+            reindex_status_polling_interval=0.1,
+        )
 
         yield index_manager
 
@@ -143,13 +148,17 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
     # Initialise the index
     await index_manager.initialize_index()
 
-    # Add a document to the index so we can check for it
-    # after reinitialising
-    dummy_doc = DummyDocument.from_domain(Dummy(note="test document"))
-    doc_added = await dummy_doc.save(using=index_manager.client, validate=True)
-    assert doc_added == "created"
+    # Add documents to index so we can check for them after migrating
+    dummy_docs = [
+        DummyDocument.from_domain(Dummy(note=f"test document {i}"))
+        for i in range(1, 11)
+    ]
 
-    # Refresh the index to ensure document available
+    for dummy_doc in dummy_docs:
+        doc_added = await dummy_doc.save(using=index_manager.client, validate=True)
+        assert doc_added == "created"
+
+    # Refresh the index to ensure documents available
     await index_manager.refresh_index()
 
     # Get current index name so we can verify it is deleted
@@ -180,11 +189,8 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
     )
     assert alias_exists
 
-    # Verify the document is in new index
-    doc_from_index = await index_manager.client.get(
-        index=index_manager.alias_name, id=dummy_doc.meta.id
-    )
-    assert doc_from_index["found"]
+    # Verify there are ten documents in the new index
+    assert (await index_manager.client.count(index=new_index_name))["count"] == 10
 
 
 async def test_we_can_migrate_an_index_with_a_random_name(index_manager: IndexManager):
@@ -241,6 +247,7 @@ async def test_reindex_preserves_data_updated_in_source(index_manager: IndexMana
     src_index_name = await index_manager.get_current_index_name()
     assert src_index_name
 
+    # Add a document to the  source index
     dummy = Dummy(note="test document")
     dummy_document_src = DummyDocument.from_domain(dummy)
 
@@ -372,6 +379,44 @@ async def test_reindex_succeeds_on_version_clash(index_manager: IndexManager):
     assert doc_from_dest_index["found"]
     assert doc_from_dest_index["_version"] == 1
     assert doc_from_dest_index["_source"]["note"] == "updated test document"
+
+
+async def test_reindex_does_not_delete_documents_from_destination(
+    index_manager: IndexManager,
+):
+    """Test that we do not delete documents from the dest index when reindexing."""
+    await index_manager.initialize_index()
+
+    # Get the current index name
+    src_index_name = await index_manager.get_current_index_name()
+    assert src_index_name
+
+    # Immediately migrate to v2 index, not deleting the old index
+    dest_index_name = await index_manager.migrate(delete_old=False)
+    assert dest_index_name
+
+    # Add a document to the new index
+    dummy = Dummy(note="test document")
+    dummy_document_dest = DummyDocument.from_domain(dummy)
+
+    doc_added = await dummy_document_dest.save(
+        using=index_manager.client, validate=True
+    )
+    assert doc_added == "created"
+
+    # Refresh document to make available to search
+    await index_manager.refresh_index()
+
+    # Reindex from src to destination
+    await index_manager._reindex_data(  # noqa: SLF001
+        source_index=src_index_name, dest_index=dest_index_name
+    )
+
+    # Assert the dummy doc is present in the destination index
+    doc_from_dest_index = await index_manager.client.get(
+        index=dest_index_name, id=str(dummy.id)
+    )
+    assert doc_from_dest_index["found"]
 
 
 async def test_rollback_to_previous_version(index_manager: IndexManager):

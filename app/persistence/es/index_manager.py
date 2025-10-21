@@ -33,6 +33,7 @@ class IndexManager:
         | None = None,
         version_prefix: str = "v",
         batch_size: int = 1000,
+        reindex_status_polling_interval: float = 5,
     ) -> None:
         """
         Initialize the migration manager.
@@ -44,13 +45,15 @@ class IndexManager:
             repair_task: Asynchronous task used to repair an index (defaults None)
             version_prefix: Prefix for version numbers in index names
             batch_size: Batch size for reindexing operations
+            reindex_status_polling_interval: How often to check status of reindexing (defaults 5s)
 
-        """
+        """  # noqa: E501
         self.document_class = document_class
         self.client = client
         self.repair_task = repair_task
         self.batch_size = batch_size
         self.version_prefix = version_prefix
+        self.reindex_status_polling_interval = reindex_status_polling_interval
 
         self.base_index_name = document_class.Index.name
         self.alias_name = alias_name or self.base_index_name
@@ -267,6 +270,7 @@ class IndexManager:
 
         # Trigger a reindex task
         response = await self.client.reindex(
+            conflicts="proceed",
             source={"index": source_index, "size": self.batch_size},
             dest={"index": dest_index, "version_type": "external"},
             wait_for_completion=False,
@@ -276,10 +280,18 @@ class IndexManager:
         # The task management API is in technical preview at time of writing
         # But has been in technical preview for four major versions.
         # So we're probably fine. Some nasty logs though.
-        # TODO(Jack): not ugly polling.  # noqa: TD003
         task = await self.client.tasks.get(task_id=response["task"])
+
         while not task["completed"]:
-            await asyncio.sleep(5)  # Configure this
+            progress = task["task"]["status"]["created"]
+            +task["task"]["status"]["updated"]
+            +task["task"]["status"]["version_conflicts"]
+
+            logger.info(
+                "Reindexing documents in progress: %s out of %s", progress, total_docs
+            )
+
+            await asyncio.sleep(self.reindex_status_polling_interval)
             task = await self.client.tasks.get(task_id=response["task"])
 
         logger.info(
