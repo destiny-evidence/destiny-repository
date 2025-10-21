@@ -258,7 +258,7 @@ class IndexManager:
         # Trigger a reindex task
         response = await self.client.reindex(
             source={"index": source_index, "size": self.batch_size},
-            dest={"index": dest_index},
+            dest={"index": dest_index, "version_type": "external"},
             wait_for_completion=False,
             refresh=True,
         )

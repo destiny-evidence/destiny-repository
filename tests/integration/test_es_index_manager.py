@@ -67,6 +67,10 @@ async def index_manager(
     Cleans up its index at the end of of the test.
     """
     async with es_manager_for_tests.client() as client:
+        # Cleanup any hanging indices
+        for index in await client.indices.get(index=f"{DummyDocument.Index.name}*"):
+            await client.indices.delete(index=index)
+
         index_manager = IndexManager(DummyDocument, DummyDocument.Index.name, client)
 
         yield index_manager
@@ -120,7 +124,7 @@ async def test_initialise_es_index_is_idempotent(index_manager: IndexManager):
     assert doc_added == "created"
 
     # Refresh the index to ensure document available
-    await index_manager.client.indices.refresh(index=index_manager.alias_name)
+    await index_manager.refresh_index()
 
     # Call the initialisation again
     await index_manager.initialize_index()
@@ -146,7 +150,7 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
     assert doc_added == "created"
 
     # Refresh the index to ensure document available
-    await index_manager.client.indices.refresh(index=index_manager.alias_name)
+    await index_manager.refresh_index()
 
     # Get current index name so we can verify it is deleted
     old_index_name = await index_manager.get_current_index_name()
@@ -222,6 +226,148 @@ async def test_old_index_not_deleted_if_flag_unset(index_manager: IndexManager):
     assert not old_index_exists
 
 
+async def test_reindex_preserves_data_updated_in_source(index_manager: IndexManager):
+    """
+    Test that a second reindex captures updates from the source index.
+
+    We're manufacturing an update on  a specific document id
+    to confirm we can successfully reindex.
+
+    This tests some internals of the index manager and verifies elasticsearch
+    behaviour.
+    """
+    await index_manager.initialize_index()
+
+    src_index_name = await index_manager.get_current_index_name()
+    assert src_index_name
+
+    dummy = Dummy(note="test document")
+    dummy_document_src = DummyDocument.from_domain(dummy)
+
+    doc_added = await dummy_document_src.save(using=index_manager.client, validate=True)
+    assert doc_added == "created"
+
+    # Refresh the index to ensure document available
+    await index_manager.refresh_index()
+
+    migrated_index = await index_manager.migrate(delete_old=False)
+    assert migrated_index
+
+    # Assert that document in destination index with version 1
+    doc_from_index = await index_manager.client.get(
+        index=index_manager.alias_name, id=dummy_document_src.meta.id
+    )
+
+    assert doc_from_index["found"]
+    assert doc_from_index["_version"] == 1
+    assert doc_from_index["_source"]["note"] == "test document"
+
+    # Add an updated version of dummy to the _source_ index
+    # After this we should have an updated document in the
+    # source index with an elasticsearch version of 2
+    # and the destination index will have the old document
+    # with an elasticsearch version of 1
+    dummy_document_src.note = "updated test document"
+    doc_added = await dummy_document_src.save(
+        index=src_index_name, using=index_manager.client, validate=True
+    )
+
+    # Refresh the index to ensure udpated document available
+    await index_manager.client.indices.refresh(index=src_index_name)
+
+    # reindex
+    await index_manager._reindex_data(  # noqa: SLF001
+        source_index=src_index_name, dest_index=migrated_index
+    )
+
+    # Assert that docuemnt in destination index with version 2
+    doc_from_index = await index_manager.client.get(
+        index=index_manager.alias_name, id=dummy_document_src.meta.id
+    )
+
+    assert doc_from_index["found"]
+    assert doc_from_index["_version"] == 2
+    assert doc_from_index["_source"]["note"] == "updated test document"
+
+
+async def test_reindex_succeeds_on_version_clash(index_manager: IndexManager):
+    """
+    Test that a second reindex succeeds when there is a version clash on documents.
+
+    We're manufacturing an clash on a specific document id
+    to confirm we can successfully reindex. This is a (likely rare) edge case
+    that could happen if:
+    * Document is not present in src index during first reindex.
+    * Document is added to src prior to second reindex.
+    * Same document is added to dest after we switch the write over _before_
+      it is added as part of the second reindex, and the document is different.
+
+    In this case, we want to preserve the document in the destination index,
+    as this will have been the most recently udpated.
+
+    This tests some internals of the index manager and verifies elasticsearch
+    behaviour.
+    """
+    await index_manager.initialize_index()
+
+    src_index_name = await index_manager.get_current_index_name()
+    assert src_index_name
+
+    dummy = Dummy(note="test document")
+    dummy_document_src = DummyDocument.from_domain(dummy)
+
+    doc_added = await dummy_document_src.save(using=index_manager.client, validate=True)
+    assert doc_added == "created"
+
+    # Refresh the index to ensure document available
+    await index_manager.refresh_index()
+
+    # Assert that document in src index with version 1
+    doc_from_src_index = await index_manager.client.get(
+        index=src_index_name, id=str(dummy.id)
+    )
+
+    assert doc_from_src_index["found"]
+    assert doc_from_src_index["_version"] == 1
+    assert doc_from_src_index["_source"]["note"] == "test document"
+
+    # Create the destination index
+    dest_index_name = "dummy_v2"
+    await DummyDocument.init(index=dest_index_name, using=index_manager.client)
+
+    # Update the note and save to the destination index
+    dummy.note = "updated test document"
+    dummy_document_dest = DummyDocument.from_domain(dummy)
+    doc_added = await dummy_document_dest.save(
+        using=index_manager.client, index=dest_index_name
+    )
+
+    # Refresh the destination index to ensure document available
+    await index_manager.client.indices.refresh(index=dest_index_name)
+
+    # Assert that document in destination index with version 1
+    # but with updated note
+    doc_from_dest_index = await index_manager.client.get(
+        index=dest_index_name, id=str(dummy.id)
+    )
+    assert doc_from_dest_index["found"]
+    assert doc_from_dest_index["_version"] == 1
+    assert doc_from_dest_index["_source"]["note"] == "updated test document"
+
+    # reindex from src to dest
+    await index_manager._reindex_data(  # noqa: SLF001
+        source_index=src_index_name, dest_index=dest_index_name
+    )
+
+    # Assert that document in the destination index is unaffected.
+    doc_from_dest_index = await index_manager.client.get(
+        index=dest_index_name, id=str(dummy.id)
+    )
+    assert doc_from_dest_index["found"]
+    assert doc_from_dest_index["_version"] == 1
+    assert doc_from_dest_index["_source"]["note"] == "updated test document"
+
+
 async def test_rollback_to_previous_version(index_manager: IndexManager):
     """Test that we can roll back to the previous index version."""
     # Initialise the index
@@ -237,7 +383,7 @@ async def test_rollback_to_previous_version(index_manager: IndexManager):
     assert doc_added == "created"
 
     # Refresh the index to ensure document available
-    await index_manager.client.indices.refresh(index=index_manager.alias_name)
+    await index_manager.refresh_index()
 
     # Assert the count of documents in the migrated index is 1
     count = await index_manager.client.count(index=index_manager.alias_name)
