@@ -15,6 +15,18 @@ variable "admin_password" {
   sensitive   = true
 }
 
+variable "app_min_replicas" {
+  description = "Minimum number of replicas for the app container app"
+  type        = number
+  default     = 2
+}
+
+variable "tasks_min_replicas" {
+  description = "Minimum number of replicas for the tasks container app"
+  type        = number
+  default     = 2
+}
+
 variable "app_max_replicas" {
   description = "Maximum number of replicas for the app container app"
   type        = number
