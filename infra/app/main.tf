@@ -210,7 +210,7 @@ module "container_app" {
 
 module "container_app_tasks" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "1.6.2"
+  version                         = "1.6.3"
   app_name                        = "${var.app_name}-task"
   cpu                             = var.container_app_tasks_cpu
   environment                     = var.environment
