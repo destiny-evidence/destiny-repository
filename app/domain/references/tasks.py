@@ -10,6 +10,7 @@ from structlog.contextvars import bound_contextvars
 from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
+    DuplicateDetermination,
     EnhancementRequest,
     EnhancementRequestStatus,
     PendingEnhancementStatus,
@@ -298,10 +299,20 @@ async def process_reference_duplicate_decision(
         trace_attribute(
             Attributes.REFERENCE_ID, str(reference_duplicate_decision.reference_id)
         )
-
         with bound_contextvars(
             reference_id=str(reference_duplicate_decision.reference_id),
         ):
+            # Sanity check to make task safely idempotent
+            if (
+                reference_duplicate_decision.duplicate_determination
+                != DuplicateDetermination.PENDING
+            ):
+                logger.info(
+                    "Duplicate decision already processed, skipping.",
+                    duplicate_determination=reference_duplicate_decision.duplicate_determination,
+                )
+                return
+
             (
                 reference_duplicate_decision,
                 decision_changed,

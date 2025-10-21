@@ -463,6 +463,7 @@ class ReferenceDuplicateDeterminationResult(BaseModel):
         DuplicateDetermination.CANONICAL,
         DuplicateDetermination.DUPLICATE,
         DuplicateDetermination.UNRESOLVED,
+        DuplicateDetermination.UNSEARCHABLE,
     ]
     canonical_reference_id: UUID4 | None = Field(
         default=None,
@@ -471,7 +472,7 @@ class ReferenceDuplicateDeterminationResult(BaseModel):
     detail: str | None = Field(
         default=None,
         description="Optional detail about the determination process, particularly"
-        " where the determination is UNRESOLVED.",
+        " where the determination is UNRESOLVED or UNSEARCHABLE.",
     )
 
     @model_validator(mode="after")
