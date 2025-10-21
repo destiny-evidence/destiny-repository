@@ -185,6 +185,8 @@ There are two cases where the new decision is not automatically activated:
 
 Both of these *can* be handled automatically, but manual review allows us to highlight and understanding the frequency and nature of these cases. The commentary around these is changing frequently so not documenting in detail here, but please reach out if you want more information!
 
+.. _deduplicated-projection:
+
 Deduplicated Projection
 -----------------------
 
