@@ -453,6 +453,31 @@ async def test_rollback_to_previous_version(index_manager: IndexManager):
     assert count["count"] == 0
 
 
+async def test_rollback_to_previous_index_without_version(index_manager: IndexManager):
+    """
+    Required for backwards compatibiltiy until all indices renamed.
+
+    We need to be able to roll back to a target index with a name that
+    does not match our versioning pattern.
+    """
+    # Create an old index
+    non_versioned_index_name = "dummy_forever"
+
+    # Create non_versioned index
+    await DummyDocument.init(index=non_versioned_index_name, using=index_manager.client)
+
+    # Initialise a v1 index with correct alias
+    await index_manager.initialize_index()
+
+    # Rollback targeting the non versioned index
+    await index_manager.rollback(target_index=non_versioned_index_name)
+
+    # Verify the alias has been moved to the non versioned index
+    assert await index_manager.client.indices.exists_alias(
+        name=DummyDocument.Index.name, index=non_versioned_index_name
+    )
+
+
 async def test_we_do_not_to_roll_back_from_version_1(index_manager: IndexManager):
     """Test that we do not roll back if the current version is version one."""
     # Initialise the index to version 1

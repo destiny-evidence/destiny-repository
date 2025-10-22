@@ -95,10 +95,11 @@ class IndexManager:
 
     async def rebuild_index(self) -> None:
         """
+        WARNING: DESTRUCTIVE ACTION.
+
         Rebuild the current index.
 
         Delete and then recreate the index with the same name.
-        This is used by the system router to trigger downtime rebuilds of indices.
         """
         current_index_name = await self.get_current_index_name()
 
@@ -106,7 +107,6 @@ class IndexManager:
             msg = f"Index with alias {self.alias_name} has not been initialized."
             raise NotFoundError(msg)
 
-        # Remove the alias
         await self.client.indices.delete_alias(
             index=current_index_name, name=self.alias_name
         )
@@ -117,7 +117,6 @@ class IndexManager:
         logger.info("Recreating index", index=current_index_name)
         await self._create_index_with_mapping(current_index_name)
 
-        # Reapply alias
         await self.client.indices.put_alias(
             index=current_index_name, name=self.alias_name
         )
@@ -163,13 +162,10 @@ class IndexManager:
         current_index = await self.get_current_index_name()
 
         if current_index is None:
-            # First time setup
             index_name = self._generate_index_name(1)
 
-            # Create the index
             await self._create_index_with_mapping(index_name)
 
-            # Create the alias
             await self.client.indices.put_alias(index=index_name, name=self.alias_name)
 
             logger.info(
@@ -215,7 +211,6 @@ class IndexManager:
             logger.info(msg)
             current_version = 0
 
-        # Create new versioned index
         new_version = current_version + 1
         destination_index = self._generate_index_name(new_version)
 
@@ -279,7 +274,7 @@ class IndexManager:
 
         # The task management API is in technical preview at time of writing
         # But has been in technical preview for four major versions.
-        # So we're probably fine. Some nasty logs though.
+        # So we're fine. Some nasty logs though.
         task = await self.client.tasks.get(task_id=response["task"])
 
         while not task["completed"]:
@@ -327,7 +322,6 @@ class IndexManager:
             index_name: Name of index to delete
 
         """
-        # Check if index has any aliases
         try:
             alias_info = await self.client.indices.get_alias(index=index_name)
             if index_name in alias_info and alias_info[index_name]["aliases"]:
@@ -338,22 +332,25 @@ class IndexManager:
         except NotFoundError:
             pass
 
-        # Delete the index
         await self.client.indices.delete(index=index_name)
         logger.info("Deleted old index: %s", index_name)
 
-    async def rollback(self, target_version: int | None = None) -> str:
+    async def rollback(
+        self, target_version: int | None = None, target_index: str | None = None
+    ) -> str:
         """
         Rollback to a previous version or the previous version if not specified.
 
         Args:
-            target_version: Version to rollback to (defaults to current - 1)
+            target_version: Version to rollback to (defaults to current - 1) OR
+            target_index: for backwards compatibilitiy until all indices are renamed.
 
         Returns:
             The index name that was rolled back to
 
         Raises:
-            ValueError: If target version doesn't exist
+            ValueError: If there is no current index to roll back from
+            ValueError: If the target index/version doesn't exist
             ValueError: If the target version is invalid (e.g. 0 or earlier)
 
         """
@@ -364,25 +361,24 @@ class IndexManager:
 
         current_version = await self.get_current_version(index_name=current_index)
 
-        if current_version is None or current_version == 1:
+        if current_version is None or (current_version == 1 and target_index is None):
             msg = "Cannot rollback: no previous version available"
             raise ValueError(msg)
 
-        if target_version is None:
-            target_version = current_version - 1
+        if target_index is None:
+            if target_version is None:
+                target_version = current_version - 1
 
-        if target_version < 1:
-            msg = "Cannot rollback: cannot target version of zero or earlier."
-            raise ValueError(msg)
+            if target_version < 1:
+                msg = "Cannot rollback: cannot target version of zero or earlier."
+                raise ValueError(msg)
 
-        target_index = self._generate_index_name(target_version)
+            target_index = self._generate_index_name(target_version)
 
-        # Check if target index exists
         if not await self.client.indices.exists(index=target_index):
             msg = f"Target index {target_index} does not exist"
             raise ValueError(msg)
 
-        # Switch alias back
         await self._switch_alias(current_index, target_index)
 
         logger.info("Rolled back from %s to %s", current_index, target_index)
