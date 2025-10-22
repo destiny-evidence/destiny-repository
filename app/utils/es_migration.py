@@ -18,7 +18,7 @@ INDICES = {
 }
 
 
-async def run_migration(indices: list[str]) -> None:
+async def run_migration(indices: list[str], operation: str) -> None:
     """Run elasticsearch index migrations."""
     es_config = get_settings().es_config
 
@@ -28,8 +28,11 @@ async def run_migration(indices: list[str]) -> None:
         for index_name in indices:
             document_class = INDICES[index_name]
             manager = IndexManager(document_class, index_name, client)
-            # If the index does not exist, migrating will create it.
-            await manager.migrate()
+            if operation == "migrate":
+                # If the index does not exist, migrating will create it.
+                await manager.migrate(delete_old=False)
+            elif operation == "rollback":
+                await manager.rollback()
 
     await es_manager.close()
 
@@ -47,6 +50,15 @@ def argument_parser() -> argparse.ArgumentParser:
         required=True,
     )
 
+    parser.add_argument(
+        "-o",
+        "--operation",
+        type=str,
+        choices=["migrate", "rollback"],
+        help="Whether to migrate the index forward or roll back to a previous index.",
+        required=True,
+    )
+
     return parser
 
 
@@ -56,4 +68,4 @@ if __name__ == "__main__":
 
     indices = [*INDICES] if args.index == "all" else [args.index]
 
-    asyncio.run(run_migration(indices=indices))
+    asyncio.run(run_migration(indices=indices, operation=args.operation))
