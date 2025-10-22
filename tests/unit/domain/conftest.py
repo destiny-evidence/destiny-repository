@@ -99,8 +99,8 @@ class FakeRepository:
             self.repository[record.id] = record
         else:
             existing_record = self.repository[record.id]
-            for key, value in record.model_dump().items():
-                setattr(existing_record, key, value)
+            for field in record.model_fields_set:
+                setattr(existing_record, field, getattr(record, field))
         return self.repository[record.id]
 
     async def verify_pk_existence(self, pks: list[UUID]) -> None:

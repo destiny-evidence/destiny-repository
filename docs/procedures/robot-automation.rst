@@ -22,7 +22,7 @@ Robot Automations
                 DR->>DR: Deduplicate Reference
                 DR->>ES: Percolate new Reference
                 loop For each matching robot
-                    DR->>R: Enhancement Request with matching References
+                    DR->>R: Register pending enhancements
                 end
                 loop Continuous polling
                     R->>DR: POST /robot-enhancement-batches/ : Poll for work
@@ -33,7 +33,7 @@ Robot Automations
             DR->>DR: Ingest Enhancements
             DR->>ES: Percolate new Enhancements
             loop For each matching robot
-                DR->>R: Enhancement Request with matching References
+                DR->>R: Register pending enhancements
             end
             loop Continuous polling
                 R->>DR: POST /robot-enhancement-batches/ : Poll for work
@@ -46,15 +46,15 @@ Robot Automations
     flowchart TD
     subgraph Repository
             G_R([Reference]) --> G_R1[Ingest Reference]
-            G_R1 --> G_AUTO{Robot Automation Percolation}
-            G_AUTO --> G_REQ[Create EnhancementRequests]
+            G_R1 --> G_AUTO{Automation Percolation}
+            G_AUTO --> G_REQ[Add Pending Enhancements]
             G_R1 --> G_P[(Persistence)]
             G_REQ --> G_P[(Persistence)]
             G_REPO_PROC[Ingest Enhancement] --> G_P
             G_REPO_PROC --> G_AUTO
         end
         subgraph "Robot(s)"
-            G_POLL[Robot Polling] --> G_BATCH[Fetch RobotEnhancementBatch]
+            G_POLL[Robot Polling] --> G_BATCH[RobotEnhancementBatch]
             G_P --> G_BATCH
             G_BATCH --> G_ROBOT_PROC[Process Batch]
             G_ROBOT_PROC --> G_UPLOAD[Upload Results]
@@ -70,7 +70,7 @@ Context
 
 Robot automations allow :doc:`Enhancement Requests <requesting-batch-enhancements>` to be automatically triggered based on criteria on incoming references or enhancements. This is achieved through a :attr:`percolator query <libs.sdk.src.destiny_sdk.robots.RobotAutomation.query>` registered by the robot owner in the data repository using the `/enhancement-requests/automations/` endpoint.
 
-When references or enhancements match the automation criteria, the data repository creates `EnhancementRequest` objects for the matching robots. Robots can discover and process work through polling. When a robot polls for work, the repository creates a `RobotEnhancementBatch` on-demand containing available pending enhancements for that robot, up to a configurable batch size limit.
+When references or enhancements match the automation criteria, the data repository creates `PendingEnhancement` objects for the matching robots. Robots can discover and process work through polling. When a robot polls for work, the repository creates a `RobotEnhancementBatch` on-demand containing available pending enhancements for that robot, up to a configurable batch size limit.
 
 Percolation
 -----------
