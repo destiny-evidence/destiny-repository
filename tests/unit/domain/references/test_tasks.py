@@ -39,11 +39,11 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
         status="RECEIVED",
         source="test_source",
     )
-    mock_register_request = AsyncMock(return_value=expected_request)
+    mock_create_pending_enhancements = AsyncMock(return_value=expected_request)
     monkeypatch.setattr(
         ReferenceService,
-        "register_reference_enhancement_request",
-        mock_register_request,
+        "create_pending_enhancements",
+        mock_create_pending_enhancements,
     )
 
     mock_detect_robot_automations = AsyncMock(
@@ -59,7 +59,7 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
         mock_detect_robot_automations,
     )
 
-    requests = await detect_and_dispatch_robot_automations(
+    await detect_and_dispatch_robot_automations(
         reference_service=ReferenceService(
             ReferenceAntiCorruptionService(fake_repository), fake_uow(), fake_uow()
         ),
@@ -67,16 +67,13 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
         enhancement_ids=in_enhancement_ids,
         source_str="test_source",
     )
-    assert len(requests) == 1
-    assert requests[0] == expected_request
 
-    mock_register_request.assert_awaited_once()
-    assert set(
-        mock_register_request.call_args[1]["enhancement_request"].reference_ids
-    ) == {reference.id}
-    assert (
-        mock_register_request.call_args[1]["enhancement_request"].robot_id == robot_id
-    )
+    mock_create_pending_enhancements.assert_awaited_once()
+    assert set(mock_create_pending_enhancements.call_args[1]["reference_ids"]) == {
+        reference.id
+    }
+    assert mock_create_pending_enhancements.call_args[1]["robot_id"] == robot_id
+    assert mock_create_pending_enhancements.call_args[1]["source"] == "test_source"
     mock_detect_robot_automations.assert_awaited_once_with(
         reference=reference, enhancement_ids=in_enhancement_ids
     )

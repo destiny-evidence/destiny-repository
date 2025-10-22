@@ -580,8 +580,10 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
     robot_id: Mapped[uuid.UUID] = mapped_column(
         UUID, ForeignKey("robot.id"), nullable=False
     )
-    enhancement_request_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("enhancement_request.id"), nullable=False
+    enhancement_request_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("enhancement_request.id"),
+        nullable=True,
     )
     robot_enhancement_batch_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID, ForeignKey("robot_enhancement_batch.id"), nullable=True
@@ -591,6 +593,7 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
         nullable=False,
         default=PendingEnhancementStatus.PENDING,
     )
+    source: Mapped[str | None] = mapped_column(String, nullable=True)
 
     robot_enhancement_batch: Mapped["RobotEnhancementBatch"] = relationship(
         "RobotEnhancementBatch", back_populates="pending_enhancements"
@@ -629,6 +632,7 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
             enhancement_request_id=domain_obj.enhancement_request_id,
             robot_enhancement_batch_id=domain_obj.robot_enhancement_batch_id,
             status=domain_obj.status,
+            source=domain_obj.source,
         )
 
     def to_domain(
@@ -643,6 +647,7 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
             enhancement_request_id=self.enhancement_request_id,
             robot_enhancement_batch_id=self.robot_enhancement_batch_id,
             status=self.status,
+            source=self.source,
         )
 
 
