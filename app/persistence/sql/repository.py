@@ -385,7 +385,7 @@ class GenericAsyncSqlRepository(
 
     @trace_repository_method(tracer)
     async def add_bulk(
-        self, records: list[GenericDomainModelType]
+        self, records: Collection[GenericDomainModelType]
     ) -> list[GenericDomainModelType]:
         """
         Add multiple records to the repository in bulk.
