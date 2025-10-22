@@ -4,7 +4,6 @@ import contextlib
 from collections.abc import AsyncIterator
 
 from elasticsearch import AsyncElasticsearch
-from elasticsearch.exceptions import BadRequestError
 
 from app.core.config import ESConfig
 from app.core.telemetry.logger import get_logger
@@ -54,21 +53,6 @@ class AsyncESClientManager:
             else:
                 msg = "No valid Elasticsearch configuration provided."
                 raise ValueError(msg)
-
-        for index in indices:
-            exists = await self._client.indices.exists(index=index.Index.name)
-            if not exists:
-                logger.info("Creating index", index=index.Index.name)
-                try:
-                    await index.init(using=self._client)
-                except BadRequestError as e:
-                    # Handle race condition where index was created between check/init
-                    if "resource_already_exists_exception" in str(e):
-                        logger.info(
-                            "Index already exists, skipping", index=index.Index.name
-                        )
-                    else:
-                        raise
 
     async def close(self) -> None:
         """Close the Elasticsearch client."""

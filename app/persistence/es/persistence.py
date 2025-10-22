@@ -11,8 +11,6 @@ from app.persistence.generics import GenericDomainModelType
 
 settings = get_settings()
 
-INDEX_PREFIX = f"destiny-repository-{settings.env}"
-
 
 # NB does not inherit ABC due to metadata mixing issues.
 # https://stackoverflow.com/a/49668970
