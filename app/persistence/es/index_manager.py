@@ -91,9 +91,7 @@ class IndexManager:
         """
         WARNING: DESTRUCTIVE ACTION.
 
-        Rebuild the current index.
-
-        Delete and then recreate the index with the same name.
+        Rebuild the current index buy deleting, recreating, and repopulating.
         """
         current_index_name = await self.get_current_index_name()
 
@@ -114,6 +112,8 @@ class IndexManager:
         await self.client.indices.put_alias(
             index=current_index_name, name=self.alias_name
         )
+
+        await self.repair_index()
 
     async def repair_index(self) -> None:
         """Repair the current index."""
