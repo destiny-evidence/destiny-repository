@@ -280,10 +280,8 @@ async def test_repair_reference_index_with_rebuild(
     session: AsyncSession,
 ) -> None:
     """Test repairing the reference index with rebuild flag."""
-    index_name = ReferenceDocument.Index.name
-
     # Ensure index exists first
-    index_manager = IndexManager(ReferenceDocument, index_name, es_client)
+    index_manager = IndexManager(ReferenceDocument, es_client)
     await index_manager.initialize_index()
 
     # Add sample data to SQL
@@ -340,12 +338,8 @@ async def test_repair_robot_automation_percolation_index_with_rebuild(
     session: AsyncSession,
 ) -> None:
     """Test repairing the robot automation percolation index with rebuild flag."""
-    index_name = RobotAutomationPercolationDocument.Index.name
-
     # Ensure index exists first
-    index_manager = IndexManager(
-        RobotAutomationPercolationDocument, index_name, es_client
-    )
+    index_manager = IndexManager(RobotAutomationPercolationDocument, es_client)
     await index_manager.initialize_index()
 
     # Add sample robot and robot automation to SQL

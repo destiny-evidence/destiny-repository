@@ -34,9 +34,7 @@ async def refresh_reference_index(es_client: AsyncElasticsearch) -> None:
     This just compresses race conditions in tests that check ES state immediately
     after an operation that modifies it.
     """
-    index_manager = IndexManager(
-        ReferenceDocument, ReferenceDocument.Index.name, es_client
-    )
+    index_manager = IndexManager(ReferenceDocument, es_client)
     await index_manager.refresh_index()
 
 
@@ -49,7 +47,6 @@ async def refresh_robot_automation_index(es_client: AsyncElasticsearch) -> None:
     """
     index_manager = IndexManager(
         RobotAutomationPercolationDocument,
-        RobotAutomationPercolationDocument.Index.name,
         es_client,
     )
     await index_manager.refresh_index()

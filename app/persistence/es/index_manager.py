@@ -24,15 +24,13 @@ class IndexManager:
     migrations by creating new indices and switching the alias atomically.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         document_class: type[AsyncDocument],
-        alias_name: str,
         client: AsyncElasticsearch,
         repair_task: AsyncTaskiqDecoratedTask[..., Coroutine[Any, Any, None]]
         | None = None,
         version_prefix: str = "v",
-        batch_size: int = 1000,
         reindex_status_polling_interval: float = 5,
     ) -> None:
         """
@@ -40,23 +38,19 @@ class IndexManager:
 
         Args:
             document_class: The AsyncDocument subclass defining the mapping
-            alias_name: The alias name (defaults to document_class._index._name)
             client: AsyncElasticsearch client
             repair_task: Asynchronous task used to repair an index (defaults None)
             version_prefix: Prefix for version numbers in index names
-            batch_size: Batch size for reindexing operations
             reindex_status_polling_interval: How often to check status of reindexing (defaults 5s)
 
         """  # noqa: E501
         self.document_class = document_class
         self.client = client
         self.repair_task = repair_task
-        self.batch_size = batch_size
         self.version_prefix = version_prefix
         self.reindex_status_polling_interval = reindex_status_polling_interval
 
-        self.base_index_name = document_class.Index.name
-        self.alias_name = alias_name or self.base_index_name
+        self.alias_name = document_class.Index.name
 
     async def get_current_version(self, index_name: str | None = None) -> int | None:
         """
@@ -138,7 +132,7 @@ class IndexManager:
 
     def _generate_index_name(self, version: int) -> str:
         """Generate a versioned index name."""
-        return f"{self.base_index_name}_{self.version_prefix}{version}"
+        return f"{self.alias_name}_{self.version_prefix}{version}"
 
     async def _create_index_with_mapping(self, index_name: str) -> None:
         """
@@ -266,7 +260,7 @@ class IndexManager:
         # Trigger a reindex task
         response = await self.client.reindex(
             conflicts="proceed",
-            source={"index": source_index, "size": self.batch_size},
+            source={"index": source_index},
             dest={"index": dest_index, "version_type": "external"},
             wait_for_completion=False,
             refresh=True,

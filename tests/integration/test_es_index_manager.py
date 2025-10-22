@@ -73,7 +73,6 @@ async def index_manager(
 
         index_manager = IndexManager(
             DummyDocument,
-            DummyDocument.Index.name,
             client,
             reindex_status_polling_interval=0.1,
         )

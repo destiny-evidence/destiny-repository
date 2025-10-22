@@ -26,7 +26,7 @@ async def run_migration(alias: str) -> None:
 
     async with es_manager.client() as client:
         document_class = INDICES[alias]
-        manager = IndexManager(document_class, alias, client)
+        manager = IndexManager(document_class, client)
 
         await manager.migrate(delete_old=False)
 
@@ -41,7 +41,7 @@ async def run_rollback(alias: str, target_index: str | None = None) -> None:
 
     async with es_manager.client() as client:
         document_class = INDICES[alias]
-        manager = IndexManager(document_class, alias, client)
+        manager = IndexManager(document_class, client)
 
         await manager.rollback(target_index=target_index)
 

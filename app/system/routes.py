@@ -43,13 +43,11 @@ def index_managers(
     return {
         ReferenceDocument.Index.name: IndexManager(
             document_class=ReferenceDocument,
-            alias_name=ReferenceDocument.Index.name,
             repair_task=repair_reference_index,
             client=es_client,
         ),
         RobotAutomationPercolationDocument.Index.name: IndexManager(
             document_class=RobotAutomationPercolationDocument,
-            alias_name=RobotAutomationPercolationDocument.Index.name,
             repair_task=repair_robot_automation_percolation_index,
             client=es_client,
         ),
