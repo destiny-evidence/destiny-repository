@@ -10,6 +10,7 @@ from destiny_sdk.identifiers import DOIIdentifier
 from destiny_sdk.references import ReferenceFileInput
 
 from app.core.exceptions import (
+    DuplicateEnhancementError,
     InvalidParentEnhancementError,
     SQLNotFoundError,
 )
@@ -124,7 +125,7 @@ async def test_add_enhancement_happy_path(
     reference_enhancements = repo_refs.get_first_record().enhancements
 
     assert len(reference_enhancements) == 1
-    assert Enhancement(**reference_enhancements[0]).id == enhancement_to_add.id
+    assert reference_enhancements[0].id == enhancement_to_add.id
 
 
 @pytest.mark.asyncio
@@ -222,7 +223,30 @@ async def test_add_enhancement_derived_from_enhancement_for_duplicate_reference(
     )
 
     reference = await service.add_enhancement(enhancement_to_add)
-    assert reference.enhancements[0]["id"] == enhancement_to_add.id
+    assert reference.enhancements[0].id == enhancement_to_add.id
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_duplicate_enhancement(
+    fake_repository, fake_uow, fake_enhancement_data
+):
+    dummy_reference = Reference(id=uuid.uuid4())
+    repo_refs = fake_repository(init_entries=[dummy_reference])
+    uow = fake_uow(references=repo_refs)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+
+    enhancement_to_add = Enhancement(
+        reference_id=dummy_reference.id, **fake_enhancement_data
+    )
+
+    # First addition should succeed
+    await service.add_enhancement(enhancement_to_add)
+
+    # Second addition with the same data should raise DuplicateEnhancementError
+    with pytest.raises(DuplicateEnhancementError):
+        await service.add_enhancement(enhancement_to_add)
 
 
 @pytest.mark.asyncio

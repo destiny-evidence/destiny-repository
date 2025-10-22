@@ -10,6 +10,7 @@ from app.core.config import (
     get_settings,
 )
 from app.core.exceptions import (
+    DuplicateEnhancementError,
     InvalidParentEnhancementError,
     SQLNotFoundError,
 )
@@ -213,6 +214,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             enhancement.reference_id,
             preload=["enhancements", "identifiers", "duplicate_references"],
         )
+
+        incoming_enhancement_hash = enhancement.hash_data()
+        for existing_enhancement in reference.enhancements or []:
+            if existing_enhancement.hash_data() == incoming_enhancement_hash:
+                detail = (
+                    "An exact duplicate enhancement already exists on this reference."
+                )
+                raise DuplicateEnhancementError(detail)
 
         if enhancement.derived_from:
             valid_derived_reference_ids = {
@@ -481,6 +490,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             return (
                 False,
                 "Reference does not exist.",
+            )
+        except DuplicateEnhancementError:
+            return (
+                False,
+                "Exact duplicate enhancement already exists on reference.",
             )
         except Exception:
             logger.exception(

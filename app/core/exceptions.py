@@ -520,3 +520,17 @@ class DeduplicationValueError(DeduplicationError, ValueError):
 
         """
         super().__init__(detail)
+
+
+class DuplicateEnhancementError(DestinyRepositoryError):
+    """An exception for when an exact duplicate enhancement is detected."""
+
+    def __init__(self, detail: str) -> None:
+        """
+        Initialize the DuplicateEnhancementError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+
+        """
+        super().__init__(detail)
