@@ -266,3 +266,9 @@ variable "feature_flags" {
   type        = map(bool)
   default     = {}
 }
+
+variable "default_upload_file_chunk_size" {
+  description = "Default number of entries to write per file upload chunk"
+  type        = number
+  default     = 1
+}

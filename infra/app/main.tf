@@ -98,6 +98,10 @@ locals {
     {
       name  = "FEATURE_FLAGS"
       value = jsonencode(var.feature_flags)
+    },
+    {
+      name  = "DEFAULT_UPLOAD_FILE_CHUNK_SIZE",
+      value = tostring(var.default_upload_file_chunk_size)
     }
   ]
 
