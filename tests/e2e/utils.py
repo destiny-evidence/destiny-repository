@@ -20,7 +20,6 @@ from app.domain.references.models.es import (
 )
 from app.domain.references.models.models import DuplicateDetermination, Reference
 from app.domain.references.models.sql import ReferenceDuplicateDecision
-from app.persistence.es.index_manager import IndexManager
 
 
 class TestPollingExhaustedError(Exception):
@@ -34,8 +33,7 @@ async def refresh_reference_index(es_client: AsyncElasticsearch) -> None:
     This just compresses race conditions in tests that check ES state immediately
     after an operation that modifies it.
     """
-    index_manager = IndexManager(ReferenceDocument, es_client)
-    await index_manager.refresh_index()
+    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
 
 
 async def refresh_robot_automation_index(es_client: AsyncElasticsearch) -> None:
@@ -45,11 +43,7 @@ async def refresh_robot_automation_index(es_client: AsyncElasticsearch) -> None:
     This just compresses race conditions in tests that check ES state immediately
     after an operation that modifies it.
     """
-    index_manager = IndexManager(
-        RobotAutomationPercolationDocument,
-        es_client,
-    )
-    await index_manager.refresh_index()
+    await es_client.indices.refresh(index=RobotAutomationPercolationDocument.Index.name)
 
 
 async def submit_happy_import_batch(

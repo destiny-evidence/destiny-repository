@@ -128,7 +128,7 @@ async def test_initialise_es_index_is_idempotent(index_manager: IndexManager):
     assert doc_added == "created"
 
     # Refresh the index to ensure document available
-    await index_manager.refresh_index()
+    await index_manager.client.indices.refresh(index=index_name)
 
     # Call the initialisation again
     await index_manager.initialize_index()
@@ -158,7 +158,7 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
         assert doc_added == "created"
 
     # Refresh the index to ensure documents available
-    await index_manager.refresh_index()
+    await index_manager.client.indices.refresh(index=index_manager.alias_name)
 
     # Get current index name so we can verify it is deleted
     old_index_name = await index_manager.get_current_index_name()
@@ -254,7 +254,7 @@ async def test_reindex_preserves_data_updated_in_source(index_manager: IndexMana
     assert doc_added == "created"
 
     # Refresh the index to ensure document available
-    await index_manager.refresh_index()
+    await index_manager.client.indices.refresh(index=src_index_name)
 
     # Create our destination index
     dest_index_name = "dummy_v2"
@@ -332,7 +332,7 @@ async def test_reindex_succeeds_on_version_clash(index_manager: IndexManager):
     assert doc_added == "created"
 
     # Refresh the index to ensure document available
-    await index_manager.refresh_index()
+    await index_manager.client.indices.refresh(index=src_index_name)
 
     # Assert that document in src index with version 1
     doc_from_src_index = await index_manager.client.get(
@@ -404,7 +404,7 @@ async def test_reindex_does_not_delete_documents_from_destination(
     assert doc_added == "created"
 
     # Refresh document to make available to search
-    await index_manager.refresh_index()
+    await index_manager.client.indices.refresh(index=dest_index_name)
 
     # Reindex from src to destination
     await index_manager._reindex_data(  # noqa: SLF001
@@ -433,7 +433,7 @@ async def test_rollback_to_previous_version(index_manager: IndexManager):
     assert doc_added == "created"
 
     # Refresh the index to ensure document available
-    await index_manager.refresh_index()
+    await index_manager.client.indices.refresh(index=index_manager.alias_name)
 
     # Assert the count of documents in the migrated index is 1
     count = await index_manager.client.count(index=index_manager.alias_name)

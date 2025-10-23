@@ -122,14 +122,6 @@ class IndexManager:
             raise NotFoundError(msg)
         await queue_task_with_trace(self.repair_task)
 
-    async def refresh_index(self) -> None:
-        """Refresh the index."""
-        current_index_name = await self.get_current_index_name()
-        if not current_index_name:
-            msg = f"Index with alias {self.alias_name} has not been initialized."
-            raise NotFoundError(msg)
-        await self.client.indices.refresh(index=current_index_name)
-
     def _generate_index_name(self, version: int) -> str:
         """Generate a versioned index name."""
         return f"{self.alias_name}_{self.version_prefix}{version}"

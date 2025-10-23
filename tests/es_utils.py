@@ -27,10 +27,10 @@ async def clean_test_indices(client: AsyncElasticsearch):
     for index in indices:
         index_manager = IndexManager(index, client)
         current_index_name = await index_manager.get_current_index_name()
-        await index_manager.refresh_index()
+        await client.indices.refresh(index=current_index_name)
         await index_manager.client.delete_by_query(
             index=current_index_name,
             body={"query": {"match_all": {}}},
             conflicts="proceed",
         )
-        await index_manager.refresh_index()
+        await client.indices.refresh(index=current_index_name)
