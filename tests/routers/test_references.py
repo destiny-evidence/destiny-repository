@@ -1,5 +1,6 @@
 """Defines tests for the references router."""
 
+import datetime
 import uuid
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, patch
@@ -163,6 +164,7 @@ async def add_pending_enhancement(
         robot_id=enhancement_request.robot_id,
         enhancement_request_id=enhancement_request.id,
         status=PendingEnhancementStatus.PENDING,
+        expires_at=datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=10),
     )
     session.add(pending_enhancement)
     await session.commit()

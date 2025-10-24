@@ -1,5 +1,6 @@
 """Models associated with references."""
 
+import datetime
 import uuid
 from enum import StrEnum, auto
 from typing import Any, Literal, Self
@@ -14,6 +15,7 @@ from pydantic import (
     BaseModel,
     Field,
     TypeAdapter,
+    field_validator,
     model_validator,
 )
 
@@ -579,21 +581,23 @@ class PendingEnhancementStatus(StrEnum):
 
     **Allowed values**:
     - `pending`: Enhancement is waiting to be processed.
-    - `accepted`: Enhancement has been accepted for processing.
+    - `processing`: Enhancement is currently being processed.
     - `importing`: Enhancement is currently being imported.
     - `indexing`: Enhancement is currently being indexed.
     - `indexing_failed`: Enhancement indexing has failed.
     - `completed`: Enhancement has been processed successfully.
     - `failed`: Enhancement processing has failed.
+    - `expired`: Enhancement lease has expired during processing.
     """
 
     PENDING = auto()
-    ACCEPTED = auto()
+    PROCESSING = auto()
     IMPORTING = auto()
     INDEXING = auto()
     INDEXING_FAILED = auto()
     COMPLETED = auto()
     FAILED = auto()
+    EXPIRED = auto()
 
 
 class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
@@ -632,6 +636,32 @@ class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
             "if not an enhancement request."
         ),
     )
+    expires_at: datetime.datetime = Field(
+        # TODO (Adam): remove after fulfilling #338  # noqa: TD003
+        # This provides back-compatibility.
+        # (Some unit tests will need updating to provide a value)
+        default=datetime.datetime(1970, 1, 1, tzinfo=datetime.UTC),
+        description="The datetime at which the pending enhancement expires.",
+    )
+    retry_of: UUID4 | None = Field(
+        default=None,
+        description=(
+            "The ID of the pending enhancement that this is a retry of, if any."
+        ),
+    )
+
+    @field_validator("expires_at", mode="before")
+    @classmethod
+    def set_expires_at(
+        cls, val: datetime.datetime | datetime.timedelta
+    ) -> datetime.datetime:
+        """Allow setting expires_at as a timedelta from now on instantiation."""
+        if isinstance(val, datetime.timedelta):
+            if val <= datetime.timedelta(0):
+                msg = "expires_at timedelta must be positive"
+                raise ValueError(msg)
+            return datetime.datetime.now(datetime.UTC) + val
+        return val
 
     @model_validator(mode="after")
     def check_enhancement_request_or_source_present(self) -> Self:

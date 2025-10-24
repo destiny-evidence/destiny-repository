@@ -1,9 +1,10 @@
 """Objects used to interface with SQL implementations."""
 
+import datetime
 import uuid
 from typing import Any, Self
 
-from sqlalchemy import UUID, Enum, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import UUID, DateTime, Enum, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
 from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -594,6 +595,10 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
         default=PendingEnhancementStatus.PENDING,
     )
     source: Mapped[str | None] = mapped_column(String, nullable=True)
+    expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))
+    retry_of: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("pending_enhancement.id"), nullable=True
+    )
 
     robot_enhancement_batch: Mapped["RobotEnhancementBatch"] = relationship(
         "RobotEnhancementBatch", back_populates="pending_enhancements"
@@ -617,6 +622,11 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
             postgresql_where="robot_enhancement_batch_id IS NULL",
         ),
         Index(
+            "ix_pending_enhancement_processing",
+            "status",
+            postgresql_where=(status == PendingEnhancementStatus.PROCESSING),
+        ),
+        Index(
             "ix_pending_enhancement_robot_enhancement_batch_id",
             "robot_enhancement_batch_id",
         ),
@@ -633,6 +643,8 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
             robot_enhancement_batch_id=domain_obj.robot_enhancement_batch_id,
             status=domain_obj.status,
             source=domain_obj.source,
+            expires_at=domain_obj.expires_at,
+            retry_of=domain_obj.retry_of,
         )
 
     def to_domain(
@@ -648,6 +660,8 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
             robot_enhancement_batch_id=self.robot_enhancement_batch_id,
             status=self.status,
             source=self.source,
+            expires_at=self.expires_at,
+            retry_of=self.retry_of,
         )
 
 
