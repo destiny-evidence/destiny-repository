@@ -292,7 +292,7 @@ async def test_import_batch_status_projection(
         ([], None),  # No pending enhancements -> keep original status
         ([PendingEnhancementStatus.PENDING], EnhancementRequestStatus.RECEIVED),
         (
-            [PendingEnhancementStatus.ACCEPTED],
+            [PendingEnhancementStatus.PROCESSING],
             EnhancementRequestStatus.PROCESSING,
         ),
         (
@@ -335,7 +335,7 @@ async def test_import_batch_status_projection(
         (
             [
                 PendingEnhancementStatus.PENDING,
-                PendingEnhancementStatus.ACCEPTED,
+                PendingEnhancementStatus.PROCESSING,
             ],
             EnhancementRequestStatus.PROCESSING,
         ),
@@ -403,6 +403,7 @@ async def test_enhancement_request_status_projection(
                 robot_id=robot_id,
                 enhancement_request_id=request_id,
                 status=status,
+                expires_at=datetime.timedelta(seconds=10),
             )
         )
         session.add(pending_enhancement)
