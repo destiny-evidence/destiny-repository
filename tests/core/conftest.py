@@ -190,6 +190,10 @@ async def broker(
     :param queue_name: test queue name.
     :yield: broker.
     """
+    # Clear global pending_tasks before each test for isolation
+    global pending_tasks  # noqa: PLW0602
+    pending_tasks.clear()
+
     broker = AzureServiceBusBroker(
         connection_string=connection_string,
         queue_name=queue_name,
