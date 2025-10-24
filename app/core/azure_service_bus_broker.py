@@ -171,6 +171,9 @@ class AzureServiceBusBroker(AsyncBroker):
                 "message_id": message.task_id,
                 "correlation_id": message.task_id,
             },
+            annotations={
+                "renew_lock": message.labels.get("renew_lock", False),
+            },
         )
 
         # Handle delay
@@ -208,13 +211,21 @@ class AzureServiceBusBroker(AsyncBroker):
 
                 # Process each message
                 for sb_message in batch_messages:
-                    if self.auto_lock_renewer_receiver:
-                        self.auto_lock_renewer.register(
-                            self.auto_lock_renewer_receiver, sb_message
-                        )
+                    if isinstance(sb_message, ServiceBusReceivedMessage):
+                        annotations = sb_message.raw_amqp_message.annotations
+                    elif isinstance(sb_message, AmqpAnnotatedMessage):
+                        annotations = sb_message.annotations
                     else:
-                        msg = "Auto lock renewer receiver is None, cannot register."
-                        logger.error(msg)
+                        annotations = None
+                    if (annotations or {}).get("renew_lock", False):
+                        if self.auto_lock_renewer_receiver:
+                            logger.info("Registering message for auto lock renewal")
+                            self.auto_lock_renewer.register(
+                                self.auto_lock_renewer_receiver, sb_message
+                            )
+                        else:
+                            msg = "Auto lock renewer receiver is None, cannot register."
+                            logger.error(msg)
 
                     async def ack_message(
                         sb_message: ServiceBusReceivedMessage = sb_message,

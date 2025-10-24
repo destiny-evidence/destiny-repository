@@ -31,6 +31,7 @@ settings = get_settings()
 async def queue_task_with_trace(
     task: AsyncTaskiqDecoratedTask | tuple[str, str],
     *args: object,
+    renew_lock: bool = False,
     **kwargs: object,
 ) -> None:
     """
@@ -47,6 +48,8 @@ async def queue_task_with_trace(
             msg = "String path must resolve to an AsyncTaskiqDecoratedTask"
             raise TypeError(msg)
         task = imported_task
+
+    task.labels["renew_lock"] = renew_lock
 
     logger.info(
         "Queueing task",

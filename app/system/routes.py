@@ -131,7 +131,7 @@ async def repair_elasticsearch_index(
         logger.info("Recreating index", index=index_name)
         await index.init(using=es_client)
 
-    await queue_task_with_trace(repair_task)
+    await queue_task_with_trace(repair_task, renew_lock=True)
     return JSONResponse(
         content={
             "status": "ok",
