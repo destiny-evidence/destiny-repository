@@ -105,6 +105,18 @@ async def import_reference(
             raise RuntimeError(msg)
         trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_result.import_batch_id))
 
+        if import_result.status in (
+            ImportResultStatus.PARTIALLY_FAILED,
+            ImportResultStatus.FAILED,
+            ImportResultStatus.COMPLETED,
+        ):
+            logger.info(
+                "Import result has already processed, skipping task.",
+                import_result_id=import_result.id,
+                status=import_result.status,
+            )
+            return
+
         import_result, duplicate_decision_id = await import_service.import_reference(
             reference_service,
             import_result,
