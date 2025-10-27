@@ -12,10 +12,6 @@ from taskiq import InMemoryBroker
 
 from app.api.exception_handlers import not_found_exception_handler
 from app.core.exceptions import NotFoundError
-from app.domain.references.models.es import (
-    ReferenceDocument,
-    RobotAutomationPercolationDocument,
-)
 from app.domain.references.models.models import EnhancementType, Visibility
 from app.domain.references.models.sql import (
     Enhancement as SQLEnhancement,
@@ -30,6 +26,7 @@ from app.domain.references.models.sql import (
     RobotAutomation as SQLRobotAutomation,
 )
 from app.domain.robots.models.sql import Robot as SQLRobot
+from app.persistence.es.client import AsyncESClientManager
 from app.persistence.es.index_manager import IndexManager
 from app.system import routes as system_routes
 from app.tasks import broker
@@ -281,7 +278,7 @@ async def test_repair_reference_index_with_rebuild(
 ) -> None:
     """Test repairing the reference index with rebuild flag."""
     # Ensure index exists first
-    index_manager = IndexManager(ReferenceDocument, es_client)
+    index_manager = system_routes.reference_index_manager(es_client)
     await index_manager.initialize_index()
 
     # Add sample data to SQL
@@ -339,7 +336,7 @@ async def test_repair_robot_automation_percolation_index_with_rebuild(
 ) -> None:
     """Test repairing the robot automation percolation index with rebuild flag."""
     # Ensure index exists first
-    index_manager = IndexManager(RobotAutomationPercolationDocument, es_client)
+    index_manager = system_routes.robot_automation_percolation_index_manager(es_client)
     await index_manager.initialize_index()
 
     # Add sample robot and robot automation to SQL
@@ -389,6 +386,8 @@ async def test_repair_robot_automation_percolation_index_with_rebuild(
 
 async def test_repair_nonexistent_index(
     client: AsyncClient,
+    # Required to allow successful obtainig of es_client as a system router dependency
+    es_manager_for_tests: AsyncESClientManager,  # noqa: ARG001
 ) -> None:
     """Test attempting to repair a non-existent index returns appropriate error."""
     nonexistent_index_name = "non-existent-index"
@@ -403,6 +402,27 @@ async def test_repair_nonexistent_index(
     assert (
         response_data["detail"]
         == "meta:index with alias non-existent-index does not exist."
+    )
+
+
+async def test_repair_unknown_service(
+    client: AsyncClient,
+    # Required to allow successful obtainig of es_client as a system router dependency
+    es_manager_for_tests: AsyncESClientManager,  # noqa: ARG001
+) -> None:
+    """Test attempting to repair a non-existent index returns appropriate error."""
+    nonexistent_index_name = "non-existent-index"
+
+    response = await client.post(
+        f"/system/indices/{nonexistent_index_name}/repair/",
+        params={"rebuild": False, "service": "whatever"},
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    response_data = response.json()
+    assert (
+        response_data["detail"]
+        == "Only 'elastic' service is supported for index repair."
     )
 
 
