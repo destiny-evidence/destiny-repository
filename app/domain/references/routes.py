@@ -1,5 +1,6 @@
 """Router for handling management of references."""
 
+import datetime
 import uuid
 from typing import Annotated
 
@@ -320,6 +321,13 @@ async def request_robot_enhancement_batch(
             description="The maximum number of pending enhancements to return.",
         ),
     ] = settings.max_pending_enhancements_batch_size,
+    lease: Annotated[
+        datetime.timedelta,
+        Query(
+            description="The duration to lease the pending enhancements for, "
+            "provided in ISO 8601 duration format.",
+        ),
+    ] = settings.default_pending_enhancement_lease_duration,
 ) -> destiny_sdk.robots.RobotEnhancementBatch | Response:
     """
     Request a batch of references to enhance.
@@ -333,7 +341,6 @@ async def request_robot_enhancement_batch(
             "Using max_pending_enhancements_batch_size: %d",
             limit,
         )
-
     pending_enhancements = await reference_service.get_pending_enhancements_for_robot(
         robot_id=robot_id,
         limit=limit,
@@ -344,11 +351,43 @@ async def request_robot_enhancement_batch(
     robot_enhancement_batch = await reference_service.create_robot_enhancement_batch(
         robot_id=robot_id,
         pending_enhancements=pending_enhancements,
+        lease_duration=lease,
         blob_repository=blob_repository,
     )
 
     return await anti_corruption_service.robot_enhancement_batch_to_sdk_robot(
         robot_enhancement_batch
+    )
+
+
+@robot_enhancement_batch_router.patch(
+    "/{robot_enhancement_batch_id}/renew-lease/",
+    response_model=destiny_sdk.robots.RobotEnhancementBatch,
+    summary="Renew the lease on an existing batch of references to enhance",
+    status_code=status.HTTP_200_OK,
+)
+async def renew_robot_enhancement_batch_lease(
+    robot_enhancement_batch_id: uuid.UUID,
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    lease: Annotated[
+        datetime.timedelta,
+        Query(
+            description="The duration to lease the pending enhancements for, "
+            "provided in ISO 8601 duration format."
+        ),
+    ] = settings.default_pending_enhancement_lease_duration,
+) -> Response:
+    """
+    Renew the lease on an existing batch of references to enhance.
+
+    This endpoint is used by robots to extend the lease on enhancement batches.
+    """
+    expiry = await reference_service.renew_robot_enhancement_batch_lease(
+        robot_enhancement_batch_id=robot_enhancement_batch_id,
+        lease_duration=lease,
+    )
+    return Response(
+        content=f"Lease renewed to {expiry}.", status_code=status.HTTP_200_OK
     )
 
 

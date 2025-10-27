@@ -171,6 +171,23 @@ class FakeRepository:
                 updated_count += 1
         return updated_count
 
+    async def bulk_update_by_filter(
+        self, filter_conditions: dict, **kwargs: object
+    ) -> int:
+        """Update multiple records in the repository in bulk by filter."""
+        updated_count = 0
+        for record in self.repository.values():
+            match = True
+            for key, value in filter_conditions.items():
+                if not hasattr(record, key) or getattr(record, key) != value:
+                    match = False
+                    break
+            if match:
+                for key, value in kwargs.items():
+                    setattr(record, key, value)
+                updated_count += 1
+        return updated_count
+
 
 class FakeUnitOfWork:
     def __init__(
