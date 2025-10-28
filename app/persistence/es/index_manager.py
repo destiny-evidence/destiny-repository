@@ -198,16 +198,9 @@ class IndexManager:
         return current_index
 
     @tracer.start_as_current_span("Migrate index")
-    async def migrate(
-        self,
-        *,
-        delete_old: bool = False,
-    ) -> str | None:
+    async def migrate(self) -> str | None:
         """
         Migrate to a new index version.
-
-        Args:
-            delete_old: Delete the old index after successful migration
 
         Returns:
             New index name if migration occurred, None otherwise
@@ -257,10 +250,6 @@ class IndexManager:
         await self._reindex_data(
             source_index=source_index, dest_index=destination_index
         )
-
-        # Delete old index if requested
-        if delete_old:
-            await self._delete_index_safely(source_index)
 
         logger.info("Migration completed successfully to %s", destination_index)
         return destination_index

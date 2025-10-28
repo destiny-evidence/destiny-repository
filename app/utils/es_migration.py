@@ -35,7 +35,7 @@ async def run_migration(alias: str) -> None:
 
     async with es_manager.client() as client:
         index_manager = index_managers[alias](client)
-        await index_manager.migrate(delete_old=False)
+        await index_manager.migrate()
 
     await es_manager.close()
 
@@ -48,7 +48,10 @@ async def run_rollback(alias: str, target_index: str | None = None) -> None:
 
     async with es_manager.client() as client:
         index_manager = index_managers[alias](client)
-        await index_manager.rollback(target_index=target_index)
+        if target_index:
+            await index_manager.rollback(target_index=target_index)
+        else:
+            await index_manager.rollback()
 
     await es_manager.close()
 

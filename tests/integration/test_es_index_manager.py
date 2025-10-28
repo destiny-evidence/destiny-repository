@@ -168,11 +168,11 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
     old_version = await index_manager.get_current_version()
     assert old_version
 
-    await index_manager.migrate(delete_old=True)
+    await index_manager.migrate()
 
-    # Verify the old index has been deleted
+    # Verify the old index has not been deleted
     old_index_exists = await index_manager.client.indices.exists(index=old_index_name)
-    assert not old_index_exists
+    assert old_index_exists
 
     # Verify the version is not None and has incremented
     new_version = await index_manager.get_current_version()
@@ -204,32 +204,11 @@ async def test_we_can_migrate_an_index_with_a_random_name(index_manager: IndexMa
     )
 
     # Migrating should move us over to dummy_v1
-    await index_manager.migrate(delete_old=True)
+    await index_manager.migrate()
 
     current_index_name = await index_manager.get_current_index_name()
     assert current_index_name
     assert current_index_name == "dummy_v1"
-
-
-async def test_old_index_not_deleted_if_flag_unset(index_manager: IndexManager):
-    """Test that we can leave the old index."""
-    # Initialise the index
-    await index_manager.initialize_index()
-
-    # Get current index name so we can verify it is still there
-    old_index_name = await index_manager.get_current_index_name()
-
-    # Call without delete_old flag
-    await index_manager.migrate()
-
-    old_index_exists = await index_manager.client.indices.exists(index=old_index_name)
-    assert old_index_exists
-
-    # Now delete it
-    await index_manager.client.indices.delete(index=old_index_name)
-
-    old_index_exists = await index_manager.client.indices.exists(index=old_index_name)
-    assert not old_index_exists
 
 
 async def test_reindex_preserves_data_updated_in_source(index_manager: IndexManager):
@@ -392,7 +371,7 @@ async def test_reindex_does_not_delete_documents_from_destination(
     assert src_index_name
 
     # Immediately migrate to v2 index, not deleting the old index
-    dest_index_name = await index_manager.migrate(delete_old=False)
+    dest_index_name = await index_manager.migrate()
     assert dest_index_name
 
     # Add a document to the new index
@@ -425,7 +404,7 @@ async def test_rollback_to_previous_version(index_manager: IndexManager):
     await index_manager.initialize_index()
 
     # Migrate the index to the next version
-    await index_manager.migrate(delete_old=False)
+    await index_manager.migrate()
 
     # Add a document to the new index to we can confirm is
     # is _not_ present after we roll back
@@ -508,8 +487,15 @@ async def test_we_do_not_roll_back_to_nonexistent_index(index_manager: IndexMana
     # Initialise the index to version 1
     await index_manager.initialize_index()
 
-    # Immediately migrate to v2, deleting the v1 index
-    await index_manager.migrate(delete_old=True)
+    # Get the current index name
+    current_index = await index_manager.get_current_index_name()
+    assert current_index
+
+    # Immediately migrate to v2
+    await index_manager.migrate()
+
+    # Delete the old index
+    await index_manager._delete_index_safely(index_name=current_index)  # noqa: SLF001
 
     # Try to roll back two versions to zero
     with pytest.raises(NotFoundError, match="Target index dummy_v1 does not exist"):
