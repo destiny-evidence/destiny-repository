@@ -3,13 +3,19 @@
 import argparse
 import asyncio
 
+from elasticsearch import NotFoundError
+from opentelemetry import trace
+
 from app.core.config import get_settings
-from app.core.telemetry.logger import logger_configurer
+from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
+from app.core.telemetry.logger import get_logger, logger_configurer
 from app.core.telemetry.otel import configure_otel
 from app.persistence.es.client import es_manager
 from app.system.routes import index_managers
 
 settings = get_settings()
+logger = get_logger(__name__)
+tracer = trace.get_tracer(__name__)
 
 logger_configurer.configure_console_logger(
     log_level=settings.log_level, rich_rendering=settings.running_locally
@@ -43,6 +49,39 @@ async def run_rollback(alias: str, target_index: str | None = None) -> None:
     async with es_manager.client() as client:
         index_manager = index_managers[alias](client)
         await index_manager.rollback(target_index=target_index)
+
+    await es_manager.close()
+
+
+@tracer.start_as_current_span("Delete index")
+async def delete_old_index(index_to_delete: str) -> None:
+    """
+    Delete an index after checking it is not in use.
+
+    We implement this here instead of the index manager as
+    this is entirely a cleanup step and not linked to a document_class.
+    """
+    trace_attribute(
+        attribute=Attributes.DB_COLLECTION_ALIAS_NAME, value=index_to_delete
+    )
+    name_span(name=f"Delete index {index_to_delete}")
+    es_config = get_settings().es_config
+
+    await es_manager.init(es_config)
+
+    async with es_manager.client() as client:
+        try:
+            alias_info = await client.indices.get_alias(index=index_to_delete)
+            if index_to_delete in alias_info and alias_info[index_to_delete]["aliases"]:
+                logger.warning(
+                    "Index %s still has aliases, skipping deletion", index_to_delete
+                )
+                return
+        except NotFoundError:
+            pass
+
+        await client.indices.delete(index=index_to_delete)
+        logger.info("Deleted old index: %s", index_to_delete)
 
     await es_manager.close()
 
@@ -142,13 +181,14 @@ if __name__ == "__main__":
     validate_args(args)
 
     if args.delete:
-        msg = "deletion not yet implemented."
-        raise NotImplementedError(msg)
+        asyncio.run(delete_old_index(index_to_delete=args.target_index))
 
-    indices = [*index_managers.keys()] if args.alias == "all" else [args.alias]
+    aliases = [*index_managers.keys()] if args.alias == "all" else [args.alias]
 
     if args.migrate:
-        asyncio.run(run_migration(alias=args.index))
+        for alias in aliases:
+            asyncio.run(run_migration(alias=alias))
 
     elif args.rollback:
-        asyncio.run(run_rollback(alias=args.index, target_index=args.target_index))
+        for alias in aliases:
+            asyncio.run(run_rollback(alias=alias, target_index=args.target_index))
