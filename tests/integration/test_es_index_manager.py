@@ -181,7 +181,7 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
 
     # Verify the index name has changed
     new_index_name = await index_manager.get_current_index_name()
-    assert new_index_name == f"{index_manager.alias_name}_v2"
+    assert new_index_name == f"{index_manager.alias_name}_v{new_version}"
 
     # Verify the alias exists on the new index
     alias_exists = await index_manager.client.indices.exists_alias(
@@ -208,7 +208,7 @@ async def test_we_can_migrate_an_index_with_a_random_name(index_manager: IndexMa
 
     current_index_name = await index_manager.get_current_index_name()
     assert current_index_name
-    assert current_index_name == "dummy_v1"
+    assert current_index_name == f"{index_manager.alias_name}_v1"
 
 
 async def test_reindex_preserves_data_updated_in_source(index_manager: IndexManager):
