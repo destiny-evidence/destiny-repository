@@ -362,6 +362,11 @@ class Settings(BaseSettings):
         ),
     )
 
+    cors_allow_origins: list[HttpUrl] = Field(
+        default_factory=list,
+        description="List of allowed origins for CORS.",
+    )
+
     @property
     def running_locally(self) -> bool:
         """Return True if the app is running locally."""

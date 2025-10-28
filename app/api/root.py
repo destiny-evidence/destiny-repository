@@ -6,6 +6,7 @@ from contextlib import AbstractAsyncContextManager
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware import Middleware
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
@@ -53,7 +54,10 @@ def create_v1_router() -> APIRouter:
 
 
 def register_api(
-    lifespan: Callable[[FastAPI], AbstractAsyncContextManager], *, otel_enabled: bool
+    lifespan: Callable[[FastAPI], AbstractAsyncContextManager],
+    cors_allow_origins: list[str],
+    *,
+    otel_enabled: bool,
 ) -> FastAPI:
     """Register the API routers and configure the FastAPI application."""
     app = FastAPI(
@@ -71,6 +75,13 @@ def register_api(
         lifespan=lifespan,
         middleware=[
             Middleware(LoggerMiddleware),
+            Middleware(
+                CORSMiddleware,
+                allow_origins=cors_allow_origins,
+                allow_credentials=True,
+                allow_methods=["*"],
+                allow_headers=["*"],
+            ),
         ],
         exception_handlers={
             NotFoundError: not_found_exception_handler,
