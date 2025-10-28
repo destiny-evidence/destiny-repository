@@ -43,7 +43,7 @@ async def sub_test_reference_index_initial_rebuild(
     # Test repair with rebuild
     response = await client.post(
         f"/system/indices/{index_name}/repair/",
-        params={"rebuild": True, "service": "elastic"},
+        params={"rebuild": True},
     )
 
     assert response.status_code == status.HTTP_202_ACCEPTED
@@ -100,7 +100,7 @@ async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
     # Test repair without rebuild to update existing data
     response = await client.post(
         f"/system/indices/{index_name}/repair/",
-        params={"rebuild": False, "service": "elastic"},
+        params={"rebuild": False},
     )
 
     assert response.status_code == status.HTTP_202_ACCEPTED
@@ -142,7 +142,7 @@ async def sub_test_robot_automation_initial_rebuild(
     # Test repair with rebuild
     response = await client.post(
         f"/system/indices/{index_manager.alias_name}/repair/",
-        params={"rebuild": True, "service": "elastic"},
+        params={"rebuild": True},
     )
 
     assert response.status_code == status.HTTP_202_ACCEPTED
@@ -208,7 +208,7 @@ async def sub_test_robot_automation_update_without_rebuild(  # noqa: PLR0913
     # Test repair without rebuild to update existing data
     response = await client.post(
         f"/system/indices/{index_name}/repair/",
-        params={"rebuild": False, "service": "elastic"},
+        params={"rebuild": False},
     )
 
     assert response.status_code == status.HTTP_202_ACCEPTED
@@ -394,7 +394,7 @@ async def test_repair_nonexistent_index(
 
     response = await client.post(
         f"/system/indices/{nonexistent_index_name}/repair/",
-        params={"rebuild": False, "service": "elastic"},
+        params={"rebuild": False},
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
@@ -402,27 +402,6 @@ async def test_repair_nonexistent_index(
     assert (
         response_data["detail"]
         == "meta:index with alias non-existent-index does not exist."
-    )
-
-
-async def test_repair_unknown_service(
-    client: AsyncClient,
-    # Required to allow successful obtainig of es_client as a system router dependency
-    es_manager_for_tests: AsyncESClientManager,  # noqa: ARG001
-) -> None:
-    """Test attempting to repair a non-existent index returns appropriate error."""
-    nonexistent_index_name = "non-existent-index"
-
-    response = await client.post(
-        f"/system/indices/{nonexistent_index_name}/repair/",
-        params={"rebuild": False, "service": "whatever"},
-    )
-
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    response_data = response.json()
-    assert (
-        response_data["detail"]
-        == "Only 'elastic' service is supported for index repair."
     )
 
 
@@ -446,7 +425,7 @@ async def test_repair_auth_failure(
     # Test with invalid token
     response = await client.post(
         f"/system/indices/{test_index_name}/repair/",
-        params={"rebuild": False, "service": "elastic"},
+        params={"rebuild": False},
         headers={"Authorization": "Bearer invalid-token"},
     )
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -454,7 +433,7 @@ async def test_repair_auth_failure(
     # Test with missing auth header
     response = await client.post(
         f"/system/indices/{test_index_name}/repair/",
-        params={"rebuild": False, "service": "elastic"},
+        params={"rebuild": False},
     )
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert response.text == '{"detail":"Authorization HTTPBearer header missing."}'

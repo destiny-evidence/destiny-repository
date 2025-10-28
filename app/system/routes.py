@@ -89,21 +89,6 @@ def choose_auth_strategy_administrator() -> AuthMethod:
     )
 
 
-def is_known_service(
-    service: Annotated[
-        str,
-        Query(description="Service name for the persistence implementation."),
-    ] = "elastic",
-) -> str:
-    """Verify that the peristence implementation can be repaired."""
-    if service != "elastic":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only 'elastic' service is supported for index repair.",
-        )
-    return service
-
-
 system_utility_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_administrator,
 )
@@ -129,7 +114,6 @@ async def get_healthcheck(
 )
 async def repair_elasticsearch_index(
     *,
-    service: Annotated[str, Depends(is_known_service)],  # noqa: ARG001
     rebuild: Annotated[
         bool,
         Query(
@@ -143,14 +127,11 @@ async def repair_elasticsearch_index(
     index_manager: Annotated[IndexManager, Depends(get_index_manager)],
 ) -> JSONResponse:
     """Repair an index (update all documents per their SQL counterparts)."""
-    # If we add another persistence service, move this to a function.
     if rebuild:
         await index_manager.rebuild_index()
-
     else:
         await index_manager.repair_index()
 
-    await index_manager.repair_index()
     return JSONResponse(
         content={
             "status": "ok",
