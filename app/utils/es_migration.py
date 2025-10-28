@@ -51,57 +51,104 @@ def argument_parser() -> argparse.ArgumentParser:
     """Create argument parser for migrating indicies."""
     parser = argparse.ArgumentParser(description="Migrate or roll back an ES index.")
 
-    parser.add_argument(
-        "-i",
-        "--index",
-        type=str,
-        choices=[*index_managers.keys(), "all"],
-        help="Name of the index.",
-        required=True,
-    )
+    operation_group = parser.add_mutually_exclusive_group(required=True)
 
-    parser.add_argument(
+    operation_group.add_argument(
         "-m",
         "--migrate",
         action="store_true",
-        help="Migrate the index",
-        required=False,
+        help="Migrate the index.",
     )
 
-    parser.add_argument(
+    operation_group.add_argument(
         "-r",
         "--rollback",
         action="store_true",
-        help="Rollback the index",
-        required=False,
+        help="Rollback the index.",
+    )
+
+    operation_group.add_argument(
+        "-d",
+        "--delete",
+        action="store_true",
+        help="Delete an index after first verifying it is not in use.",
+    )
+
+    parser.add_argument(
+        "-a",
+        "--alias",
+        type=str,
+        choices=[*index_managers.keys(), "all"],
+        help="Alias of the index to migrate.",
     )
 
     parser.add_argument(
         "-t",
         "--target-index",
         type=str,
-        help="Optional param to roll back to a target index name.",
-        required=False,
+        help="Optional param to roll back to or delete a target index name.",
         default=None,
     )
 
     return parser
 
 
+def validate_args(args: argparse.Namespace) -> None:
+    """
+    Enforce specific argument combinations, raising RuntimeError if violated.
+
+    Due to the mututally exclusive parsing group, we're guarenteed a single operation
+    but we need to check that valid arguments have been passed:
+
+    * Migrating an index requires an index alias, or all.
+    * Rolling back requires an index alias, and may have a target index name
+    * Deleting requires a target index name.
+
+    We should be able to massively simplify this once we've migrated existing
+    indcies to the versioned pattern, as the checks become:
+
+    * Migrating and Rolling back an index require an alias
+    * Deleting requires a target index name.
+
+    So we can use a mutually exclusive group for --alias and --target-index
+    and simplify below checks.
+    """
+    if args.migrate and (not args.alias or args.target_index):
+        msg = (
+            "You cannot specify a target index when migrating an index."
+            "Please use --alias instead."
+        )
+
+    if args.rollback and args.alias == "all" and args.target_index:
+        msg = (
+            "You can only specify target_index when rolling back a single index."
+            "Please either remove --target-name or choose a single --alias."
+        )
+        raise RuntimeError(msg)
+
+    if args.delete and (not args.target_index or args.alias):
+        msg = (
+            "You must specify a full target index name and not an alias "
+            "when deleting an index. "
+            "Please use --target-index to target index for deletion."
+        )
+        raise RuntimeError(msg)
+
+
 if __name__ == "__main__":
     parser = argument_parser()
     args = parser.parse_args()
 
-    indices = [*index_managers.keys()] if args.index == "all" else [args.index]
+    validate_args(args)
 
-    if len(indices) > 1 and args.target_index:
-        msg = "Can only specify target_index when rolling back a single index."
-        raise RuntimeError(msg)
+    if args.delete:
+        msg = "deletion not yet implemented."
+        raise NotImplementedError(msg)
+
+    indices = [*index_managers.keys()] if args.alias == "all" else [args.alias]
 
     if args.migrate:
-        for index in indices:
-            asyncio.run(run_migration(alias=index))
+        asyncio.run(run_migration(alias=args.index))
 
     elif args.rollback:
-        for index in indices:
-            asyncio.run(run_rollback(alias=index, target_index=args.target_index))
+        asyncio.run(run_rollback(alias=args.index, target_index=args.target_index))
