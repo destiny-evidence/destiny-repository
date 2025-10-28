@@ -4,12 +4,25 @@ import argparse
 import asyncio
 
 from app.core.config import get_settings
+from app.core.telemetry.logger import logger_configurer
+from app.core.telemetry.otel import configure_otel
 from app.domain.references.models.es import (
     ReferenceDocument,
     RobotAutomationPercolationDocument,
 )
 from app.persistence.es.client import es_manager
 from app.persistence.es.index_manager import IndexManager
+
+settings = get_settings()
+
+logger_configurer.configure_console_logger(
+    log_level=settings.log_level, rich_rendering=settings.running_locally
+)
+
+if settings.otel_config and settings.otel_enabled:
+    configure_otel(
+        settings.otel_config, settings.app_name, settings.app_version, settings.env
+    )
 
 # Indices mapping of name to document
 INDICES = {

@@ -4,14 +4,24 @@ import asyncio
 from collections.abc import Coroutine
 from typing import Any
 
-from elasticsearch import AsyncElasticsearch, NotFoundError
+import elasticsearch
+from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import AsyncDocument
+from opentelemetry import trace
 from taskiq import AsyncTaskiqDecoratedTask
 
+from app.core.exceptions import NotFoundError
+from app.core.telemetry.attributes import (
+    Attributes,
+    name_span,
+    set_span_status,
+    trace_attribute,
+)
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 
 logger = get_logger(__name__)
+tracer = trace.get_tracer(__name__)
 
 
 class IndexManager:
@@ -84,20 +94,27 @@ class IndexManager:
             alias_info = await self.client.indices.get_alias(name=self.alias_name)
             indices = list(alias_info.keys())
             return indices[0] if indices else None
-        except NotFoundError:
+        except elasticsearch.NotFoundError:
             return None
 
+    @tracer.start_as_current_span("Rebuild index")
     async def rebuild_index(self) -> None:
         """
         WARNING: DESTRUCTIVE ACTION.
 
         Rebuild the current index buy deleting, recreating, and repopulating.
         """
+        trace_attribute(
+            attribute=Attributes.DB_COLLECTION_ALIAS_NAME, value=self.alias_name
+        )
         current_index_name = await self.get_current_index_name()
 
         if not current_index_name:
-            msg = f"Index with alias {self.alias_name} has not been initialized."
+            msg = f"Index with alias {self.alias_name} does not exist"
+            set_span_status(status=trace.StatusCode.ERROR, detail=msg)
             raise NotFoundError(msg)
+
+        name_span(f"Rebuild index - {current_index_name}")
 
         await self.client.indices.delete_alias(
             index=current_index_name, name=self.alias_name
@@ -115,11 +132,17 @@ class IndexManager:
 
         await self.repair_index()
 
+    @tracer.start_as_current_span("Repair index")
     async def repair_index(self) -> None:
         """Repair the current index."""
+        trace_attribute(
+            attribute=Attributes.DB_COLLECTION_ALIAS_NAME, value=self.alias_name
+        )
         if not self.repair_task:
             msg = f"No index repair task found for {self.alias_name}"
+            set_span_status(status=trace.StatusCode.ERROR, detail=msg)
             raise NotFoundError(msg)
+
         await queue_task_with_trace(self.repair_task)
 
     def _generate_index_name(self, version: int) -> str:
@@ -137,6 +160,7 @@ class IndexManager:
         await self.document_class.init(index=index_name, using=self.client)
         logger.info("Created index: %s", index_name)
 
+    @tracer.start_as_current_span("Initialize index")
     async def initialize_index(self) -> str:
         """
         Initialize the index with version 1 if it doesn't exist.
@@ -145,10 +169,16 @@ class IndexManager:
             The name of the active index
 
         """
+        trace_attribute(
+            attribute=Attributes.DB_COLLECTION_ALIAS_NAME, value=self.alias_name
+        )
+
         current_index = await self.get_current_index_name()
 
         if current_index is None:
             index_name = self._generate_index_name(1)
+
+            name_span(f"Initialize index {index_name}")
 
             await self._create_index_with_mapping(index_name)
 
@@ -167,6 +197,7 @@ class IndexManager:
         )
         return current_index
 
+    @tracer.start_as_current_span("Migrate index")
     async def migrate(
         self,
         *,
@@ -182,6 +213,10 @@ class IndexManager:
             New index name if migration occurred, None otherwise
 
         """
+        trace_attribute(
+            attribute=Attributes.DB_COLLECTION_ALIAS_NAME, value=self.alias_name
+        )
+
         source_index = await self.get_current_index_name()
 
         if source_index is None:
@@ -199,6 +234,8 @@ class IndexManager:
 
         new_version = current_version + 1
         destination_index = self._generate_index_name(new_version)
+
+        name_span(f"Migrate index {source_index} to {destination_index}")
 
         logger.info("Starting migration from %s to %s", source_index, destination_index)
 
@@ -228,6 +265,7 @@ class IndexManager:
         logger.info("Migration completed successfully to %s", destination_index)
         return destination_index
 
+    @tracer.start_as_current_span("Reindexing index")
     async def _reindex_data(self, source_index: str, dest_index: str) -> None:
         """
         Reindex data from source to destination index.
@@ -237,6 +275,11 @@ class IndexManager:
             dest_index: Destination index name
 
         """
+        trace_attribute(
+            attribute=Attributes.DB_COLLECTION_ALIAS_NAME, value=self.alias_name
+        )
+
+        name_span(f"Reindex {source_index} to {dest_index}")
         logger.info("Reindexing from %s to %s", source_index, dest_index)
 
         # Get document count for progress tracking
@@ -321,6 +364,7 @@ class IndexManager:
         await self.client.indices.delete(index=index_name)
         logger.info("Deleted old index: %s", index_name)
 
+    @tracer.start_as_current_span("Rollback index")
     async def rollback(
         self, target_version: int | None = None, target_index: str | None = None
     ) -> str:
@@ -335,20 +379,27 @@ class IndexManager:
             The index name that was rolled back to
 
         Raises:
-            ValueError: If there is no current index to roll back from
-            ValueError: If the target index/version doesn't exist
+            NotFoundError: If there is no current index to roll back from
+            NotFoundError: If the target index does not exist
             ValueError: If the target version is invalid (e.g. 0 or earlier)
 
         """
+        trace_attribute(
+            attribute=Attributes.DB_COLLECTION_ALIAS_NAME, value=self.alias_name
+        )
+
         current_index = await self.get_current_index_name()
+
         if current_index is None:
             msg = "Cannot rollback: no current index found"
-            raise ValueError(msg)
+            set_span_status(status=trace.StatusCode.ERROR, detail=msg)
+            raise NotFoundError(msg)
 
         current_version = await self.get_current_version(index_name=current_index)
 
         if current_version is None or (current_version == 1 and target_index is None):
             msg = "Cannot rollback: no previous version available"
+            set_span_status(status=trace.StatusCode.ERROR, detail=msg)
             raise ValueError(msg)
 
         if target_index is None:
@@ -357,13 +408,17 @@ class IndexManager:
 
             if target_version < 1:
                 msg = "Cannot rollback: cannot target version of zero or earlier."
+                set_span_status(status=trace.StatusCode.ERROR, detail=msg)
                 raise ValueError(msg)
 
             target_index = self._generate_index_name(target_version)
 
         if not await self.client.indices.exists(index=target_index):
             msg = f"Target index {target_index} does not exist"
-            raise ValueError(msg)
+            set_span_status(status=trace.StatusCode.ERROR, detail=msg)
+            raise NotFoundError(msg)
+
+        name_span(f"Rollback index {current_index} to {target_index}")
 
         await self._switch_alias(current_index, target_index)
 

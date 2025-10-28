@@ -10,6 +10,7 @@ from elasticsearch.dsl import (
 )
 from pydantic import Field
 
+from app.core.exceptions import NotFoundError
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 from app.persistence.es.client import AsyncESClientManager
 from app.persistence.es.index_manager import IndexManager
@@ -511,5 +512,5 @@ async def test_we_do_not_roll_back_to_nonexistent_index(index_manager: IndexMana
     await index_manager.migrate(delete_old=True)
 
     # Try to roll back two versions to zero
-    with pytest.raises(ValueError, match="Target index dummy_v1 does not exist"):
+    with pytest.raises(NotFoundError, match="Target index dummy_v1 does not exist"):
         await index_manager.rollback()
