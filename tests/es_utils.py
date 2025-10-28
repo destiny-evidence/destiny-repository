@@ -2,21 +2,20 @@
 
 from elasticsearch import AsyncElasticsearch
 
-from app.persistence.es.client import indices
-from app.persistence.es.index_manager import IndexManager
+from app.system.routes import index_managers
 
 
 async def create_test_indices(client: AsyncElasticsearch):
     """Create all indices needed for tests."""
-    for index in indices:
-        index_manager = IndexManager(index, client)
+    for index_alias in index_managers:
+        index_manager = index_managers[index_alias](client)
         await index_manager.initialize_index()
 
 
 async def delete_test_indices(client: AsyncElasticsearch):
     """Delete all indices after tests."""
-    for index in indices:
-        index_manager = IndexManager(index, client)
+    for index_alias in index_managers:
+        index_manager = index_managers[index_alias](client)
         current_index_name = await index_manager.get_current_index_name()
         if current_index_name:
             await client.indices.delete(index=current_index_name)
@@ -24,8 +23,8 @@ async def delete_test_indices(client: AsyncElasticsearch):
 
 async def clean_test_indices(client: AsyncElasticsearch):
     """Delete all documents from all known indices after tests."""
-    for index in indices:
-        index_manager = IndexManager(index, client)
+    for index_alias in index_managers:
+        index_manager = index_managers[index_alias](client)
         current_index_name = await index_manager.get_current_index_name()
         await client.indices.refresh(index=current_index_name)
         await index_manager.client.delete_by_query(

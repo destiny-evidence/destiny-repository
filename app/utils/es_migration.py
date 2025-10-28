@@ -6,12 +6,8 @@ import asyncio
 from app.core.config import get_settings
 from app.core.telemetry.logger import logger_configurer
 from app.core.telemetry.otel import configure_otel
-from app.domain.references.models.es import (
-    ReferenceDocument,
-    RobotAutomationPercolationDocument,
-)
 from app.persistence.es.client import es_manager
-from app.persistence.es.index_manager import IndexManager
+from app.system.routes import index_managers
 
 settings = get_settings()
 
@@ -24,12 +20,6 @@ if settings.otel_config and settings.otel_enabled:
         settings.otel_config, settings.app_name, settings.app_version, settings.env
     )
 
-# Indices mapping of name to document
-INDICES = {
-    ReferenceDocument.Index.name: ReferenceDocument,
-    RobotAutomationPercolationDocument.Index.name: RobotAutomationPercolationDocument,
-}
-
 
 async def run_migration(alias: str) -> None:
     """Run elasticsearch index migrations."""
@@ -38,10 +28,8 @@ async def run_migration(alias: str) -> None:
     await es_manager.init(es_config)
 
     async with es_manager.client() as client:
-        document_class = INDICES[alias]
-        manager = IndexManager(document_class, client)
-
-        await manager.migrate(delete_old=False)
+        index_manager = index_managers[alias](client)
+        await index_manager.migrate(delete_old=False)
 
     await es_manager.close()
 
@@ -53,10 +41,8 @@ async def run_rollback(alias: str, target_index: str | None = None) -> None:
     await es_manager.init(es_config)
 
     async with es_manager.client() as client:
-        document_class = INDICES[alias]
-        manager = IndexManager(document_class, client)
-
-        await manager.rollback(target_index=target_index)
+        index_manager = index_managers[alias](client)
+        await index_manager.rollback(target_index=target_index)
 
     await es_manager.close()
 
@@ -69,7 +55,7 @@ def argument_parser() -> argparse.ArgumentParser:
         "-i",
         "--index",
         type=str,
-        choices=[*INDICES, "all"],
+        choices=[*index_managers.keys(), "all"],
         help="Name of the index.",
         required=True,
     )
@@ -106,7 +92,7 @@ if __name__ == "__main__":
     parser = argument_parser()
     args = parser.parse_args()
 
-    indices = [*INDICES] if args.index == "all" else [args.index]
+    indices = [*index_managers.keys()] if args.index == "all" else [args.index]
 
     if len(indices) > 1 and args.target_index:
         msg = "Can only specify target_index when rolling back a single index."
