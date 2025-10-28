@@ -69,7 +69,9 @@ a:hover {
   font-weight: 500;
   padding: 6px 12px;
   border-radius: var(--border-radius);
-  transition: background var(--transition), color var(--transition);
+  transition:
+    background var(--transition),
+    color var(--transition);
 }
 
 .navbar-link.active {
@@ -146,7 +148,9 @@ button,
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background var(--transition), color var(--transition);
+  transition:
+    background var(--transition),
+    color var(--transition);
 }
 
 .auth-btn:hover,

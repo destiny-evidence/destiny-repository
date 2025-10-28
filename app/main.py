@@ -40,4 +40,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await es_manager.close()
 
 
-app = register_api(lifespan, otel_enabled=settings.otel_enabled)
+app = register_api(
+    lifespan,
+    [str(origin) for origin in settings.cors_allow_origins],
+    otel_enabled=settings.otel_enabled,
+)

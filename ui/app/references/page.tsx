@@ -102,7 +102,11 @@ export default function ReferenceLookupPage() {
             boxSizing: "border-box",
           }}
         >
-          <ReferenceSearchForm onSearch={handleSearch} loading={loading} />
+          <ReferenceSearchForm
+            onSearch={handleSearch}
+            loading={loading}
+            isLoggedIn={accounts.length > 0}
+          />
         </section>
         <section
           style={{

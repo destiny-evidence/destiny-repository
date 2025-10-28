@@ -8,23 +8,27 @@ export async function fetchReference(
   token: string,
 ): Promise<ReferenceLookupResult> {
   const baseUrl = process.env.NEXT_PUBLIC_API_URL;
-  const urlParams = new URLSearchParams({
-    identifier: params.identifier,
-    identifier_type: params.identifierType,
-  });
-  if (params.otherIdentifierName) {
-    urlParams.append("other_identifier_name", params.otherIdentifierName);
+
+  let url: string;
+  if (params.identifierType === "destiny_id") {
+    url = `${baseUrl}references/${params.identifier}/`;
+  } else {
+    const urlParams = new URLSearchParams({
+      identifier: params.identifier,
+      identifier_type: params.identifierType,
+    });
+    if (params.otherIdentifierName) {
+      urlParams.append("other_identifier_name", params.otherIdentifierName);
+    }
+    url = `${baseUrl}references/?${urlParams.toString()}`;
   }
 
   try {
-    const response = await axios.get(
-      `${baseUrl}references/?${urlParams.toString()}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
       },
-    );
+    });
     return { data: response.data, error: null };
   } catch (err: any) {
     // 422 validation errors
