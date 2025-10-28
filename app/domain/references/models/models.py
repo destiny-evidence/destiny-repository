@@ -463,6 +463,7 @@ class ReferenceDuplicateDeterminationResult(BaseModel):
         DuplicateDetermination.CANONICAL,
         DuplicateDetermination.DUPLICATE,
         DuplicateDetermination.UNRESOLVED,
+        DuplicateDetermination.UNSEARCHABLE,
     ]
     canonical_reference_id: UUID4 | None = Field(
         default=None,
@@ -471,7 +472,7 @@ class ReferenceDuplicateDeterminationResult(BaseModel):
     detail: str | None = Field(
         default=None,
         description="Optional detail about the determination process, particularly"
-        " where the determination is UNRESOLVED.",
+        " where the determination is UNRESOLVED or UNSEARCHABLE.",
     )
 
     @model_validator(mode="after")
@@ -606,8 +607,8 @@ class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
         ...,
         description="The ID of the robot that will perform the enhancement.",
     )
-    enhancement_request_id: UUID4 = Field(
-        ...,
+    enhancement_request_id: UUID4 | None = Field(
+        default=None,
         description=(
             "The ID of the batch enhancement request that this pending enhancement"
             " belongs to."
@@ -624,6 +625,22 @@ class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
         default=PendingEnhancementStatus.PENDING,
         description="The status of the pending enhancement.",
     )
+    source: str | None = Field(
+        default=None,
+        description=(
+            "The source of the pending enhancement for provenance tracking, "
+            "if not an enhancement request."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def check_enhancement_request_or_source_present(self) -> Self:
+        """Ensure either enhancement request ID or source is present."""
+        if not (self.enhancement_request_id or self.source):
+            msg = "Either enhancement_request_id or source must be present."
+            raise ValueError(msg)
+
+        return self
 
 
 class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):

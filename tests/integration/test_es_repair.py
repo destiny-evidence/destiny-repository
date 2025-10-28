@@ -343,7 +343,6 @@ async def test_repair_robot_automation_percolation_index_with_rebuild(
     robot_id = uuid.uuid4()
     robot = SQLRobot(
         id=robot_id,
-        base_url="http://test-robot.com/",
         client_secret="test-secret",
         description="Test robot for automation",
         name="Test Robot",

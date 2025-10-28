@@ -1,8 +1,9 @@
 """Repositories for imports and associated models."""
 
-import asyncio
 import uuid
 from abc import ABC
+from collections import defaultdict
+from collections.abc import Collection
 from typing import Literal
 
 from opentelemetry import trace
@@ -80,19 +81,14 @@ class ImportRecordSQLRepository(
         """Override to include batch statuses if requested."""
         import_record = await super().get_by_pk(pk, preload)
         if "ImportBatch.status" in (preload or []) and import_record.batches:
-            status_sets = await asyncio.gather(
-                *[
-                    self.batches.get_import_result_status_set(import_batch.id)
-                    for import_batch in import_record.batches
-                ]
+            status_sets = await self.batches.get_import_result_status_sets(
+                [batch.id for batch in import_record.batches]
             )
             import_record.batches = [
                 ImportBatchStatusProjection.get_from_status_set(
-                    import_batch, status_set
+                    import_batch, status_sets.get(import_batch.id, set())
                 )
-                for import_batch, status_set in zip(
-                    import_record.batches, status_sets, strict=True
-                )
+                for import_batch in import_record.batches
             ]
         return import_record
 
@@ -127,6 +123,33 @@ class ImportBatchSQLRepository(
         super().__init__(session, DomainImportBatch, SQLImportBatch)
         self.results = results_repo
 
+    async def get_import_result_status_sets(
+        self, import_batch_ids: Collection[uuid.UUID]
+    ) -> dict[uuid.UUID, set[ImportResultStatus]]:
+        """
+        Get current underlying statuses for multiple import batches.
+
+        Args:
+            import_batch_id: The ID of the import batch
+
+        Returns:
+            Set of statuses for the import results in the batch
+
+        """
+        query = (
+            select(
+                SQLImportResult.import_batch_id,
+                SQLImportResult.status,
+            )
+            .where(SQLImportResult.import_batch_id.in_(import_batch_ids))
+            .distinct()
+        )
+        results = await self._session.execute(query)
+        status_sets = defaultdict(set)
+        for import_batch_id, status in results.all():
+            status_sets[import_batch_id].add(status)
+        return status_sets
+
     async def get_import_result_status_set(
         self, import_batch_id: uuid.UUID
     ) -> set[ImportResultStatus]:
@@ -140,11 +163,9 @@ class ImportBatchSQLRepository(
             Set of statuses for the import results in the batch
 
         """
-        query = select(
-            SQLImportResult.status.distinct(),
-        ).where(SQLImportResult.import_batch_id == import_batch_id)
-        results = await self._session.execute(query)
-        return {row[0] for row in results.all()}
+        return (await self.get_import_result_status_sets([import_batch_id]))[
+            import_batch_id
+        ]
 
     async def get_by_pk(
         self,

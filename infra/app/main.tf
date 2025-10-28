@@ -98,6 +98,10 @@ locals {
     {
       name  = "FEATURE_FLAGS"
       value = jsonencode(var.feature_flags)
+    },
+    {
+      name  = "DEFAULT_UPLOAD_FILE_CHUNK_SIZE",
+      value = tostring(var.default_upload_file_chunk_size)
     }
   ]
 
@@ -143,7 +147,7 @@ data "azurerm_container_app" "this" {
 
 module "container_app" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "1.6.2"
+  version                         = "1.7.1"
   app_name                        = var.app_name
   cpu                             = var.container_app_cpu
   environment                     = var.environment
@@ -153,6 +157,7 @@ module "container_app" {
   memory                          = var.container_app_memory
   resource_group_name             = azurerm_resource_group.this.name
   region                          = azurerm_resource_group.this.location
+  min_replicas                    = var.app_min_replicas
   max_replicas                    = var.app_max_replicas
   tags                            = local.minimum_resource_tags
 
@@ -209,7 +214,7 @@ module "container_app" {
 
 module "container_app_tasks" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "1.6.2"
+  version                         = "1.7.1"
   app_name                        = "${var.app_name}-task"
   cpu                             = var.container_app_tasks_cpu
   environment                     = var.environment
@@ -219,6 +224,7 @@ module "container_app_tasks" {
   memory                          = var.container_app_tasks_memory
   resource_group_name             = azurerm_resource_group.this.name
   region                          = azurerm_resource_group.this.location
+  min_replicas                    = var.tasks_min_replicas
   max_replicas                    = var.tasks_max_replicas
   tags                            = local.minimum_resource_tags
 

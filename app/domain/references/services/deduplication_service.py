@@ -235,7 +235,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             if settings.env == Environment.TEST
             and reference_duplicate_decision.candidate_canonical_ids
             else ReferenceDuplicateDeterminationResult(
-                duplicate_determination=DuplicateDetermination.UNSEARCHABLE
+                duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
+                detail="Placeholder duplicate determinator used.",
             )
         )
 

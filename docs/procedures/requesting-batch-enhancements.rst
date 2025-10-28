@@ -111,7 +111,7 @@ To implement a polling-based robot:
 
 1. **Poll for batches**: Use :meth:`Client.poll_robot_enhancement_batch() <libs.sdk.src.destiny_sdk.client.Client.poll_robot_enhancement_batch>` to retrieve pending batches. The method returns a :class:`RobotEnhancementBatch <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch>` object or ``None`` if no batches are available.
 
-2. **Process references**: Download the references from the :attr:`reference_storage_url <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.reference_storage_url>`. Each line in the file is a JSON-serialized :class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>` object, which can be parsed using :meth:`Reference.from_jsonl() <libs.sdk.src.destiny_sdk.references.Reference.from_jsonl>`.
+2. **Process references**: Download the references from the :attr:`reference_storage_url <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.reference_storage_url>`. Each line in the file is a JSON-serialized :class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>` object, which can be parsed using :meth:`Reference.from_jsonl() <libs.sdk.src.destiny_sdk.references.Reference.from_jsonl>`. These references will be in the :ref:`deduplicated form <deduplicated-projection>`, giving robots full access to the reference's data.
 
 3. **Create enhancements**: Process each reference and create :class:`Enhancement <libs.sdk.src.destiny_sdk.enhancements.Enhancement>` objects or :class:`LinkedRobotError <libs.sdk.src.destiny_sdk.robots.LinkedRobotError>` objects for failed references.
 
