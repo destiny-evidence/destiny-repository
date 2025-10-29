@@ -102,12 +102,35 @@ jobs:
         id: vars
         run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
+      - name: Get UI app client id
+        id: ui_app
+        run: |
+          clientId=$(az ad app list --filter "displayName eq 'destiny-repository-auth-ui'" --query '[0].appId' -o tsv)
+          echo "client_id=$clientId" >> $GITHUB_OUTPUT
+
+      - name: Get API FQDN
+        id: api_fqdn
+        run: |
+          fqdn=$(az containerapp show -g ${{ vars.RESOURCE_GROUP }} -n ${{ vars.CONTAINER_APP_NAME }} --query properties.configuration.ingress.fqdn -o tsv)
+          echo "fqdn=$fqdn" >> $GITHUB_OUTPUT
+
+      - name: Get Application ID
+        id: app_id
+        run: |
+          appId=$(az ad app list --filter "displayName eq 'destiny-repository'" --query '[0].appId' -o tsv)
+          echo "application_id=$appId" >> $GITHUB_OUTPUT
+
       - name: Build and push UI Docker image
         uses: docker/build-push-action@v5.1.0
         with:
           context: ./ui
           file: ./ui/Dockerfile
           push: true
+          build-args: |
+            NEXT_PUBLIC_AZURE_CLIENT_ID=${{ steps.ui_app.outputs.client_id }}
+            NEXT_PUBLIC_AZURE_TENANT_ID=${{ vars.AZURE_TENANT_ID }}
+            NEXT_PUBLIC_AZURE_APPLICATION_ID=${{ steps.app_id.outputs.application_id }}
+            NEXT_PUBLIC_API_URL=https://${{ steps.api_fqdn.outputs.fqdn }}/v1/
           tags: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}-ui:${{ steps.vars.outputs.sha_short }}, ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}-ui:${{ vars.ENVIRONMENT_NAME }}
   deploy:
     runs-on: ubuntu-latest
