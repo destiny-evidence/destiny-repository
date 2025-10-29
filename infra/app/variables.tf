@@ -199,6 +199,12 @@ variable "elastic_cloud_apikey" {
   sensitive   = true
 }
 
+variable "elasticsearch_index_migrator_timeout" {
+  description = "How long to wait for an ES index migration to complete when running a container app job in seconds"
+  type        = number
+  default     = 28800 # 8 hour timeout
+}
+
 
 variable "pypi_token" {
   description = "API token for PyPI"

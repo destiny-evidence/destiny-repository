@@ -29,7 +29,7 @@ if settings.otel_config and settings.otel_enabled:
 
 async def run_migration(alias: str) -> None:
     """Run elasticsearch index migrations."""
-    es_config = get_settings().es_config
+    es_config = settings.es_config
 
     await es_manager.init(es_config)
 
@@ -42,7 +42,7 @@ async def run_migration(alias: str) -> None:
 
 async def run_rollback(alias: str, target_index: str | None = None) -> None:
     """Roll back to the previous index, or the target."""
-    es_config = get_settings().es_config
+    es_config = settings.es_config
 
     await es_manager.init(es_config)
 
@@ -68,7 +68,7 @@ async def delete_old_index(index_to_delete: str) -> None:
         attribute=Attributes.DB_COLLECTION_ALIAS_NAME, value=index_to_delete
     )
     name_span(name=f"Delete index {index_to_delete}")
-    es_config = get_settings().es_config
+    es_config = settings.es_config
 
     await es_manager.init(es_config)
 
