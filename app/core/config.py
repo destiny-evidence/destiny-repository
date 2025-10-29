@@ -362,7 +362,7 @@ class Settings(BaseSettings):
         ),
     )
 
-    cors_allow_origins: list[HttpUrl] = Field(
+    cors_allow_origins: list[str] = Field(
         default_factory=list,
         description="List of allowed origins for CORS.",
     )

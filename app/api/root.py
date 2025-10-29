@@ -55,7 +55,7 @@ def create_v1_router() -> APIRouter:
 
 def register_api(
     lifespan: Callable[[FastAPI], AbstractAsyncContextManager],
-    _cors_allow_origins: list[str],
+    cors_allow_origins: list[str],
     *,
     otel_enabled: bool,
 ) -> FastAPI:
@@ -77,7 +77,7 @@ def register_api(
             Middleware(LoggerMiddleware),
             Middleware(
                 CORSMiddleware,
-                allow_origins=["*"],
+                allow_origins=cors_allow_origins,
                 allow_credentials=True,
                 allow_methods=["*"],
                 allow_headers=["*"],

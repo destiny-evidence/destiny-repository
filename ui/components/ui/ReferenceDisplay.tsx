@@ -156,6 +156,25 @@ export default function ReferenceDisplay({ result }: ReferenceDisplayProps) {
     URL.revokeObjectURL(url);
   }
 
+  if (!refData) {
+    return (
+      <div
+        style={{
+          marginTop: 24,
+          padding: "24px",
+          background: "#f8f9fa",
+          border: "1px solid #eee",
+          borderRadius: "var(--border-radius)",
+          color: "#555",
+          textAlign: "center",
+        }}
+      >
+        <h3>No reference loaded yet</h3>
+        <p>Please search for a reference to display its details.</p>
+      </div>
+    );
+  }
+
   return (
     <div style={{ marginTop: 24 }}>
       <div

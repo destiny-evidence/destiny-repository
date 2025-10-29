@@ -41,7 +41,5 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = register_api(
-    lifespan,
-    [str(origin) for origin in settings.cors_allow_origins],
-    otel_enabled=settings.otel_enabled,
+    lifespan, settings.cors_allow_origins, otel_enabled=settings.otel_enabled
 )
