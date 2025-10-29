@@ -4,23 +4,26 @@ This is very much a work in progress!
 
 ## Getting Started
 
-First, run the development server:
+### Docker Compose (Recommended)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+To run with docker, run the below from the application root directory (above `ui`):
+
+```sh
+docker compose --profile search --profile app --profile ui up
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The UI will be available at localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### NPM
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+To run locally with npm, run the below:
+
+```sh
+cp public/runtime-config.json.example public/runtime-config.json
+npm run dev
+```
+
+The UI will be available at localhost:3000.
 
 ## Learn More
 

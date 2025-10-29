@@ -8,48 +8,29 @@ import ErrorDisplay from "../../components/ui/ErrorDisplay";
 import ReferenceDisplay from "../../components/ui/ReferenceDisplay";
 import LoadingSpinner from "../../components/ui/LoadingSpinner";
 import PageOverlay from "../../components/ui/PageOverlay";
-import { useMsal } from "@azure/msal-react";
-import { InteractionStatus } from "@azure/msal-browser";
-import { getLoginRequest } from "../../lib/msalConfig";
-import { fetchReference } from "../../lib/api/references";
+import { useApi } from "../../lib/api/useApi";
 import { ReferenceLookupParams } from "../../lib/api/types";
+import { InteractionStatus } from "@azure/msal-browser";
 
 export default function ReferenceLookupPage() {
-  const { instance, accounts, inProgress } = useMsal();
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Detect login processing state
-  const isLoginProcessing =
-    inProgress === InteractionStatus.Login ||
-    inProgress === InteractionStatus.AcquireToken ||
-    inProgress === InteractionStatus.HandleRedirect ||
-    inProgress === InteractionStatus.SsoSilent;
+  const { fetchReference, isLoggedIn, isLoginProcessing } = useApi();
+
+  // Detect login processing state is now handled by useApi
 
   const handleSearch = async (params: ReferenceLookupParams) => {
     setError(null);
     setValidationError(null);
     setResult(null);
 
-    if (!accounts.length) {
-      setError("Please sign in first.");
-      return;
-    }
-
     setLoading(true);
 
     try {
-      const account = accounts[0];
-      const request = await getLoginRequest();
-      const response = await instance.acquireTokenSilent({
-        ...request,
-        account,
-      });
-      const token = response.accessToken;
-
-      const apiResult = await fetchReference(params, token);
+      const apiResult = await fetchReference(params);
 
       if (apiResult.error) {
         if (apiResult.error.type === "validation") {
@@ -68,7 +49,7 @@ export default function ReferenceLookupPage() {
   };
 
   // Overlay logic
-  const showFormOverlay = !accounts.length && !isLoginProcessing;
+  const showFormOverlay = !isLoggedIn && !isLoginProcessing;
   const showPageOverlay = isLoginProcessing;
 
   return (
@@ -131,7 +112,7 @@ export default function ReferenceLookupPage() {
           <ReferenceSearchForm
             onSearch={handleSearch}
             loading={loading}
-            isLoggedIn={accounts.length > 0}
+            isLoggedIn={isLoggedIn}
           />
         </section>
         <section
