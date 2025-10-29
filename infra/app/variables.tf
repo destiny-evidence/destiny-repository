@@ -127,16 +127,6 @@ variable "environment" {
   type        = string
 }
 
-variable "external_directory_tenant_id" {
-  description = "ID of the external directory tenant for the Azure AD provider"
-  type        = string
-}
-
-variable "external_directory_client_id" {
-  description = "Client ID of the external directory application"
-  type        = string
-}
-
 variable "github_app_id" {
   description = "The app id for GitHub app used to configure github"
   type        = string
