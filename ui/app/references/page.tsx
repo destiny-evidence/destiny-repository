@@ -7,17 +7,26 @@ import ReferenceSearchForm from "../../components/forms/ReferenceSearchForm";
 import ErrorDisplay from "../../components/ui/ErrorDisplay";
 import ReferenceDisplay from "../../components/ui/ReferenceDisplay";
 import LoadingSpinner from "../../components/ui/LoadingSpinner";
+import PageOverlay from "../../components/ui/PageOverlay";
 import { useMsal } from "@azure/msal-react";
+import { InteractionStatus } from "@azure/msal-browser";
 import { loginRequest } from "../../lib/msalConfig";
 import { fetchReference } from "../../lib/api/references";
 import { ReferenceLookupParams } from "../../lib/api/types";
 
 export default function ReferenceLookupPage() {
-  const { instance, accounts } = useMsal();
+  const { instance, accounts, inProgress } = useMsal();
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Detect login processing state
+  const isLoginProcessing =
+    inProgress === InteractionStatus.Login ||
+    inProgress === InteractionStatus.AcquireToken ||
+    inProgress === InteractionStatus.HandleRedirect ||
+    inProgress === InteractionStatus.SsoSilent;
 
   const handleSearch = async (params: ReferenceLookupParams) => {
     setError(null);
@@ -57,6 +66,10 @@ export default function ReferenceLookupPage() {
     }
   };
 
+  // Overlay logic
+  const showFormOverlay = !accounts.length && !isLoginProcessing;
+  const showPageOverlay = isLoginProcessing;
+
   return (
     <div
       style={{
@@ -68,8 +81,12 @@ export default function ReferenceLookupPage() {
         background: "inherit",
         paddingLeft: 32,
         paddingRight: 32,
+        position: "relative",
       }}
     >
+      {showPageOverlay && (
+        <PageOverlay message="Signing in..." showSpinner={true} />
+      )}
       <h1
         style={{
           margin: "32px 0 24px 0",
@@ -100,8 +117,16 @@ export default function ReferenceLookupPage() {
             border: "1px solid #ddd",
             background: "#fff",
             boxSizing: "border-box",
+            position: "relative",
           }}
         >
+          {showFormOverlay && (
+            <PageOverlay
+              message="This feature requires sign-in."
+              showSpinner={false}
+              fullPage={false}
+            />
+          )}
           <ReferenceSearchForm
             onSearch={handleSearch}
             loading={loading}

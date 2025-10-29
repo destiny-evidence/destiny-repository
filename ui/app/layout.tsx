@@ -3,9 +3,9 @@
 import "../app/globals.css";
 import { MsalProvider } from "@azure/msal-react";
 import { PublicClientApplication } from "@azure/msal-browser";
-import { msalConfig } from "../lib/msalConfig";
+import { createMsalConfig } from "../lib/msalConfig";
 
-const msalInstance = new PublicClientApplication(msalConfig);
+const msalInstance = new PublicClientApplication(createMsalConfig());
 
 import { useEffect, useState } from "react";
 import AuthButton from "../components/auth/AuthButton";

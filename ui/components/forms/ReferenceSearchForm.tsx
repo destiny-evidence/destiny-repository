@@ -34,58 +34,28 @@ export default function ReferenceSearchForm({
   };
 
   return (
-    <div style={{ position: "relative" }}>
-      {!isLoggedIn && (
-        <div
-          style={{
-            position: "absolute",
-            zIndex: 2,
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(240,240,240,0.7)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#888",
-            fontWeight: "bold",
-            fontSize: "1.1rem",
-            borderRadius: 8,
-          }}
-        >
-          Must be logged in to use this
-        </div>
-      )}
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          opacity: isLoggedIn ? 1 : 0.5,
-          pointerEvents: isLoggedIn ? "auto" : "none",
-        }}
-      >
+    <form onSubmit={handleSubmit}>
+      <FormField
+        label="Identifier:"
+        value={identifier}
+        onChange={setIdentifier}
+        required
+      />
+      <IdentifierTypeSelect
+        value={identifierType}
+        onChange={setIdentifierType}
+      />
+      {identifierType === "other" && (
         <FormField
-          label="Identifier:"
-          value={identifier}
-          onChange={setIdentifier}
+          label="Other Identifier Name:"
+          value={otherIdentifierName}
+          onChange={setOtherIdentifierName}
           required
         />
-        <IdentifierTypeSelect
-          value={identifierType}
-          onChange={setIdentifierType}
-        />
-        {identifierType === "other" && (
-          <FormField
-            label="Other Identifier Name:"
-            value={otherIdentifierName}
-            onChange={setOtherIdentifierName}
-            required
-          />
-        )}
-        <button type="submit" disabled={loading || !isLoggedIn}>
-          {loading ? "Looking up..." : "Lookup Reference"}
-        </button>
-      </form>
-    </div>
+      )}
+      <button type="submit" disabled={loading}>
+        {loading ? "Looking up..." : "Lookup Reference"}
+      </button>
+    </form>
   );
 }
