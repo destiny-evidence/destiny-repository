@@ -10,7 +10,7 @@ import LoadingSpinner from "../../components/ui/LoadingSpinner";
 import PageOverlay from "../../components/ui/PageOverlay";
 import { useMsal } from "@azure/msal-react";
 import { InteractionStatus } from "@azure/msal-browser";
-import { loginRequest } from "../../lib/msalConfig";
+import { getLoginRequest } from "../../lib/msalConfig";
 import { fetchReference } from "../../lib/api/references";
 import { ReferenceLookupParams } from "../../lib/api/types";
 
@@ -42,8 +42,9 @@ export default function ReferenceLookupPage() {
 
     try {
       const account = accounts[0];
+      const request = await getLoginRequest();
       const response = await instance.acquireTokenSilent({
-        ...loginRequest,
+        ...request,
         account,
       });
       const token = response.accessToken;

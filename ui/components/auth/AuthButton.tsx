@@ -1,13 +1,14 @@
 // AuthButton component for login/logout
 
 import { useMsal } from "@azure/msal-react";
-import { loginRequest } from "../../lib/msalConfig";
+import { getLoginRequest } from "../../lib/msalConfig";
 
 export default function AuthButton() {
   const { instance, accounts } = useMsal();
 
-  const handleLogin = () => {
-    instance.loginRedirect(loginRequest);
+  const handleLogin = async () => {
+    const request = await getLoginRequest();
+    instance.loginRedirect(request);
   };
 
   const handleLogout = () => {

@@ -3,11 +3,13 @@
 import axios from "axios";
 import { ReferenceLookupParams, ReferenceLookupResult } from "./types";
 
+import { getBaseApiUrl } from "../runtimeConfig";
+
 export async function fetchReference(
   params: ReferenceLookupParams,
   token: string,
 ): Promise<ReferenceLookupResult> {
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+  const baseUrl = getBaseApiUrl();
 
   let url: string;
   if (params.identifierType === "destiny_id") {

@@ -2,7 +2,10 @@
 
 import { Configuration } from "@azure/msal-browser";
 
-export function createMsalConfig(): Configuration {
+import { getRuntimeConfig } from "./runtimeConfig";
+
+export async function createMsalConfig(): Promise<Configuration> {
+  const runtime = await getRuntimeConfig();
   const redirectUri =
     typeof window !== "undefined"
       ? `${window.location.protocol}//${window.location.host}/`
@@ -10,8 +13,14 @@ export function createMsalConfig(): Configuration {
 
   return {
     auth: {
-      clientId: process.env.NEXT_PUBLIC_AZURE_CLIENT_ID || "",
-      authority: `https://login.microsoftonline.com/${process.env.NEXT_PUBLIC_AZURE_TENANT_ID}`,
+      clientId:
+        runtime.NEXT_PUBLIC_AZURE_CLIENT_ID ||
+        process.env.NEXT_PUBLIC_AZURE_CLIENT_ID ||
+        "",
+      authority: `https://login.microsoftonline.com/${
+        runtime.NEXT_PUBLIC_AZURE_TENANT_ID ||
+        process.env.NEXT_PUBLIC_AZURE_TENANT_ID
+      }`,
       redirectUri,
     },
     cache: {
@@ -21,10 +30,16 @@ export function createMsalConfig(): Configuration {
   };
 }
 
-export const loginRequest = {
-  scopes: [
-    "openid",
-    "profile",
-    `api://${process.env.NEXT_PUBLIC_AZURE_APPLICATION_ID}/reference.reader.all`,
-  ],
-};
+export async function getLoginRequest(): Promise<{ scopes: string[] }> {
+  const runtime = await getRuntimeConfig();
+  return {
+    scopes: [
+      "openid",
+      "profile",
+      `api://${
+        runtime.NEXT_PUBLIC_AZURE_APPLICATION_ID ||
+        process.env.NEXT_PUBLIC_AZURE_APPLICATION_ID
+      }/reference.reader.all`,
+    ],
+  };
+}

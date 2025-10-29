@@ -4,9 +4,6 @@ import "../app/globals.css";
 import { MsalProvider } from "@azure/msal-react";
 import { PublicClientApplication } from "@azure/msal-browser";
 import { createMsalConfig } from "../lib/msalConfig";
-
-const msalInstance = new PublicClientApplication(createMsalConfig());
-
 import { useEffect, useState } from "react";
 import AuthButton from "../components/auth/AuthButton";
 
@@ -15,19 +12,30 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const [msalInstance, setMsalInstance] =
+    useState<PublicClientApplication | null>(null);
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    msalInstance
-      .initialize()
-      .then(() => setInitialized(true))
-      .catch(() => setInitialized(true)); // Render anyway on error
+    async function setupMsal() {
+      const config = await createMsalConfig();
+      const instance = new PublicClientApplication(config);
+      await instance.initialize();
+      setMsalInstance(instance);
+      setInitialized(true);
+    }
+    setupMsal();
   }, []);
 
   return (
     <html lang="en">
       <body>
-        <MsalProvider instance={msalInstance}>
+        <MsalProvider
+          instance={
+            msalInstance ??
+            new PublicClientApplication({ auth: { clientId: "" } })
+          }
+        >
           <nav className="navbar">
             <span className="navbar-title">DESTINY Repository</span>
             <div className="navbar-actions">

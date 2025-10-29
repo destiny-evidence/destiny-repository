@@ -4,8 +4,8 @@ const options = [
   { value: "doi", label: "DOI" },
   { value: "open_alex", label: "OpenAlex" },
   { value: "pm_id", label: "Pubmed ID" },
-  { value: "destiny_id", label: "Destiny ID" },
   { value: "other", label: "Other" },
+  { value: "destiny_id", label: "DESTINY ID" },
 ];
 
 interface IdentifierTypeSelectProps {
