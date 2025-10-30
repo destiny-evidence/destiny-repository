@@ -591,6 +591,17 @@ resource "azurerm_user_assigned_identity" "es_index_migrator" {
   resource_group_name = azurerm_resource_group.this.name
 }
 
+resource "azurerm_role_assignment" "es_index_migrator_acr_access" {
+  principal_id         = azurerm_user_assigned_identity.es_index_migrator.principal_id
+  scope                = data.azurerm_container_registry.this.id
+  role_definition_name = "AcrPull"
+
+  # terraform seems unable to replace the role assignment, so we need to ignore changes
+  lifecycle {
+    ignore_changes = [principal_id, scope]
+  }
+}
+
 resource "azurerm_container_app_job" "es_index_migrator" {
   name                         = "es-index-migrator-${var.environment}"
   location                     = azurerm_resource_group.this.location
@@ -607,14 +618,14 @@ resource "azurerm_container_app_job" "es_index_migrator" {
     replica_completion_count = 1
   }
 
-  identity {
-    type         = "UserAssigned"
-    identity_ids = [azurerm_user_assigned_identity.es_index_migrator.id]
-  }
-
   registry {
     identity = azurerm_user_assigned_identity.es_index_migrator.id
     server   = data.azurerm_container_registry.this.login_server
+  }
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.es_index_migrator.id]
   }
 
   secret {
