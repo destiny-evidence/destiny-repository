@@ -650,7 +650,7 @@ resource "azurerm_container_app_job" "es_index_migrator" {
     container {
       image   = var.tmp_es_migrator_image
       name    = "es-index-migrator-${var.environment}0"
-      command = ["python", "-m", "app.utils.es_migration", "--migrate", "--alias", "all"]
+      command = ["python", "-m", "app.utils.es.es_migration", "--migrate", "--alias", "all"]
       cpu     = 0.5
       memory  = "1Gi"
 
@@ -667,6 +667,16 @@ resource "azurerm_container_app_job" "es_index_migrator" {
       env {
         name        = "OTEL_CONFIG"
         secret_name = "otel-config"
+      }
+
+      env {
+        name  = "ENV"
+        value = var.environment
+      }
+
+      env {
+        name  = "OTEL_ENABLED"
+        value = var.telemetry_enabled
       }
     }
   }
