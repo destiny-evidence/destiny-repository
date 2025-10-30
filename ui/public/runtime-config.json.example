@@ -1,0 +1,10 @@
+# Copy to ui/public/runtime-config.json if running with `npm run dev`
+# If running with docker, this will autogenerate from env vars with the same names
+{
+    "NEXT_PUBLIC_API_URL":"http://localhost:8000/v1/",
+    "ENV":"local",
+    # Not needed for local dev, to verify auth fill out and use real values and set ENV!=local
+    "NEXT_PUBLIC_AZURE_CLIENT_ID"="<replace-me>",
+    "NEXT_PUBLIC_AZURE_TENANT_ID="<replace-me>",
+    "NEXT_PUBLIC_AZURE_APPLICATION_ID"="<replace-me>"
+}

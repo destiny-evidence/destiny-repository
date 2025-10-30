@@ -46,6 +46,13 @@ jobs:
           docker pull ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:$sha_short
           docker tag ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:$sha_short ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ vars.ENVIRONMENT_NAME }}
           docker push ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ vars.ENVIRONMENT_NAME }}
+
+      - name: Tag UI image with production tag
+        run: |
+          sha_short=$(git rev-parse --short HEAD)
+          docker pull ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}-ui:$sha_short
+          docker tag ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}-ui:$sha_short ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}-ui:${{ vars.ENVIRONMENT_NAME }}
+          docker push ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}-ui:${{ vars.ENVIRONMENT_NAME }}
   deploy-production:
     if: github.ref == 'refs/heads/main' # Only run on main
     name: "Deploy Container"
@@ -81,3 +88,12 @@ jobs:
           resourceGroup: ${{vars.RESOURCE_GROUP}}
           containerAppEnvironment: ${{vars.CONTAINER_APP_ENV}}
           imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ steps.vars.outputs.sha_short }}
+
+      - name: Deploy built UI image to UI container app
+        uses: Azure/container-apps-deploy-action@v1
+        with:
+          acrName: ${{vars.REGISTRY_NAME}}
+          containerAppName: ${{vars.CONTAINER_APP_UI_NAME}}
+          resourceGroup: ${{vars.RESOURCE_GROUP}}
+          containerAppEnvironment: ${{vars.CONTAINER_APP_ENV}}
+          imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}-ui:${{ steps.vars.outputs.sha_short }}
