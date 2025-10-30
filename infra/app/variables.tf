@@ -278,3 +278,8 @@ variable "default_upload_file_chunk_size" {
   type        = number
   default     = 1
 }
+
+variable "tmp_es_migrator_image" {
+  type        = string
+  description = "Temporary value to allow deploying different images to the container app job for es migrations"
+}

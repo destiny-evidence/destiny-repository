@@ -637,7 +637,7 @@ resource "azurerm_container_app_job" "es_index_migrator" {
 
   template {
     container {
-      image   = "destinyevidenceregistry.azurecr.io/destiny-repository:116a789"
+      image   = var.tmp_es_migrator_image
       name    = "es-index-migrator-${var.environment}0"
       command = ["python", "-m", "app.utils.es_migration", "--migrate", "--alias", "all"]
       cpu     = 0.5
