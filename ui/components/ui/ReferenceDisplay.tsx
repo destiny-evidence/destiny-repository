@@ -122,6 +122,8 @@ function EnhancementDisplay({ enhancements }: { enhancements: any[] }) {
                   padding: "8px",
                   fontSize: "0.95em",
                   overflowX: "auto",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
                 }}
               >
                 {JSON.stringify(enh, null, 2)}
@@ -262,7 +264,9 @@ export default function ReferenceDisplay({ result }: ReferenceDisplayProps) {
           </div>
         ) : (
           <div>
-            <pre>{JSON.stringify(refData, null, 2)}</pre>
+            <pre className="reference-json">
+              {JSON.stringify(refData, null, 2)}
+            </pre>
           </div>
         )}
       </div>

@@ -207,6 +207,7 @@ button:disabled {
 .reference-result-box {
   max-height: calc(100vh - 384px);
   overflow-y: auto;
+  overflow-x: auto; /* allow horizontal scrolling inside the box only */
   background: #fff;
   border: 1px solid #e0e6f2;
   border-radius: 0;
@@ -214,6 +215,15 @@ button:disabled {
   padding: 24px;
   margin: 0 auto;
   position: relative;
+}
+
+/* ensure pre/JSON content stays within the box */
+.reference-result-box pre,
+.reference-result-box .reference-json {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 @media (max-width: 700px) {
