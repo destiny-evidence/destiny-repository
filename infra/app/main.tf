@@ -586,13 +586,13 @@ resource "azurerm_log_analytics_workspace" "es_index_migrator" {
 }
 
 resource "azurerm_user_assigned_identity" "es_index_migrator" {
-  name                = "${var.app_name}-es-index-migrator-${var.environment}"
+  name                = "es-index-migrator-${var.environment}"
   location            = azurerm_resource_group.this.location
   resource_group_name = azurerm_resource_group.this.name
 }
 
 resource "azurerm_container_app_job" "es_index_migrator" {
-  name                         = "${var.app_name}-es-index-migrator-${var.environment}"
+  name                         = "es-index-migrator-${var.environment}"
   location                     = azurerm_resource_group.this.location
   resource_group_name          = azurerm_resource_group.this.name
   container_app_environment_id = module.container_app.container_app_env_id
@@ -638,14 +638,14 @@ resource "azurerm_container_app_job" "es_index_migrator" {
   template {
     container {
       image   = "destinyevidenceregistry.azurecr.io/destiny-repository:116a789"
-      name    = "${var.app_name}-es-index-migrator-${var.environment}0"
+      name    = "es-index-migrator-${var.environment}0"
       command = ["python", "-m", "app.utils.es_migration", "--migrate", "--alias", "all"]
       cpu     = 0.5
       memory  = "1Gi"
 
       env {
         name  = "APP_NAME"
-        value = "${var.app_name}-es-index-migrator"
+        value = "es-index-migrator-${var.environment}"
       }
 
       env {

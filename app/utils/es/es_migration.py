@@ -6,14 +6,14 @@ import asyncio
 from elasticsearch import NotFoundError
 from opentelemetry import trace
 
-from app.core.config import get_settings
 from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
 from app.core.telemetry.logger import get_logger, logger_configurer
 from app.core.telemetry.otel import configure_otel
 from app.persistence.es.client import es_manager
 from app.system.routes import index_managers
+from app.utils.es.config import get_settings as get_es_migration_settings
 
-settings = get_settings()
+settings = get_es_migration_settings()
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
