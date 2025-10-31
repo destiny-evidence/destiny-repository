@@ -13,6 +13,7 @@ from app.core.exceptions import (
     IntegrityError,
     InvalidPayloadError,
     NotFoundError,
+    ParseError,
     SDKToDomainError,
     SQLIntegrityError,
     SQLNotFoundError,
@@ -113,6 +114,17 @@ async def es_malformed_exception_handler(
 
     This is generally raised on incorrect percolation queries attempting to be saved.
     """
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=jsonable_encoder({"detail": exception.detail}),
+    )
+
+
+async def parse_error_exception_handler(
+    _request: Request,
+    exception: ParseError,
+) -> JSONResponse:
+    """Return bad request response when a parsing error occurs."""
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content=jsonable_encoder({"detail": exception.detail}),

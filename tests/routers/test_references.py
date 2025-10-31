@@ -16,12 +16,14 @@ from app.api.exception_handlers import (
     es_malformed_exception_handler,
     invalid_payload_exception_handler,
     not_found_exception_handler,
+    parse_error_exception_handler,
     sdk_to_domain_exception_handler,
 )
 from app.core.exceptions import (
     ESMalformedDocumentError,
     InvalidPayloadError,
     NotFoundError,
+    ParseError,
     SDKToDomainError,
 )
 from app.domain.references import routes as references
@@ -66,6 +68,7 @@ def app() -> FastAPI:
             SDKToDomainError: sdk_to_domain_exception_handler,
             InvalidPayloadError: invalid_payload_exception_handler,
             ESMalformedDocumentError: es_malformed_exception_handler,
+            ParseError: parse_error_exception_handler,
         }
     )
 
@@ -298,33 +301,6 @@ async def test_add_robot_automation_invalid_query(
     assert (
         "No field mapping can be found for the field with name [invalid]"
         in response.json()["detail"]
-    )
-
-
-async def test_get_reference_by_identifier_fails_with_404(
-    session: AsyncSession,
-    client: AsyncClient,
-) -> None:
-    """Test retrieving a reference by its identifier."""
-    reference = await add_reference(session)
-    session.add(
-        ExternalIdentifier(
-            reference_id=reference.id,
-            identifier="10.1234/example",
-            identifier_type="doi",
-        )
-    )
-
-    response = await client.get(
-        "/v1/references/",
-        params={"identifier": "10.1234/example", "identifier_type": "doi"},
-    )
-
-    assert response.status_code == status.HTTP_404_NOT_FOUND
-    response_data = response.json()
-    assert (
-        response_data["detail"] == "ExternalIdentifier with external_identifier ("
-        "<ExternalIdentifierType.DOI: 'doi'>, '10.1234/example', None) does not exist."
     )
 
 
@@ -599,6 +575,88 @@ async def test_get_robot_enhancement_batch_happy_path(
     response_data = response.json()
     assert response_data["id"] == str(robot_enhancement_batch.id)
     assert "signed" in response_data["reference_storage_url"]
+
+
+async def test_lookup_references_multiple_identifiers(
+    session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """Test lookup_references with multiple identifiers of different types."""
+    # Add a reference with a UUID
+    reference = await add_reference(session)
+    # Add a reference with a DOI identifier (simulate by setting external identifier)
+    doi_identifier = "10.1000/abc123"
+    reference_doi = SQLReference(visibility=Visibility.RESTRICTED)
+    session.add(reference_doi)
+    await session.commit()
+    # Simulate ExternalIdentifier for DOI
+    external_identifier = ExternalIdentifier(
+        reference_id=reference_doi.id,
+        identifier=doi_identifier,
+        identifier_type="doi",
+    )
+    session.add(external_identifier)
+    await session.commit()
+
+    identifiers = [str(reference.id), f"doi:{doi_identifier}"]
+    response = await client.get(
+        "/v1/references/",
+        params={
+            "identifier": identifiers,
+        },
+    )
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    returned_ids = {item["id"] for item in data}
+    assert str(reference.id) in returned_ids
+    assert str(reference_doi.id) in returned_ids
+
+
+async def test_lookup_references_accepts_csv(
+    session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """Test lookup_references accepts comma-separated identifiers."""
+    # Add a reference with a UUID
+    reference = await add_reference(session)
+    # Add a reference with a DOI identifier (simulate by setting external identifier)
+    doi_identifier = "10.1000/abc123"
+    reference_doi = SQLReference(visibility=Visibility.RESTRICTED)
+    session.add(reference_doi)
+    await session.commit()
+    # Simulate ExternalIdentifier for DOI
+    external_identifier = ExternalIdentifier(
+        reference_id=reference_doi.id,
+        identifier=doi_identifier,
+        identifier_type="doi",
+    )
+    session.add(external_identifier)
+    await session.commit()
+
+    response = await client.get(
+        "/v1/references/",
+        params={
+            "identifier": f"{reference.id},doi:{doi_identifier}",
+        },
+    )
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    returned_ids = {item["id"] for item in data}
+    assert str(reference.id) in returned_ids
+    assert str(reference_doi.id) in returned_ids
+
+
+async def test_lookup_references_invalid_identifier_format(
+    client: AsyncClient,
+) -> None:
+    """Test lookup_references with an invalid identifier format."""
+    invalid_identifier = "not-a-uuid"
+    response = await client.get(
+        "/v1/references/",
+        params={"identifier": invalid_identifier},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "Must be UUIDv4" in response.text
 
 
 async def test_get_robot_enhancement_batch_nonexistent_batch(client: AsyncClient):

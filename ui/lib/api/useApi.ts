@@ -43,21 +43,35 @@ export function useApi() {
     params: ReferenceLookupParams,
   ): Promise<ReferenceLookupResult> {
     const token = await getToken();
-    let path: string;
-    if (params.identifierType === "destiny_id") {
-      path = `/references/${params.identifier}/`;
+    const urlParams = new URLSearchParams({});
+    if (params.identifierType == "destiny_id") {
+      urlParams.set("identifier", params.identifier);
+    } else if (params.otherIdentifierName) {
+      urlParams.set(
+        "identifier",
+        "other:" +
+          params.otherIdentifierName +
+          ":" +
+          params.otherIdentifierName,
+      );
     } else {
-      const urlParams = new URLSearchParams({
-        identifier: params.identifier,
-        identifier_type: params.identifierType,
-      });
-      if (params.otherIdentifierName) {
-        urlParams.append("other_identifier_name", params.otherIdentifierName);
-      }
-      path = `/references/?${urlParams.toString()}`;
+      urlParams.set(
+        "identifier",
+        params.identifierType + ":" + params.identifier,
+      );
     }
+    const path = `/references/?${urlParams.toString()}`;
     const result: ApiResult<any> = await apiGet(path, token);
-    return { data: result.data, error: result.error };
+    if (result.data.length === 0) {
+      return {
+        data: undefined,
+        error: { type: "not_found", detail: "No results found" },
+      };
+    }
+    return {
+      data: result.data[0],
+      error: result.error,
+    };
   }
 
   return { fetchReference, isLoggedIn, isLoginProcessing };

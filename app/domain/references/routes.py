@@ -34,9 +34,12 @@ from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     EnhancementRequestStatus,
-    ExternalIdentifierSearch,
+    IdentifierLookup,
     PendingEnhancementStatus,
     ReferenceIds,
+)
+from app.domain.references.models.validators import (
+    parse_identifier_lookup_from_string,
 )
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
@@ -218,26 +221,48 @@ async def get_reference(
     return anti_corruption_service.reference_to_sdk(reference)
 
 
+def parse_identifiers(
+    identifier: Annotated[
+        list[str],
+        Query(
+            description=(
+                "A list of external identifier lookup strings "
+                "in the format `?({type}:?({other_type}:)){identifier}`. "
+                "These are accepted in multiple query parameters or as a CSV string."
+            ),
+            examples=[
+                "02e376ee-8374-4a8c-997f-9a813bc5b8f8",
+                "doi:10.1000/abc123",
+                "other:isbn:978-1-234-56789-0",
+            ],
+        ),
+    ],
+) -> list[IdentifierLookup]:
+    """Parse a list of identifier lookup strings from the query parameters."""
+    identifiers: list[IdentifierLookup] = []
+    for identifier_string in identifier:
+        if "," in identifier_string:
+            identifiers += parse_identifiers(identifier_string.split(","))
+        else:
+            identifiers.append(parse_identifier_lookup_from_string(identifier_string))
+    return identifiers
+
+
 @reference_router.get("/")
-async def get_reference_from_identifier(
-    identifier: str,
-    identifier_type: destiny_sdk.identifiers.ExternalIdentifierType,
+async def lookup_references(
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
-    other_identifier_name: str | None = None,
-) -> destiny_sdk.references.Reference:
-    """Get a reference given an external identifier."""
-    external_identifier = ExternalIdentifierSearch(
-        identifier=identifier,
-        identifier_type=identifier_type,
-        other_identifier_name=other_identifier_name,
-    )
-    reference = await reference_service.get_reference_from_identifier(
-        external_identifier
-    )
-    return anti_corruption_service.reference_to_sdk(reference)
+    identifiers: Annotated[list[IdentifierLookup], Depends(parse_identifiers)],
+) -> list[destiny_sdk.references.Reference]:
+    """Get references given identifiers."""
+    return [
+        anti_corruption_service.reference_to_sdk(reference)
+        for reference in await reference_service.get_references_from_identifiers(
+            identifiers
+        )
+    ]
 
 
 @enhancement_request_automation_router.post(

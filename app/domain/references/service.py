@@ -1,5 +1,6 @@
 """The service for interacting with and managing references."""
 
+import uuid
 from collections import defaultdict
 from collections.abc import Collection, Iterable
 from uuid import UUID
@@ -23,8 +24,8 @@ from app.domain.references.models.models import (
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifier,
-    ExternalIdentifierSearch,
     ExternalIdentifierType,
+    IdentifierLookup,
     LinkedExternalIdentifier,
     PendingEnhancement,
     PendingEnhancementStatus,
@@ -283,20 +284,24 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self.sql_uow.references.get_all_pks()
 
     @sql_unit_of_work
-    async def get_reference_from_identifier(
-        self, identifier: ExternalIdentifierSearch
-    ) -> Reference:
+    async def get_references_from_identifiers(
+        self, identifiers: list[IdentifierLookup]
+    ) -> list[Reference]:
         """Get a single reference by identifier."""
-        db_identifier = (
-            await self.sql_uow.external_identifiers.get_by_type_and_identifier(
-                identifier.identifier_type,
-                identifier.identifier,
-                identifier.other_identifier_name,
-            )
+        external_identifiers, db_identifiers = [], []
+        for identifier in identifiers:
+            if identifier.identifier_type:
+                external_identifiers.append(identifier)
+            else:
+                db_identifiers.append(uuid.UUID(identifier.identifier))
+
+        references = await self.sql_uow.references.find_with_identifiers(
+            external_identifiers, preload=["identifiers", "enhancements"]
+        ) + await self.sql_uow.references.get_by_pks(
+            db_identifiers, preload=["identifiers", "enhancements"]
         )
-        return await self.sql_uow.references.get_by_pk(
-            db_identifier.reference_id, preload=["identifiers", "enhancements"]
-        )
+        # Remove duplicates
+        return list({reference.id: reference for reference in references}.values())
 
     @sql_unit_of_work
     async def add_identifier(

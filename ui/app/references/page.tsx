@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import ReferenceSearchForm from "../../components/forms/ReferenceSearchForm";
 import ErrorDisplay from "../../components/ui/ErrorDisplay";
 import ReferenceDisplay from "../../components/ui/ReferenceDisplay";
@@ -10,7 +10,6 @@ import LoadingSpinner from "../../components/ui/LoadingSpinner";
 import PageOverlay from "../../components/ui/PageOverlay";
 import { useApi } from "../../lib/api/useApi";
 import { ReferenceLookupParams } from "../../lib/api/types";
-import { InteractionStatus } from "@azure/msal-browser";
 
 export default function ReferenceLookupPage() {
   const [result, setResult] = useState<any>(null);
@@ -42,6 +41,7 @@ export default function ReferenceLookupPage() {
         setResult(apiResult.data);
       }
     } catch (err: any) {
+      console.error(err);
       setError("Error fetching reference.");
     } finally {
       setLoading(false);
