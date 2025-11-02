@@ -577,13 +577,6 @@ resource "elasticstack_elasticsearch_snapshot_lifecycle" "snapshots" {
   min_count    = local.is_production ? 336 : 7 # 7 days worth
 }
 
-resource "azurerm_log_analytics_workspace" "es_index_migrator" {
-  name                = "${var.app_name}-es-index-migrator-${var.environment}"
-  location            = azurerm_resource_group.this.location
-  resource_group_name = azurerm_resource_group.this.name
-  sku                 = "PerGB2018"
-  retention_in_days   = 30
-}
 
 resource "azurerm_user_assigned_identity" "es_index_migrator" {
   name                = "es-index-migrator-${var.environment}"

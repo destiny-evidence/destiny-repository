@@ -2,6 +2,7 @@
 
 import tomllib
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from pydantic import Field
@@ -16,6 +17,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
+
+    project_root: Path = Path(__file__).joinpath("../../../..").resolve()
 
     es_config: ESConfig
     otel_config: OTelConfig | None = None
