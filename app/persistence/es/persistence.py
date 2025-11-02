@@ -6,10 +6,7 @@ from typing import Generic, Self
 from elasticsearch.dsl import AsyncDocument
 from pydantic import UUID4, BaseModel
 
-from app.core.config import get_settings
 from app.persistence.generics import GenericDomainModelType
-
-settings = get_settings()
 
 
 # NB does not inherit ABC due to metadata mixing issues.

@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     )
 
     es_config: ESConfig
-    otel_config: OTelConfig
+    otel_config: OTelConfig | None = None
     otel_enabled: bool = False
     app_name: str
     env: Environment

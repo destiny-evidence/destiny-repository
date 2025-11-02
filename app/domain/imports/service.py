@@ -244,6 +244,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                             line,
                             line_number,
                             settings.import_reference_retry_count,
+                            otel_enabled=settings.otel_enabled,
                         )
                         line_number += 1
 

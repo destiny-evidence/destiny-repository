@@ -15,7 +15,6 @@ from elasticsearch.dsl import (
     mapped_field,
 )
 
-from app.core.config import get_settings
 from app.domain.references.models.models import (
     CandidateCanonicalSearchFields,
     DuplicateDetermination,
@@ -35,8 +34,6 @@ from app.domain.references.models.projections import (
 from app.persistence.es.persistence import (
     GenericESPersistence,
 )
-
-settings = get_settings()
 
 
 class ExternalIdentifierDocument(InnerDoc):
@@ -234,7 +231,7 @@ class ReferenceDocument(
     class Index:
         """Index metadata for the persistence model."""
 
-        name = f"{settings.es_config.index_prefix}reference"
+        name = "reference"
 
     @classmethod
     def from_domain(cls, domain_obj: Reference) -> Self:
@@ -264,7 +261,7 @@ class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
     class Index:
         """Index metadata for the persistence model."""
 
-        name = f"{settings.es_config.index_prefix}robot-automation-percolation"
+        name = "robot-automation-percolation"
 
     query: dict[str, Any] | None = mapped_field(
         Percolator(required=False),

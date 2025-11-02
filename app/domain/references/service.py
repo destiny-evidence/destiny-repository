@@ -943,4 +943,5 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             await queue_task_with_trace(
                 ("app.domain.references.tasks", "process_reference_duplicate_decision"),
                 reference_duplicate_decision_id=decision.id,
+                otel_enabled=settings.otel_enabled,
             )

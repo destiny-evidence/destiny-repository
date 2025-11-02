@@ -42,6 +42,7 @@ def reference_index_manager(es_client: AsyncElasticsearch) -> IndexManager:
         document_class=ReferenceDocument,
         repair_task=repair_reference_index,
         client=es_client,
+        otel_enabled=settings.otel_enabled,
     )
 
 
@@ -53,6 +54,7 @@ def robot_automation_percolation_index_manager(
         document_class=RobotAutomationPercolationDocument,
         repair_task=repair_robot_automation_percolation_index,
         client=es_client,
+        otel_enabled=settings.otel_enabled,
     )
 
 

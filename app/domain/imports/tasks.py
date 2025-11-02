@@ -121,6 +121,7 @@ async def import_reference(
                     content,
                     line_number,
                     remaining_retries - 1,
+                    otel_enabled=settings.otel_enabled,
                 )
             else:
                 logger.info(
@@ -132,4 +133,5 @@ async def import_reference(
             await queue_task_with_trace(
                 process_reference_duplicate_decision,
                 duplicate_decision_id,
+                otel_enabled=settings.otel_enabled,
             )

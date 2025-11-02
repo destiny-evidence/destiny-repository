@@ -111,7 +111,6 @@ class ESConfig(BaseModel):
     timeout_seconds: int = 30
     retry_on_timeout: bool = True
     max_retries: int = 5
-    index_prefix: str = ""
 
     @property
     def uses_api_key(self) -> bool:
@@ -153,21 +152,6 @@ class ESConfig(BaseModel):
             raise ValueError(msg)
 
         return self
-
-    @model_validator(mode="after")
-    def validate_index_prefix(self) -> Self:
-        """Validate the Elasticsearch index prefix."""
-        if not self.index_prefix or (
-            len(self.index_prefix) > 1 and self.index_prefix.endswith("-")
-        ):
-            return self
-
-        msg = (
-            'Index prefix must be either empty ("") '
-            'or must end with a hyphen ("destiny-").'
-        )
-
-        raise ValueError(msg)
 
 
 class MinioConfig(BaseModel):

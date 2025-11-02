@@ -9,8 +9,12 @@ from opentelemetry import trace
 from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
 from app.core.telemetry.logger import get_logger, logger_configurer
 from app.core.telemetry.otel import configure_otel
+from app.domain.references.models.es import (
+    ReferenceDocument,
+    RobotAutomationPercolationDocument,
+)
 from app.persistence.es.client import es_manager
-from app.system.routes import index_managers
+from app.persistence.es.index_manager import IndexManager
 from app.utils.es.config import get_settings as get_es_migration_settings
 
 settings = get_es_migration_settings()
@@ -26,6 +30,11 @@ if settings.otel_config and settings.otel_enabled:
         settings.otel_config, settings.app_name, settings.app_version, settings.env
     )
 
+index_documents = {
+    ReferenceDocument.Index.name: ReferenceDocument,
+    RobotAutomationPercolationDocument.Index.name: RobotAutomationPercolationDocument,
+}
+
 
 async def run_migration(alias: str) -> None:
     """Run elasticsearch index migrations."""
@@ -34,7 +43,11 @@ async def run_migration(alias: str) -> None:
     await es_manager.init(es_config)
 
     async with es_manager.client() as client:
-        index_manager = index_managers[alias](client)
+        index_manager = IndexManager(
+            document_class=index_documents[alias],
+            client=client,
+            otel_enabled=settings.otel_enabled,
+        )
         await index_manager.migrate()
 
     await es_manager.close()
@@ -47,7 +60,11 @@ async def run_rollback(alias: str, target_index: str | None = None) -> None:
     await es_manager.init(es_config)
 
     async with es_manager.client() as client:
-        index_manager = index_managers[alias](client)
+        index_manager = IndexManager(
+            document_class=index_documents[alias],
+            client=client,
+            otel_enabled=settings.otel_enabled,
+        )
         if target_index:
             await index_manager.rollback(target_index=target_index)
         else:
@@ -120,7 +137,7 @@ def argument_parser() -> argparse.ArgumentParser:
         "-a",
         "--alias",
         type=str,
-        choices=[*index_managers.keys(), "all"],
+        choices=[*index_documents.keys(), "all"],
         help="Alias of the index to migrate.",
     )
 
@@ -186,7 +203,7 @@ if __name__ == "__main__":
     if args.delete:
         asyncio.run(delete_old_index(index_to_delete=args.target_index))
 
-    aliases = [*index_managers.keys()] if args.alias == "all" else [args.alias]
+    aliases = [*index_documents.keys()] if args.alias == "all" else [args.alias]
 
     if args.migrate:
         for alias in aliases:

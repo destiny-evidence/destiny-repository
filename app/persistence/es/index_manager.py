@@ -34,10 +34,12 @@ class IndexManager:
     migrations by creating new indices and switching the alias atomically.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         document_class: type[AsyncDocument],
         client: AsyncElasticsearch,
+        *,
+        otel_enabled: bool = False,
         repair_task: AsyncTaskiqDecoratedTask[..., Coroutine[Any, Any, None]]
         | None = None,
         version_prefix: str = "v",
@@ -61,6 +63,7 @@ class IndexManager:
         self.reindex_status_polling_interval = reindex_status_polling_interval
 
         self.alias_name = document_class.Index.name
+        self.otel_enabled = otel_enabled
 
     async def get_current_version(self, index_name: str | None = None) -> int | None:
         """
@@ -143,7 +146,7 @@ class IndexManager:
             set_span_status(status=trace.StatusCode.ERROR, detail=msg)
             raise NotFoundError(msg)
 
-        await queue_task_with_trace(self.repair_task)
+        await queue_task_with_trace(self.repair_task, otel_enabled=self.otel_enabled)
 
     def _generate_index_name(self, version: int) -> str:
         """Generate a versioned index name."""
