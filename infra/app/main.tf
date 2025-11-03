@@ -541,7 +541,7 @@ resource "elasticstack_elasticsearch_security_api_key" "app" {
       cluster = ["monitor"]
       indices = [
         {
-          names                    = ["${var.app_name}-*"]
+          names                    = local.managed_indicies
           privileges               = ["read", "write", "create_index", "manage"]
           allow_restricted_indices = false
         }
@@ -558,7 +558,7 @@ resource "elasticstack_elasticsearch_security_api_key" "read_only" {
       cluster = ["monitor"]
       indices = [
         {
-          names                    = ["${var.app_name}-*"]
+          names                    = local.managed_indicies
           privileges               = ["read"]
           allow_restricted_indices = false
         }
@@ -603,7 +603,7 @@ resource "elasticstack_elasticsearch_security_api_key" "es_index_migrator" {
       cluster = ["monitor"]
       indices = [
         {
-          names                    = ["*"]
+          names                    = local.managed_indicies
           privileges               = ["all"]
           allow_restricted_indices = false
         }
