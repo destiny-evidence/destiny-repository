@@ -44,6 +44,7 @@ class ProcessedResults(NamedTuple):
     imported_enhancement_ids: set[UUID]
     successful_pending_enhancement_ids: set[UUID]
     failed_pending_enhancement_ids: set[UUID]
+    discarded_pending_enhancement_ids: set[UUID]
 
 
 class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
@@ -236,6 +237,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         attempted_reference_ids: set[UUID],
         results: ProcessedResults,
         successful_reference_ids: set[UUID],
+        discarded_enhancement_reference_ids: set[UUID],
     ) -> str:
         """Process a line containing an enhancement to add."""
         trace_attribute(
@@ -263,6 +265,9 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                 )
             ).to_jsonl()
 
+        if status == PendingEnhancementStatus.DISCARDED:
+            discarded_enhancement_reference_ids.add(enhancement_to_add.reference_id)
+
         logger.warning(
             "Failed to add enhancement",
             error=message,
@@ -282,12 +287,17 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         self,
         pending_enhancements: list[PendingEnhancement],
         successful_reference_ids: set[UUID],
+        discarded_enhancement_reference_ids: set[UUID],
         results: ProcessedResults,
     ) -> None:
         """Categorize pending enhancements as successful or failed."""
         for pending_enhancement in pending_enhancements:
             if pending_enhancement.reference_id in successful_reference_ids:
                 results.successful_pending_enhancement_ids.add(pending_enhancement.id)
+            elif (
+                pending_enhancement.reference_id in discarded_enhancement_reference_ids
+            ):
+                results.discarded_pending_enhancement_ids.add(pending_enhancement.id)
             else:
                 results.failed_pending_enhancement_ids.add(pending_enhancement.id)
 
@@ -310,6 +320,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         expected_reference_ids = {pe.reference_id for pe in pending_enhancements}
         successful_reference_ids: set[UUID] = set()
         attempted_reference_ids: set[UUID] = set()
+        discarded_enhancement_reference_ids: set[UUID] = set()
         # Track processed IDs for duplicate validation
         processed_reference_ids: set[UUID] = set()
 
@@ -359,6 +370,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                             attempted_reference_ids,
                             results,
                             successful_reference_ids,
+                            discarded_enhancement_reference_ids,
                         )
 
                     if result_entry:  # Only yield non-empty results
@@ -380,5 +392,6 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         self._categorize_pending_enhancements(
             pending_enhancements,
             successful_reference_ids,
+            discarded_enhancement_reference_ids,
             results,
         )

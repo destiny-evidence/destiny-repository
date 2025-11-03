@@ -106,11 +106,7 @@ async def validate_and_import_robot_enhancement_batch_result(
                 robot_id=str(robot_enhancement_batch.robot_id),
             ):
                 # Validate and import the enhancement result
-                (
-                    imported_enhancement_ids,
-                    successful_pending_enhancement_ids,
-                    failed_pending_enhancement_ids,
-                ) = await reference_service.validate_and_import_robot_enhancement_batch_result(  # noqa: E501
+                results = await reference_service.validate_and_import_robot_enhancement_batch_result(  # noqa: E501
                     robot_enhancement_batch,
                     blob_repository,
                 )
@@ -125,12 +121,17 @@ async def validate_and_import_robot_enhancement_batch_result(
             return
 
         await reference_service.update_pending_enhancements_status(
-            pending_enhancement_ids=list(failed_pending_enhancement_ids),
+            pending_enhancement_ids=list(results.failed_pending_enhancement_ids),
             status=PendingEnhancementStatus.FAILED,
         )
 
         await reference_service.update_pending_enhancements_status(
-            pending_enhancement_ids=list(successful_pending_enhancement_ids),
+            pending_enhancement_ids=list(results.discarded_pending_enhancement_ids),
+            status=PendingEnhancementStatus.DISCARDED,
+        )
+
+        await reference_service.update_pending_enhancements_status(
+            pending_enhancement_ids=list(results.successful_pending_enhancement_ids),
             status=PendingEnhancementStatus.INDEXING,
         )
 
@@ -143,20 +144,24 @@ async def validate_and_import_robot_enhancement_batch_result(
             )
 
             await reference_service.update_pending_enhancements_status(
-                pending_enhancement_ids=list(successful_pending_enhancement_ids),
+                pending_enhancement_ids=list(
+                    results.successful_pending_enhancement_ids
+                ),
                 status=PendingEnhancementStatus.COMPLETED,
             )
         except Exception:
             logger.exception("Error indexing references in Elasticsearch")
             await reference_service.update_pending_enhancements_status(
-                pending_enhancement_ids=list(successful_pending_enhancement_ids),
+                pending_enhancement_ids=list(
+                    results.successful_pending_enhancement_ids
+                ),
                 status=PendingEnhancementStatus.INDEXING_FAILED,
             )
 
         # Perform robot automations
         await detect_and_dispatch_robot_automations(
             reference_service,
-            enhancement_ids=imported_enhancement_ids,
+            enhancement_ids=results.imported_enhancement_ids,
             source_str=f"RobotEnhancementBatch:{robot_enhancement_batch.id}",
             skip_robot_id=robot_enhancement_batch.robot_id,
         )
