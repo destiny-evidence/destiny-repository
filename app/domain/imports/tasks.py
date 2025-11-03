@@ -100,9 +100,6 @@ async def import_reference(
         import_result = await import_service.get_import_result_with_batch(
             import_result_id
         )
-        if not import_result.import_batch:
-            msg = "Import result is missing its import batch. This should not happen."
-            raise RuntimeError(msg)
         trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_result.import_batch_id))
 
         if import_result.status in (
@@ -116,6 +113,10 @@ async def import_reference(
                 status=import_result.status,
             )
             return
+
+        if not import_result.import_batch:
+            msg = "Import result is missing its import batch. This should not happen."
+            raise RuntimeError(msg)
 
         import_result, duplicate_decision_id = await import_service.import_reference(
             reference_service,
