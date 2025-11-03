@@ -228,7 +228,7 @@ async def test_priority_handling(
     assert sent_message.header.priority == 5
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 @pytest.mark.parametrize("renew_lock", [True, False, None])
 async def test_only_renew_lock_when_specified(
     broker: AzureServiceBusBroker,
