@@ -507,18 +507,18 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def handle_enhancement_result_entry(
         self,
         enhancement: Enhancement,
-    ) -> tuple[bool, str]:
+    ) -> tuple[PendingEnhancementStatus, str]:
         """Handle the import of a single batch enhancement result entry."""
         try:
             await self._add_enhancement(enhancement)
         except SQLNotFoundError:
             return (
-                False,
+                PendingEnhancementStatus.FAILED,
                 "Reference does not exist.",
             )
         except DuplicateEnhancementError:
             return (
-                False,
+                PendingEnhancementStatus.DISCARDED,
                 "Exact duplicate enhancement already exists on reference.",
             )
         except Exception:
@@ -528,12 +528,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 enhancement=enhancement,
             )
             return (
-                False,
+                PendingEnhancementStatus.FAILED,
                 "Failed to add enhancement to reference.",
             )
 
         return (
-            True,
+            PendingEnhancementStatus.COMPLETED,
             "Enhancement added.",
         )
 

@@ -581,6 +581,7 @@ class PendingEnhancementStatus(StrEnum):
     - `importing`: Enhancement is currently being imported.
     - `indexing`: Enhancement is currently being indexed.
     - `indexing_failed`: Enhancement indexing has failed.
+    - `discarded`: Enhancement has been discarded as an exact duplicate.
     - `completed`: Enhancement has been processed successfully.
     - `failed`: Enhancement processing has failed.
     """
@@ -590,6 +591,7 @@ class PendingEnhancementStatus(StrEnum):
     IMPORTING = auto()
     INDEXING = auto()
     INDEXING_FAILED = auto()
+    DISCARDED = auto()
     COMPLETED = auto()
     FAILED = auto()
 

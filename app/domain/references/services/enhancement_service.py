@@ -396,7 +396,9 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
     async def _process_enhancement_line(  # noqa: PLR0913
         self,
         enhancement_to_add: destiny_sdk.enhancements.Enhancement,
-        add_enhancement: Callable[[Enhancement], Awaitable[tuple[bool, str]]],
+        add_enhancement: Callable[
+            [Enhancement], Awaitable[tuple[PendingEnhancementStatus, str]]
+        ],
         line_no: int,
         attempted_reference_ids: set[UUID],
         results: ProcessedResults,
@@ -416,9 +418,9 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         )
         trace_attribute(Attributes.ENHANCEMENT_ID, str(enhancement.id))
 
-        success, message = await add_enhancement(enhancement)
+        status, message = await add_enhancement(enhancement)
 
-        if success:
+        if status == PendingEnhancementStatus.COMPLETED:
             results.imported_enhancement_ids.add(enhancement.id)
             successful_reference_ids.add(enhancement_to_add.reference_id)
 
@@ -461,7 +463,9 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         blob_repository: BlobRepository,
         result_file: BlobStorageFile,
         pending_enhancements: list[PendingEnhancement],
-        add_enhancement: Callable[[Enhancement], Awaitable[tuple[bool, str]]],
+        add_enhancement: Callable[
+            [Enhancement], Awaitable[tuple[PendingEnhancementStatus, str]]
+        ],
         results: ProcessedResults,
     ) -> AsyncGenerator[str, None]:
         """
