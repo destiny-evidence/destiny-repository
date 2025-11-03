@@ -112,6 +112,11 @@ variable "developers_group_id" {
   description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs"
 }
 
+variable "ui_users_group_id" {
+  type        = string
+  description = "Id of a group to assign to UI-relevant API roles on destiny repository"
+}
+
 variable "db_crud_group_id" {
   type        = string
   description = "Id of a group to assign DB crud access to. Not exclusive to other DB groups."
@@ -265,4 +270,10 @@ variable "feature_flags" {
   description = "Feature flags for the application"
   type        = map(bool)
   default     = {}
+}
+
+variable "default_upload_file_chunk_size" {
+  description = "Default number of entries to write per file upload chunk"
+  type        = number
+  default     = 1
 }

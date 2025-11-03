@@ -22,6 +22,11 @@ resource "azurerm_user_assigned_identity" "container_apps_tasks_identity" {
   resource_group_name = azurerm_resource_group.this.name
 }
 
+resource "azurerm_user_assigned_identity" "container_apps_ui_identity" {
+  name                = "${local.name}-ui"
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+}
 
 data "azuread_group" "db_crud_group" {
   object_id = var.db_crud_group_id
@@ -98,8 +103,13 @@ locals {
     {
       name  = "FEATURE_FLAGS"
       value = jsonencode(var.feature_flags)
+    },
+    {
+      name  = "DEFAULT_UPLOAD_FILE_CHUNK_SIZE",
+      value = tostring(var.default_upload_file_chunk_size)
     }
   ]
+
 
   secrets = [
     {
@@ -134,11 +144,18 @@ locals {
   ]
 }
 
-data "azurerm_container_app" "this" {
+data "azurerm_container_app" "api" {
   # This data source is used to get the latest revision FQDN for the container app
   # so that we can use it in the eppi-import GitHub Action.
   name                = module.container_app.container_app_name
   resource_group_name = azurerm_resource_group.this.name
+  depends_on          = [module.container_app]
+}
+
+data "azurerm_container_app" "ui" {
+  name                = module.container_app_ui.container_app_name
+  resource_group_name = azurerm_resource_group.this.name
+  depends_on          = [module.container_app_ui]
 }
 
 module "container_app" {
@@ -163,8 +180,12 @@ module "container_app" {
     client_id    = azurerm_user_assigned_identity.container_apps_identity.client_id
   }
 
-  env_vars = local.env_vars
-  secrets  = local.secrets
+  env_vars = concat(local.env_vars, [{
+    name  = "CORS_ALLOW_ORIGINS",
+    value = jsonencode(["*"])
+  }])
+
+  secrets = local.secrets
 
   # NOTE: ingress changes will be ignored to avoid messing up manual custom domain config. See https://github.com/hashicorp/terraform-provider-azurerm/issues/21866#issuecomment-1755381572.
   ingress = {
@@ -257,6 +278,57 @@ module "container_app_tasks" {
     },
   ]
 }
+
+module "container_app_ui" {
+  source                          = "app.terraform.io/destiny-evidence/container-app/azure"
+  version                         = "1.7.1"
+  app_name                        = "${var.app_name}-ui"
+  environment                     = var.environment
+  container_registry_id           = data.azurerm_container_registry.this.id
+  container_registry_login_server = data.azurerm_container_registry.this.login_server
+  infrastructure_subnet_id        = azurerm_subnet.ui.id
+  resource_group_name             = azurerm_resource_group.this.name
+  region                          = azurerm_resource_group.this.location
+  tags                            = local.minimum_resource_tags
+
+  identity = {
+    id           = azurerm_user_assigned_identity.container_apps_ui_identity.id
+    principal_id = azurerm_user_assigned_identity.container_apps_ui_identity.principal_id
+    client_id    = azurerm_user_assigned_identity.container_apps_ui_identity.client_id
+  }
+
+  env_vars = [
+    {
+      name  = "NEXT_PUBLIC_AZURE_CLIENT_ID"
+      value = azuread_application_registration.destiny_repository_auth_ui.client_id
+    },
+    {
+      name  = "NEXT_PUBLIC_AZURE_TENANT_ID"
+      value = var.azure_tenant_id
+    },
+    {
+      name  = "NEXT_PUBLIC_API_URL"
+      value = "https://${data.azurerm_container_app.api.ingress[0].fqdn}/v1/"
+    },
+    {
+      name  = "NEXT_PUBLIC_AZURE_APPLICATION_ID"
+      value = azuread_application.destiny_repository.client_id
+    },
+  ]
+
+  ingress = {
+    external_enabled           = true
+    allow_insecure_connections = false
+    target_port                = 3000
+    transport                  = "auto"
+    traffic_weight = {
+      latest_revision = true
+      percentage      = 100
+    }
+  }
+}
+
+
 
 resource "azurerm_postgresql_flexible_server" "this" {
   name                          = "${local.name}-psqlflexibleserver"

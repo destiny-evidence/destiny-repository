@@ -11,7 +11,6 @@ from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     DuplicateDetermination,
-    EnhancementRequest,
     PendingEnhancementStatus,
     ReferenceWithChangeset,
 )
@@ -253,16 +252,11 @@ async def process_reference_duplicate_decision(
                 reference = await reference_service.get_canonical_reference_with_implied_changeset(  # noqa: E501
                     reference_duplicate_decision.reference_id
                 )
-                requests = await detect_and_dispatch_robot_automations(
+                await detect_and_dispatch_robot_automations(
                     reference_service=reference_service,
                     reference=reference,
                     source_str=f"DuplicateDecision:{reference_duplicate_decision.id}",
                 )
-                for request in requests:
-                    logger.info(
-                        "Created automatic enhancement request",
-                        enhancement_request_id=str(request.id),
-                    )
             else:
                 logger.info(
                     "No change to active decision, skipping automations",
@@ -277,7 +271,7 @@ async def detect_and_dispatch_robot_automations(
     enhancement_ids: Iterable[UUID] | None = None,
     source_str: str | None = None,
     skip_robot_id: UUID | None = None,
-) -> list[EnhancementRequest]:
+) -> None:
     """
     Request default enhancements for a set of references.
 
@@ -287,7 +281,6 @@ async def detect_and_dispatch_robot_automations(
     NB this is in a transient state, see comments in
     ReferenceService.detect_robot_automations.
     """
-    requests: list[EnhancementRequest] = []
     robot_automations = await reference_service.detect_robot_automations(
         reference=reference,
         enhancement_ids=enhancement_ids,
@@ -301,14 +294,8 @@ async def detect_and_dispatch_robot_automations(
                 source=source_str,
             )
             continue
-        enhancement_request = (
-            await reference_service.register_reference_enhancement_request(
-                enhancement_request=EnhancementRequest(
-                    reference_ids=robot_automation.reference_ids,
-                    robot_id=robot_automation.robot_id,
-                    source=source_str,
-                ),
-            )
+        await reference_service.create_pending_enhancements(
+            robot_id=robot_automation.robot_id,
+            reference_ids=robot_automation.reference_ids,
+            source=source_str,
         )
-        requests.append(enhancement_request)
-    return requests
