@@ -18,8 +18,6 @@ class Settings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
-    project_root: Path = Path(__file__).joinpath("../../../..").resolve()
-
     es_config: ESConfig
     otel_config: OTelConfig | None = None
     otel_enabled: bool = False
@@ -38,7 +36,8 @@ class Settings(BaseSettings):
     @property
     def pyproject_toml(self) -> dict[str, Any]:
         """Get the contents of pyproject.toml."""
-        return tomllib.load((self.project_root / "pyproject.toml").open("rb"))
+        project_root = Path(__file__).joinpath("../../../..").resolve()
+        return tomllib.load((project_root / "pyproject.toml").open("rb"))
 
     @property
     def app_version(self) -> str:
