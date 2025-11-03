@@ -373,21 +373,30 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
         await self.sql_uow.enhancement_requests.add(enhancement_request)
 
-        await self._create_pending_enhancements(enhancement_request)
+        await self._create_pending_enhancements(
+            robot_id=enhancement_request.robot_id,
+            reference_ids=enhancement_request.reference_ids,
+            enhancement_request_id=enhancement_request.id,
+        )
 
         return enhancement_request
 
     async def _create_pending_enhancements(
-        self, enhancement_request: EnhancementRequest
+        self,
+        robot_id: UUID,
+        reference_ids: Iterable[UUID],
+        enhancement_request_id: UUID | None = None,
+        source: str | None = None,
     ) -> list[PendingEnhancement]:
         """Create a batch enhancement request."""
         pending_enhancements_to_create = [
             PendingEnhancement(
                 reference_id=ref_id,
-                robot_id=enhancement_request.robot_id,
-                enhancement_request_id=enhancement_request.id,
+                robot_id=robot_id,
+                enhancement_request_id=enhancement_request_id,
+                source=source,
             )
-            for ref_id in enhancement_request.reference_ids
+            for ref_id in reference_ids
         ]
 
         if pending_enhancements_to_create:
@@ -396,6 +405,22 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
 
         return []
+
+    @sql_unit_of_work
+    async def create_pending_enhancements(
+        self,
+        robot_id: UUID,
+        reference_ids: Iterable[UUID],
+        enhancement_request_id: UUID | None = None,
+        source: str | None = None,
+    ) -> list[PendingEnhancement]:
+        """Create pending enhancements."""
+        return await self._create_pending_enhancements(
+            robot_id=robot_id,
+            reference_ids=reference_ids,
+            enhancement_request_id=enhancement_request_id,
+            source=source,
+        )
 
     @sql_unit_of_work
     async def get_enhancement_request(
