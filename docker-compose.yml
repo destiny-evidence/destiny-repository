@@ -74,6 +74,7 @@ services:
       MINIO_CONFIG: '{"HOST":"fs:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass"}'
       ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
       APP_NAME: destiny-app
+      CORS_ALLOW_ORIGINS: '["*"]'
     networks:
       - default
     entrypoint: fastapi dev app/main.py --host 0.0.0.0 --port 8000
@@ -108,6 +109,28 @@ services:
     networks:
       - default
     entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover --reload
+  ui:
+    profiles: ["ui"]
+    build:
+      context: ./ui
+      target: runner # or use a dedicated dev target
+    depends_on:
+      app:
+        condition: service_started
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost:8000/v1/"
+      ENV: local
+      NODE_ENV: development
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ./ui:/app
+    networks:
+      - default
+    entrypoint: /entrypoint.sh
+    command: ["npm", "run", "dev", "--", "-H", "0.0.0.0"]
   es_setup:
     image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_STACK_VERSION}
     volumes:
