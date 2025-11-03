@@ -50,37 +50,35 @@ export default function MultiReferenceSearchForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="multi-reference-search-form">
-      <div className="form-section-divider">
+    <form
+      onSubmit={handleSubmit}
+      style={{
+        marginTop: 32,
+        paddingTop: 24,
+        borderTop: "2px solid var(--border)",
+      }}
+    >
+      <div className="divider">
         <span>Bulk Lookup</span>
       </div>
-      <label htmlFor="bulk-ref-lookup" className="bulk-label">
-        Enter identifiers (one per line):
-      </label>
+      <label htmlFor="bulk-ref-lookup">Enter identifiers (one per line):</label>
       <textarea
-        // The word "identifier" or "id" is a password manager auto-complete trigger
-        // Renaming the id and name to avoid that behavior
         id="bulk-ref-lookup"
         name="bulk-ref-lookup"
         value={bulkInput}
         onChange={(e) => setBulkInput(e.target.value)}
-        className="bulk-textarea"
         rows={8}
         placeholder={`doi:10.1234/abcd\npm_id:123456\nopen_alex:W1234567\nother:isbn:978-1-234-56789-0\n02e376ee-8374-4a8c-997f-9a813bc5b8f8`}
         disabled={loading}
       />
-      <div className="bulk-hint">
+      <div className="hint">
         Format: <code>type:identifier</code> or{" "}
         <code>other:type:identifier</code> or UUID for Destiny ID
       </div>
       <div className="bulk-identifier-count">
         {identifierCount} identifier{identifierCount !== 1 ? "s" : ""}
       </div>
-      <button
-        type="submit"
-        disabled={loading || identifierCount === 0}
-        className="bulk-submit-btn"
-      >
+      <button type="submit" disabled={loading || identifierCount === 0}>
         {loading
           ? "Looking up..."
           : `Lookup ${identifierCount} Reference${

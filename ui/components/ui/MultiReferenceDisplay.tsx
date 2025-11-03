@@ -75,30 +75,24 @@ export default function MultiReferenceDisplay({
 
   return (
     <div style={{ marginTop: 24 }}>
-      <div className="multi-reference-tabs">
-        <div className="multi-reference-tab-group">
+      <div className="tabs">
+        <div className="tab-group">
           <button
-            className={`multi-reference-tab ${
-              tab === "visual" ? "active" : ""
-            }`}
+            className={`tab ${tab === "visual" ? "active" : ""}`}
             onClick={() => setTab("visual")}
           >
             Visual ({results.length} reference{results.length !== 1 ? "s" : ""})
           </button>
           <button
-            className={`multi-reference-tab ${tab === "json" ? "active" : ""}`}
+            className={`tab ${tab === "json" ? "active" : ""}`}
             onClick={() => setTab("json")}
           >
             Raw
           </button>
         </div>
         {tab === "json" && (
-          <div className="multi-reference-actions">
-            <button
-              className="multi-reference-action-btn"
-              onClick={handleDownload}
-              title="Download as JSONL file"
-            >
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={handleDownload} title="Download as JSONL file">
               Download JSONL
             </button>
           </div>
@@ -121,12 +115,8 @@ export default function MultiReferenceDisplay({
             ))}
           </div>
         ) : (
-          <div className="multi-reference-json-container">
-            <JsonDisplay
-              data={results}
-              className="multi-reference-json-display"
-              showCopyButton={true}
-            />
+          <div style={{ padding: 16 }}>
+            <JsonDisplay data={results} showCopyButton={true} />
           </div>
         )}
       </div>

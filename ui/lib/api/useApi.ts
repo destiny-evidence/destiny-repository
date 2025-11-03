@@ -76,7 +76,7 @@ export function useApi() {
       const result: ApiResult<any> = await apiGet(path, token);
 
       const dataArr = Array.isArray(result.data) ? result.data : [];
-      if (dataArr.length === 0) {
+      if (dataArr.length === 0 && !result.error) {
         return {
           data: undefined,
           error: { type: "not_found", detail: "No results found" },

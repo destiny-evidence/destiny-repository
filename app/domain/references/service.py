@@ -296,7 +296,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 db_identifiers.append(uuid.UUID(identifier.identifier))
 
         references = await self.sql_uow.references.find_with_identifiers(
-            external_identifiers, preload=["identifiers", "enhancements"]
+            external_identifiers, preload=["identifiers", "enhancements"], match="any"
         ) + await self.sql_uow.references.get_by_pks(
             db_identifiers, preload=["identifiers", "enhancements"]
         )

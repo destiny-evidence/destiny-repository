@@ -171,8 +171,10 @@ export default function ReferenceLookupPage() {
           }}
         >
           {loading && <LoadingSpinner />}
-          <ErrorDisplay error={validationError} type="validation" />
-          <ErrorDisplay error={error} type="generic" />
+          {validationError && (
+            <ErrorDisplay error={validationError} type="validation" />
+          )}
+          {error && <ErrorDisplay error={error} type="generic" />}
           {result && <MultiReferenceDisplay results={result} />}
         </section>
       </div>

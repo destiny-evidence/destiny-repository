@@ -10,32 +10,34 @@ interface ReferenceDisplayProps {
 }
 
 // Helper function to generate a brief summary of a reference
-function getReferenceSummary(refData: any): string {
-  if (!refData) return "Unknown reference";
-
-  const identifiers = refData.identifiers || [];
-  const doi = identifiers.find((id: any) => id.identifier_type === "doi");
-  const pmid = identifiers.find((id: any) => id.identifier_type === "pm_id");
-  const openAlex = identifiers.find(
-    (id: any) => id.identifier_type === "open_alex",
+function getReferenceSummary(refData: any): React.ReactNode {
+  const identifiers = refData.identifiers.reduce(
+    (acc: any, curr: any) => {
+      acc[curr.identifier_type] = curr;
+      return acc;
+    },
+    {} as { [key: string]: any },
   );
 
-  let summary = `ID: ${refData.id}`;
-
-  if (doi) {
-    summary += ` | DOI: ${doi.identifier}`;
-  }
-  if (pmid) {
-    summary += ` | PubMed: ${pmid.identifier}`;
-  }
-  if (openAlex) {
-    summary += ` | OpenAlex: ${openAlex.identifier.split("/").pop()}`;
-  }
-
   const enhancementCount = refData.enhancements?.length || 0;
-  summary += ` | ${enhancementCount} enhancement${
-    enhancementCount !== 1 ? "s" : ""
-  }`;
+  const duplicateCount = 0;
+  let summary = (
+    <>
+      <strong>
+        {refData.id}: {enhancementCount} enhancement
+        {enhancementCount !== 1 ? "s" : ""}
+        {", "} {duplicateCount} duplicate{duplicateCount !== 1 ? "s" : ""}
+      </strong>
+      <div>
+        {Object.values(identifiers).map((id: any, idx: number, arr: any[]) => (
+          <span key={idx}>
+            {id.other_identifier_name || id.identifier_type}: {id.identifier}
+            {idx < arr.length - 1 && <span> | </span>}
+          </span>
+        ))}
+      </div>
+    </>
+  );
 
   return summary;
 }
@@ -43,7 +45,7 @@ function getReferenceSummary(refData: any): string {
 function IdentifierDisplay({ identifiers }: { identifiers: any[] }) {
   if (!identifiers || identifiers.length === 0) return null;
   return (
-    <div className="reference-section">
+    <div style={{ marginBottom: 16 }}>
       <h3>Identifiers</h3>
       <ul className="reference-identifiers">
         {identifiers.map((id, idx) => {
@@ -112,7 +114,7 @@ function EnhancementDisplay({ enhancements }: { enhancements: any[] }) {
 
   if (!enhancements || enhancements.length === 0) return null;
   return (
-    <div className="reference-section">
+    <div style={{ marginBottom: 16 }}>
       <h3>Enhancements</h3>
       <div>
         {enhancements.map((enh, idx) => (
@@ -121,7 +123,7 @@ function EnhancementDisplay({ enhancements }: { enhancements: any[] }) {
               className="enhancement-header"
               onClick={() => setOpenIdx(openIdx === idx ? null : idx)}
             >
-              <span className="enhancement-summary">
+              <span>
                 <strong>
                   {enh.content?.enhancement_type || "Enhancement"}
                 </strong>
@@ -138,7 +140,6 @@ function EnhancementDisplay({ enhancements }: { enhancements: any[] }) {
                   data={enh}
                   title="Enhancement Details"
                   showCopyButton={true}
-                  maxHeight="300px"
                 />
               </div>
             )}
@@ -178,14 +179,12 @@ export default function ReferenceDisplay({
   return (
     <div className="reference-item">
       <div className="reference-item-header" onClick={onToggle}>
-        <span className="reference-item-summary">
-          {getReferenceSummary(refData)}
-        </span>
+        <span>{getReferenceSummary(refData)}</span>
         <span className="reference-item-toggle">{isCollapsed ? "+" : "−"}</span>
       </div>
       {!isCollapsed && (
         <div className="reference-item-content">
-          <div className="reference-section">
+          <div style={{ marginBottom: 16 }}>
             <h4>ID: {refData.id}</h4>
           </div>
           <IdentifierDisplay identifiers={refData.identifiers || []} />
