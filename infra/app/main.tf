@@ -550,6 +550,7 @@ resource "elasticstack_elasticsearch_security_api_key" "app" {
   })
 }
 
+
 resource "elasticstack_elasticsearch_security_api_key" "read_only" {
   name = "${var.app_name}-${var.environment}-read-only"
   role_descriptors = jsonencode({
@@ -579,7 +580,7 @@ resource "elasticstack_elasticsearch_snapshot_lifecycle" "snapshots" {
 
 
 resource "azurerm_user_assigned_identity" "es_index_migrator" {
-  name                = "es-index-migrator-${var.environment}"
+  name                = local.es_index_migrator_name
   location            = azurerm_resource_group.this.location
   resource_group_name = azurerm_resource_group.this.name
 }
@@ -595,8 +596,24 @@ resource "azurerm_role_assignment" "es_index_migrator_acr_access" {
   }
 }
 
+resource "elasticstack_elasticsearch_security_api_key" "es_index_migrator" {
+  name = local.es_index_migrator_name
+  role_descriptors = jsonencode({
+    app_access = {
+      cluster = ["monitor"]
+      indices = [
+        {
+          names                    = ["*"]
+          privileges               = ["all"]
+          allow_restricted_indices = false
+        }
+      ]
+    }
+  })
+}
+
 resource "azurerm_container_app_job" "es_index_migrator" {
-  name                         = "es-index-migrator-${var.environment}"
+  name                         = local.es_index_migrator_name
   location                     = azurerm_resource_group.this.location
   resource_group_name          = azurerm_resource_group.this.name
   container_app_environment_id = module.container_app.container_app_env_id
@@ -625,7 +642,7 @@ resource "azurerm_container_app_job" "es_index_migrator" {
     name = "es-config"
     value = jsonencode({
       cloud_id = ec_deployment.cluster.elasticsearch.cloud_id
-      api_key  = elasticstack_elasticsearch_security_api_key.app.encoded
+      api_key  = elasticstack_elasticsearch_security_api_key.es_index_migrator.encoded
     })
   }
 
@@ -642,14 +659,14 @@ resource "azurerm_container_app_job" "es_index_migrator" {
   template {
     container {
       image   = var.tmp_es_migrator_image
-      name    = "es-index-migrator-${var.environment}0"
+      name    = "${local.es_index_migrator_name}0"
       command = ["python", "-m", "app.utils.es.es_migration", "--migrate", "--alias", "all"]
       cpu     = 0.5
       memory  = "1Gi"
 
       env {
         name  = "APP_NAME"
-        value = "es-index-migrator-${var.environment}"
+        value = local.es_index_migrator_name
       }
 
       env {
