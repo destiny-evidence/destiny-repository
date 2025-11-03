@@ -17,6 +17,7 @@ export function useApi() {
     (async () => {
       try {
         const cfg = await getRuntimeConfig();
+        console.log(cfg);
         setEnv(cfg["ENV"]);
       } catch (e) {
         console.warn("Failed to load runtime config", e);
@@ -95,7 +96,7 @@ export function useApi() {
       }
 
       return {
-        data: dataArr[0],
+        data: dataArr,
         error: result.error,
       };
     } catch (err: any) {

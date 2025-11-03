@@ -204,26 +204,252 @@ button:disabled {
   }
 }
 
-.reference-result-box {
-  max-height: calc(100vh - 384px);
-  overflow-y: auto;
-  overflow-x: auto; /* allow horizontal scrolling inside the box only */
+/* JSON Display Component */
+.json-display {
+  border: 1px solid #e9ecef;
+  border-radius: var(--border-radius);
+  overflow: hidden;
   background: #fff;
-  border: 1px solid #e0e6f2;
-  border-radius: 0;
-  box-shadow: 0 2px 8px rgba(18, 44, 145, 0.08);
-  padding: 24px;
-  margin: 0 auto;
-  position: relative;
 }
 
-/* ensure pre/JSON content stays within the box */
-.reference-result-box pre,
-.reference-result-box .reference-json {
+.json-display-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.json-display-title {
+  font-size: 0.9em;
+  color: #666;
+  font-weight: 500;
+}
+
+.json-display-copy-btn {
+  background: var(--primary-light);
+  color: #fff;
+  border: none;
+  border-radius: var(--border-radius);
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.json-display-copy-btn:hover {
+  background: var(--primary);
+}
+
+.json-display-content {
+  margin: 0;
+  background: #fff;
+  padding: 12px;
+  font-size: 0.85em;
+  line-height: 1.4;
+  font-family: Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New",
+    monospace;
+  overflow-x: auto;
+  overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-word;
-  max-width: 100%;
-  overflow-x: auto;
+  color: #333;
+  border: none;
+}
+
+/* Reference Display Components */
+.reference-item {
+  border: 1px solid #e0e6f2;
+  border-radius: var(--border-radius);
+  margin-bottom: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.reference-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding: 16px;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background var(--transition);
+}
+
+.reference-item-header:hover {
+  background: #f8f9fa;
+}
+
+.reference-item-summary {
+  font-size: 0.95em;
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.reference-item-toggle {
+  font-weight: bold;
+  font-size: 18px;
+  color: var(--primary-light);
+}
+
+.reference-item-content {
+  padding: 16px;
+  border-top: 1px solid #f0f0f0;
+  background: #fff;
+}
+
+.reference-section {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin-bottom: 16px;
+}
+
+.reference-section:last-child {
+  margin-bottom: 0;
+}
+
+.reference-section h3,
+.reference-section h4 {
+  color: var(--primary);
+  margin-bottom: 8px;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.reference-identifiers {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.reference-identifiers li {
+  padding: 4px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.reference-identifiers li:last-child {
+  border-bottom: none;
+}
+
+.enhancement-item {
+  border: 1px solid #e9ecef;
+  border-radius: var(--border-radius);
+  margin-bottom: 8px;
+  background: #f8f9fa;
+  overflow: hidden;
+}
+
+.enhancement-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding: 12px;
+  background: #f8f9fa;
+  transition: background var(--transition);
+}
+
+.enhancement-header:hover {
+  background: #e9ecef;
+}
+
+.enhancement-summary {
+  font-size: 0.9em;
+  color: var(--foreground);
+}
+
+.enhancement-toggle {
+  font-weight: bold;
+  font-size: 16px;
+  color: var(--primary-light);
+}
+
+.enhancement-content {
+  background: #fff;
+  border-top: 1px solid #e9ecef;
+  padding: 8px;
+}
+
+.multi-reference-tabs {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.multi-reference-tab-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.multi-reference-tab {
+  background: #eee;
+  color: var(--foreground);
+  border: none;
+  border-radius: var(--border-radius);
+  padding: 8px 16px;
+  cursor: pointer;
+  font-weight: normal;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.multi-reference-tab.active {
+  background: var(--primary-light);
+  color: #fff;
+  font-weight: bold;
+}
+
+.multi-reference-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.multi-reference-action-btn {
+  background: var(--primary-light);
+  color: #fff;
+  border: none;
+  border-radius: var(--border-radius);
+  padding: 8px 16px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.multi-reference-action-btn:hover {
+  background: var(--primary);
+}
+
+.multi-reference-container {
+  border: 1px solid #e0e0e0;
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  background-color: #fff;
+}
+
+.multi-reference-visual {
+  padding: 16px;
+}
+
+.multi-reference-visual.single {
+  padding: 0;
+}
+
+.multi-reference-json-container {
+  padding: 16px;
+}
+
+/* Specific styling for multi-reference JSON display */
+.multi-reference-json-display .json-display-content {
+  font-size: 13px;
+  max-height: calc(100vh - 512px);
 }
 
 @media (max-width: 700px) {

@@ -1,17 +1,52 @@
 // ReferenceDisplay component for displaying reference lookup results
 
 import React, { useState } from "react";
+import JsonDisplay from "./JsonDisplay";
 
 interface ReferenceDisplayProps {
   result: any;
+  isCollapsed: boolean;
+  onToggle?: () => void;
+}
+
+// Helper function to generate a brief summary of a reference
+function getReferenceSummary(refData: any): string {
+  if (!refData) return "Unknown reference";
+
+  // Try to get the most useful identifier for display
+  const identifiers = refData.identifiers || [];
+  const doi = identifiers.find((id: any) => id.identifier_type === "doi");
+  const pmid = identifiers.find((id: any) => id.identifier_type === "pm_id");
+  const openAlex = identifiers.find(
+    (id: any) => id.identifier_type === "open_alex",
+  );
+
+  let summary = `ID: ${refData.id}`;
+
+  if (doi) {
+    summary += ` | DOI: ${doi.identifier}`;
+  }
+  if (pmid) {
+    summary += ` | PubMed: ${pmid.identifier}`;
+  }
+  if (openAlex) {
+    summary += ` | OpenAlex: ${openAlex.identifier.split("/").pop()}`;
+  }
+
+  const enhancementCount = refData.enhancements?.length || 0;
+  summary += ` | ${enhancementCount} enhancement${
+    enhancementCount !== 1 ? "s" : ""
+  }`;
+
+  return summary;
 }
 
 function IdentifierDisplay({ identifiers }: { identifiers: any[] }) {
   if (!identifiers || identifiers.length === 0) return null;
   return (
-    <section>
+    <div className="reference-section">
       <h3>Identifiers</h3>
-      <ul>
+      <ul className="reference-identifiers">
         {identifiers.map((id, idx) => {
           if (id.identifier_type === "doi") {
             return (
@@ -69,7 +104,7 @@ function IdentifierDisplay({ identifiers }: { identifiers: any[] }) {
           );
         })}
       </ul>
-    </section>
+    </div>
   );
 }
 
@@ -78,85 +113,49 @@ function EnhancementDisplay({ enhancements }: { enhancements: any[] }) {
 
   if (!enhancements || enhancements.length === 0) return null;
   return (
-    <section>
+    <div className="reference-section">
       <h3>Enhancements</h3>
       <div>
         {enhancements.map((enh, idx) => (
-          <div
-            key={idx}
-            style={{
-              border: "1px solid #eee",
-              borderRadius: "var(--border-radius)",
-              marginBottom: 12,
-              background: "#fafafa",
-              padding: "8px",
-            }}
-          >
+          <div key={idx} className="enhancement-item">
             <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                cursor: "pointer",
-              }}
+              className="enhancement-header"
               onClick={() => setOpenIdx(openIdx === idx ? null : idx)}
             >
-              <span>
+              <span className="enhancement-summary">
                 <strong>
                   {enh.content?.enhancement_type || "Enhancement"}
                 </strong>
                 {" | "}Source: {enh.source}
                 {" | "}Robot Version: {enh.robot_version}
               </span>
-              <span style={{ fontWeight: "bold", fontSize: 18 }}>
+              <span className="enhancement-toggle">
                 {openIdx === idx ? "−" : "+"}
               </span>
             </div>
             {openIdx === idx && (
-              <pre
-                style={{
-                  marginTop: 8,
-                  background: "#fff",
-                  border: "1px solid #eee",
-                  borderRadius: "var(--border-radius)",
-                  padding: "8px",
-                  fontSize: "0.95em",
-                  overflowX: "auto",
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                }}
-              >
-                {JSON.stringify(enh, null, 2)}
-              </pre>
+              <div className="enhancement-content">
+                <JsonDisplay
+                  data={enh}
+                  title="Enhancement Details"
+                  showCopyButton={true}
+                  maxHeight="300px"
+                />
+              </div>
             )}
           </div>
         ))}
       </div>
-    </section>
+    </div>
   );
 }
 
-export default function ReferenceDisplay({ result }: ReferenceDisplayProps) {
-  const [tab, setTab] = useState<"visual" | "json">("visual");
+export default function ReferenceDisplay({
+  result,
+  isCollapsed,
+  onToggle,
+}: ReferenceDisplayProps) {
   const refData = result;
-
-  // Copy and download handlers
-  function handleCopy() {
-    navigator.clipboard.writeText(JSON.stringify(refData, null, 2));
-  }
-  function handleDownload() {
-    const blob = new Blob([JSON.stringify(refData, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `reference-${refData.id}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
 
   if (!refData) {
     return (
@@ -178,98 +177,22 @@ export default function ReferenceDisplay({ result }: ReferenceDisplayProps) {
   }
 
   return (
-    <div style={{ marginTop: 24 }}>
-      <div
-        style={{
-          marginBottom: 16,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <div>
-          <button
-            style={{
-              marginRight: 8,
-              background: tab === "visual" ? "var(--primary-light)" : "#eee",
-              color: tab === "visual" ? "#fff" : "var(--foreground)",
-              border: "none",
-              borderRadius: "var(--border-radius)",
-              padding: "6px 16px",
-              cursor: "pointer",
-              fontWeight: tab === "visual" ? "bold" : "normal",
-            }}
-            onClick={() => setTab("visual")}
-          >
-            Visual
-          </button>
-          <button
-            style={{
-              background: tab === "json" ? "var(--primary-light)" : "#eee",
-              color: tab === "json" ? "#fff" : "var(--foreground)",
-              border: "none",
-              borderRadius: "var(--border-radius)",
-              padding: "6px 16px",
-              cursor: "pointer",
-              fontWeight: tab === "json" ? "bold" : "normal",
-            }}
-            onClick={() => setTab("json")}
-          >
-            JSON
-          </button>
+    <div className="reference-item">
+      <div className="reference-item-header" onClick={onToggle}>
+        <span className="reference-item-summary">
+          {getReferenceSummary(refData)}
+        </span>
+        <span className="reference-item-toggle">{isCollapsed ? "+" : "−"}</span>
+      </div>
+      {!isCollapsed && (
+        <div className="reference-item-content">
+          <div className="reference-section">
+            <h4>ID: {refData.id}</h4>
+          </div>
+          <IdentifierDisplay identifiers={refData.identifiers || []} />
+          <EnhancementDisplay enhancements={refData.enhancements || []} />
         </div>
-        {tab === "json" && (
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              style={{
-                background: "var(--primary-light)",
-                color: "#fff",
-                border: "none",
-                borderRadius: "var(--border-radius)",
-                padding: "6px 16px",
-                cursor: "pointer",
-                fontWeight: "bold",
-              }}
-              onClick={handleCopy}
-            >
-              Copy
-            </button>
-            <button
-              style={{
-                background: "var(--primary-light)",
-                color: "#fff",
-                border: "none",
-                borderRadius: "var(--border-radius)",
-                padding: "6px 16px",
-                cursor: "pointer",
-                fontWeight: "bold",
-              }}
-              onClick={handleDownload}
-            >
-              Download
-            </button>
-          </div>
-        )}
-      </div>
-      <div className="reference-result-box">
-        {tab === "visual" ? (
-          <div>
-            <section>
-              <div>
-                <h3>ID: {refData.id}</h3>
-              </div>
-            </section>
-            <IdentifierDisplay identifiers={refData.identifiers || []} />
-            <EnhancementDisplay enhancements={refData.enhancements || []} />
-          </div>
-        ) : (
-          <div>
-            <pre className="reference-json">
-              {JSON.stringify(refData, null, 2)}
-            </pre>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }

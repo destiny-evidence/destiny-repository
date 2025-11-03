@@ -10,9 +10,10 @@ import LoadingSpinner from "../../components/ui/LoadingSpinner";
 import PageOverlay from "../../components/ui/PageOverlay";
 import { useApi } from "../../lib/api/useApi";
 import { ReferenceLookupParams } from "../../lib/api/types";
+import MultiReferenceDisplay from "@/components/ui/MultiReferenceDisplay";
 
 export default function ReferenceLookupPage() {
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<Array<any> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -132,7 +133,7 @@ export default function ReferenceLookupPage() {
           {loading && <LoadingSpinner />}
           <ErrorDisplay error={validationError} type="validation" />
           <ErrorDisplay error={error} type="generic" />
-          <ReferenceDisplay result={result} />
+          {result && <MultiReferenceDisplay results={result} />}
         </section>
       </div>
     </div>
