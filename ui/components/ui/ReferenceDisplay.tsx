@@ -13,7 +13,6 @@ interface ReferenceDisplayProps {
 function getReferenceSummary(refData: any): string {
   if (!refData) return "Unknown reference";
 
-  // Try to get the most useful identifier for display
   const identifiers = refData.identifiers || [];
   const doi = identifiers.find((id: any) => id.identifier_type === "doi");
   const pmid = identifiers.find((id: any) => id.identifier_type === "pm_id");

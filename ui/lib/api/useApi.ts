@@ -4,7 +4,7 @@ import React from "react";
 import { useMsal } from "@azure/msal-react";
 import { getLoginRequest } from "../msalConfig";
 import { apiGet, ApiResult } from "./client";
-import { ReferenceLookupParams, ReferenceLookupResult } from "./types";
+import { ReferenceLookupResult } from "./types";
 import { getRuntimeConfig } from "../runtimeConfig";
 import { InteractionStatus } from "@azure/msal-browser";
 
@@ -62,27 +62,15 @@ export function useApi() {
     }
   }
 
-  async function fetchReference(
-    params: ReferenceLookupParams,
+  async function fetchReferences(
+    identifiers: string[],
   ): Promise<ReferenceLookupResult> {
     try {
       const token = await getToken();
       const urlParams = new URLSearchParams();
 
-      if (params.identifierType === "destiny_id") {
-        urlParams.set("identifier", params.identifier);
-      } else if (params.otherIdentifierName) {
-        // fixed bug: use params.identifier as the value, not otherIdentifierName twice
-        urlParams.set(
-          "identifier",
-          `other:${params.otherIdentifierName}:${params.identifier}`,
-        );
-      } else {
-        urlParams.set(
-          "identifier",
-          `${params.identifierType}:${params.identifier}`,
-        );
-      }
+      // Send identifiers as a comma-separated list in a single parameter
+      urlParams.set("identifier", identifiers.join(","));
 
       const path = `/references/?${urlParams.toString()}`;
       const result: ApiResult<any> = await apiGet(path, token);
@@ -107,5 +95,5 @@ export function useApi() {
     }
   }
 
-  return { fetchReference, isLoggedIn, isLoginProcessing };
+  return { fetchReferences, isLoggedIn, isLoginProcessing };
 }
