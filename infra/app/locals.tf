@@ -4,7 +4,7 @@ locals {
   # var.app_name-* can be removed the list below after we migrate to versioned indicies
   managed_indicies = [
     "${var.app_name}-*",
-    "references*",
+    "reference*",
     "robot-automation-percolation*"
   ]
   is_production = var.environment == "production"

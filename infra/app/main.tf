@@ -658,9 +658,9 @@ resource "azurerm_container_app_job" "es_index_migrator" {
 
   template {
     container {
-      image   = var.tmp_es_migrator_image
+      image   = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
       name    = "${local.es_index_migrator_name}0"
-      command = ["python", "-m", "app.utils.es.es_migration", "--migrate", "--alias", "all"]
+      command = [""]
       cpu     = 0.5
       memory  = "1Gi"
 
@@ -689,5 +689,11 @@ resource "azurerm_container_app_job" "es_index_migrator" {
         value = var.telemetry_enabled
       }
     }
+  }
+
+  # Allow us to update the image via github actions or the Azure Portal
+  # Allow us to specify the command via the Azure Portal when triggering the job without it being overwritten
+  lifecycle {
+    ignore_changes = [template[0].container[0].image, template[0].container[0].command]
   }
 }

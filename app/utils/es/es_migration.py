@@ -42,15 +42,18 @@ async def run_migration(alias: str) -> None:
 
     await es_manager.init(es_config)
 
-    async with es_manager.client() as client:
-        index_manager = IndexManager(
-            document_class=index_documents[alias],
-            client=client,
-            otel_enabled=settings.otel_enabled,
-        )
-        await index_manager.migrate()
-
-    await es_manager.close()
+    try:
+        async with es_manager.client() as client:
+            index_manager = IndexManager(
+                document_class=index_documents[alias],
+                client=client,
+                otel_enabled=settings.otel_enabled,
+            )
+            await index_manager.migrate()
+    except Exception:
+        logger.exception("An unhandled exception occured")
+    finally:
+        await es_manager.close()
 
 
 async def run_rollback(alias: str, target_index: str | None = None) -> None:
@@ -59,18 +62,21 @@ async def run_rollback(alias: str, target_index: str | None = None) -> None:
 
     await es_manager.init(es_config)
 
-    async with es_manager.client() as client:
-        index_manager = IndexManager(
-            document_class=index_documents[alias],
-            client=client,
-            otel_enabled=settings.otel_enabled,
-        )
-        if target_index:
-            await index_manager.rollback(target_index=target_index)
-        else:
-            await index_manager.rollback()
-
-    await es_manager.close()
+    try:
+        async with es_manager.client() as client:
+            index_manager = IndexManager(
+                document_class=index_documents[alias],
+                client=client,
+                otel_enabled=settings.otel_enabled,
+            )
+            if target_index:
+                await index_manager.rollback(target_index=target_index)
+            else:
+                await index_manager.rollback()
+    except Exception:
+        logger.exception("An unhandled exception occured")
+    finally:
+        await es_manager.close()
 
 
 @tracer.start_as_current_span("Delete index")
@@ -89,21 +95,27 @@ async def delete_old_index(index_to_delete: str) -> None:
 
     await es_manager.init(es_config)
 
-    async with es_manager.client() as client:
-        try:
-            alias_info = await client.indices.get_alias(index=index_to_delete)
-            if index_to_delete in alias_info and alias_info[index_to_delete]["aliases"]:
-                logger.warning(
-                    "Index %s still has aliases, skipping deletion", index_to_delete
-                )
-                return
-        except NotFoundError:
-            pass
+    try:
+        async with es_manager.client() as client:
+            try:
+                alias_info = await client.indices.get_alias(index=index_to_delete)
+                if (
+                    index_to_delete in alias_info
+                    and alias_info[index_to_delete]["aliases"]
+                ):
+                    logger.warning(
+                        "Index %s still has aliases, skipping deletion", index_to_delete
+                    )
+                    return
+            except NotFoundError:
+                pass
 
-        await client.indices.delete(index=index_to_delete)
-        logger.info("Deleted old index: %s", index_to_delete)
-
-    await es_manager.close()
+            await client.indices.delete(index=index_to_delete)
+            logger.info("Deleted old index: %s", index_to_delete)
+    except Exception:
+        logger.exception("An unhandled exception occured")
+    finally:
+        await es_manager.close()
 
 
 def argument_parser() -> argparse.ArgumentParser:
