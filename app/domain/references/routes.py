@@ -4,6 +4,7 @@ import uuid
 from typing import Annotated
 
 import destiny_sdk
+from annotated_types import MaxLen
 from elasticsearch import AsyncElasticsearch
 from fastapi import (
     APIRouter,
@@ -222,6 +223,7 @@ async def get_reference(
 def parse_identifiers(
     identifier: Annotated[
         list[str],
+        MaxLen(settings.max_lookup_reference_query_length),
         Query(
             description=(
                 "A list of external identifier lookup strings "
@@ -243,6 +245,14 @@ def parse_identifiers(
             identifiers += parse_identifiers(identifier_string.split(","))
         else:
             identifiers.append(parse_identifier_lookup_from_string(identifier_string))
+    if len(identifiers) > settings.max_lookup_reference_query_length:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Too many identifiers provided. "
+                f"Maximum is {settings.max_lookup_reference_query_length}."
+            ),
+        )
     return identifiers
 
 
@@ -252,7 +262,10 @@ async def lookup_references(
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
-    identifiers: Annotated[list[IdentifierLookup], Depends(parse_identifiers)],
+    identifiers: Annotated[
+        list[IdentifierLookup],
+        Depends(parse_identifiers),
+    ],
 ) -> list[destiny_sdk.references.Reference]:
     """Get references given identifiers."""
     return [

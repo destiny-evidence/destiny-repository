@@ -47,6 +47,7 @@ authors = [
 dependencies = [
     "aiohttp==3.12.3",
     "alembic>=1.14.1,<2",
+    "annotated-types>=0.7.0",
     "asyncpg>=0.30.0,<0.31",
     "azure-identity>=1.21.0,<2",
     "azure-servicebus>=7.14.2,<8",

@@ -19,6 +19,7 @@ from app.api.exception_handlers import (
     parse_error_exception_handler,
     sdk_to_domain_exception_handler,
 )
+from app.core.config import get_settings
 from app.core.exceptions import (
     ESMalformedDocumentError,
     InvalidPayloadError,
@@ -644,6 +645,26 @@ async def test_lookup_references_accepts_csv(
     returned_ids = {item["id"] for item in data}
     assert str(reference.id) in returned_ids
     assert str(reference_doi.id) in returned_ids
+
+
+async def test_lookup_references_too_many_identifiers(
+    client: AsyncClient,
+) -> None:
+    """Test lookup_references with too many identifiers."""
+    too_many_identifiers = [
+        str(uuid.uuid4())
+        for _ in range(get_settings().max_lookup_reference_query_length + 1)
+    ]
+    response = await client.get(
+        "/v1/references/",
+        params={"identifier": too_many_identifiers},
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    response = await client.get(
+        "/v1/references/",
+        params={"identifier": ",".join(too_many_identifiers)},
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
 
 async def test_lookup_references_invalid_identifier_format(

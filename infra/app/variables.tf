@@ -277,3 +277,9 @@ variable "default_upload_file_chunk_size" {
   type        = number
   default     = 1
 }
+
+variable "max_reference_lookup_query_length" {
+  description = "Maximum number of identifiers to allow in a single reference lookup query"
+  type        = number
+  default     = 100
+}
