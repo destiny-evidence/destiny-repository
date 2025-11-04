@@ -193,7 +193,7 @@ def validate_args(args: argparse.Namespace) -> None:
     if args.rollback and args.alias == "all" and args.target_index:
         msg = (
             "You can only specify target_index when rolling back a single index."
-            "Please either remove --target-name or choose a single --alias."
+            "Please either remove --target-index or choose a single --alias."
         )
         raise RuntimeError(msg)
 
