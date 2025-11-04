@@ -105,7 +105,7 @@ class IndexManager:
         """
         WARNING: DESTRUCTIVE ACTION.
 
-        Rebuild the current index buy deleting, recreating, and repopulating.
+        Rebuild the current index by deleting, recreating, and repopulating.
         """
         trace_attribute(
             attribute=Attributes.DB_COLLECTION_ALIAS_NAME, value=self.alias_name
