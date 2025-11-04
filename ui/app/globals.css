@@ -1,3 +1,10 @@
+/* Subtle duplicate note indicator */
+.duplicate-note {
+  margin-left: 6px;
+  font-size: 0.8em;
+  color: #888;
+  font-style: italic;
+}
 :root {
   --primary: #122c91;
   --primary-light: #2a6fdb;

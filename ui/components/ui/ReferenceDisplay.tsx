@@ -11,16 +11,33 @@ interface ReferenceDisplayProps {
 
 // Helper function to generate a brief summary of a reference
 function getReferenceSummary(refData: any): React.ReactNode {
-  const identifiers = refData.identifiers.reduce(
-    (acc: any, curr: any) => {
-      acc[curr.identifier_type] = curr;
-      return acc;
-    },
-    {} as { [key: string]: any },
-  );
+  // Separate identifiers by whether they're from the main reference or duplicates
+  const mainIdentifiers: { [key: string]: any } = {};
+  const duplicateIdentifiers: { [key: string]: any } = {};
+
+  (refData.identifiers || []).forEach((id: any) => {
+    const isDuplicate = id.reference_id !== refData.id;
+    const target = isDuplicate ? duplicateIdentifiers : mainIdentifiers;
+    // Only add if not already present (prefer main reference identifiers)
+    if (!mainIdentifiers[id.identifier_type] && !target[id.identifier_type]) {
+      target[id.identifier_type] = id;
+    }
+  });
+
+  // Merge, preferring main identifiers
+  const identifiers = { ...duplicateIdentifiers, ...mainIdentifiers };
 
   const enhancementCount = refData.enhancements?.length || 0;
-  const duplicateCount = 0;
+
+  // Count unique duplicate reference IDs
+  const duplicateReferenceIds = new Set<string>();
+  (refData.enhancements || []).forEach((enh: any) => {
+    if (enh.reference_id !== refData.id) {
+      duplicateReferenceIds.add(enh.reference_id);
+    }
+  });
+  const duplicateCount = duplicateReferenceIds.size;
+
   let summary = (
     <>
       <strong>
@@ -42,109 +59,164 @@ function getReferenceSummary(refData: any): React.ReactNode {
   return summary;
 }
 
-function IdentifierDisplay({ identifiers }: { identifiers: any[] }) {
+function IdentifierDisplay({
+  identifiers,
+  referenceId,
+}: {
+  identifiers: any[];
+  referenceId: string;
+}) {
   if (!identifiers || identifiers.length === 0) return null;
+
+  // Track which identifier values have already been shown
+  const shown = new Set<string>();
+
   return (
     <div style={{ marginBottom: 16 }}>
       <h3>Identifiers</h3>
       <ul className="reference-identifiers">
-        {identifiers.map((id, idx) => {
-          if (id.identifier_type === "doi") {
+        {identifiers
+          .sort((a, b) => {
+            // Primary: identifier_type, with 'other' always last
+            if (a.identifier_type === "other" && b.identifier_type !== "other")
+              return 1;
+            if (b.identifier_type === "other" && a.identifier_type !== "other")
+              return -1;
+            if (a.identifier_type !== b.identifier_type) {
+              return a.identifier_type.localeCompare(b.identifier_type);
+            }
+            // Secondary: other_identifier_name (only relevant for 'other', but safe for all)
+            const aOther = a.other_identifier_name || "";
+            const bOther = b.other_identifier_name || "";
+            if (aOther !== bOther) {
+              return aOther.localeCompare(bOther);
+            }
+            // Tertiary: identifier
+            return String(a.identifier).localeCompare(String(b.identifier));
+          })
+          .map((id, idx) => {
+            // Only show if not already shown
+            const uniqueKey = `${id.identifier_type}:${id.other_identifier_name}:${id.identifier}`;
+            if (shown.has(uniqueKey)) return null;
+            shown.add(uniqueKey);
+
+            if (id.identifier_type === "doi") {
+              return (
+                <li key={idx}>
+                  DOI:{" "}
+                  <a
+                    href={`https://doi.org/${id.identifier}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {id.identifier}
+                  </a>
+                </li>
+              );
+            }
+            if (id.identifier_type === "pm_id") {
+              return (
+                <li key={idx}>
+                  PubMed:{" "}
+                  <a
+                    href={`https://pubmed.ncbi.nlm.nih.gov/${id.identifier}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {id.identifier}
+                  </a>
+                </li>
+              );
+            }
+            if (id.identifier_type === "open_alex") {
+              return (
+                <li key={idx}>
+                  OpenAlex:{" "}
+                  <a
+                    href={`https://openalex.org/${id.identifier}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {id.identifier}
+                  </a>
+                </li>
+              );
+            }
+            if (id.identifier_type === "other") {
+              return (
+                <li key={idx}>
+                  {id.other_identifier_name}: {id.identifier}
+                </li>
+              );
+            }
             return (
               <li key={idx}>
-                DOI:{" "}
-                <a
-                  href={`https://doi.org/${id.identifier}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {id.identifier}
-                </a>
+                {id.identifier_type}: {id.identifier}
               </li>
             );
-          }
-          if (id.identifier_type === "pm_id") {
-            return (
-              <li key={idx}>
-                PubMed:{" "}
-                <a
-                  href={`https://pubmed.ncbi.nlm.nih.gov/${id.identifier}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {id.identifier}
-                </a>
-              </li>
-            );
-          }
-          if (id.identifier_type === "open_alex") {
-            return (
-              <li key={idx}>
-                OpenAlex:{" "}
-                <a
-                  href={`https://openalex.org/${id.identifier}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {id.identifier}
-                </a>
-              </li>
-            );
-          }
-          if (id.identifier_type === "other") {
-            return (
-              <li key={idx}>
-                {id.other_identifier_name}: {id.identifier}
-              </li>
-            );
-          }
-          return (
-            <li key={idx}>
-              {id.identifier_type}: {id.identifier}
-            </li>
-          );
-        })}
+          })}
       </ul>
     </div>
   );
 }
 
-function EnhancementDisplay({ enhancements }: { enhancements: any[] }) {
+function EnhancementDisplay({
+  enhancements,
+  referenceId,
+}: {
+  enhancements: any[];
+  referenceId: string;
+}) {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
 
   if (!enhancements || enhancements.length === 0) return null;
+
+  // Sort enhancements: non-duplicates first, then duplicates
+  const sortedEnhancements = [...enhancements].sort((a, b) => {
+    const aIsDuplicate = a.reference_id !== referenceId;
+    const bIsDuplicate = b.reference_id !== referenceId;
+    if (aIsDuplicate === bIsDuplicate) return 0;
+    return aIsDuplicate ? 1 : -1;
+  });
+
   return (
     <div style={{ marginBottom: 16 }}>
       <h3>Enhancements</h3>
       <div>
-        {enhancements.map((enh, idx) => (
-          <div key={idx} className="enhancement-item">
-            <div
-              className="enhancement-header"
-              onClick={() => setOpenIdx(openIdx === idx ? null : idx)}
-            >
-              <span>
-                <strong>
-                  {enh.content?.enhancement_type || "Enhancement"}
-                </strong>
-                {" | "}Source: {enh.source}
-                {" | "}Robot Version: {enh.robot_version}
-              </span>
-              <span className="enhancement-toggle">
-                {openIdx === idx ? "−" : "+"}
-              </span>
-            </div>
-            {openIdx === idx && (
-              <div className="enhancement-content">
-                <JsonDisplay
-                  data={enh}
-                  title="Enhancement Details"
-                  showCopyButton={true}
-                />
+        {sortedEnhancements.map((enh, idx) => {
+          const isDuplicate = enh.reference_id !== referenceId;
+          return (
+            <div key={idx} className="enhancement-item">
+              <div
+                className="enhancement-header"
+                onClick={() => setOpenIdx(openIdx === idx ? null : idx)}
+              >
+                <span>
+                  <strong>
+                    {enh.content?.enhancement_type || "Enhancement"}
+                  </strong>
+                  {" | "}Source: {enh.source}
+                  {" | "}Robot Version: {enh.robot_version}
+                  {isDuplicate && (
+                    <span className="duplicate-note">(from duplicate)</span>
+                  )}
+                </span>
+                <span className="enhancement-toggle">
+                  {openIdx === idx ? "−" : "+"}
+                </span>
               </div>
-            )}
-          </div>
-        ))}
+              {openIdx === idx && (
+                <div className="enhancement-content">
+                  <JsonDisplay
+                    data={enh}
+                    title="Enhancement Details"
+                    showCopyButton={true}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -187,8 +259,14 @@ export default function ReferenceDisplay({
           <div style={{ marginBottom: 16 }}>
             <h4>ID: {refData.id}</h4>
           </div>
-          <IdentifierDisplay identifiers={refData.identifiers || []} />
-          <EnhancementDisplay enhancements={refData.enhancements || []} />
+          <IdentifierDisplay
+            identifiers={refData.identifiers || []}
+            referenceId={refData.id}
+          />
+          <EnhancementDisplay
+            enhancements={refData.enhancements || []}
+            referenceId={refData.id}
+          />
         </div>
       )}
     </div>
