@@ -7,10 +7,17 @@ interface ReferenceDisplayProps {
   result: any;
   isCollapsed: boolean;
   onToggle?: () => void;
+  searchedIdentifiers?: string[];
 }
 
 // Helper function to generate a brief summary of a reference
-function getReferenceSummary(refData: any): React.ReactNode {
+function getReferenceSummary(
+  refData: any,
+  searchedIdentifiers: string[] = [],
+): React.ReactNode {
+  // Check if the reference ID itself was searched for
+  const isIdSearched = searchedIdentifiers.includes(refData.id);
+
   // Group all identifiers by type
   const identifiersByType: { [key: string]: any[] } = {};
   (refData.identifiers || []).forEach((id: any) => {
@@ -34,7 +41,10 @@ function getReferenceSummary(refData: any): React.ReactNode {
   let summary = (
     <>
       <strong>
-        {refData.id}: {enhancementCount} enhancement
+        <span style={isIdSearched ? { textDecoration: "underline" } : {}}>
+          {refData.id}
+        </span>
+        : {enhancementCount} enhancement
         {enhancementCount !== 1 ? "s" : ""}
         {", "} {duplicateCount} duplicate{duplicateCount !== 1 ? "s" : ""}
       </strong>
@@ -42,15 +52,30 @@ function getReferenceSummary(refData: any): React.ReactNode {
         {Object.entries(identifiersByType).map(([type, ids], typeIdx) => (
           <div key={typeIdx} style={{ marginBottom: 4 }}>
             <span style={{ fontWeight: 500 }}>{type}:</span>{" "}
-            {ids.map((id: any, idx: number) => (
-              <span key={idx}>
-                {id.other_identifier_name
-                  ? `${id.other_identifier_name}: `
-                  : ""}
-                {id.identifier}
-                {idx < ids.length - 1 && <span> | </span>}
-              </span>
-            ))}
+            {ids.map((id: any, idx: number) => {
+              // Check if this identifier was searched for
+              let identifierString: string;
+              if (id.identifier_type === "other") {
+                identifierString = `other:${id.other_identifier_name}:${id.identifier}`;
+              } else {
+                identifierString = `${id.identifier_type}:${id.identifier}`;
+              }
+              const isSearched = searchedIdentifiers.includes(identifierString);
+
+              return (
+                <span key={idx}>
+                  <span
+                    style={isSearched ? { textDecoration: "underline" } : {}}
+                  >
+                    {id.other_identifier_name
+                      ? `${id.other_identifier_name}: `
+                      : ""}
+                    {id.identifier}
+                  </span>
+                  {idx < ids.length - 1 && <span> | </span>}
+                </span>
+              );
+            })}
           </div>
         ))}
       </div>
@@ -63,14 +88,27 @@ function getReferenceSummary(refData: any): React.ReactNode {
 function IdentifierDisplay({
   identifiers,
   referenceId,
+  searchedIdentifiers = [],
 }: {
   identifiers: any[];
   referenceId: string;
+  searchedIdentifiers?: string[];
 }) {
   if (!identifiers || identifiers.length === 0) return null;
 
   // Track which identifier values have already been shown
   const shown = new Set<string>();
+
+  // Helper function to check if an identifier was searched for
+  const isSearchedIdentifier = (identifier: any): boolean => {
+    let identifierString: string;
+    if (identifier.identifier_type === "other") {
+      identifierString = `other:${identifier.other_identifier_name}:${identifier.identifier}`;
+    } else {
+      identifierString = `${identifier.identifier_type}:${identifier.identifier}`;
+    }
+    return searchedIdentifiers.includes(identifierString);
+  };
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -101,6 +139,9 @@ function IdentifierDisplay({
             if (shown.has(uniqueKey)) return null;
             shown.add(uniqueKey);
 
+            const isSearched = isSearchedIdentifier(id);
+            const linkStyle = isSearched ? { textDecoration: "underline" } : {};
+
             if (id.identifier_type === "doi") {
               return (
                 <li key={idx}>
@@ -109,6 +150,7 @@ function IdentifierDisplay({
                     href={`https://doi.org/${id.identifier}`}
                     target="_blank"
                     rel="noopener noreferrer"
+                    style={linkStyle}
                   >
                     {id.identifier}
                   </a>
@@ -123,6 +165,7 @@ function IdentifierDisplay({
                     href={`https://pubmed.ncbi.nlm.nih.gov/${id.identifier}`}
                     target="_blank"
                     rel="noopener noreferrer"
+                    style={linkStyle}
                   >
                     {id.identifier}
                   </a>
@@ -137,6 +180,7 @@ function IdentifierDisplay({
                     href={`https://openalex.org/${id.identifier}`}
                     target="_blank"
                     rel="noopener noreferrer"
+                    style={linkStyle}
                   >
                     {id.identifier}
                   </a>
@@ -146,13 +190,19 @@ function IdentifierDisplay({
             if (id.identifier_type === "other") {
               return (
                 <li key={idx}>
-                  {id.other_identifier_name}: {id.identifier}
+                  <span
+                    style={isSearched ? { textDecoration: "underline" } : {}}
+                  >
+                    {id.other_identifier_name}: {id.identifier}
+                  </span>
                 </li>
               );
             }
             return (
               <li key={idx}>
-                {id.identifier_type}: {id.identifier}
+                <span style={isSearched ? { textDecoration: "underline" } : {}}>
+                  {id.identifier_type}: {id.identifier}
+                </span>
               </li>
             );
           })}
@@ -227,6 +277,7 @@ export default function ReferenceDisplay({
   result,
   isCollapsed,
   onToggle,
+  searchedIdentifiers = [],
 }: ReferenceDisplayProps) {
   const refData = result;
 
@@ -252,17 +303,29 @@ export default function ReferenceDisplay({
   return (
     <div className="collapsible-item">
       <div className="reference-item-header" onClick={onToggle}>
-        <span>{getReferenceSummary(refData)}</span>
+        <span>{getReferenceSummary(refData, searchedIdentifiers)}</span>
         <span className="reference-item-toggle">{isCollapsed ? "+" : "−"}</span>
       </div>
       {!isCollapsed && (
         <div className="reference-item-content">
           <div style={{ marginBottom: 16 }}>
-            <h4>ID: {refData.id}</h4>
+            <h4>
+              ID:{" "}
+              <span
+                style={
+                  searchedIdentifiers.includes(refData.id)
+                    ? { textDecoration: "underline" }
+                    : {}
+                }
+              >
+                {refData.id}
+              </span>
+            </h4>
           </div>
           <IdentifierDisplay
             identifiers={refData.identifiers || []}
             referenceId={refData.id}
+            searchedIdentifiers={searchedIdentifiers}
           />
           <EnhancementDisplay
             enhancements={refData.enhancements || []}

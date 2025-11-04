@@ -5,6 +5,21 @@
   color: #888;
   font-style: italic;
 }
+
+/* Unfound identifiers styling */
+.unfound-identifiers {
+  background: #fff3cd;
+  border: 1px solid #ffeaa7;
+}
+
+.unfound-identifiers .reference-item-header {
+  background: #fff3cd;
+  border-color: #ffeaa7;
+}
+
+.unfound-identifiers .reference-item-content {
+  background: #fffbf0;
+}
 :root {
   --primary: #122c91;
   --primary-light: #2a6fdb;

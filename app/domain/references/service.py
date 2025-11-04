@@ -390,7 +390,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 "duplicate_decision",
                 "duplicate_references",
             ],
+            fail_on_missing=False,
         )
+        if not references:
+            return []
+
         # Pre-filter duplicates
         references = list(
             {reference.id: reference for reference in references}.values()

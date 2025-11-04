@@ -20,6 +20,7 @@ export default function ReferenceLookupPage() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [bulkIdentifiers, setBulkIdentifiers] = useState<string[]>([]);
+  const [searchedIdentifiers, setSearchedIdentifiers] = useState<string[]>([]);
 
   const { fetchReferences, isLoggedIn, isLoginProcessing } = useApi();
 
@@ -34,6 +35,7 @@ export default function ReferenceLookupPage() {
 
     try {
       const identifierString = toIdentifierString(params);
+      setSearchedIdentifiers([identifierString]);
       const apiResult = await fetchReferences([identifierString]);
 
       if (apiResult.error) {
@@ -65,6 +67,7 @@ export default function ReferenceLookupPage() {
     setLoading(true);
 
     try {
+      setSearchedIdentifiers(identifiers);
       const apiResult = await fetchReferences(identifiers);
 
       if (apiResult.error) {
@@ -175,7 +178,12 @@ export default function ReferenceLookupPage() {
             <ErrorDisplay error={validationError} type="validation" />
           )}
           {error && <ErrorDisplay error={error} type="generic" />}
-          {result && <MultiReferenceDisplay results={result} />}
+          {result && (
+            <MultiReferenceDisplay
+              results={result}
+              searchedIdentifiers={searchedIdentifiers}
+            />
+          )}
         </section>
       </div>
     </div>

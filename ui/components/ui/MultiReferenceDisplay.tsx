@@ -6,15 +6,50 @@ import JsonDisplay from "./JsonDisplay";
 
 interface MultiReferenceDisplayProps {
   results: any[];
+  searchedIdentifiers?: string[];
 }
 
 export default function MultiReferenceDisplay({
   results,
+  searchedIdentifiers = [],
 }: MultiReferenceDisplayProps) {
   const [tab, setTab] = useState<"visual" | "json">("visual");
   const [collapsedStates, setCollapsedStates] = useState<{
     [key: number]: boolean;
   }>({});
+  const [unfoundCollapsed, setUnfoundCollapsed] = useState(false);
+
+  // Detect unfound identifiers
+  const unfoundIdentifiers = React.useMemo(() => {
+    if (searchedIdentifiers.length === 0) return [];
+
+    // Collect all identifiers found in the results
+    const foundIdentifierStrings = new Set<string>();
+
+    results?.forEach((result) => {
+      // Add the reference ID itself
+      if (result.id) {
+        foundIdentifierStrings.add(result.id);
+      }
+
+      // Add all external identifiers
+      result.identifiers?.forEach((identifier: any) => {
+        // Build identifier string in the format used by the search
+        let identifierString: string;
+        if (identifier.identifier_type === "other") {
+          identifierString = `other:${identifier.other_identifier_name}:${identifier.identifier}`;
+        } else {
+          identifierString = `${identifier.identifier_type}:${identifier.identifier}`;
+        }
+        foundIdentifierStrings.add(identifierString);
+      });
+    });
+
+    // Find searched identifiers that weren't found
+    return searchedIdentifiers.filter(
+      (searchedId) => !foundIdentifierStrings.has(searchedId),
+    );
+  }, [searchedIdentifiers, results]);
 
   // Initialize all references as collapsed (except when there's only one)
   React.useEffect(() => {
@@ -105,12 +140,57 @@ export default function MultiReferenceDisplay({
               results.length === 1 ? "single" : ""
             }`}
           >
+            {/* Unfound identifiers section */}
+            {unfoundIdentifiers.length > 0 && (
+              <div
+                className="collapsible-item unfound-identifiers"
+                style={{ marginBottom: 16 }}
+              >
+                <div
+                  className="reference-item-header"
+                  onClick={() => setUnfoundCollapsed(!unfoundCollapsed)}
+                >
+                  <span>
+                    <strong>
+                      {unfoundIdentifiers.length} identifier
+                      {unfoundIdentifiers.length !== 1 ? "s" : ""} not found
+                    </strong>
+                  </span>
+                  <span className="reference-item-toggle">
+                    {unfoundCollapsed ? "+" : "−"}
+                  </span>
+                </div>
+                {!unfoundCollapsed && (
+                  <div className="reference-item-content">
+                    <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                      {unfoundIdentifiers.map((identifier, idx) => (
+                        <li
+                          key={idx}
+                          style={{
+                            padding: "4px 0",
+                            borderBottom:
+                              idx < unfoundIdentifiers.length - 1
+                                ? "1px solid #f5f5f5"
+                                : "none",
+                            fontFamily: "var(--mono)",
+                            fontSize: "0.9em",
+                          }}
+                        >
+                          {identifier}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
             {results.map((result, idx) => (
               <ReferenceDisplay
                 key={result?.id || idx}
                 result={result}
                 isCollapsed={collapsedStates[idx]}
                 onToggle={() => toggleCollapsed(idx)}
+                searchedIdentifiers={searchedIdentifiers}
               />
             ))}
           </div>
