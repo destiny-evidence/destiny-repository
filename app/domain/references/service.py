@@ -445,56 +445,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             enhancement_request_id, preload=["status"]
         )
 
-    @sql_unit_of_work
-    async def validate_and_import_enhancement_result(
-        self,
-        enhancement_request: EnhancementRequest,
-        blob_repository: BlobRepository,
-    ) -> tuple[EnhancementRequestStatus, set[UUID]]:
-        """
-        Validate and import the result of a enhancement request.
-
-        This process:
-        - streams the result of the enhancement request line-by-line
-        - adds the enhancement to the database
-        - streams the validation result to the blob storage service line-by-line
-        - does some final validation of missing references and updates the request
-        """
-        # Mutable set to track imported enhancement IDs
-        imported_enhancement_ids: set[UUID] = set()
-        validation_result_file = await blob_repository.upload_file_to_blob_storage(
-            content=FileStream(
-                generator=self._enhancement_service.process_enhancement_result(
-                    blob_repository=blob_repository,
-                    enhancement_request=enhancement_request,
-                    add_enhancement=self.handle_enhancement_result_entry,
-                    imported_enhancement_ids=imported_enhancement_ids,
-                )
-            ),
-            path="enhancement_result",
-            filename=f"{enhancement_request.id}_repo.jsonl",
-        )
-
-        await (
-            self._enhancement_service.add_validation_result_file_to_enhancement_request(
-                enhancement_request.id, validation_result_file
-            )
-        )
-
-        # This is a bit hacky - we retrieve the terminal status from the import,
-        # and then set to indexing. Essentially using the SQL UOW as a transport
-        # from the blob generator to this layer.
-        enhancement_request = await self.sql_uow.enhancement_requests.get_by_pk(
-            enhancement_request.id
-        )
-        terminal_status = enhancement_request.request_status
-
-        await self.sql_uow.enhancement_requests.update_by_pk(
-            enhancement_request.id,
-            request_status=EnhancementRequestStatus.INDEXING,
-        )
-        return terminal_status, imported_enhancement_ids
-
     async def handle_enhancement_result_entry(
         self,
         enhancement: Enhancement,
@@ -521,17 +471,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return (
             True,
             "Enhancement added.",
-        )
-
-    @sql_unit_of_work
-    async def mark_enhancement_request_failed(
-        self,
-        enhancement_request_id: UUID,
-        error: str,
-    ) -> EnhancementRequest:
-        """Mark a batch enhancement request as failed and supply error message."""
-        return await self._enhancement_service.mark_enhancement_request_failed(
-            enhancement_request_id, error
         )
 
     @sql_unit_of_work
