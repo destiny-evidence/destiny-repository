@@ -11,21 +11,14 @@ interface ReferenceDisplayProps {
 
 // Helper function to generate a brief summary of a reference
 function getReferenceSummary(refData: any): React.ReactNode {
-  // Separate identifiers by whether they're from the main reference or duplicates
-  const mainIdentifiers: { [key: string]: any } = {};
-  const duplicateIdentifiers: { [key: string]: any } = {};
-
+  // Group all identifiers by type
+  const identifiersByType: { [key: string]: any[] } = {};
   (refData.identifiers || []).forEach((id: any) => {
-    const isDuplicate = id.reference_id !== refData.id;
-    const target = isDuplicate ? duplicateIdentifiers : mainIdentifiers;
-    // Only add if not already present (prefer main reference identifiers)
-    if (!mainIdentifiers[id.identifier_type] && !target[id.identifier_type]) {
-      target[id.identifier_type] = id;
+    if (!identifiersByType[id.identifier_type]) {
+      identifiersByType[id.identifier_type] = [];
     }
+    identifiersByType[id.identifier_type].push(id);
   });
-
-  // Merge, preferring main identifiers
-  const identifiers = { ...duplicateIdentifiers, ...mainIdentifiers };
 
   const enhancementCount = refData.enhancements?.length || 0;
 
@@ -46,11 +39,19 @@ function getReferenceSummary(refData: any): React.ReactNode {
         {", "} {duplicateCount} duplicate{duplicateCount !== 1 ? "s" : ""}
       </strong>
       <div>
-        {Object.values(identifiers).map((id: any, idx: number, arr: any[]) => (
-          <span key={idx}>
-            {id.other_identifier_name || id.identifier_type}: {id.identifier}
-            {idx < arr.length - 1 && <span> | </span>}
-          </span>
+        {Object.entries(identifiersByType).map(([type, ids], typeIdx) => (
+          <div key={typeIdx} style={{ marginBottom: 4 }}>
+            <span style={{ fontWeight: 500 }}>{type}:</span>{" "}
+            {ids.map((id: any, idx: number) => (
+              <span key={idx}>
+                {id.other_identifier_name
+                  ? `${id.other_identifier_name}: `
+                  : ""}
+                {id.identifier}
+                {idx < ids.length - 1 && <span> | </span>}
+              </span>
+            ))}
+          </div>
         ))}
       </div>
     </>
@@ -186,7 +187,7 @@ function EnhancementDisplay({
         {sortedEnhancements.map((enh, idx) => {
           const isDuplicate = enh.reference_id !== referenceId;
           return (
-            <div key={idx} className="enhancement-item">
+            <div key={idx} className="collapsible-item">
               <div
                 className="enhancement-header"
                 onClick={() => setOpenIdx(openIdx === idx ? null : idx)}
@@ -249,7 +250,7 @@ export default function ReferenceDisplay({
   }
 
   return (
-    <div className="reference-item">
+    <div className="collapsible-item">
       <div className="reference-item-header" onClick={onToggle}>
         <span>{getReferenceSummary(refData)}</span>
         <span className="reference-item-toggle">{isCollapsed ? "+" : "−"}</span>

@@ -33,7 +33,6 @@ from app.core.telemetry.fastapi import PayloadAttributeTracer
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
-    EnhancementRequestStatus,
     IdentifierLookup,
     PendingEnhancementStatus,
     ReferenceIds,
@@ -46,7 +45,6 @@ from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.references.tasks import (
-    validate_and_import_enhancement_result,
     validate_and_import_robot_enhancement_batch_result,
 )
 from app.domain.robots.service import RobotService
@@ -445,47 +443,6 @@ async def check_enhancement_request_status(
         await reference_service.get_enhancement_request_with_calculated_status(
             enhancement_request_id
         )
-    )
-
-    return await anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
-
-
-@enhancement_request_router.post(
-    "/{enhancement_request_id}/results/",
-    status_code=status.HTTP_202_ACCEPTED,
-)
-@enhancement_request_router.post(
-    "/batch-requests/{enhancement_request_id}/results/",
-    status_code=status.HTTP_202_ACCEPTED,
-    deprecated=True,
-)
-async def fulfill_enhancement_request(
-    robot_result: destiny_sdk.robots.RobotResult,
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    anti_corruption_service: Annotated[
-        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
-    ],
-    response: Response,
-) -> destiny_sdk.robots.EnhancementRequestRead:
-    """Receive the robot result and kick off importing the enhancements."""
-    if robot_result.error:
-        enhancement_request = await reference_service.mark_enhancement_request_failed(
-            enhancement_request_id=robot_result.request_id,
-            error=robot_result.error.message,
-        )
-        response.status_code = status.HTTP_200_OK
-        return await anti_corruption_service.enhancement_request_to_sdk(
-            enhancement_request
-        )
-
-    enhancement_request = await reference_service.update_enhancement_request_status(
-        enhancement_request_id=robot_result.request_id,
-        status=EnhancementRequestStatus.IMPORTING,
-    )
-
-    await queue_task_with_trace(
-        validate_and_import_enhancement_result,
-        enhancement_request_id=robot_result.request_id,
     )
 
     return await anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
