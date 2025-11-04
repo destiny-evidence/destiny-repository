@@ -291,6 +291,11 @@ code {
   color: #555;
 }
 
+.hint ul {
+  padding-left: 18px;
+  margin: 6px 0;
+}
+
 .divider {
   display: flex;
   align-items: center;

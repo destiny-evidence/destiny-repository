@@ -56,6 +56,7 @@ export default function MultiReferenceSearchForm({
         marginTop: 32,
         paddingTop: 24,
         borderTop: "2px solid var(--border)",
+        width: "100%",
       }}
     >
       <div className="divider">
@@ -71,20 +72,27 @@ export default function MultiReferenceSearchForm({
         placeholder={`doi:10.1234/abcd\npm_id:123456\nopen_alex:W1234567\nother:isbn:978-1-234-56789-0\n02e376ee-8374-4a8c-997f-9a813bc5b8f8`}
         disabled={loading}
       />
-      <div className="hint">
-        Format: <code>type:identifier</code> or{" "}
-        <code>other:type:identifier</code> or UUID for Destiny ID
-      </div>
-      <div className="bulk-identifier-count">
-        {identifierCount} identifier{identifierCount !== 1 ? "s" : ""}
-      </div>
       <button type="submit" disabled={loading || identifierCount === 0}>
         {loading
           ? "Looking up..."
-          : `Lookup ${identifierCount} Reference${
+          : `Lookup ${identifierCount} Identifier${
               identifierCount !== 1 ? "s" : ""
             }`}
       </button>
+      <div className="hint">
+        Formats:
+        <ul>
+          <li>
+            DESTINY ID: <br /> <code>[identifier]</code>
+          </li>
+          <li>
+            Supported type: <br /> <code>[type]:[identifier]</code>
+          </li>
+          <li>
+            Other type: <br /> <code>other:[type]:[identifier]</code>
+          </li>
+        </ul>
+      </div>
     </form>
   );
 }
