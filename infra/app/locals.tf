@@ -2,7 +2,7 @@ locals {
   name                   = "${var.app_name}-${var.environment}"
   es_index_migrator_name = "es-index-migrator-${var.environment}"
   # var.app_name-* can be removed the list below after we migrate to versioned indicies
-  managed_indicies = [
+  managed_indices = [
     "${var.app_name}-*",
     "reference*",
     "robot-automation-percolation*"
