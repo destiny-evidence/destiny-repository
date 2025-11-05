@@ -512,7 +512,7 @@ async def fulfill_robot_enhancement_batch(
 
     await queue_task_with_trace(
         validate_and_import_robot_enhancement_batch_result,
-        renew_lock=True,
+        long_running=True,
         robot_enhancement_batch_id=robot_enhancement_batch_id,
     )
 
