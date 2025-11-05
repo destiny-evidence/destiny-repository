@@ -728,7 +728,7 @@ resource "azurerm_container_app_job" "es_index_migrator" {
     container {
       image   = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
       name    = "${local.es_index_migrator_name}0"
-      command = [""]
+      command = ["echo", "'Empty command'"]
       cpu     = 0.5
       memory  = "1Gi"
 
