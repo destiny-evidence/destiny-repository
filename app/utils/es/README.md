@@ -2,9 +2,14 @@
 
 The es_migrator script in this directory is used for performing automated elasticsearch index migrations to update document mappings etc.
 
-It is run via a `es-index-migrator-[ENV]` container app job which can be triggered manually with an image and command override. Note that you need to both save _AND THEN_ apply the configuration changes when inputting them into the UI.
-
 Logs from all processes are viewable in Honeycomb.
+
+## Running on Azure
+
+Migrations are run via a `es-index-migrator-[ENV]` container app job which can be triggered manually with an image and command override.
+
+- Note that you need to both save _AND THEN_ apply the configuration changes when inputting them into the UI.
+- Note that command needs to be seperated by commas at every space like `python, -m, app.utils.es.es_migration, --migrate, --alias, reference`
 
 ## Migrate an index
 

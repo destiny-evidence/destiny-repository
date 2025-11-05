@@ -30,6 +30,8 @@ class Settings(BaseSettings):
         description="The log level for es operations.",
     )
 
+    reindex_status_polling_interval: int = 5 * 60  # 5min
+
     @property
     def running_locally(self) -> bool:
         """Return True if the migration is running locally."""

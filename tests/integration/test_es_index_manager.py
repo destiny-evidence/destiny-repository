@@ -75,7 +75,7 @@ async def index_manager(
         index_manager = IndexManager(
             DummyDocument,
             client,
-            reindex_status_polling_interval=0.1,
+            reindex_status_polling_interval=1,
         )
 
         yield index_manager

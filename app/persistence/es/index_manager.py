@@ -43,7 +43,7 @@ class IndexManager:
         repair_task: AsyncTaskiqDecoratedTask[..., Coroutine[Any, Any, None]]
         | None = None,
         version_prefix: str = "v",
-        reindex_status_polling_interval: float = 5,
+        reindex_status_polling_interval: int = 5 * 60,  # default to 5min
     ) -> None:
         """
         Initialize the migration manager.
