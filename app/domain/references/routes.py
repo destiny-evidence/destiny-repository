@@ -224,7 +224,7 @@ class IdentifierLookupQueryParams(BaseModel):
         ...,
         description=(
             "A list of external identifier lookups. "
-            "Can be provided in multiple query parameters or as a single"
+            "Can be provided in multiple query parameters or as a single "
             "csv string."
         ),
         examples=[
