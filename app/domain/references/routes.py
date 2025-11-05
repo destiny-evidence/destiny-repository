@@ -4,7 +4,6 @@ import uuid
 from typing import Annotated
 
 import destiny_sdk
-from annotated_types import MaxLen
 from elasticsearch import AsyncElasticsearch
 from fastapi import (
     APIRouter,
@@ -17,6 +16,7 @@ from fastapi import (
     status,
 )
 from fastapi.security import HTTPAuthorizationCredentials
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
@@ -30,16 +30,13 @@ from app.api.auth import (
     security,
 )
 from app.core.config import get_settings
+from app.core.exceptions import ParseError
 from app.core.telemetry.fastapi import PayloadAttributeTracer
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
-    IdentifierLookup,
     PendingEnhancementStatus,
     ReferenceIds,
-)
-from app.domain.references.models.validators import (
-    parse_identifier_lookup_from_string,
 )
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
@@ -220,40 +217,40 @@ async def get_reference(
     return anti_corruption_service.reference_to_sdk(reference)
 
 
+class IdentifierLookupQueryParams(BaseModel):
+    """Query parameters for looking up references by identifiers."""
+
+    identifier: list[str] = Field(
+        ...,
+        description=("A list of external identifier lookups."),
+        examples=[
+            "02e376ee-8374-4a8c-997f-9a813bc5b8f8",
+            "doi:10.1000/abc123",
+            "other:isbn:978-1-234-56789-0",
+        ],
+        max_length=settings.max_lookup_reference_query_length,
+    )
+
+    @field_validator("identifier", mode="before")
+    @classmethod
+    def parse_string_validator(cls, v: list[str]) -> list[str]:
+        """Parse identifiers from csv string or list input."""
+        if len(v) == 1:
+            return v[0].split(",")
+        return v
+
+
 def parse_identifiers(
-    identifier: Annotated[
-        list[str],
-        MaxLen(settings.max_lookup_reference_query_length),
-        Query(
-            description=(
-                "A list of external identifier lookup strings "
-                "in the format `?({type}:?({other_type}:)){identifier}`. "
-                "These are accepted in multiple query parameters or as a CSV string."
-            ),
-            examples=[
-                "02e376ee-8374-4a8c-997f-9a813bc5b8f8",
-                "doi:10.1000/abc123",
-                "other:isbn:978-1-234-56789-0",
-            ],
-        ),
-    ],
-) -> list[IdentifierLookup]:
-    """Parse a list of identifier lookup strings from the query parameters."""
-    identifiers: list[IdentifierLookup] = []
-    for identifier_string in identifier:
-        if "," in identifier_string:
-            identifiers += parse_identifiers(identifier_string.split(","))
-        else:
-            identifiers.append(parse_identifier_lookup_from_string(identifier_string))
-    if len(identifiers) > settings.max_lookup_reference_query_length:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                f"Too many identifiers provided. "
-                f"Maximum is {settings.max_lookup_reference_query_length}."
-            ),
-        )
-    return identifiers
+    identifier_query: Annotated[IdentifierLookupQueryParams, Query()],
+) -> list[destiny_sdk.identifiers.IdentifierLookup]:
+    """Parse a list of identifier lookup strings into IdentifierLookup objects."""
+    try:
+        return [
+            destiny_sdk.identifiers.IdentifierLookup.parse(identifier_string)
+            for identifier_string in identifier_query.identifier
+        ]
+    except ValueError as exc:
+        raise ParseError(detail=str(exc)) from exc
 
 
 @reference_router.get("/")
@@ -263,15 +260,17 @@ async def lookup_references(
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
     identifiers: Annotated[
-        list[IdentifierLookup],
-        Depends(parse_identifiers),
+        list[destiny_sdk.identifiers.IdentifierLookup], Depends(parse_identifiers)
     ],
 ) -> list[destiny_sdk.references.Reference]:
     """Get references given identifiers."""
+    identifier_lookups = anti_corruption_service.identifier_lookups_from_sdk(
+        identifiers
+    )
     return [
         anti_corruption_service.reference_to_sdk(reference)
         for reference in await reference_service.get_references_from_identifiers(
-            identifiers
+            identifier_lookups
         )
     ]
 

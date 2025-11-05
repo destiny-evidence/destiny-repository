@@ -10,6 +10,7 @@ from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
     ExternalIdentifierAdapter,
+    IdentifierLookup,
     LinkedExternalIdentifier,
     Reference,
     RobotAutomation,
@@ -301,3 +302,16 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
+
+    def identifier_lookups_from_sdk(
+        self,
+        identifier_lookups_in: list[destiny_sdk.identifiers.IdentifierLookup],
+    ) -> list[IdentifierLookup]:
+        """Create a list of LinkedExternalIdentifier from the SDK model."""
+        try:
+            return [
+                IdentifierLookup.model_validate(identifier_lookup.model_dump())
+                for identifier_lookup in identifier_lookups_in
+            ]
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
