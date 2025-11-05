@@ -12,10 +12,6 @@ from taskiq import InMemoryBroker
 
 from app.api.exception_handlers import not_found_exception_handler
 from app.core.exceptions import NotFoundError
-from app.domain.references.models.es import (
-    ReferenceDocument,
-    RobotAutomationPercolationDocument,
-)
 from app.domain.references.models.models import EnhancementType, Visibility
 from app.domain.references.models.sql import (
     Enhancement as SQLEnhancement,
@@ -30,6 +26,8 @@ from app.domain.references.models.sql import (
     RobotAutomation as SQLRobotAutomation,
 )
 from app.domain.robots.models.sql import Robot as SQLRobot
+from app.persistence.es.client import AsyncESClientManager
+from app.persistence.es.index_manager import IndexManager
 from app.system import routes as system_routes
 from app.tasks import broker
 
@@ -37,14 +35,15 @@ from app.tasks import broker
 async def sub_test_reference_index_initial_rebuild(
     client: AsyncClient,
     es_client: AsyncElasticsearch,
-    index_name: str,
+    index_manager: IndexManager,
     reference_id: uuid.UUID,
 ) -> None:
     """Sub-test: Test reference index repair with rebuild=True."""
+    index_name = index_manager.alias_name
     # Test repair with rebuild
     response = await client.post(
         f"/system/indices/{index_name}/repair/",
-        params={"rebuild": True, "service": "elastic"},
+        params={"rebuild": True},
     )
 
     assert response.status_code == status.HTTP_202_ACCEPTED
@@ -81,12 +80,13 @@ async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
     client: AsyncClient,
     es_client: AsyncElasticsearch,
     session: AsyncSession,
-    index_name: str,
+    index_manager: IndexManager,
     reference_id: uuid.UUID,
     reference: SQLReference,
 ) -> None:
     """Sub-test: Test reference index repair with rebuild=False after SQL update."""
     # Update SQL data - change visibility and add another identifier
+    index_name = index_manager.alias_name
     reference.visibility = Visibility.RESTRICTED
     new_identifier = SQLExternalIdentifier(
         id=uuid.uuid4(),
@@ -100,7 +100,7 @@ async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
     # Test repair without rebuild to update existing data
     response = await client.post(
         f"/system/indices/{index_name}/repair/",
-        params={"rebuild": False, "service": "elastic"},
+        params={"rebuild": False},
     )
 
     assert response.status_code == status.HTTP_202_ACCEPTED
@@ -134,28 +134,29 @@ async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
 async def sub_test_robot_automation_initial_rebuild(
     client: AsyncClient,
     es_client: AsyncElasticsearch,
-    index_name: str,
+    index_manager: IndexManager,
     automation_id: uuid.UUID,
     robot_id: uuid.UUID,
 ) -> None:
     """Sub-test: Test robot automation index repair with rebuild=True."""
     # Test repair with rebuild
     response = await client.post(
-        f"/system/indices/{index_name}/repair/",
-        params={"rebuild": True, "service": "elastic"},
+        f"/system/indices/{index_manager.alias_name}/repair/",
+        params={"rebuild": True},
     )
 
     assert response.status_code == status.HTTP_202_ACCEPTED
     response_data = response.json()
     assert response_data["status"] == "ok"
     assert "Repair task for index" in response_data["message"]
-    assert index_name in response_data["message"]
+    assert index_manager.alias_name in response_data["message"]
 
     # Wait for the task to complete
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()
 
     # Verify index still exists after rebuild
+    index_name = await index_manager.get_current_index_name()
     exists = await es_client.indices.exists(index=index_name)
     assert exists
 
@@ -180,13 +181,15 @@ async def sub_test_robot_automation_update_without_rebuild(  # noqa: PLR0913
     client: AsyncClient,
     es_client: AsyncElasticsearch,
     session: AsyncSession,
-    index_name: str,
+    index_manager: IndexManager,
     automation_id: uuid.UUID,
     robot_id: uuid.UUID,
     automation: SQLRobotAutomation,
 ) -> None:
     """Sub-test: Test robot automation repair with rebuild=False after SQL update."""
     # Update SQL data - modify the robot automation query
+    index_name = index_manager.alias_name
+
     automation.query = {
         "bool": {
             "should": [
@@ -205,7 +208,7 @@ async def sub_test_robot_automation_update_without_rebuild(  # noqa: PLR0913
     # Test repair without rebuild to update existing data
     response = await client.post(
         f"/system/indices/{index_name}/repair/",
-        params={"rebuild": False, "service": "elastic"},
+        params={"rebuild": False},
     )
 
     assert response.status_code == status.HTTP_202_ACCEPTED
@@ -274,10 +277,9 @@ async def test_repair_reference_index_with_rebuild(
     session: AsyncSession,
 ) -> None:
     """Test repairing the reference index with rebuild flag."""
-    index_name = ReferenceDocument.Index.name
-
     # Ensure index exists first
-    await ReferenceDocument.init(using=es_client)
+    index_manager = system_routes.reference_index_manager(es_client)
+    await index_manager.initialize_index()
 
     # Add sample data to SQL
     reference_id = uuid.uuid4()
@@ -320,10 +322,10 @@ async def test_repair_reference_index_with_rebuild(
 
     # Run sub-tests
     await sub_test_reference_index_initial_rebuild(
-        client, es_client, index_name, reference_id
+        client, es_client, index_manager, reference_id
     )
     await sub_test_reference_index_update_without_rebuild(
-        client, es_client, session, index_name, reference_id, reference
+        client, es_client, session, index_manager, reference_id, reference
     )
 
 
@@ -333,10 +335,9 @@ async def test_repair_robot_automation_percolation_index_with_rebuild(
     session: AsyncSession,
 ) -> None:
     """Test repairing the robot automation percolation index with rebuild flag."""
-    index_name = RobotAutomationPercolationDocument.Index.name
-
     # Ensure index exists first
-    await RobotAutomationPercolationDocument.init(using=es_client)
+    index_manager = system_routes.robot_automation_percolation_index_manager(es_client)
+    await index_manager.initialize_index()
 
     # Add sample robot and robot automation to SQL
     robot_id = uuid.uuid4()
@@ -375,29 +376,31 @@ async def test_repair_robot_automation_percolation_index_with_rebuild(
 
     # Run sub-tests
     await sub_test_robot_automation_initial_rebuild(
-        client, es_client, index_name, automation_id, robot_id
+        client, es_client, index_manager, automation_id, robot_id
     )
     await sub_test_robot_automation_update_without_rebuild(
-        client, es_client, session, index_name, automation_id, robot_id, automation
+        client, es_client, session, index_manager, automation_id, robot_id, automation
     )
 
 
 async def test_repair_nonexistent_index(
     client: AsyncClient,
+    # Required to allow successful obtainig of es_client as a system router dependency
+    es_manager_for_tests: AsyncESClientManager,  # noqa: ARG001
 ) -> None:
     """Test attempting to repair a non-existent index returns appropriate error."""
     nonexistent_index_name = "non-existent-index"
 
     response = await client.post(
         f"/system/indices/{nonexistent_index_name}/repair/",
-        params={"rebuild": False, "service": "elastic"},
+        params={"rebuild": False},
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     response_data = response.json()
     assert (
         response_data["detail"]
-        == "meta:index with index_name non-existent-index does not exist."
+        == "meta:index with alias non-existent-index does not exist."
     )
 
 
@@ -421,7 +424,7 @@ async def test_repair_auth_failure(
     # Test with invalid token
     response = await client.post(
         f"/system/indices/{test_index_name}/repair/",
-        params={"rebuild": False, "service": "elastic"},
+        params={"rebuild": False},
         headers={"Authorization": "Bearer invalid-token"},
     )
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -429,7 +432,7 @@ async def test_repair_auth_failure(
     # Test with missing auth header
     response = await client.post(
         f"/system/indices/{test_index_name}/repair/",
-        params={"rebuild": False, "service": "elastic"},
+        params={"rebuild": False},
     )
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert response.text == '{"detail":"Authorization HTTPBearer header missing."}'

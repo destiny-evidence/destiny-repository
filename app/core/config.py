@@ -6,7 +6,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, Field, FilePath, HttpUrl, PostgresDsn, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    FilePath,
+    HttpUrl,
+    PostgresDsn,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.telemetry.logger import get_logger
@@ -122,8 +129,8 @@ class ESConfig(BaseModel):
         ]
 
     @model_validator(mode="after")
-    def validate_parameters(self) -> Self:
-        """Validate the given parameters."""
+    def validate_authentication(self) -> Self:
+        """Validate the Elasticsearch authentication method."""
         has_api_key = all([self.cloud_id, self.api_key])
         has_user_pass = any((self.es_url, self.es_user, self.es_pass, self.es_ca_path))
 

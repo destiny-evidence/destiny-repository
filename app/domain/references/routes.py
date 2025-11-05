@@ -507,6 +507,7 @@ async def fulfill_robot_enhancement_batch(
     await queue_task_with_trace(
         validate_and_import_robot_enhancement_batch_result,
         robot_enhancement_batch_id=robot_enhancement_batch_id,
+        otel_enabled=settings.otel_enabled,
     )
 
     return await anti_corruption_service.robot_enhancement_batch_to_sdk(
