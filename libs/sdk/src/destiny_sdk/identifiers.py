@@ -1,5 +1,6 @@
 """Identifier classes for the Destiny SDK."""
 
+import uuid
 from enum import StrEnum, auto
 from typing import Annotated, Literal, Self
 
@@ -176,7 +177,7 @@ class IdentifierLookup(BaseModel):
     @classmethod
     def from_identifier(cls, identifier: ExternalIdentifier | UUID4) -> Self:
         """Create an IdentifierLookup from an ExternalIdentifier or UUID4."""
-        if isinstance(identifier, UUID4):
+        if isinstance(identifier, uuid.UUID):
             return cls(identifier=str(identifier), identifier_type=None)
         return cls(
             identifier=str(identifier.identifier),
@@ -188,4 +189,4 @@ class IdentifierLookup(BaseModel):
         """Create an IdentifierLookup from an ExternalIdentifier or UUID4."""
         if self.identifier_type is None:
             return UUID4(self.identifier)
-        return ExternalIdentifierAdapter.validate_python(self)
+        return ExternalIdentifierAdapter.validate_python(self.model_dump())

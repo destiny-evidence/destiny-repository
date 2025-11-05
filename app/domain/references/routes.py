@@ -222,19 +222,24 @@ class IdentifierLookupQueryParams(BaseModel):
 
     identifier: list[str] = Field(
         ...,
-        description=("A list of external identifier lookups."),
+        description=(
+            "A list of external identifier lookups. "
+            "Can be provided in multiple query parameters or as a single"
+            "csv string."
+        ),
         examples=[
             "02e376ee-8374-4a8c-997f-9a813bc5b8f8",
             "doi:10.1000/abc123",
             "other:isbn:978-1-234-56789-0",
+            "pm_id:123456,open_alex:W98765",
         ],
         max_length=settings.max_lookup_reference_query_length,
     )
 
     @field_validator("identifier", mode="before")
     @classmethod
-    def parse_string_validator(cls, v: list[str]) -> list[str]:
-        """Parse identifiers from csv string or list input."""
+    def parse_csv_validator(cls, v: list[str]) -> list[str]:
+        """Parse a csv string to a list if given."""
         if len(v) == 1:
             return v[0].split(",")
         return v
