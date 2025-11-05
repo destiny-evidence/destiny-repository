@@ -164,7 +164,7 @@ async def validate_and_import_robot_enhancement_batch_result(
 
 @broker.task
 async def repair_reference_index() -> None:
-    """Async logic for rebuilding the reference index."""
+    """Async logic for repairing the reference index."""
     name_span("Repair reference index")
     logger.info("Repairing reference index")
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
@@ -180,7 +180,7 @@ async def repair_reference_index() -> None:
 
 @broker.task
 async def repair_robot_automation_percolation_index() -> None:
-    """Async logic for rebuilding the robot automation percolation index."""
+    """Async logic for repairing the robot automation percolation index."""
     name_span("Repair robot automation percolation index")
     logger.info("Repairing robot automation percolation index")
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:

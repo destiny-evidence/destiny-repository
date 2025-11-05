@@ -160,6 +160,7 @@ async def enqueue_batch(
     await queue_task_with_trace(
         distribute_import_batch,
         import_batch_id=import_batch.id,
+        otel_enabled=settings.otel_enabled,
     )
     return import_anti_corruption_service.import_batch_to_sdk(import_batch)
 
