@@ -756,6 +756,11 @@ resource "azurerm_container_app_job" "es_index_migrator" {
         name  = "OTEL_ENABLED"
         value = var.telemetry_enabled
       }
+
+      env {
+        name  = "REINDEX_STATUS_POLLING_INTERVAL"
+        value = var.es_migrator_reindex_polling_interval
+      }
     }
   }
 

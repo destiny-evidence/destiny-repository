@@ -48,6 +48,7 @@ async def run_migration(alias: str) -> None:
                 document_class=index_documents[alias],
                 client=client,
                 otel_enabled=settings.otel_enabled,
+                reindex_status_polling_interval=settings.reindex_status_polling_interval,
             )
             await index_manager.migrate()
     except Exception:
