@@ -100,10 +100,23 @@ async def import_reference(
         import_result = await import_service.get_import_result_with_batch(
             import_result_id
         )
+        trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_result.import_batch_id))
+
+        if import_result.status in (
+            ImportResultStatus.PARTIALLY_FAILED,
+            ImportResultStatus.FAILED,
+            ImportResultStatus.COMPLETED,
+        ):
+            logger.info(
+                "Import result has already processed, skipping task.",
+                import_result_id=import_result.id,
+                status=import_result.status,
+            )
+            return
+
         if not import_result.import_batch:
             msg = "Import result is missing its import batch. This should not happen."
             raise RuntimeError(msg)
-        trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_result.import_batch_id))
 
         import_result, duplicate_decision_id = await import_service.import_reference(
             reference_service,
@@ -121,6 +134,7 @@ async def import_reference(
                     content,
                     line_number,
                     remaining_retries - 1,
+                    otel_enabled=settings.otel_enabled,
                 )
             else:
                 logger.info(
@@ -132,4 +146,5 @@ async def import_reference(
             await queue_task_with_trace(
                 process_reference_duplicate_decision,
                 duplicate_decision_id,
+                otel_enabled=settings.otel_enabled,
             )

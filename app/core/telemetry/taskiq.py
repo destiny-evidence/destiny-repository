@@ -16,7 +16,6 @@ from taskiq import (
     TaskiqResult,
 )
 
-from app.core.config import get_settings
 from app.core.telemetry.attributes import Attributes
 from app.core.telemetry.logger import get_logger
 
@@ -25,13 +24,13 @@ if TYPE_CHECKING:
 
 tracer = trace.get_tracer(__name__)
 logger = get_logger(__name__)
-settings = get_settings()
 
 
 async def queue_task_with_trace(
     task: AsyncTaskiqDecoratedTask | tuple[str, str],
     *args: object,
     long_running: bool = False,
+    otel_enabled: bool,
     **kwargs: object,
 ) -> None:
     """
@@ -65,7 +64,7 @@ async def queue_task_with_trace(
         task_name=task.task_name,
         **{k: str(v) for k, v in kwargs.items()},
     )
-    if not settings.otel_enabled:
+    if not otel_enabled:
         # If OpenTelemetry is not enabled, just queue the task normally
         await task.kiq(*args, **kwargs)
         return

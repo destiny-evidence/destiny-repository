@@ -1,0 +1,39 @@
+# Automated ES Migrations
+
+The es_migrator script in this directory is used for performing automated elasticsearch index migrations to update document mappings etc.
+
+It is run via a `es-index-migrator-[ENV]` container app job which can be triggered manually with an image and command override. Note that you need to both save _AND THEN_ apply the configuration changes when inputting them into the UI.
+
+Logs from all processes are viewable in Honeycomb.
+
+## Migrate an index
+
+To migrate an index to a new index with updated mappings based on document class use the following
+
+```zsh
+python -m app.utils.es.es_migration --migrate --alias reference
+```
+
+## Rollback an index
+
+If a migration is incompatible with the application, you can roll back to the previous index using
+
+```zsh
+python -m app.utils.es.es_migration --rollback --alias reference
+```
+
+OR
+
+```zsh
+python -m app.utils.es.es_migration --rollback --alias reference --target-index an_old_reference_index
+```
+
+Which will switch the alias back to the old index
+
+## Delete an index
+
+For cleaning up once a migration has been verified to be successful
+
+```zsh
+python -m app.utils.es.es_migration --delete --target-index reference_v1
+```

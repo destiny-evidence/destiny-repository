@@ -10,6 +10,7 @@ from app.core.config import (
     get_settings,
 )
 from app.core.exceptions import (
+    DuplicateEnhancementError,
     InvalidParentEnhancementError,
     SQLNotFoundError,
 )
@@ -213,6 +214,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             enhancement.reference_id,
             preload=["enhancements", "identifiers", "duplicate_references"],
         )
+
+        incoming_enhancement_hash = enhancement.hash_data()
+        for existing_enhancement in reference.enhancements or []:
+            if existing_enhancement.hash_data() == incoming_enhancement_hash:
+                detail = (
+                    "An exact duplicate enhancement already exists on this reference."
+                )
+                raise DuplicateEnhancementError(detail)
 
         if enhancement.derived_from:
             valid_derived_reference_ids = {
@@ -445,67 +454,22 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             enhancement_request_id, preload=["status"]
         )
 
-    @sql_unit_of_work
-    async def validate_and_import_enhancement_result(
-        self,
-        enhancement_request: EnhancementRequest,
-        blob_repository: BlobRepository,
-    ) -> tuple[EnhancementRequestStatus, set[UUID]]:
-        """
-        Validate and import the result of a enhancement request.
-
-        This process:
-        - streams the result of the enhancement request line-by-line
-        - adds the enhancement to the database
-        - streams the validation result to the blob storage service line-by-line
-        - does some final validation of missing references and updates the request
-        """
-        # Mutable set to track imported enhancement IDs
-        imported_enhancement_ids: set[UUID] = set()
-        validation_result_file = await blob_repository.upload_file_to_blob_storage(
-            content=FileStream(
-                generator=self._enhancement_service.process_enhancement_result(
-                    blob_repository=blob_repository,
-                    enhancement_request=enhancement_request,
-                    add_enhancement=self.handle_enhancement_result_entry,
-                    imported_enhancement_ids=imported_enhancement_ids,
-                )
-            ),
-            path="enhancement_result",
-            filename=f"{enhancement_request.id}_repo.jsonl",
-        )
-
-        await (
-            self._enhancement_service.add_validation_result_file_to_enhancement_request(
-                enhancement_request.id, validation_result_file
-            )
-        )
-
-        # This is a bit hacky - we retrieve the terminal status from the import,
-        # and then set to indexing. Essentially using the SQL UOW as a transport
-        # from the blob generator to this layer.
-        enhancement_request = await self.sql_uow.enhancement_requests.get_by_pk(
-            enhancement_request.id
-        )
-        terminal_status = enhancement_request.request_status
-
-        await self.sql_uow.enhancement_requests.update_by_pk(
-            enhancement_request.id,
-            request_status=EnhancementRequestStatus.INDEXING,
-        )
-        return terminal_status, imported_enhancement_ids
-
     async def handle_enhancement_result_entry(
         self,
         enhancement: Enhancement,
-    ) -> tuple[bool, str]:
+    ) -> tuple[PendingEnhancementStatus, str]:
         """Handle the import of a single batch enhancement result entry."""
         try:
             await self._add_enhancement(enhancement)
         except SQLNotFoundError:
             return (
-                False,
+                PendingEnhancementStatus.FAILED,
                 "Reference does not exist.",
+            )
+        except DuplicateEnhancementError:
+            return (
+                PendingEnhancementStatus.DISCARDED,
+                "Exact duplicate enhancement already exists on reference.",
             )
         except Exception:
             logger.exception(
@@ -514,24 +478,13 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 enhancement=enhancement,
             )
             return (
-                False,
+                PendingEnhancementStatus.FAILED,
                 "Failed to add enhancement to reference.",
             )
 
         return (
-            True,
+            PendingEnhancementStatus.COMPLETED,
             "Enhancement added.",
-        )
-
-    @sql_unit_of_work
-    async def mark_enhancement_request_failed(
-        self,
-        enhancement_request_id: UUID,
-        error: str,
-    ) -> EnhancementRequest:
-        """Mark a batch enhancement request as failed and supply error message."""
-        return await self._enhancement_service.mark_enhancement_request_failed(
-            enhancement_request_id, error
         )
 
     @sql_unit_of_work
@@ -539,7 +492,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         robot_enhancement_batch: RobotEnhancementBatch,
         blob_repository: BlobRepository,
-    ) -> tuple[set[UUID], set[UUID], set[UUID]]:
+    ) -> ProcessedResults:
         """
         Validate and import the result of a robot enhancement batch.
 
@@ -564,6 +517,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             imported_enhancement_ids=set(),
             successful_pending_enhancement_ids=set(),
             failed_pending_enhancement_ids=set(),
+            discarded_pending_enhancement_ids=set(),
         )
 
         validation_result_file = await blob_repository.upload_file_to_blob_storage(
@@ -584,11 +538,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             robot_enhancement_batch.id, validation_result_file
         )
 
-        return (
-            results.imported_enhancement_ids,
-            results.successful_pending_enhancement_ids,
-            results.failed_pending_enhancement_ids,
-        )
+        return results
 
     @sql_unit_of_work
     async def mark_robot_enhancement_batch_failed(
@@ -855,12 +805,22 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self, robot_id: UUID, limit: int
     ) -> list[PendingEnhancement]:
         """Get pending enhancements for a robot."""
-        return await self.sql_uow.pending_enhancements.find(
+        pending_enhancements = await self.sql_uow.pending_enhancements.find(
             robot_id=robot_id,
             robot_enhancement_batch_id=None,
             status=PendingEnhancementStatus.PENDING,
             order_by="created_at",
             limit=limit,
+        )
+
+        # There is a restriction in EnhancementService._categorize_enhancements
+        # that reference IDs are unique per batch. The below adapter is a band-aid to
+        # enforce that restriction here. Any pending enhancements beyond the first for a
+        # given reference ID are filtered out, and hence not accepted, and can be picked
+        # up in a future batch.
+        # See https://github.com/destiny-evidence/destiny-repository/issues/353.
+        return list(
+            {pe.reference_id: pe for pe in reversed(pending_enhancements)}.values()
         )
 
     @sql_unit_of_work
@@ -943,4 +903,5 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             await queue_task_with_trace(
                 ("app.domain.references.tasks", "process_reference_duplicate_decision"),
                 reference_duplicate_decision_id=decision.id,
+                otel_enabled=settings.otel_enabled,
             )

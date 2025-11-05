@@ -28,6 +28,12 @@ resource "azurerm_user_assigned_identity" "container_apps_ui_identity" {
   resource_group_name = azurerm_resource_group.this.name
 }
 
+resource "azurerm_user_assigned_identity" "es_index_migrator" {
+  name                = local.es_index_migrator_name
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+}
+
 data "azuread_group" "db_crud_group" {
   object_id = var.db_crud_group_id
 }
@@ -610,7 +616,7 @@ resource "elasticstack_elasticsearch_security_api_key" "app" {
       cluster = ["monitor"]
       indices = [
         {
-          names                    = ["${var.app_name}-*"]
+          names                    = local.managed_indices
           privileges               = ["read", "write", "create_index", "manage"]
           allow_restricted_indices = false
         }
@@ -619,6 +625,7 @@ resource "elasticstack_elasticsearch_security_api_key" "app" {
   })
 }
 
+
 resource "elasticstack_elasticsearch_security_api_key" "read_only" {
   name = "${var.app_name}-${var.environment}-read-only"
   role_descriptors = jsonencode({
@@ -626,7 +633,7 @@ resource "elasticstack_elasticsearch_security_api_key" "read_only" {
       cluster = ["monitor"]
       indices = [
         {
-          names                    = ["${var.app_name}-*"]
+          names                    = local.managed_indices
           privileges               = ["read"]
           allow_restricted_indices = false
         }
@@ -644,4 +651,117 @@ resource "elasticstack_elasticsearch_snapshot_lifecycle" "snapshots" {
 
   expire_after = "30d"
   min_count    = local.is_production ? 336 : 7 # 7 days worth
+}
+
+resource "azurerm_role_assignment" "es_index_migrator_acr_access" {
+  principal_id         = azurerm_user_assigned_identity.es_index_migrator.principal_id
+  scope                = data.azurerm_container_registry.this.id
+  role_definition_name = "AcrPull"
+
+  # terraform seems unable to replace the role assignment, so we need to ignore changes
+  lifecycle {
+    ignore_changes = [principal_id, scope]
+  }
+}
+
+resource "elasticstack_elasticsearch_security_api_key" "es_index_migrator" {
+  name = local.es_index_migrator_name
+  role_descriptors = jsonencode({
+    app_access = {
+      cluster = ["monitor"]
+      indices = [
+        {
+          names                    = local.managed_indices
+          privileges               = ["all"]
+          allow_restricted_indices = false
+        }
+      ]
+    }
+  })
+}
+
+resource "azurerm_container_app_job" "es_index_migrator" {
+  name                         = local.es_index_migrator_name
+  location                     = azurerm_resource_group.this.location
+  resource_group_name          = azurerm_resource_group.this.name
+  container_app_environment_id = module.container_app.container_app_env_id
+
+  replica_timeout_in_seconds = var.elasticsearch_index_migrator_timeout
+
+  # If the replica fails, do not retry
+  replica_retry_limit = 0
+
+  manual_trigger_config {
+    parallelism              = 1
+    replica_completion_count = 1
+  }
+
+  registry {
+    identity = azurerm_user_assigned_identity.es_index_migrator.id
+    server   = data.azurerm_container_registry.this.login_server
+  }
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.es_index_migrator.id]
+  }
+
+  secret {
+    name = "es-config"
+    value = jsonencode({
+      cloud_id = ec_deployment.cluster.elasticsearch.cloud_id
+      api_key  = elasticstack_elasticsearch_security_api_key.es_index_migrator.encoded
+    })
+  }
+
+  secret {
+    name = "otel-config"
+    value = jsonencode({
+      trace_endpoint = var.honeycombio_trace_endpoint
+      meter_endpoint = var.honeycombio_meter_endpoint
+      log_endpoint   = var.honeycombio_log_endpoint
+      api_key        = honeycombio_api_key.this.key
+    })
+  }
+
+  template {
+    container {
+      image   = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+      name    = "${local.es_index_migrator_name}0"
+      command = ["echo", "'Empty command'"]
+      cpu     = 0.5
+      memory  = "1Gi"
+
+      env {
+        name  = "APP_NAME"
+        value = local.es_index_migrator_name
+      }
+
+      env {
+        name        = "ES_CONFIG"
+        secret_name = "es-config"
+      }
+
+      env {
+        name        = "OTEL_CONFIG"
+        secret_name = "otel-config"
+      }
+
+      env {
+        name  = "ENV"
+        value = var.environment
+      }
+
+      env {
+        name  = "OTEL_ENABLED"
+        value = var.telemetry_enabled
+      }
+    }
+  }
+
+  # Allow us to update the image via github actions or the Azure Portal
+  # Allow us to specify the command via the Azure Portal when triggering the job without it being overwritten
+  lifecycle {
+    ignore_changes = [template[0].container[0].image, template[0].container[0].command]
+  }
 }
