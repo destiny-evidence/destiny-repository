@@ -10,6 +10,7 @@ from app.core.config import (
     get_settings,
 )
 from app.core.exceptions import (
+    DuplicateEnhancementError,
     InvalidParentEnhancementError,
     SQLNotFoundError,
 )
@@ -213,6 +214,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             enhancement.reference_id,
             preload=["enhancements", "identifiers", "duplicate_references"],
         )
+
+        incoming_enhancement_hash = enhancement.hash_data()
+        for existing_enhancement in reference.enhancements or []:
+            if existing_enhancement.hash_data() == incoming_enhancement_hash:
+                detail = (
+                    "An exact duplicate enhancement already exists on this reference."
+                )
+                raise DuplicateEnhancementError(detail)
 
         if enhancement.derived_from:
             valid_derived_reference_ids = {
@@ -448,14 +457,19 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def handle_enhancement_result_entry(
         self,
         enhancement: Enhancement,
-    ) -> tuple[bool, str]:
+    ) -> tuple[PendingEnhancementStatus, str]:
         """Handle the import of a single batch enhancement result entry."""
         try:
             await self._add_enhancement(enhancement)
         except SQLNotFoundError:
             return (
-                False,
+                PendingEnhancementStatus.FAILED,
                 "Reference does not exist.",
+            )
+        except DuplicateEnhancementError:
+            return (
+                PendingEnhancementStatus.DISCARDED,
+                "Exact duplicate enhancement already exists on reference.",
             )
         except Exception:
             logger.exception(
@@ -464,12 +478,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 enhancement=enhancement,
             )
             return (
-                False,
+                PendingEnhancementStatus.FAILED,
                 "Failed to add enhancement to reference.",
             )
 
         return (
-            True,
+            PendingEnhancementStatus.COMPLETED,
             "Enhancement added.",
         )
 
@@ -478,7 +492,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         robot_enhancement_batch: RobotEnhancementBatch,
         blob_repository: BlobRepository,
-    ) -> tuple[set[UUID], set[UUID], set[UUID]]:
+    ) -> ProcessedResults:
         """
         Validate and import the result of a robot enhancement batch.
 
@@ -503,6 +517,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             imported_enhancement_ids=set(),
             successful_pending_enhancement_ids=set(),
             failed_pending_enhancement_ids=set(),
+            discarded_pending_enhancement_ids=set(),
         )
 
         validation_result_file = await blob_repository.upload_file_to_blob_storage(
@@ -523,11 +538,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             robot_enhancement_batch.id, validation_result_file
         )
 
-        return (
-            results.imported_enhancement_ids,
-            results.successful_pending_enhancement_ids,
-            results.failed_pending_enhancement_ids,
-        )
+        return results
 
     @sql_unit_of_work
     async def mark_robot_enhancement_batch_failed(
@@ -794,12 +805,22 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self, robot_id: UUID, limit: int
     ) -> list[PendingEnhancement]:
         """Get pending enhancements for a robot."""
-        return await self.sql_uow.pending_enhancements.find(
+        pending_enhancements = await self.sql_uow.pending_enhancements.find(
             robot_id=robot_id,
             robot_enhancement_batch_id=None,
             status=PendingEnhancementStatus.PENDING,
             order_by="created_at",
             limit=limit,
+        )
+
+        # There is a restriction in EnhancementService._categorize_enhancements
+        # that reference IDs are unique per batch. The below adapter is a band-aid to
+        # enforce that restriction here. Any pending enhancements beyond the first for a
+        # given reference ID are filtered out, and hence not accepted, and can be picked
+        # up in a future batch.
+        # See https://github.com/destiny-evidence/destiny-repository/issues/353.
+        return list(
+            {pe.reference_id: pe for pe in reversed(pending_enhancements)}.values()
         )
 
     @sql_unit_of_work

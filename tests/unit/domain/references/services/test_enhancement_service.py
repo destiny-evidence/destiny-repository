@@ -108,6 +108,7 @@ def create_processed_results():
         imported_enhancement_ids=set(),
         successful_pending_enhancement_ids=set(),
         failed_pending_enhancement_ids=set(),
+        discarded_pending_enhancement_ids=set(),
     )
 
 
@@ -192,7 +193,10 @@ async def test_process_robot_enhancement_batch_result_happy_path():
 
     # Fake add_enhancement always returns success
     async def fake_add_enhancement(enhancement):
-        return True, f"Reference {enhancement.reference_id}: Enhancement added."
+        return (
+            PendingEnhancementStatus.COMPLETED,
+            f"Reference {enhancement.reference_id}: Enhancement added.",
+        )
 
     results = create_processed_results()
 
@@ -213,6 +217,7 @@ async def test_process_robot_enhancement_batch_result_happy_path():
     assert len(results.imported_enhancement_ids) == 1
     assert {pending_enhancement.id} == results.successful_pending_enhancement_ids
     assert len(results.failed_pending_enhancement_ids) == 0
+    assert not results.discarded_pending_enhancement_ids
 
 
 @pytest.mark.asyncio
@@ -240,7 +245,10 @@ async def test_process_robot_enhancement_batch_result_handles_both_entry_types()
 
     # Fake add_enhancement returns success for enhancement
     async def fake_add_enhancement(enhancement):
-        return True, f"Reference {enhancement.reference_id}: Enhancement added."
+        return (
+            PendingEnhancementStatus.COMPLETED,
+            f"Reference {enhancement.reference_id}: Enhancement added.",
+        )
 
     results = create_processed_results()
 
@@ -286,7 +294,10 @@ async def test_process_robot_enhancement_batch_result_missing_reference_id():
 
     async def fake_add_enhancement(enhancement):
         added_enhancements.append(enhancement)
-        return True, f"Reference {enhancement.reference_id}: Enhancement added."
+        return (
+            PendingEnhancementStatus.COMPLETED,
+            f"Reference {enhancement.reference_id}: Enhancement added.",
+        )
 
     results = create_processed_results()
 
@@ -335,7 +346,10 @@ async def test_process_robot_enhancement_batch_result_surplus_reference_id(fake_
 
     # Fake add_enhancement returns success for enhancement
     async def fake_add_enhancement(enhancement):
-        return True, f"Reference {enhancement.reference_id}: Enhancement added."
+        return (
+            PendingEnhancementStatus.COMPLETED,
+            f"Reference {enhancement.reference_id}: Enhancement added.",
+        )
 
     results = create_processed_results()
 
@@ -423,7 +437,10 @@ async def test_process_robot_enhancement_batch_result_add_enhancement_fails(fake
     service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), uow)
 
     async def fake_add_enhancement(_enhancement):
-        return False, "Failed to add enhancement to reference."
+        return (
+            PendingEnhancementStatus.FAILED,
+            "Failed to add enhancement to reference.",
+        )
 
     results = create_processed_results()
 
@@ -507,7 +524,10 @@ async def test_process_robot_enhancement_batch_result_duplicate_reference_ids():
 
     async def fake_add_enhancement(enhancement):
         enhancement_results.append(enhancement.reference_id)
-        return True, f"Reference {enhancement.reference_id}: Enhancement added."
+        return (
+            PendingEnhancementStatus.COMPLETED,
+            f"Reference {enhancement.reference_id}: Enhancement added.",
+        )
 
     results = create_processed_results()
 
@@ -563,7 +583,10 @@ async def test_process_robot_enhancement_batch_result_multiple_pending_enhanceme
     service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), uow)
 
     async def fake_add_enhancement(enhancement):
-        return True, f"Reference {enhancement.reference_id}: Enhancement added."
+        return (
+            PendingEnhancementStatus.COMPLETED,
+            f"Reference {enhancement.reference_id}: Enhancement added.",
+        )
 
     results = create_processed_results()
 
@@ -591,3 +614,46 @@ async def test_process_robot_enhancement_batch_result_multiple_pending_enhanceme
         pending_enhancement_2.id,
     } == results.successful_pending_enhancement_ids
     assert {pending_enhancement_3.id} == results.failed_pending_enhancement_ids
+
+
+@pytest.mark.asyncio
+async def test_process_robot_enhancement_batch_result_discarded_enhancements():
+    "Test discarding of pending enhancements."
+    reference_id = uuid.uuid4()
+    pending_enhancement = create_pending_enhancement(reference_id)
+    result_file = create_result_file()
+
+    mock_blob_repo = MagicMock()
+    fake_stream = create_fake_stream(
+        [make_enhancement_result_entry(reference_id, as_error=False)]
+    )
+    mock_blob_repo.stream_file_from_blob_storage = fake_stream
+    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), None)
+
+    # Fake add_enhancement always returns success
+    async def fake_add_enhancement(enhancement):
+        return (
+            PendingEnhancementStatus.DISCARDED,
+            f"Reference {enhancement.reference_id}: Enhancement discarded.",
+        )
+
+    results = create_processed_results()
+
+    # Collect all yielded messages
+    messages = [
+        RobotResultValidationEntry.model_validate_json(msg)
+        async for msg in service.process_robot_enhancement_batch_result(
+            mock_blob_repo,
+            result_file,
+            [pending_enhancement],
+            fake_add_enhancement,
+            results,
+        )
+    ]
+    assert len(messages) == 1
+    assert messages[0].reference_id == reference_id
+    assert messages[0].error
+    assert len(results.imported_enhancement_ids) == 0
+    assert {pending_enhancement.id} == results.discarded_pending_enhancement_ids
+    assert len(results.failed_pending_enhancement_ids) == 0
+    assert len(results.successful_pending_enhancement_ids) == 0
