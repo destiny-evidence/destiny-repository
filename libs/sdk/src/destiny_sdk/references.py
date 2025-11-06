@@ -57,6 +57,7 @@ class Reference(_JsonlFileInputMixIn, BaseModel):
         )
 
     def _get_id(self, kind: ExternalIdentifierType) -> str | None:
+        """Convenience method to fetch identifier enhancements."""
         for identifier in (self.identifiers or []):
             if identifier.kind == kind:
                 return identifier.identifier
@@ -64,31 +65,22 @@ class Reference(_JsonlFileInputMixIn, BaseModel):
 
     @property
     def openalex_id(self) -> str | None:
-        """The OpenAlex ID of the reference.
-        If multiple OpenAlex IDs are present, return first one.
-        """
+        """The OpenAlex ID of the reference. If multiple OpenAlex IDs are present, return first one."""
         return self._get_id(kind=ExternalIdentifierType.OPEN_ALEX)
 
     @property
     def doi(self) -> str | None:
-        """The DOI of the reference.
-        If multiple DOIs are present, return first one.
-        """
+        """The DOI of the reference. If multiple DOIs are present, return first one."""
         return self._get_id(kind=ExternalIdentifierType.DOI)
 
     @property
     def pubmed_id(self) -> str | None:
-        """The pubmed ID of the reference.
-        If multiple pubmed IDs are present, return first one.
-        """
+        """The pubmed ID of the reference. If multiple pubmed IDs are present, return first one."""
         return self._get_id(kind=ExternalIdentifierType.PM_ID)
 
     @property
     def abstract(self) -> str | None:
-        """The abstract of the reference.
-        If multiple abstracts are present, return first one.
-        :return:
-        """
+        """The abstract of the reference. If multiple abstracts are present, return first one."""
         for enhancement in (self.enhancements or []):
             if enhancement.content.enhancement_type == EnhancementType.ABSTRACT:
                 return enhancement.content.abstract
@@ -96,10 +88,7 @@ class Reference(_JsonlFileInputMixIn, BaseModel):
 
     @property
     def publication_year(self) -> int | None:
-        """The publication year of the reference.
-        If multiple publication years are present, return first one.
-        :return:
-        """
+        """The publication year of the reference. If multiple publication years are present, return first one."""
         for meta in self.bibliographics():
             if meta.publication_year is not None:
                 return meta.publication_year
@@ -107,19 +96,14 @@ class Reference(_JsonlFileInputMixIn, BaseModel):
 
     @property
     def title(self) -> str | None:
-        """The title of the reference.
-        If multiple titles are present, return first one.
-        :return:
-        """
+        """The title of the reference. If multiple titles are present, return first one."""
         for meta in self.bibliographics():
             if meta.title is not None:
                 return meta.title
         return None
 
     def bibliographics(self) -> Generator[BibliographicMetadataEnhancement, None, None]:
-        """Convenience method to access bibliographic metadata enhancements.
-        :return:
-        """
+        """Convenience method to access bibliographic metadata enhancements."""
         for enhancement in (self.enhancements or []):
             if enhancement.content.enhancement_type == EnhancementType.BIBLIOGRAPHIC:
                 yield enhancement.content
@@ -158,10 +142,11 @@ class Reference(_JsonlFileInputMixIn, BaseModel):
             label: str | None = None,
     ) -> bool | None:
         """Convenience method to check if a specific annotation exists and is true.
-        :param source:
-        :param scheme:
-        :param label:
-        :return:
+
+        :param source: Optional filter for Enhancement.source
+        :param scheme: Optional filter for Annotation.scheme
+        :param label: Optional filter for Annotation.label
+        :return: Returns the boolean value for the first annotation matching the filters or None if nothing is found.
         """
         for annotation in self.annotations(
                 source=source,
