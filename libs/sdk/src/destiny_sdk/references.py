@@ -64,32 +64,28 @@ class Reference(_JsonlFileInputMixIn, BaseModel):
 
     @property
     def openalex_id(self) -> str | None:
-        """
-        The OpenAlex ID of the reference.
+        """The OpenAlex ID of the reference.
         If multiple OpenAlex IDs are present, return first one.
         """
         return self._get_id(kind=ExternalIdentifierType.OPEN_ALEX)
 
     @property
     def doi(self) -> str | None:
-        """
-        The DOI of the reference.
+        """The DOI of the reference.
         If multiple DOIs are present, return first one.
         """
         return self._get_id(kind=ExternalIdentifierType.DOI)
 
     @property
     def pubmed_id(self) -> str | None:
-        """
-        The pubmed ID of the reference.
+        """The pubmed ID of the reference.
         If multiple pubmed IDs are present, return first one.
         """
         return self._get_id(kind=ExternalIdentifierType.PM_ID)
 
     @property
     def abstract(self) -> str | None:
-        """
-        The abstract of the reference.
+        """The abstract of the reference.
         If multiple abstracts are present, return first one.
         :return:
         """
@@ -100,8 +96,7 @@ class Reference(_JsonlFileInputMixIn, BaseModel):
 
     @property
     def publication_year(self) -> int | None:
-        """
-        The publication year of the reference.
+        """The publication year of the reference.
         If multiple publication years are present, return first one.
         :return:
         """
@@ -112,8 +107,7 @@ class Reference(_JsonlFileInputMixIn, BaseModel):
 
     @property
     def title(self) -> str | None:
-        """
-        The title of the reference.
+        """The title of the reference.
         If multiple titles are present, return first one.
         :return:
         """
@@ -123,8 +117,7 @@ class Reference(_JsonlFileInputMixIn, BaseModel):
         return None
 
     def bibliographics(self) -> Generator[BibliographicMetadataEnhancement, None, None]:
-        """
-        Convenience method to access bibliographic metadata enhancements.
+        """Convenience method to access bibliographic metadata enhancements.
         :return:
         """
         for enhancement in (self.enhancements or []):
@@ -138,8 +131,7 @@ class Reference(_JsonlFileInputMixIn, BaseModel):
             scheme: str | None = None,
             label: str | None = None,
     ) -> Generator[Annotation, None, None]:
-        """
-        Generates a list of annotations for the given filters.
+        """Generates a list of annotations for the given filters.
 
         :param source: Optional filter for Enhancement.source
         :param annotation_type: Optional filter for AnnotationEnhancement.annotation_type
@@ -165,8 +157,7 @@ class Reference(_JsonlFileInputMixIn, BaseModel):
             scheme: str | None = None,
             label: str | None = None,
     ) -> bool | None:
-        """
-        Convenience method to check if a specific annotation exists and is true.
+        """Convenience method to check if a specific annotation exists and is true.
         :param source:
         :param scheme:
         :param label:
