@@ -289,3 +289,10 @@ variable "max_reference_lookup_query_length" {
   type        = number
   default     = 100
 }
+
+variable "es_migrator_reindex_polling_interval" {
+  description = "How frequently to poll the reindexing task when migrating indices"
+  type        = number
+  default     = 5 * 60 # 5min
+
+}

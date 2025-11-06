@@ -476,12 +476,10 @@ class ReferenceDuplicateDeterminationResult(BaseModel):
     )
 
     @model_validator(mode="after")
-    def check_canonical_reference_id_populated_iff_canonical(self) -> Self:
+    def check_canonical_reference_id_populated_iff_duplicate(self) -> Self:
         """Assert that canonical must exist if and only if decision is duplicate."""
-        if (
-            self.canonical_reference_id
-            is not None
-            == (self.duplicate_determination == DuplicateDetermination.DUPLICATE)
+        if (self.canonical_reference_id is not None) != (
+            self.duplicate_determination == DuplicateDetermination.DUPLICATE
         ):
             msg = (
                 "canonical_reference_id must be populated if and only if "
@@ -583,6 +581,7 @@ class PendingEnhancementStatus(StrEnum):
     - `importing`: Enhancement is currently being imported.
     - `indexing`: Enhancement is currently being indexed.
     - `indexing_failed`: Enhancement indexing has failed.
+    - `discarded`: Enhancement has been discarded as an exact duplicate.
     - `completed`: Enhancement has been processed successfully.
     - `failed`: Enhancement processing has failed.
     """
@@ -592,6 +591,7 @@ class PendingEnhancementStatus(StrEnum):
     IMPORTING = auto()
     INDEXING = auto()
     INDEXING_FAILED = auto()
+    DISCARDED = auto()
     COMPLETED = auto()
     FAILED = auto()
 

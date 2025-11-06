@@ -186,7 +186,7 @@ class IdentifierLookup(BaseModel):
         )
 
     def to_identifier(self) -> ExternalIdentifier | UUID4:
-        """Create an IdentifierLookup from an ExternalIdentifier or UUID4."""
+        """Convert into an ExternalIdentifier or UUID4 if it has no identifier_type."""
         if self.identifier_type is None:
             return UUID4(self.identifier)
         return ExternalIdentifierAdapter.validate_python(self.model_dump())
