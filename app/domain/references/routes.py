@@ -29,6 +29,7 @@ from app.api.auth import (
     choose_hybrid_auth_strategy,
     security,
 )
+from app.api.decorators import experimental
 from app.core.config import get_settings
 from app.core.exceptions import ParseError
 from app.core.telemetry.fastapi import PayloadAttributeTracer
@@ -259,6 +260,7 @@ def parse_identifiers(
 
 
 @reference_router.get("/")
+@experimental
 async def lookup_references(
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     anti_corruption_service: Annotated[
