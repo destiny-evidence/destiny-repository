@@ -330,6 +330,8 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         return DomainEnhancement(
             id=self.id,
             source=self.source,
+            created_at=self.created_at,
+            updated_at=self.updated_at,
             visibility=self.visibility,
             reference_id=self.reference_id,
             robot_version=self.robot_version,

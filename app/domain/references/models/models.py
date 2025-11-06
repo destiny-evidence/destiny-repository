@@ -18,7 +18,12 @@ from pydantic import (
 )
 
 from app.core.telemetry.logger import get_logger
-from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
+from app.domain.base import (
+    DomainBaseModel,
+    ProjectedBaseModel,
+    SQLAttributeMixin,
+    SQLTimestampMixin,
+)
 from app.persistence.blob.models import BlobStorageFile
 
 logger = get_logger(__name__)
@@ -293,7 +298,7 @@ class ExternalIdentifierSearch(GenericExternalIdentifier):
     """Model to search for an external identifier."""
 
 
-class Enhancement(DomainBaseModel, SQLAttributeMixin):
+class Enhancement(DomainBaseModel, SQLTimestampMixin):
     """Core enhancement model with database attributes included."""
 
     source: str = Field(
@@ -324,10 +329,15 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     )
 
     def hash_data(self) -> int:
-        """Contentwise hash of the enhancement, excluding relationships."""
+        """
+        Contentwise hash of the enhancement.
+
+        Excludes relationships and timestamps.
+        """
         return hash(
             self.model_dump_json(
-                exclude={"id", "reference_id", "reference"}, exclude_none=True
+                exclude={"id", "reference_id", "reference", "created_at", "updated_at"},
+                exclude_none=True,
             )
         )
 

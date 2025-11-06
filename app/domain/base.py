@@ -10,8 +10,6 @@ from pydantic import (
     Field,
 )
 
-from app.utils.time_and_date import utc_now
-
 
 class DomainBaseModel(BaseModel):
     """Base model for all domain models to inherit from."""
@@ -61,13 +59,15 @@ class SQLTimestampMixin(SQLAttributeMixin):
     Timestamps should not be directly set by the application.
     """
 
-    created_at: datetime.datetime = Field(
-        default_factory=utc_now,
+    created_at: datetime.datetime | None = Field(
+        default=None,
         description="The timestamp at which the object was created.",
+        frozen=True,
     )
-    updated_at: datetime.datetime = Field(
-        default_factory=utc_now,
+    updated_at: datetime.datetime | None = Field(
+        default=None,
         description="The timestamp at which the object was last updated.",
+        frozen=True,
     )
 
 

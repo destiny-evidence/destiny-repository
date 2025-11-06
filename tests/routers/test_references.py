@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from destiny_sdk.enhancements import EnhancementType
 from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
@@ -30,6 +31,7 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     Visibility,
 )
+from app.domain.references.models.sql import Enhancement as SQLEnhancement
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import (
     ExternalIdentifier,
@@ -185,6 +187,47 @@ async def add_robot_enhancement_batch(
     session.add(pending_enhancement)
     await session.commit()
     return robot_enhancement_batch
+
+
+async def add_enhancement(session: AsyncSession, reference_id: uuid.UUID):
+    """Add a basic enhancement to a reference."""
+    enhancement = SQLEnhancement(
+        id=uuid.uuid4(),
+        reference_id=reference_id,
+        visibility=Visibility.PUBLIC,
+        source="test_source",
+        enhancement_type=EnhancementType.ANNOTATION,
+        content={
+            "enhancement_type": "annotation",
+            "annotations": [
+                {
+                    "annotation_type": "boolean",
+                    "scheme": "test:scheme",
+                    "label": "test_label",
+                    "value": True,
+                }
+            ],
+        },
+    )
+
+    session.add(enhancement)
+    await session.commit()
+    return enhancement
+
+
+async def test_get_reference_with_enhancements_happy_path(
+    session: AsyncSession, client: AsyncClient
+):
+    """Test requesting a single reference by id."""
+    reference = await add_reference(session)
+    enhancement = await add_enhancement(session, reference.id)
+
+    response = await client.get(f"/v1/references/{reference.id}/")
+
+    response_data = response.json()
+
+    assert uuid.UUID(response_data["id"]) == reference.id
+    assert uuid.UUID(response_data["enhancements"][0]["id"]) == enhancement.id
 
 
 async def test_request_batch_enhancement_happy_path(
