@@ -1,22 +1,26 @@
-"""Extended Reference class for the Destiny SDK with added experimental convenience methods and properties."""
+"""
+Extended Reference SDK.
+
+Extended Reference class for the Destiny SDK
+with added experimental convenience methods and properties.
+"""
 
 from collections.abc import Generator
+from typing import cast
 
-from pydantic import TypeAdapter
-
-from destiny_sdk.references import Reference as BaseReference
 from destiny_sdk.enhancements import (
     Annotation,
     AnnotationType,
     BibliographicMetadataEnhancement,
     EnhancementType,
 )
-from destiny_sdk.identifiers import ExternalIdentifier, ExternalIdentifierType
-
-external_identifier_adapter = TypeAdapter(ExternalIdentifier)
+from destiny_sdk.identifiers import ExternalIdentifierType
+from destiny_sdk.references import Reference as BaseReference
 
 
 class Reference(BaseReference):
+    """Extended core reference class."""
+
     def _get_id(self, identifier_type: ExternalIdentifierType) -> str | int | None:
         """Fetch an identifier matching the given identifier_type."""
         for identifier in self.identifiers or []:
@@ -27,17 +31,23 @@ class Reference(BaseReference):
     @property
     def openalex_id(self) -> str | None:
         """Return an OpenAlex ID for the reference."""
-        return self._get_id(identifier_type=ExternalIdentifierType.OPEN_ALEX)
+        return cast(
+            str | None, self._get_id(identifier_type=ExternalIdentifierType.OPEN_ALEX)
+        )
 
     @property
     def doi(self) -> str | None:
         """Return a DOI for the reference."""
-        return self._get_id(identifier_type=ExternalIdentifierType.DOI)
+        return cast(
+            str | None, self._get_id(identifier_type=ExternalIdentifierType.DOI)
+        )
 
     @property
     def pubmed_id(self) -> int | None:
         """Return a pubmed ID for the reference."""
-        return self._get_id(identifier_type=ExternalIdentifierType.PM_ID)
+        return cast(
+            int | None, self._get_id(identifier_type=ExternalIdentifierType.PM_ID)
+        )
 
     @property
     def abstract(self) -> str | None:
@@ -63,18 +73,20 @@ class Reference(BaseReference):
                 return meta.title
         return None
 
-    def it_bibliographics(self) -> Generator[BibliographicMetadataEnhancement, None, None]:
+    def it_bibliographics(
+        self,
+    ) -> Generator[BibliographicMetadataEnhancement, None, None]:
         """Iterate bibliographic enhancements."""
         for enhancement in self.enhancements or []:
             if enhancement.content.enhancement_type == EnhancementType.BIBLIOGRAPHIC:
                 yield enhancement.content
 
     def it_annotations(
-            self,
-            source: str | None = None,
-            annotation_type: AnnotationType | None = None,
-            scheme: str | None = None,
-            label: str | None = None,
+        self,
+        source: str | None = None,
+        annotation_type: AnnotationType | None = None,
+        scheme: str | None = None,
+        label: str | None = None,
     ) -> Generator[Annotation, None, None]:
         """
         Iterate annotation enhancements for the given filters.
@@ -91,8 +103,8 @@ class Reference(BaseReference):
                     continue
                 for annotation in enhancement.content.annotations:
                     if (
-                            annotation_type is not None
-                            and annotation.annotation_type != annotation_type
+                        annotation_type is not None
+                        and annotation.annotation_type != annotation_type
                     ):
                         continue
                     if scheme is not None and annotation.scheme != scheme:
@@ -102,11 +114,11 @@ class Reference(BaseReference):
                     yield annotation
 
     def has_bool_annotation(
-            self,
-            source: str | None = None,
-            scheme: str | None = None,
-            label: str | None = None,
-            expected_value: bool = True,
+        self,
+        source: str | None = None,
+        scheme: str | None = None,
+        label: str | None = None,
+        expected_value: bool = True,  # noqa: FBT001, FBT002
     ) -> bool | None:
         """
         Check if a specific annotation exists and is true.
@@ -114,22 +126,22 @@ class Reference(BaseReference):
         :param source: Optional filter for Enhancement.source
         :param scheme: Optional filter for Annotation.scheme
         :param label: Optional filter for Annotation.label
-        :param expected_value: Specify whether boolean annotation should be to be true or false
-        :return: Returns the boolean value for the first annotation matching the filters
-                 or None if nothing is found.
+        :param expected_value: Specify expected boolean annotation value
+        :return: Returns the boolean value for the first annotation matching
+                 the filters or None if nothing is found.
         """
         if scheme is None and label is None:
-            raise AssertionError('Please provide at least one of the optional scheme or label filters.')
+            msg = "Please use at least one of the optional scheme or label filters."
+            raise AssertionError(msg)
 
         found_annotation = False
         for annotation in self.it_annotations(
-                source=source,
-                annotation_type=AnnotationType.BOOLEAN,
-                scheme=scheme,
-                label=label,
+            source=source,
+            annotation_type=AnnotationType.BOOLEAN,
+            scheme=scheme,
+            label=label,
         ):
             if annotation.value == expected_value:
                 return True
-            else:
-                found_annotation = True
+            found_annotation = True
         return False if found_annotation else None
