@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.12, <4"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -691,7 +691,7 @@ test = [
 
 [[package]]
 name = "destiny-sdk"
-version = "0.5.0"
+version = "0.5.1"
 source = { editable = "libs/sdk" }
 dependencies = [
     { name = "cachetools" },
