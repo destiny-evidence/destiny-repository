@@ -7,7 +7,9 @@ from typing import Generic, Never
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch, NotFoundError
+from elasticsearch.dsl import AsyncSearch
 from elasticsearch.dsl.exceptions import UnknownDslObject
+from elasticsearch.dsl.query import QueryString
 from elasticsearch.exceptions import BadRequestError
 from opentelemetry import trace
 
@@ -151,3 +153,26 @@ class GenericAsyncESRepository(
                 lookup_value=pk,
             )
         await record.delete(using=self._client)
+
+    @trace_repository_method(tracer)
+    async def search_with_query_string(
+        self, query: str
+    ) -> list[GenericDomainModelType]:
+        """
+        Search for records using a query string.
+
+        :param query: The query string to search with.
+        :type query: str
+        :return: A list of matching records.
+        :rtype: list[GenericDomainModelType]
+        """
+        trace_attribute(Attributes.DB_QUERY, query)
+        search = (
+            AsyncSearch(using=self._client)
+            .doc_type(self._persistence_cls)
+            .query(QueryString(query=query))
+        )
+        response = await search.execute()
+        return [
+            self._persistence_cls.from_hit(hit).to_domain() for hit in response.hits
+        ]

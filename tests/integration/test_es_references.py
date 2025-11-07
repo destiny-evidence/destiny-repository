@@ -6,7 +6,13 @@ from collections.abc import AsyncGenerator
 
 import destiny_sdk
 import pytest
-from destiny_sdk.enhancements import AuthorPosition, Authorship, EnhancementType
+from destiny_sdk.enhancements import (
+    AbstractContentEnhancement,
+    AuthorPosition,
+    Authorship,
+    BibliographicMetadataEnhancement,
+    EnhancementType,
+)
 from elasticsearch import AsyncElasticsearch
 
 from app.core.exceptions import ESNotFoundError
@@ -22,6 +28,12 @@ from app.domain.references.models.projections import (
 from app.domain.references.repository import (
     ReferenceESRepository,
     RobotAutomationESRepository,
+)
+from tests.factories import (
+    AbstractContentEnhancementFactory,
+    BibliographicMetadataEnhancementFactory,
+    EnhancementFactory,
+    ReferenceFactory,
 )
 
 
@@ -631,3 +643,31 @@ async def test_canonical_candidate_search(
         reference_id=non_matching_ref.id,
     )
     assert not results
+
+
+async def test_query_string_search(es_reference_repository: ReferenceESRepository):
+    """Test searching for references using a query string."""
+    bibliographic_enhancement: BibliographicMetadataEnhancement = (
+        BibliographicMetadataEnhancementFactory.build()
+    )
+    abstract_enhancement: AbstractContentEnhancement = (
+        AbstractContentEnhancementFactory.build()
+    )
+    reference = ReferenceFactory.build(
+        enhancements=[
+            EnhancementFactory.build(content=bibliographic_enhancement),
+            EnhancementFactory.build(content=abstract_enhancement),
+        ]
+    )
+    await es_reference_repository.add(reference)
+
+    await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+        index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
+    )
+
+    # Search by title keyword
+    results = await es_reference_repository.search_with_query_string(
+        f"title:{bibliographic_enhancement.title}"
+    )
+    assert len(results) == 1
+    assert results[0].id == reference.id

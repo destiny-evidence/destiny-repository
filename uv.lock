@@ -632,7 +632,7 @@ requires-dist = [
     { name = "azure-storage-blob", specifier = ">=12.25.1,<13" },
     { name = "cachetools", specifier = ">=5.5.2,<6" },
     { name = "destiny-sdk", editable = "libs/sdk" },
-    { name = "elasticsearch", extras = ["async"], specifier = ">=9.0.2,<10" },
+    { name = "elasticsearch", extras = ["async"], specifier = ">=9,<9.2" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115.6,<0.116" },
     { name = "frozenlist", specifier = "==1.6.0" },
     { name = "greenlet", specifier = ">=3.1.1,<4" },
@@ -780,29 +780,30 @@ wheels = [
 
 [[package]]
 name = "elastic-transport"
-version = "8.17.1"
+version = "9.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
+    { name = "sniffio" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6a/54/d498a766ac8fa475f931da85a154666cc81a70f8eb4a780bc8e4e934e9ac/elastic_transport-8.17.1.tar.gz", hash = "sha256:5edef32ac864dca8e2f0a613ef63491ee8d6b8cfb52881fa7313ba9290cac6d2", size = 73425, upload-time = "2025-03-13T07:28:30.776Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a9/0c/b48a9041e921a75e4c0d17e0dfe929f4d72c4e523084cbe5574101b7a40d/elastic_transport-9.2.0.tar.gz", hash = "sha256:0331466ca8febdb7d168c0fbf159294b0066492733b51da94f4dd28a0ee596cd", size = 77332, upload-time = "2025-10-17T16:12:49.906Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cf/cd/b71d5bc74cde7fc6fd9b2ff9389890f45d9762cbbbf81dc5e51fd7588c4a/elastic_transport-8.17.1-py3-none-any.whl", hash = "sha256:192718f498f1d10c5e9aa8b9cf32aed405e469a7f0e9d6a8923431dbb2c59fb8", size = 64969, upload-time = "2025-03-13T07:28:29.031Z" },
+    { url = "https://files.pythonhosted.org/packages/36/4a/6a1cc529ec609dae4d681baddde9ad965b8952d1f56dadbb1d27fbb50ec9/elastic_transport-9.2.0-py3-none-any.whl", hash = "sha256:f52b961e58e6b76d488993286907f61a6ddccbdae8e0135ce8d369227b6282d8", size = 65317, upload-time = "2025-10-17T16:12:48.437Z" },
 ]
 
 [[package]]
 name = "elasticsearch"
-version = "9.0.2"
+version = "9.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "elastic-transport" },
     { name = "python-dateutil" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7f/63/a296828c46fd162a95ed1c560a3fdcea6a68a3b7c45d2aa60594f33eaf1b/elasticsearch-9.0.2.tar.gz", hash = "sha256:290e790153500d9f3cb66d74918ac70e9f96b5cd88147213859edca6ab5013f5", size = 829474, upload-time = "2025-06-05T11:55:05.998Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4e/21/950f5eb9e5bf7661121ae027525554d59d61f7d3f8d4b84eebe7aa9e9fba/elasticsearch-9.1.2.tar.gz", hash = "sha256:8f55c714f00a90ba5fa7f8e37a8ccd9c781fc25bc89dca536a61ea3b945eeb9b", size = 864439, upload-time = "2025-10-28T16:49:45.739Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3e/81/eadbbc38011dd3380dac72a142b175b4a174fa671c584ec38701995b1991/elasticsearch-9.0.2-py3-none-any.whl", hash = "sha256:47cac1f0e5e7be8d8c6751a5d7818d416adfc11eac72f1b59e145930a87de880", size = 914307, upload-time = "2025-06-05T11:40:22.194Z" },
+    { url = "https://files.pythonhosted.org/packages/89/95/ee3bcf867cdbaba15a0118d6ca0b9b4477892ff3b92e7d6135cc42b262af/elasticsearch-9.1.2-py3-none-any.whl", hash = "sha256:3abfc6bb03af2bddb9a2a15a8f169084909d6dc27ca3df0f15cead11c2ef50e6", size = 946800, upload-time = "2025-10-28T16:49:41.468Z" },
 ]
 
 [package.optional-dependencies]

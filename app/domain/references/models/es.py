@@ -31,12 +31,10 @@ from app.domain.references.models.models import (
 from app.domain.references.models.projections import (
     CandidateCanonicalSearchFieldsProjection,
 )
-from app.persistence.es.persistence import (
-    GenericESPersistence,
-)
+from app.persistence.es.persistence import GenericESPersistence, GenericNestedDocument
 
 
-class ExternalIdentifierDocument(InnerDoc):
+class ExternalIdentifierDocument(GenericNestedDocument):
     """Persistence model for external identifiers in Elasticsearch."""
 
     reference_id: UUID = mapped_field(Keyword(required=True))
@@ -70,7 +68,7 @@ class ExternalIdentifierDocument(InnerDoc):
         )
 
 
-class AnnotationDocument(InnerDoc):
+class AnnotationDocument(GenericNestedDocument):
     """Persistence model for useful annotation fields in Elasticsearch."""
 
     scheme: str = mapped_field(Keyword())
@@ -84,7 +82,7 @@ class AnnotationDocument(InnerDoc):
         dynamic = True
 
 
-class EnhancementContentDocument(InnerDoc):
+class EnhancementContentDocument(GenericNestedDocument):
     """
     Persistence model for enhancement content in Elasticsearch.
 
@@ -103,7 +101,7 @@ class EnhancementContentDocument(InnerDoc):
         dynamic = True
 
 
-class EnhancementDocument(InnerDoc):
+class EnhancementDocument(GenericNestedDocument):
     """Persistence model for enhancements in Elasticsearch."""
 
     id: UUID = mapped_field(Keyword(required=True, index=True))
