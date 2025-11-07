@@ -1,3 +1,6 @@
+import time
+
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.references.models.models import GenericExternalIdentifier
@@ -97,3 +100,39 @@ async def test_find_with_identifiers_preload(session: AsyncSession):
     # Check that identifiers are loaded
     assert hasattr(result[0], "identifiers")
     assert result[0].identifiers is not None
+
+
+@pytest.mark.skip("Long-running performance test - not suitable for regular test runs")
+async def test_find_with_identifiers_performance(session: AsyncSession):
+    """Test performance of find_with_identifiers with a large dataset."""
+    repo = ReferenceSQLRepository(session)
+
+    references = ReferenceFactory.build_batch(100000)
+    session.add_all([SQLReference.from_domain(ref) for ref in references])
+    await session.commit()
+
+    test_identifiers = [
+        GenericExternalIdentifier.from_specific(
+            references[0].identifiers[0].identifier
+        ),
+        GenericExternalIdentifier.from_specific(
+            references[50].identifiers[0].identifier
+        ),
+    ]
+
+    for match, expected_count in [("any", 2), ("all", 0)]:
+        # Time the query
+        start_time = time.perf_counter()
+        result = await repo.find_with_identifiers(
+            test_identifiers,
+            match=match,  # type:ignore[arg-type]
+        )
+        end_time = time.perf_counter()
+
+        execution_time = end_time - start_time
+
+        assert len(result) == expected_count
+
+        assert (
+            execution_time < 0.1
+        ), f"Query took {execution_time:.4f}s, expected < 0.1s"
