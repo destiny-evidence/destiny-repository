@@ -266,11 +266,11 @@ class GenericExternalIdentifier(DomainBaseModel):
     identifier: str = Field(
         description="The identifier itself.",
     )
-    identifier_type: ExternalIdentifierType = Field(
-        description="The type of the identifier.",
+    identifier_type: ExternalIdentifierType | None = Field(
+        description="The type of the identifier. If None, identifier is a database id.",
     )
     other_identifier_name: str | None = Field(
-        None,
+        default=None,
         description="The name of the other identifier.",
     )
 
@@ -289,7 +289,7 @@ class GenericExternalIdentifier(DomainBaseModel):
         )
 
 
-class ExternalIdentifierSearch(GenericExternalIdentifier):
+class IdentifierLookup(GenericExternalIdentifier):
     """Model to search for an external identifier."""
 
 

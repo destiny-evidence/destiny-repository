@@ -12,10 +12,13 @@ from uuid import UUID
 import destiny_sdk
 from pydantic import UUID4, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
+from app.core.exceptions import ParseError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     ExternalIdentifier,
     ExternalIdentifierAdapter,
+    ExternalIdentifierType,
+    IdentifierLookup,
     Visibility,
 )
 from app.utils.types import JSON
@@ -292,3 +295,47 @@ class EnhancementResultValidator(BaseModel):
                 enhancement_to_add=file_entry,
             )
         return cls(robot_error=file_entry)
+
+
+def parse_identifier_lookup_from_string(
+    identifier_lookup_string: str,
+    delimiter: str = ":",
+) -> IdentifierLookup:
+    """Parse an identifier lookup string into an IdentifierLookup object."""
+    if delimiter not in identifier_lookup_string:
+        try:
+            UUID4(identifier_lookup_string)
+        except ValueError as exc:
+            msg = (
+                f"Invalid identifier lookup string: {identifier_lookup_string}. "
+                "Must be UUIDv4 if no identifier type is specified."
+            )
+            raise ParseError(msg) from exc
+        return IdentifierLookup(
+            identifier=identifier_lookup_string,
+            identifier_type=None,
+        )
+    identifier_type, identifier = identifier_lookup_string.split(delimiter, 1)
+    if identifier_type == ExternalIdentifierType.OTHER:
+        if delimiter not in identifier:
+            msg = (
+                f"Invalid identifier lookup string: {identifier_lookup_string}. "
+                "Other identifier type must include other identifier name."
+            )
+            raise ParseError(msg)
+        other_identifier_type, identifier = identifier.split(delimiter, 1)
+        return IdentifierLookup(
+            identifier=identifier,
+            identifier_type=ExternalIdentifierType.OTHER,
+            other_identifier_name=other_identifier_type,
+        )
+    if identifier_type not in ExternalIdentifierType:
+        msg = (
+            f"Invalid identifier lookup string: {identifier_lookup_string}. "
+            f"Unknown identifier type: {identifier_type}."
+        )
+        raise ParseError(msg)
+    return IdentifierLookup(
+        identifier=identifier,
+        identifier_type=ExternalIdentifierType(identifier_type),
+    )

@@ -15,6 +15,7 @@ from app.api.exception_handlers import (
     integrity_exception_handler,
     invalid_payload_exception_handler,
     not_found_exception_handler,
+    parse_error_exception_handler,
     sdk_to_domain_exception_handler,
 )
 from app.api.middleware import LoggerMiddleware
@@ -23,6 +24,7 @@ from app.core.exceptions import (
     IntegrityError,
     InvalidPayloadError,
     NotFoundError,
+    ParseError,
     SDKToDomainError,
 )
 from app.core.telemetry.fastapi import FastAPITracingMiddleware
@@ -89,6 +91,7 @@ def register_api(
             SDKToDomainError: sdk_to_domain_exception_handler,
             InvalidPayloadError: invalid_payload_exception_handler,
             ESMalformedDocumentError: es_malformed_exception_handler,
+            ParseError: parse_error_exception_handler,
         },
     )
 

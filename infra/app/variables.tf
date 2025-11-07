@@ -284,6 +284,12 @@ variable "default_upload_file_chunk_size" {
   default     = 1
 }
 
+variable "max_reference_lookup_query_length" {
+  description = "Maximum number of identifiers to allow in a single reference lookup query"
+  type        = number
+  default     = 100
+}
+
 variable "es_migrator_reindex_polling_interval" {
   description = "How frequently to poll the reindexing task when migrating indices"
   type        = number

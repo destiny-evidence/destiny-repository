@@ -617,6 +617,28 @@ async def test_get_deduplicated_canonical_reference_duplicate_chain(
     assert len(canonical.identifiers) == 2
 
 
+async def test_get_deduplicated_canonical_references(
+    fake_repository, fake_uow, canonical_reference, get_duplicate_reference
+):
+    duplicate_reference = get_duplicate_reference(canonical_reference.id)
+    canonical_reference.duplicate_references = [duplicate_reference]
+    refs = fake_repository([canonical_reference, duplicate_reference])
+    uow = fake_uow(references=refs)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+    canonical_list = await service._get_deduplicated_canonical_references(  # noqa: SLF001
+        reference_ids=[canonical_reference.id, duplicate_reference.id]
+    )
+    assert len(canonical_list) == 2
+    assert canonical_list[0] == canonical_list[1]
+
+    # Check it works when passing in references directly too
+    assert canonical_list == await service._get_deduplicated_canonical_references(  # noqa: SLF001
+        references=[canonical_reference, duplicate_reference]
+    )
+
+
 async def test_get_canonical_reference_with_implied_changeset(
     fake_uow, fake_repository
 ):

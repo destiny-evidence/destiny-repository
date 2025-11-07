@@ -14,7 +14,6 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.core.exceptions import SQLNotFoundError
 from app.core.telemetry.repository import trace_repository_method
 from app.domain.references.models.es import (
     ReferenceDocument,
@@ -23,7 +22,6 @@ from app.domain.references.models.es import (
 from app.domain.references.models.models import (
     CandidateCanonicalSearchFields,
     DuplicateDetermination,
-    ExternalIdentifierType,
     GenericExternalIdentifier,
     PendingEnhancementStatus,
     ReferenceWithChangeset,
@@ -162,30 +160,46 @@ class ReferenceSQLRepository(
     @trace_repository_method(tracer)
     async def find_with_identifiers(
         self,
-        identifiers: list[GenericExternalIdentifier],
+        identifiers: Sequence[GenericExternalIdentifier],
         preload: list[_reference_sql_preloadable] | None = None,
+        match: Literal["all", "any"] = "all",
     ) -> list[DomainReference]:
-        """Find references that possess ALL of the given identifiers."""
+        """
+        Find references that possess ALL or ANY of the given identifiers.
+
+        :param identifiers: List of external identifiers to match against.
+        :type identifiers: list[GenericExternalIdentifier]
+        :param preload: List of relationships to preload.
+        :type preload: list[_reference_sql_preloadable] | None
+        :param match: Whether to match 'all' or 'any' of the identifiers.
+        :type match: Literal["all", "any"]
+
+        Returns:
+            List of DomainReference objects matching the criteria.
+
+        """
+        if not identifiers:
+            return []
+
         options = []
         if preload:
             options.extend(self._get_relationship_loads(preload))
 
+        predicates = [
+            SQLReference.identifiers.any(
+                and_(
+                    SQLExternalIdentifier.identifier_type == identifier.identifier_type,
+                    SQLExternalIdentifier.identifier == identifier.identifier,
+                    SQLExternalIdentifier.other_identifier_name
+                    == identifier.other_identifier_name,
+                )
+            )
+            for identifier in identifiers
+        ]
+
         query = (
             select(SQLReference)
-            .where(
-                *[
-                    SQLReference.identifiers.any(
-                        and_(
-                            SQLExternalIdentifier.identifier_type
-                            == identifier.identifier_type,
-                            SQLExternalIdentifier.identifier == identifier.identifier,
-                            SQLExternalIdentifier.other_identifier_name
-                            == identifier.other_identifier_name,
-                        )
-                    )
-                    for identifier in identifiers
-                ]
-            )
+            .where(and_(*predicates) if match == "all" else or_(*predicates))
             .options(*options)
         )
 
@@ -328,90 +342,6 @@ class ExternalIdentifierSQLRepository(
             DomainExternalIdentifier,
             SQLExternalIdentifier,
         )
-
-    @trace_repository_method(tracer)
-    async def get_by_type_and_identifier(
-        self,
-        identifier_type: ExternalIdentifierType,
-        identifier: str,
-        other_identifier_name: str | None = None,
-        preload: list[_external_identifier_sql_preloadable] | None = None,
-    ) -> DomainExternalIdentifier:
-        """
-        Get a single external identifier by type and identifier, if it exists.
-
-        Args:
-            identifier_type (ExternalIdentifierType): The type of the identifier.
-            identifier (str): The identifier value.
-            other_identifier_name (str | None): An optional name for another identifier.
-
-        Returns:
-            DomainExternalIdentifier | None: The external identifier if found.
-
-        """
-        query = select(SQLExternalIdentifier).where(
-            SQLExternalIdentifier.identifier_type == identifier_type,
-            SQLExternalIdentifier.identifier == identifier,
-        )
-        if other_identifier_name:
-            query = query.where(
-                SQLExternalIdentifier.other_identifier_name == other_identifier_name
-            )
-        if preload:
-            query = query.options(*self._get_relationship_loads(preload))
-        result = await self._session.execute(query)
-        db_identifier = result.scalar_one_or_none()
-
-        if not db_identifier:
-            detail = (
-                f"Unable to find {self._persistence_cls.__name__} with type "
-                f"{identifier_type}, identifier {identifier}, and other "
-                f"identifier name {other_identifier_name}"
-            )
-            raise SQLNotFoundError(
-                detail=detail,
-                lookup_model="ExternalIdentifier",
-                lookup_type="external_identifier",
-                lookup_value=(identifier_type, identifier, other_identifier_name),
-            )
-
-        return db_identifier.to_domain(preload=preload)
-
-    @trace_repository_method(tracer)
-    async def get_by_identifiers(
-        self,
-        identifiers: list[GenericExternalIdentifier],
-    ) -> list[DomainExternalIdentifier]:
-        """
-        Get multiple external identifiers that match the given identifiers.
-
-        :param identifiers: List of generic external identifiers to search for
-        :type identifiers: list[GenericExternalIdentifier]
-        :return: List of matching external identifiers found in the database
-        :rtype: list[DomainExternalIdentifier]
-        """
-        if not identifiers:
-            return []
-
-        # Build OR conditions for each identifier combination
-        conditions = []
-        for identifier in identifiers:
-            condition = (
-                SQLExternalIdentifier.identifier_type == identifier.identifier_type
-            ) & (SQLExternalIdentifier.identifier == identifier.identifier)
-            if identifier.identifier_type == ExternalIdentifierType.OTHER:
-                condition &= (
-                    SQLExternalIdentifier.other_identifier_name
-                    == identifier.other_identifier_name
-                )
-            conditions.append(condition)
-
-        query = select(SQLExternalIdentifier).where(or_(*conditions))
-
-        result = await self._session.execute(query)
-        db_identifiers = result.unique().scalars().all()
-
-        return [db_identifier.to_domain() for db_identifier in db_identifiers]
 
 
 class EnhancementRepositoryBase(
