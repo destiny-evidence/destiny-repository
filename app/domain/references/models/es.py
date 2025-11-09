@@ -113,9 +113,12 @@ class EnhancementDocument(InnerDoc):
     visibility: Visibility = mapped_field(Keyword(required=True))
     source: str = mapped_field(Keyword(required=True))
     robot_version: str | None = mapped_field(Keyword())
-    created_at: datetime.datetime = mapped_field(
-        Date(required=True, default_timezone=datetime.UTC)
+
+    # We'd like to make this required after we've done a repair
+    created_at: datetime.datetime | None = mapped_field(
+        Date(required=False, default_timezone=datetime.UTC)
     )
+
     content: EnhancementContentDocument = mapped_field(
         Object(EnhancementContentDocument, required=True)
     )
