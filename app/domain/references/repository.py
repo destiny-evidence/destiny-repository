@@ -10,7 +10,7 @@ from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import AsyncSearch, Q
 from opentelemetry import trace
 from pydantic import UUID4
-from sqlalchemy import and_, or_, select
+from sqlalchemy import CompoundSelect, Select, and_, intersect_all, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -186,21 +186,32 @@ class ReferenceSQLRepository(
             options.extend(self._get_relationship_loads(preload))
 
         predicates = [
-            SQLReference.identifiers.any(
-                and_(
-                    SQLExternalIdentifier.identifier_type == identifier.identifier_type,
-                    SQLExternalIdentifier.identifier == identifier.identifier,
-                    SQLExternalIdentifier.other_identifier_name
-                    == identifier.other_identifier_name,
-                )
+            and_(
+                SQLExternalIdentifier.identifier_type == identifier.identifier_type,
+                SQLExternalIdentifier.identifier == identifier.identifier,
+                SQLExternalIdentifier.other_identifier_name
+                == identifier.other_identifier_name,
             )
             for identifier in identifiers
         ]
 
+        subquery: CompoundSelect[tuple[UUID]] | Select[tuple[UUID]]
+        if match == "any":
+            subquery = (
+                select(SQLExternalIdentifier.reference_id)
+                .where(or_(*predicates))
+                .distinct()
+            )
+        else:
+            subquery = intersect_all(
+                *[
+                    select(SQLExternalIdentifier.reference_id).where(predicate)
+                    for predicate in predicates
+                ]
+            )
+
         query = (
-            select(SQLReference)
-            .where(and_(*predicates) if match == "all" else or_(*predicates))
-            .options(*options)
+            select(SQLReference).where(SQLReference.id.in_(subquery)).options(*options)
         )
 
         result = await self._session.execute(query)
