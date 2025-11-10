@@ -10,6 +10,7 @@ from elasticsearch import AsyncElasticsearch, NotFoundError
 from elasticsearch.dsl import AsyncSearch
 from elasticsearch.dsl.exceptions import UnknownDslObject
 from elasticsearch.dsl.query import QueryString
+from elasticsearch.dsl.response import Hit, Response
 from elasticsearch.exceptions import BadRequestError
 from opentelemetry import trace
 
@@ -17,6 +18,7 @@ from app.core.exceptions import ESError, ESMalformedDocumentError, ESNotFoundErr
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.repository import trace_repository_method
 from app.persistence.es.generics import GenericESPersistenceType
+from app.persistence.es.persistence import ESSearchResult, ESSearchTotal
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
 
@@ -154,25 +156,52 @@ class GenericAsyncESRepository(
             )
         await record.delete(using=self._client)
 
+    def _parse_search_result(
+        self, response: Response[Hit]
+    ) -> ESSearchResult[GenericDomainModelType]:
+        """
+        Parse an Elasticsearch search response into a search result.
+
+        :param response: The Elasticsearch search response.
+        :type response: Response[Hit]
+        :return: The parsed search result.
+        :rtype: ESSearchResult[GenericDomainModelType]
+        """
+        return ESSearchResult(
+            hits=[
+                self._persistence_cls.from_hit(hit).to_domain() for hit in response.hits
+            ],
+            # ES DSL typing on response.hits is incorrect
+            total=ESSearchTotal(
+                value=response.hits.total.value,  # type: ignore[attr-defined]
+                relation=response.hits.total.relation,  # type: ignore[attr-defined]
+            ),
+        )
+
     @trace_repository_method(tracer)
     async def search_with_query_string(
-        self, query: str
-    ) -> list[GenericDomainModelType]:
+        self,
+        query: str,
+        # TODO(Adam): Implement pagination
+        # https://github.com/destiny-evidence/destiny-repository/issues/349
+        page_size: int = 100,
+    ) -> ESSearchResult[GenericDomainModelType]:
         """
         Search for records using a query string.
 
         :param query: The query string to search with.
         :type query: str
+        :param page_size: The number of records to return per page.
+        :type page_size: int
         :return: A list of matching records.
-        :rtype: list[GenericDomainModelType]
+        :rtype: ESSearchResult[GenericDomainModelType]
         """
         trace_attribute(Attributes.DB_QUERY, query)
         search = (
             AsyncSearch(using=self._client)
             .doc_type(self._persistence_cls)
+            .extra(size=page_size)
             .query(QueryString(query=query))
         )
         response = await search.execute()
-        return [
-            self._persistence_cls.from_hit(hit).to_domain() for hit in response.hits
-        ]
+        return self._parse_search_result(response)

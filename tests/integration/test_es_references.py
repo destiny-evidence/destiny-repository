@@ -669,5 +669,54 @@ async def test_query_string_search(es_reference_repository: ReferenceESRepositor
     results = await es_reference_repository.search_with_query_string(
         f"title:{bibliographic_enhancement.title}"
     )
-    assert len(results) == 1
-    assert results[0].id == reference.id
+    assert len(results.hits) == 1
+    assert results.hits[0].id == reference.id
+    assert results.total.value == 1
+    assert results.total.relation == "eq"
+
+
+async def test_query_string_search_many_results(
+    es_reference_repository: ReferenceESRepository,
+):
+    """Test searching for references using a query string that returns many results."""
+    bibliographic_enhancement: BibliographicMetadataEnhancement = (
+        BibliographicMetadataEnhancementFactory.build()
+    )
+
+    async def _insert_references_batch() -> None:
+        references = ReferenceFactory.build_batch(
+            6_000,
+            enhancements=[EnhancementFactory.build(content=bibliographic_enhancement)],
+        )
+
+        async def reference_generator(
+            references: list[Reference],
+        ) -> AsyncGenerator[Reference, None]:
+            for reference in references:
+                yield reference
+
+        await es_reference_repository.add_bulk(reference_generator(references))
+        await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+            index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
+        )
+
+    await _insert_references_batch()
+
+    # Search by title keyword
+    results = await es_reference_repository.search_with_query_string(
+        f"title:{bibliographic_enhancement.title}"
+    )
+    # Default page size
+    assert len(results.hits) == 100
+    assert results.total.value == 6_000
+    assert results.total.relation == "eq"
+
+    await _insert_references_batch()
+
+    results = await es_reference_repository.search_with_query_string(
+        f"title:{bibliographic_enhancement.title}"
+    )
+    assert len(results.hits) == 100
+    # Default elasticsearch cap
+    assert results.total.value == 10_000
+    assert results.total.relation == "gte"

@@ -1,14 +1,17 @@
 """Objects used to interface with SQL implementations."""
 
 from abc import abstractmethod
-from typing import Generic, Self
+from typing import Generic, Literal, Self
 
 from elasticsearch.dsl import AsyncDocument, InnerDoc
 from elasticsearch.dsl.document_base import InstrumentedField
 from elasticsearch.dsl.field import Nested
 from elasticsearch.dsl.response import Hit
-from pydantic import UUID4, BaseModel
+from pydantic import UUID4, BaseModel, Field
 
+from app.domain.base import (
+    RepositoryIdMixin,  # noqa: F401, required for Pydantic generic construction
+)
 from app.persistence.generics import GenericDomainModelType
 
 
@@ -91,12 +94,12 @@ def nested_hit_to_document(
         if not isinstance(field, InstrumentedField):
             msg = f"Field '{key}' in {cls.__name__} is not a valid Elasticsearch field"
             raise TypeError(msg)
-        nested_field = field._field  # noqa: SLF001
+        field_mapping = field._field  # noqa: SLF001
         if isinstance(
-            nested_field,
+            field_mapping,
             Nested,
         ):
-            doc_class = nested_field._doc_class  # noqa: SLF001
+            doc_class = field_mapping._doc_class  # noqa: SLF001
             if not issubclass(doc_class, GenericNestedDocument):
                 msg = (
                     f"Nested field '{key}' in {cls.__name__} does not inherit "
@@ -107,8 +110,40 @@ def nested_hit_to_document(
     return data
 
 
-class ESSearchResult(BaseModel):
+class ESScoreResult(BaseModel):
     """Simple class for id<->score mapping in Elasticsearch search results."""
 
     id: UUID4
     score: float
+
+
+class ESSearchTotal(BaseModel):
+    """
+    Class for total results in Elasticsearch search results.
+
+    Unless otherwise specified in the request, Elasticsearch will stop counting after
+    10,000 and return a lower bound with relation "gte".
+    """
+
+    value: int = Field(description="The total number of results found.")
+    relation: Literal["eq", "gte"] = Field(
+        description=(
+            "Indicates whether the total count is exact or just a lower bound."
+        ),
+    )
+
+
+class ESSearchResult(BaseModel, Generic[GenericDomainModelType]):
+    """Wrapping class for Elasticsearch search results."""
+
+    hits: list[GenericDomainModelType] = Field(
+        default_factory=list,
+        description="The list of results returned from the search query.",
+    )
+    total: ESSearchTotal = Field(
+        description="The total number of results matching the search query.",
+    )
+    page: None = Field(
+        default=None,
+        description="Placeholder for pagination, yet to be implemented.",
+    )

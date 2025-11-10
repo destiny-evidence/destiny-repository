@@ -18,7 +18,7 @@ from pydantic import (
 )
 
 from app.core.telemetry.logger import get_logger
-from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
+from app.domain.base import DomainBaseModel, ProjectedBaseModel, RepositoryIdMixin
 from app.persistence.blob.models import BlobStorageFile
 
 logger = get_logger(__name__)
@@ -123,7 +123,7 @@ class DuplicateDetermination(StrEnum):
 class Reference(
     DomainBaseModel,
     ProjectedBaseModel,  # References can self-project to the same structure
-    SQLAttributeMixin,
+    RepositoryIdMixin,
 ):
     """Core reference model with database attributes included."""
 
@@ -237,7 +237,7 @@ class Reference(
         )
 
 
-class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
+class LinkedExternalIdentifier(DomainBaseModel, RepositoryIdMixin):
     """External identifier model with database attributes included."""
 
     identifier: destiny_sdk.identifiers.ExternalIdentifier = Field(
@@ -293,7 +293,7 @@ class ExternalIdentifierSearch(GenericExternalIdentifier):
     """Model to search for an external identifier."""
 
 
-class Enhancement(DomainBaseModel, SQLAttributeMixin):
+class Enhancement(DomainBaseModel, RepositoryIdMixin):
     """Core enhancement model with database attributes included."""
 
     source: str = Field(
@@ -332,7 +332,7 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
         )
 
 
-class EnhancementRequest(DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin):
+class EnhancementRequest(DomainBaseModel, ProjectedBaseModel, RepositoryIdMixin):
     """Request to add enhancements to a list of references."""
 
     reference_ids: list[uuid.UUID] = Field(
@@ -402,7 +402,7 @@ class RobotResultValidationEntry(DomainBaseModel):
     )
 
 
-class RobotAutomation(DomainBaseModel, SQLAttributeMixin):
+class RobotAutomation(DomainBaseModel, RepositoryIdMixin):
     """
     Automation model for a robot.
 
@@ -490,7 +490,7 @@ class ReferenceDuplicateDeterminationResult(BaseModel):
         return self
 
 
-class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
+class ReferenceDuplicateDecision(DomainBaseModel, RepositoryIdMixin):
     """Model representing a decision on whether a reference is a duplicate."""
 
     reference_id: UUID4 = Field(description="The ID of the reference being evaluated.")
@@ -596,7 +596,7 @@ class PendingEnhancementStatus(StrEnum):
     FAILED = auto()
 
 
-class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
+class PendingEnhancement(DomainBaseModel, RepositoryIdMixin):
     """A pending enhancement."""
 
     reference_id: UUID4 = Field(
@@ -643,7 +643,7 @@ class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
         return self
 
 
-class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):
+class RobotEnhancementBatch(DomainBaseModel, RepositoryIdMixin):
     """A batch of references to be enhanced by a robot."""
 
     robot_id: UUID4 = Field(

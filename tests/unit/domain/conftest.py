@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.core.exceptions import SQLNotFoundError
-from app.domain.base import DomainBaseModel, SQLAttributeMixin
+from app.domain.base import DomainBaseModel, RepositoryIdMixin
 from app.domain.imports.models.models import (
     ImportBatch,
     ImportBatchStatus,
@@ -12,7 +12,7 @@ from app.domain.imports.models.models import (
 )
 
 
-class DummyDomainSQLModel(DomainBaseModel, SQLAttributeMixin): ...
+class DummyDomainSQLModel(DomainBaseModel, RepositoryIdMixin): ...
 
 
 class FakeRepository:
