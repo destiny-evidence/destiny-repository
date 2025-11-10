@@ -622,9 +622,11 @@ async def test_canonical_candidate_search(
         index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
     )
 
-    matching_search_fields = ReferenceSearchFieldsProjection.get_from_reference(
-        matching_ref1
-    ).canonical_candidate_search_fields()
+    matching_search_fields = (
+        ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(
+            matching_ref1
+        )
+    )
 
     # Test the search_for_candidate_canonicals method
     results = await es_reference_repository.search_for_candidate_canonicals(
@@ -634,9 +636,11 @@ async def test_canonical_candidate_search(
 
     assert {reference.id for reference in results} == {matching_ref2.id}
 
-    non_matching_search_fields = ReferenceSearchFieldsProjection.get_from_reference(
-        non_matching_ref
-    ).canonical_candidate_search_fields()
+    non_matching_search_fields = (
+        ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(
+            non_matching_ref
+        )
+    )
 
     results = await es_reference_repository.search_for_candidate_canonicals(
         non_matching_search_fields,

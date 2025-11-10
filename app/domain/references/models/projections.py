@@ -7,6 +7,7 @@ import destiny_sdk
 from app.core.exceptions import ProjectionError
 from app.domain.base import GenericProjection
 from app.domain.references.models.models import (
+    CandidateCanonicalSearchFields,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
@@ -108,6 +109,13 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             key=lambda e: e.reference_id == canonical_id,
             reverse=True,
         )
+
+    @classmethod
+    def get_canonical_candidate_search_fields(
+        cls, reference: Reference
+    ) -> CandidateCanonicalSearchFields:
+        """Return fields needed for candidate canonical selection."""
+        return cls.get_from_reference(reference).to_canonical_candidate_search_fields()
 
 
 class DeduplicatedReferenceProjection(GenericProjection[Reference]):

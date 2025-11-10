@@ -174,9 +174,11 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             preload=["enhancements", "identifiers"],
         )
 
-        search_fields = ReferenceSearchFieldsProjection.get_from_reference(
-            reference
-        ).canonical_candidate_search_fields()
+        search_fields = (
+            ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(
+                reference
+            )
+        )
 
         if not search_fields.is_searchable:
             return await self.sql_uow.reference_duplicate_decisions.update_by_pk(

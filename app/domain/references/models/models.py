@@ -491,7 +491,7 @@ class ReferenceSearchFields(ProjectedBaseModel):
         description="The title of the reference.",
     )
 
-    def canonical_candidate_search_fields(self) -> CandidateCanonicalSearchFields:
+    def to_canonical_candidate_search_fields(self) -> CandidateCanonicalSearchFields:
         """Return fields needed for candidate canonical selection."""
         return CandidateCanonicalSearchFields(
             publication_year=self.publication_year,
