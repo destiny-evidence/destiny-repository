@@ -17,7 +17,7 @@ from app.domain.references.models.models import (
     RobotAutomation,
 )
 from app.domain.references.models.projections import (
-    CandidateCanonicalSearchFieldsProjection,
+    ReferenceSearchFieldsProjection,
 )
 from app.domain.references.repository import (
     ReferenceESRepository,
@@ -624,14 +624,14 @@ async def test_canonical_candidate_search(
 
     # Test the search_for_candidate_canonicals method
     results = await es_reference_repository.search_for_candidate_canonicals(
-        CandidateCanonicalSearchFieldsProjection.get_from_reference(matching_ref1),
+        ReferenceSearchFieldsProjection.get_canonical_search_fields(matching_ref1),
         reference_id=matching_ref1.id,
     )
 
     assert {reference.id for reference in results} == {matching_ref2.id}
 
     results = await es_reference_repository.search_for_candidate_canonicals(
-        CandidateCanonicalSearchFieldsProjection.get_from_reference(non_matching_ref),
+        ReferenceSearchFieldsProjection.get_canonical_search_fields(non_matching_ref),
         reference_id=non_matching_ref.id,
     )
     assert not results

@@ -11,19 +11,18 @@ from app.domain.references.models.models import (
     EnhancementType,
     PendingEnhancementStatus,
     Reference,
+    ReferenceSearchFields,
 )
 
 
-class CandidateCanonicalSearchFieldsProjection(
-    GenericProjection[CandidateCanonicalSearchFields]
-):
+class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
     """Projection functions for candidate selection used in duplicate detection."""
 
     @classmethod
     def get_from_reference(
         cls,
         reference: Reference,
-    ) -> CandidateCanonicalSearchFields:
+    ) -> ReferenceSearchFields:
         """
         Get the candidate canonical search fields from a reference.
 
@@ -85,11 +84,20 @@ class CandidateCanonicalSearchFieldsProjection(
             msg = "Failed to project CandidateCanonicalSearchFields from Reference"
             raise ProjectionError(msg) from exc
 
-        return CandidateCanonicalSearchFields(
+        return ReferenceSearchFields(
             title=title,
             authors=[author.display_name.strip() for author in authorship],
             publication_year=publication_year,
         )
+
+    @classmethod
+    def get_canonical_search_fields(
+        cls, reference: Reference
+    ) -> CandidateCanonicalSearchFields:
+        """_summary_."""
+        reference_search_fields = cls.get_from_reference(reference)
+
+        return reference_search_fields.get_canonical_candidate_search_fields()
 
 
 class DeduplicatedReferenceProjection(GenericProjection[Reference]):

@@ -16,8 +16,8 @@ from app.domain.references.models.models import (
     Visibility,
 )
 from app.domain.references.models.projections import (
-    CandidateCanonicalSearchFieldsProjection,
     DeduplicatedReferenceProjection,
+    ReferenceSearchFieldsProjection,
 )
 
 
@@ -302,7 +302,7 @@ class TestCandidateCanonicalSearchFieldsProjection:
             identifiers=[],
         )
 
-        result1 = CandidateCanonicalSearchFieldsProjection.get_from_reference(
+        result1 = ReferenceSearchFieldsProjection.get_canonical_search_fields(
             reference1
         )
         assert result1.title == "Sample Research Paper"  # Whitespace stripped
@@ -321,7 +321,7 @@ class TestCandidateCanonicalSearchFieldsProjection:
             identifiers=[],
         )
 
-        result2 = CandidateCanonicalSearchFieldsProjection.get_from_reference(
+        result2 = ReferenceSearchFieldsProjection.get_canonical_search_fields(
             reference2
         )
         assert result2.publication_year == 2022  # From publication_date
@@ -334,7 +334,7 @@ class TestCandidateCanonicalSearchFieldsProjection:
             identifiers=[],
         )
 
-        result3 = CandidateCanonicalSearchFieldsProjection.get_from_reference(
+        result3 = ReferenceSearchFieldsProjection.get_canonical_search_fields(
             reference3
         )
         assert result3.title == "Hydration Title"  # From first enhancement
@@ -351,7 +351,7 @@ class TestCandidateCanonicalSearchFieldsProjection:
             identifiers=[],
         )
 
-        result_empty = CandidateCanonicalSearchFieldsProjection.get_from_reference(
+        result_empty = ReferenceSearchFieldsProjection.get_canonical_search_fields(
             reference_empty
         )
         assert result_empty.title is None
@@ -367,7 +367,7 @@ class TestCandidateCanonicalSearchFieldsProjection:
             identifiers=[],
         )
 
-        result_none = CandidateCanonicalSearchFieldsProjection.get_from_reference(
+        result_none = ReferenceSearchFieldsProjection.get_canonical_search_fields(
             reference_none
         )
         assert result_none.title is None

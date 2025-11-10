@@ -438,13 +438,9 @@ class RobotAutomationPercolationResult(BaseModel):
 
 class CandidateCanonicalSearchFields(ProjectedBaseModel):
     """
-    Projection representing fields used for candidate canonical selection.
+    Fields used for candidate canonical selection.
 
-    This model is a projection of
-    :class:`app.domain.references.models.models.Reference`.
-
-    This is injected into the root of Elasticsearch Reference documents for easy
-    searching. The search implementation lives at
+    The search implementation lives at
     :attr:`app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals`.
     """
 
@@ -464,6 +460,44 @@ class CandidateCanonicalSearchFields(ProjectedBaseModel):
     def is_searchable(self) -> bool:
         """Whether the projection has the fields required to search for candidates."""
         return all((self.publication_year, self.authors, self.title))
+
+
+class ReferenceSearchFields(ProjectedBaseModel):
+    """
+    Projection representing fields used for searching references.
+
+    This model is a projection of
+    :class:`app.domain.references.models.models.Reference`.
+
+    This is injected into the root of Elasticsearch Reference documents for easy
+    searching.
+    """
+
+    abstract: str | None = Field(
+        default=None, description="The abstract of the reference."
+    )
+
+    authors: list[str] = Field(
+        default_factory=list, description="The authors of the reference."
+    )
+
+    publication_year: int | None = Field(
+        default=None,
+        description="The publication year of the reference.",
+    )
+
+    title: str | None = Field(
+        default=None,
+        description="The title of the reference.",
+    )
+
+    def get_canonical_candidate_search_fields(self) -> CandidateCanonicalSearchFields:
+        """Return fields needed for candidate canonical selection."""
+        return CandidateCanonicalSearchFields(
+            publication_year=self.publication_year,
+            authors=self.authors,
+            title=self.title,
+        )
 
 
 class ReferenceDuplicateDeterminationResult(BaseModel):
