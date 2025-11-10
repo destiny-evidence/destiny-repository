@@ -60,6 +60,7 @@ from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
+from app.persistence.es.persistence import ESSearchResult
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.es.uow import unit_of_work as es_unit_of_work
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -1019,6 +1020,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def search_references(
         self,
         query: str,
-    ) -> list[Reference]:
+    ) -> ESSearchResult[Reference]:
         """Search for references given a query string."""
         return await self._search_service.search_with_query_string(query)

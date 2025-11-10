@@ -9,6 +9,7 @@ from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.service import GenericService
+from app.persistence.es.persistence import ESSearchResult
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
@@ -32,6 +33,6 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
     async def search_with_query_string(
         self,
         query_string: str,
-    ) -> list[Reference]:
+    ) -> ESSearchResult[Reference]:
         """Search for references matching the query string."""
         return await self.es_uow.references.search_with_query_string(query_string)

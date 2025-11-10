@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
 from app.api.exception_handlers import (
-    es_malformed_exception_handler,
+    es_exception_handler,
     invalid_payload_exception_handler,
     not_found_exception_handler,
     parse_error_exception_handler,
@@ -23,6 +23,7 @@ from app.api.exception_handlers import (
 from app.core.config import get_settings
 from app.core.exceptions import (
     ESMalformedDocumentError,
+    ESQueryError,
     InvalidPayloadError,
     NotFoundError,
     ParseError,
@@ -70,7 +71,8 @@ def app() -> FastAPI:
             NotFoundError: not_found_exception_handler,
             SDKToDomainError: sdk_to_domain_exception_handler,
             InvalidPayloadError: invalid_payload_exception_handler,
-            ESMalformedDocumentError: es_malformed_exception_handler,
+            ESMalformedDocumentError: es_exception_handler,
+            ESQueryError: es_exception_handler,
             ParseError: parse_error_exception_handler,
         }
     )
@@ -728,3 +730,18 @@ async def test_get_robot_enhancement_batch_nonexistent_batch(client: AsyncClient
     response = await client.get(f"/v1/robot-enhancement-batces/{uuid.uuid4()}/")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+async def test_search_references_sad_path(
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> None:
+    """Test a poorly formatted query returns 400."""
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "(quick and brown"},
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    data = response.json()
+    assert "Failed to parse query [(quick and brown]" in data["detail"]

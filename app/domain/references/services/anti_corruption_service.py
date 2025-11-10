@@ -20,6 +20,7 @@ from app.domain.references.models.models import (
 from app.domain.service import GenericAntiCorruptionService
 from app.persistence.blob.models import BlobSignedUrlType
 from app.persistence.blob.repository import BlobRepository
+from app.persistence.es.persistence import ESSearchResult
 
 
 class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
@@ -315,3 +316,21 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             ]
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
+
+    def reference_search_result_to_sdk(
+        self,
+        search_result: ESSearchResult[Reference],
+    ) -> destiny_sdk.references.ReferenceSearchResult:
+        """Convert the reference search result to the SDK model."""
+        try:
+            return destiny_sdk.references.ReferenceSearchResult(
+                total={
+                    "count": search_result.total.value,
+                    "is_lower_bound": search_result.total.relation == "eq",
+                },
+                references=[
+                    self.reference_to_sdk(reference) for reference in search_result.hits
+                ],
+            )
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception

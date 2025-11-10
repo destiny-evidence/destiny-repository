@@ -2,7 +2,7 @@
 
 from typing import Self
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # These are non-standard newline characters that are not escaped by model_dump_json().
 # We want jsonl files to have empirical new lines so they can be streamed line by line.
@@ -47,3 +47,22 @@ class _JsonlFileInputMixIn(BaseModel):
         :rtype: Self
         """
         return cls.model_validate_json(jsonl)
+
+
+class SearchResultTotal(BaseModel):
+    """A mixin class for models that represent the total number of search results."""
+
+    count: int = Field(
+        description="The total number of results matching the search criteria.",
+    )
+    is_lower_bound: bool = Field(
+        description="Whether the count is a lower bound (true) or exact (false).",
+    )
+
+
+class SearchResultMixIn(BaseModel):
+    """A mixin class for models that represent search results."""
+
+    total: SearchResultTotal = Field(
+        description="The total number of results matching the search criteria.",
+    )

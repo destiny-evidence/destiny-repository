@@ -14,7 +14,12 @@ from elasticsearch.dsl.response import Hit, Response
 from elasticsearch.exceptions import BadRequestError
 from opentelemetry import trace
 
-from app.core.exceptions import ESError, ESMalformedDocumentError, ESNotFoundError
+from app.core.exceptions import (
+    ESError,
+    ESMalformedDocumentError,
+    ESNotFoundError,
+    ESQueryError,
+)
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.repository import trace_repository_method
 from app.persistence.es.generics import GenericESPersistenceType
@@ -203,5 +208,9 @@ class GenericAsyncESRepository(
             .extra(size=page_size)
             .query(QueryString(query=query))
         )
-        response = await search.execute()
+        try:
+            response = await search.execute()
+        except BadRequestError as exc:
+            msg = f"Elasticsearch query string search failed: {exc}."
+            raise ESQueryError(msg) from exc
         return self._parse_search_result(response)

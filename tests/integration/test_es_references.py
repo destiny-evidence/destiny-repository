@@ -13,9 +13,9 @@ from destiny_sdk.enhancements import (
     BibliographicMetadataEnhancement,
     EnhancementType,
 )
-from elasticsearch import AsyncElasticsearch, BadRequestError
+from elasticsearch import AsyncElasticsearch
 
-from app.core.exceptions import ESNotFoundError
+from app.core.exceptions import ESNotFoundError, ESQueryError
 from app.domain.references.models.models import (
     Enhancement,
     Reference,
@@ -752,7 +752,7 @@ async def test_query_string_search_invalid_syntax(
     query: str,
 ):
     """Test that invalid Lucene query syntax raises an error."""
-    with pytest.raises(BadRequestError):
+    with pytest.raises(ESQueryError):
         await es_reference_repository.search_with_query_string(query)
 
 

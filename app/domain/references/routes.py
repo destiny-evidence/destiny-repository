@@ -30,6 +30,7 @@ from app.api.auth import (
     security,
 )
 from app.api.decorators import experimental
+from app.api.exception_handlers import APIException
 from app.core.config import get_settings
 from app.core.exceptions import ParseError
 from app.core.telemetry.fastapi import PayloadAttributeTracer
@@ -176,7 +177,7 @@ reference_router = APIRouter(
 )
 search_router = APIRouter(
     prefix="/search",
-    tags=["reference-search"],
+    tags=["search"],
     dependencies=[Depends(reference_reader_auth)],
 )
 enhancement_request_router = APIRouter(
@@ -208,6 +209,39 @@ deduplication_router = APIRouter(
     tags=["duplicate-decisions"],
     dependencies=[Depends(reference_deduplication_auth)],
 )
+
+
+@search_router.get(
+    "/",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Bad Query String",
+            "model": APIException,
+        }
+    },
+)
+async def search_references(
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    q: Annotated[
+        str,
+        Query(
+            description=(
+                "The query string in "
+                "[Lucene syntax](https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-query-string-query#query-string-syntax)."
+            ),
+        ),
+    ],
+) -> destiny_sdk.references.ReferenceSearchResult:
+    """Search for references given a query string."""
+    search_result = await reference_service.search_references(q)
+    return anti_corruption_service.reference_search_result_to_sdk(search_result)
+
+
+reference_router.include_router(search_router)
 
 
 @reference_router.get("/{reference_id}/")
@@ -543,31 +577,4 @@ async def invoke_deduplication_for_references(
     await reference_service.invoke_deduplication_for_references(reference_ids)
 
 
-@search_router.get(
-    "/",
-    status_code=status.HTTP_200_OK,
-)
-async def search_references(
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    anti_corruption_service: Annotated[
-        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
-    ],
-    q: Annotated[
-        str,
-        Query(
-            description=(
-                "The query string in "
-                "[Lucene syntax](https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-query-string-query#query-string-syntax)."
-            ),
-        ),
-    ],
-) -> list[destiny_sdk.references.Reference]:
-    """Search for references given a query string."""
-    references = await reference_service.search_references(q)
-    return [
-        anti_corruption_service.reference_to_sdk(reference) for reference in references
-    ]
-
-
 reference_router.include_router(deduplication_router)
-reference_router.include_router(search_router)
