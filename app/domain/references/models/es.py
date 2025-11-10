@@ -1,10 +1,12 @@
 """Objects used to interface with Elasticsearch implementations."""
 
+import datetime
 from typing import Any, Self
 from uuid import UUID
 
 from elasticsearch.dsl import (
     Boolean,
+    Date,
     InnerDoc,
     Integer,
     Keyword,
@@ -111,6 +113,12 @@ class EnhancementDocument(InnerDoc):
     visibility: Visibility = mapped_field(Keyword(required=True))
     source: str = mapped_field(Keyword(required=True))
     robot_version: str | None = mapped_field(Keyword())
+
+    # We'd like to make this required after we've done a repair
+    created_at: datetime.datetime | None = mapped_field(
+        Date(required=False, default_timezone=datetime.UTC)
+    )
+
     content: EnhancementContentDocument = mapped_field(
         Object(EnhancementContentDocument, required=True)
     )
@@ -124,6 +132,7 @@ class EnhancementDocument(InnerDoc):
             visibility=domain_obj.visibility,
             source=domain_obj.source,
             robot_version=domain_obj.robot_version,
+            created_at=domain_obj.created_at,
             content=EnhancementContentDocument(
                 **domain_obj.content.model_dump(mode="json")
             ),
@@ -138,6 +147,7 @@ class EnhancementDocument(InnerDoc):
             source=self.source,
             enhancement_type=self.content.enhancement_type,
             robot_version=self.robot_version,
+            created_at=self.created_at,
             content=self.content.to_dict(),
         )
 
