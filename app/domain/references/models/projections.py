@@ -1,10 +1,13 @@
 """Projection functions for reference domain data."""
 
+import uuid
+
 import destiny_sdk
 
 from app.core.exceptions import ProjectionError
 from app.domain.base import GenericProjection
 from app.domain.references.models.models import (
+    Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
     EnhancementType,
@@ -33,18 +36,11 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
         """
         try:
             title, publication_year = None, None
+            abstract = None
             authorship: list[destiny_sdk.enhancements.Authorship] = []
-            # NB at present we have no way of discriminating between multiple
-            # bibliographic enhancements, nor are they ordered. This takes a
-            # random one, preferencing the canonical reference itself,
-            # (but hydrates in the case of one bibliographic enhancement
-            # missing a field while the other has it present).
-            for enhancement in sorted(
-                reference.enhancements or [],
-                # This preferences the canonical reference's enhancements
-                # over those of its duplicates.
-                key=lambda e: e.reference_id == reference.id,
-                reverse=True,
+
+            for enhancement in cls._priority_sorted_enhancements(
+                canonical_id=reference.id, enhancements=reference.enhancements
             ):
                 if (
                     enhancement.content.enhancement_type
@@ -63,6 +59,9 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                         or publication_year
                     )
 
+                elif enhancement.content.enhancement_type == EnhancementType.ABSTRACT:
+                    abstract = enhancement.content.abstract
+
             # Author normalization:
             # Maintain first and last author, sort middle authors by name
             authorship = sorted(
@@ -79,14 +78,35 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             if title:
                 title = title.strip()
 
+            if abstract:
+                abstract = abstract.strip()
+
         except Exception as exc:
             msg = "Failed to project ReferenceSearchFields from Reference"
             raise ProjectionError(msg) from exc
 
         return ReferenceSearchFields(
-            title=title,
+            abstract=abstract,
             authors=[author.display_name.strip() for author in authorship],
             publication_year=publication_year,
+            title=title,
+        )
+
+    @classmethod
+    def _priority_sorted_enhancements(
+        cls, canonical_id: uuid.UUID, enhancements: list[Enhancement] | None
+    ) -> list[Enhancement]:
+        """
+        Order a references enhancements by prioirty for projecting.
+
+        Currently sorts in reverse order prioritising the canonical reference id.
+        """
+        return sorted(
+            enhancements or [],
+            # This preferences the canonical reference's enhancements
+            # over those of its duplicates.
+            key=lambda e: e.reference_id == canonical_id,
+            reverse=True,
         )
 
 

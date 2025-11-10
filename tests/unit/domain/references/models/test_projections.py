@@ -1,7 +1,7 @@
 """Unit tests for the projection functions in the references module."""
 
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 
 import destiny_sdk
 import pytest
@@ -64,7 +64,9 @@ def bibliographic_enhancement(sample_authorship):
         publication_year=2023,
     )
 
-    return EnhancementFactory.build(content=bibliographic_content)
+    return EnhancementFactory.build(
+        content=bibliographic_content, created_at=datetime.now(tz=UTC)
+    )
 
 
 @pytest.fixture
@@ -74,7 +76,9 @@ def abstract_enhancement():
         abstract="This is a sample abstract for testing purposes.",
     )
 
-    return EnhancementFactory.build(content=abstract_content, source="test_source")
+    return EnhancementFactory.build(
+        content=abstract_content, source="test_source", created_at=datetime.now(tz=UTC)
+    )
 
 
 @pytest.fixture
@@ -174,7 +178,30 @@ def complete_reference(
 class TestReferenceSearchFieldsProjection:
     """Test the ReferenceSearchFieldsProjection class."""
 
-    def test_get_from_reference(self, sample_authorship):
+    def test_reference_sorting_prioritises_canonical(
+        self, bibliographic_enhancement, sample_authorship
+    ):
+        """Test that we prioritise canonical id"""
+        reference_id = uuid.uuid4()
+
+        canonical_biblography = EnhancementFactory.build(
+            content=BibliographicMetadataEnhancementFactory.build(
+                reference_id=reference_id,
+                title="We get this title, this enhancement is on canonical reference",
+                authorship=sample_authorship,
+                publication_year=2021,
+            )
+        )
+
+        reference = ReferenceFactory.build(
+            id=reference_id,
+            enhancements=[bibliographic_enhancement, canonical_biblography],
+        )
+
+        reference_proj = ReferenceSearchFieldsProjection.get_from_reference(reference)
+        assert reference_proj.title == canonical_biblography.content.title
+
+    def test_get_from_reference(self, sample_authorship, abstract_enhancement):
         """Test extracting candidacy fingerprint with various scenarios."""
         # Test 1: Complete bibliographic enhancement with author ordering and whitespace
         authorship_with_whitespace = [
@@ -253,15 +280,17 @@ class TestReferenceSearchFieldsProjection:
         )
 
         # Test complete enhancement
+        abstract_enhancement.reference_id = enhancement1.reference_id
         reference1 = ReferenceFactory.build(
             id=enhancement1.id,
-            enhancements=[enhancement0, enhancement1],
+            enhancements=[enhancement0, enhancement1, abstract_enhancement],
             identifiers=[],
         )
 
         result1 = ReferenceSearchFieldsProjection.get_from_reference(reference1)
         assert result1.title == "Sample Research Paper"  # Whitespace stripped
         assert result1.publication_year == 2023
+        assert result1.abstract == abstract_enhancement.content.abstract
         assert len(result1.authors) == 3
         # Check author ordering: first, middle (sorted by name), last
         assert result1.authors[0] == "John Smith"  # Whitespace stripped
@@ -292,11 +321,8 @@ class TestReferenceSearchFieldsProjection:
         assert result3.publication_year == 2024  # From second enhancement
         assert len(result3.authors) == 3  # From second enhancement
 
-        assert result3.canonical_candidate_search_fields().is_searchable
-
-    def test_get_from_reference_empty_and_none_enhancements(self):
-        """Test extracting candidacy fingerprint with no or None enhancements."""
-        # Test with empty enhancements list
+    def test_get_from_reference_empty_enhancements(self):
+        """Test extracting reference search feilds with empty enhancements"""
         # Can't use factories here as we're explicity setting missing values
         # And the post generation will replace them.
         reference_empty = Reference(
@@ -312,9 +338,12 @@ class TestReferenceSearchFieldsProjection:
         assert result_empty.title is None
         assert result_empty.publication_year is None
         assert result_empty.authors == []
-        assert not result_empty.canonical_candidate_search_fields().is_searchable
+        assert result_empty.abstract is None
 
-        # Test with None enhancements
+    def test_get_from_reference_none_enhancements(self):
+        """Test extracting reference search fields with None enhancements."""
+        # Can't use factories here as we're explicity setting missing values
+        # And the post generation will replace them.
         reference_none = Reference(
             id=uuid.uuid4(),
             visibility=Visibility.PUBLIC,
@@ -326,6 +355,7 @@ class TestReferenceSearchFieldsProjection:
         assert result_none.title is None
         assert result_none.publication_year is None
         assert result_none.authors == []
+        assert result_none.abstract is None
 
 
 class TestDeduplicatedReferenceProjection:
