@@ -13,7 +13,7 @@ from destiny_sdk.enhancements import (
     BibliographicMetadataEnhancement,
     EnhancementType,
 )
-from elasticsearch import AsyncElasticsearch
+from elasticsearch import AsyncElasticsearch, BadRequestError
 
 from app.core.exceptions import ESNotFoundError
 from app.domain.references.models.models import (
@@ -645,10 +645,65 @@ async def test_canonical_candidate_search(
     assert not results
 
 
-async def test_query_string_search(es_reference_repository: ReferenceESRepository):
-    """Test searching for references using a query string."""
+@pytest.mark.parametrize(
+    ("query", "should_match"),
+    [
+        # Basic field search
+        ("title:test", True),
+        ("title:nonexistent", False),
+        # Wildcard search
+        ("title:test*", True),
+        # Boolean operators
+        ("title:test AND publication_year:2023", True),
+        ("title:test OR title:nonexistent", True),
+        ("title:test NOT publication_year:9999", True),
+        # Field existence
+        ("_exists_:title", True),
+        ("_exists_:nonexistent_field", False),
+        # Multi-field search
+        ("test", True),
+        # Phrase search
+        ('"test paper"', True),
+        # Range query
+        ("publication_year:[2020 TO 2024]", True),
+        # Slop
+        ('"test paper and"~0', True),
+        ('"test and all"~2', True),
+        ('"paper all that"~3', True),
+        ('"test missing"~1', False),
+        # Fuzzy
+        ("title:teest~1", True),
+        ("title:papre~2", True),
+        ("title:unrelated~1", False),
+        # Go crazy
+        (
+            "publication_year:[2020 TO 2025] "
+            'AND "test and all"~2 '
+            "AND title:teest~1 "
+            "AND NOT impossible_field:foobar",
+            True,
+        ),
+        (
+            "publication_year:[2020 TO 2025] "
+            'AND "test and all"~2 '
+            "AND title:teest "
+            "AND NOT impossible_field:foobar",
+            False,
+        ),
+    ],
+)
+async def test_query_string_search_scenarios(
+    es_reference_repository: ReferenceESRepository,
+    query: str,
+    *,
+    should_match: bool,
+):
+    """Test various Lucene query syntax scenarios."""
     bibliographic_enhancement: BibliographicMetadataEnhancement = (
-        BibliographicMetadataEnhancementFactory.build()
+        BibliographicMetadataEnhancementFactory.build(
+            title="test paper and all that",
+            publication_year=2023,
+        )
     )
     abstract_enhancement: AbstractContentEnhancement = (
         AbstractContentEnhancementFactory.build()
@@ -665,14 +720,36 @@ async def test_query_string_search(es_reference_repository: ReferenceESRepositor
         index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
     )
 
-    # Search by title keyword
-    results = await es_reference_repository.search_with_query_string(
-        f"title:{bibliographic_enhancement.title}"
-    )
-    assert len(results.hits) == 1
-    assert results.hits[0].id == reference.id
-    assert results.total.value == 1
+    results = await es_reference_repository.search_with_query_string(query)
+
+    if should_match:
+        assert len(results.hits) == 1
+        assert results.total.value == 1
+        assert results.hits[0].id == reference.id
+    else:
+        assert len(results.hits) == 0
+        assert results.total.value == 0
     assert results.total.relation == "eq"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        '"unclosed phrase',  # Unbalanced quote
+        "(unclosed parenthesis",  # Unbalanced parenthesis
+        "title:foo AND OR bar",  # Invalid boolean logic
+        "title:foo:bar",  # Unescaped colon
+        "publication_year:[2020 TO ]",  # Invalid range
+        "title:foo^",  # Invalid boost
+    ],
+)
+async def test_query_string_search_invalid_syntax(
+    es_reference_repository: ReferenceESRepository,
+    query: str,
+):
+    """Test that invalid Lucene query syntax raises an error."""
+    with pytest.raises(BadRequestError):
+        await es_reference_repository.search_with_query_string(query)
 
 
 async def test_query_string_search_many_results(
