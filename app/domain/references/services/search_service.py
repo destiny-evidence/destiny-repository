@@ -1,5 +1,7 @@
 """Service for searching references."""
 
+import re
+
 from opentelemetry import trace
 
 from app.core.config import get_settings
@@ -21,6 +23,11 @@ tracer = trace.get_tracer(__name__)
 class SearchService(GenericService[ReferenceAntiCorruptionService]):
     """Service for searching references."""
 
+    _default_search_fields = (
+        "title",
+        "abstract",
+    )
+
     def __init__(
         self,
         anti_corruption_service: ReferenceAntiCorruptionService,
@@ -30,9 +37,20 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
 
+    def _query_string_specifies_fields(self, query_string: str) -> bool:
+        """Check if the query string specifies fields to search."""
+        # This is a relatively passive approach. If the user queries for a value
+        # that matches this pattern (without specifying fields), it will just search all
+        # fields instead of the defaults, so should always return a superset at worst.
+        return bool(re.search(r"\w+:", query_string))
+
     async def search_with_query_string(
         self,
         query_string: str,
     ) -> ESSearchResult[Reference]:
         """Search for references matching the query string."""
+        if not self._query_string_specifies_fields(query_string):
+            return await self.es_uow.references.search_with_query_string(
+                query_string, fields=self._default_search_fields
+            )
         return await self.es_uow.references.search_with_query_string(query_string)

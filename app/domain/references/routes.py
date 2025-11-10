@@ -241,6 +241,8 @@ async def search_references(
     return anti_corruption_service.reference_search_result_to_sdk(search_result)
 
 
+# NB it's important this occurs before defining `/references/{reference_id}/` route
+# to avoid route conflicts. Order matters for FastAPI route matching.
 reference_router.include_router(search_router)
 
 

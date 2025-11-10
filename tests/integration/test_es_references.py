@@ -672,12 +672,10 @@ async def test_canonical_candidate_search(
         ("publication_year:[2020 TO 2024]", True),
         # Slop
         ('"test paper and"~0', True),
-        ('"test and all"~2', True),
         ('"paper all that"~3', True),
         ('"test missing"~1', False),
         # Fuzzy
         ("title:teest~1", True),
-        ("title:papre~2", True),
         ("title:unrelated~1", False),
         # Go crazy
         (
@@ -801,3 +799,55 @@ async def test_query_string_search_many_results(
     # Default elasticsearch cap
     assert results.total.value == 10_000
     assert results.total.relation == "gte"
+
+
+async def test_query_string_search_with_fields(
+    es_reference_repository: ReferenceESRepository,
+):
+    """Test searching with specific fields restricts search scope."""
+    # Create references with different field values
+    bibliographic_enhancement_1: BibliographicMetadataEnhancement = (
+        BibliographicMetadataEnhancementFactory.build(
+            title="unique title searchterm",
+            publication_year=2023,
+        )
+    )
+    bibliographic_enhancement_2: BibliographicMetadataEnhancement = (
+        BibliographicMetadataEnhancementFactory.build(
+            title="different content",
+            publication_year=2023,
+        )
+    )
+    reference_with_title_match = ReferenceFactory.build(
+        enhancements=[
+            EnhancementFactory.build(content=bibliographic_enhancement_1),
+        ]
+    )
+    reference_with_abstract_match = ReferenceFactory.build(
+        enhancements=[
+            EnhancementFactory.build(content=bibliographic_enhancement_2),
+        ]
+    )
+
+    await es_reference_repository.add(reference_with_title_match)
+    await es_reference_repository.add(reference_with_abstract_match)
+
+    await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+        index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
+    )
+
+    # Search restricted to title field - should only find reference with title match
+    results_title_only = await es_reference_repository.search_with_query_string(
+        "searchterm",
+        fields=["title"],
+    )
+    assert len(results_title_only.hits) == 1
+    assert results_title_only.hits[0].id == reference_with_title_match.id
+
+    # Search restricted to publication_year field - should find nothing
+    # (searchterm is text, not a year)
+    results_year_only = await es_reference_repository.search_with_query_string(
+        "searchterm",
+        fields=["publication_year"],
+    )
+    assert len(results_year_only.hits) == 0

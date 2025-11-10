@@ -326,7 +326,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             return destiny_sdk.references.ReferenceSearchResult(
                 total={
                     "count": search_result.total.value,
-                    "is_lower_bound": search_result.total.relation == "eq",
+                    "is_lower_bound": search_result.total.relation == "gte",
                 },
                 references=[
                     self.reference_to_sdk(reference) for reference in search_result.hits

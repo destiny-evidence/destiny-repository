@@ -47,11 +47,17 @@ from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
+from app.domain.references.repository import ReferenceESRepository
 from app.domain.references.service import ReferenceService
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
 from app.tasks import broker
+from tests.factories import (
+    BibliographicMetadataEnhancementFactory,
+    EnhancementFactory,
+    ReferenceFactory,
+)
 
 # Use the database session in all tests to set up the database manager.
 pytestmark = pytest.mark.usefixtures("session")
@@ -730,6 +736,43 @@ async def test_get_robot_enhancement_batch_nonexistent_batch(client: AsyncClient
     response = await client.get(f"/v1/robot-enhancement-batces/{uuid.uuid4()}/")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+async def test_search_references_happy_path(
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,
+) -> None:
+    """Test a well formed query returns results."""
+    reference = ReferenceFactory.build(
+        enhancements=[
+            EnhancementFactory.build(
+                content=BibliographicMetadataEnhancementFactory.build(
+                    title="Test paper title"
+                )
+            )
+        ]
+    )
+    await ReferenceESRepository(es_client).add(reference)
+    await es_client.indices.refresh(index="reference")
+
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "title:Test paper"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["total"]["count"] == 1
+    assert not data["total"]["is_lower_bound"]
+    assert data["references"][0]["id"] == str(reference.id)
+
+    # Verify omitting the field still works and uses default fields
+    assert (
+        await client.get(
+            "/v1/references/search/",
+            params={"q": "Test paper"},
+        )
+    ).json() == data
 
 
 async def test_search_references_sad_path(

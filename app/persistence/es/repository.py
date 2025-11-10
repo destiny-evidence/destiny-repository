@@ -2,7 +2,7 @@
 
 import contextlib
 from abc import ABC
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 from typing import Generic, Never
 from uuid import UUID
 
@@ -187,6 +187,7 @@ class GenericAsyncESRepository(
     async def search_with_query_string(
         self,
         query: str,
+        fields: Sequence[str] | None = None,
         # TODO(Adam): Implement pagination
         # https://github.com/destiny-evidence/destiny-repository/issues/349
         page_size: int = 100,
@@ -206,8 +207,14 @@ class GenericAsyncESRepository(
             AsyncSearch(using=self._client)
             .doc_type(self._persistence_cls)
             .extra(size=page_size)
-            .query(QueryString(query=query))
+            .query(
+                QueryString(query=query, fields=fields)
+                if fields
+                else QueryString(query=query)
+            )
         )
+        if fields:
+            search = search.extra(fields=fields)
         try:
             response = await search.execute()
         except BadRequestError as exc:
