@@ -522,6 +522,20 @@ class DeduplicationValueError(DeduplicationError, ValueError):
         super().__init__(detail)
 
 
+class ParseError(DestinyRepositoryError):
+    """An exception for when we fail to parse some input."""
+
+    def __init__(self, detail: str) -> None:
+        """
+        Initialize the ParseError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+
+        """
+        super().__init__(detail)
+
+
 class DuplicateEnhancementError(DestinyRepositoryError):
     """An exception for when an exact duplicate enhancement is detected."""
 

@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import FormField from "./FormField";
 import IdentifierTypeSelect from "./IdentifierTypeSelect";
+import { toIdentifierString } from "../../lib/api/identifierUtils";
 
 interface ReferenceSearchFormProps {
   onSearch: (params: {
@@ -10,14 +11,14 @@ interface ReferenceSearchFormProps {
     identifierType: string;
     otherIdentifierName?: string;
   }) => void;
+  onAddToBulk?: (identifierString: string) => void;
   loading: boolean;
-  isLoggedIn: boolean;
 }
 
 export default function ReferenceSearchForm({
   onSearch,
+  onAddToBulk,
   loading,
-  isLoggedIn,
 }: ReferenceSearchFormProps) {
   const [identifier, setIdentifier] = useState("");
   const [identifierType, setIdentifierType] = useState("doi");
@@ -31,6 +32,21 @@ export default function ReferenceSearchForm({
       otherIdentifierName:
         identifierType === "other" ? otherIdentifierName : undefined,
     });
+  };
+
+  const handleAddToBulk = () => {
+    if (onAddToBulk && identifier) {
+      const identifierString = toIdentifierString({
+        identifier,
+        identifierType,
+        otherIdentifierName:
+          identifierType === "other" ? otherIdentifierName : undefined,
+      });
+      onAddToBulk(identifierString);
+      // Clear form after adding
+      setIdentifier("");
+      setOtherIdentifierName("");
+    }
   };
 
   return (
@@ -53,9 +69,21 @@ export default function ReferenceSearchForm({
           required
         />
       )}
-      <button type="submit" disabled={loading}>
-        {loading ? "Looking up..." : "Lookup Reference"}
-      </button>
+      <div style={{ display: "flex", gap: "8px" }}>
+        {onAddToBulk && (
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={handleAddToBulk}
+            disabled={!identifier || loading}
+          >
+            Add to Bulk
+          </button>
+        )}
+        <button type="submit" disabled={!identifier || loading}>
+          {loading ? "Looking up..." : "Lookup Reference"}
+        </button>
+      </div>
     </form>
   );
 }

@@ -29,6 +29,7 @@ from app.domain.references.repository import (
     ReferenceESRepository,
     RobotAutomationESRepository,
 )
+from app.utils.time_and_date import utc_now
 from tests.factories import (
     AbstractContentEnhancementFactory,
     BibliographicMetadataEnhancementFactory,
@@ -94,6 +95,7 @@ async def reference() -> Reference:
             {
                 "id": uuid.uuid4(),
                 "reference_id": r,
+                "created_at": utc_now(),
                 "content": {
                     "enhancement_type": "annotation",
                     "annotations": [
@@ -113,6 +115,7 @@ async def reference() -> Reference:
             {
                 "id": uuid.uuid4(),
                 "reference_id": r,
+                "created_at": utc_now(),
                 "content": {
                     "enhancement_type": "location",
                     "locations": [
@@ -127,6 +130,7 @@ async def reference() -> Reference:
             {
                 "id": uuid.uuid4(),
                 "reference_id": r,
+                "created_at": utc_now(),
                 "content": {
                     "enhancement_type": "bibliographic",
                     "title": " Sample reference Title with whitespace and a funny charactér ",

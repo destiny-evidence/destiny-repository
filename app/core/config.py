@@ -274,6 +274,14 @@ class Settings(BaseSettings):
         ),
     )
 
+    max_lookup_reference_query_length: int = Field(
+        default=100,
+        description=(
+            "Maximum number of identifiers to allow in a single reference lookup "
+            "query."
+        ),
+    )
+
     default_es_indexing_chunk_size: int = Field(
         default=1000,
         description=(

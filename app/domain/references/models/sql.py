@@ -311,7 +311,13 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
 
     @classmethod
     def from_domain(cls, domain_obj: DomainEnhancement) -> Self:
-        """Create a persistence model from a domain Enhancement object."""
+        """
+        Create a persistence model from a domain Enhancement object.
+
+        Note that we never want to pass in the created_at and updated_at
+        timestamps when converting from the domain. They're purely managed
+        by the persistence model.
+        """
         return cls(
             id=domain_obj.id,
             reference_id=domain_obj.reference_id,
@@ -330,6 +336,8 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         return DomainEnhancement(
             id=self.id,
             source=self.source,
+            created_at=self.created_at,
+            updated_at=self.updated_at,
             visibility=self.visibility,
             reference_id=self.reference_id,
             robot_version=self.robot_version,

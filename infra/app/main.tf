@@ -113,7 +113,11 @@ locals {
     {
       name  = "DEFAULT_UPLOAD_FILE_CHUNK_SIZE",
       value = tostring(var.default_upload_file_chunk_size)
-    }
+    },
+    {
+      name  = "MAX_REFERENCE_LOOKUP_QUERY_LENGTH",
+      value = var.max_reference_lookup_query_length
+    },
   ]
 
 
