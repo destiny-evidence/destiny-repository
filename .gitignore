@@ -201,4 +201,5 @@ libs/fake_data/*.jsonl
 
 .data
 .env.*
+!.env.example
 .idea/
