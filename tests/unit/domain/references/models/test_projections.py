@@ -191,7 +191,7 @@ def complete_reference(
     )
 
 
-class TestCandidateCanonicalSearchFieldsProjection:
+class TestReferenceSearchFieldsProjection:
     """Test the CandidateCanonicalSearchFieldsProjection class."""
 
     def test_get_from_reference(self, sample_authorship):
@@ -302,9 +302,7 @@ class TestCandidateCanonicalSearchFieldsProjection:
             identifiers=[],
         )
 
-        result1 = ReferenceSearchFieldsProjection.get_canonical_search_fields(
-            reference1
-        )
+        result1 = ReferenceSearchFieldsProjection.get_from_reference(reference1)
         assert result1.title == "Sample Research Paper"  # Whitespace stripped
         assert result1.publication_year == 2023
         assert len(result1.authors) == 3
@@ -321,9 +319,7 @@ class TestCandidateCanonicalSearchFieldsProjection:
             identifiers=[],
         )
 
-        result2 = ReferenceSearchFieldsProjection.get_canonical_search_fields(
-            reference2
-        )
+        result2 = ReferenceSearchFieldsProjection.get_from_reference(reference2)
         assert result2.publication_year == 2022  # From publication_date
 
         # Test multiple enhancements hydration
@@ -334,12 +330,12 @@ class TestCandidateCanonicalSearchFieldsProjection:
             identifiers=[],
         )
 
-        result3 = ReferenceSearchFieldsProjection.get_canonical_search_fields(
-            reference3
-        )
+        result3 = ReferenceSearchFieldsProjection.get_from_reference(reference3)
         assert result3.title == "Hydration Title"  # From first enhancement
         assert result3.publication_year == 2024  # From second enhancement
         assert len(result3.authors) == 3  # From second enhancement
+
+        assert result3.canonical_candidate_search_fields().is_searchable()
 
     def test_get_from_reference_empty_and_none_enhancements(self):
         """Test extracting candidacy fingerprint with no or None enhancements."""
@@ -351,7 +347,7 @@ class TestCandidateCanonicalSearchFieldsProjection:
             identifiers=[],
         )
 
-        result_empty = ReferenceSearchFieldsProjection.get_canonical_search_fields(
+        result_empty = ReferenceSearchFieldsProjection.get_from_reference(
             reference_empty
         )
         assert result_empty.title is None
@@ -367,13 +363,10 @@ class TestCandidateCanonicalSearchFieldsProjection:
             identifiers=[],
         )
 
-        result_none = ReferenceSearchFieldsProjection.get_canonical_search_fields(
-            reference_none
-        )
+        result_none = ReferenceSearchFieldsProjection.get_from_reference(reference_none)
         assert result_none.title is None
         assert result_none.publication_year is None
         assert result_none.authors == []
-        assert not result_none.is_searchable
 
 
 class TestDeduplicatedReferenceProjection:

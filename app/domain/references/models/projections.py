@@ -5,7 +5,6 @@ import destiny_sdk
 from app.core.exceptions import ProjectionError
 from app.domain.base import GenericProjection
 from app.domain.references.models.models import (
-    CandidateCanonicalSearchFields,
     EnhancementRequest,
     EnhancementRequestStatus,
     EnhancementType,
@@ -30,7 +29,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
         :type reference: app.domain.references.models.models.Reference
         :raises ProjectionError: If the projection fails.
         :return: The projected candidate canonical search fields.
-        :rtype: CandidateCanonicalSearchFields
+        :rtype: ReferenceSearchFields
         """
         try:
             title, publication_year = None, None
@@ -81,7 +80,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                 title = title.strip()
 
         except Exception as exc:
-            msg = "Failed to project CandidateCanonicalSearchFields from Reference"
+            msg = "Failed to project ReferenceSearchFields from Reference"
             raise ProjectionError(msg) from exc
 
         return ReferenceSearchFields(
@@ -89,15 +88,6 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             authors=[author.display_name.strip() for author in authorship],
             publication_year=publication_year,
         )
-
-    @classmethod
-    def get_canonical_search_fields(
-        cls, reference: Reference
-    ) -> CandidateCanonicalSearchFields:
-        """_summary_."""
-        reference_search_fields = cls.get_from_reference(reference)
-
-        return reference_search_fields.get_canonical_candidate_search_fields()
 
 
 class DeduplicatedReferenceProjection(GenericProjection[Reference]):
