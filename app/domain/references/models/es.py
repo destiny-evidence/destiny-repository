@@ -209,6 +209,8 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     and for searching references by query on title, authors, and abstracts.
     """
 
+    abstract: str | None = mapped_field(Text(required=False), default=None)
+
     authors: list[str] | None = mapped_field(
         Text(required=False),
         default=None,
@@ -225,6 +227,7 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     def from_projection(cls, projection: ReferenceSearchFields) -> Self:
         """Create a ReferenceCandidateCanonicalMixin from the search projection."""
         return cls(
+            abstract=projection.abstract,
             title=projection.title,
             authors=projection.authors,
             publication_year=projection.publication_year,
