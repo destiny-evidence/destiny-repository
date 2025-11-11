@@ -1,29 +1,31 @@
 """Projection functions for reference domain data."""
 
+import uuid
+
 import destiny_sdk
 
 from app.core.exceptions import ProjectionError
 from app.domain.base import GenericProjection
 from app.domain.references.models.models import (
     CandidateCanonicalSearchFields,
+    Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
     EnhancementType,
     PendingEnhancementStatus,
     Reference,
+    ReferenceSearchFields,
 )
 
 
-class CandidateCanonicalSearchFieldsProjection(
-    GenericProjection[CandidateCanonicalSearchFields]
-):
+class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
     """Projection functions for candidate selection used in duplicate detection."""
 
     @classmethod
     def get_from_reference(
         cls,
         reference: Reference,
-    ) -> CandidateCanonicalSearchFields:
+    ) -> ReferenceSearchFields:
         """
         Get the candidate canonical search fields from a reference.
 
@@ -31,22 +33,15 @@ class CandidateCanonicalSearchFieldsProjection(
         :type reference: app.domain.references.models.models.Reference
         :raises ProjectionError: If the projection fails.
         :return: The projected candidate canonical search fields.
-        :rtype: CandidateCanonicalSearchFields
+        :rtype: ReferenceSearchFields
         """
         try:
             title, publication_year = None, None
+            abstract = None
             authorship: list[destiny_sdk.enhancements.Authorship] = []
-            # NB at present we have no way of discriminating between multiple
-            # bibliographic enhancements, nor are they ordered. This takes a
-            # random one, preferencing the canonical reference itself,
-            # (but hydrates in the case of one bibliographic enhancement
-            # missing a field while the other has it present).
-            for enhancement in sorted(
-                reference.enhancements or [],
-                # This preferences the canonical reference's enhancements
-                # over those of its duplicates.
-                key=lambda e: e.reference_id == reference.id,
-                reverse=True,
+
+            for enhancement in cls._priority_sorted_enhancements(
+                canonical_id=reference.id, enhancements=reference.enhancements
             ):
                 if (
                     enhancement.content.enhancement_type
@@ -65,6 +60,9 @@ class CandidateCanonicalSearchFieldsProjection(
                         or publication_year
                     )
 
+                elif enhancement.content.enhancement_type == EnhancementType.ABSTRACT:
+                    abstract = enhancement.content.abstract
+
             # Author normalization:
             # Maintain first and last author, sort middle authors by name
             authorship = sorted(
@@ -81,15 +79,43 @@ class CandidateCanonicalSearchFieldsProjection(
             if title:
                 title = title.strip()
 
+            if abstract:
+                abstract = abstract.strip()
+
         except Exception as exc:
-            msg = "Failed to project CandidateCanonicalSearchFields from Reference"
+            msg = "Failed to project ReferenceSearchFields from Reference"
             raise ProjectionError(msg) from exc
 
-        return CandidateCanonicalSearchFields(
-            title=title,
+        return ReferenceSearchFields(
+            abstract=abstract,
             authors=[author.display_name.strip() for author in authorship],
             publication_year=publication_year,
+            title=title,
         )
+
+    @classmethod
+    def _priority_sorted_enhancements(
+        cls, canonical_id: uuid.UUID, enhancements: list[Enhancement] | None
+    ) -> list[Enhancement]:
+        """
+        Order a references enhancements by priority for projecting.
+
+        Currently sorts in reverse order prioritising the canonical reference id.
+        """
+        return sorted(
+            enhancements or [],
+            # This preferences the canonical reference's enhancements
+            # over those of its duplicates.
+            key=lambda e: e.reference_id == canonical_id,
+            reverse=True,
+        )
+
+    @classmethod
+    def get_canonical_candidate_search_fields(
+        cls, reference: Reference
+    ) -> CandidateCanonicalSearchFields:
+        """Return fields needed for candidate canonical selection."""
+        return cls.get_from_reference(reference).to_canonical_candidate_search_fields()
 
 
 class DeduplicatedReferenceProjection(GenericProjection[Reference]):

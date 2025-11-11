@@ -194,6 +194,7 @@ class EnhancementFactory(factory.Factory):
     source = factory.Faker("company")
     visibility = Visibility.PUBLIC
     robot_version = factory.Faker("numerify", text="%!!.%!!.%!!")
+    created_at = factory.Faker("date_time_this_month")
     content = factory.LazyFunction(
         lambda: fake.random_element(
             [

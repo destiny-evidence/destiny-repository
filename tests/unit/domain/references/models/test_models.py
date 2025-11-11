@@ -7,6 +7,7 @@ import pytest
 
 from app.core.exceptions import SDKToDomainError
 from app.domain.references.models.models import (
+    CandidateCanonicalSearchFields,
     GenericExternalIdentifier,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
@@ -112,3 +113,19 @@ async def test_enhancement_unserializable_failure(
                 ],
             )
         )
+
+
+async def test_canonical_search_fields_searchable():
+    """Test that a canonical search fields model is searchable with everything set"""
+    search_fields = CandidateCanonicalSearchFields(
+        title="Kiss from a Rose",
+        authors=["Seal Henry Olusegun Olumide Adeola Samuel"],
+        publication_year=2024,
+    )
+
+    assert search_fields.is_searchable
+
+    # set publication year to None
+    search_fields.publication_year = None
+
+    assert not search_fields.is_searchable
