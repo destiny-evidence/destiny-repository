@@ -44,6 +44,7 @@ from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.search_service import SearchService
 from app.domain.references.tasks import (
     validate_and_import_robot_enhancement_batch_result,
 )
@@ -220,6 +221,11 @@ deduplication_router = APIRouter(
             "model": APIException,
         }
     },
+    description="Search for references using a query string in "
+    "[Lucene syntax](https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-query-string-query#query-string-syntax)"
+    ". If the query string does not specify search fields, the search will query over "
+    f"[{', '.join(SearchService.default_search_fields)}]. The query string can only "
+    "search over fields on the root level of the Reference document.",
 )
 async def search_references(
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
@@ -229,10 +235,7 @@ async def search_references(
     q: Annotated[
         str,
         Query(
-            description=(
-                "The query string in "
-                "[Lucene syntax](https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-query-string-query#query-string-syntax)."
-            ),
+            description="The query string.",
         ),
     ],
 ) -> destiny_sdk.references.ReferenceSearchResult:

@@ -23,7 +23,7 @@ tracer = trace.get_tracer(__name__)
 class SearchService(GenericService[ReferenceAntiCorruptionService]):
     """Service for searching references."""
 
-    _default_search_fields = (
+    default_search_fields = (
         "title",
         "abstract",
     )
@@ -51,6 +51,6 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         """Search for references matching the query string."""
         if not self._query_string_specifies_fields(query_string):
             return await self.es_uow.references.search_with_query_string(
-                query_string, fields=self._default_search_fields
+                query_string, fields=self.default_search_fields
             )
         return await self.es_uow.references.search_with_query_string(query_string)
