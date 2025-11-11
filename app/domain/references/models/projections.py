@@ -40,7 +40,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             abstract = None
             authorship: list[destiny_sdk.enhancements.Authorship] = []
 
-            for enhancement in cls._priority_sorted_enhancements(
+            for enhancement in cls.__priority_sorted_enhancements(
                 canonical_id=reference.id, enhancements=reference.enhancements
             ):
                 if (
@@ -63,28 +63,43 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                 elif enhancement.content.enhancement_type == EnhancementType.ABSTRACT:
                     abstract = enhancement.content.abstract
 
-            # Author normalization:
-            # Maintain first and last author, sort middle authors by name
-            authorship = sorted(
-                authorship,
-                key=lambda author: (
-                    {
-                        destiny_sdk.enhancements.AuthorPosition.FIRST: -1,
-                        destiny_sdk.enhancements.AuthorPosition.LAST: 1,
-                    }.get(author.position, 0),
-                    author.display_name.strip(),
-                ),
+            return cls.__normalised_reference_search_fields(
+                abstract=abstract,
+                authorship=authorship,
+                publication_year=publication_year,
+                title=title,
             )
-
-            if title:
-                title = title.strip()
-
-            if abstract:
-                abstract = abstract.strip()
 
         except Exception as exc:
             msg = "Failed to project ReferenceSearchFields from Reference"
             raise ProjectionError(msg) from exc
+
+    @classmethod
+    def __normalised_reference_search_fields(
+        cls,
+        abstract: str | None,
+        authorship: list[destiny_sdk.enhancements.Authorship],
+        publication_year: int | None,
+        title: str | None,
+    ) -> ReferenceSearchFields:
+        """Strip whitespace, normalise authors."""
+        # Maintain first and last author, sort middle authors by name
+        authorship = sorted(
+            authorship,
+            key=lambda author: (
+                {
+                    destiny_sdk.enhancements.AuthorPosition.FIRST: -1,
+                    destiny_sdk.enhancements.AuthorPosition.LAST: 1,
+                }.get(author.position, 0),
+                author.display_name.strip(),
+            ),
+        )
+
+        if title:
+            title = title.strip()
+
+        if abstract:
+            abstract = abstract.strip()
 
         return ReferenceSearchFields(
             abstract=abstract,
@@ -94,7 +109,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
         )
 
     @classmethod
-    def _priority_sorted_enhancements(
+    def __priority_sorted_enhancements(
         cls, canonical_id: uuid.UUID, enhancements: list[Enhancement] | None
     ) -> list[Enhancement]:
         """

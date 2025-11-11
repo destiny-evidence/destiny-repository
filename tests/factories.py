@@ -97,12 +97,10 @@ class BibliographicMetadataEnhancementFactory(factory.Factory):
 
     @factory.post_generation
     def publication_year(self, create, extracted, **kwargs):  # noqa: ANN001, ANN003, ARG002
-        """Set publication year from publication date not provided seperately."""
+        """Set publication year from publication date if not provided seperately."""
         if not extracted:
             self.publication_year = (
-                self.publication_date.year
-                if self.publication_date
-                else factory.Faker("year")
+                self.publication_date.year if self.publication_date else None
             )
         else:
             self.publication_year = extracted
