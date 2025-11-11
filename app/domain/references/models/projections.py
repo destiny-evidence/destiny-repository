@@ -98,7 +98,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
         cls, canonical_id: uuid.UUID, enhancements: list[Enhancement] | None
     ) -> list[Enhancement]:
         """
-        Order a references enhancements by prioirty for projecting.
+        Order a references enhancements by priority for projecting.
 
         Currently sorts in reverse order prioritising the canonical reference id.
         """
