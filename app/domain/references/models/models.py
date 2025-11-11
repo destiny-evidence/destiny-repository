@@ -757,12 +757,6 @@ class AnnotationFilter(BaseModel):
     score: float | None = Field(
         default=None,
         description="Optional score threshold for the annotation filter.",
+        ge=0.0,
+        le=1.0,
     )
-
-    @model_validator(mode="after")
-    def validate_score_range(self) -> Self:
-        """Validate that score is between 0 and 1 if provided."""
-        if self.score is not None and not (0.0 <= self.score <= 1.0):
-            msg = "Score must be between 0 and 1."
-            raise ValueError(msg)
-        return self

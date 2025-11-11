@@ -50,3 +50,30 @@ class PublicationYearRange(BaseModel):
             msg = "End year must be greater than or equal to start year."
             raise ValueError(msg)
         return self
+
+
+class AnnotationFilter(BaseModel):
+    """An annotation filter for search queries."""
+
+    scheme: str = Field(
+        description="The annotation scheme to filter by.",
+    )
+    label: str | None = Field(
+        None,
+        description="The annotation label to filter by.",
+    )
+    score: float | None = Field(
+        None,
+        description="The minimum score for the annotation filter.",
+        ge=0.0,
+        le=1.0,
+    )
+
+    def serialize(self) -> str:
+        """Serialize the annotation filter to a string."""
+        annotation = self.scheme
+        if self.label:
+            annotation += f"/{self.label}"
+        if self.score is not None:
+            annotation += f"@{self.score}"
+        return annotation
