@@ -52,6 +52,7 @@ from app.domain.references.services.enhancement_service import (
     EnhancementService,
     ProcessedResults,
 )
+from app.domain.references.services.search_service import SearchService
 from app.domain.references.services.synchronizer_service import (
     Synchronizer,
 )
@@ -59,6 +60,7 @@ from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
+from app.persistence.es.persistence import ESSearchResult
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.es.uow import unit_of_work as es_unit_of_work
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -84,6 +86,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self._deduplication_service = DeduplicationService(
             anti_corruption_service, sql_uow, es_uow
         )
+        self._search_service = SearchService(anti_corruption_service, sql_uow, es_uow)
         self._synchronizer = Synchronizer(sql_uow, es_uow)
 
     @sql_unit_of_work
@@ -1012,3 +1015,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 reference_duplicate_decision_id=decision.id,
                 otel_enabled=settings.otel_enabled,
             )
+
+    @es_unit_of_work
+    async def search_references(
+        self,
+        query: str,
+    ) -> ESSearchResult[Reference]:
+        """Search for references given a query string."""
+        return await self._search_service.search_with_query_string(query)

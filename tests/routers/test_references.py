@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
 from app.api.exception_handlers import (
-    es_malformed_exception_handler,
+    es_exception_handler,
     invalid_payload_exception_handler,
     not_found_exception_handler,
     parse_error_exception_handler,
@@ -23,6 +23,7 @@ from app.api.exception_handlers import (
 from app.core.config import get_settings
 from app.core.exceptions import (
     ESMalformedDocumentError,
+    ESQueryError,
     InvalidPayloadError,
     NotFoundError,
     ParseError,
@@ -46,11 +47,17 @@ from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
+from app.domain.references.repository import ReferenceESRepository
 from app.domain.references.service import ReferenceService
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
 from app.tasks import broker
+from tests.factories import (
+    BibliographicMetadataEnhancementFactory,
+    EnhancementFactory,
+    ReferenceFactory,
+)
 
 # Use the database session in all tests to set up the database manager.
 pytestmark = pytest.mark.usefixtures("session")
@@ -70,7 +77,8 @@ def app() -> FastAPI:
             NotFoundError: not_found_exception_handler,
             SDKToDomainError: sdk_to_domain_exception_handler,
             InvalidPayloadError: invalid_payload_exception_handler,
-            ESMalformedDocumentError: es_malformed_exception_handler,
+            ESMalformedDocumentError: es_exception_handler,
+            ESQueryError: es_exception_handler,
             ParseError: parse_error_exception_handler,
         }
     )
@@ -728,3 +736,55 @@ async def test_get_robot_enhancement_batch_nonexistent_batch(client: AsyncClient
     response = await client.get(f"/v1/robot-enhancement-batces/{uuid.uuid4()}/")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+async def test_search_references_happy_path(
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,
+) -> None:
+    """Test a well formed query returns results."""
+    reference = ReferenceFactory.build(
+        enhancements=[
+            EnhancementFactory.build(
+                content=BibliographicMetadataEnhancementFactory.build(
+                    title="Test paper title"
+                )
+            )
+        ]
+    )
+    await ReferenceESRepository(es_client).add(reference)
+    await es_client.indices.refresh(index="reference")
+
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "title:Test paper"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["total"]["count"] == 1
+    assert not data["total"]["is_lower_bound"]
+    assert data["references"][0]["id"] == str(reference.id)
+
+    # Verify omitting the field still works and uses default fields
+    assert (
+        await client.get(
+            "/v1/references/search/",
+            params={"q": "Test paper"},
+        )
+    ).json() == data
+
+
+async def test_search_references_sad_path(
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,  # noqa: ARG001
+) -> None:
+    """Test a poorly formatted query returns 400."""
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "(quick and brown"},
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    data = response.json()
+    assert "Failed to parse query [(quick and brown]" in data["detail"]

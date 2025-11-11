@@ -72,7 +72,7 @@ from app.domain.references.models.sql import RobotAutomation as SQLRobotAutomati
 from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
-from app.persistence.es.persistence import ESSearchResult
+from app.persistence.es.persistence import ESScoreResult
 from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
@@ -240,7 +240,7 @@ class ReferenceESRepository(
         self,
         search_fields: CandidateCanonicalSearchFields,
         reference_id: UUID,
-    ) -> list[ESSearchResult]:
+    ) -> list[ESScoreResult]:
         """
         Fuzzy match candidate fingerprints to existing references.
 
@@ -260,7 +260,7 @@ class ReferenceESRepository(
         :param reference_id: The ID of the potential duplicate.
         :type reference_id: UUID
         :return: A list of search results with IDs and scores.
-        :rtype: list[ESSearchResult]
+        :rtype: list[ESScoreResult]
         """
         search = (
             AsyncSearch(using=self._client)
@@ -318,7 +318,7 @@ class ReferenceESRepository(
 
         return sorted(
             [
-                ESSearchResult(id=hit.meta.id, score=hit.meta.score)
+                ESScoreResult(id=hit.meta.id, score=hit.meta.score)
                 for hit in response.hits
             ],
             key=lambda result: result.score,

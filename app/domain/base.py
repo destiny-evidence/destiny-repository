@@ -34,10 +34,11 @@ GenericDomainBaseModelType = TypeVar(
 
 class SQLAttributeMixin(BaseModel):
     """
-    Mixin for SQLAlchemy attributes.
+    Mixin for the DESTINY Repository id attribute.
 
     This is used to allow the use of Pydantic models with SQLAlchemy
-    and add common properties.
+    and add common properties. Every class that inherits this mixin
+    will inherently be linked to the DESTINY repository.
 
     Note that `created_at` and `updated_at` are deliberately excluded
     to allow the database to manage these automatically.

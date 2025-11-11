@@ -30,6 +30,7 @@ from app.api.auth import (
     security,
 )
 from app.api.decorators import experimental
+from app.api.exception_handlers import APIExceptionContent
 from app.core.config import get_settings
 from app.core.exceptions import ParseError
 from app.core.telemetry.fastapi import PayloadAttributeTracer
@@ -43,6 +44,7 @@ from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.search_service import SearchService
 from app.domain.references.tasks import (
     validate_and_import_robot_enhancement_batch_result,
 )
@@ -174,6 +176,11 @@ reference_router = APIRouter(
     tags=["references"],
     dependencies=[Depends(reference_reader_auth)],
 )
+search_router = APIRouter(
+    prefix="/search",
+    tags=["search"],
+    dependencies=[Depends(reference_reader_auth)],
+)
 enhancement_request_router = APIRouter(
     prefix="/enhancement-requests",
     tags=["enhancement-requests"],
@@ -203,6 +210,43 @@ deduplication_router = APIRouter(
     tags=["duplicate-decisions"],
     dependencies=[Depends(reference_deduplication_auth)],
 )
+
+
+@search_router.get(
+    "/",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Bad Query String",
+            "model": APIExceptionContent,
+        }
+    },
+    description="Search for references using a query string in "
+    "[Lucene syntax](https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-query-string-query#query-string-syntax)"
+    ". If the query string does not specify search fields, the search will query over "
+    f"[{', '.join(SearchService.default_search_fields)}]. The query string can only "
+    "search over fields on the root level of the Reference document.",
+)
+async def search_references(
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    q: Annotated[
+        str,
+        Query(
+            description="The query string.",
+        ),
+    ],
+) -> destiny_sdk.references.ReferenceSearchResult:
+    """Search for references given a query string."""
+    search_result = await reference_service.search_references(q)
+    return anti_corruption_service.reference_search_result_to_sdk(search_result)
+
+
+# NB it's important this occurs before defining `/references/{reference_id}/` route
+# to avoid route conflicts. Order matters for FastAPI route matching.
+reference_router.include_router(search_router)
 
 
 @reference_router.get("/{reference_id}/")
