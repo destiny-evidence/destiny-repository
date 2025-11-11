@@ -6,7 +6,7 @@ from opentelemetry import trace
 
 from app.core.config import get_settings
 from app.core.telemetry.logger import get_logger
-from app.domain.references.models.models import Reference
+from app.domain.references.models.models import PublicationYearRange, Reference
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -44,12 +44,32 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         # fields instead of the defaults, so should always return a superset at worst.
         return bool(re.search(r"\w+:", query_string))
 
+    def _build_publication_year_query_string_filter(
+        self,
+        publication_year_range: PublicationYearRange,
+    ) -> str:
+        """Build a publication year filter for Elasticsearch query string."""
+        return (
+            f"publication_year:[{publication_year_range.start or '*'} "
+            f"TO {publication_year_range.end or '*'}]"
+        )
+
     async def search_with_query_string(
         self,
         query_string: str,
-        page: int,
+        page: int = 1,
+        publication_year_range: PublicationYearRange | None = None,
     ) -> ESSearchResult[Reference]:
         """Search for references matching the query string."""
+        global_filters: list[str] = []
+        if publication_year_range:
+            global_filters.append(
+                self._build_publication_year_query_string_filter(
+                    publication_year_range,
+                )
+            )
+        if global_filters:
+            query_string = f"({query_string}) AND {' AND '.join(global_filters)}"
         if not self._query_string_specifies_fields(query_string):
             return await self.es_uow.references.search_with_query_string(
                 query_string, fields=self.default_search_fields

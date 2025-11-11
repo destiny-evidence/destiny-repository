@@ -13,6 +13,7 @@ from pydantic import (
     UUID4,
     BaseModel,
     Field,
+    PositiveInt,
     TypeAdapter,
     model_validator,
 )
@@ -723,3 +724,24 @@ class ReferenceIds(BaseModel):
         ...,
         description="A list of reference IDs.",
     )
+
+
+class PublicationYearRange(BaseModel):
+    """A range of publication years for filtering search results."""
+
+    start: PositiveInt | None = Field(
+        None,
+        description="Start year (inclusive)",
+    )
+    end: PositiveInt | None = Field(
+        None,
+        description="End year (inclusive)",
+    )
+
+    @model_validator(mode="after")
+    def validate_end_ge_start(self) -> Self:
+        """Validate that end year is greater than or equal to start year."""
+        if self.start and self.end and self.end < self.start:
+            msg = "End year must be greater than or equal to start year."
+            raise ValueError(msg)
+        return self

@@ -38,6 +38,7 @@ from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     PendingEnhancementStatus,
+    PublicationYearRange,
     ReferenceIds,
 )
 from app.domain.references.service import ReferenceService
@@ -212,6 +213,37 @@ deduplication_router = APIRouter(
 )
 
 
+def parse_publication_year_range(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    publication_year_range: Annotated[
+        str | None,
+        Query(
+            pattern=r"[\[\(]([0-9]{4}|\*),([0-9]{4}|\*)[\]\)]",
+            examples=[
+                "[2020,*]",
+                "[2015,2020)",
+                "[2018,2018]",
+                "(*,2022]",
+            ],
+            description=(
+                "A publication year range to filter results by. "
+                "Format: [start,end], (start,end), [start,end), or (start,end]. "
+                "Use * as a wildcard for open-ended ranges. The bracket does not "
+                "matter if using *."
+            ),
+        ),
+    ] = None,
+) -> PublicationYearRange | None:
+    """Parse a publication year range from a query parameter."""
+    if not publication_year_range:
+        return None
+    return anti_corruption_service.publication_year_range_from_query_parameter(
+        publication_year_range_string=publication_year_range
+    )
+
+
 @search_router.get(
     "/",
     status_code=status.HTTP_200_OK,
@@ -225,7 +257,10 @@ deduplication_router = APIRouter(
     "[Lucene syntax](https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-query-string-query#query-string-syntax)"
     ". If the query string does not specify search fields, the search will query over "
     f"[{', '.join(SearchService.default_search_fields)}]. The query string can only "
-    "search over fields on the root level of the Reference document.",
+    "search over fields on the root level of the Reference document.\n\n"
+    "A natural limit of 10,000 results is imposed. You cannot page beyond this limit, "
+    "and if a query would return more than 10,000 results the total count is listed as "
+    ">10,000.",
 )
 async def search_references(
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
@@ -238,6 +273,10 @@ async def search_references(
             description="The query string.",
         ),
     ],
+    publication_year_range: Annotated[
+        PublicationYearRange | None,
+        Depends(parse_publication_year_range),
+    ] = None,
     page: Annotated[
         int,
         Query(
@@ -249,7 +288,9 @@ async def search_references(
     ] = 1,
 ) -> destiny_sdk.references.ReferenceSearchResult:
     """Search for references given a query string."""
-    search_result = await reference_service.search_references(q, page)
+    search_result = await reference_service.search_references(
+        q, page, publication_year_range=publication_year_range
+    )
     return anti_corruption_service.reference_search_result_to_sdk(search_result)
 
 

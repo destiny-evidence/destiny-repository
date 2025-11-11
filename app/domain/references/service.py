@@ -30,6 +30,7 @@ from app.domain.references.models.models import (
     LinkedExternalIdentifier,
     PendingEnhancement,
     PendingEnhancementStatus,
+    PublicationYearRange,
     Reference,
     ReferenceDuplicateDecision,
     ReferenceIds,
@@ -1020,7 +1021,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def search_references(
         self,
         query: str,
-        page: int,
+        page: int = 1,
+        publication_year_range: PublicationYearRange | None = None,
     ) -> ESSearchResult[Reference]:
         """Search for references given a query string."""
-        return await self._search_service.search_with_query_string(query, page)
+        return await self._search_service.search_with_query_string(
+            query, page, publication_year_range=publication_year_range
+        )

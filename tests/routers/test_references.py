@@ -747,7 +747,8 @@ async def test_search_references_happy_path(
         enhancements=[
             EnhancementFactory.build(
                 content=BibliographicMetadataEnhancementFactory.build(
-                    title="Test paper title"
+                    title="Test paper title",
+                    publication_year=2023,
                 )
             )
         ]
@@ -785,6 +786,16 @@ async def test_search_references_happy_path(
     data = response.json()
     assert data["references"] == []
     assert data["total"]["count"] == 1
+
+    # Verify adding a publication year excludes the result
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "title:Test paper", "publication_year_range": "[2021,2023)"},
+    )
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["references"] == []
+    assert data["total"]["count"] == 0
 
 
 async def test_search_references_sad_path(

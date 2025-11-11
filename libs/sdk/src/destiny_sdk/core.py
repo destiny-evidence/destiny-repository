@@ -4,6 +4,8 @@ from typing import Self
 
 from pydantic import BaseModel, Field
 
+from destiny_sdk.search import SearchResultPage, SearchResultTotal
+
 # These are non-standard newline characters that are not escaped by model_dump_json().
 # We want jsonl files to have empirical new lines so they can be streamed line by line.
 # Hence we replace each occurrence with standard new lines.
@@ -47,28 +49,6 @@ class _JsonlFileInputMixIn(BaseModel):
         :rtype: Self
         """
         return cls.model_validate_json(jsonl)
-
-
-class SearchResultTotal(BaseModel):
-    """Information about the total number of search results."""
-
-    count: int = Field(
-        description="The total number of results matching the search criteria.",
-    )
-    is_lower_bound: bool = Field(
-        description="Whether the count is a lower bound (true) or exact (false).",
-    )
-
-
-class SearchResultPage(BaseModel):
-    """Information about the page of search results."""
-
-    count: int = Field(
-        description="The number of results on this page.",
-    )
-    number: int = Field(
-        description="The page number of results returned, indexed from 1.",
-    )
 
 
 class SearchResultMixIn(BaseModel):
