@@ -22,16 +22,24 @@ from app.core.exceptions import (
 )
 
 
-class APIException(BaseModel):
-    """Return model for API 4XX codes."""
+class APIExceptionContent(BaseModel):
+    """Return model for API exception content."""
 
     detail: str = Field(description="Details about the error.")
+
+
+class APIExceptionResponse(JSONResponse):
+    """Return model for API 4XX codes."""
+
+    def __init__(self, status_code: int, content: APIExceptionContent) -> None:
+        """Initialize the response with JSON content."""
+        super().__init__(status_code=status_code, content=jsonable_encoder(content))
 
 
 async def not_found_exception_handler(
     request: Request,
     exception: NotFoundError,
-) -> JSONResponse:
+) -> APIExceptionResponse:
     """
     Exception handler for when an object cannot be found.
 
@@ -40,7 +48,7 @@ async def not_found_exception_handler(
     Otherwise, it returns a 422.
     """
     if isinstance(exception, SQLNotFoundError | ESNotFoundError):
-        content = APIException(
+        content = APIExceptionContent(
             detail=(
                 f"{exception.lookup_model} with "
                 f"{exception.lookup_type} {exception.lookup_value} does not exist."
@@ -65,27 +73,29 @@ async def not_found_exception_handler(
                 status_code = status.HTTP_404_NOT_FOUND
     else:
         status_code = status.HTTP_404_NOT_FOUND
-        content = APIException(detail=exception.detail)
+        content = APIExceptionContent(detail=exception.detail)
 
-    return JSONResponse(
+    return APIExceptionResponse(
         status_code=status_code,
-        content=jsonable_encoder(content),
+        content=content,
     )
 
 
 async def integrity_exception_handler(
     _request: Request,
     exception: IntegrityError,
-) -> JSONResponse:
+) -> APIExceptionResponse:
     """Exception handler to return 409 responses when an IntegrityError is thrown."""
     if isinstance(exception, SQLIntegrityError):
-        content = APIException(detail=f"{exception.detail} {exception.collision}")
+        content = APIExceptionContent(
+            detail=f"{exception.detail} {exception.collision}"
+        )
     else:
-        content = APIException(detail=exception.detail)
+        content = APIExceptionContent(detail=exception.detail)
 
-    return JSONResponse(
+    return APIExceptionResponse(
         status_code=status.HTTP_409_CONFLICT,
-        content=jsonable_encoder(content),
+        content=content,
     )
 
 
@@ -93,48 +103,48 @@ async def integrity_exception_handler(
 async def sdk_to_domain_exception_handler(
     _request: Request,
     exception: SDKToDomainError,
-) -> JSONResponse:
+) -> APIExceptionResponse:
     """Return unprocessable entity response when sdk -> domain conversion fails."""
     # Probably want to reduce the amount of information we're giving back here.
-    return JSONResponse(
+    return APIExceptionResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content=jsonable_encoder(APIException(detail=exception.errors)),
+        content=APIExceptionContent(detail=exception.errors),
     )
 
 
 async def invalid_payload_exception_handler(
     _request: Request,
     exception: InvalidPayloadError,
-) -> JSONResponse:
+) -> APIExceptionResponse:
     """Return unprocessable entity response when the payload is invalid."""
-    return JSONResponse(
+    return APIExceptionResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content=jsonable_encoder(APIException(detail=exception.detail)),
+        content=APIExceptionContent(detail=exception.detail),
     )
 
 
 async def es_exception_handler(
     _request: Request,
     exception: ESQueryError | ESMalformedDocumentError,
-) -> JSONResponse:
+) -> APIExceptionResponse:
     """
     Return unprocessable entity response when an Elasticsearch operation fails.
 
     This is generally raised on incorrect query structures for percolation and
     searching.
     """
-    return JSONResponse(
+    return APIExceptionResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content=jsonable_encoder(APIException(detail=exception.detail)),
+        content=APIExceptionContent(detail=exception.detail),
     )
 
 
 async def parse_error_exception_handler(
     _request: Request,
     exception: ParseError,
-) -> JSONResponse:
+) -> APIExceptionResponse:
     """Return bad request response when a parsing error occurs."""
-    return JSONResponse(
+    return APIExceptionResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content=jsonable_encoder(APIException(detail=exception.detail)),
+        content=APIExceptionContent(detail=exception.detail),
     )

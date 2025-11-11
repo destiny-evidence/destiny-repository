@@ -30,7 +30,7 @@ from app.api.auth import (
     security,
 )
 from app.api.decorators import experimental
-from app.api.exception_handlers import APIException
+from app.api.exception_handlers import APIExceptionContent
 from app.core.config import get_settings
 from app.core.exceptions import ParseError
 from app.core.telemetry.fastapi import PayloadAttributeTracer
@@ -218,7 +218,7 @@ deduplication_router = APIRouter(
     responses={
         status.HTTP_400_BAD_REQUEST: {
             "description": "Bad Query String",
-            "model": APIException,
+            "model": APIExceptionContent,
         }
     },
     description="Search for references using a query string in "
