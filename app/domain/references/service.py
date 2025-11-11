@@ -1020,6 +1020,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def search_references(
         self,
         query: str,
+        page: int,
     ) -> ESSearchResult[Reference]:
         """Search for references given a query string."""
-        return await self._search_service.search_with_query_string(query)
+        return await self._search_service.search_with_query_string(query, page)

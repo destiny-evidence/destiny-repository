@@ -238,9 +238,17 @@ async def search_references(
             description="The query string.",
         ),
     ],
+    page: Annotated[
+        int,
+        Query(
+            default=1,
+            ge=1,
+            description="The page number to retrieve.",
+        ),
+    ] = 1,
 ) -> destiny_sdk.references.ReferenceSearchResult:
     """Search for references given a query string."""
-    search_result = await reference_service.search_references(q)
+    search_result = await reference_service.search_references(q, page)
     return anti_corruption_service.reference_search_result_to_sdk(search_result)
 
 

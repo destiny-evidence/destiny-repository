@@ -187,10 +187,9 @@ class GenericAsyncESRepository(
     async def search_with_query_string(
         self,
         query: str,
+        page: int = 1,
+        page_size: int = 20,
         fields: Sequence[str] | None = None,
-        # TODO(Adam): Implement pagination
-        # https://github.com/destiny-evidence/destiny-repository/issues/349
-        page_size: int = 100,
     ) -> ESSearchResult[GenericDomainModelType]:
         """
         Search for records using a query string.
@@ -207,6 +206,7 @@ class GenericAsyncESRepository(
             AsyncSearch(using=self._client)
             .doc_type(self._persistence_cls)
             .extra(size=page_size)
+            .extra(from_=(page - 1) * page_size)
             .query(
                 QueryString(query=query, fields=fields)
                 if fields

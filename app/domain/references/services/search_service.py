@@ -47,10 +47,13 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
     async def search_with_query_string(
         self,
         query_string: str,
+        page: int,
     ) -> ESSearchResult[Reference]:
         """Search for references matching the query string."""
         if not self._query_string_specifies_fields(query_string):
             return await self.es_uow.references.search_with_query_string(
                 query_string, fields=self.default_search_fields
             )
-        return await self.es_uow.references.search_with_query_string(query_string)
+        return await self.es_uow.references.search_with_query_string(
+            query_string, page=page
+        )
