@@ -1023,8 +1023,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         query: str,
         page: int = 1,
         publication_year_range: PublicationYearRange | None = None,
+        sort: list[str] | None = None,
     ) -> ESSearchResult[Reference]:
         """Search for references given a query string."""
         return await self._search_service.search_with_query_string(
-            query, page, publication_year_range=publication_year_range
+            query, page=page, publication_year_range=publication_year_range, sort=sort
         )

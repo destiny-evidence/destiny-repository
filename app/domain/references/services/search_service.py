@@ -59,6 +59,7 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         query_string: str,
         page: int = 1,
         publication_year_range: PublicationYearRange | None = None,
+        sort: list[str] | None = None,
     ) -> ESSearchResult[Reference]:
         """Search for references matching the query string."""
         global_filters: list[str] = []
@@ -72,8 +73,8 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
             query_string = f"({query_string}) AND {' AND '.join(global_filters)}"
         if not self._query_string_specifies_fields(query_string):
             return await self.es_uow.references.search_with_query_string(
-                query_string, fields=self.default_search_fields
+                query_string, page=page, fields=self.default_search_fields, sort=sort
             )
         return await self.es_uow.references.search_with_query_string(
-            query_string, page=page
+            query_string, page=page, sort=sort
         )

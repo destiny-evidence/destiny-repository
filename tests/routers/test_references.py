@@ -811,3 +811,12 @@ async def test_search_references_sad_path(
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     data = response.json()
     assert "Failed to parse query [(quick and brown]" in data["detail"]
+
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "title:Test", "sort": "title"},
+    )
+    # title is a text field and so cannot be sorted on
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    data = response.json()
+    assert "No mapping found for [title] in order to sort on" in data["detail"]

@@ -191,6 +191,7 @@ class GenericAsyncESRepository(
         page: int = 1,
         page_size: int = 20,
         fields: Sequence[str] | None = None,
+        sort: list[str] | None = None,
     ) -> ESSearchResult[GenericDomainModelType]:
         """
         Search for records using a query string.
@@ -201,6 +202,11 @@ class GenericAsyncESRepository(
         :type page: int
         :param page_size: The number of records to return per page.
         :type page_size: int
+        :param fields: The fields to search within. If None, searches all fields (unless
+            the query specifies otherwise).
+        :type fields: Sequence[str] | None
+        :param sort: The sorting criteria for the search results.
+        :type sort: list[str] | None
         :return: A list of matching records.
         :rtype: ESSearchResult[GenericDomainModelType]
         """
@@ -218,6 +224,8 @@ class GenericAsyncESRepository(
         )
         if fields:
             search = search.extra(fields=fields)
+        if sort:
+            search = search.sort(*sort)
         try:
             response = await search.execute()
         except BadRequestError as exc:

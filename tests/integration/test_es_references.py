@@ -928,3 +928,68 @@ async def test_query_string_search_pagination(
         page_size=20,
     )
     assert len(results_page_4.hits) == 0
+
+
+async def test_query_string_sorting(
+    es_reference_repository: ReferenceESRepository,
+):
+    """Test sorting search results by different fields and directions."""
+    # Create references with different publication years and titles
+    ref_2020 = ReferenceFactory.build(
+        enhancements=[
+            EnhancementFactory.build(
+                content=BibliographicMetadataEnhancementFactory.build(
+                    publication_year=2020,
+                )
+            )
+        ]
+    )
+
+    ref_2021 = ReferenceFactory.build(
+        enhancements=[
+            EnhancementFactory.build(
+                content=BibliographicMetadataEnhancementFactory.build(
+                    publication_year=2021,
+                )
+            )
+        ]
+    )
+
+    ref_2022 = ReferenceFactory.build(
+        enhancements=[
+            EnhancementFactory.build(
+                content=BibliographicMetadataEnhancementFactory.build(
+                    publication_year=2022,
+                )
+            )
+        ]
+    )
+
+    # Add all references
+    await es_reference_repository.add(ref_2020)
+    await es_reference_repository.add(ref_2021)
+    await es_reference_repository.add(ref_2022)
+
+    await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+        index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
+    )
+
+    # Test sorting by publication_year ascending
+    results_year_asc = await es_reference_repository.search_with_query_string(
+        "_exists_:publication_year",
+        sort=["publication_year"],
+    )
+    assert len(results_year_asc.hits) == 3
+    assert results_year_asc.hits[0].id == ref_2020.id
+    assert results_year_asc.hits[1].id == ref_2021.id
+    assert results_year_asc.hits[2].id == ref_2022.id
+
+    # Test sorting by publication_year descending
+    results_year_desc = await es_reference_repository.search_with_query_string(
+        "_exists_:publication_year",
+        sort=["-publication_year"],
+    )
+    assert len(results_year_desc.hits) == 3
+    assert results_year_desc.hits[0].id == ref_2022.id
+    assert results_year_desc.hits[1].id == ref_2021.id
+    assert results_year_desc.hits[2].id == ref_2020.id

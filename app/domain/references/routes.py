@@ -286,10 +286,21 @@ async def search_references(
             "Each page contains 20 results.",
         ),
     ] = 1,
+    sort: Annotated[
+        list[str] | None,
+        Query(
+            description="A list of fields to sort the results by. "
+            "Prefix a field with `-` to sort in descending order. "
+            "If omitted, will sort by relevance score descending. "
+            "Multiple sort fields can be provided and will be applied "
+            "in the order given. Sort fields cannot be `text` fields.",
+        ),
+        None,
+    ] = None,
 ) -> destiny_sdk.references.ReferenceSearchResult:
     """Search for references given a query string."""
     search_result = await reference_service.search_references(
-        q, page, publication_year_range=publication_year_range
+        q, page=page, publication_year_range=publication_year_range, sort=sort
     )
     return anti_corruption_service.reference_search_result_to_sdk(search_result)
 
