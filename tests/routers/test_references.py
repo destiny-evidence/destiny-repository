@@ -765,6 +765,8 @@ async def test_search_references_happy_path(
     assert data["total"]["count"] == 1
     assert not data["total"]["is_lower_bound"]
     assert data["references"][0]["id"] == str(reference.id)
+    assert data["page"]["number"] == 1
+    assert data["page"]["count"] == 1
 
     # Verify omitting the field still works and uses default fields
     assert (
@@ -773,6 +775,16 @@ async def test_search_references_happy_path(
             params={"q": "Test paper"},
         )
     ).json() == data
+
+    # Verify trying a second page returns empty
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "title:Test paper", "page": 2},
+    )
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["references"] == []
+    assert data["total"]["count"] == 1
 
 
 async def test_search_references_sad_path(

@@ -65,3 +65,9 @@ Other
     :undoc-members:
     :exclude-members: model_config
     :inherited-members: BaseModel
+
+.. autoclass:: destiny_sdk.core.SearchResultPage
+    :members:
+    :undoc-members:
+    :exclude-members: model_config
+    :inherited-members: BaseModel

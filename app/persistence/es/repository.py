@@ -162,7 +162,7 @@ class GenericAsyncESRepository(
         await record.delete(using=self._client)
 
     def _parse_search_result(
-        self, response: Response[Hit]
+        self, response: Response[Hit], page: int
     ) -> ESSearchResult[GenericDomainModelType]:
         """
         Parse an Elasticsearch search response into a search result.
@@ -181,6 +181,7 @@ class GenericAsyncESRepository(
                 value=response.hits.total.value,  # type: ignore[attr-defined]
                 relation=response.hits.total.relation,  # type: ignore[attr-defined]
             ),
+            page=page,
         )
 
     @trace_repository_method(tracer)
@@ -196,6 +197,8 @@ class GenericAsyncESRepository(
 
         :param query: The query string to search with.
         :type query: str
+        :param page: The page number to retrieve.
+        :type page: int
         :param page_size: The number of records to return per page.
         :type page_size: int
         :return: A list of matching records.
@@ -220,4 +223,4 @@ class GenericAsyncESRepository(
         except BadRequestError as exc:
             msg = f"Elasticsearch query string search failed: {exc}."
             raise ESQueryError(msg) from exc
-        return self._parse_search_result(response)
+        return self._parse_search_result(response, page)

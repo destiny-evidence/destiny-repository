@@ -241,9 +241,10 @@ async def search_references(
     page: Annotated[
         int,
         Query(
-            default=1,
             ge=1,
-            description="The page number to retrieve.",
+            le=10_000 / 20,  # Elasticsearch max result window divided by page size
+            description="The page number to retrieve, indexed from 1. "
+            "Each page contains 20 results.",
         ),
     ] = 1,
 ) -> destiny_sdk.references.ReferenceSearchResult:

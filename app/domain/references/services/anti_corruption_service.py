@@ -328,6 +328,10 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     "count": search_result.total.value,
                     "is_lower_bound": search_result.total.relation == "gte",
                 },
+                page={
+                    "count": len(search_result.hits),
+                    "number": search_result.page,
+                },
                 references=[
                     self.reference_to_sdk(reference) for reference in search_result.hits
                 ],

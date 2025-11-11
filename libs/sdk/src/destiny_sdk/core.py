@@ -60,9 +60,23 @@ class SearchResultTotal(BaseModel):
     )
 
 
+class SearchResultPage(BaseModel):
+    """Information about the page of search results."""
+
+    count: int = Field(
+        description="The number of results on this page.",
+    )
+    number: int = Field(
+        description="The page number of results returned, indexed from 1.",
+    )
+
+
 class SearchResultMixIn(BaseModel):
     """A mixin class for models that represent search results."""
 
     total: SearchResultTotal = Field(
         description="The total number of results matching the search criteria.",
+    )
+    page: SearchResultPage = Field(
+        description="Information about the page of results.",
     )

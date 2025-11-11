@@ -897,6 +897,7 @@ async def test_query_string_search_pagination(
         page_size=20,
     )
     assert len(results_page_1.hits) == 20
+    assert results_page_1.page == 1
     assert results_page_1.total.value == 55
     assert results_page_1.total.relation == "eq"
 
@@ -906,6 +907,7 @@ async def test_query_string_search_pagination(
         page_size=20,
     )
     assert len(results_page_2.hits) == 20
+    assert results_page_2.page == 2
 
     results_page_3 = await es_reference_repository.search_with_query_string(
         f"title:{bibliographic_enhancement.title}",
@@ -913,6 +915,7 @@ async def test_query_string_search_pagination(
         page_size=20,
     )
     assert len(results_page_3.hits) == 15
+    assert results_page_3.page == 3
 
     assert {
         hit.id
