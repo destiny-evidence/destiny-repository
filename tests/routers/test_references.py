@@ -819,7 +819,11 @@ async def test_search_references_sad_path(
     # title is a text field and so cannot be sorted on
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     data = response.json()
-    assert "No mapping found for [title] in order to sort on" in data["detail"]
+    assert (
+        # Different ES versions give different error messages
+        "No mapping found for [title] in order to sort on" in data["detail"]
+        or "Fielddata is disabled on [title]" in data["detail"]
+    )
 
 
 async def test_search_references_with_annotation_filters(
