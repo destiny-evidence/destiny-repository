@@ -102,13 +102,27 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
 
         Currently sorts in reverse order prioritising the canonical reference id.
         """
-        return sorted(
-            enhancements or [],
-            # This preferences the canonical reference's enhancements
-            # over those of its duplicates.
-            key=lambda e: e.reference_id == canonical_id,
-            reverse=True,
+        if not enhancements:
+            return []
+
+        canonical_enhancements = []
+        duplicate_enhancements = []
+
+        for enhancement in enhancements:
+            if enhancement.reference_id == canonical_id:
+                canonical_enhancements.append(enhancement)
+            else:
+                duplicate_enhancements.append(enhancement)
+
+        sorted_duplicates = sorted(
+            duplicate_enhancements, key=lambda e: e.created_at.timestamp()
         )
+
+        sorted_canonicals = sorted(
+            canonical_enhancements, key=lambda e: e.created_at.timestamp()
+        )
+
+        return sorted_duplicates + sorted_canonicals
 
     @classmethod
     def get_canonical_candidate_search_fields(

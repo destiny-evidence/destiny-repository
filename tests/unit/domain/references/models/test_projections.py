@@ -1,7 +1,7 @@
 """Unit tests for the projection functions in the references module."""
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import destiny_sdk
 import pytest
@@ -181,12 +181,12 @@ class TestReferenceSearchFieldsProjection:
     def test_reference_sorting_prioritises_canonical(
         self, bibliographic_enhancement, sample_authorship
     ):
-        """Test that we prioritise canonical id"""
+        """Test that we prioritise canonical enhancements"""
         reference_id = uuid.uuid4()
 
         canonical_biblography = EnhancementFactory.build(
+            reference_id=reference_id,
             content=BibliographicMetadataEnhancementFactory.build(
-                reference_id=reference_id,
                 title="We get this title, this enhancement is on canonical reference",
                 authorship=sample_authorship,
                 publication_year=2021,
@@ -200,6 +200,63 @@ class TestReferenceSearchFieldsProjection:
 
         reference_proj = ReferenceSearchFieldsProjection.get_from_reference(reference)
         assert reference_proj.title == canonical_biblography.content.title
+
+    def test_reference_sorting_prioritises_created_date(
+        self, bibliographic_enhancement, sample_authorship
+    ):
+        """Test that we prioritise the created date of the enhancements"""
+        reference_id = uuid.uuid4()
+
+        most_recent_bibliography = EnhancementFactory.build(
+            # Created the day after the the other bibliographic enhancement
+            created_at = bibliographic_enhancement.created_at + timedelta(days=1),
+            content=BibliographicMetadataEnhancementFactory.build(
+                title="We get this title, it's the most recent enhancement",
+                authorship=sample_authorship,
+                publication_year=2021,
+            ),
+        )
+
+        reference = ReferenceFactory.build(
+            id=reference_id,
+            enhancements=[most_recent_bibliography, bibliographic_enhancement],
+        )
+
+        reference_proj = ReferenceSearchFieldsProjection.get_from_reference(reference)
+        assert reference_proj.title == most_recent_bibliography.content.title
+
+    def test_reference_sorting_priorises_canonical_over_most_recent(
+        self, bibliographic_enhancement, sample_authorship
+    ):
+        """
+        Test prioritisation rule order.
+
+        When an enhancement on a duplicate reference is more recent than an
+        enhancement on the canonical reference, we still use the enhancement
+        on the canonical reference.
+        """
+        reference_id = uuid.uuid4()
+        bibliographic_enhancement.reference_id = reference_id
+
+        most_recent_bibliography = EnhancementFactory.build(
+            content=BibliographicMetadataEnhancementFactory.build(
+                title="We don't get this title, there's a canonical bibliography.",
+                authorship=sample_authorship,
+                publication_year=2021,
+            ),
+            # Created the day after the the other bibliographic enhancement
+            created_at = bibliographic_enhancement.created_at + timedelta(days=1)
+        )
+
+        reference = ReferenceFactory.build(
+            id=reference_id,
+            enhancements=[bibliographic_enhancement, most_recent_bibliography],
+        )
+
+
+        reference_proj = ReferenceSearchFieldsProjection.get_from_reference(reference)
+        assert reference_proj.title == bibliographic_enhancement.content.title
+
 
     def test_get_from_reference(self, sample_authorship, abstract_enhancement):
         """Test extracting candidacy fingerprint with various scenarios."""
@@ -282,7 +339,7 @@ class TestReferenceSearchFieldsProjection:
         # Test complete enhancement
         abstract_enhancement.reference_id = enhancement1.reference_id
         reference1 = ReferenceFactory.build(
-            id=enhancement1.id,
+            id=enhancement1.reference_id,
             enhancements=[enhancement0, enhancement1, abstract_enhancement],
             identifiers=[],
         )
