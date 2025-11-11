@@ -61,7 +61,7 @@ def bibliographic_enhancement(sample_authorship):
     bibliographic_content = BibliographicMetadataEnhancementFactory.build(
         title="Sample Research Paper",
         authorship=sample_authorship,
-        publication_year=2023,
+        publication_date=datetime(year=2023, month=4, day=2, tzinfo=UTC),
     )
 
     return EnhancementFactory.build(
@@ -189,8 +189,8 @@ class TestReferenceSearchFieldsProjection:
             content=BibliographicMetadataEnhancementFactory.build(
                 title="We get this title, this enhancement is on canonical reference",
                 authorship=sample_authorship,
-                publication_year=2021,
-            )
+                publication_date=datetime(year=2021, month=2, day=17, tzinfo=UTC),
+            ),
         )
 
         reference = ReferenceFactory.build(
@@ -209,11 +209,11 @@ class TestReferenceSearchFieldsProjection:
 
         most_recent_bibliography = EnhancementFactory.build(
             # Created the day after the the other bibliographic enhancement
-            created_at = bibliographic_enhancement.created_at + timedelta(days=1),
+            created_at=bibliographic_enhancement.created_at + timedelta(days=1),
             content=BibliographicMetadataEnhancementFactory.build(
                 title="We get this title, it's the most recent enhancement",
                 authorship=sample_authorship,
-                publication_year=2021,
+                publication_date=datetime(year=2021, month=2, day=17, tzinfo=UTC),
             ),
         )
 
@@ -242,10 +242,10 @@ class TestReferenceSearchFieldsProjection:
             content=BibliographicMetadataEnhancementFactory.build(
                 title="We don't get this title, there's a canonical bibliography.",
                 authorship=sample_authorship,
-                publication_year=2021,
+                publication_date=datetime(year=2021, month=2, day=17, tzinfo=UTC),
             ),
-            # Created the day after the the other bibliographic enhancement
-            created_at = bibliographic_enhancement.created_at + timedelta(days=1)
+            # Created more recently than the other bibliographic enhancement
+            created_at=bibliographic_enhancement.created_at + timedelta(days=1),
         )
 
         reference = ReferenceFactory.build(
@@ -253,10 +253,8 @@ class TestReferenceSearchFieldsProjection:
             enhancements=[bibliographic_enhancement, most_recent_bibliography],
         )
 
-
         reference_proj = ReferenceSearchFieldsProjection.get_from_reference(reference)
         assert reference_proj.title == bibliographic_enhancement.content.title
-
 
     def test_get_from_reference(self, sample_authorship, abstract_enhancement):
         """Test extracting candidacy fingerprint with various scenarios."""
@@ -282,13 +280,13 @@ class TestReferenceSearchFieldsProjection:
             title="Check we don't get this title! This should have a lower priority in "
             " the projection because it comes from a duplicate.",
             authorship=sample_authorship,
-            publication_year=2021,
+            publication_date=datetime(year=2021, month=2, day=17, tzinfo=UTC),
         )
 
         content1 = BibliographicMetadataEnhancementFactory.build(
             title="  Sample Research Paper  ",  # Test title whitespace stripping
             authorship=authorship_with_whitespace,
-            publication_year=2023,
+            publication_date=datetime(year=2023, month=4, day=2, tzinfo=UTC),
         )
 
         enhancement0 = EnhancementFactory.build(
@@ -317,23 +315,26 @@ class TestReferenceSearchFieldsProjection:
         # Test 3: Multiple enhancements with hydration behavior
         content3 = BibliographicMetadataEnhancementFactory.build(
             title="Hydration Title",  # This should be used
+            authorship=[],
+            publication_date=None,
         )
 
         enhancement3 = EnhancementFactory.build(
             source="hydration_source1",
             content=content3,
+            created_at=datetime(year=2021, month=2, day=17, tzinfo=UTC),
         )
 
         content4 = BibliographicMetadataEnhancementFactory.build(
             # No title - should use previous one
             title=None,
             authorship=sample_authorship,  # Should use this authorship
-            publication_year=2024,  # Should use this year
         )
 
         enhancement4 = EnhancementFactory.build(
             source="hydration_source2",
             content=content4,
+            created_at=datetime(year=2022, month=2, day=17, tzinfo=UTC),
         )
 
         # Test complete enhancement
@@ -374,9 +375,9 @@ class TestReferenceSearchFieldsProjection:
         )
 
         result3 = ReferenceSearchFieldsProjection.get_from_reference(reference3)
-        assert result3.title == "Hydration Title"  # From first enhancement
-        assert result3.publication_year == 2024  # From second enhancement
-        assert len(result3.authors) == 3  # From second enhancement
+        assert result3.title == enhancement3.content.title
+        assert result3.publication_year == enhancement4.content.publication_year
+        assert len(result3.authors) == len(enhancement4.content.authorship)
 
     def test_get_from_reference_empty_enhancements(self):
         """Test extracting reference search feilds with empty enhancements"""
