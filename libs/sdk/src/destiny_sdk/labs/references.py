@@ -8,6 +8,8 @@ with added experimental convenience methods and properties.
 from collections.abc import Generator
 from typing import cast
 
+from pydantic import BaseModel, Field
+
 from destiny_sdk.enhancements import (
     Annotation,
     AnnotationType,
@@ -15,15 +17,20 @@ from destiny_sdk.enhancements import (
     EnhancementType,
 )
 from destiny_sdk.identifiers import ExternalIdentifierType
-from destiny_sdk.references import Reference as BaseReference
+from destiny_sdk.references import Reference
 
 
-class Reference(BaseReference):
-    """Extended core reference class."""
+class ReferenceLabs(BaseModel):
+    """Experimental presenter class for Reference with added convenience methods."""
+
+    reference: Reference = Field(
+        ...,
+        description="The core Reference object",
+    )
 
     def _get_id(self, identifier_type: ExternalIdentifierType) -> str | int | None:
         """Fetch an identifier matching the given identifier_type."""
-        for identifier in self.identifiers or []:
+        for identifier in self.reference.identifiers or []:
             if identifier.identifier_type == identifier_type:
                 return identifier.identifier
         return None
@@ -52,7 +59,7 @@ class Reference(BaseReference):
     @property
     def abstract(self) -> str | None:
         """Return an abstract for the reference."""
-        for enhancement in self.enhancements or []:
+        for enhancement in self.reference.enhancements or []:
             if enhancement.content.enhancement_type == EnhancementType.ABSTRACT:
                 return enhancement.content.abstract
         return None
@@ -77,7 +84,7 @@ class Reference(BaseReference):
         self,
     ) -> Generator[BibliographicMetadataEnhancement, None, None]:
         """Iterate bibliographic enhancements."""
-        for enhancement in self.enhancements or []:
+        for enhancement in self.reference.enhancements or []:
             if enhancement.content.enhancement_type == EnhancementType.BIBLIOGRAPHIC:
                 yield enhancement.content
 
@@ -97,7 +104,7 @@ class Reference(BaseReference):
         :param scheme: Optional filter for Annotation.scheme
         :param label: Optional filter for Annotation.label
         """
-        for enhancement in self.enhancements or []:
+        for enhancement in self.reference.enhancements or []:
             if enhancement.content.enhancement_type == EnhancementType.ANNOTATION:
                 if source is not None and enhancement.source != source:
                     continue

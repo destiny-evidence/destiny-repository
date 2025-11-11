@@ -16,6 +16,13 @@ pip install destiny-sdk
 uv add destiny-sdk
 ```
 
+Some labs functionality may require extra dependencies - these can be installed by:
+
+```sh
+pip install destiny-sdk[labs]
+uv add destiny-sdk --extra labs
+```
+
 ## Development
 
 ### Dependencies

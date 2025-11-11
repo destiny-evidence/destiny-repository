@@ -3,14 +3,15 @@
 import json
 from pathlib import Path
 
-from destiny_sdk.labs.references import Reference
+from destiny_sdk.labs.references import ReferenceLabs
+from destiny_sdk.references import Reference
 
 
 def _read_references():
     test_data_path = Path(__file__).parent.parent / "test_data/destiny_references.jsonl"
     with test_data_path.open() as test_references_file:
         for line in test_references_file:
-            yield Reference.from_es(json.loads(line))
+            yield ReferenceLabs(reference=Reference.from_es(json.loads(line)))
 
 
 def test_annotations():
