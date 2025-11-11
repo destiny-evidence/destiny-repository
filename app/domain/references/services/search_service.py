@@ -6,7 +6,11 @@ from opentelemetry import trace
 
 from app.core.config import get_settings
 from app.core.telemetry.logger import get_logger
-from app.domain.references.models.models import PublicationYearRange, Reference
+from app.domain.references.models.models import (
+    AnnotationFilter,
+    PublicationYearRange,
+    Reference,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -58,6 +62,7 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         self,
         query_string: str,
         page: int = 1,
+        annotations: list[AnnotationFilter] | None = None,
         publication_year_range: PublicationYearRange | None = None,
         sort: list[str] | None = None,
     ) -> ESSearchResult[Reference]:
@@ -71,6 +76,9 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
             )
         if global_filters:
             query_string = f"({query_string}) AND {' AND '.join(global_filters)}"
+        if annotations:
+            # To be implemented
+            pass
         if not self._query_string_specifies_fields(query_string):
             return await self.es_uow.references.search_with_query_string(
                 query_string, page=page, fields=self.default_search_fields, sort=sort

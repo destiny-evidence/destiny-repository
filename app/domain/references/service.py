@@ -19,6 +19,7 @@ from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
+    AnnotationFilter,
     DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
@@ -1022,10 +1023,15 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         query: str,
         page: int = 1,
+        annotations: list[AnnotationFilter] | None = None,
         publication_year_range: PublicationYearRange | None = None,
         sort: list[str] | None = None,
     ) -> ESSearchResult[Reference]:
         """Search for references given a query string."""
         return await self._search_service.search_with_query_string(
-            query, page=page, publication_year_range=publication_year_range, sort=sort
+            query,
+            page=page,
+            annotations=annotations,
+            publication_year_range=publication_year_range,
+            sort=sort,
         )

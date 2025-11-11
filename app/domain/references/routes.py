@@ -1,3 +1,11 @@
+# Typing transgressions here make the API docs cleaner. Sorry.
+# For optional parameters, the preferred Python method is to type it optionally
+# eg list[str] | None = None, but in the docs this forks the parameter to also
+# show `null` as an option, which is not desired and obscures the actual usage.
+#
+# mypy: disable-error-code="assignment"
+# ruff: noqa: RUF013
+
 """Router for handling management of references."""
 
 import uuid
@@ -37,6 +45,7 @@ from app.core.telemetry.fastapi import PayloadAttributeTracer
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
+    AnnotationFilter,
     PendingEnhancementStatus,
     PublicationYearRange,
     ReferenceIds,
@@ -219,7 +228,7 @@ def parse_publication_year_range(
     ],
     # Typing transgressions here make the API docs cleaner. Sorry.
     publication_year_range: Annotated[
-        str,  # noqa: RUF013
+        str,
         Query(
             pattern=r"[\[\(]([0-9]{4}|\*),([0-9]{4}|\*)[\]\)]",
             examples=[
@@ -234,7 +243,7 @@ def parse_publication_year_range(
                 "matter if using `*`."
             ),
         ),
-    ] = None,  # type: ignore[assignment]
+    ] = None,
 ) -> PublicationYearRange | None:
     """Parse a publication year range from a query parameter."""
     if not publication_year_range:
@@ -242,6 +251,40 @@ def parse_publication_year_range(
     return anti_corruption_service.publication_year_range_from_query_parameter(
         publication_year_range_string=publication_year_range
     )
+
+
+def parse_annotation_filters(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    annotation: Annotated[
+        list[Annotated[str, Field(pattern=r"^[^/]+(/[^/]+)?(@[0-9]+(\.[0-9]+)?)?$")]],
+        Query(
+            description=(
+                "A list of annotation filters to apply to the search. "
+                "Multiple annotations can be provided, which will be combined with AND "
+                "logic. \n\n"
+                "Format: `<scheme>[/<label>][@<score>]`. "
+            ),
+            examples=[
+                "inclusion:destiny@0.8",
+                "classifier:taxonomy:Outcomes/Influenza",
+            ],
+            # Not used for now but prepared for future use
+            # Requires knowledge of annotation mapping in ES for further implementation
+            include_in_schema=False,
+        ),
+    ] = None,
+) -> list[AnnotationFilter]:
+    """Parse annotation filters from query parameters."""
+    if not annotation:
+        return []
+    return [
+        anti_corruption_service.annotation_filter_from_query_parameter(
+            annotation_filter_string
+        )
+        for annotation_filter_string in annotation
+    ]
 
 
 @search_router.get(
@@ -273,6 +316,10 @@ async def search_references(
             description="The query string.",
         ),
     ],
+    annotations: Annotated[
+        list[AnnotationFilter] | None,
+        Depends(parse_annotation_filters),
+    ],
     publication_year_range: Annotated[
         PublicationYearRange | None,
         Depends(parse_publication_year_range),
@@ -287,7 +334,7 @@ async def search_references(
         ),
     ] = 1,
     sort: Annotated[
-        list[str] | None,
+        list[str],
         Query(
             description="A list of fields to sort the results by. "
             "Prefix a field with `-` to sort in descending order. "
@@ -300,7 +347,11 @@ async def search_references(
 ) -> destiny_sdk.references.ReferenceSearchResult:
     """Search for references given a query string."""
     search_result = await reference_service.search_references(
-        q, page=page, publication_year_range=publication_year_range, sort=sort
+        q,
+        page=page,
+        annotations=annotations,
+        publication_year_range=publication_year_range,
+        sort=sort,
     )
     return anti_corruption_service.reference_search_result_to_sdk(search_result)
 

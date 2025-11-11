@@ -820,3 +820,75 @@ async def test_search_references_sad_path(
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     data = response.json()
     assert "No mapping found for [title] in order to sort on" in data["detail"]
+
+
+async def test_search_references_with_annotation_filters(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that annotation filters are correctly parsed and passed to the service."""
+    from app.domain.references.models.models import Reference as DomainReference
+    from app.persistence.es.persistence import ESSearchResult, ESSearchTotal
+
+    # Create a mock reference with annotations
+    reference = ReferenceFactory.build(
+        enhancements=[
+            EnhancementFactory.build(
+                content=BibliographicMetadataEnhancementFactory.build(
+                    title="Test paper with annotations",
+                    publication_year=2023,
+                )
+            )
+        ]
+    )
+
+    # Create a mock search result
+    mock_search_result = ESSearchResult[DomainReference](
+        hits=[reference],
+        total=ESSearchTotal(value=1, relation="eq"),
+        page=1,
+    )
+
+    # Mock the service method
+    # Temporary patch until ES itself includes annotations
+    mock_search = AsyncMock(return_value=mock_search_result)
+    monkeypatch.setattr(ReferenceService, "search_references", mock_search)
+
+    # Test with annotation filters
+    response = await client.get(
+        "/v1/references/search/",
+        params={
+            "q": "test",
+            "annotation": [
+                "test:scheme/test_label",
+                "another:scheme/another_label@0.8",
+                "just_a_scheme@0.8",
+            ],
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["total"]["count"] == 1
+    assert data["references"][0]["id"] == str(reference.id)
+
+    # Verify the service was called with the correct annotation filters
+    mock_search.assert_awaited_once()
+    call_kwargs = mock_search.call_args.kwargs
+    assert call_kwargs["annotations"] is not None
+    assert len(call_kwargs["annotations"]) == 3
+
+    # Check first annotation filter
+    assert call_kwargs["annotations"][0].scheme == "test:scheme"
+    assert call_kwargs["annotations"][0].label == "test_label"
+    assert call_kwargs["annotations"][0].score is None
+
+    # Check second annotation filter with score
+    assert call_kwargs["annotations"][1].scheme == "another:scheme"
+    assert call_kwargs["annotations"][1].label == "another_label"
+    assert call_kwargs["annotations"][1].score == 0.8
+
+    # Check third annotation filter without label is ignored
+    assert call_kwargs["annotations"][2].scheme == "just_a_scheme"
+    assert not call_kwargs["annotations"][2].label
+    assert call_kwargs["annotations"][2].score == 0.8

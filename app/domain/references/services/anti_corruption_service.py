@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from app.core.exceptions import DomainToSDKError, ParseError, SDKToDomainError
 from app.domain.references.models.models import (
+    AnnotationFilter,
     Enhancement,
     EnhancementRequest,
     ExternalIdentifierAdapter,
@@ -369,3 +370,25 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             end_year = int(end_year_str) - (1 if end_bracket == ")" else 0)
 
         return PublicationYearRange(start=start_year, end=end_year)
+
+    def annotation_filter_from_query_parameter(
+        self,
+        annotation_filter_string: str,
+    ) -> AnnotationFilter:
+        """Parse an annotation filter from a query parameter."""
+        if "@" in annotation_filter_string:
+            score = float(annotation_filter_string.split("@")[-1])
+            annotation_filter_string = annotation_filter_string.rsplit("@", 1)[0]
+        else:
+            score = None
+
+        if "/" not in annotation_filter_string:
+            scheme, label = annotation_filter_string, None
+        else:
+            scheme, label = annotation_filter_string.split("/", 1)
+
+        return AnnotationFilter(
+            scheme=scheme,
+            label=label,
+            score=score,
+        )
