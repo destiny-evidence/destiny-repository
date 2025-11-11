@@ -672,7 +672,7 @@ async def test_canonical_candidate_search(
         # Boolean operators
         ("title:test AND publication_year:2023", True),
         ("title:test OR title:nonexistent", True),
-        ("title:test NOT publication_year:9999", True),
+        ("title:test NOT abstract:seal", True),
         # Field existence
         ("_exists_:title", True),
         ("_exists_:nonexistent_field", False),
@@ -689,6 +689,7 @@ async def test_canonical_candidate_search(
         # Fuzzy
         ("title:teest~1", True),
         ("title:unrelated~1", False),
+        ("abstract:hippotamus~2", True),
         # Go crazy
         (
             "publication_year:[2020 TO 2025] "
@@ -720,7 +721,12 @@ async def test_query_string_search_scenarios(
         )
     )
     abstract_enhancement: AbstractContentEnhancement = (
-        AbstractContentEnhancementFactory.build()
+        AbstractContentEnhancementFactory.build(
+            abstract=(
+                "This is a test abstract for the test paper. "
+                "Abstract art is cool. Hippopotamus."
+            ),
+        )
     )
     reference = ReferenceFactory.build(
         enhancements=[
@@ -824,9 +830,13 @@ async def test_query_string_search_with_fields(
             publication_year=2023,
         )
     )
+    abstract_enhancement_1: AbstractContentEnhancement = AbstractContentEnhancementFactory.build(
+        abstract="This abstract does not contain the special term, but it does contain the word spondonicle.",
+    )
     reference_with_title_match = ReferenceFactory.build(
         enhancements=[
             EnhancementFactory.build(content=bibliographic_enhancement_1),
+            EnhancementFactory.build(content=abstract_enhancement_1),
         ]
     )
 
@@ -838,14 +848,13 @@ async def test_query_string_search_with_fields(
 
     # Search restricted to title field - should only find reference with title match
     results_title_only = await es_reference_repository.search_with_query_string(
-        "searchterm",
-        fields=["title"],
+        "searchterm AND spondonicle",
+        fields=["title", "abstract"],
     )
     assert len(results_title_only.hits) == 1
     assert results_title_only.hits[0].id == reference_with_title_match.id
 
     # Search restricted to publication_year field - should find nothing
-    # (searchterm is text, not a year)
     results_year_only = await es_reference_repository.search_with_query_string(
         "searchterm",
         fields=["publication_year"],
