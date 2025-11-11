@@ -217,8 +217,9 @@ def parse_publication_year_range(
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
+    # Typing transgressions here make the API docs cleaner. Sorry.
     publication_year_range: Annotated[
-        str | None,
+        str,  # noqa: RUF013
         Query(
             pattern=r"[\[\(]([0-9]{4}|\*),([0-9]{4}|\*)[\]\)]",
             examples=[
@@ -229,12 +230,11 @@ def parse_publication_year_range(
             ],
             description=(
                 "A publication year range to filter results by. "
-                "Format: [start,end], (start,end), [start,end), or (start,end]. "
-                "Use * as a wildcard for open-ended ranges. The bracket does not "
-                "matter if using *."
+                "Use `*` as a wildcard for open-ended ranges. The bracket does not "
+                "matter if using `*`."
             ),
         ),
-    ] = None,
+    ] = None,  # type: ignore[assignment]
 ) -> PublicationYearRange | None:
     """Parse a publication year range from a query parameter."""
     if not publication_year_range:
@@ -276,7 +276,7 @@ async def search_references(
     publication_year_range: Annotated[
         PublicationYearRange | None,
         Depends(parse_publication_year_range),
-    ] = None,
+    ],
     page: Annotated[
         int,
         Query(
