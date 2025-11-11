@@ -32,7 +32,7 @@ GenericDomainBaseModelType = TypeVar(
 )
 
 
-class RepositoryIdMixin(BaseModel):
+class SQLAttributeMixin(BaseModel):
     """
     Mixin for the DESTINY Repository id attribute.
 
@@ -52,7 +52,7 @@ class RepositoryIdMixin(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class SQLTimestampMixin(RepositoryIdMixin):
+class SQLTimestampMixin(SQLAttributeMixin):
     """
     Mixin for SQLAlchemy timestamps.
 

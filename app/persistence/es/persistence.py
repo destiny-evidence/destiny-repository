@@ -10,7 +10,7 @@ from elasticsearch.dsl.response import Hit
 from pydantic import UUID4, BaseModel, Field
 
 from app.domain.base import (
-    RepositoryIdMixin,  # noqa: F401, required for Pydantic generic construction
+    SQLAttributeMixin,  # noqa: F401, required for Pydantic generic construction
 )
 from app.persistence.generics import GenericDomainModelType
 

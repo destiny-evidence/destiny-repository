@@ -11,17 +11,17 @@ from elasticsearch.dsl import (
 from pydantic import Field
 
 from app.core.exceptions import NotFoundError
-from app.domain.base import DomainBaseModel, RepositoryIdMixin
+from app.domain.base import DomainBaseModel, SQLAttributeMixin
 from app.persistence.es.client import AsyncESClientManager
 from app.persistence.es.index_manager import IndexManager
 from app.persistence.es.persistence import GenericESPersistence
 
 
-class Dummy(DomainBaseModel, RepositoryIdMixin):
+class Dummy(DomainBaseModel, SQLAttributeMixin):
     """
     A Dummy model to use for ES index manager tests.
 
-    Uses the RepositoryIdMixin to autogenerate ids.
+    Uses the SQLAttributeMixin to autogenerate ids.
     Contains only an id and a note.
     """
 

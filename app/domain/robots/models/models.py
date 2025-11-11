@@ -2,10 +2,10 @@
 
 from pydantic import ConfigDict, Field, SecretStr
 
-from app.domain.base import DomainBaseModel, RepositoryIdMixin
+from app.domain.base import DomainBaseModel, SQLAttributeMixin
 
 
-class Robot(DomainBaseModel, RepositoryIdMixin):
+class Robot(DomainBaseModel, SQLAttributeMixin):
     """Core Robot model."""
 
     model_config = ConfigDict(extra="forbid")  # Forbid extra fields on robot model

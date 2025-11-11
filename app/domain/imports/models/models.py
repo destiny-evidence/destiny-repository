@@ -6,7 +6,7 @@ from enum import StrEnum, auto
 
 from pydantic import Field, HttpUrl, PastDatetime
 
-from app.domain.base import DomainBaseModel, ProjectedBaseModel, RepositoryIdMixin
+from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
 
 
 class ImportRecordStatus(StrEnum):
@@ -58,7 +58,7 @@ class ImportResultStatus(StrEnum):
     """Processing has failed, but is being retried."""
 
 
-class ImportRecord(DomainBaseModel, RepositoryIdMixin):
+class ImportRecord(DomainBaseModel, SQLAttributeMixin):
     """Core import record model with database and internal attributes included."""
 
     search_string: str | None = Field(
@@ -106,7 +106,7 @@ The number of references expected to be included in this import.
     )
 
 
-class ImportBatch(DomainBaseModel, ProjectedBaseModel, RepositoryIdMixin):
+class ImportBatch(DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin):
     """Core import batch model with database and internal attributes included."""
 
     storage_url: HttpUrl = Field(
@@ -128,7 +128,7 @@ The URL at which the set of references for this batch are stored.
     )
 
 
-class ImportResult(DomainBaseModel, RepositoryIdMixin):
+class ImportResult(DomainBaseModel, SQLAttributeMixin):
     """Core import result model with database attributes included."""
 
     import_batch_id: uuid.UUID = Field(description="The ID of the parent import batch.")
