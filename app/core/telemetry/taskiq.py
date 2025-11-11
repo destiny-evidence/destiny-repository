@@ -29,11 +29,21 @@ logger = get_logger(__name__)
 async def queue_task_with_trace(
     task: AsyncTaskiqDecoratedTask | tuple[str, str],
     *args: object,
+    long_running: bool = False,
     otel_enabled: bool,
     **kwargs: object,
 ) -> None:
     """
     Wrap around taskiq queueing to inject OpenTelemetry trace context.
+
+    :param task: The TaskIQ task to queue or a tuple of (module_path, task_name).
+    :type task: AsyncTaskiqDecoratedTask | tuple[str, str]
+    :param args: Positional arguments for the task.
+    :type args: object
+    :param long_running: Whether the task is long-running and needs lock renewal.
+    :type long_running: bool
+    :param kwargs: Keyword arguments for the task.
+    :type kwargs: object
 
     All tasks should be queued through this function to ensure
     that the OpenTelemetry trace context is automatically injected.
@@ -46,6 +56,8 @@ async def queue_task_with_trace(
             msg = "String path must resolve to an AsyncTaskiqDecoratedTask"
             raise TypeError(msg)
         task = imported_task
+
+    task.labels["renew_lock"] = long_running
 
     logger.info(
         "Queueing task",
