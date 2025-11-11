@@ -50,7 +50,7 @@ class _JsonlFileInputMixIn(BaseModel):
 
 
 class SearchResultTotal(BaseModel):
-    """A mixin class for models that represent the total number of search results."""
+    """Information about the total number of search results."""
 
     count: int = Field(
         description="The total number of results matching the search criteria.",
