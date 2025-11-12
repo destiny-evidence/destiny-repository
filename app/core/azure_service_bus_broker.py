@@ -20,6 +20,7 @@ from azure.servicebus.aio import (
     ServiceBusSender,
 )
 from azure.servicebus.amqp import AmqpAnnotatedMessage, AmqpMessageBodyType
+from pydantic import TypeAdapter
 from taskiq import AckableMessage, AsyncBroker, BrokerMessage
 
 from app.core.config import get_settings
@@ -86,7 +87,6 @@ class AzureServiceBusBroker(AsyncBroker):
         self.service_bus_client: ServiceBusClient | None = None
         self.sender: ServiceBusSender | None = None
         self.receiver: ServiceBusReceiver | None = None
-        self.auto_lock_renewer_receiver: ServiceBusReceiver | None = None
         self.credential: DefaultAzureCredential | None = None
         self.auto_lock_renewer: AutoLockRenewer | None = None
 
@@ -120,12 +120,6 @@ class AzureServiceBusBroker(AsyncBroker):
             self.receiver = self.service_bus_client.get_queue_receiver(
                 queue_name=self._queue_name,
                 receive_mode=ServiceBusReceiveMode.PEEK_LOCK,
-            )
-            self.auto_lock_renewer_receiver = (
-                self.service_bus_client.get_queue_receiver(
-                    queue_name=self._queue_name,
-                    receive_mode=ServiceBusReceiveMode.PEEK_LOCK,
-                )
             )
             if not self.auto_lock_renewer:
                 self.auto_lock_renewer = AutoLockRenewer(
@@ -171,8 +165,8 @@ class AzureServiceBusBroker(AsyncBroker):
                 "message_id": message.task_id,
                 "correlation_id": message.task_id,
             },
-            annotations={
-                "renew_lock": message.labels.get("renew_lock", False),
+            application_properties={
+                "renew_lock": str(message.labels.get("renew_lock", False))
             },
         )
 
@@ -191,21 +185,6 @@ class AzureServiceBusBroker(AsyncBroker):
             async with self._send_lock:
                 await self.sender.schedule_messages(service_bus_message, scheduled_time)
 
-    def _get_message_annotations(
-        self, message: ServiceBusReceivedMessage | AmqpAnnotatedMessage
-    ) -> dict | None:
-        """
-        Get message annotations.
-
-        :param message: message to get annotations from.
-        :return: annotations dictionary.
-        """
-        if isinstance(message, ServiceBusReceivedMessage):
-            return message.raw_amqp_message.annotations
-        if isinstance(message, AmqpAnnotatedMessage):
-            return message.annotations
-        return None
-
     async def listen(self) -> AsyncGenerator[AckableMessage, None]:
         """
         Listen to queue.
@@ -215,11 +194,7 @@ class AzureServiceBusBroker(AsyncBroker):
         :yields: parsed broker message.
         :raises MessageBrokerError:detail= if startup wasn't called.
         """
-        if (
-            self.receiver is None
-            or self.auto_lock_renewer is None
-            or self.auto_lock_renewer_receiver is None
-        ):
+        if self.receiver is None or self.auto_lock_renewer is None:
             raise MessageBrokerError(detail="Call startup before starting listening.")
 
         while True:
@@ -230,12 +205,15 @@ class AzureServiceBusBroker(AsyncBroker):
 
                 # Process each message
                 for sb_message in batch_messages:
-                    annotations = self._get_message_annotations(sb_message)
-                    if annotations and annotations.get("renew_lock", False):
-                        logger.info("Registering message for auto lock renewal")
-                        self.auto_lock_renewer.register(
-                            self.auto_lock_renewer_receiver, sb_message
+                    properties = sb_message.application_properties
+                    if properties and TypeAdapter(bool).validate_python(
+                        # Try binary then string key
+                        properties.get(
+                            b"renew_lock", properties.get("renew_lock", False)
                         )
+                    ):
+                        logger.info("Registering message for auto lock renewal")
+                        self.auto_lock_renewer.register(self.receiver, sb_message)
 
                     async def ack_message(
                         sb_message: ServiceBusReceivedMessage = sb_message,
