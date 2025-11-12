@@ -1,7 +1,8 @@
 """Unit tests for the projection functions in the references module."""
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
+from random import shuffle
 
 import destiny_sdk
 import pytest
@@ -61,7 +62,7 @@ def bibliographic_enhancement(sample_authorship):
     bibliographic_content = BibliographicMetadataEnhancementFactory.build(
         title="Sample Research Paper",
         authorship=sample_authorship,
-        publication_year=2023,
+        publication_date=datetime(year=2023, month=4, day=2, tzinfo=UTC),
     )
 
     return EnhancementFactory.build(
@@ -181,16 +182,16 @@ class TestReferenceSearchFieldsProjection:
     def test_reference_sorting_prioritises_canonical(
         self, bibliographic_enhancement, sample_authorship
     ):
-        """Test that we prioritise canonical id"""
+        """Test that we prioritise canonical enhancements"""
         reference_id = uuid.uuid4()
 
         canonical_biblography = EnhancementFactory.build(
+            reference_id=reference_id,
             content=BibliographicMetadataEnhancementFactory.build(
-                reference_id=reference_id,
                 title="We get this title, this enhancement is on canonical reference",
                 authorship=sample_authorship,
-                publication_year=2021,
-            )
+                publication_date=datetime(year=2021, month=2, day=17, tzinfo=UTC),
+            ),
         )
 
         reference = ReferenceFactory.build(
@@ -201,12 +202,219 @@ class TestReferenceSearchFieldsProjection:
         reference_proj = ReferenceSearchFieldsProjection.get_from_reference(reference)
         assert reference_proj.title == canonical_biblography.content.title
 
-    def test_get_from_reference(self, sample_authorship, abstract_enhancement):
-        """Test extracting candidacy fingerprint with various scenarios."""
-        # Test 1: Complete bibliographic enhancement with author ordering and whitespace
+    def test_reference_sorting_prioritises_created_date(
+        self, bibliographic_enhancement, sample_authorship
+    ):
+        """Test that we prioritise the created date of the enhancements"""
+        reference_id = uuid.uuid4()
+
+        most_recent_bibliography = EnhancementFactory.build(
+            # Created the day after the the other bibliographic enhancement
+            created_at=bibliographic_enhancement.created_at + timedelta(days=1),
+            content=BibliographicMetadataEnhancementFactory.build(
+                title="We get this title, it's the most recent enhancement",
+                authorship=sample_authorship,
+                publication_date=datetime(year=2021, month=2, day=17, tzinfo=UTC),
+            ),
+        )
+
+        reference = ReferenceFactory.build(
+            id=reference_id,
+            enhancements=[most_recent_bibliography, bibliographic_enhancement],
+        )
+
+        reference_proj = ReferenceSearchFieldsProjection.get_from_reference(reference)
+        assert reference_proj.title == most_recent_bibliography.content.title
+
+    def test_reference_sorting_priorises_canonical_over_most_recent(
+        self, bibliographic_enhancement, sample_authorship
+    ):
+        """
+        Test prioritisation rule order.
+
+        When an enhancement on a duplicate reference is more recent than an
+        enhancement on the canonical reference, we still use the enhancement
+        on the canonical reference.
+        """
+        reference_id = uuid.uuid4()
+        bibliographic_enhancement.reference_id = reference_id
+
+        most_recent_bibliography = EnhancementFactory.build(
+            content=BibliographicMetadataEnhancementFactory.build(
+                title="We don't get this title, there's a canonical bibliography.",
+                authorship=sample_authorship,
+                publication_date=datetime(year=2021, month=2, day=17, tzinfo=UTC),
+            ),
+            # Created more recently than the other bibliographic enhancement
+            created_at=bibliographic_enhancement.created_at + timedelta(days=1),
+        )
+
+        reference = ReferenceFactory.build(
+            id=reference_id,
+            enhancements=[bibliographic_enhancement, most_recent_bibliography],
+        )
+
+        reference_proj = ReferenceSearchFieldsProjection.get_from_reference(reference)
+        assert reference_proj.title == bibliographic_enhancement.content.title
+
+    def test_reference_sorting_the_uber_refrence(
+        self,
+        bibliographic_enhancement: Enhancement,
+        abstract_enhancement: Enhancement,
+        sample_authorship,
+    ):
+        """
+        Big sort test on projecting a reference with the following enhancements
+
+        * A canonical bibliography
+        * A more recent canonical bibliography
+        * A canonical abstract
+        * A more recent canonical abstract
+        * A duplicate bibliography that is the most recent
+        * A duplicate reference abstract that is the most recent
+
+        This test also shuffles the enhancements before adding them to the reference.
+        """
+        canonical_reference_id = uuid.uuid4()
+
+        # Make our two pre-generated enhancements canonical
+        bibliographic_enhancement.reference_id = canonical_reference_id
+        abstract_enhancement.reference_id = canonical_reference_id
+
+        assert bibliographic_enhancement.created_at
+        assert abstract_enhancement.created_at
+
+        most_recent_canonical_bibliography = EnhancementFactory.build(
+            reference_id=canonical_reference_id,
+            content=BibliographicMetadataEnhancementFactory.build(
+                title="We should get this title, most recent canonical bibliography",
+                authorship=sample_authorship,
+            ),
+            # Created more recently than the other canonical bibliographic enhancement
+            created_at=bibliographic_enhancement.created_at + timedelta(days=1),
+        )
+
+        most_recent_bibliography_duplicate_reference = EnhancementFactory.build(
+            content=BibliographicMetadataEnhancementFactory.build(
+                title="We should not get this title, it's a duplicate",
+            ),
+            # Created more recently than all other bibliographies
+            created_at=(
+                most_recent_canonical_bibliography.created_at + timedelta(days=1)
+            ),
+        )
+
+        most_recent_canonical_abstract = EnhancementFactory.build(
+            reference_id=canonical_reference_id,
+            content=AbstractContentEnhancementFactory.build(
+                abstract="We should get this abstract, most recent canonical abstract."
+            ),
+            # Created more recently than the other canonical abstract enhancement
+            created_at=abstract_enhancement.created_at + timedelta(days=1),
+        )
+
+        most_recent_abstract_duplicate_reference = EnhancementFactory.build(
+            content=AbstractContentEnhancementFactory.build(
+                abstract="We should not get this abstract, it's from a duplicate"
+            ),
+            # Created more recently than all other abstracts
+            created_at=most_recent_canonical_abstract.created_at + timedelta(days=1),
+        )
+
+        enhancements = [
+            bibliographic_enhancement,
+            most_recent_canonical_bibliography,
+            most_recent_bibliography_duplicate_reference,
+            abstract_enhancement,
+            most_recent_canonical_abstract,
+            most_recent_abstract_duplicate_reference,
+        ]
+
+        shuffle(enhancements)
+
+        uber_reference = ReferenceFactory.build(
+            id=canonical_reference_id, enhancements=enhancements
+        )
+
+        result = ReferenceSearchFieldsProjection.get_from_reference(uber_reference)
+
+        assert result.abstract == most_recent_canonical_abstract.content.abstract
+        # Assert on expected authors from sample_authors
+        assert result.authors[0] == "John Smith"  # Whitespace stripped
+        assert result.authors[1] == "Alice Johnson"  # Middle author
+        assert result.authors[2] == "Bob Williams"  # Last author
+
+        assert result.publication_year == (
+            most_recent_canonical_bibliography.content.publication_year
+        )
+
+        assert result.title == most_recent_canonical_bibliography.content.title
+
+    def test_get_from_reference_hydrate_missing_bibliography_information(
+        self, sample_authorship
+    ):
+        """Test that we hydrate missing data from lower prioritiy references."""
+        enhancement_with_title = EnhancementFactory.build(
+            source="hydration_source1",
+            content=BibliographicMetadataEnhancementFactory.build(
+                title="Hydration Title",  # This should be used
+                authorship=[],
+                publication_date=None,
+            ),
+            created_at=datetime(year=2021, month=2, day=17, tzinfo=UTC),
+        )
+
+        enhancement_with_authors = EnhancementFactory.build(
+            source="hydration_source2",
+            content=BibliographicMetadataEnhancementFactory.build(
+                title=None,
+                authorship=sample_authorship,
+                publication_date=None,
+            ),
+            # Enhancement is created 1 year after the enhancement with title
+            created_at=enhancement_with_title.created_at + timedelta(days=365),
+        )
+
+        enhancement_with_publication_date = EnhancementFactory.build(
+            source="hydration_source3",
+            content=BibliographicMetadataEnhancementFactory.build(
+                title=None,
+                authorship=[],
+                publication_date=datetime(year=1985, month=3, day=11, tzinfo=UTC),
+            ),
+            # Enhancement is created 1 year before the enhancement with title
+            created_at=enhancement_with_title.created_at - timedelta(days=365),
+        )
+
+        reference = Reference(
+            id=uuid.uuid4(),
+            visibility=Visibility.PUBLIC,
+            enhancements=[
+                enhancement_with_title,
+                enhancement_with_authors,
+                enhancement_with_publication_date,
+            ],
+            identifiers=[],
+        )
+
+        result = ReferenceSearchFieldsProjection.get_from_reference(reference)
+        assert result.title == enhancement_with_title.content.title
+        assert result.publication_year == (
+            enhancement_with_publication_date.content.publication_year
+        )
+        assert len(result.authors) == len(enhancement_with_authors.content.authorship)
+
+    def test_get_from_reference_handles_whitespace_and_author_ordering(self):
+        """
+        Test that we strip whitespace from authors, titles, and abstracts.
+
+        Also test that authors are returned with correct positions
+        """
+        canonical_reference_id = uuid.uuid4()
+
         authorship_with_whitespace = [
             AuthorshipFactory.build(
-                display_name="  John Smith  ",  # Test whitespace stripping
+                display_name="  John Smith  ",
                 orcid="0000-0000-0000-0001",
                 position=destiny_sdk.enhancements.AuthorPosition.FIRST,
             ),
@@ -221,105 +429,66 @@ class TestReferenceSearchFieldsProjection:
             ),
         ]
 
-        content0 = BibliographicMetadataEnhancementFactory.build(
-            title="Check we don't get this title! This should have a lower priority in "
-            " the projection because it comes from a duplicate.",
-            authorship=sample_authorship,
-            publication_year=2021,
-        )
-
-        content1 = BibliographicMetadataEnhancementFactory.build(
-            title="  Sample Research Paper  ",  # Test title whitespace stripping
-            authorship=authorship_with_whitespace,
-            publication_year=2023,
-        )
-
-        enhancement0 = EnhancementFactory.build(
-            source="duplicate_source",
-            content=content0,
-        )
-
-        enhancement1 = EnhancementFactory.build(
+        biblio_enhancement_with_whitespace = EnhancementFactory.build(
             source="test_source",
-            content=content1,
+            reference_id=canonical_reference_id,
+            content=BibliographicMetadataEnhancementFactory.build(
+                title="  Sample Research Paper  ",
+                authorship=authorship_with_whitespace,
+                publication_date=datetime(year=2023, month=4, day=2, tzinfo=UTC),
+            ),
         )
 
-        # Test 2: Publication date fallback when publication_year is None
-        content2 = BibliographicMetadataEnhancementFactory.build(
-            enhancement_type=EnhancementType.BIBLIOGRAPHIC,
-            title="Date Fallback Paper",
-            publication_date=date(2022, 8, 10),
-            publication_year=None,
+        abstract_enhancement_with_whitespace = EnhancementFactory.build(
+            source="test_source",
+            reference_id=canonical_reference_id,
+            content=AbstractContentEnhancementFactory.build(
+                abstract="   Sample Reserch Abstract   "
+            ),
         )
 
-        enhancement2 = EnhancementFactory.build(
-            source="fallback_source",
-            content=content2,
+        reference_with_whitespace = ReferenceFactory.build(
+            id=canonical_reference_id,
+            enhancements=[
+                biblio_enhancement_with_whitespace,
+                abstract_enhancement_with_whitespace,
+            ],
         )
 
-        # Test 3: Multiple enhancements with hydration behavior
-        content3 = BibliographicMetadataEnhancementFactory.build(
-            title="Hydration Title",  # This should be used
+        result = ReferenceSearchFieldsProjection.get_from_reference(
+            reference_with_whitespace
         )
-
-        enhancement3 = EnhancementFactory.build(
-            source="hydration_source1",
-            content=content3,
+        assert result.title == "Sample Research Paper"  # Whitespace stripped
+        assert result.publication_year == (
+            biblio_enhancement_with_whitespace.content.publication_year
         )
-
-        content4 = BibliographicMetadataEnhancementFactory.build(
-            # No title - should use previous one
-            title=None,
-            authorship=sample_authorship,  # Should use this authorship
-            publication_year=2024,  # Should use this year
-        )
-
-        enhancement4 = EnhancementFactory.build(
-            source="hydration_source2",
-            content=content4,
-        )
-
-        # Test complete enhancement
-        abstract_enhancement.reference_id = enhancement1.reference_id
-        reference1 = ReferenceFactory.build(
-            id=enhancement1.id,
-            enhancements=[enhancement0, enhancement1, abstract_enhancement],
-            identifiers=[],
-        )
-
-        result1 = ReferenceSearchFieldsProjection.get_from_reference(reference1)
-        assert result1.title == "Sample Research Paper"  # Whitespace stripped
-        assert result1.publication_year == 2023
-        assert result1.abstract == abstract_enhancement.content.abstract
-        assert len(result1.authors) == 3
+        assert result.abstract == "Sample Reserch Abstract"  # Whitespace stripped
+        assert len(result.authors) == 3
         # Check author ordering: first, middle (sorted by name), last
-        assert result1.authors[0] == "John Smith"  # Whitespace stripped
-        assert result1.authors[1] == "Alice Johnson"  # Middle author
-        assert result1.authors[2] == "Bob Williams"  # Last author
+        assert result.authors[0] == "John Smith"  # Whitespace stripped
+        assert result.authors[1] == "Alice Johnson"  # Middle author
+        assert result.authors[2] == "Bob Williams"  # Last author
 
-        # Test publication date fallback
-        reference2 = Reference(
-            id=uuid.uuid4(),
-            visibility=Visibility.PUBLIC,
-            enhancements=[enhancement2],
-            identifiers=[],
+    def test_get_from_reference_publication_date_fallback(self):
+        """Test we get year from publication date if publication year not provided."""
+        enhancement_without_publication_year = EnhancementFactory.build(
+            source="fallback_source",
+            # Can't use factory here as we're explicity setting missing values
+            content=destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+                enhancement_type=EnhancementType.BIBLIOGRAPHIC,
+                title="Date Fallback Paper",
+                publication_date=date(2022, 8, 10),
+                publication_year=None,
+            ),
+        )
+        assert not enhancement_without_publication_year.content.publication_year
+
+        reference = Reference(
+            enhancements=[enhancement_without_publication_year],
         )
 
-        result2 = ReferenceSearchFieldsProjection.get_from_reference(reference2)
-        assert result2.publication_year == 2022  # From publication_date
-
-        # Test multiple enhancements hydration
-        reference3 = Reference(
-            id=uuid.uuid4(),
-            visibility=Visibility.PUBLIC,
-            enhancements=[enhancement3, enhancement4],
-            identifiers=[],
-        )
-
-        result3 = ReferenceSearchFieldsProjection.get_from_reference(reference3)
-        assert result3.title == "Hydration Title"  # From first enhancement
-        assert result3.publication_year == 2024  # From second enhancement
-        assert len(result3.authors) == 3  # From second enhancement
+        result = ReferenceSearchFieldsProjection.get_from_reference(reference)
+        assert result.publication_year == 2022  # From publication_date
 
     def test_get_from_reference_empty_enhancements(self):
         """Test extracting reference search feilds with empty enhancements"""

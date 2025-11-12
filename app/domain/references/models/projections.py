@@ -40,7 +40,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             abstract = None
             authorship: list[destiny_sdk.enhancements.Authorship] = []
 
-            for enhancement in cls._priority_sorted_enhancements(
+            for enhancement in cls.__priority_sorted_enhancements(
                 canonical_id=reference.id, enhancements=reference.enhancements
             ):
                 if (
@@ -63,28 +63,43 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                 elif enhancement.content.enhancement_type == EnhancementType.ABSTRACT:
                     abstract = enhancement.content.abstract
 
-            # Author normalization:
-            # Maintain first and last author, sort middle authors by name
-            authorship = sorted(
-                authorship,
-                key=lambda author: (
-                    {
-                        destiny_sdk.enhancements.AuthorPosition.FIRST: -1,
-                        destiny_sdk.enhancements.AuthorPosition.LAST: 1,
-                    }.get(author.position, 0),
-                    author.display_name.strip(),
-                ),
+            return cls.__normalised_reference_search_fields(
+                abstract=abstract,
+                authorship=authorship,
+                publication_year=publication_year,
+                title=title,
             )
-
-            if title:
-                title = title.strip()
-
-            if abstract:
-                abstract = abstract.strip()
 
         except Exception as exc:
             msg = "Failed to project ReferenceSearchFields from Reference"
             raise ProjectionError(msg) from exc
+
+    @classmethod
+    def __normalised_reference_search_fields(
+        cls,
+        abstract: str | None,
+        authorship: list[destiny_sdk.enhancements.Authorship],
+        publication_year: int | None,
+        title: str | None,
+    ) -> ReferenceSearchFields:
+        """Strip whitespace, normalise authors."""
+        # Maintain first and last author, sort middle authors by name
+        authorship = sorted(
+            authorship,
+            key=lambda author: (
+                {
+                    destiny_sdk.enhancements.AuthorPosition.FIRST: -1,
+                    destiny_sdk.enhancements.AuthorPosition.LAST: 1,
+                }.get(author.position, 0),
+                author.display_name.strip(),
+            ),
+        )
+
+        if title:
+            title = title.strip()
+
+        if abstract:
+            abstract = abstract.strip()
 
         return ReferenceSearchFields(
             abstract=abstract,
@@ -94,21 +109,41 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
         )
 
     @classmethod
-    def _priority_sorted_enhancements(
+    def __priority_sorted_enhancements(
         cls, canonical_id: uuid.UUID, enhancements: list[Enhancement] | None
     ) -> list[Enhancement]:
         """
-        Order a references enhancements by priority for projecting.
+        Order a references enhancements by priority for projecting in increasing order.
 
-        Currently sorts in reverse order prioritising the canonical reference id.
+        Prioritiy is defined as
+        * Firstly, we prioritize enhancements on the canonical reference
+        * Secondly, we prioritize most recent enhancements
+
+        Concretely
+        * If there's an abstract on the canonical, use that
+        * If there's two abstracts on the canonical, use the most recent
+        * If there's no abstracts on the canonical, use the most recent
+        abstract from all duplicates.
+
+        So this function places the highest priority enhancement at the end of the list.
         """
-        return sorted(
-            enhancements or [],
-            # This preferences the canonical reference's enhancements
-            # over those of its duplicates.
-            key=lambda e: e.reference_id == canonical_id,
-            reverse=True,
-        )
+        if not enhancements:
+            return []
+
+        def __priority_sort_key(
+            canonical_id: uuid.UUID, enhancement: Enhancement
+        ) -> tuple[bool, float]:
+            """Key for sorting enhancements."""
+            if not enhancement.created_at:
+                msg = "We should never try to project an enhancement without created_at"
+                raise RuntimeError(msg)
+
+            return (
+                enhancement.reference_id == canonical_id,
+                enhancement.created_at.timestamp(),
+            )
+
+        return sorted(enhancements, key=lambda e: __priority_sort_key(canonical_id, e))
 
     @classmethod
     def get_canonical_candidate_search_fields(
