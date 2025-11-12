@@ -40,7 +40,7 @@ class ExternalIdentifierDocument(GenericNestedDocument):
     """Persistence model for external identifiers in Elasticsearch."""
 
     reference_id: UUID = mapped_field(Keyword(required=True))
-    identifier: str = mapped_field(Text(required=True))
+    identifier: str = mapped_field(Keyword(required=True))
     identifier_type: ExternalIdentifierType = mapped_field(Keyword(required=True))
     other_identifier_name: str | None = mapped_field(Keyword())
 
