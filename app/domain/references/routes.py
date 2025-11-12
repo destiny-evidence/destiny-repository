@@ -332,7 +332,6 @@ async def search_references(
             "Multiple sort fields can be provided and will be applied "
             "in the order given. Sort fields cannot be `text` fields.",
         ),
-        None,
     ] = None,
 ) -> destiny_sdk.references.ReferenceSearchResult:
     """Search for references given a query string."""
