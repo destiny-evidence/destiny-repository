@@ -172,7 +172,7 @@ class AzureServiceBusBroker(AsyncBroker):
                 "correlation_id": message.task_id,
             },
             application_properties={
-                "renew_lock": message.labels.get("renew_lock", False)
+                "renew_lock": str(message.labels.get("renew_lock", False))
             },
         )
 
