@@ -20,7 +20,7 @@ from destiny_sdk.identifiers import ExternalIdentifierType
 from destiny_sdk.references import Reference
 
 
-class ReferenceLabs(BaseModel):
+class LabsReference(BaseModel):
     """Experimental presenter class for Reference with added convenience methods."""
 
     reference: Reference = Field(
