@@ -19,7 +19,11 @@ from azure.servicebus.aio import (
     ServiceBusReceiver,
     ServiceBusSender,
 )
-from azure.servicebus.amqp import AmqpAnnotatedMessage, AmqpMessageBodyType
+from azure.servicebus.amqp import (
+    AmqpAnnotatedMessage,
+    AmqpMessageBodyType,
+    AmqpMessageProperties,
+)
 from taskiq import AckableMessage, AsyncBroker, BrokerMessage
 
 from app.core.config import get_settings
@@ -170,8 +174,6 @@ class AzureServiceBusBroker(AsyncBroker):
             properties={
                 "message_id": message.task_id,
                 "correlation_id": message.task_id,
-            },
-            annotations={
                 "renew_lock": message.labels.get("renew_lock", False),
             },
         )
@@ -191,9 +193,9 @@ class AzureServiceBusBroker(AsyncBroker):
             async with self._send_lock:
                 await self.sender.schedule_messages(service_bus_message, scheduled_time)
 
-    def _get_message_annotations(
+    def _get_message_properties(
         self, message: ServiceBusReceivedMessage | AmqpAnnotatedMessage
-    ) -> dict | None:
+    ) -> AmqpMessageProperties | None:
         """
         Get message annotations.
 
@@ -201,9 +203,9 @@ class AzureServiceBusBroker(AsyncBroker):
         :return: annotations dictionary.
         """
         if isinstance(message, ServiceBusReceivedMessage):
-            return message.raw_amqp_message.annotations
+            return message.raw_amqp_message.properties
         if isinstance(message, AmqpAnnotatedMessage):
-            return message.annotations
+            return message.properties
         return None
 
     async def listen(self) -> AsyncGenerator[AckableMessage, None]:
@@ -230,8 +232,8 @@ class AzureServiceBusBroker(AsyncBroker):
 
                 # Process each message
                 for sb_message in batch_messages:
-                    annotations = self._get_message_annotations(sb_message)
-                    if annotations and annotations.get("renew_lock", False):
+                    properties = self._get_message_properties(sb_message)
+                    if properties and properties.get("renew_lock", False):
                         logger.info("Registering message for auto lock renewal")
                         self.auto_lock_renewer.register(
                             self.auto_lock_renewer_receiver, sb_message
