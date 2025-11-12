@@ -192,21 +192,6 @@ class AzureServiceBusBroker(AsyncBroker):
             async with self._send_lock:
                 await self.sender.schedule_messages(service_bus_message, scheduled_time)
 
-    def _get_message_properties(
-        self, message: ServiceBusReceivedMessage | AmqpAnnotatedMessage
-    ) -> dict | None:
-        """
-        Get message annotations.
-
-        :param message: message to get annotations from.
-        :return: annotations dictionary.
-        """
-        if isinstance(message, ServiceBusReceivedMessage):
-            return message.raw_amqp_message.application_properties
-        if isinstance(message, AmqpAnnotatedMessage):
-            return message.application_properties
-        return None
-
     async def listen(self) -> AsyncGenerator[AckableMessage, None]:
         """
         Listen to queue.
@@ -231,7 +216,13 @@ class AzureServiceBusBroker(AsyncBroker):
 
                 # Process each message
                 for sb_message in batch_messages:
-                    properties = self._get_message_properties(sb_message)
+                    properties = sb_message.application_properties
+                    logger.info(
+                        "Received message",
+                        properties=properties,
+                        message=sb_message,
+                        raw_message=sb_message.raw_amqp_message,
+                    )
                     if properties and TypeAdapter(bool).validate_python(
                         properties.get("renew_lock", False)
                     ):
