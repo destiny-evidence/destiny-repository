@@ -87,7 +87,6 @@ class AzureServiceBusBroker(AsyncBroker):
         self.service_bus_client: ServiceBusClient | None = None
         self.sender: ServiceBusSender | None = None
         self.receiver: ServiceBusReceiver | None = None
-        self.auto_lock_renewer_receiver: ServiceBusReceiver | None = None
         self.credential: DefaultAzureCredential | None = None
         self.auto_lock_renewer: AutoLockRenewer | None = None
 
@@ -121,12 +120,6 @@ class AzureServiceBusBroker(AsyncBroker):
             self.receiver = self.service_bus_client.get_queue_receiver(
                 queue_name=self._queue_name,
                 receive_mode=ServiceBusReceiveMode.PEEK_LOCK,
-            )
-            self.auto_lock_renewer_receiver = (
-                self.service_bus_client.get_queue_receiver(
-                    queue_name=self._queue_name,
-                    receive_mode=ServiceBusReceiveMode.PEEK_LOCK,
-                )
             )
             if not self.auto_lock_renewer:
                 self.auto_lock_renewer = AutoLockRenewer(
@@ -201,11 +194,7 @@ class AzureServiceBusBroker(AsyncBroker):
         :yields: parsed broker message.
         :raises MessageBrokerError:detail= if startup wasn't called.
         """
-        if (
-            self.receiver is None
-            or self.auto_lock_renewer is None
-            or self.auto_lock_renewer_receiver is None
-        ):
+        if self.receiver is None or self.auto_lock_renewer is None:
             raise MessageBrokerError(detail="Call startup before starting listening.")
 
         while True:
@@ -221,9 +210,7 @@ class AzureServiceBusBroker(AsyncBroker):
                         properties.get(b"renew_lock", False)
                     ):
                         logger.info("Registering message for auto lock renewal")
-                        self.auto_lock_renewer.register(
-                            self.auto_lock_renewer_receiver, sb_message
-                        )
+                        self.auto_lock_renewer.register(self.receiver, sb_message)
 
                     async def ack_message(
                         sb_message: ServiceBusReceivedMessage = sb_message,
