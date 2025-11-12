@@ -207,7 +207,10 @@ class AzureServiceBusBroker(AsyncBroker):
                 for sb_message in batch_messages:
                     properties = sb_message.application_properties
                     if properties and TypeAdapter(bool).validate_python(
-                        properties.get(b"renew_lock", False)
+                        # Try binary then string key
+                        properties.get(
+                            b"renew_lock", properties.get("renew_lock", False)
+                        )
                     ):
                         logger.info("Registering message for auto lock renewal")
                         self.auto_lock_renewer.register(self.receiver, sb_message)
