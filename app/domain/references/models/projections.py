@@ -113,31 +113,37 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
         cls, canonical_id: uuid.UUID, enhancements: list[Enhancement] | None
     ) -> list[Enhancement]:
         """
-        Order a references enhancements by priority for projecting.
+        Order a references enhancements by priority for projecting in reverse order.
 
-        Currently sorts in reverse order prioritising the canonical reference id.
+        Prioritiy is defined as
+        * Firstly, we prioritize enhancements on the canonical reference
+        * Secondly, we prioritize most recent enhancements
+
+        Concretely
+        * If there's an abstract on the canonical, use that
+        * If there's two abstracts on the canonical, use the most recent
+        * If there's no abstracts on the canonical, use the most recent
+        abstract from all duplicates.
+
+        So this function places the highest priority enhancement at the end of the list.
         """
         if not enhancements:
             return []
 
-        canonical_enhancements = []
-        duplicate_enhancements = []
+        def __priority_sort_key(
+            canonical_id: uuid.UUID, enhancement: Enhancement
+        ) -> tuple[bool, float]:
+            """Key for sorting enhancements."""
+            if not enhancement.created_at:
+                msg = "We should never try to project an enhancement without created_at"
+                raise RuntimeError(msg)
 
-        for enhancement in enhancements:
-            if enhancement.reference_id == canonical_id:
-                canonical_enhancements.append(enhancement)
-            else:
-                duplicate_enhancements.append(enhancement)
+            return (
+                enhancement.reference_id == canonical_id,
+                enhancement.created_at.timestamp(),
+            )
 
-        sorted_duplicates = sorted(
-            duplicate_enhancements, key=lambda e: e.created_at.timestamp()
-        )
-
-        sorted_canonicals = sorted(
-            canonical_enhancements, key=lambda e: e.created_at.timestamp()
-        )
-
-        return sorted_duplicates + sorted_canonicals
+        return sorted(enhancements, key=lambda e: __priority_sort_key(canonical_id, e))
 
     @classmethod
     def get_canonical_candidate_search_fields(
