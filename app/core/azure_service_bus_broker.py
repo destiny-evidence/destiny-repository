@@ -217,14 +217,8 @@ class AzureServiceBusBroker(AsyncBroker):
                 # Process each message
                 for sb_message in batch_messages:
                     properties = sb_message.application_properties
-                    logger.info(
-                        "Received message",
-                        properties=properties,
-                        message=sb_message,
-                        raw_message=sb_message.raw_amqp_message,
-                    )
                     if properties and TypeAdapter(bool).validate_python(
-                        properties.get("renew_lock", False)
+                        properties.get(b"renew_lock", False)
                     ):
                         logger.info("Registering message for auto lock renewal")
                         self.auto_lock_renewer.register(
