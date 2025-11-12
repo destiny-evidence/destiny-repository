@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from random import shuffle
 
 import destiny_sdk
 import pytest
@@ -255,6 +256,99 @@ class TestReferenceSearchFieldsProjection:
 
         reference_proj = ReferenceSearchFieldsProjection.get_from_reference(reference)
         assert reference_proj.title == bibliographic_enhancement.content.title
+
+    def test_reference_sorting_the_uber_refrence(
+        self,
+        bibliographic_enhancement: Enhancement,
+        abstract_enhancement: Enhancement,
+        sample_authorship,
+    ):
+        """
+        Big sort test on projecting a reference with the following enhancements
+
+        * A canonical bibliography
+        * A more recent canonical bibliography
+        * A canonical abstract
+        * A more recent canonical abstract
+        * A duplicate bibliography that is the most recent
+        * A duplicate reference abstract that is the most recent
+
+        This test also shuffles the enhancements before adding them to the reference.
+        """
+        canonical_reference_id = uuid.uuid4()
+
+        # Make our two pre-generated enhancements canonical
+        bibliographic_enhancement.reference_id = canonical_reference_id
+        abstract_enhancement.reference_id = canonical_reference_id
+
+        assert bibliographic_enhancement.created_at
+        assert abstract_enhancement.created_at
+
+        most_recent_canonical_bibliography = EnhancementFactory.build(
+            reference_id=canonical_reference_id,
+            content=BibliographicMetadataEnhancementFactory.build(
+                title="We should get this title, most recent canonical bibliography",
+                authorship=sample_authorship,
+            ),
+            # Created more recently than the other canonical bibliographic enhancement
+            created_at=bibliographic_enhancement.created_at + timedelta(days=1),
+        )
+
+        most_recent_bibliography_duplicate_reference = EnhancementFactory.build(
+            content=BibliographicMetadataEnhancementFactory.build(
+                title="We should not get this title, it's a duplicate",
+            ),
+            # Created more recently than all other bibliographies
+            created_at=(
+                most_recent_canonical_bibliography.created_at + timedelta(days=1)
+            ),
+        )
+
+        most_recent_canonical_abstract = EnhancementFactory.build(
+            reference_id=canonical_reference_id,
+            content=AbstractContentEnhancementFactory.build(
+                abstract="We should get this abstract, most recent canonical abstract."
+            ),
+            # Created more recently than the other canonical abstract enhancement
+            created_at=abstract_enhancement.created_at + timedelta(days=1),
+        )
+
+        most_recent_abstract_duplicate_reference = EnhancementFactory.build(
+            content=AbstractContentEnhancementFactory.build(
+                abstract="We should not get this abstract, it's from a duplicate"
+            ),
+            # Created more recently than all other abstracts
+            created_at=most_recent_canonical_abstract.created_at + timedelta(days=1),
+        )
+
+        enhancements = [
+            bibliographic_enhancement,
+            most_recent_canonical_bibliography,
+            most_recent_bibliography_duplicate_reference,
+            abstract_enhancement,
+            most_recent_canonical_abstract,
+            most_recent_abstract_duplicate_reference,
+        ]
+
+        shuffle(enhancements)
+
+        uber_reference = ReferenceFactory.build(
+            id=canonical_reference_id, enhancements=enhancements
+        )
+
+        result = ReferenceSearchFieldsProjection.get_from_reference(uber_reference)
+
+        assert result.abstract == most_recent_canonical_abstract.content.abstract
+        # Assert on expected authors from sample_authors
+        assert result.authors[0] == "John Smith"  # Whitespace stripped
+        assert result.authors[1] == "Alice Johnson"  # Middle author
+        assert result.authors[2] == "Bob Williams"  # Last author
+
+        assert result.publication_year == (
+            most_recent_canonical_bibliography.content.publication_year
+        )
+
+        assert result.title == most_recent_canonical_bibliography.content.title
 
     def test_get_from_reference_hydrate_missing_bibliography_information(
         self, sample_authorship
