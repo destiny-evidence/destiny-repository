@@ -258,7 +258,7 @@ def parse_annotation_filters(
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
     annotation: Annotated[
-        list[Annotated[str, Field(pattern=r"^[^/]+(/[^/]+)?(@[0-9]+(\.[0-9]+)?)?$")]],
+        list[str],
         Query(
             description=(
                 "A list of annotation filters to apply to the search. "
