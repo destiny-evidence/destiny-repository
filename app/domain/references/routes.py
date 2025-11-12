@@ -226,31 +226,21 @@ def parse_publication_year_range(
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
-    # Typing transgressions here make the API docs cleaner. Sorry.
-    publication_year_range: Annotated[
-        str,
-        Query(
-            pattern=r"[\[\(]([0-9]{4}|\*),([0-9]{4}|\*)[\]\)]",
-            examples=[
-                "[2020,*]",
-                "[2015,2020)",
-                "[2018,2018]",
-                "(*,2022]",
-            ],
-            description=(
-                "A publication year range to filter results by. "
-                "Use `*` as a wildcard for open-ended ranges. The bracket does not "
-                "matter if using `*`."
-            ),
-        ),
+    start_year: Annotated[
+        int,
+        Query(description="Filter for references published on or after this year."),
+    ] = None,
+    end_year: Annotated[
+        int,
+        Query(description="Filter for references published on or before this year."),
     ] = None,
 ) -> PublicationYearRange | None:
     """Parse a publication year range from a query parameter."""
-    if not publication_year_range:
-        return None
-    return anti_corruption_service.publication_year_range_from_query_parameter(
-        publication_year_range_string=publication_year_range
-    )
+    if start_year or end_year:
+        return anti_corruption_service.publication_year_range_from_query_parameter(
+            start_year, end_year
+        )
+    return None
 
 
 def parse_annotation_filters(

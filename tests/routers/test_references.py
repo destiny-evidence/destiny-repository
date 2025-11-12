@@ -790,7 +790,7 @@ async def test_search_references_happy_path(
     # Verify adding a publication year excludes the result
     response = await client.get(
         "/v1/references/search/",
-        params={"q": "title:Test paper", "publication_year_range": "[2021,2023)"},
+        params={"q": "title:Test paper", "start_year": 2021, "end_year": 2022},
     )
     assert response.status_code == status.HTTP_200_OK
     data = response.json()

@@ -5,7 +5,7 @@ import uuid
 import destiny_sdk
 from pydantic import ValidationError
 
-from app.core.exceptions import DomainToSDKError, ParseError, SDKToDomainError
+from app.core.exceptions import DomainToSDKError, SDKToDomainError
 from app.domain.references.models.models import (
     AnnotationFilter,
     Enhancement,
@@ -343,32 +343,10 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
 
     def publication_year_range_from_query_parameter(
         self,
-        publication_year_range_string: str,
+        start_year: int | None,
+        end_year: int | None,
     ) -> PublicationYearRange:
         """Parse a publication year range from a query parameter."""
-        if "," not in publication_year_range_string:
-            msg = "Invalid publication year range format. Must contain a comma."
-            raise ParseError(msg)
-
-        start, end = publication_year_range_string.split(",")
-        start_bracket, start_year_str = start[0], start[1:]
-        end_year_str, end_bracket = end[:-1], end[-1]
-
-        if start_bracket not in ("[", "(") or end_bracket not in ("]", ")"):
-            msg = "Invalid publication year range format. "
-            "Must start and end with a bracket."
-            raise ParseError(msg)
-
-        if start_year_str == "*":
-            start_year = None
-        else:
-            start_year = int(start_year_str) + (1 if start_bracket == "(" else 0)
-
-        if end_year_str == "*":
-            end_year = None
-        else:
-            end_year = int(end_year_str) - (1 if end_bracket == ")" else 0)
-
         return PublicationYearRange(start=start_year, end=end_year)
 
     def annotation_filter_from_query_parameter(
