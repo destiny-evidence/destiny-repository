@@ -14,13 +14,19 @@ from pydantic import (
     UUID4,
     BaseModel,
     Field,
+    PositiveInt,
     TypeAdapter,
     field_validator,
     model_validator,
 )
 
 from app.core.telemetry.logger import get_logger
-from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
+from app.domain.base import (
+    DomainBaseModel,
+    ProjectedBaseModel,
+    SQLAttributeMixin,
+    SQLTimestampMixin,
+)
 from app.persistence.blob.models import BlobStorageFile
 
 logger = get_logger(__name__)
@@ -268,11 +274,11 @@ class GenericExternalIdentifier(DomainBaseModel):
     identifier: str = Field(
         description="The identifier itself.",
     )
-    identifier_type: ExternalIdentifierType = Field(
-        description="The type of the identifier.",
+    identifier_type: ExternalIdentifierType | None = Field(
+        description="The type of the identifier. If None, identifier is a database id.",
     )
     other_identifier_name: str | None = Field(
-        None,
+        default=None,
         description="The name of the other identifier.",
     )
 
@@ -291,11 +297,11 @@ class GenericExternalIdentifier(DomainBaseModel):
         )
 
 
-class ExternalIdentifierSearch(GenericExternalIdentifier):
+class IdentifierLookup(GenericExternalIdentifier):
     """Model to search for an external identifier."""
 
 
-class Enhancement(DomainBaseModel, SQLAttributeMixin):
+class Enhancement(DomainBaseModel, SQLTimestampMixin):
     """Core enhancement model with database attributes included."""
 
     source: str = Field(
@@ -326,10 +332,15 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     )
 
     def hash_data(self) -> int:
-        """Contentwise hash of the enhancement, excluding relationships."""
+        """
+        Contentwise hash of the enhancement.
+
+        Excludes relationships and timestamps.
+        """
         return hash(
             self.model_dump_json(
-                exclude={"id", "reference_id", "reference"}, exclude_none=True
+                exclude={"id", "reference_id", "reference", "created_at", "updated_at"},
+                exclude_none=True,
             )
         )
 
@@ -430,13 +441,9 @@ class RobotAutomationPercolationResult(BaseModel):
 
 class CandidateCanonicalSearchFields(ProjectedBaseModel):
     """
-    Projection representing fields used for candidate canonical selection.
+    Fields used for candidate canonical selection.
 
-    This model is a projection of
-    :class:`app.domain.references.models.models.Reference`.
-
-    This is injected into the root of Elasticsearch Reference documents for easy
-    searching. The search implementation lives at
+    The search implementation lives at
     :attr:`app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals`.
     """
 
@@ -456,6 +463,44 @@ class CandidateCanonicalSearchFields(ProjectedBaseModel):
     def is_searchable(self) -> bool:
         """Whether the projection has the fields required to search for candidates."""
         return all((self.publication_year, self.authors, self.title))
+
+
+class ReferenceSearchFields(ProjectedBaseModel):
+    """
+    Projection representing fields used for searching references.
+
+    This model is a projection of
+    :class:`app.domain.references.models.models.Reference`.
+
+    This is injected into the root of Elasticsearch Reference documents for easy
+    searching.
+    """
+
+    abstract: str | None = Field(
+        default=None, description="The abstract of the reference."
+    )
+
+    authors: list[str] = Field(
+        default_factory=list, description="The authors of the reference."
+    )
+
+    publication_year: int | None = Field(
+        default=None,
+        description="The publication year of the reference.",
+    )
+
+    title: str | None = Field(
+        default=None,
+        description="The title of the reference.",
+    )
+
+    def to_canonical_candidate_search_fields(self) -> CandidateCanonicalSearchFields:
+        """Return fields needed for candidate canonical selection."""
+        return CandidateCanonicalSearchFields(
+            publication_year=self.publication_year,
+            authors=self.authors,
+            title=self.title,
+        )
 
 
 class ReferenceDuplicateDeterminationResult(BaseModel):
@@ -478,12 +523,10 @@ class ReferenceDuplicateDeterminationResult(BaseModel):
     )
 
     @model_validator(mode="after")
-    def check_canonical_reference_id_populated_iff_canonical(self) -> Self:
+    def check_canonical_reference_id_populated_iff_duplicate(self) -> Self:
         """Assert that canonical must exist if and only if decision is duplicate."""
-        if (
-            self.canonical_reference_id
-            is not None
-            == (self.duplicate_determination == DuplicateDetermination.DUPLICATE)
+        if (self.canonical_reference_id is not None) != (
+            self.duplicate_determination == DuplicateDetermination.DUPLICATE
         ):
             msg = (
                 "canonical_reference_id must be populated if and only if "
@@ -585,6 +628,7 @@ class PendingEnhancementStatus(StrEnum):
     - `importing`: Enhancement is currently being imported.
     - `indexing`: Enhancement is currently being indexed.
     - `indexing_failed`: Enhancement indexing has failed.
+    - `discarded`: Enhancement has been discarded as an exact duplicate.
     - `completed`: Enhancement has been processed successfully.
     - `failed`: Enhancement processing has failed.
     - `expired`: Enhancement lease has expired during processing.
@@ -595,6 +639,7 @@ class PendingEnhancementStatus(StrEnum):
     IMPORTING = auto()
     INDEXING = auto()
     INDEXING_FAILED = auto()
+    DISCARDED = auto()
     COMPLETED = auto()
     FAILED = auto()
     EXPIRED = auto()
@@ -708,4 +753,40 @@ class ReferenceIds(BaseModel):
     reference_ids: list[UUID4] = Field(
         ...,
         description="A list of reference IDs.",
+    )
+
+
+class PublicationYearRange(BaseModel):
+    """A range of publication years for filtering search results."""
+
+    start: PositiveInt | None = Field(
+        None,
+        description="Start year (inclusive)",
+    )
+    end: PositiveInt | None = Field(
+        None,
+        description="End year (inclusive)",
+    )
+
+    @model_validator(mode="after")
+    def validate_end_ge_start(self) -> Self:
+        """Validate that end year is greater than or equal to start year."""
+        if self.start and self.end and self.end < self.start:
+            msg = "End year must be greater than or equal to start year."
+            raise ValueError(msg)
+        return self
+
+
+class AnnotationFilter(BaseModel):
+    """Model representing an annotation filter for searching references."""
+
+    scheme: str = Field(description="The annotation scheme to filter on.")
+    label: str | None = Field(
+        description="The annotation label to filter on.", default=None
+    )
+    score: float | None = Field(
+        default=None,
+        description="Optional score threshold for the annotation filter.",
+        ge=0.0,
+        le=1.0,
     )

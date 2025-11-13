@@ -257,6 +257,21 @@ class ESMalformedDocumentError(ESError):
         super().__init__(detail, *args)
 
 
+class ESQueryError(ESError):
+    """Exception for when an Elasticsearch query cannot be executed."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the ESQueryError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
 class WrongReferenceError(InvalidPayloadError):
     """Exception for when enhancement is for a different reference than requested."""
 
@@ -514,6 +529,34 @@ class DeduplicationValueError(DeduplicationError, ValueError):
     def __init__(self, detail: str) -> None:
         """
         Initialize the DeduplicationValueError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+
+        """
+        super().__init__(detail)
+
+
+class ParseError(DestinyRepositoryError):
+    """An exception for when we fail to parse some input."""
+
+    def __init__(self, detail: str) -> None:
+        """
+        Initialize the ParseError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+
+        """
+        super().__init__(detail)
+
+
+class DuplicateEnhancementError(DestinyRepositoryError):
+    """An exception for when an exact duplicate enhancement is detected."""
+
+    def __init__(self, detail: str) -> None:
+        """
+        Initialize the DuplicateEnhancementError exception.
 
         Args:
             detail (str): The detail message for the exception.

@@ -36,7 +36,9 @@ class GenericSQLPersistence(
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
 
     created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, nullable=False
+        DateTime(timezone=True),
+        default=utc_now,
+        nullable=False,
     )
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),

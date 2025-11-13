@@ -2,9 +2,9 @@
 
 # Convenience script to recreate the local environment.
 
-docker compose --profile search --profile app down -v
+docker compose --profile search --profile app --profile ui down -v
 
-docker compose --profile search --profile app up -d
+docker compose --profile search --profile app --profile ui up -d
 
 uv run alembic upgrade head
 

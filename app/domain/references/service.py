@@ -1,5 +1,6 @@
 """The service for interacting with and managing references."""
 
+import uuid
 from collections import defaultdict
 from collections.abc import Collection, Iterable
 from uuid import UUID
@@ -10,6 +11,7 @@ from app.core.config import (
     get_settings,
 )
 from app.core.exceptions import (
+    DuplicateEnhancementError,
     InvalidParentEnhancementError,
     SQLNotFoundError,
 )
@@ -17,17 +19,19 @@ from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
+    AnnotationFilter,
     DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifier,
-    ExternalIdentifierSearch,
     ExternalIdentifierType,
+    IdentifierLookup,
     LinkedExternalIdentifier,
     PendingEnhancement,
     PendingEnhancementStatus,
+    PublicationYearRange,
     Reference,
     ReferenceDuplicateDecision,
     ReferenceIds,
@@ -50,6 +54,7 @@ from app.domain.references.services.enhancement_service import (
     EnhancementService,
     ProcessedResults,
 )
+from app.domain.references.services.search_service import SearchService
 from app.domain.references.services.synchronizer_service import (
     Synchronizer,
 )
@@ -57,6 +62,7 @@ from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
+from app.persistence.es.persistence import ESSearchResult
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.es.uow import unit_of_work as es_unit_of_work
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -82,6 +88,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self._deduplication_service = DeduplicationService(
             anti_corruption_service, sql_uow, es_uow
         )
+        self._search_service = SearchService(anti_corruption_service, sql_uow, es_uow)
         self._synchronizer = Synchronizer(sql_uow, es_uow)
 
     @sql_unit_of_work
@@ -97,25 +104,38 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     async def _get_deduplicated_references(
-        self, reference_ids: Collection[UUID]
+        self,
+        reference_ids: Collection[UUID] | None = None,
+        references: Collection[Reference] | None = None,
     ) -> list[Reference]:
         """
         Get the deduplicated reference for a given reference.
 
-        :param reference_id: The ID of the reference to get the deduplicated view for.
-        :type reference_id: UUID
+        :param reference_ids: The ID of the references to get the deduplicated view for.
+        :type reference_ids: Collection[UUID] | None
+        :param references: The references to get the deduplicated view for. Must have]
+            identifiers, enhancements, duplicate_decision and duplicate_references
+            preloaded.
+        :type references: Collection[Reference] | None
         :return: The deduplicated reference.
         :rtype: Reference
         """
-        references = await self.sql_uow.references.get_by_pks(
-            reference_ids,
-            preload=[
-                "identifiers",
-                "enhancements",
-                "duplicate_decision",
-                "duplicate_references",
-            ],
-        )
+        if bool(reference_ids) == bool(references):
+            msg = "Exactly one of reference_ids or references must be provided."
+            raise ValueError(msg)
+
+        if reference_ids:
+            references = await self.sql_uow.references.get_by_pks(
+                reference_ids,
+                preload=[
+                    "identifiers",
+                    "enhancements",
+                    "duplicate_decision",
+                    "duplicate_references",
+                ],
+            )
+        if not references:
+            return []
         return [
             DeduplicatedReferenceProjection.get_from_reference(reference)
             for reference in references
@@ -166,6 +186,71 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference.duplicate_decision.canonical_reference_id
         )
 
+    async def _get_deduplicated_canonical_references(
+        self,
+        reference_ids: Collection[UUID] | None = None,
+        references: Collection[Reference] | None = None,
+    ) -> list[Reference]:
+        """
+        Get the deduplicated canonical references for a list of reference IDs.
+
+        Only one of reference_ids or references should be provided.
+
+        :param reference_ids: The references to get the deduplicated view for.
+        :type reference_ids: Collection[UUID] | None
+        :param references: The references with duplicate_decision preloaded to get the
+            deduplicated view for.
+        :type references: Collection[Reference] | None
+        :return: The deduplicated canonical references.
+        :rtype: list[Reference]
+        """
+        if bool(reference_ids) == bool(references):
+            msg = "Exactly one of reference_ids or references must be provided."
+            raise ValueError(msg)
+
+        if reference_ids:
+            references = await self.sql_uow.references.get_by_pks(
+                reference_ids,
+                preload=[
+                    "identifiers",
+                    "enhancements",
+                    "duplicate_decision",
+                    "duplicate_references",
+                ],
+            )
+
+        if not references:
+            return []
+
+        canonical_references, duplicate_canonical_ids = [], []
+        for reference in references:
+            if reference.canonical_like:
+                canonical_references.append(reference)
+            else:
+                if (
+                    not reference.duplicate_decision
+                    or not reference.duplicate_decision.canonical_reference_id
+                ):
+                    msg = (
+                        "Reference is not canonical but has no canonical reference id. "
+                        "This should not happen."
+                    )
+                    raise RuntimeError(msg)
+                duplicate_canonical_ids.append(
+                    reference.duplicate_decision.canonical_reference_id
+                )
+
+        canonical_references = await self._get_deduplicated_references(
+            references=canonical_references
+        )
+
+        if duplicate_canonical_ids:
+            canonical_references += await self._get_deduplicated_canonical_references(
+                reference_ids=duplicate_canonical_ids,
+            )
+
+        return canonical_references
+
     @sql_unit_of_work
     async def get_canonical_reference_with_implied_changeset(
         self, reference_id: UUID
@@ -213,6 +298,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             enhancement.reference_id,
             preload=["enhancements", "identifiers", "duplicate_references"],
         )
+
+        incoming_enhancement_hash = enhancement.hash_data()
+        for existing_enhancement in reference.enhancements or []:
+            if existing_enhancement.hash_data() == incoming_enhancement_hash:
+                detail = (
+                    "An exact duplicate enhancement already exists on this reference."
+                )
+                raise DuplicateEnhancementError(detail)
 
         if enhancement.derived_from:
             valid_derived_reference_ids = {
@@ -283,20 +376,48 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self.sql_uow.references.get_all_pks()
 
     @sql_unit_of_work
-    async def get_reference_from_identifier(
-        self, identifier: ExternalIdentifierSearch
-    ) -> Reference:
-        """Get a single reference by identifier."""
-        db_identifier = (
-            await self.sql_uow.external_identifiers.get_by_type_and_identifier(
-                identifier.identifier_type,
-                identifier.identifier,
-                identifier.other_identifier_name,
-            )
+    async def get_references_from_identifiers(
+        self, identifiers: list[IdentifierLookup]
+    ) -> list[Reference]:
+        """Get a list of references from identifiers."""
+        external_identifiers, db_identifiers = [], []
+        for identifier in identifiers:
+            if identifier.identifier_type:
+                external_identifiers.append(identifier)
+            else:
+                db_identifiers.append(uuid.UUID(identifier.identifier))
+
+        references = await self.sql_uow.references.find_with_identifiers(
+            external_identifiers,
+            preload=[
+                "identifiers",
+                "enhancements",
+                "duplicate_decision",
+                "duplicate_references",
+            ],
+            match="any",
+        ) + await self.sql_uow.references.get_by_pks(
+            db_identifiers,
+            preload=[
+                "identifiers",
+                "enhancements",
+                "duplicate_decision",
+                "duplicate_references",
+            ],
+            fail_on_missing=False,
         )
-        return await self.sql_uow.references.get_by_pk(
-            db_identifier.reference_id, preload=["identifiers", "enhancements"]
+        if not references:
+            return []
+
+        # Pre-filter duplicates
+        references = list(
+            {reference.id: reference for reference in references}.values()
         )
+        references = await self._get_deduplicated_canonical_references(
+            references=references
+        )
+        # Filter again in case multiple duplicates pointed to same canonical
+        return list({reference.id: reference for reference in references}.values())
 
     @sql_unit_of_work
     async def add_identifier(
@@ -445,67 +566,22 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             enhancement_request_id, preload=["status"]
         )
 
-    @sql_unit_of_work
-    async def validate_and_import_enhancement_result(
-        self,
-        enhancement_request: EnhancementRequest,
-        blob_repository: BlobRepository,
-    ) -> tuple[EnhancementRequestStatus, set[UUID]]:
-        """
-        Validate and import the result of a enhancement request.
-
-        This process:
-        - streams the result of the enhancement request line-by-line
-        - adds the enhancement to the database
-        - streams the validation result to the blob storage service line-by-line
-        - does some final validation of missing references and updates the request
-        """
-        # Mutable set to track imported enhancement IDs
-        imported_enhancement_ids: set[UUID] = set()
-        validation_result_file = await blob_repository.upload_file_to_blob_storage(
-            content=FileStream(
-                generator=self._enhancement_service.process_enhancement_result(
-                    blob_repository=blob_repository,
-                    enhancement_request=enhancement_request,
-                    add_enhancement=self.handle_enhancement_result_entry,
-                    imported_enhancement_ids=imported_enhancement_ids,
-                )
-            ),
-            path="enhancement_result",
-            filename=f"{enhancement_request.id}_repo.jsonl",
-        )
-
-        await (
-            self._enhancement_service.add_validation_result_file_to_enhancement_request(
-                enhancement_request.id, validation_result_file
-            )
-        )
-
-        # This is a bit hacky - we retrieve the terminal status from the import,
-        # and then set to indexing. Essentially using the SQL UOW as a transport
-        # from the blob generator to this layer.
-        enhancement_request = await self.sql_uow.enhancement_requests.get_by_pk(
-            enhancement_request.id
-        )
-        terminal_status = enhancement_request.request_status
-
-        await self.sql_uow.enhancement_requests.update_by_pk(
-            enhancement_request.id,
-            request_status=EnhancementRequestStatus.INDEXING,
-        )
-        return terminal_status, imported_enhancement_ids
-
     async def handle_enhancement_result_entry(
         self,
         enhancement: Enhancement,
-    ) -> tuple[bool, str]:
+    ) -> tuple[PendingEnhancementStatus, str]:
         """Handle the import of a single batch enhancement result entry."""
         try:
             await self._add_enhancement(enhancement)
         except SQLNotFoundError:
             return (
-                False,
+                PendingEnhancementStatus.FAILED,
                 "Reference does not exist.",
+            )
+        except DuplicateEnhancementError:
+            return (
+                PendingEnhancementStatus.DISCARDED,
+                "Exact duplicate enhancement already exists on reference.",
             )
         except Exception:
             logger.exception(
@@ -514,24 +590,13 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 enhancement=enhancement,
             )
             return (
-                False,
+                PendingEnhancementStatus.FAILED,
                 "Failed to add enhancement to reference.",
             )
 
         return (
-            True,
+            PendingEnhancementStatus.COMPLETED,
             "Enhancement added.",
-        )
-
-    @sql_unit_of_work
-    async def mark_enhancement_request_failed(
-        self,
-        enhancement_request_id: UUID,
-        error: str,
-    ) -> EnhancementRequest:
-        """Mark a batch enhancement request as failed and supply error message."""
-        return await self._enhancement_service.mark_enhancement_request_failed(
-            enhancement_request_id, error
         )
 
     @sql_unit_of_work
@@ -539,7 +604,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         robot_enhancement_batch: RobotEnhancementBatch,
         blob_repository: BlobRepository,
-    ) -> tuple[set[UUID], set[UUID], set[UUID]]:
+    ) -> ProcessedResults:
         """
         Validate and import the result of a robot enhancement batch.
 
@@ -564,6 +629,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             imported_enhancement_ids=set(),
             successful_pending_enhancement_ids=set(),
             failed_pending_enhancement_ids=set(),
+            discarded_pending_enhancement_ids=set(),
         )
 
         validation_result_file = await blob_repository.upload_file_to_blob_storage(
@@ -584,11 +650,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             robot_enhancement_batch.id, validation_result_file
         )
 
-        return (
-            results.imported_enhancement_ids,
-            results.successful_pending_enhancement_ids,
-            results.failed_pending_enhancement_ids,
-        )
+        return results
 
     @sql_unit_of_work
     async def mark_robot_enhancement_batch_failed(
@@ -855,12 +917,22 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self, robot_id: UUID, limit: int
     ) -> list[PendingEnhancement]:
         """Get pending enhancements for a robot."""
-        return await self.sql_uow.pending_enhancements.find(
+        pending_enhancements = await self.sql_uow.pending_enhancements.find(
             robot_id=robot_id,
             robot_enhancement_batch_id=None,
             status=PendingEnhancementStatus.PENDING,
             order_by="created_at",
             limit=limit,
+        )
+
+        # There is a restriction in EnhancementService._categorize_enhancements
+        # that reference IDs are unique per batch. The below adapter is a band-aid to
+        # enforce that restriction here. Any pending enhancements beyond the first for a
+        # given reference ID are filtered out, and hence not accepted, and can be picked
+        # up in a future batch.
+        # See https://github.com/destiny-evidence/destiny-repository/issues/353.
+        return list(
+            {pe.reference_id: pe for pe in reversed(pending_enhancements)}.values()
         )
 
     @sql_unit_of_work
@@ -943,4 +1015,23 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             await queue_task_with_trace(
                 ("app.domain.references.tasks", "process_reference_duplicate_decision"),
                 reference_duplicate_decision_id=decision.id,
+                otel_enabled=settings.otel_enabled,
             )
+
+    @es_unit_of_work
+    async def search_references(
+        self,
+        query: str,
+        page: int = 1,
+        annotations: list[AnnotationFilter] | None = None,
+        publication_year_range: PublicationYearRange | None = None,
+        sort: list[str] | None = None,
+    ) -> ESSearchResult[Reference]:
+        """Search for references given a query string."""
+        return await self._search_service.search_with_query_string(
+            query,
+            page=page,
+            annotations=annotations,
+            publication_year_range=publication_year_range,
+            sort=sort,
+        )

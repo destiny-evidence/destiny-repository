@@ -15,6 +15,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!/ui/lib/
 lib64/
 parts/
 sdist/
@@ -186,6 +187,9 @@ cython_debug/
 # Mac Finder config
 .DS_Store
 
+# Include everything in ui (has its own .gitignore)
+!/ui/
+
 # delete-me working files
 tmp-scripts.sh
 infra/app/*.py
@@ -194,3 +198,8 @@ infra/app/*.py
 .certs
 
 libs/fake_data/*.jsonl
+
+.data
+.env.*
+!.env.example
+.idea/

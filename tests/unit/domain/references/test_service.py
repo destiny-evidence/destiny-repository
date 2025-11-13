@@ -10,6 +10,7 @@ from destiny_sdk.identifiers import DOIIdentifier
 from destiny_sdk.references import ReferenceFileInput
 
 from app.core.exceptions import (
+    DuplicateEnhancementError,
     InvalidParentEnhancementError,
     SQLNotFoundError,
 )
@@ -124,7 +125,7 @@ async def test_add_enhancement_happy_path(
     reference_enhancements = repo_refs.get_first_record().enhancements
 
     assert len(reference_enhancements) == 1
-    assert Enhancement(**reference_enhancements[0]).id == enhancement_to_add.id
+    assert reference_enhancements[0].id == enhancement_to_add.id
 
 
 @pytest.mark.asyncio
@@ -222,7 +223,30 @@ async def test_add_enhancement_derived_from_enhancement_for_duplicate_reference(
     )
 
     reference = await service.add_enhancement(enhancement_to_add)
-    assert reference.enhancements[0]["id"] == enhancement_to_add.id
+    assert reference.enhancements[0].id == enhancement_to_add.id
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_duplicate_enhancement(
+    fake_repository, fake_uow, fake_enhancement_data
+):
+    dummy_reference = Reference(id=uuid.uuid4())
+    repo_refs = fake_repository(init_entries=[dummy_reference])
+    uow = fake_uow(references=repo_refs)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+
+    enhancement_to_add = Enhancement(
+        reference_id=dummy_reference.id, **fake_enhancement_data
+    )
+
+    # First addition should succeed
+    await service.add_enhancement(enhancement_to_add)
+
+    # Second addition with the same data should raise DuplicateEnhancementError
+    with pytest.raises(DuplicateEnhancementError):
+        await service.add_enhancement(enhancement_to_add)
 
 
 @pytest.mark.asyncio
@@ -593,6 +617,28 @@ async def test_get_deduplicated_canonical_reference_duplicate_chain(
     assert len(canonical.identifiers) == 2
 
 
+async def test_get_deduplicated_canonical_references(
+    fake_repository, fake_uow, canonical_reference, get_duplicate_reference
+):
+    duplicate_reference = get_duplicate_reference(canonical_reference.id)
+    canonical_reference.duplicate_references = [duplicate_reference]
+    refs = fake_repository([canonical_reference, duplicate_reference])
+    uow = fake_uow(references=refs)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+    canonical_list = await service._get_deduplicated_canonical_references(  # noqa: SLF001
+        reference_ids=[canonical_reference.id, duplicate_reference.id]
+    )
+    assert len(canonical_list) == 2
+    assert canonical_list[0] == canonical_list[1]
+
+    # Check it works when passing in references directly too
+    assert canonical_list == await service._get_deduplicated_canonical_references(  # noqa: SLF001
+        references=[canonical_reference, duplicate_reference]
+    )
+
+
 async def test_get_canonical_reference_with_implied_changeset(
     fake_uow, fake_repository
 ):
@@ -718,6 +764,15 @@ async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_ro
         )
         for ref in references
     ]
+    # Add one more pending enhancement on the same reference - see note in service
+    # about uniqueness restriction
+    pending_enhancements.append(
+        PendingEnhancement(
+            reference_id=references[0].id,
+            robot_id=test_robot.id,
+            enhancement_request_id=uuid.uuid4(),
+        )
+    )
 
     # Create a specialized fake references repository with get_hydrated method
     class FakeReferencesRepository(fake_repository):
@@ -739,19 +794,29 @@ async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_ro
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
 
+    batch_pending_enhancements = await service.get_pending_enhancements_for_robot(
+        robot_id=test_robot.id, limit=10
+    )
+
+    assert len(batch_pending_enhancements) == 3
+
     created_batch = await service.create_robot_enhancement_batch(
         robot_id=test_robot.id,
-        pending_enhancements=pending_enhancements,
+        pending_enhancements=batch_pending_enhancements,
         blob_repository=mock_blob_repository,
     )
 
     assert isinstance(created_batch, RobotEnhancementBatch)
     assert created_batch.robot_id == test_robot.id
 
-    for pe in pending_enhancements:
+    for pe in pending_enhancements[:3]:
         updated_pe = await uow.pending_enhancements.get_by_pk(pe.id)
         assert updated_pe.status == PendingEnhancementStatus.PROCESSING
         assert updated_pe.robot_enhancement_batch_id == created_batch.id
+
+    assert (
+        await uow.pending_enhancements.get_by_pk(pending_enhancements[3].id)
+    ).status == PendingEnhancementStatus.PENDING
 
     mock_blob_repository.upload_file_to_blob_storage.assert_awaited_once()
 
@@ -762,9 +827,9 @@ async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_ro
 
     # Verify we have the correct number of references and each has the expected ID
     assert len(content_lines) == len(references)
-    for i, line in enumerate(content_lines):
-        data = json.loads(line)
-        assert data["id"] == str(references[i].id)
+    assert {data["id"] for data in (json.loads(line) for line in content_lines)} == {
+        str(ref.id) for ref in references
+    }
 
     assert created_batch.reference_data_file is not None
     assert created_batch.reference_data_file.endswith(".jsonl")

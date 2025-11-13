@@ -57,7 +57,12 @@ async def test_happy_import(  # noqa: PLR0913
         )
 
     assert sum(summary["results"].values()) == n_refs
-    assert summary["results"]["completed"] == n_refs
+    try:
+        assert summary["results"]["completed"] == n_refs
+    except AssertionError:
+        # Temporary handler to diagnose flakiness in CI
+        print("Import summary:", summary, flush=True)  # noqa: T201
+        raise
     assert not summary["failure_details"]
 
     # Check the references are in the database

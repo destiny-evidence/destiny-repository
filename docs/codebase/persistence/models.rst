@@ -11,4 +11,4 @@ This documentation auto-generates details about the Pydantic models used for per
 
 .. autoclass:: app.persistence.sql.persistence.RelationshipLoadType
 
-.. autoclass:: app.persistence.es.persistence.ESSearchResult
+.. autoclass:: app.persistence.es.persistence.ESScoreResult

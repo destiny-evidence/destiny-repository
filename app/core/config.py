@@ -6,7 +6,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, Field, FilePath, HttpUrl, PostgresDsn, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    FilePath,
+    HttpUrl,
+    PostgresDsn,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.telemetry.logger import get_logger
@@ -122,8 +129,8 @@ class ESConfig(BaseModel):
         ]
 
     @model_validator(mode="after")
-    def validate_parameters(self) -> Self:
-        """Validate the given parameters."""
+    def validate_authentication(self) -> Self:
+        """Validate the Elasticsearch authentication method."""
         has_api_key = all([self.cloud_id, self.api_key])
         has_user_pass = any((self.es_url, self.es_user, self.es_pass, self.es_ca_path))
 
@@ -267,6 +274,14 @@ class Settings(BaseSettings):
         ),
     )
 
+    max_lookup_reference_query_length: int = Field(
+        default=100,
+        description=(
+            "Maximum number of identifiers to allow in a single reference lookup "
+            "query."
+        ),
+    )
+
     default_es_indexing_chunk_size: int = Field(
         default=1000,
         description=(
@@ -360,6 +375,11 @@ class Settings(BaseSettings):
             "values allow for duplicate chaining, at the significant cost of "
             "performance and data model complexity."
         ),
+    )
+
+    cors_allow_origins: list[str] = Field(
+        default_factory=list,
+        description="List of allowed origins for CORS.",
     )
 
     @property
