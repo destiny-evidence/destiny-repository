@@ -963,7 +963,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         if pending_enhancement_ids:
             await self.sql_uow.pending_enhancements.bulk_update(
                 pks=pending_enhancement_ids,
-                status=PendingEnhancementStatus.ACCEPTED,
+                status=PendingEnhancementStatus.PROCESSING,
                 robot_enhancement_batch_id=robot_enhancement_batch.id,
             )
 

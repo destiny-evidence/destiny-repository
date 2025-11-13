@@ -811,7 +811,7 @@ async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_ro
 
     for pe in pending_enhancements[:3]:
         updated_pe = await uow.pending_enhancements.get_by_pk(pe.id)
-        assert updated_pe.status == PendingEnhancementStatus.ACCEPTED
+        assert updated_pe.status == PendingEnhancementStatus.PROCESSING
         assert updated_pe.robot_enhancement_batch_id == created_batch.id
 
     assert (
