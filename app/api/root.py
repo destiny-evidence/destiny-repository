@@ -4,10 +4,11 @@ import pathlib
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware import Middleware
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.openapi.docs import get_redoc_html
+from fastapi.responses import HTMLResponse, RedirectResponse
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from app.api.exception_handlers import (
@@ -95,11 +96,22 @@ def register_api(
             ESQueryError: es_exception_handler,
             ParseError: parse_error_exception_handler,
         },
+        redoc_url=None,  # Custom definition of redoc below
     )
 
     @app.get("/")
     async def root() -> RedirectResponse:
         return RedirectResponse(url="/redoc")
+
+    @app.get("/redoc", include_in_schema=False)
+    async def redoc_html(req: Request) -> HTMLResponse:
+        """Override redoc to use different CDN."""
+        root_path = req.scope.get("root_path", "").rstrip("/")
+        return get_redoc_html(
+            openapi_url=root_path + app.openapi_url,
+            title="DESTINY API",
+            redoc_js_url="https://cdn.jsdelivr.net/npm/redoc@2.5.2/bundles/redoc.standalone.js",
+        )
 
     app.include_router(create_v1_router())
 
