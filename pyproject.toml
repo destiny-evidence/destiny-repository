@@ -92,6 +92,9 @@ env = ["ENV=test"]
 filterwarnings = [
     # Can be removed when https://github.com/testcontainers/testcontainers-python/issues/874 is complete
     "ignore:^The @wait_container_is_ready decorator:DeprecationWarning",
+    # Tasks API in technical preview but has been present for 5 major versions
+    # https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-tasks-get
+    "ignore:^This API is in technical preview and may be changed or removed in a future release.",
 ]
 norecursedirs = ["tests/e2e"]
 pythonpath = "."
