@@ -7,11 +7,13 @@ from pydantic import ValidationError
 
 from app.core.exceptions import DomainToSDKError, SDKToDomainError
 from app.domain.references.models.models import (
+    AnnotationFilter,
     Enhancement,
     EnhancementRequest,
     ExternalIdentifierAdapter,
     IdentifierLookup,
     LinkedExternalIdentifier,
+    PublicationYearRange,
     Reference,
     RobotAutomation,
     RobotEnhancementBatch,
@@ -328,9 +330,43 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     "count": search_result.total.value,
                     "is_lower_bound": search_result.total.relation == "gte",
                 },
+                page={
+                    "count": len(search_result.hits),
+                    "number": search_result.page,
+                },
                 references=[
                     self.reference_to_sdk(reference) for reference in search_result.hits
                 ],
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
+
+    def publication_year_range_from_query_parameter(
+        self,
+        start_year: int | None,
+        end_year: int | None,
+    ) -> PublicationYearRange:
+        """Parse a publication year range from a query parameter."""
+        return PublicationYearRange(start=start_year, end=end_year)
+
+    def annotation_filter_from_query_parameter(
+        self,
+        annotation_filter_string: str,
+    ) -> AnnotationFilter:
+        """Parse an annotation filter from a query parameter."""
+        if "@" in annotation_filter_string:
+            score = float(annotation_filter_string.split("@")[-1])
+            annotation_filter_string = annotation_filter_string.rsplit("@", 1)[0]
+        else:
+            score = None
+
+        if "/" not in annotation_filter_string:
+            scheme, label = annotation_filter_string, None
+        else:
+            scheme, label = annotation_filter_string.split("/", 1)
+
+        return AnnotationFilter(
+            scheme=scheme,
+            label=label,
+            score=score,
+        )

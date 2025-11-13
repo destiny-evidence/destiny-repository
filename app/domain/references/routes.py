@@ -1,3 +1,11 @@
+# Typing transgressions here make the API docs cleaner. Sorry.
+# For optional parameters, the preferred Python method is to type it optionally
+# eg list[str] | None = None, but in the docs this forks the parameter to also
+# show `null` as an option, which is not desired and obscures the actual usage.
+#
+# mypy: disable-error-code="assignment"
+# ruff: noqa: RUF013
+
 """Router for handling management of references."""
 
 import uuid
@@ -37,7 +45,9 @@ from app.core.telemetry.fastapi import PayloadAttributeTracer
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
+    AnnotationFilter,
     PendingEnhancementStatus,
+    PublicationYearRange,
     ReferenceIds,
 )
 from app.domain.references.service import ReferenceService
@@ -212,6 +222,65 @@ deduplication_router = APIRouter(
 )
 
 
+def parse_publication_year_range(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    start_year: Annotated[
+        int,
+        Query(description="Filter for references published on or after this year."),
+    ] = None,
+    end_year: Annotated[
+        int,
+        Query(description="Filter for references published on or before this year."),
+    ] = None,
+) -> PublicationYearRange | None:
+    """Parse a publication year range from a query parameter."""
+    if start_year or end_year:
+        return anti_corruption_service.publication_year_range_from_query_parameter(
+            start_year, end_year
+        )
+    return None
+
+
+def parse_annotation_filters(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    annotation: Annotated[
+        list[str],
+        Query(
+            description=(
+                "A list of annotation filters to apply to the search.\n\n"
+                "- If an annotation is provided without a score, "
+                "results will be filtered for that annotation being true.\n"
+                "- If a score is specified, "
+                "results will be filtered for that annotation having a score "
+                "greater than or equal to the given value.\n"
+                "- Multiple annotations are combined using AND logic.\n\n"
+                "Format: `<scheme>[/<label>][@<score>]`. "
+            ),
+            examples=[
+                "inclusion:destiny@0.8",
+                "classifier:taxonomy:Outcomes/Influenza",
+            ],
+            # Not used for now but prepared for future use
+            # Requires knowledge of annotation mapping in ES for further implementation
+            include_in_schema=False,
+        ),
+    ] = None,
+) -> list[AnnotationFilter]:
+    """Parse annotation filters from query parameters."""
+    if not annotation:
+        return []
+    return [
+        anti_corruption_service.annotation_filter_from_query_parameter(
+            annotation_filter_string
+        )
+        for annotation_filter_string in annotation
+    ]
+
+
 @search_router.get(
     "/",
     status_code=status.HTTP_200_OK,
@@ -225,7 +294,10 @@ deduplication_router = APIRouter(
     "[Lucene syntax](https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-query-string-query#query-string-syntax)"
     ". If the query string does not specify search fields, the search will query over "
     f"[{', '.join(SearchService.default_search_fields)}]. The query string can only "
-    "search over fields on the root level of the Reference document.",
+    "search over fields on the root level of the Reference document.\n\n"
+    "A natural limit of 10,000 results is imposed. You cannot page beyond this limit, "
+    "and if a query would return more than 10,000 results the total count is listed as "
+    ">10,000.",
 )
 async def search_references(
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
@@ -238,9 +310,42 @@ async def search_references(
             description="The query string.",
         ),
     ],
+    annotations: Annotated[
+        list[AnnotationFilter] | None,
+        Depends(parse_annotation_filters),
+    ],
+    publication_year_range: Annotated[
+        PublicationYearRange | None,
+        Depends(parse_publication_year_range),
+    ],
+    page: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=10_000 / 20,  # Elasticsearch max result window divided by page size
+            description="The page number to retrieve, indexed from 1. "
+            "Each page contains 20 results.",
+        ),
+    ] = 1,
+    sort: Annotated[
+        list[str],
+        Query(
+            description="A list of fields to sort the results by. "
+            "Prefix a field with `-` to sort in descending order. "
+            "If omitted, will sort by relevance score descending. "
+            "Multiple sort fields can be provided and will be applied "
+            "in the order given. Sort fields cannot be `text` fields.",
+        ),
+    ] = None,
 ) -> destiny_sdk.references.ReferenceSearchResult:
     """Search for references given a query string."""
-    search_result = await reference_service.search_references(q)
+    search_result = await reference_service.search_references(
+        q,
+        page=page,
+        annotations=annotations,
+        publication_year_range=publication_year_range,
+        sort=sort,
+    )
     return anti_corruption_service.reference_search_result_to_sdk(search_result)
 
 
