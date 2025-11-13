@@ -25,6 +25,8 @@ from app.domain.references.models.sql import ReferenceDuplicateDecision
 class TestPollingExhaustedError(Exception):
     """Error raised when polling fails."""
 
+    __test__ = False
+
 
 async def refresh_reference_index(es_client: AsyncElasticsearch) -> None:
     """
