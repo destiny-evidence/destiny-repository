@@ -89,7 +89,6 @@ async def test_migrate_1d80_to_41a69(db_1d80: str) -> None:
         )
 
     # Apply migrations up to 41a6980bb04e
-    await run_migration(db_url, "7afd162b774a")
     await run_migration(db_url, "41a6980bb04e")
 
     # Verify migration results

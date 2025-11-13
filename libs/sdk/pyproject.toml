@@ -17,6 +17,7 @@ authors = [
     {email = "andrew@futureevidence.org", name = "Andrew Harvey"},
     {email = "daniel@futureevidence.org", name = "Daniel Breves"},
     {email = "jack@futureevidence.org", name = "Jack Walmisley"},
+    {email = "tim.repke@pik-potsdam.de", name = "Tim Repke"},
 ]
 dependencies = [
     "cachetools>=5.5.2,<6",
@@ -33,7 +34,10 @@ license = "Apache-2.0"
 name = "destiny_sdk"
 readme = "README.md"
 requires-python = "~=3.12"
-version = "0.5.1"
+version = "0.6.0"
+
+[project.optional-dependencies]
+labs = []
 
 [tool.pytest.ini_options]
 addopts = ["--color=yes", "--import-mode=importlib", "--verbose"]

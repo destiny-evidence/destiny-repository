@@ -92,9 +92,18 @@ class BibliographicMetadataEnhancementFactory(factory.Factory):
     cited_by_count = factory.Faker("pyint", min_value=0, max_value=1000)
     created_date = factory.Faker("date_this_century")
     publication_date = factory.Faker("date_this_century")
-    publication_year = factory.Faker("year")
     publisher = factory.Faker("company")
     title = factory.Faker("sentence", nb_words=6)
+
+    @factory.post_generation
+    def publication_year(self, create, extracted, **kwargs):  # noqa: ANN001, ANN003, ARG002
+        """Set publication year from publication date if not provided seperately."""
+        if not extracted:
+            self.publication_year = (
+                self.publication_date.year if self.publication_date else None
+            )
+        else:
+            self.publication_year = extracted
 
 
 class AbstractContentEnhancementFactory(factory.Factory):
@@ -194,6 +203,7 @@ class EnhancementFactory(factory.Factory):
     source = factory.Faker("company")
     visibility = Visibility.PUBLIC
     robot_version = factory.Faker("numerify", text="%!!.%!!.%!!")
+    created_at = factory.Faker("date_time_this_month")
     content = factory.LazyFunction(
         lambda: fake.random_element(
             [

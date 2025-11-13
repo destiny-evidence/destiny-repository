@@ -17,6 +17,7 @@ from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.enhancement_service import ProcessedResults
 from app.domain.references.tasks import (
     detect_and_dispatch_robot_automations,
     validate_and_import_robot_enhancement_batch_result,
@@ -112,6 +113,7 @@ async def test_validate_and_import_robot_enhancement_batch_result(monkeypatch):
     imported_enhancement_ids = {uuid.uuid4(), uuid.uuid4()}
     successful_pending_enhancement_ids = {uuid.uuid4(), uuid.uuid4()}
     failed_pending_enhancement_ids = {uuid.uuid4()}
+    discarded_pending_enhancement_ids = {uuid.uuid4()}
 
     mock_reference_service = AsyncMock()
     mock_reference_service.get_robot_enhancement_batch.return_value = (
@@ -121,10 +123,11 @@ async def test_validate_and_import_robot_enhancement_batch_result(monkeypatch):
             pending_enhancements=[],
         )
     )
-    result = (
+    result = ProcessedResults(
         imported_enhancement_ids,
         successful_pending_enhancement_ids,
         failed_pending_enhancement_ids,
+        discarded_pending_enhancement_ids,
     )
     validate_method = (
         mock_reference_service.validate_and_import_robot_enhancement_batch_result
@@ -165,7 +168,7 @@ async def test_validate_and_import_robot_enhancement_batch_result(monkeypatch):
         mock_reference_service.update_pending_enhancements_status.call_args_list
     )
 
-    assert len(status_calls) == 3
+    assert len(status_calls) == 4
 
     failed_call = status_calls[0]
     assert failed_call[1]["pending_enhancement_ids"] == list(
@@ -173,13 +176,19 @@ async def test_validate_and_import_robot_enhancement_batch_result(monkeypatch):
     )
     assert failed_call[1]["status"] == PendingEnhancementStatus.FAILED
 
-    indexing_call = status_calls[1]
+    discarded_call = status_calls[1]
+    assert discarded_call[1]["pending_enhancement_ids"] == list(
+        discarded_pending_enhancement_ids
+    )
+    assert discarded_call[1]["status"] == PendingEnhancementStatus.DISCARDED
+
+    indexing_call = status_calls[2]
     assert indexing_call[1]["pending_enhancement_ids"] == list(
         successful_pending_enhancement_ids
     )
     assert indexing_call[1]["status"] == PendingEnhancementStatus.INDEXING
 
-    completed_call = status_calls[2]
+    completed_call = status_calls[3]
     assert completed_call[1]["pending_enhancement_ids"] == list(
         successful_pending_enhancement_ids
     )
@@ -252,10 +261,11 @@ async def test_validate_and_import_robot_enhancement_batch_result_indexing_failu
     validate_method = (
         mock_reference_service.validate_and_import_robot_enhancement_batch_result
     )
-    validate_method.return_value = (
+    validate_method.return_value = ProcessedResults(
         {uuid.uuid4()},  # imported_enhancement_ids
         {uuid.uuid4()},  # successful_pending_enhancement_ids
         set(),  # failed_pending_enhancement_ids
+        set(),  # discarded_pending_enhancement_ids
     )
 
     mock_reference_service.index_references.side_effect = Exception("Indexing failed")
@@ -281,16 +291,16 @@ async def test_validate_and_import_robot_enhancement_batch_result_indexing_failu
     status_calls = (
         mock_reference_service.update_pending_enhancements_status.call_args_list
     )
-    assert len(status_calls) == 3
+    assert len(status_calls) == 4
 
     failed_call = status_calls[0]
     assert failed_call[1]["pending_enhancement_ids"] == []
     assert failed_call[1]["status"] == PendingEnhancementStatus.FAILED
 
-    indexing_call = status_calls[1]
+    indexing_call = status_calls[2]
     assert len(indexing_call[1]["pending_enhancement_ids"]) == 1
     assert indexing_call[1]["status"] == PendingEnhancementStatus.INDEXING
 
-    indexing_failed_call = status_calls[2]
+    indexing_failed_call = status_calls[3]
     assert len(indexing_failed_call[1]["pending_enhancement_ids"]) == 1
     assert indexing_failed_call[1]["status"] == PendingEnhancementStatus.INDEXING_FAILED

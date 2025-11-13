@@ -20,6 +20,7 @@ from azure.servicebus.aio import (
     ServiceBusSender,
 )
 from azure.servicebus.amqp import AmqpAnnotatedMessage, AmqpMessageBodyType
+from pydantic import TypeAdapter
 from taskiq import AckableMessage, AsyncBroker, BrokerMessage
 
 from app.core.config import get_settings
@@ -164,6 +165,9 @@ class AzureServiceBusBroker(AsyncBroker):
                 "message_id": message.task_id,
                 "correlation_id": message.task_id,
             },
+            application_properties={
+                "renew_lock": str(message.labels.get("renew_lock", False))
+            },
         )
 
         # Handle delay
@@ -201,7 +205,15 @@ class AzureServiceBusBroker(AsyncBroker):
 
                 # Process each message
                 for sb_message in batch_messages:
-                    self.auto_lock_renewer.register(self.receiver, sb_message)
+                    properties = sb_message.application_properties
+                    if properties and TypeAdapter(bool).validate_python(
+                        # Try binary then string key
+                        properties.get(
+                            b"renew_lock", properties.get("renew_lock", False)
+                        )
+                    ):
+                        logger.info("Registering message for auto lock renewal")
+                        self.auto_lock_renewer.register(self.receiver, sb_message)
 
                     async def ack_message(
                         sb_message: ServiceBusReceivedMessage = sb_message,

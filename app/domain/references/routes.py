@@ -1,3 +1,11 @@
+# Typing transgressions here make the API docs cleaner. Sorry.
+# For optional parameters, the preferred Python method is to type it optionally
+# eg list[str] | None = None, but in the docs this forks the parameter to also
+# show `null` as an option, which is not desired and obscures the actual usage.
+#
+# mypy: disable-error-code="assignment"
+# ruff: noqa: RUF013
+
 """Router for handling management of references."""
 
 import datetime
@@ -17,6 +25,7 @@ from fastapi import (
     status,
 )
 from fastapi.security import HTTPAuthorizationCredentials
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
@@ -29,22 +38,25 @@ from app.api.auth import (
     choose_hybrid_auth_strategy,
     security,
 )
+from app.api.decorators import experimental
+from app.api.exception_handlers import APIExceptionContent
 from app.core.config import get_settings
+from app.core.exceptions import ParseError
 from app.core.telemetry.fastapi import PayloadAttributeTracer
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
-    EnhancementRequestStatus,
-    ExternalIdentifierSearch,
+    AnnotationFilter,
     PendingEnhancementStatus,
+    PublicationYearRange,
     ReferenceIds,
 )
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.search_service import SearchService
 from app.domain.references.tasks import (
-    validate_and_import_enhancement_result,
     validate_and_import_robot_enhancement_batch_result,
 )
 from app.domain.robots.service import RobotService
@@ -175,6 +187,11 @@ reference_router = APIRouter(
     tags=["references"],
     dependencies=[Depends(reference_reader_auth)],
 )
+search_router = APIRouter(
+    prefix="/search",
+    tags=["search"],
+    dependencies=[Depends(reference_reader_auth)],
+)
 enhancement_request_router = APIRouter(
     prefix="/enhancement-requests",
     tags=["enhancement-requests"],
@@ -206,6 +223,138 @@ deduplication_router = APIRouter(
 )
 
 
+def parse_publication_year_range(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    start_year: Annotated[
+        int,
+        Query(description="Filter for references published on or after this year."),
+    ] = None,
+    end_year: Annotated[
+        int,
+        Query(description="Filter for references published on or before this year."),
+    ] = None,
+) -> PublicationYearRange | None:
+    """Parse a publication year range from a query parameter."""
+    if start_year or end_year:
+        return anti_corruption_service.publication_year_range_from_query_parameter(
+            start_year, end_year
+        )
+    return None
+
+
+def parse_annotation_filters(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    annotation: Annotated[
+        list[str],
+        Query(
+            description=(
+                "A list of annotation filters to apply to the search.\n\n"
+                "- If an annotation is provided without a score, "
+                "results will be filtered for that annotation being true.\n"
+                "- If a score is specified, "
+                "results will be filtered for that annotation having a score "
+                "greater than or equal to the given value.\n"
+                "- Multiple annotations are combined using AND logic.\n\n"
+                "Format: `<scheme>[/<label>][@<score>]`. "
+            ),
+            examples=[
+                "inclusion:destiny@0.8",
+                "classifier:taxonomy:Outcomes/Influenza",
+            ],
+            # Not used for now but prepared for future use
+            # Requires knowledge of annotation mapping in ES for further implementation
+            include_in_schema=False,
+        ),
+    ] = None,
+) -> list[AnnotationFilter]:
+    """Parse annotation filters from query parameters."""
+    if not annotation:
+        return []
+    return [
+        anti_corruption_service.annotation_filter_from_query_parameter(
+            annotation_filter_string
+        )
+        for annotation_filter_string in annotation
+    ]
+
+
+@search_router.get(
+    "/",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Bad Query String",
+            "model": APIExceptionContent,
+        }
+    },
+    description="Search for references using a query string in "
+    "[Lucene syntax](https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-query-string-query#query-string-syntax)"
+    ". If the query string does not specify search fields, the search will query over "
+    f"[{', '.join(SearchService.default_search_fields)}]. The query string can only "
+    "search over fields on the root level of the Reference document.\n\n"
+    "A natural limit of 10,000 results is imposed. You cannot page beyond this limit, "
+    "and if a query would return more than 10,000 results the total count is listed as "
+    ">10,000.",
+)
+async def search_references(
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    q: Annotated[
+        str,
+        Query(
+            description="The query string.",
+        ),
+    ],
+    annotations: Annotated[
+        list[AnnotationFilter] | None,
+        Depends(parse_annotation_filters),
+    ],
+    publication_year_range: Annotated[
+        PublicationYearRange | None,
+        Depends(parse_publication_year_range),
+    ],
+    page: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=10_000 / 20,  # Elasticsearch max result window divided by page size
+            description="The page number to retrieve, indexed from 1. "
+            "Each page contains 20 results.",
+        ),
+    ] = 1,
+    sort: Annotated[
+        list[str],
+        Query(
+            description="A list of fields to sort the results by. "
+            "Prefix a field with `-` to sort in descending order. "
+            "If omitted, will sort by relevance score descending. "
+            "Multiple sort fields can be provided and will be applied "
+            "in the order given. Sort fields cannot be `text` fields.",
+        ),
+    ] = None,
+) -> destiny_sdk.references.ReferenceSearchResult:
+    """Search for references given a query string."""
+    search_result = await reference_service.search_references(
+        q,
+        page=page,
+        annotations=annotations,
+        publication_year_range=publication_year_range,
+        sort=sort,
+    )
+    return anti_corruption_service.reference_search_result_to_sdk(search_result)
+
+
+# NB it's important this occurs before defining `/references/{reference_id}/` route
+# to avoid route conflicts. Order matters for FastAPI route matching.
+reference_router.include_router(search_router)
+
+
 @reference_router.get("/{reference_id}/")
 async def get_reference(
     reference_id: Annotated[uuid.UUID, Path(description="The ID of the reference.")],
@@ -219,26 +368,68 @@ async def get_reference(
     return anti_corruption_service.reference_to_sdk(reference)
 
 
+class IdentifierLookupQueryParams(BaseModel):
+    """Query parameters for looking up references by identifiers."""
+
+    identifier: list[str] = Field(
+        ...,
+        description=(
+            "A list of external identifier lookups. "
+            "Can be provided in multiple query parameters or as a single "
+            "csv string."
+        ),
+        examples=[
+            "02e376ee-8374-4a8c-997f-9a813bc5b8f8",
+            "doi:10.1000/abc123",
+            "other:isbn:978-1-234-56789-0",
+            "pm_id:123456,open_alex:W98765",
+        ],
+        max_length=settings.max_lookup_reference_query_length,
+    )
+
+    @field_validator("identifier", mode="before")
+    @classmethod
+    def parse_csv_validator(cls, v: list[str]) -> list[str]:
+        """Parse a csv string to a list if given."""
+        if len(v) == 1:
+            return v[0].split(",")
+        return v
+
+
+def parse_identifiers(
+    identifier_query: Annotated[IdentifierLookupQueryParams, Query()],
+) -> list[destiny_sdk.identifiers.IdentifierLookup]:
+    """Parse a list of identifier lookup strings into IdentifierLookup objects."""
+    try:
+        return [
+            destiny_sdk.identifiers.IdentifierLookup.parse(identifier_string)
+            for identifier_string in identifier_query.identifier
+        ]
+    except ValueError as exc:
+        raise ParseError(detail=str(exc)) from exc
+
+
 @reference_router.get("/")
-async def get_reference_from_identifier(
-    identifier: str,
-    identifier_type: destiny_sdk.identifiers.ExternalIdentifierType,
+@experimental
+async def lookup_references(
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
-    other_identifier_name: str | None = None,
-) -> destiny_sdk.references.Reference:
-    """Get a reference given an external identifier."""
-    external_identifier = ExternalIdentifierSearch(
-        identifier=identifier,
-        identifier_type=identifier_type,
-        other_identifier_name=other_identifier_name,
+    identifiers: Annotated[
+        list[destiny_sdk.identifiers.IdentifierLookup], Depends(parse_identifiers)
+    ],
+) -> list[destiny_sdk.references.Reference]:
+    """Get references given identifiers."""
+    identifier_lookups = anti_corruption_service.identifier_lookups_from_sdk(
+        identifiers
     )
-    reference = await reference_service.get_reference_from_identifier(
-        external_identifier
-    )
-    return anti_corruption_service.reference_to_sdk(reference)
+    return [
+        anti_corruption_service.reference_to_sdk(reference)
+        for reference in await reference_service.get_references_from_identifiers(
+            identifier_lookups
+        )
+    ]
 
 
 @enhancement_request_automation_router.post(
@@ -464,47 +655,6 @@ async def check_enhancement_request_status(
     return await anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
 
 
-@enhancement_request_router.post(
-    "/{enhancement_request_id}/results/",
-    status_code=status.HTTP_202_ACCEPTED,
-)
-@enhancement_request_router.post(
-    "/batch-requests/{enhancement_request_id}/results/",
-    status_code=status.HTTP_202_ACCEPTED,
-    deprecated=True,
-)
-async def fulfill_enhancement_request(
-    robot_result: destiny_sdk.robots.RobotResult,
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-    anti_corruption_service: Annotated[
-        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
-    ],
-    response: Response,
-) -> destiny_sdk.robots.EnhancementRequestRead:
-    """Receive the robot result and kick off importing the enhancements."""
-    if robot_result.error:
-        enhancement_request = await reference_service.mark_enhancement_request_failed(
-            enhancement_request_id=robot_result.request_id,
-            error=robot_result.error.message,
-        )
-        response.status_code = status.HTTP_200_OK
-        return await anti_corruption_service.enhancement_request_to_sdk(
-            enhancement_request
-        )
-
-    enhancement_request = await reference_service.update_enhancement_request_status(
-        enhancement_request_id=robot_result.request_id,
-        status=EnhancementRequestStatus.IMPORTING,
-    )
-
-    await queue_task_with_trace(
-        validate_and_import_enhancement_result,
-        enhancement_request_id=robot_result.request_id,
-    )
-
-    return await anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
-
-
 @robot_enhancement_batch_router.post(
     "/{robot_enhancement_batch_id}/results/",
     status_code=status.HTTP_202_ACCEPTED,
@@ -551,7 +701,9 @@ async def fulfill_robot_enhancement_batch(
 
     await queue_task_with_trace(
         validate_and_import_robot_enhancement_batch_result,
+        long_running=True,
         robot_enhancement_batch_id=robot_enhancement_batch_id,
+        otel_enabled=settings.otel_enabled,
     )
 
     return await anti_corruption_service.robot_enhancement_batch_to_sdk(

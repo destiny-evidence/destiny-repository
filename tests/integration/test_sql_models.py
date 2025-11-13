@@ -58,7 +58,7 @@ from app.domain.robots.models.sql import Robot as SQLRobot
 async def test_enhancement_interface(
     session: AsyncSession,
 ):
-    """Test that the enhancement content type is set correctly."""
+    """Test that enhancements are correctly persisted to the database."""
     reference = SQLReference.from_domain(
         Reference(
             id=uuid.uuid4(),
@@ -108,7 +108,18 @@ async def test_enhancement_interface(
     )
     assert loaded_enhancement
     enhancement = loaded_enhancement.to_domain()
-    assert enhancement == enhancement_in
+
+    # Check that expected fields are the same
+    assert enhancement.id == enhancement_in.id
+    assert enhancement.source == enhancement_in.source
+    assert enhancement.reference_id == enhancement_in.reference_id
+    assert enhancement.visibility == enhancement_in.visibility
+    assert enhancement.content == enhancement_in.content
+
+    # Assert the created_at and updated_at timestamps have been returned
+    # from the database
+    assert isinstance(enhancement.created_at, datetime.datetime)
+    assert isinstance(enhancement.updated_at, datetime.datetime)
 
 
 async def test_reference_get_with_duplicates(session: AsyncSession):

@@ -18,6 +18,7 @@ from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.references.services.deduplication_service import DeduplicationService
+from app.utils.time_and_date import utc_now
 
 
 @pytest.fixture
@@ -52,6 +53,7 @@ def searchable_reference(reference_with_identifiers):
                         title="Maybe a duplicate reference, maybe not",
                     ),
                     reference_id=reference_with_identifiers.id,
+                    created_at=utc_now(),
                 )
             ]
         }

@@ -57,3 +57,10 @@ References
     :members:
     :undoc-members:
     :inherited-members: BaseModel, str
+
+Search
+------
+.. automodule:: libs.sdk.src.destiny_sdk.search
+    :members:
+    :undoc-members:
+    :inherited-members: BaseModel, str

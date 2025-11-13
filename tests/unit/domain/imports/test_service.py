@@ -251,7 +251,7 @@ async def test_distribute_import_batch_happy_path(monkeypatch, fake_uow):
 
     queued_tasks = []
 
-    async def fake_queue_task_with_trace(*args):
+    async def fake_queue_task_with_trace(*args, otel_enabled):  # noqa: ARG001
         queued_tasks.append(args)
 
     service = ImportService(ImportAntiCorruptionService(), fake_uow())

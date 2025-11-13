@@ -1,13 +1,11 @@
 """Router for system utility endpoints."""
 
-from collections.abc import Coroutine
-from typing import Annotated, Any
+from typing import Annotated
 
 from elasticsearch import AsyncElasticsearch
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from taskiq import AsyncTaskiqDecoratedTask
 
 from app.api.auth import (
     AuthMethod,
@@ -19,7 +17,6 @@ from app.api.auth import (
 from app.core.config import get_settings
 from app.core.exceptions import ESNotFoundError
 from app.core.telemetry.logger import get_logger
-from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.es import (
     ReferenceDocument,
     RobotAutomationPercolationDocument,
@@ -29,7 +26,7 @@ from app.domain.references.tasks import (
     repair_robot_automation_percolation_index,
 )
 from app.persistence.es.client import get_client
-from app.persistence.es.persistence import GenericESPersistence
+from app.persistence.es.index_manager import IndexManager
 from app.persistence.sql.session import get_session
 from app.system.healthcheck import HealthCheckOptions, healthcheck
 
@@ -38,20 +35,49 @@ settings = get_settings()
 
 router = APIRouter(prefix="/system", tags=["system utilities"])
 
-# Registry of repairable indices
-_indices: dict[
-    str,
-    tuple[
-        type[GenericESPersistence],
-        AsyncTaskiqDecoratedTask[..., Coroutine[Any, Any, None]],
-    ],
-] = {
-    ReferenceDocument.Index.name: (ReferenceDocument, repair_reference_index),
-    RobotAutomationPercolationDocument.Index.name: (
-        RobotAutomationPercolationDocument,
-        repair_robot_automation_percolation_index,
-    ),
+
+def reference_index_manager(es_client: AsyncElasticsearch) -> IndexManager:
+    """Create an index manager for the reference index."""
+    return IndexManager(
+        document_class=ReferenceDocument,
+        repair_task=repair_reference_index,
+        client=es_client,
+        otel_enabled=settings.otel_enabled,
+    )
+
+
+def robot_automation_percolation_index_manager(
+    es_client: AsyncElasticsearch,
+) -> IndexManager:
+    """Create an index manager for the robot automation percolation index."""
+    return IndexManager(
+        document_class=RobotAutomationPercolationDocument,
+        repair_task=repair_robot_automation_percolation_index,
+        client=es_client,
+        otel_enabled=settings.otel_enabled,
+    )
+
+
+index_managers = {
+    ReferenceDocument.Index.name: reference_index_manager,
+    RobotAutomationPercolationDocument.Index.name: robot_automation_percolation_index_manager,  # noqa: E501
 }
+
+
+def get_index_manager(
+    alias: Annotated[str, Path(..., description="The alias of the index to repair")],
+    es_client: Annotated[AsyncElasticsearch, Depends(get_client)],
+) -> IndexManager:
+    """Get an index manager for a given alias."""
+    try:
+        return index_managers[alias](es_client)
+    except KeyError as exc:
+        raise ESNotFoundError(
+            detail=f"Index {alias} not found.",
+            lookup_model="meta:index",
+            lookup_value=alias,
+            lookup_type="alias",
+        ) from exc
 
 
 def choose_auth_strategy_administrator() -> AuthMethod:
@@ -84,18 +110,12 @@ async def get_healthcheck(
 
 
 @router.post(
-    "/indices/{index_name}/repair/",
+    "/indices/{alias}/repair/",
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[Depends(system_utility_auth)],
 )
 async def repair_elasticsearch_index(
-    es_client: Annotated[AsyncElasticsearch, Depends(get_client)],
-    index_name: Annotated[str, Path(..., description="Name of the index to repair.")],
     *,
-    service: Annotated[
-        str,
-        Query(description="Service name for the persistence implementation."),
-    ] = "elastic",
     rebuild: Annotated[
         bool,
         Query(
@@ -106,36 +126,21 @@ async def repair_elasticsearch_index(
             " documents in SQL will not be removed from the index.",
         ),
     ] = False,
+    index_manager: Annotated[IndexManager, Depends(get_index_manager)],
 ) -> JSONResponse:
     """Repair an index (update all documents per their SQL counterparts)."""
-    if service != "elastic":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only 'elastic' service is supported for index repair.",
-        )
-
-    # If we add another persistence service, move this to a function.
-    try:
-        index, repair_task = _indices[index_name]
-    except KeyError as exc:
-        raise ESNotFoundError(
-            detail=f"Index {index_name} not found.",
-            lookup_model="meta:index",
-            lookup_value=index_name,
-            lookup_type="index_name",
-        ) from exc
-
     if rebuild:
-        logger.info("Destroying index", index=index_name)
-        await index._index.delete(using=es_client)  # noqa: SLF001
-        logger.info("Recreating index", index=index_name)
-        await index.init(using=es_client)
+        await index_manager.rebuild_index()
+    else:
+        await index_manager.repair_index()
 
-    await queue_task_with_trace(repair_task)
     return JSONResponse(
         content={
             "status": "ok",
-            "message": f"Repair task for index {index_name} has been initiated.",
+            "message": (
+                f"Repair task for index {index_manager.alias_name} "
+                "has been initiated."
+            ),
         },
         status_code=status.HTTP_202_ACCEPTED,
     )
