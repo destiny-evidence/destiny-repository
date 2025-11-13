@@ -296,3 +296,9 @@ variable "es_migrator_reindex_polling_interval" {
   default     = 5 * 60 # 5min
 
 }
+
+variable "message_lock_renewal_duration" {
+  description = "Duration to renew message locks for in seconds"
+  type        = number
+  default     = 12 * 60 * 60 # 12 hours
+}
