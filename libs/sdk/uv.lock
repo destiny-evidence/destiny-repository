@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.12, <4"
 
 [[package]]
@@ -63,7 +63,7 @@ wheels = [
 
 [[package]]
 name = "destiny-sdk"
-version = "0.5.1"
+version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
@@ -96,6 +96,7 @@ requires-dist = [
     { name = "pytest-httpx", specifier = ">=0.35.0,<0.36" },
     { name = "python-jose", specifier = ">=3.4.0,<4" },
 ]
+provides-extras = ["labs"]
 
 [package.metadata.requires-dev]
 dev = [
