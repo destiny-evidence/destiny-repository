@@ -118,6 +118,10 @@ locals {
       name  = "MAX_REFERENCE_LOOKUP_QUERY_LENGTH",
       value = var.max_reference_lookup_query_length
     },
+    {
+      name  = "MESSAGE_LOCK_RENEWAL_DURATION",
+      value = var.message_lock_renewal_duration
+    }
   ]
 
 
