@@ -39,7 +39,7 @@ from app.api.auth import (
     security,
 )
 from app.api.decorators import experimental
-from app.api.exception_handlers import APIExceptionContent
+from app.api.exception_handlers import APIExceptionContent, APIExceptionResponse
 from app.core.config import get_settings
 from app.core.exceptions import ParseError
 from app.core.telemetry.fastapi import PayloadAttributeTracer
@@ -556,6 +556,7 @@ async def request_robot_enhancement_batch(
     response_model=destiny_sdk.robots.RobotEnhancementBatch,
     summary="Renew the lease on an existing batch of references to enhance",
     status_code=status.HTTP_200_OK,
+    responses={status.HTTP_409_CONFLICT: {"model": APIExceptionContent}},
 )
 async def renew_robot_enhancement_batch_lease(
     robot_enhancement_batch_id: uuid.UUID,
@@ -573,12 +574,21 @@ async def renew_robot_enhancement_batch_lease(
 
     This endpoint is used by robots to extend the lease on enhancement batches.
     """
-    expiry = await reference_service.renew_robot_enhancement_batch_lease(
+    updated, expiry = await reference_service.renew_robot_enhancement_batch_lease(
         robot_enhancement_batch_id=robot_enhancement_batch_id,
         lease_duration=lease,
     )
+    if not updated:
+        return APIExceptionResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=APIExceptionContent(
+                detail="This batch has no incomplete pending enhancements. They may "
+                "have already expired or been completed."
+            ),
+        )
     return Response(
-        content=f"Lease renewed to {expiry}.", status_code=status.HTTP_200_OK
+        content=f"Lease renewed to {expiry} on {updated} pending enhancements.",
+        status_code=status.HTTP_200_OK,
     )
 
 

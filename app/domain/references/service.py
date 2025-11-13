@@ -1013,13 +1013,13 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         robot_enhancement_batch_id: UUID,
         lease_duration: datetime.timedelta,
-    ) -> datetime.datetime:
+    ) -> tuple[int, datetime.datetime]:
         """Renew a robot enhancement batch lease."""
         await self.sql_uow.robot_enhancement_batches.verify_pk_existence(
             [robot_enhancement_batch_id]
         )
         expiry = apply_positive_timedelta(lease_duration)
-        await self.sql_uow.pending_enhancements.bulk_update_by_filter(
+        updated = await self.sql_uow.pending_enhancements.bulk_update_by_filter(
             filter_conditions={
                 "robot_enhancement_batch_id": robot_enhancement_batch_id,
                 # If a robot lets a pending enhancement expire, it must use a
@@ -1028,7 +1028,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             },
             expires_at=expiry,
         )
-        return expiry
+        return updated, expiry
 
     @sql_unit_of_work
     async def invoke_deduplication_for_references(
