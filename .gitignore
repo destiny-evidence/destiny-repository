@@ -198,3 +198,8 @@ infra/app/*.py
 .certs
 
 libs/fake_data/*.jsonl
+
+.data
+.env.*
+!.env.example
+.idea/
