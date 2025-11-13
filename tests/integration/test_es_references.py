@@ -804,7 +804,7 @@ async def test_query_string_search_many_results(
         f"title:{bibliographic_enhancement.title}"
     )
     # Default page size
-    assert len(results.hits) == 100
+    assert len(results.hits) == 20
     assert results.total.value == 6_000
     assert results.total.relation == "eq"
 
@@ -813,7 +813,7 @@ async def test_query_string_search_many_results(
     results = await es_reference_repository.search_with_query_string(
         f"title:{bibliographic_enhancement.title}"
     )
-    assert len(results.hits) == 100
+    assert len(results.hits) == 20
     # Default elasticsearch cap
     assert results.total.value == 10_000
     assert results.total.relation == "gte"
@@ -860,3 +860,136 @@ async def test_query_string_search_with_fields(
         fields=["publication_year"],
     )
     assert len(results_year_only.hits) == 0
+
+
+async def test_query_string_search_pagination(
+    es_reference_repository: ReferenceESRepository,
+):
+    """Test pagination in query string search."""
+    bibliographic_enhancement: BibliographicMetadataEnhancement = (
+        BibliographicMetadataEnhancementFactory.build()
+    )
+    reference_ids = set()
+
+    async def _insert_references_batch() -> None:
+        references = ReferenceFactory.build_batch(
+            55,
+            enhancements=[EnhancementFactory.build(content=bibliographic_enhancement)],
+        )
+
+        async def reference_generator(
+            references: list[Reference],
+        ) -> AsyncGenerator[Reference, None]:
+            for reference in references:
+                reference_ids.add(reference.id)
+                yield reference
+
+        await es_reference_repository.add_bulk(reference_generator(references))
+        await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+            index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
+        )
+
+    await _insert_references_batch()
+
+    results_page_1 = await es_reference_repository.search_with_query_string(
+        f"title:{bibliographic_enhancement.title}",
+        page=1,
+        page_size=20,
+    )
+    assert len(results_page_1.hits) == 20
+    assert results_page_1.page == 1
+    assert results_page_1.total.value == 55
+    assert results_page_1.total.relation == "eq"
+
+    results_page_2 = await es_reference_repository.search_with_query_string(
+        f"title:{bibliographic_enhancement.title}",
+        page=2,
+        page_size=20,
+    )
+    assert len(results_page_2.hits) == 20
+    assert results_page_2.page == 2
+
+    results_page_3 = await es_reference_repository.search_with_query_string(
+        f"title:{bibliographic_enhancement.title}",
+        page=3,
+        page_size=20,
+    )
+    assert len(results_page_3.hits) == 15
+    assert results_page_3.page == 3
+
+    assert {
+        hit.id
+        for hit in results_page_1.hits + results_page_2.hits + results_page_3.hits
+    } == reference_ids
+
+    results_page_4 = await es_reference_repository.search_with_query_string(
+        f"title:{bibliographic_enhancement.title}",
+        page=4,
+        page_size=20,
+    )
+    assert len(results_page_4.hits) == 0
+
+
+async def test_query_string_sorting(
+    es_reference_repository: ReferenceESRepository,
+):
+    """Test sorting search results by different fields and directions."""
+    # Create references with different publication years and titles
+    ref_2020 = ReferenceFactory.build(
+        enhancements=[
+            EnhancementFactory.build(
+                content=BibliographicMetadataEnhancementFactory.build(
+                    publication_year=2020,
+                )
+            )
+        ]
+    )
+
+    ref_2021 = ReferenceFactory.build(
+        enhancements=[
+            EnhancementFactory.build(
+                content=BibliographicMetadataEnhancementFactory.build(
+                    publication_year=2021,
+                )
+            )
+        ]
+    )
+
+    ref_2022 = ReferenceFactory.build(
+        enhancements=[
+            EnhancementFactory.build(
+                content=BibliographicMetadataEnhancementFactory.build(
+                    publication_year=2022,
+                )
+            )
+        ]
+    )
+
+    # Add all references
+    await es_reference_repository.add(ref_2020)
+    await es_reference_repository.add(ref_2021)
+    await es_reference_repository.add(ref_2022)
+
+    await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+        index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
+    )
+
+    # Test sorting by publication_year ascending
+    results_year_asc = await es_reference_repository.search_with_query_string(
+        "_exists_:publication_year",
+        sort=["publication_year"],
+    )
+    assert len(results_year_asc.hits) == 3
+    assert results_year_asc.hits[0].id == ref_2020.id
+    assert results_year_asc.hits[1].id == ref_2021.id
+    assert results_year_asc.hits[2].id == ref_2022.id
+
+    # Test sorting by publication_year descending
+    results_year_desc = await es_reference_repository.search_with_query_string(
+        "_exists_:publication_year",
+        sort=["-publication_year"],
+    )
+    assert len(results_year_desc.hits) == 3
+    assert results_year_desc.hits[0].id == ref_2022.id
+    assert results_year_desc.hits[1].id == ref_2021.id
+    assert results_year_desc.hits[2].id == ref_2020.id

@@ -143,7 +143,6 @@ class ESSearchResult(BaseModel, Generic[GenericDomainModelType]):
     total: ESSearchTotal = Field(
         description="The total number of results matching the search query.",
     )
-    page: None = Field(
-        default=None,
-        description="Placeholder for pagination, yet to be implemented.",
+    page: int = Field(
+        description="The page number of the results.",
     )

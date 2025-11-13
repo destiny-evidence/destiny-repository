@@ -162,7 +162,7 @@ class GenericAsyncESRepository(
         await record.delete(using=self._client)
 
     def _parse_search_result(
-        self, response: Response[Hit]
+        self, response: Response[Hit], page: int
     ) -> ESSearchResult[GenericDomainModelType]:
         """
         Parse an Elasticsearch search response into a search result.
@@ -181,24 +181,32 @@ class GenericAsyncESRepository(
                 value=response.hits.total.value,  # type: ignore[attr-defined]
                 relation=response.hits.total.relation,  # type: ignore[attr-defined]
             ),
+            page=page,
         )
 
     @trace_repository_method(tracer)
     async def search_with_query_string(
         self,
         query: str,
+        page: int = 1,
+        page_size: int = 20,
         fields: Sequence[str] | None = None,
-        # TODO(Adam): Implement pagination
-        # https://github.com/destiny-evidence/destiny-repository/issues/349
-        page_size: int = 100,
+        sort: list[str] | None = None,
     ) -> ESSearchResult[GenericDomainModelType]:
         """
         Search for records using a query string.
 
         :param query: The query string to search with.
         :type query: str
+        :param page: The page number to retrieve.
+        :type page: int
         :param page_size: The number of records to return per page.
         :type page_size: int
+        :param fields: The fields to search within. If None, searches all fields (unless
+            the query specifies otherwise).
+        :type fields: Sequence[str] | None
+        :param sort: The sorting criteria for the search results.
+        :type sort: list[str] | None
         :return: A list of matching records.
         :rtype: ESSearchResult[GenericDomainModelType]
         """
@@ -207,6 +215,7 @@ class GenericAsyncESRepository(
             AsyncSearch(using=self._client)
             .doc_type(self._persistence_cls)
             .extra(size=page_size)
+            .extra(from_=(page - 1) * page_size)
             .query(
                 QueryString(query=query, fields=fields)
                 if fields
@@ -215,9 +224,11 @@ class GenericAsyncESRepository(
         )
         if fields:
             search = search.extra(fields=fields)
+        if sort:
+            search = search.sort(*sort)
         try:
             response = await search.execute()
         except BadRequestError as exc:
             msg = f"Elasticsearch query string search failed: {exc}."
             raise ESQueryError(msg) from exc
-        return self._parse_search_result(response)
+        return self._parse_search_result(response, page)

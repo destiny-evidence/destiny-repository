@@ -58,10 +58,9 @@ References
     :undoc-members:
     :inherited-members: BaseModel, str
 
-Other
------
-.. autoclass:: destiny_sdk.core.SearchResultTotal
+Search
+------
+.. automodule:: libs.sdk.src.destiny_sdk.search
     :members:
     :undoc-members:
-    :exclude-members: model_config
-    :inherited-members: BaseModel
+    :inherited-members: BaseModel, str

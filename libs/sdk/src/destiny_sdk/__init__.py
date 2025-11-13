@@ -8,6 +8,7 @@ from . import (
     imports,
     references,
     robots,
+    search,
     visibility,
 )
 
@@ -19,5 +20,6 @@ __all__ = [
     "imports",
     "references",
     "robots",
+    "search",
     "visibility",
 ]
