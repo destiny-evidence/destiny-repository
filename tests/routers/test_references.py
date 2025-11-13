@@ -867,6 +867,7 @@ async def test_search_references_with_annotation_filters(
                 "test:scheme/test_label",
                 "another:scheme/another_label@0.8",
                 "just_a_scheme@0.8",
+                "test:scheme/label/with/lots/of/slashes",
             ],
         },
     )
@@ -880,7 +881,7 @@ async def test_search_references_with_annotation_filters(
     mock_search.assert_awaited_once()
     call_kwargs = mock_search.call_args.kwargs
     assert call_kwargs["annotations"] is not None
-    assert len(call_kwargs["annotations"]) == 3
+    assert len(call_kwargs["annotations"]) == 4
 
     # Check first annotation filter
     assert call_kwargs["annotations"][0].scheme == "test:scheme"
@@ -896,3 +897,8 @@ async def test_search_references_with_annotation_filters(
     assert call_kwargs["annotations"][2].scheme == "just_a_scheme"
     assert not call_kwargs["annotations"][2].label
     assert call_kwargs["annotations"][2].score == 0.8
+
+    # Check fourth annotation filter with slashes in label
+    assert call_kwargs["annotations"][3].scheme == "test:scheme"
+    assert call_kwargs["annotations"][3].label == "label/with/lots/of/slashes"
+    assert call_kwargs["annotations"][3].score is None

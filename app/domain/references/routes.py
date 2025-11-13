@@ -251,9 +251,13 @@ def parse_annotation_filters(
         list[str],
         Query(
             description=(
-                "A list of annotation filters to apply to the search. "
-                "Multiple annotations can be provided, which will be combined with AND "
-                "logic. \n\n"
+                "A list of annotation filters to apply to the search.\n\n"
+                "- If an annotation is provided without a score, "
+                "results will be filtered for that annotation being true.\n"
+                "- If a score is specified, "
+                "results will be filtered for that annotation having a score "
+                "greater than or equal to the given value.\n"
+                "- Multiple annotations are combined using AND logic.\n\n"
                 "Format: `<scheme>[/<label>][@<score>]`. "
             ),
             examples=[

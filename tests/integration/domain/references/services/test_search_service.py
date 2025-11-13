@@ -14,6 +14,7 @@ from app.persistence.blob.repository import BlobRepository
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from tests.factories import (
+    AbstractContentEnhancementFactory,
     BibliographicMetadataEnhancementFactory,
     EnhancementFactory,
     ReferenceFactory,
@@ -75,7 +76,12 @@ async def test_search_with_query_string_publication_year_filter(
                     title="Test Paper Beta",
                     publication_year=2022,
                 )
-            )
+            ),
+            EnhancementFactory.build(
+                content=AbstractContentEnhancementFactory.build(
+                    abstract="This is an abstract. Dugong."
+                )
+            ),
         ]
     )
 
@@ -86,7 +92,12 @@ async def test_search_with_query_string_publication_year_filter(
                     title="Test Paper Gamma",
                     publication_year=2024,
                 )
-            )
+            ),
+            EnhancementFactory.build(
+                content=AbstractContentEnhancementFactory.build(
+                    abstract="This is an abstract. Dugong."
+                )
+            ),
         ]
     )
 
@@ -114,6 +125,13 @@ async def test_search_with_query_string_publication_year_filter(
     )
     assert len(results.hits) == 2
     assert {hit.id for hit in results.hits} == {ref_2020.id, ref_2022.id}
+
+    results = await search_service.search_with_query_string(
+        query_string="Dugong",
+        publication_year_range=PublicationYearRange(start=2020, end=2023),
+    )
+    assert len(results.hits) == 1
+    assert {hit.id for hit in results.hits} == {ref_2022.id}
 
     results = await search_service.search_with_query_string(
         query_string="Test Paper",
