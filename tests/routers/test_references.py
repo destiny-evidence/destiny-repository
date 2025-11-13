@@ -787,7 +787,7 @@ async def test_robot_enhancement_batch_renew_lease(
     dt = datetime.timedelta(minutes=5)
     dt_iso = iso8601_duration_adapter.dump_python(dt, mode="json")
     expiry = apply_positive_timedelta(dt)
-    mock_renew_lease = AsyncMock(return_value=expiry)
+    mock_renew_lease = AsyncMock(return_value=(5, expiry))
     monkeypatch.setattr(
         ReferenceService, "renew_robot_enhancement_batch_lease", mock_renew_lease
     )
@@ -798,7 +798,37 @@ async def test_robot_enhancement_batch_renew_lease(
     )
 
     assert response.status_code == status.HTTP_200_OK
-    assert response.text == f"Lease renewed to {expiry}."
+    assert response.text == expiry.isoformat()
+
+    mock_renew_lease.assert_awaited_once_with(
+        robot_enhancement_batch_id=_id,
+        lease_duration=dt,
+    )
+
+
+async def test_robot_enhancement_batch_renew_lease_empty_response(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Test renewing a lease on a robot enhancement batch with no renewals left."""
+    dt = datetime.timedelta(minutes=5)
+    dt_iso = iso8601_duration_adapter.dump_python(dt, mode="json")
+    expiry = apply_positive_timedelta(dt)
+    mock_renew_lease = AsyncMock(return_value=(0, expiry))
+    monkeypatch.setattr(
+        ReferenceService, "renew_robot_enhancement_batch_lease", mock_renew_lease
+    )
+
+    _id = uuid.uuid4()
+    response = await client.patch(
+        f"/v1/robot-enhancement-batches/{_id}/renew-lease/?lease={dt_iso}"
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert (
+        response.json()["detail"] == "This batch has no pending enhancements. "
+        "They may have already expired or been completed."
+    )
 
     mock_renew_lease.assert_awaited_once_with(
         robot_enhancement_batch_id=_id,

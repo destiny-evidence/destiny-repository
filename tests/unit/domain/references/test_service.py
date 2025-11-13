@@ -878,10 +878,12 @@ async def test_renew_robot_enhancement_batch_lease(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
 
-    new_expiry = await service.renew_robot_enhancement_batch_lease(
+    updated, new_expiry = await service.renew_robot_enhancement_batch_lease(
         robot_enhancement_batch_id=robot_enhancement_batch.id,
         lease_duration=updated_lease,
     )
+
+    assert updated == 1
 
     expected_new_expiry = utc_now() + updated_lease
     assert abs(new_expiry - expected_new_expiry) < datetime.timedelta(seconds=1)
