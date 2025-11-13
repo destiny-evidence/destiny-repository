@@ -12,4 +12,4 @@ def test_root() -> None:
     """Test the root endpoint."""
     response = client.get("/")
     assert response.status_code == status.HTTP_200_OK
-    assert "DESTINY Climate and Health Repository - ReDoc" in response.text
+    assert "DESTINY API" in response.text
