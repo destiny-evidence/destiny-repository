@@ -20,6 +20,6 @@ There may be additional dependencies required to use some features of this modul
 
 References
 ----------
-.. autoclass:: libs.sdk.src.destiny_sdk.labs.references.ReferenceLabs
+.. autoclass:: libs.sdk.src.destiny_sdk.labs.references.LabsReference
     :members:
     :inherited-members: BaseModel, str, Reference
