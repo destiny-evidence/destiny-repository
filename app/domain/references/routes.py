@@ -16,6 +16,7 @@ from fastapi import (
     status,
 )
 from fastapi.security import HTTPAuthorizationCredentials
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
@@ -28,12 +29,14 @@ from app.api.auth import (
     choose_hybrid_auth_strategy,
     security,
 )
+from app.api.decorators import experimental
+from app.api.exception_handlers import APIExceptionContent
 from app.core.config import get_settings
+from app.core.exceptions import ParseError
 from app.core.telemetry.fastapi import PayloadAttributeTracer
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
-    ExternalIdentifierSearch,
     PendingEnhancementStatus,
     ReferenceIds,
 )
@@ -41,6 +44,7 @@ from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.search_service import SearchService
 from app.domain.references.tasks import (
     validate_and_import_robot_enhancement_batch_result,
 )
@@ -172,6 +176,11 @@ reference_router = APIRouter(
     tags=["references"],
     dependencies=[Depends(reference_reader_auth)],
 )
+search_router = APIRouter(
+    prefix="/search",
+    tags=["search"],
+    dependencies=[Depends(reference_reader_auth)],
+)
 enhancement_request_router = APIRouter(
     prefix="/enhancement-requests",
     tags=["enhancement-requests"],
@@ -203,6 +212,43 @@ deduplication_router = APIRouter(
 )
 
 
+@search_router.get(
+    "/",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Bad Query String",
+            "model": APIExceptionContent,
+        }
+    },
+    description="Search for references using a query string in "
+    "[Lucene syntax](https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-query-string-query#query-string-syntax)"
+    ". If the query string does not specify search fields, the search will query over "
+    f"[{', '.join(SearchService.default_search_fields)}]. The query string can only "
+    "search over fields on the root level of the Reference document.",
+)
+async def search_references(
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    q: Annotated[
+        str,
+        Query(
+            description="The query string.",
+        ),
+    ],
+) -> destiny_sdk.references.ReferenceSearchResult:
+    """Search for references given a query string."""
+    search_result = await reference_service.search_references(q)
+    return anti_corruption_service.reference_search_result_to_sdk(search_result)
+
+
+# NB it's important this occurs before defining `/references/{reference_id}/` route
+# to avoid route conflicts. Order matters for FastAPI route matching.
+reference_router.include_router(search_router)
+
+
 @reference_router.get("/{reference_id}/")
 async def get_reference(
     reference_id: Annotated[uuid.UUID, Path(description="The ID of the reference.")],
@@ -216,26 +262,68 @@ async def get_reference(
     return anti_corruption_service.reference_to_sdk(reference)
 
 
+class IdentifierLookupQueryParams(BaseModel):
+    """Query parameters for looking up references by identifiers."""
+
+    identifier: list[str] = Field(
+        ...,
+        description=(
+            "A list of external identifier lookups. "
+            "Can be provided in multiple query parameters or as a single "
+            "csv string."
+        ),
+        examples=[
+            "02e376ee-8374-4a8c-997f-9a813bc5b8f8",
+            "doi:10.1000/abc123",
+            "other:isbn:978-1-234-56789-0",
+            "pm_id:123456,open_alex:W98765",
+        ],
+        max_length=settings.max_lookup_reference_query_length,
+    )
+
+    @field_validator("identifier", mode="before")
+    @classmethod
+    def parse_csv_validator(cls, v: list[str]) -> list[str]:
+        """Parse a csv string to a list if given."""
+        if len(v) == 1:
+            return v[0].split(",")
+        return v
+
+
+def parse_identifiers(
+    identifier_query: Annotated[IdentifierLookupQueryParams, Query()],
+) -> list[destiny_sdk.identifiers.IdentifierLookup]:
+    """Parse a list of identifier lookup strings into IdentifierLookup objects."""
+    try:
+        return [
+            destiny_sdk.identifiers.IdentifierLookup.parse(identifier_string)
+            for identifier_string in identifier_query.identifier
+        ]
+    except ValueError as exc:
+        raise ParseError(detail=str(exc)) from exc
+
+
 @reference_router.get("/")
-async def get_reference_from_identifier(
-    identifier: str,
-    identifier_type: destiny_sdk.identifiers.ExternalIdentifierType,
+@experimental
+async def lookup_references(
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
-    other_identifier_name: str | None = None,
-) -> destiny_sdk.references.Reference:
-    """Get a reference given an external identifier."""
-    external_identifier = ExternalIdentifierSearch(
-        identifier=identifier,
-        identifier_type=identifier_type,
-        other_identifier_name=other_identifier_name,
+    identifiers: Annotated[
+        list[destiny_sdk.identifiers.IdentifierLookup], Depends(parse_identifiers)
+    ],
+) -> list[destiny_sdk.references.Reference]:
+    """Get references given identifiers."""
+    identifier_lookups = anti_corruption_service.identifier_lookups_from_sdk(
+        identifiers
     )
-    reference = await reference_service.get_reference_from_identifier(
-        external_identifier
-    )
-    return anti_corruption_service.reference_to_sdk(reference)
+    return [
+        anti_corruption_service.reference_to_sdk(reference)
+        for reference in await reference_service.get_references_from_identifiers(
+            identifier_lookups
+        )
+    ]
 
 
 @enhancement_request_automation_router.post(
@@ -469,6 +557,7 @@ async def fulfill_robot_enhancement_batch(
 
     await queue_task_with_trace(
         validate_and_import_robot_enhancement_batch_result,
+        long_running=True,
         robot_enhancement_batch_id=robot_enhancement_batch_id,
         otel_enabled=settings.otel_enabled,
     )

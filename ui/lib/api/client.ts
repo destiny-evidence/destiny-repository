@@ -26,7 +26,7 @@ export async function apiGet<T>(
     const resp = await axios.get(url, { headers: await buildHeaders(token) });
     return { data: resp.data as T, error: null };
   } catch (err: any) {
-    if (err?.response?.status === 422) {
+    if (err?.response?.status === 422 || err?.response?.status === 400) {
       return {
         data: null,
         error: {

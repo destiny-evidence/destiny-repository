@@ -9,7 +9,7 @@ export interface ReferenceLookupParams {
 export interface ReferenceLookupResult {
   data: any;
   error: null | {
-    type: "validation" | "generic";
+    type: "validation" | "generic" | "not_found";
     detail: string;
   };
 }

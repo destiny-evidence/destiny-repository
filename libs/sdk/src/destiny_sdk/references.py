@@ -4,7 +4,7 @@ from typing import Self
 
 from pydantic import UUID4, BaseModel, Field, TypeAdapter
 
-from destiny_sdk.core import _JsonlFileInputMixIn
+from destiny_sdk.core import SearchResultMixIn, _JsonlFileInputMixIn
 from destiny_sdk.enhancements import Enhancement, EnhancementFileInput
 from destiny_sdk.identifiers import ExternalIdentifier
 from destiny_sdk.visibility import Visibility
@@ -64,4 +64,12 @@ class ReferenceFileInput(_JsonlFileInputMixIn, BaseModel):
     enhancements: list[EnhancementFileInput] | None = Field(
         default=None,
         description="A list of enhancements for the reference",
+    )
+
+
+class ReferenceSearchResult(SearchResultMixIn, BaseModel):
+    """A search result for references."""
+
+    references: list[Reference] = Field(
+        description="The references returned by the search.",
     )

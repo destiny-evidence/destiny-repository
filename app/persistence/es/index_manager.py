@@ -146,7 +146,9 @@ class IndexManager:
             set_span_status(status=trace.StatusCode.ERROR, detail=msg)
             raise NotFoundError(msg)
 
-        await queue_task_with_trace(self.repair_task, otel_enabled=self.otel_enabled)
+        await queue_task_with_trace(
+            self.repair_task, long_running=True, otel_enabled=self.otel_enabled
+        )
 
     def _generate_index_name(self, version: int) -> str:
         """Generate a versioned index name."""

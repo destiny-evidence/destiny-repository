@@ -17,7 +17,7 @@ from app.domain.references.models.models import (
     ReferenceDuplicateDeterminationResult,
 )
 from app.domain.references.models.projections import (
-    CandidateCanonicalSearchFieldsProjection,
+    ReferenceSearchFieldsProjection,
 )
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -173,9 +173,13 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision.reference_id,
             preload=["enhancements", "identifiers"],
         )
-        search_fields = CandidateCanonicalSearchFieldsProjection.get_from_reference(
-            reference
+
+        search_fields = (
+            ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(
+                reference
+            )
         )
+
         if not search_fields.is_searchable:
             return await self.sql_uow.reference_duplicate_decisions.update_by_pk(
                 reference_duplicate_decision.id,

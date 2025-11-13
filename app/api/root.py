@@ -11,18 +11,21 @@ from fastapi.responses import RedirectResponse
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from app.api.exception_handlers import (
-    es_malformed_exception_handler,
+    es_exception_handler,
     integrity_exception_handler,
     invalid_payload_exception_handler,
     not_found_exception_handler,
+    parse_error_exception_handler,
     sdk_to_domain_exception_handler,
 )
 from app.api.middleware import LoggerMiddleware
 from app.core.exceptions import (
     ESMalformedDocumentError,
+    ESQueryError,
     IntegrityError,
     InvalidPayloadError,
     NotFoundError,
+    ParseError,
     SDKToDomainError,
 )
 from app.core.telemetry.fastapi import FastAPITracingMiddleware
@@ -88,7 +91,9 @@ def register_api(
             IntegrityError: integrity_exception_handler,
             SDKToDomainError: sdk_to_domain_exception_handler,
             InvalidPayloadError: invalid_payload_exception_handler,
-            ESMalformedDocumentError: es_malformed_exception_handler,
+            ESMalformedDocumentError: es_exception_handler,
+            ESQueryError: es_exception_handler,
+            ParseError: parse_error_exception_handler,
         },
     )
 

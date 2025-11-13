@@ -52,6 +52,15 @@ public	b9db25d5-febb-48b4-896a-dcbc8455c492	2025-08-24 23:22:55.162435+00	2025-0
 
 
 --
+-- Data for Name: reference_duplicate_decision; Type: TABLE DATA; Schema: public; Owner: localuser
+--
+COPY public.reference_duplicate_decision (id, reference_id, active_decision, duplicate_determination, canonical_reference_id, created_at, updated_at, candidate_canonical_ids) FROM stdin;
+de114bab-8d97-4692-98b7-1ffa402de56d	53750d62-5c92-4452-ac39-c8ad1cfa1869	true	canonical	\N	2025-08-24 23:22:51.595397+00	2025-08-24 23:22:51.595402+00	{}
+874439e7-6c31-4cab-a7e3-2b1643957641	bfacd10f-4f37-4726-b4a7-b94fe5f8fe51	true	duplicate	53750d62-5c92-4452-ac39-c8ad1cfa1869	2025-08-24 23:22:51.595397+00	2025-08-24 23:22:51.595402+00	{}
+\.
+
+
+--
 -- Data for Name: enhancement; Type: TABLE DATA; Schema: public; Owner: localuser
 --
 

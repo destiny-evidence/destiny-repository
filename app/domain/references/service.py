@@ -1,5 +1,6 @@
 """The service for interacting with and managing references."""
 
+import uuid
 from collections import defaultdict
 from collections.abc import Collection, Iterable
 from uuid import UUID
@@ -24,8 +25,8 @@ from app.domain.references.models.models import (
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifier,
-    ExternalIdentifierSearch,
     ExternalIdentifierType,
+    IdentifierLookup,
     LinkedExternalIdentifier,
     PendingEnhancement,
     PendingEnhancementStatus,
@@ -51,6 +52,7 @@ from app.domain.references.services.enhancement_service import (
     EnhancementService,
     ProcessedResults,
 )
+from app.domain.references.services.search_service import SearchService
 from app.domain.references.services.synchronizer_service import (
     Synchronizer,
 )
@@ -58,6 +60,7 @@ from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
+from app.persistence.es.persistence import ESSearchResult
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.es.uow import unit_of_work as es_unit_of_work
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -83,6 +86,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self._deduplication_service = DeduplicationService(
             anti_corruption_service, sql_uow, es_uow
         )
+        self._search_service = SearchService(anti_corruption_service, sql_uow, es_uow)
         self._synchronizer = Synchronizer(sql_uow, es_uow)
 
     @sql_unit_of_work
@@ -98,25 +102,38 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     async def _get_deduplicated_references(
-        self, reference_ids: Collection[UUID]
+        self,
+        reference_ids: Collection[UUID] | None = None,
+        references: Collection[Reference] | None = None,
     ) -> list[Reference]:
         """
         Get the deduplicated reference for a given reference.
 
-        :param reference_id: The ID of the reference to get the deduplicated view for.
-        :type reference_id: UUID
+        :param reference_ids: The ID of the references to get the deduplicated view for.
+        :type reference_ids: Collection[UUID] | None
+        :param references: The references to get the deduplicated view for. Must have]
+            identifiers, enhancements, duplicate_decision and duplicate_references
+            preloaded.
+        :type references: Collection[Reference] | None
         :return: The deduplicated reference.
         :rtype: Reference
         """
-        references = await self.sql_uow.references.get_by_pks(
-            reference_ids,
-            preload=[
-                "identifiers",
-                "enhancements",
-                "duplicate_decision",
-                "duplicate_references",
-            ],
-        )
+        if bool(reference_ids) == bool(references):
+            msg = "Exactly one of reference_ids or references must be provided."
+            raise ValueError(msg)
+
+        if reference_ids:
+            references = await self.sql_uow.references.get_by_pks(
+                reference_ids,
+                preload=[
+                    "identifiers",
+                    "enhancements",
+                    "duplicate_decision",
+                    "duplicate_references",
+                ],
+            )
+        if not references:
+            return []
         return [
             DeduplicatedReferenceProjection.get_from_reference(reference)
             for reference in references
@@ -166,6 +183,71 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self._get_deduplicated_canonical_reference(
             reference.duplicate_decision.canonical_reference_id
         )
+
+    async def _get_deduplicated_canonical_references(
+        self,
+        reference_ids: Collection[UUID] | None = None,
+        references: Collection[Reference] | None = None,
+    ) -> list[Reference]:
+        """
+        Get the deduplicated canonical references for a list of reference IDs.
+
+        Only one of reference_ids or references should be provided.
+
+        :param reference_ids: The references to get the deduplicated view for.
+        :type reference_ids: Collection[UUID] | None
+        :param references: The references with duplicate_decision preloaded to get the
+            deduplicated view for.
+        :type references: Collection[Reference] | None
+        :return: The deduplicated canonical references.
+        :rtype: list[Reference]
+        """
+        if bool(reference_ids) == bool(references):
+            msg = "Exactly one of reference_ids or references must be provided."
+            raise ValueError(msg)
+
+        if reference_ids:
+            references = await self.sql_uow.references.get_by_pks(
+                reference_ids,
+                preload=[
+                    "identifiers",
+                    "enhancements",
+                    "duplicate_decision",
+                    "duplicate_references",
+                ],
+            )
+
+        if not references:
+            return []
+
+        canonical_references, duplicate_canonical_ids = [], []
+        for reference in references:
+            if reference.canonical_like:
+                canonical_references.append(reference)
+            else:
+                if (
+                    not reference.duplicate_decision
+                    or not reference.duplicate_decision.canonical_reference_id
+                ):
+                    msg = (
+                        "Reference is not canonical but has no canonical reference id. "
+                        "This should not happen."
+                    )
+                    raise RuntimeError(msg)
+                duplicate_canonical_ids.append(
+                    reference.duplicate_decision.canonical_reference_id
+                )
+
+        canonical_references = await self._get_deduplicated_references(
+            references=canonical_references
+        )
+
+        if duplicate_canonical_ids:
+            canonical_references += await self._get_deduplicated_canonical_references(
+                reference_ids=duplicate_canonical_ids,
+            )
+
+        return canonical_references
 
     @sql_unit_of_work
     async def get_canonical_reference_with_implied_changeset(
@@ -292,20 +374,48 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self.sql_uow.references.get_all_pks()
 
     @sql_unit_of_work
-    async def get_reference_from_identifier(
-        self, identifier: ExternalIdentifierSearch
-    ) -> Reference:
-        """Get a single reference by identifier."""
-        db_identifier = (
-            await self.sql_uow.external_identifiers.get_by_type_and_identifier(
-                identifier.identifier_type,
-                identifier.identifier,
-                identifier.other_identifier_name,
-            )
+    async def get_references_from_identifiers(
+        self, identifiers: list[IdentifierLookup]
+    ) -> list[Reference]:
+        """Get a list of references from identifiers."""
+        external_identifiers, db_identifiers = [], []
+        for identifier in identifiers:
+            if identifier.identifier_type:
+                external_identifiers.append(identifier)
+            else:
+                db_identifiers.append(uuid.UUID(identifier.identifier))
+
+        references = await self.sql_uow.references.find_with_identifiers(
+            external_identifiers,
+            preload=[
+                "identifiers",
+                "enhancements",
+                "duplicate_decision",
+                "duplicate_references",
+            ],
+            match="any",
+        ) + await self.sql_uow.references.get_by_pks(
+            db_identifiers,
+            preload=[
+                "identifiers",
+                "enhancements",
+                "duplicate_decision",
+                "duplicate_references",
+            ],
+            fail_on_missing=False,
         )
-        return await self.sql_uow.references.get_by_pk(
-            db_identifier.reference_id, preload=["identifiers", "enhancements"]
+        if not references:
+            return []
+
+        # Pre-filter duplicates
+        references = list(
+            {reference.id: reference for reference in references}.values()
         )
+        references = await self._get_deduplicated_canonical_references(
+            references=references
+        )
+        # Filter again in case multiple duplicates pointed to same canonical
+        return list({reference.id: reference for reference in references}.values())
 
     @sql_unit_of_work
     async def add_identifier(
@@ -905,3 +1015,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 reference_duplicate_decision_id=decision.id,
                 otel_enabled=settings.otel_enabled,
             )
+
+    @es_unit_of_work
+    async def search_references(
+        self,
+        query: str,
+    ) -> ESSearchResult[Reference]:
+        """Search for references given a query string."""
+        return await self._search_service.search_with_query_string(query)

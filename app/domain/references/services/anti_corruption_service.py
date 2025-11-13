@@ -10,6 +10,7 @@ from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
     ExternalIdentifierAdapter,
+    IdentifierLookup,
     LinkedExternalIdentifier,
     Reference,
     RobotAutomation,
@@ -19,6 +20,7 @@ from app.domain.references.models.models import (
 from app.domain.service import GenericAntiCorruptionService
 from app.persistence.blob.models import BlobSignedUrlType
 from app.persistence.blob.repository import BlobRepository
+from app.persistence.es.persistence import ESSearchResult
 
 
 class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
@@ -298,6 +300,37 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         try:
             return destiny_sdk.robots.RobotAutomation.model_validate(
                 robot_automation.model_dump()
+            )
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
+
+    def identifier_lookups_from_sdk(
+        self,
+        identifier_lookups_in: list[destiny_sdk.identifiers.IdentifierLookup],
+    ) -> list[IdentifierLookup]:
+        """Create a list of LinkedExternalIdentifier from the SDK model."""
+        try:
+            return [
+                IdentifierLookup.model_validate(identifier_lookup.model_dump())
+                for identifier_lookup in identifier_lookups_in
+            ]
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
+
+    def reference_search_result_to_sdk(
+        self,
+        search_result: ESSearchResult[Reference],
+    ) -> destiny_sdk.references.ReferenceSearchResult:
+        """Convert the reference search result to the SDK model."""
+        try:
+            return destiny_sdk.references.ReferenceSearchResult(
+                total={
+                    "count": search_result.total.value,
+                    "is_lower_bound": search_result.total.relation == "gte",
+                },
+                references=[
+                    self.reference_to_sdk(reference) for reference in search_result.hits
+                ],
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception

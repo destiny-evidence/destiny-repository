@@ -226,3 +226,39 @@ async def test_priority_handling(
     assert isinstance(sent_message, AmqpAnnotatedMessage)
     assert sent_message.header is not None
     assert sent_message.header.priority == 5
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("renew_lock", [True, False, None])
+async def test_only_renew_lock_when_specified(
+    broker: AzureServiceBusBroker,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    renew_lock: bool,
+) -> None:
+    """
+    Test that message lock is renewed only when specified.
+
+    This test sends a message with and without the renew_lock label,
+    and checks that the lock renewal behavior is as expected.
+
+    :param broker: current broker.
+    """
+    mock_lock_renewer = AsyncMock()
+    monkeypatch.setattr(broker, "auto_lock_renewer", mock_lock_renewer)
+
+    msg = BrokerMessage(
+        task_id="task-id",
+        task_name="task-name",
+        message=b"task-message",
+        labels={"label": "foo"},
+    )
+    if renew_lock is not None:
+        msg.labels["renew_lock"] = renew_lock
+
+    await broker.kick(msg)
+    await asyncio.wait_for(get_first_task(broker), timeout=1.0)
+    if renew_lock:
+        mock_lock_renewer.register.assert_called_once()
+    else:
+        mock_lock_renewer.register.assert_not_called()

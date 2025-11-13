@@ -57,3 +57,11 @@ References
     :members:
     :undoc-members:
     :inherited-members: BaseModel, str
+
+Other
+-----
+.. autoclass:: destiny_sdk.core.SearchResultTotal
+    :members:
+    :undoc-members:
+    :exclude-members: model_config
+    :inherited-members: BaseModel

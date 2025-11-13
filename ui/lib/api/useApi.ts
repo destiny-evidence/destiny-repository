@@ -4,7 +4,7 @@ import React from "react";
 import { useMsal } from "@azure/msal-react";
 import { getLoginRequest } from "../msalConfig";
 import { apiGet, ApiResult } from "./client";
-import { ReferenceLookupParams, ReferenceLookupResult } from "./types";
+import { ReferenceLookupResult } from "./types";
 import { getRuntimeConfig } from "../runtimeConfig";
 import { InteractionStatus } from "@azure/msal-browser";
 
@@ -15,8 +15,12 @@ export function useApi() {
 
   React.useEffect(() => {
     (async () => {
-      const cfg = await getRuntimeConfig();
-      setEnv(cfg["env"]);
+      try {
+        const cfg = await getRuntimeConfig();
+        setEnv(cfg["ENV"]);
+      } catch (e) {
+        console.warn("Failed to load runtime config", e);
+      }
     })();
   }, []);
 
@@ -29,36 +33,66 @@ export function useApi() {
     inProgress === InteractionStatus.SsoSilent;
 
   async function getToken(): Promise<string | undefined> {
-    if (!isLoggedIn) return undefined;
-    if (isLocal) return undefined;
-    const request = await getLoginRequest();
-    const resp = await instance.acquireTokenSilent({
-      ...request,
-      account: accounts[0],
-    });
-    return resp?.accessToken;
-  }
+    if (!isLoggedIn || isLocal) return undefined;
+    if (!accounts || accounts.length === 0) return undefined;
 
-  async function fetchReference(
-    params: ReferenceLookupParams,
-  ): Promise<ReferenceLookupResult> {
-    const token = await getToken();
-    let path: string;
-    if (params.identifierType === "destiny_id") {
-      path = `/references/${params.identifier}/`;
-    } else {
-      const urlParams = new URLSearchParams({
-        identifier: params.identifier,
-        identifier_type: params.identifierType,
+    try {
+      const request = await getLoginRequest();
+      const resp = await instance.acquireTokenSilent({
+        ...request,
+        account: accounts[0],
       });
-      if (params.otherIdentifierName) {
-        urlParams.append("other_identifier_name", params.otherIdentifierName);
+      return resp?.accessToken;
+    } catch (err: any) {
+      console.warn(
+        "acquireTokenSilent failed, starting redirect:",
+        err?.message,
+      );
+      try {
+        const request = await getLoginRequest();
+        instance.acquireTokenRedirect({
+          ...request,
+          account: accounts[0],
+        });
+      } catch (redirectErr) {
+        console.error("acquireTokenRedirect failed:", redirectErr);
       }
-      path = `/references/?${urlParams.toString()}`;
+      return undefined;
     }
-    const result: ApiResult<any> = await apiGet(path, token);
-    return { data: result.data, error: result.error };
   }
 
-  return { fetchReference, isLoggedIn, isLoginProcessing };
+  async function fetchReferences(
+    identifiers: string[],
+  ): Promise<ReferenceLookupResult> {
+    try {
+      const token = await getToken();
+      const urlParams = new URLSearchParams();
+
+      // Send identifiers as a comma-separated list in a single parameter
+      urlParams.set("identifier", identifiers.join(","));
+
+      const path = `/references/?${urlParams.toString()}`;
+      const result: ApiResult<any> = await apiGet(path, token);
+
+      const dataArr = Array.isArray(result.data) ? result.data : [];
+      if (dataArr.length === 0 && !result.error) {
+        return {
+          data: undefined,
+          error: { type: "not_found", detail: "No results found" },
+        };
+      }
+
+      return {
+        data: dataArr,
+        error: result.error,
+      };
+    } catch (err: any) {
+      return {
+        data: undefined,
+        error: { type: "generic", detail: err?.message ?? "Unknown error" },
+      };
+    }
+  }
+
+  return { fetchReferences, isLoggedIn, isLoginProcessing };
 }

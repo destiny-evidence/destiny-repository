@@ -18,7 +18,12 @@ from pydantic import (
 )
 
 from app.core.telemetry.logger import get_logger
-from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
+from app.domain.base import (
+    DomainBaseModel,
+    ProjectedBaseModel,
+    SQLAttributeMixin,
+    SQLTimestampMixin,
+)
 from app.persistence.blob.models import BlobStorageFile
 
 logger = get_logger(__name__)
@@ -266,11 +271,11 @@ class GenericExternalIdentifier(DomainBaseModel):
     identifier: str = Field(
         description="The identifier itself.",
     )
-    identifier_type: ExternalIdentifierType = Field(
-        description="The type of the identifier.",
+    identifier_type: ExternalIdentifierType | None = Field(
+        description="The type of the identifier. If None, identifier is a database id.",
     )
     other_identifier_name: str | None = Field(
-        None,
+        default=None,
         description="The name of the other identifier.",
     )
 
@@ -289,11 +294,11 @@ class GenericExternalIdentifier(DomainBaseModel):
         )
 
 
-class ExternalIdentifierSearch(GenericExternalIdentifier):
+class IdentifierLookup(GenericExternalIdentifier):
     """Model to search for an external identifier."""
 
 
-class Enhancement(DomainBaseModel, SQLAttributeMixin):
+class Enhancement(DomainBaseModel, SQLTimestampMixin):
     """Core enhancement model with database attributes included."""
 
     source: str = Field(
@@ -324,10 +329,15 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     )
 
     def hash_data(self) -> int:
-        """Contentwise hash of the enhancement, excluding relationships."""
+        """
+        Contentwise hash of the enhancement.
+
+        Excludes relationships and timestamps.
+        """
         return hash(
             self.model_dump_json(
-                exclude={"id", "reference_id", "reference"}, exclude_none=True
+                exclude={"id", "reference_id", "reference", "created_at", "updated_at"},
+                exclude_none=True,
             )
         )
 
@@ -428,13 +438,9 @@ class RobotAutomationPercolationResult(BaseModel):
 
 class CandidateCanonicalSearchFields(ProjectedBaseModel):
     """
-    Projection representing fields used for candidate canonical selection.
+    Fields used for candidate canonical selection.
 
-    This model is a projection of
-    :class:`app.domain.references.models.models.Reference`.
-
-    This is injected into the root of Elasticsearch Reference documents for easy
-    searching. The search implementation lives at
+    The search implementation lives at
     :attr:`app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals`.
     """
 
@@ -454,6 +460,44 @@ class CandidateCanonicalSearchFields(ProjectedBaseModel):
     def is_searchable(self) -> bool:
         """Whether the projection has the fields required to search for candidates."""
         return all((self.publication_year, self.authors, self.title))
+
+
+class ReferenceSearchFields(ProjectedBaseModel):
+    """
+    Projection representing fields used for searching references.
+
+    This model is a projection of
+    :class:`app.domain.references.models.models.Reference`.
+
+    This is injected into the root of Elasticsearch Reference documents for easy
+    searching.
+    """
+
+    abstract: str | None = Field(
+        default=None, description="The abstract of the reference."
+    )
+
+    authors: list[str] = Field(
+        default_factory=list, description="The authors of the reference."
+    )
+
+    publication_year: int | None = Field(
+        default=None,
+        description="The publication year of the reference.",
+    )
+
+    title: str | None = Field(
+        default=None,
+        description="The title of the reference.",
+    )
+
+    def to_canonical_candidate_search_fields(self) -> CandidateCanonicalSearchFields:
+        """Return fields needed for candidate canonical selection."""
+        return CandidateCanonicalSearchFields(
+            publication_year=self.publication_year,
+            authors=self.authors,
+            title=self.title,
+        )
 
 
 class ReferenceDuplicateDeterminationResult(BaseModel):

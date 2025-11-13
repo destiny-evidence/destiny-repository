@@ -159,6 +159,7 @@ async def enqueue_batch(
     )
     await queue_task_with_trace(
         distribute_import_batch,
+        long_running=True,
         import_batch_id=import_batch.id,
         otel_enabled=settings.otel_enabled,
     )
