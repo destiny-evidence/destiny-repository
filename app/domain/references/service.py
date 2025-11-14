@@ -1,5 +1,6 @@
 """The service for interacting with and managing references."""
 
+import datetime
 import uuid
 from collections import defaultdict
 from collections.abc import Collection, Iterable
@@ -68,6 +69,7 @@ from app.persistence.es.uow import unit_of_work as es_unit_of_work
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
 from app.utils.lists import list_chunker
+from app.utils.time_and_date import apply_positive_timedelta
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -545,6 +547,16 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             enhancement_request_id, preload=preload
         )
 
+    async def _get_robot_enhancement_batch(
+        self,
+        robot_enhancement_batch_id: UUID,
+        preload: list[RobotEnhancementBatchSQLPreloadable] | None = None,
+    ) -> RobotEnhancementBatch:
+        """Get a robot enhancement batch by batch id."""
+        return await self.sql_uow.robot_enhancement_batches.get_by_pk(
+            robot_enhancement_batch_id, preload=preload
+        )
+
     @sql_unit_of_work
     async def get_robot_enhancement_batch(
         self,
@@ -552,7 +564,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         preload: list[RobotEnhancementBatchSQLPreloadable] | None = None,
     ) -> RobotEnhancementBatch:
         """Get a robot enhancement batch by batch id."""
-        return await self.sql_uow.robot_enhancement_batches.get_by_pk(
+        return await self._get_robot_enhancement_batch(
             robot_enhancement_batch_id, preload=preload
         )
 
@@ -940,6 +952,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         robot_id: UUID,
         pending_enhancements: list[PendingEnhancement],
+        lease_duration: datetime.timedelta,
         blob_repository: BlobRepository,
     ) -> RobotEnhancementBatch:
         """
@@ -963,8 +976,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         if pending_enhancement_ids:
             await self.sql_uow.pending_enhancements.bulk_update(
                 pks=pending_enhancement_ids,
-                status=PendingEnhancementStatus.ACCEPTED,
+                status=PendingEnhancementStatus.PROCESSING,
                 robot_enhancement_batch_id=robot_enhancement_batch.id,
+                expires_at=apply_positive_timedelta(lease_duration),
             )
 
         file_stream = FileStream(
@@ -993,6 +1007,28 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             robot_enhancement_batch=robot_enhancement_batch,
             reference_data_file=reference_data_file,
         )
+
+    @sql_unit_of_work
+    async def renew_robot_enhancement_batch_lease(
+        self,
+        robot_enhancement_batch_id: UUID,
+        lease_duration: datetime.timedelta,
+    ) -> tuple[int, datetime.datetime]:
+        """Renew a robot enhancement batch lease."""
+        await self.sql_uow.robot_enhancement_batches.verify_pk_existence(
+            [robot_enhancement_batch_id]
+        )
+        expiry = apply_positive_timedelta(lease_duration)
+        updated = await self.sql_uow.pending_enhancements.bulk_update_by_filter(
+            filter_conditions={
+                "robot_enhancement_batch_id": robot_enhancement_batch_id,
+                # If a robot lets a pending enhancement expire, it must use a
+                # new robot enhancement batch to re-process it.
+                "status": PendingEnhancementStatus.PROCESSING,
+            },
+            expires_at=expiry,
+        )
+        return updated, expiry
 
     @sql_unit_of_work
     async def invoke_deduplication_for_references(

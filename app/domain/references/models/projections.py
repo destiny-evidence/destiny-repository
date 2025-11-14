@@ -300,6 +300,9 @@ class EnhancementRequestStatusProjection(GenericProjection[EnhancementRequest]):
         pending_enhancement_status_set: set[PendingEnhancementStatus],
     ) -> EnhancementRequest:
         """Project the enhancement request status from a set of pending statuses."""
+        # Ignore expired pending enhancements, they have no weight
+        pending_enhancement_status_set.discard(PendingEnhancementStatus.EXPIRED)
+
         # No pending enhancements -> keep original status for backwards compatibility
         if not pending_enhancement_status_set:
             return enhancement_request
@@ -307,7 +310,7 @@ class EnhancementRequestStatusProjection(GenericProjection[EnhancementRequest]):
         # Define non-terminal statuses
         non_terminal_statuses = {
             PendingEnhancementStatus.PENDING,
-            PendingEnhancementStatus.ACCEPTED,
+            PendingEnhancementStatus.PROCESSING,
             PendingEnhancementStatus.IMPORTING,
             PendingEnhancementStatus.INDEXING,
         }
