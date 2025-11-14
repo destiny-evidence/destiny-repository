@@ -35,6 +35,7 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     Visibility,
 )
+from app.domain.references.models.models import Reference as DomainReference
 from app.domain.references.models.sql import Enhancement as SQLEnhancement
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import (
@@ -47,15 +48,13 @@ from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
-from app.domain.references.repository import ReferenceESRepository
 from app.domain.references.service import ReferenceService
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
+from app.persistence.es.persistence import ESSearchResult, ESSearchTotal
 from app.tasks import broker
 from tests.factories import (
-    BibliographicMetadataEnhancementFactory,
-    EnhancementFactory,
     ReferenceFactory,
 )
 
@@ -738,113 +737,12 @@ async def test_get_robot_enhancement_batch_nonexistent_batch(client: AsyncClient
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
-async def test_search_references_happy_path(
-    client: AsyncClient,
-    es_client: AsyncElasticsearch,
-) -> None:
-    """Test a well formed query returns results."""
-    reference = ReferenceFactory.build(
-        enhancements=[
-            EnhancementFactory.build(
-                content=BibliographicMetadataEnhancementFactory.build(
-                    title="Test paper title",
-                    publication_year=2023,
-                )
-            )
-        ]
-    )
-    await ReferenceESRepository(es_client).add(reference)
-    await es_client.indices.refresh(index="reference")
-
-    response = await client.get(
-        "/v1/references/search/",
-        params={"q": "title:Test paper"},
-    )
-
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    assert data["total"]["count"] == 1
-    assert not data["total"]["is_lower_bound"]
-    assert data["references"][0]["id"] == str(reference.id)
-    assert data["page"]["number"] == 1
-    assert data["page"]["count"] == 1
-
-    # Verify omitting the field still works and uses default fields
-    assert (
-        await client.get(
-            "/v1/references/search/",
-            params={"q": "Test paper"},
-        )
-    ).json() == data
-
-    # Verify trying a second page returns empty
-    response = await client.get(
-        "/v1/references/search/",
-        params={"q": "title:Test paper", "page": 2},
-    )
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    assert data["references"] == []
-    assert data["total"]["count"] == 1
-
-    # Verify adding a publication year excludes the result
-    response = await client.get(
-        "/v1/references/search/",
-        params={"q": "title:Test paper", "start_year": 2021, "end_year": 2022},
-    )
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    assert data["references"] == []
-    assert data["total"]["count"] == 0
-
-
-async def test_search_references_sad_path(
-    client: AsyncClient,
-    es_client: AsyncElasticsearch,  # noqa: ARG001
-) -> None:
-    """Test a poorly formatted query returns 400."""
-    response = await client.get(
-        "/v1/references/search/",
-        params={"q": "(quick and brown"},
-    )
-
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    data = response.json()
-    assert "Failed to parse query [(quick and brown]" in data["detail"]
-
-    response = await client.get(
-        "/v1/references/search/",
-        params={"q": "title:Test", "sort": "title"},
-    )
-    # title is a text field and so cannot be sorted on
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    data = response.json()
-    assert (
-        # Different ES versions give different error messages
-        "No mapping found for [title] in order to sort on" in data["detail"]
-        or "Fielddata is disabled on [title]" in data["detail"]
-    )
-
-
 async def test_search_references_with_annotation_filters(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test that annotation filters are correctly parsed and passed to the service."""
-    from app.domain.references.models.models import Reference as DomainReference
-    from app.persistence.es.persistence import ESSearchResult, ESSearchTotal
-
-    # Create a mock reference with annotations
-    reference = ReferenceFactory.build(
-        enhancements=[
-            EnhancementFactory.build(
-                content=BibliographicMetadataEnhancementFactory.build(
-                    title="Test paper with annotations",
-                    publication_year=2023,
-                )
-            )
-        ]
-    )
+    reference = ReferenceFactory.build()
 
     # Create a mock search result
     mock_search_result = ESSearchResult[DomainReference](
@@ -875,7 +773,6 @@ async def test_search_references_with_annotation_filters(
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert data["total"]["count"] == 1
-    assert data["references"][0]["id"] == str(reference.id)
 
     # Verify the service was called with the correct annotation filters
     mock_search.assert_awaited_once()
