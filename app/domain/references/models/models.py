@@ -28,6 +28,7 @@ from app.domain.base import (
     SQLTimestampMixin,
 )
 from app.persistence.blob.models import BlobStorageFile
+from app.utils.time_and_date import apply_positive_timedelta
 
 logger = get_logger(__name__)
 
@@ -702,10 +703,8 @@ class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
     ) -> datetime.datetime:
         """Allow setting expires_at as a timedelta from now on instantiation."""
         if isinstance(val, datetime.timedelta):
-            if val <= datetime.timedelta(0):
-                msg = "expires_at timedelta must be positive"
-                raise ValueError(msg)
-            return datetime.datetime.now(datetime.UTC) + val
+            return apply_positive_timedelta(val)
+
         return val
 
     @model_validator(mode="after")

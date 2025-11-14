@@ -1,5 +1,6 @@
 """API config parsing and model."""
 
+import datetime
 import tomllib
 from enum import StrEnum, auto
 from functools import lru_cache
@@ -17,6 +18,7 @@ from pydantic import (
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.telemetry.logger import get_logger
+from app.utils.time_and_date import iso8601_duration_adapter
 
 logger = get_logger(__name__)
 
@@ -347,6 +349,14 @@ class Settings(BaseSettings):
     presigned_url_expiry_seconds: int = Field(
         default=3600,
         description="The number of seconds a signed URL is valid for.",
+    )
+
+    default_pending_enhancement_lease_duration: datetime.timedelta = Field(
+        default=iso8601_duration_adapter.validate_python("PT10M"),
+        description=(
+            "The default duration to lease pending enhancements for, provided "
+            "in ISO 8601 duration format eg 'PT10M'."
+        ),
     )
 
     env: Environment = Field(

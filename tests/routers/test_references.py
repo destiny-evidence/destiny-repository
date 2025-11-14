@@ -3,7 +3,7 @@
 import datetime
 import uuid
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import pytest
 from destiny_sdk.enhancements import EnhancementType
@@ -54,6 +54,7 @@ from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
 from app.tasks import broker
+from app.utils.time_and_date import apply_positive_timedelta, iso8601_duration_adapter
 from tests.factories import (
     BibliographicMetadataEnhancementFactory,
     EnhancementFactory,
@@ -200,7 +201,7 @@ async def add_robot_enhancement_batch(
     session.add(robot_enhancement_batch)
     session.add(pending_enhancement)
     await session.commit()
-    return robot_enhancement_batch
+    return robot_enhancement_batch.to_domain()
 
 
 async def add_enhancement(session: AsyncSession, reference_id: uuid.UUID):
@@ -518,18 +519,55 @@ async def test_request_robot_enhancement_batch(
     session: AsyncSession,
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
+    mock_blob_repository: None,  # noqa: ARG001
 ) -> None:
     """Test requesting a batch of pending enhancements for a robot."""
     # Set up test data
     robot = await add_robot(session)
     reference = await add_reference(session)
     enhancement_request = await add_enhancement_request(session, robot, reference)
-    await add_pending_enhancement(session, reference, enhancement_request)
+    pending_enhancement = await add_pending_enhancement(
+        session, reference, enhancement_request
+    )
+    robot_enhancement_batch = await add_robot_enhancement_batch(
+        session, pending_enhancement
+    )
 
-    # Mock the service methods
+    mock_get_pending = AsyncMock(return_value=[pending_enhancement])
+    mock_create_batch = AsyncMock(return_value=robot_enhancement_batch)
+
+    monkeypatch.setattr(
+        ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
+    )
+    monkeypatch.setattr(
+        ReferenceService, "create_robot_enhancement_batch", mock_create_batch
+    )
+
+    response = await client.post(
+        f"/v1/robot-enhancement-batches/?robot_id={robot.id}&limit=10&lease=PT5M"
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    mock_get_pending.assert_awaited_once_with(robot_id=robot.id, limit=10)
+
+    mock_create_batch.assert_awaited_once_with(
+        robot_id=robot.id,
+        pending_enhancements=[pending_enhancement],
+        lease_duration=datetime.timedelta(minutes=5),
+        blob_repository=ANY,
+    )
+
+
+async def test_request_robot_enhancement_batch_no_pending_enhancements(
+    session: AsyncSession,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test requesting a batch when there are no pending enhancements."""
+    robot = await add_robot(session)
+
     mock_get_pending = AsyncMock(return_value=[])
     mock_create_batch = AsyncMock()
-
     monkeypatch.setattr(
         ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
     )
@@ -543,6 +581,7 @@ async def test_request_robot_enhancement_batch(
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
     mock_get_pending.assert_awaited_once_with(robot_id=robot.id, limit=10)
+    mock_create_batch.assert_not_awaited()
 
 
 async def test_request_robot_enhancement_batch_limit_exceeded(
@@ -738,6 +777,63 @@ async def test_get_robot_enhancement_batch_nonexistent_batch(client: AsyncClient
     response = await client.get(f"/v1/robot-enhancement-batces/{uuid.uuid4()}/")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+async def test_robot_enhancement_batch_renew_lease(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Test renewing a lease on a robot enhancement batch."""
+    dt = datetime.timedelta(minutes=5)
+    dt_iso = iso8601_duration_adapter.dump_python(dt, mode="json")
+    expiry = apply_positive_timedelta(dt)
+    mock_renew_lease = AsyncMock(return_value=(5, expiry))
+    monkeypatch.setattr(
+        ReferenceService, "renew_robot_enhancement_batch_lease", mock_renew_lease
+    )
+
+    _id = uuid.uuid4()
+    response = await client.patch(
+        f"/v1/robot-enhancement-batches/{_id}/renew-lease/?lease={dt_iso}"
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.text == expiry.isoformat()
+
+    mock_renew_lease.assert_awaited_once_with(
+        robot_enhancement_batch_id=_id,
+        lease_duration=dt,
+    )
+
+
+async def test_robot_enhancement_batch_renew_lease_empty_response(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Test renewing a lease on a robot enhancement batch with no renewals left."""
+    dt = datetime.timedelta(minutes=5)
+    dt_iso = iso8601_duration_adapter.dump_python(dt, mode="json")
+    expiry = apply_positive_timedelta(dt)
+    mock_renew_lease = AsyncMock(return_value=(0, expiry))
+    monkeypatch.setattr(
+        ReferenceService, "renew_robot_enhancement_batch_lease", mock_renew_lease
+    )
+
+    _id = uuid.uuid4()
+    response = await client.patch(
+        f"/v1/robot-enhancement-batches/{_id}/renew-lease/?lease={dt_iso}"
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert (
+        response.json()["detail"] == "This batch has no pending enhancements. "
+        "They may have already expired or been completed."
+    )
+
+    mock_renew_lease.assert_awaited_once_with(
+        robot_enhancement_batch_id=_id,
+        lease_duration=dt,
+    )
 
 
 async def test_search_references_happy_path(

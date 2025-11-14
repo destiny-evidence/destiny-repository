@@ -1,5 +1,6 @@
 """Unit tests for the ReferenceService class."""
 
+import datetime
 import json
 import uuid
 from unittest.mock import AsyncMock, Mock, patch
@@ -35,6 +36,7 @@ from app.domain.references.services.anti_corruption_service import (
 )
 from app.domain.robots.models.models import Robot
 from app.persistence.blob.models import BlobStorageFile
+from app.utils.time_and_date import utc_now
 
 
 @pytest.fixture
@@ -800,9 +802,13 @@ async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_ro
 
     assert len(batch_pending_enhancements) == 3
 
+    lease = datetime.timedelta(minutes=5)
+    expected_expiry_time = utc_now() + lease
+
     created_batch = await service.create_robot_enhancement_batch(
         robot_id=test_robot.id,
         pending_enhancements=batch_pending_enhancements,
+        lease_duration=lease,
         blob_repository=mock_blob_repository,
     )
 
@@ -813,6 +819,9 @@ async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_ro
         updated_pe = await uow.pending_enhancements.get_by_pk(pe.id)
         assert updated_pe.status == PendingEnhancementStatus.PROCESSING
         assert updated_pe.robot_enhancement_batch_id == created_batch.id
+        assert abs(updated_pe.expires_at - expected_expiry_time) < datetime.timedelta(
+            seconds=1
+        )
 
     assert (
         await uow.pending_enhancements.get_by_pk(pending_enhancements[3].id)
@@ -833,3 +842,53 @@ async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_ro
 
     assert created_batch.reference_data_file is not None
     assert created_batch.reference_data_file.endswith(".jsonl")
+
+
+@pytest.mark.asyncio
+async def test_renew_robot_enhancement_batch_lease(
+    fake_repository, fake_uow, test_robot
+):
+    """Test renewing the lease of a robot enhancement batch."""
+    initial_expiry = utc_now() + datetime.timedelta(minutes=1)
+    updated_lease = datetime.timedelta(minutes=5)
+
+    robot_enhancement_batch = RobotEnhancementBatch(
+        robot_id=test_robot.id,
+        lease_expires_at=initial_expiry,
+    )
+
+    repo = fake_repository(init_entries=[robot_enhancement_batch])
+    enhancement_repo = fake_repository(
+        init_entries=[
+            PendingEnhancement(
+                id=uuid.uuid4(),
+                robot_enhancement_batch_id=robot_enhancement_batch.id,
+                reference_id=uuid.uuid4(),
+                robot_id=test_robot.id,
+                enhancement_request_id=uuid.uuid4(),
+                status=PendingEnhancementStatus.PROCESSING,
+                expires_at=initial_expiry,
+            )
+        ]
+    )
+    uow = fake_uow(
+        robot_enhancement_batches=repo, pending_enhancements=enhancement_repo
+    )
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+
+    updated, new_expiry = await service.renew_robot_enhancement_batch_lease(
+        robot_enhancement_batch_id=robot_enhancement_batch.id,
+        lease_duration=updated_lease,
+    )
+
+    assert updated == 1
+
+    expected_new_expiry = utc_now() + updated_lease
+    assert abs(new_expiry - expected_new_expiry) < datetime.timedelta(seconds=1)
+
+    updated_pending_enhancement = enhancement_repo.get_first_record()
+    assert abs(
+        updated_pending_enhancement.expires_at - expected_new_expiry
+    ) < datetime.timedelta(seconds=1)
