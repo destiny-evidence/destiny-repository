@@ -257,6 +257,8 @@ def parse_annotation_filters(
                 "- If a score is specified, "
                 "results will be filtered for that annotation having a score "
                 "greater than or equal to the given value.\n"
+                "- If the label is omitted, results will be filtered if any "
+                "annotation with the given scheme is true.\n"
                 "- Multiple annotations are combined using AND logic.\n\n"
                 "Format: `<scheme>[/<label>][@<score>]`. "
             ),
@@ -264,9 +266,6 @@ def parse_annotation_filters(
                 "inclusion:destiny@0.8",
                 "classifier:taxonomy:Outcomes/Influenza",
             ],
-            # Not used for now but prepared for future use
-            # Requires knowledge of annotation mapping in ES for further implementation
-            include_in_schema=False,
         ),
     ] = None,
 ) -> list[AnnotationFilter]:
