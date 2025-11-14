@@ -492,6 +492,29 @@ class ReferenceSearchFields(ProjectedBaseModel):
         description="The title of the reference.",
     )
 
+    annotations: list[str] = Field(
+        default_factory=list,
+        description=(
+            "List of true annotations on the reference."
+            "Each annotation is in the format `<scheme>/<label>`."
+        ),
+    )
+
+    evaluated_schemes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "List of annotation schemes that have been evaluated on the reference."
+        ),
+    )
+
+    destiny_inclusion_score: float | None = Field(
+        default=None,
+        description=(
+            "The inclusion score on the destiny domain inclusion annotation, "
+            "if evaluated."
+        ),
+    )
+
     def to_canonical_candidate_search_fields(self) -> CandidateCanonicalSearchFields:
         """Return fields needed for candidate canonical selection."""
         return CandidateCanonicalSearchFields(

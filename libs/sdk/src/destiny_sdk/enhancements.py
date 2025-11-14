@@ -145,7 +145,25 @@ class AnnotationType(StrEnum):
     """
 
 
-class ScoreAnnotation(BaseModel):
+class BaseAnnotation(BaseModel):
+    """Base class for annotations, defining the minimal required fields."""
+
+    scheme: str = Field(
+        description="An identifier for the scheme of annotation",
+        examples=["openalex:topic", "pubmed:mesh"],
+        pattern=r"^[^/]+$",  # No slashes allowed
+    )
+    label: str = Field(
+        description="A high level label for this annotation like the name of the topic",
+    )
+
+    @property
+    def qualified_label(self) -> str:
+        """The qualified label for this annotation."""
+        return f"{self.scheme}/{self.label}"
+
+
+class ScoreAnnotation(BaseAnnotation):
     """
     An annotation which represents the score for a label.
 
@@ -154,13 +172,6 @@ class ScoreAnnotation(BaseModel):
     """
 
     annotation_type: Literal[AnnotationType.SCORE] = AnnotationType.SCORE
-    scheme: str = Field(
-        description="An identifier for the scheme of annotation",
-        examples=["openalex:topic", "pubmed:mesh"],
-    )
-    label: str = Field(
-        description="A high level label for this annotation like the name of the topic",
-    )
     score: float = Field(description="""Score for this annotation""")
     data: dict = Field(
         default_factory=dict,
@@ -171,7 +182,7 @@ class ScoreAnnotation(BaseModel):
     )
 
 
-class BooleanAnnotation(BaseModel):
+class BooleanAnnotation(BaseAnnotation):
     """
     An annotation is a way of tagging the content with a label of some kind.
 
@@ -180,13 +191,6 @@ class BooleanAnnotation(BaseModel):
     """
 
     annotation_type: Literal[AnnotationType.BOOLEAN] = AnnotationType.BOOLEAN
-    scheme: str = Field(
-        description="An identifier for the scheme of the annotation",
-        examples=["openalex:topic", "pubmed:mesh"],
-    )
-    label: str = Field(
-        description="A high level label for this annotation like the name of the topic",
-    )
     value: bool = Field(description="""Boolean flag for this annotation""")
     score: float | None = Field(
         None, description="A confidence score for this annotation"

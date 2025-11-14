@@ -1,6 +1,7 @@
 """Projection functions for reference domain data."""
 
 import uuid
+from collections import defaultdict
 
 import destiny_sdk
 
@@ -39,6 +40,12 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             title, publication_year = None, None
             abstract = None
             authorship: list[destiny_sdk.enhancements.Authorship] = []
+            annotations: set[str] = set()
+            annotations_by_scheme: dict[
+                str, list[destiny_sdk.enhancements.Annotation]
+            ] = {}
+            destiny_inclusion_annotation = None
+            destiny_inclusion_score = None
 
             for enhancement in cls.__priority_sorted_enhancements(
                 canonical_id=reference.id, enhancements=reference.enhancements
@@ -63,11 +70,39 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                 elif enhancement.content.enhancement_type == EnhancementType.ABSTRACT:
                     abstract = enhancement.content.abstract
 
+                elif enhancement.content.enhancement_type == EnhancementType.ANNOTATION:
+                    # Pre-work: collect annotations by scheme, preserving the
+                    # highest priority. Thus, if a scheme is processed twice,
+                    # we only use the highest priority one. Coalescing is not
+                    # performed, as an annotation that was once present that is missing
+                    # in a later enhancement should be treated as removed.
+                    #
+                    # NB this makes the assumption that annotation schemes will always
+                    # be wholly represented in a single enhancement.
+                    _annotations_by_scheme: dict[
+                        str, list[destiny_sdk.enhancements.Annotation]
+                    ] = defaultdict(list)
+                    for annotation in enhancement.content.annotations or []:
+                        if annotation.scheme == "inclusion:destiny":
+                            destiny_inclusion_annotation = annotation
+                        _annotations_by_scheme[annotation.scheme].append(annotation)
+                    annotations_by_scheme |= _annotations_by_scheme
+
+            annotations = cls.__positive_boolean_annotations(annotations_by_scheme)
+            destiny_inclusion_score = (
+                cls.__positive_annotation_score(destiny_inclusion_annotation)
+                if destiny_inclusion_annotation
+                else None
+            )
+
             return cls.__normalised_reference_search_fields(
                 abstract=abstract,
                 authorship=authorship,
                 publication_year=publication_year,
                 title=title,
+                annotations=annotations,
+                evaluated_schemes=set(annotations_by_scheme.keys()),
+                destiny_inclusion_score=destiny_inclusion_score,
             )
 
         except Exception as exc:
@@ -75,12 +110,15 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             raise ProjectionError(msg) from exc
 
     @classmethod
-    def __normalised_reference_search_fields(
+    def __normalised_reference_search_fields(  # noqa: PLR0913
         cls,
         abstract: str | None,
         authorship: list[destiny_sdk.enhancements.Authorship],
         publication_year: int | None,
         title: str | None,
+        annotations: set[str],
+        evaluated_schemes: set[str],
+        destiny_inclusion_score: float | None,
     ) -> ReferenceSearchFields:
         """Strip whitespace, normalise authors."""
         # Maintain first and last author, sort middle authors by name
@@ -106,6 +144,9 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             authors=[author.display_name.strip() for author in authorship],
             publication_year=publication_year,
             title=title,
+            annotations=[annotation.strip() for annotation in annotations],
+            evaluated_schemes=[scheme.strip() for scheme in evaluated_schemes],
+            destiny_inclusion_score=destiny_inclusion_score,
         )
 
     @classmethod
@@ -144,6 +185,47 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             )
 
         return sorted(enhancements, key=lambda e: __priority_sort_key(canonical_id, e))
+
+    @classmethod
+    def __positive_boolean_annotations(
+        cls,
+        annotations_by_scheme: dict[str, list[destiny_sdk.enhancements.Annotation]],
+    ) -> set[str]:
+        """Process annotations into a set of positive annotation labels."""
+        return {
+            annotation.qualified_label
+            for annotations in annotations_by_scheme.values()
+            for annotation in annotations
+            if (
+                annotation.annotation_type
+                == destiny_sdk.enhancements.AnnotationType.BOOLEAN
+                and annotation.value
+            )
+        }
+
+    @classmethod
+    def __positive_annotation_score(
+        cls,
+        annotation: destiny_sdk.enhancements.Annotation,
+    ) -> float | None:
+        """
+        Get the score of an annotation.
+
+        If the annotation is boolean, return the truth score (i.e. inverted if false).
+        """
+        if (inclusion_score := annotation.data.get("inclusion_score")) is not None:
+            return inclusion_score
+        if (
+            annotation.annotation_type
+            == destiny_sdk.enhancements.AnnotationType.BOOLEAN
+            and annotation.score is not None
+        ):
+            return annotation.score if annotation.value else 1 - annotation.score
+        if annotation.annotation_type == (
+            destiny_sdk.enhancements.AnnotationType.SCORE
+        ):
+            return annotation.score
+        return None
 
     @classmethod
     def get_canonical_candidate_search_fields(
