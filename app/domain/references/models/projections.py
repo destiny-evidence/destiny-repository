@@ -40,7 +40,6 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             title, publication_year = None, None
             abstract = None
             authorship: list[destiny_sdk.enhancements.Authorship] = []
-            annotations: set[str] = set()
             annotations_by_scheme: dict[
                 str, list[destiny_sdk.enhancements.Annotation]
             ] = {}
@@ -95,13 +94,13 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                 else None
             )
 
-            return cls.__normalised_reference_search_fields(
+            return ReferenceSearchFields(
                 abstract=abstract,
-                authorship=authorship,
+                authors=cls.__order_authorship_by_position(authorship),
                 publication_year=publication_year,
                 title=title,
                 annotations=annotations,
-                evaluated_schemes=set(annotations_by_scheme.keys()),
+                evaluated_schemes=annotations_by_scheme.keys(),
                 destiny_inclusion_score=destiny_inclusion_score,
             )
 
@@ -110,44 +109,23 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             raise ProjectionError(msg) from exc
 
     @classmethod
-    def __normalised_reference_search_fields(  # noqa: PLR0913
-        cls,
-        abstract: str | None,
-        authorship: list[destiny_sdk.enhancements.Authorship],
-        publication_year: int | None,
-        title: str | None,
-        annotations: set[str],
-        evaluated_schemes: set[str],
-        destiny_inclusion_score: float | None,
-    ) -> ReferenceSearchFields:
-        """Strip whitespace, normalise authors."""
-        # Maintain first and last author, sort middle authors by name
-        authorship = sorted(
-            authorship,
-            key=lambda author: (
-                {
-                    destiny_sdk.enhancements.AuthorPosition.FIRST: -1,
-                    destiny_sdk.enhancements.AuthorPosition.LAST: 1,
-                }.get(author.position, 0),
-                author.display_name.strip(),
-            ),
-        )
-
-        if title:
-            title = title.strip()
-
-        if abstract:
-            abstract = abstract.strip()
-
-        return ReferenceSearchFields(
-            abstract=abstract,
-            authors=[author.display_name.strip() for author in authorship],
-            publication_year=publication_year,
-            title=title,
-            annotations=[annotation.strip() for annotation in annotations],
-            evaluated_schemes=[scheme.strip() for scheme in evaluated_schemes],
-            destiny_inclusion_score=destiny_inclusion_score,
-        )
+    def __order_authorship_by_position(
+        cls, authorship: list[destiny_sdk.enhancements.Authorship]
+    ) -> list[str]:
+        """Order authorship by position: first, middle (alphabetical), last."""
+        return [
+            author.display_name
+            for author in sorted(
+                authorship,
+                key=lambda author: (
+                    {
+                        destiny_sdk.enhancements.AuthorPosition.FIRST: -1,
+                        destiny_sdk.enhancements.AuthorPosition.LAST: 1,
+                    }.get(author.position, 0),
+                    author.display_name,
+                ),
+            )
+        ]
 
     @classmethod
     def __priority_sorted_enhancements(
