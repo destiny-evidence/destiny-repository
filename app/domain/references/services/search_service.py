@@ -53,7 +53,17 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         self,
         annotation: AnnotationFilter,
     ) -> str:
-        """Build an annotation filter for Elasticsearch query string."""
+        """
+        Build an annotation filter for Elasticsearch query string.
+
+        Examples:
+        - For score filter: `scheme:>=0.8` (minimum bound on score)
+        - For scheme and label: `annotations:"scheme/label"`
+          - Quotes are used to handle any special characters.
+        - For scheme only: `annotations:scheme*` (wildcard any label with the scheme)
+          - Escaping is used on colons here as we can't wildcard in a quoted string.
+
+        """
         if annotation.score is not None:
             field = annotation.scheme.replace(":", "_")
             if annotation.label:
