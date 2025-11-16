@@ -8,6 +8,7 @@
 
 """Router for handling management of references."""
 
+import datetime
 import uuid
 from typing import Annotated
 
@@ -38,7 +39,7 @@ from app.api.auth import (
     security,
 )
 from app.api.decorators import experimental
-from app.api.exception_handlers import APIExceptionContent
+from app.api.exception_handlers import APIExceptionContent, APIExceptionResponse
 from app.core.config import get_settings
 from app.core.exceptions import ParseError
 from app.core.telemetry.fastapi import PayloadAttributeTracer
@@ -67,6 +68,7 @@ from app.persistence.es.client import get_client
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
+from app.utils.time_and_date import utc_now
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -510,6 +512,13 @@ async def request_robot_enhancement_batch(
             description="The maximum number of pending enhancements to return.",
         ),
     ] = settings.max_pending_enhancements_batch_size,
+    lease: Annotated[
+        datetime.timedelta,
+        Query(
+            description="The duration to lease the pending enhancements for, "
+            "provided in ISO 8601 duration format.",
+        ),
+    ] = settings.default_pending_enhancement_lease_duration,
 ) -> destiny_sdk.robots.RobotEnhancementBatch | Response:
     """
     Request a batch of references to enhance.
@@ -523,7 +532,6 @@ async def request_robot_enhancement_batch(
             "Using max_pending_enhancements_batch_size: %d",
             limit,
         )
-
     pending_enhancements = await reference_service.get_pending_enhancements_for_robot(
         robot_id=robot_id,
         limit=limit,
@@ -534,11 +542,73 @@ async def request_robot_enhancement_batch(
     robot_enhancement_batch = await reference_service.create_robot_enhancement_batch(
         robot_id=robot_id,
         pending_enhancements=pending_enhancements,
+        lease_duration=lease,
         blob_repository=blob_repository,
     )
 
     return await anti_corruption_service.robot_enhancement_batch_to_sdk_robot(
         robot_enhancement_batch
+    )
+
+
+@robot_enhancement_batch_router.patch(
+    "/{robot_enhancement_batch_id}/renew-lease/",
+    response_model=Annotated[
+        str,
+        Field(
+            description="The new lease expiry timestamp.",
+            examples=[utc_now().isoformat()],
+        ),
+    ],
+    summary="Renew the lease on an existing batch of references to enhance",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_409_CONFLICT: {
+            "model": Annotated[
+                APIExceptionContent,
+                Field(
+                    examples=[
+                        {
+                            "detail": (
+                                conflict_msg
+                                := "This batch has no pending enhancements. "
+                                "They may have already expired or been completed."
+                            )
+                        }
+                    ]
+                ),
+            ]
+        }
+    },
+)
+async def renew_robot_enhancement_batch_lease(
+    robot_enhancement_batch_id: uuid.UUID,
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    lease: Annotated[
+        datetime.timedelta,
+        Query(
+            description="The duration to lease the pending enhancements for, "
+            "provided in ISO 8601 duration format."
+        ),
+    ] = settings.default_pending_enhancement_lease_duration,
+) -> Response:
+    """
+    Renew the lease on an existing batch of references to enhance.
+
+    This endpoint is used by robots to extend the lease on enhancement batches.
+    """
+    updated, expiry = await reference_service.renew_robot_enhancement_batch_lease(
+        robot_enhancement_batch_id=robot_enhancement_batch_id,
+        lease_duration=lease,
+    )
+    if not updated:
+        return APIExceptionResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=APIExceptionContent(detail=conflict_msg),
+        )
+    return Response(
+        content=expiry.isoformat(),
+        status_code=status.HTTP_200_OK,
     )
 
 
