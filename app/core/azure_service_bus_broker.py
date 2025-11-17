@@ -220,22 +220,13 @@ class AzureServiceBusBroker(AsyncBroker):
                         sb_message: ServiceBusReceivedMessage = sb_message,
                     ) -> None:
                         logger.info(
-                            "Attempting to complete message",
-                            task_id=sb_message.message_id,
-                            message=str(sb_message),
+                            "Attempting to complete message", message=str(sb_message)
                         )
                         if self.receiver is not None:
                             async with self._receive_lock:
-                                logger.info(
-                                    "Completing message",
-                                    task_id=sb_message.message_id,
-                                    sb_message=sb_message,
-                                )
+                                logger.info("Completing message", sb_message=sb_message)
                                 await self.receiver.complete_message(sb_message)
-                                logger.info(
-                                    "Completed message",
-                                    task_id=sb_message.message_id,
-                                )
+                                logger.info("Completed message")
                         else:
                             logger.error(
                                 "Receiver is None. Cannot complete the message."
@@ -259,15 +250,9 @@ class AzureServiceBusBroker(AsyncBroker):
                         ack=ack_message,
                     )
 
-                    logger.info(
-                        "Yielding message",
-                        task_id=sb_message.message_id,
-                    )
+                    logger.info("Yielding message")
                     yield ackable
-                    logger.info(
-                        "Yielded message",
-                        task_id=sb_message.message_id,
-                    )
+                    logger.info("Yielded message")
             except Exception:
                 logger.exception("Error receiving messages")
                 # Wait a bit before retrying
