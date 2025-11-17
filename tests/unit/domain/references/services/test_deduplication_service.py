@@ -39,7 +39,7 @@ def reference_with_identifiers():
 
 @pytest.fixture
 def searchable_reference(reference_with_identifiers):
-    return reference_with_identifiers.copy(
+    return reference_with_identifiers.model_copy(
         update={
             "enhancements": [
                 Enhancement(
@@ -69,7 +69,9 @@ def anti_corruption_service():
 async def test_find_exact_duplicate_happy_path(
     reference_with_identifiers, anti_corruption_service, fake_uow, fake_repository
 ):
-    candidate = reference_with_identifiers.copy(update={"id": uuid.uuid4()})
+    candidate = reference_with_identifiers.model_copy(
+        update={"id": uuid.uuid4()},
+    )
     repo = fake_repository([candidate])
     uow = fake_uow(references=repo)
     uow.references.find_with_identifiers = AsyncMock(return_value=[candidate])
@@ -78,7 +80,7 @@ async def test_find_exact_duplicate_happy_path(
     assert result == candidate
     # No longer a subset
     result = await service.find_exact_duplicate(
-        reference_with_identifiers.copy(update={"visibility": "hidden"})
+        reference_with_identifiers.model_copy(update={"visibility": "hidden"})
     )
     assert not result
 
