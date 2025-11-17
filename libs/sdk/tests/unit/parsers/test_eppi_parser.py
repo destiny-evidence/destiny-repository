@@ -44,4 +44,6 @@ def test_parse_data_with_annotations():
 
     actual_output = "".join([ref.to_jsonl() + "\n" for ref in references])
 
-    assert actual_output == expected_output
+    assert [json.loads(line) for line in actual_output.splitlines()] == [
+        json.loads(line) for line in expected_output.splitlines()
+    ]

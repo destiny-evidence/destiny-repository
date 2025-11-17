@@ -30,6 +30,7 @@ class AnnotationFilter(BaseModel):
 
     scheme: str = Field(
         description="The annotation scheme to filter by.",
+        pattern=r"^[^/]+$",
     )
     label: str | None = Field(
         None,
@@ -42,7 +43,7 @@ class AnnotationFilter(BaseModel):
         le=1.0,
     )
 
-    def serialize(self) -> str:
+    def __repr__(self) -> str:
         """Serialize the annotation filter to a string."""
         annotation = self.scheme
         if self.label:

@@ -1,7 +1,5 @@
 """Service for searching references."""
 
-import re
-
 from opentelemetry import trace
 
 from app.core.config import get_settings
@@ -41,13 +39,6 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
 
-    def _query_string_specifies_fields(self, query_string: str) -> bool:
-        """Check if the query string specifies fields to search."""
-        # This is a relatively passive approach. If the user queries for a value
-        # that matches this pattern (without specifying fields), it will just search all
-        # fields instead of the defaults, so should always return a superset at worst.
-        return bool(re.search(r"\w+:", query_string))
-
     def _build_publication_year_query_string_filter(
         self,
         publication_year_range: PublicationYearRange,
@@ -57,6 +48,30 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
             f"publication_year:[{publication_year_range.start or '*'} "
             f"TO {publication_year_range.end or '*'}]"
         )
+
+    def _build_annotation_query_string_filter(
+        self,
+        annotation: AnnotationFilter,
+    ) -> str:
+        """
+        Build an annotation filter for Elasticsearch query string.
+
+        Examples:
+        - For score filter: `scheme:>=0.8` (minimum bound on score)
+        - For scheme and label: `annotations:"scheme/label"`
+          - Quotes are used to handle any special characters.
+        - For scheme only: `annotations:scheme*` (wildcard any label with the scheme)
+          - Escaping is used on colons here as we can't wildcard in a quoted string.
+
+        """
+        if annotation.score is not None:
+            field = annotation.scheme.replace(":", "_")
+            if annotation.label:
+                field += f"_{annotation.label}"
+            return f"{field}:>={annotation.score}"
+        if not annotation.label:
+            return f"annotations:{annotation.scheme.replace(":", r"\:")}*"
+        return f'annotations:"{annotation.scheme}/{annotation.label}"'
 
     async def search_with_query_string(
         self,
@@ -74,15 +89,13 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
                     publication_year_range,
                 )
             )
+        if annotations:
+            global_filters.extend(
+                self._build_annotation_query_string_filter(annotation)
+                for annotation in annotations
+            )
         if global_filters:
             query_string = f"({query_string}) AND {' AND '.join(global_filters)}"
-        if annotations:
-            # To be implemented
-            pass
-        if not self._query_string_specifies_fields(query_string):
-            return await self.es_uow.references.search_with_query_string(
-                query_string, page=page, fields=self.default_search_fields, sort=sort
-            )
         return await self.es_uow.references.search_with_query_string(
-            query_string, page=page, sort=sort
+            query_string, fields=self.default_search_fields, page=page, sort=sort
         )

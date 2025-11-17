@@ -495,6 +495,29 @@ class ReferenceSearchFields(ProjectedBaseModel):
         description="The title of the reference.",
     )
 
+    annotations: list[str] = Field(
+        default_factory=list,
+        description=(
+            "List of true annotations on the reference."
+            "Each annotation is in the format `<scheme>/<label>`."
+        ),
+    )
+
+    evaluated_schemes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "List of annotation schemes that have been evaluated on the reference."
+        ),
+    )
+
+    destiny_inclusion_score: float | None = Field(
+        default=None,
+        description=(
+            "The inclusion score on the destiny domain inclusion annotation, "
+            "if evaluated."
+        ),
+    )
+
     def to_canonical_candidate_search_fields(self) -> CandidateCanonicalSearchFields:
         """Return fields needed for candidate canonical selection."""
         return CandidateCanonicalSearchFields(
@@ -502,6 +525,25 @@ class ReferenceSearchFields(ProjectedBaseModel):
             authors=self.authors,
             title=self.title,
         )
+
+    @classmethod
+    def _normalise_string(cls, value: str) -> str:
+        """Normalise string fields by stripping whitespace."""
+        return value.strip()
+
+    @field_validator("abstract", "title", mode="after")
+    @classmethod
+    def normalise_string_validator(cls, value: str | None) -> str | None:
+        """Normalise string fields by stripping whitespace."""
+        if not value:
+            return value
+        return cls._normalise_string(value)
+
+    @field_validator("authors", "annotations", "evaluated_schemes", mode="after")
+    @classmethod
+    def normalise_string_list_validator(cls, value: list[str]) -> list[str]:
+        """Normalise string list fields by stripping whitespace."""
+        return [cls._normalise_string(v) for v in value if v]
 
 
 class ReferenceDuplicateDeterminationResult(BaseModel):
