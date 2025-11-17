@@ -22,6 +22,12 @@ from app.domain.references.models.models import (
 class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
     """Projection functions for candidate selection used in duplicate detection."""
 
+    # Registry of hardcoded annotations that are projected singly to the root
+    # of the model. These are represented as (scheme, ?label).
+    _singly_projected_annotations: tuple[tuple[str, str | None]] = (
+        ("inclusion:destiny", None),
+    )
+
     @classmethod
     def get_from_reference(
         cls,
@@ -40,12 +46,12 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             title, publication_year = None, None
             abstract = None
             authorship: list[destiny_sdk.enhancements.Authorship] = []
-            annotations: set[str] = set()
             annotations_by_scheme: dict[
                 str, list[destiny_sdk.enhancements.Annotation]
             ] = {}
-            destiny_inclusion_annotation = None
-            destiny_inclusion_score = None
+            singly_projected_annotations: dict[
+                tuple[str, str | None], destiny_sdk.enhancements.Annotation
+            ] = {}
 
             for enhancement in cls.__priority_sorted_enhancements(
                 canonical_id=reference.id, enhancements=reference.enhancements
@@ -83,26 +89,33 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                         str, list[destiny_sdk.enhancements.Annotation]
                     ] = defaultdict(list)
                     for annotation in enhancement.content.annotations or []:
-                        if annotation.scheme == "inclusion:destiny":
-                            destiny_inclusion_annotation = annotation
+                        for key in [
+                            (annotation.scheme, None),
+                            (annotation.scheme, annotation.label),
+                        ]:
+                            if key in cls._singly_projected_annotations:
+                                singly_projected_annotations[key] = annotation
+
                         _annotations_by_scheme[annotation.scheme].append(annotation)
+
                     annotations_by_scheme |= _annotations_by_scheme
 
             annotations = cls.__positive_boolean_annotations(annotations_by_scheme)
-            destiny_inclusion_score = (
-                cls.__positive_annotation_score(destiny_inclusion_annotation)
-                if destiny_inclusion_annotation
-                else None
+
+            destiny_inclusion_annotation = singly_projected_annotations.get(
+                ("inclusion:destiny", None)
             )
 
-            return cls.__normalised_reference_search_fields(
+            return ReferenceSearchFields(
                 abstract=abstract,
-                authorship=authorship,
+                authors=cls.__order_authorship_by_position(authorship),
                 publication_year=publication_year,
                 title=title,
                 annotations=annotations,
-                evaluated_schemes=set(annotations_by_scheme.keys()),
-                destiny_inclusion_score=destiny_inclusion_score,
+                evaluated_schemes=annotations_by_scheme.keys(),
+                destiny_inclusion_score=cls.__positive_annotation_score(
+                    destiny_inclusion_annotation
+                ),
             )
 
         except Exception as exc:
@@ -110,44 +123,23 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             raise ProjectionError(msg) from exc
 
     @classmethod
-    def __normalised_reference_search_fields(  # noqa: PLR0913
-        cls,
-        abstract: str | None,
-        authorship: list[destiny_sdk.enhancements.Authorship],
-        publication_year: int | None,
-        title: str | None,
-        annotations: set[str],
-        evaluated_schemes: set[str],
-        destiny_inclusion_score: float | None,
-    ) -> ReferenceSearchFields:
-        """Strip whitespace, normalise authors."""
-        # Maintain first and last author, sort middle authors by name
-        authorship = sorted(
-            authorship,
-            key=lambda author: (
-                {
-                    destiny_sdk.enhancements.AuthorPosition.FIRST: -1,
-                    destiny_sdk.enhancements.AuthorPosition.LAST: 1,
-                }.get(author.position, 0),
-                author.display_name.strip(),
-            ),
-        )
-
-        if title:
-            title = title.strip()
-
-        if abstract:
-            abstract = abstract.strip()
-
-        return ReferenceSearchFields(
-            abstract=abstract,
-            authors=[author.display_name.strip() for author in authorship],
-            publication_year=publication_year,
-            title=title,
-            annotations=[annotation.strip() for annotation in annotations],
-            evaluated_schemes=[scheme.strip() for scheme in evaluated_schemes],
-            destiny_inclusion_score=destiny_inclusion_score,
-        )
+    def __order_authorship_by_position(
+        cls, authorship: list[destiny_sdk.enhancements.Authorship]
+    ) -> list[str]:
+        """Order authorship by position: first, middle (alphabetical), last."""
+        return [
+            author.display_name
+            for author in sorted(
+                authorship,
+                key=lambda author: (
+                    {
+                        destiny_sdk.enhancements.AuthorPosition.FIRST: -1,
+                        destiny_sdk.enhancements.AuthorPosition.LAST: 1,
+                    }.get(author.position, 0),
+                    author.display_name,
+                ),
+            )
+        ]
 
     @classmethod
     def __priority_sorted_enhancements(
@@ -206,13 +198,15 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
     @classmethod
     def __positive_annotation_score(
         cls,
-        annotation: destiny_sdk.enhancements.Annotation,
+        annotation: destiny_sdk.enhancements.Annotation | None,
     ) -> float | None:
         """
         Get the score of an annotation.
 
         If the annotation is boolean, return the truth score (i.e. inverted if false).
         """
+        if not annotation:
+            return None
         if (inclusion_score := annotation.data.get("inclusion_score")) is not None:
             return inclusion_score
         if (

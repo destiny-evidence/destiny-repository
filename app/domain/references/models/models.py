@@ -526,6 +526,25 @@ class ReferenceSearchFields(ProjectedBaseModel):
             title=self.title,
         )
 
+    @classmethod
+    def _normalise_string(cls, value: str) -> str:
+        """Normalise string fields by stripping whitespace."""
+        return value.strip()
+
+    @field_validator("abstract", "title", mode="after")
+    @classmethod
+    def normalise_string_validator(cls, value: str | None) -> str | None:
+        """Normalise string fields by stripping whitespace."""
+        if not value:
+            return value
+        return cls._normalise_string(value)
+
+    @field_validator("authors", "annotations", "evaluated_schemes", mode="after")
+    @classmethod
+    def normalise_string_list_validator(cls, value: list[str]) -> list[str]:
+        """Normalise string list fields by stripping whitespace."""
+        return [cls._normalise_string(v) for v in value if v]
+
 
 class ReferenceDuplicateDeterminationResult(BaseModel):
     """Model representing the result of a duplicate determination."""
