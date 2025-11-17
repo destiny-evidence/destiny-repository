@@ -214,13 +214,28 @@ class AzureServiceBusBroker(AsyncBroker):
                     ):
                         logger.info("Registering message for auto lock renewal")
                         self.auto_lock_renewer.register(self.receiver, sb_message)
+                        logger.info("Registered message for auto lock renewal")
 
                     async def ack_message(
                         sb_message: ServiceBusReceivedMessage = sb_message,
                     ) -> None:
+                        logger.info(
+                            "Attempting to complete message",
+                            task_id=sb_message.message_id,
+                            message=str(sb_message),
+                        )
                         if self.receiver is not None:
                             async with self._receive_lock:
+                                logger.info(
+                                    "Completing message",
+                                    task_id=sb_message.message_id,
+                                    sb_message=sb_message,
+                                )
                                 await self.receiver.complete_message(sb_message)
+                                logger.info(
+                                    "Completed message",
+                                    task_id=sb_message.message_id,
+                                )
                         else:
                             logger.error(
                                 "Receiver is None. Cannot complete the message."
@@ -244,7 +259,15 @@ class AzureServiceBusBroker(AsyncBroker):
                         ack=ack_message,
                     )
 
+                    logger.info(
+                        "Yielding message",
+                        task_id=sb_message.message_id,
+                    )
                     yield ackable
+                    logger.info(
+                        "Yielded message",
+                        task_id=sb_message.message_id,
+                    )
             except Exception:
                 logger.exception("Error receiving messages")
                 # Wait a bit before retrying
