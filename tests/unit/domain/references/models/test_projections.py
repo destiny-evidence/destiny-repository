@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from math import isclose
 from random import shuffle
 
 import destiny_sdk
@@ -22,8 +23,10 @@ from app.domain.references.models.projections import (
 )
 from tests.factories import (
     AbstractContentEnhancementFactory,
+    AnnotationEnhancementFactory,
     AuthorshipFactory,
     BibliographicMetadataEnhancementFactory,
+    BooleanAnnotationFactory,
     DOIIdentifierFactory,
     EnhancementFactory,
     LinkedExternalIdentifierFactory,
@@ -31,6 +34,7 @@ from tests.factories import (
     OtherIdentifierFactory,
     PubMedIdentifierFactory,
     ReferenceFactory,
+    ScoreAnnotationFactory,
 )
 
 
@@ -79,6 +83,30 @@ def abstract_enhancement():
 
     return EnhancementFactory.build(
         content=abstract_content, source="test_source", created_at=datetime.now(tz=UTC)
+    )
+
+
+@pytest.fixture
+def destiny_inclusion_annotation_enhancement():
+    """Create an enhancement with a destiny inclusion annotation."""
+    annotation = BooleanAnnotationFactory.build(
+        scheme="inclusion:destiny", value=True, score=0.8
+    )
+    return EnhancementFactory.build(
+        content=AnnotationEnhancementFactory.build(annotations=[annotation]),
+        created_at=datetime.now(tz=UTC),
+    )
+
+
+@pytest.fixture
+def taxonomy_annotation_enhancement():
+    """Create an enhancement with a taxonomy annotation."""
+    annotations = BooleanAnnotationFactory.build_batch(
+        size=10, scheme="taxonomy:science"
+    )
+    return EnhancementFactory.build(
+        content=AnnotationEnhancementFactory.build(annotations=annotations),
+        created_at=datetime.now(tz=UTC),
     )
 
 
@@ -133,6 +161,27 @@ def reference_with_enhancements(bibliographic_enhancement, abstract_enhancement)
 
 
 @pytest.fixture
+def reference_with_annotations(
+    destiny_inclusion_annotation_enhancement,
+    taxonomy_annotation_enhancement,
+):
+    """Create a reference with annotation enhancements."""
+    ref_id = uuid.uuid4()
+
+    destiny_inclusion_annotation_enhancement.reference_id = ref_id
+    taxonomy_annotation_enhancement.reference_id = ref_id
+
+    return ReferenceFactory.build(
+        id=ref_id,
+        enhancements=[
+            destiny_inclusion_annotation_enhancement,
+            taxonomy_annotation_enhancement,
+        ],
+        identifiers=[],
+    )
+
+
+@pytest.fixture
 def reference_with_identifiers(
     doi_identifier, pubmed_identifier, openalex_identifier, other_identifier
 ):
@@ -158,7 +207,12 @@ def reference_with_identifiers(
 
 @pytest.fixture
 def complete_reference(
-    bibliographic_enhancement, abstract_enhancement, doi_identifier, pubmed_identifier
+    bibliographic_enhancement,
+    abstract_enhancement,
+    destiny_inclusion_annotation_enhancement,
+    taxonomy_annotation_enhancement,
+    doi_identifier,
+    pubmed_identifier,
 ):
     """Create a reference with both enhancements and identifiers."""
     ref_id = uuid.uuid4()
@@ -166,12 +220,19 @@ def complete_reference(
     # Update enhancement reference IDs to match
     bibliographic_enhancement.reference_id = ref_id
     abstract_enhancement.reference_id = ref_id
+    destiny_inclusion_annotation_enhancement.reference_id = ref_id
+    taxonomy_annotation_enhancement.reference_id = ref_id
     doi_identifier.reference_id = ref_id
     pubmed_identifier.reference_id = ref_id
 
     return ReferenceFactory.build(
         id=ref_id,
-        enhancements=[bibliographic_enhancement, abstract_enhancement],
+        enhancements=[
+            bibliographic_enhancement,
+            abstract_enhancement,
+            destiny_inclusion_annotation_enhancement,
+            taxonomy_annotation_enhancement,
+        ],
         identifiers=[doi_identifier, pubmed_identifier],
     )
 
@@ -261,6 +322,8 @@ class TestReferenceSearchFieldsProjection:
         self,
         bibliographic_enhancement: Enhancement,
         abstract_enhancement: Enhancement,
+        taxonomy_annotation_enhancement: Enhancement,
+        destiny_inclusion_annotation_enhancement: Enhancement,
         sample_authorship,
     ):
         """
@@ -270,6 +333,10 @@ class TestReferenceSearchFieldsProjection:
         * A more recent canonical bibliography
         * A canonical abstract
         * A more recent canonical abstract
+        * A taxonomy annotation
+        * A more recent taxonomy annotation
+        * A destiny inclusion annotation
+        * A more recent destiny inclusion annotation
         * A duplicate bibliography that is the most recent
         * A duplicate reference abstract that is the most recent
 
@@ -283,6 +350,8 @@ class TestReferenceSearchFieldsProjection:
 
         assert bibliographic_enhancement.created_at
         assert abstract_enhancement.created_at
+        assert taxonomy_annotation_enhancement.created_at
+        assert destiny_inclusion_annotation_enhancement.created_at
 
         most_recent_canonical_bibliography = EnhancementFactory.build(
             reference_id=canonical_reference_id,
@@ -302,6 +371,32 @@ class TestReferenceSearchFieldsProjection:
             created_at=(
                 most_recent_canonical_bibliography.created_at + timedelta(days=1)
             ),
+        )
+
+        most_recent_taxonomy_annotation = EnhancementFactory.build(
+            content=AnnotationEnhancementFactory.build(
+                annotations=[
+                    BooleanAnnotationFactory.build(
+                        scheme="taxonomy:science", label="label!", value=True
+                    ),
+                    BooleanAnnotationFactory.build(
+                        scheme="taxonomy:science", label="foobar", value=False
+                    ),
+                ]
+            ),
+            created_at=taxonomy_annotation_enhancement.created_at + timedelta(days=1),
+        )
+
+        most_recent_destiny_inclusion_annotation = EnhancementFactory.build(
+            content=AnnotationEnhancementFactory.build(
+                annotations=[
+                    BooleanAnnotationFactory.build(
+                        scheme="inclusion:destiny", value=False, score=0.8
+                    )
+                ]
+            ),
+            created_at=destiny_inclusion_annotation_enhancement.created_at
+            + timedelta(days=1),
         )
 
         most_recent_canonical_abstract = EnhancementFactory.build(
@@ -328,6 +423,10 @@ class TestReferenceSearchFieldsProjection:
             abstract_enhancement,
             most_recent_canonical_abstract,
             most_recent_abstract_duplicate_reference,
+            taxonomy_annotation_enhancement,
+            most_recent_taxonomy_annotation,
+            destiny_inclusion_annotation_enhancement,
+            most_recent_destiny_inclusion_annotation,
         ]
 
         shuffle(enhancements)
@@ -349,6 +448,14 @@ class TestReferenceSearchFieldsProjection:
         )
 
         assert result.title == most_recent_canonical_bibliography.content.title
+
+        assert result.annotations == ["taxonomy:science/label!"]
+        assert set(result.evaluated_schemes) == {
+            "taxonomy:science",
+            "inclusion:destiny",
+        }
+        assert result.destiny_inclusion_score
+        assert isclose(result.destiny_inclusion_score, 0.2)
 
     def test_get_from_reference_hydrate_missing_bibliography_information(
         self, sample_authorship
@@ -490,6 +597,52 @@ class TestReferenceSearchFieldsProjection:
         result = ReferenceSearchFieldsProjection.get_from_reference(reference)
         assert result.publication_year == 2022  # From publication_date
 
+    def test_get_from_reference_prioritises_annotations_by_scheme(self):
+        """Test that we prioritise annotations by scheme, not by label."""
+        reference_id = uuid.uuid4()
+
+        annotation_enhancement_1 = EnhancementFactory.build(
+            reference_id=reference_id,
+            content=AnnotationEnhancementFactory.build(
+                annotations=[
+                    BooleanAnnotationFactory.build(
+                        scheme="scheme1", label="label1", value=True
+                    ),
+                    BooleanAnnotationFactory.build(
+                        scheme="scheme1", label="label2", value=True
+                    ),
+                    BooleanAnnotationFactory.build(
+                        scheme="scheme2", label="label3", value=True
+                    ),
+                ]
+            ),
+            created_at=datetime(year=2021, month=2, day=17, tzinfo=UTC),
+        )
+
+        annotation_enhancement_2 = EnhancementFactory.build(
+            reference_id=reference_id,
+            content=AnnotationEnhancementFactory.build(
+                annotations=[
+                    BooleanAnnotationFactory.build(
+                        scheme="scheme1", label="label1", value=False, score=0.9
+                    ),
+                ]
+            ),
+            # Created 1 day after the first annotation enhancement
+            created_at=annotation_enhancement_1.created_at + timedelta(days=1),
+        )
+
+        reference = ReferenceFactory.build(
+            id=reference_id,
+            enhancements=[annotation_enhancement_1, annotation_enhancement_2],
+        )
+
+        result = ReferenceSearchFieldsProjection.get_from_reference(reference)
+        # Should get scheme1 from annotation_enhancement_1
+        # and scheme2 from annotation_enhancement_2
+        assert set(result.annotations) == {"scheme2/label3"}
+        assert set(result.evaluated_schemes) == {"scheme1", "scheme2"}
+
     def test_get_from_reference_empty_enhancements(self):
         """Test extracting reference search feilds with empty enhancements"""
         # Can't use factories here as we're explicity setting missing values
@@ -525,6 +678,54 @@ class TestReferenceSearchFieldsProjection:
         assert result_none.publication_year is None
         assert result_none.authors == []
         assert result_none.abstract is None
+
+    def test_positive_boolean_annotations(self):
+        annotations_by_scheme = {
+            "scheme1": [
+                BooleanAnnotationFactory.build(
+                    scheme="scheme1", label="label1", value=True
+                ),
+                BooleanAnnotationFactory.build(
+                    scheme="scheme1", label="label2", value=False
+                ),
+            ],
+            "scheme2": [
+                BooleanAnnotationFactory.build(
+                    scheme="scheme2", label="label3", value=True
+                ),
+                ScoreAnnotationFactory.build(
+                    scheme="scheme2", label="label4", score=0.55
+                ),
+            ],
+        }
+
+        result = ReferenceSearchFieldsProjection._ReferenceSearchFieldsProjection__positive_boolean_annotations(  # noqa: E501, SLF001
+            annotations_by_scheme
+        )
+        assert result == {"scheme1/label1", "scheme2/label3"}
+
+    @pytest.mark.parametrize(
+        ("annotation", "expected"),
+        [
+            (
+                BooleanAnnotationFactory.build(
+                    value=True,
+                    score=0.7,
+                    data={"inclusion_score": 0.42},
+                ),
+                0.42,
+            ),
+            (BooleanAnnotationFactory.build(value=True, score=0.8), 0.8),
+            (BooleanAnnotationFactory.build(value=False, score=0.2), 0.8),
+            (ScoreAnnotationFactory.build(score=0.55), 0.55),
+            (BooleanAnnotationFactory.build(value=True, score=None), None),
+        ],
+    )
+    def test_positive_annotation_score(self, annotation, expected):
+        result = ReferenceSearchFieldsProjection._ReferenceSearchFieldsProjection__positive_annotation_score(  # noqa: E501, SLF001
+            annotation
+        )
+        assert result == expected
 
 
 class TestDeduplicatedReferenceProjection:
@@ -680,4 +881,4 @@ class TestDeduplicatedReferenceProjection:
         assert "test_source" in enhancement_sources  # Original
         assert "intermediate_source" in enhancement_sources  # Intermediate
         assert "nested_source" in enhancement_sources  # Nested
-        assert len(result.enhancements) == 4  # 2 original + 1 intermediate + 1 nested
+        assert len(result.enhancements) == 6  # 4 original + 1 intermediate + 1 nested

@@ -4,7 +4,7 @@ import pytest
 from elasticsearch import AsyncElasticsearch
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.references.models.models import PublicationYearRange
+from app.domain.references.models.models import AnnotationFilter, PublicationYearRange
 from app.domain.references.repository import ReferenceESRepository
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -15,7 +15,9 @@ from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from tests.factories import (
     AbstractContentEnhancementFactory,
+    AnnotationEnhancementFactory,
     BibliographicMetadataEnhancementFactory,
+    BooleanAnnotationFactory,
     EnhancementFactory,
     ReferenceFactory,
 )
@@ -146,3 +148,75 @@ async def test_search_with_query_string_publication_year_filter(
     )
     assert len(results.hits) == 1
     assert results.hits[0].id == ref_2020.id
+
+
+@pytest.mark.parametrize(
+    ("annotation_filter", "hit"),
+    [
+        (AnnotationFilter(scheme="taxonomy:exposure", label="Heat"), True),
+        (AnnotationFilter(scheme="taxonomy:exposure", label="Pathogens"), False),
+        (AnnotationFilter(scheme="inclusion:destiny", score=0.1), True),
+        (AnnotationFilter(scheme="inclusion:destiny", score=0.5), False),
+        (AnnotationFilter(scheme="inclusion:destiny"), False),
+        (AnnotationFilter(scheme="taxonomy:outcomes"), False),
+        (AnnotationFilter(scheme="taxonomy:exposure"), True),
+    ],
+)
+async def test_search_with_query_string_taxonomy_annotation_filter(
+    search_service: SearchService,
+    es_reference_repository: ReferenceESRepository,
+    annotation_filter: AnnotationFilter,
+    *,
+    hit: bool,
+):
+    """Test searching with annotation filters results correctly."""
+    reference = ReferenceFactory.build(
+        enhancements=[
+            EnhancementFactory.build(
+                content=BibliographicMetadataEnhancementFactory.build(
+                    title="Find me by searching for Test",
+                )
+            ),
+            EnhancementFactory.build(
+                content=AnnotationEnhancementFactory.build(
+                    annotations=[
+                        BooleanAnnotationFactory.build(
+                            scheme="taxonomy:exposure",
+                            label="Heat",
+                            value=True,
+                        ),
+                        BooleanAnnotationFactory.build(
+                            scheme="taxonomy:exposure",
+                            label="CO2",
+                            value=True,
+                        ),
+                        BooleanAnnotationFactory.build(
+                            scheme="taxonomy:exposure",
+                            label="Pathogens",
+                            value=False,
+                        ),
+                    ]
+                )
+            ),
+            EnhancementFactory.build(
+                content=AnnotationEnhancementFactory.build(
+                    annotations=[
+                        BooleanAnnotationFactory.build(
+                            scheme="inclusion:destiny", value=False, score=0.8
+                        )
+                    ]
+                )
+            ),
+        ],
+    )
+
+    await es_reference_repository.add(reference)
+    await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+        index=es_reference_repository._persistence_cls.Index.name,  # noqa: SLF001
+    )
+
+    results = await search_service.search_with_query_string(
+        query_string="Test",
+        annotations=[annotation_filter],
+    )
+    assert (len(results.hits) == 1) == hit

@@ -13,6 +13,7 @@ from elasticsearch.dsl import (
     Nested,
     Object,
     Percolator,
+    ScaledFloat,
     Text,
     mapped_field,
 )
@@ -221,6 +222,24 @@ class ReferenceSearchFieldsMixin(InnerDoc):
 
     title: str | None = mapped_field(Text(required=False), default=None)
 
+    annotations: list[str] | None = mapped_field(
+        Keyword(required=False),
+        default=None,
+    )
+
+    evaluated_schemes: list[str] | None = mapped_field(
+        Keyword(required=False),
+        default=None,
+    )
+
+    inclusion_destiny: float | None = mapped_field(
+        ScaledFloat(
+            required=False,
+            scaling_factor=10**4,  # 4 digits of precision
+        ),
+        default=None,
+    )
+
     @classmethod
     def from_projection(cls, projection: ReferenceSearchFields) -> Self:
         """Create a ReferenceCandidateCanonicalMixin from the search projection."""
@@ -229,6 +248,9 @@ class ReferenceSearchFieldsMixin(InnerDoc):
             title=projection.title,
             authors=projection.authors,
             publication_year=projection.publication_year,
+            annotations=projection.annotations,
+            evaluated_schemes=projection.evaluated_schemes,
+            inclusion_destiny=projection.destiny_inclusion_score,
         )
 
     @classmethod
