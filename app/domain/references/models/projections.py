@@ -95,7 +95,9 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                         ]:
                             if key in cls._singly_projected_annotations:
                                 singly_projected_annotations[key] = annotation
+
                         _annotations_by_scheme[annotation.scheme].append(annotation)
+
                     annotations_by_scheme |= _annotations_by_scheme
 
             annotations = cls.__positive_boolean_annotations(annotations_by_scheme)
