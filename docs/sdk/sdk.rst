@@ -22,5 +22,5 @@ Or whichever python package installation method you prefer.
    :caption: Contents:
 
    schemas
-   auth
+   hmac-auth
    labs

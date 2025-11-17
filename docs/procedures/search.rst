@@ -160,7 +160,7 @@ Returns a list of :class:`Reference <libs.sdk.src.destiny_sdk.references.Referen
 Limitations
 """""""""""
 
-There is a hard cap of 100 identifiers per request. If more references are needed, multiple requests must be made.
+There is a hard cap of 100 identifiers per request. If more are needed, multiple requests must be made.
 
 
 Search Fields
