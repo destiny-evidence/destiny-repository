@@ -89,13 +89,12 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                         str, list[destiny_sdk.enhancements.Annotation]
                     ] = defaultdict(list)
                     for annotation in enhancement.content.annotations or []:
-                        if (
-                            key := (
-                                annotation.scheme,
-                                None,
-                            )
-                        ) in cls._singly_projected_annotations:
-                            singly_projected_annotations[key] = annotation
+                        for key in [
+                            (annotation.scheme, None),
+                            (annotation.scheme, annotation.label),
+                        ]:
+                            if key in cls._singly_projected_annotations:
+                                singly_projected_annotations[key] = annotation
                         _annotations_by_scheme[annotation.scheme].append(annotation)
                     annotations_by_scheme |= _annotations_by_scheme
 
