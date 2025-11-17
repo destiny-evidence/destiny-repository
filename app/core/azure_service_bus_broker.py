@@ -12,12 +12,16 @@ from datetime import UTC, datetime, timedelta
 from typing import TypeVar
 
 from azure.identity.aio import DefaultAzureCredential
-from azure.servicebus import ServiceBusReceivedMessage, ServiceBusReceiveMode
+from azure.servicebus import (
+    ServiceBusReceivedMessage,
+    ServiceBusReceiveMode,
+)
 from azure.servicebus.aio import (
     AutoLockRenewer,
     ServiceBusClient,
     ServiceBusReceiver,
     ServiceBusSender,
+    ServiceBusSession,
 )
 from azure.servicebus.amqp import AmqpAnnotatedMessage, AmqpMessageBodyType
 from pydantic import TypeAdapter
@@ -205,16 +209,6 @@ class AzureServiceBusBroker(AsyncBroker):
 
                 # Process each message
                 for sb_message in batch_messages:
-                    properties = sb_message.application_properties
-                    if properties and TypeAdapter(bool).validate_python(
-                        # Try binary then string key
-                        properties.get(
-                            b"renew_lock", properties.get("renew_lock", False)
-                        )
-                    ):
-                        logger.info("Registering message for auto lock renewal")
-                        self.auto_lock_renewer.register(self.receiver, sb_message)
-                        logger.info("Registered message for auto lock renewal")
 
                     async def ack_message(
                         sb_message: ServiceBusReceivedMessage = sb_message,
@@ -231,6 +225,43 @@ class AzureServiceBusBroker(AsyncBroker):
                             logger.error(
                                 "Receiver is None. Cannot complete the message."
                             )
+
+                    async def lock_renewal_failure_callback(
+                        sb_message: ServiceBusReceivedMessage | ServiceBusSession,
+                        exception: Exception | None = None,
+                    ) -> None:
+                        logger.error(
+                            "Lock renewal failed for message",
+                            message=str(sb_message),
+                            exception=exception,
+                        )
+                        logger.info("Attempting to re-register lock renewal")
+                        if (
+                            self.auto_lock_renewer is not None
+                            and self.receiver is not None
+                        ):
+                            self.auto_lock_renewer.register(
+                                self.receiver,
+                                sb_message,
+                                # Don't try it again if it fails
+                                on_lock_renew_failure=None,
+                            )
+                            logger.info("Re-registered lock renewal")
+
+                    properties = sb_message.application_properties
+                    if properties and TypeAdapter(bool).validate_python(
+                        # Try binary then string key
+                        properties.get(
+                            b"renew_lock", properties.get("renew_lock", False)
+                        )
+                    ):
+                        logger.info("Registering message for auto lock renewal")
+                        self.auto_lock_renewer.register(
+                            self.receiver,
+                            sb_message,
+                            on_lock_renew_failure=lock_renewal_failure_callback,
+                        )
+                        logger.info("Registered message for auto lock renewal")
 
                     body_type = sb_message.body_type
                     raw_body = sb_message.body

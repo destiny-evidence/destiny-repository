@@ -36,7 +36,7 @@ resource "azuread_application" "destiny_repository" {
       admin_consent_display_name = "Import as user"
       id                         = random_uuid.importer_scope.result
       type                       = "User"
-      value                      = "import.all"
+      value                      = "import.writer.all"
       user_consent_description   = "Allow you to import"
       user_consent_display_name  = "Import"
     }
