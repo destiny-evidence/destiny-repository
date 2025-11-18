@@ -4,7 +4,7 @@ import datetime
 from enum import StrEnum, auto
 from typing import Annotated, Literal
 
-from pydantic import UUID4, BaseModel, Extra, Field, HttpUrl
+from pydantic import UUID4, BaseModel, Field, HttpUrl
 
 from destiny_sdk.core import _JsonlFileInputMixIn
 from destiny_sdk.visibility import Visibility
@@ -301,7 +301,7 @@ class LocationEnhancement(BaseModel):
     )
 
 
-class RawEnhancement(BaseModel, extra=Extra.allow):
+class RawEnhancement(BaseModel, extra="allow"):
     """
     An enhancement for storing raw/arbitrary/unstructured data.
 

@@ -98,6 +98,19 @@ class EnhancementContentDocument(GenericNestedDocument):
         Nested(AnnotationDocument, required=False)
     )
 
+    def clean(self) -> None:
+        """
+        Automatically called when saving a document.
+
+        We utilise to provide a final barrier to prevent RAW enhancements being indexed.
+        """
+        if self.enhancement_type == EnhancementType.RAW:
+            msg = (
+                "Attempted to create elasticsearch document for a raw enhancement. ",
+                "This should never happen.",
+            )
+            raise RuntimeError(msg)
+
     class Meta:
         """Allow unmapped fields in the document."""
 
