@@ -419,6 +419,61 @@ async def test_process_robot_enhancement_batch_result_parse_failure(fake_uow):
 
 
 @pytest.mark.asyncio
+async def test_process_robot_enhancement_batch_result_raw_enhancement(fake_uow):
+    """
+    Test that process_robot_enhancement_batch_result returns a robot error
+    if the enhancement type is a raw enhancement.
+    """
+    reference_id = uuid.uuid4()
+    pending_enhancement = create_pending_enhancement(reference_id)
+    result_file = create_result_file()
+
+    uow = fake_uow()
+    mock_blob_repo = MagicMock()
+    fake_stream = create_fake_stream(
+        [
+            json.dumps(
+                {
+                    "reference_id": str(reference_id),
+                    "content": {
+                        "enhancement_type": "raw",
+                        "data": "some random enhancement data",
+                    },
+                    "source": "test_source",
+                    "visibility": "public",
+                }
+            )
+        ]
+    )
+    mock_blob_repo.stream_file_from_blob_storage = fake_stream
+    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), uow)
+
+    async def fake_add_enhancement(_):
+        msg = "How did we get here?"
+        raise AssertionError(msg)
+
+    results = create_processed_results()
+
+    messages = [
+        RobotResultValidationEntry.model_validate_json(msg)
+        async for msg in service.process_robot_enhancement_batch_result(
+            mock_blob_repo,
+            result_file,
+            [pending_enhancement],
+            fake_add_enhancement,
+            results,
+        )
+    ]
+
+    assert len(messages) == 1
+    assert messages[0].reference_id == reference_id
+    assert messages[0].error == "Robot returned illegal raw enhancement type"
+    assert len(results.imported_enhancement_ids) == 0
+    assert len(results.successful_pending_enhancement_ids) == 0
+    assert {pending_enhancement.id} == results.failed_pending_enhancement_ids
+
+
+@pytest.mark.asyncio
 async def test_process_robot_enhancement_batch_result_add_enhancement_fails(fake_uow):
     """
     Test that process_robot_enhancement_batch_result yields error if add_enhancement
