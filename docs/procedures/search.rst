@@ -19,8 +19,7 @@ Parameters
 
 The only required parameter is the query string ``q``. Additional optional parameters can be provided to filter, sort, and page through results.
 
-Query String ``q`` (required)
-_____________________________
+**Query String** ``q`` **(required)**
 
 A query string in the `Lucene syntax <https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html#query-string-syntax>`_
 
@@ -28,45 +27,46 @@ At it's simplest, this can be a simple keyword search, which will search over ``
 
 .. code-block::
 
-    Get references with "climate change" anywhere in the title or abstract:
+    # Get references with "climate change" anywhere in the title or abstract:
     ?q=climate change
 
-    Get references with both "climate change" and "health" anywhere in the title or abstract:
+    # Get references with both "climate change" and "health" anywhere in the title or abstract:
     ?q=climate change AND health
+
+.. note::
+    Query parameters must be `URL-encoded <https://www.w3schools.com/tags/ref_urlencode.ASP>`_. For example, spaces must be encoded as ``%20`` or ``+``. Most HTTP client libraries will do this automatically.
 
 More complex queries can be constructed using the search syntax and the set of :ref:`searchable fields <search-fields>`.
 
 .. code-block::
 
-    Get references with "climate", "climatology" etc in the title and either "John Doe" or "Jane Smith" as an author:
+    # Get references with "climate", "climatology" etc in the title and either "John Doe" or "Jane Smith" as an author:
     ?q=title:"climat*" AND authors:("John Doe" OR "Jane Smith")
 
-    Get references with "adaptation" or "mitigation" in the abstract that haven't yet been classified against the `Intervention` taxonomy:
+    # Get references with "adaptation" or "mitigation" in the abstract that haven't yet been classified against the `Intervention` taxonomy:
     ?q=abstract:(adaptation OR mitigation) AND NOT evaluated_schemes:classification:taxonomy:Intervention
 
-    Get references with "climate change" in any order and a typoed "health":
+    # Get references with "climate change" in any order and a typoed "health":
     ?q="change climate"~2 AND helth~
 
-Start Year ``start_year`` and End Year ``end_year``
-___________________________________________________
+**Start Year** ``start_year`` **and End Year** ``end_year``
 
 The minimum and maximum publication years (inclusive) for references to return.
 
 .. code-block::
 
-    Get references published from 2015 onwards:
+    # Get references published from 2015 onwards:
     ?q=...&start_year=2015
 
-    Get references published up to and including 2020:
+    # Get references published up to and including 2020:
     ?q=...&end_year=2020
 
-    Get references published from 2015 to 2020:
+    # Get references published from 2015 to 2020:
     ?q=...&start_year=2015&end_year=2020
 
-Annotations ``annotation``
-__________________________
+**Annotations** ``annotation``
 
-The ``annotations`` parameter can be used to filter results based on their annotations.
+The ``annotation`` parameter can be used to filter results based on their annotations.
 
 These are provided in the format ``<scheme>[/<label>][@score]``.
 
@@ -78,17 +78,16 @@ Multiple annotations can be provided; they will be combined using a logical ``AN
 
 .. code-block::
 
-    Get references annotated with `classification:taxonomy:Outcomes/Stroke` as true:
-    ?q=...&annotations=classification:taxonomy:Outcomes/Stroke
+    # Get references annotated with `classification:taxonomy:Outcomes/Stroke` as true:
+    ?q=...&annotation=classification:taxonomy:Outcomes/Stroke
 
-    Get references with an inclusion:destiny score of at least 0.8:
-    ?q=...&annotations=inclusion:destiny@0.8
+    # Get references with an inclusion:destiny score of at least 0.8:
+    ?q=...&annotation=inclusion:destiny@0.8
 
-    Get references annotated with `classification:taxonomy:Outcomes/Stroke` as true and inclusion:destiny as true:
-    ?q=...&annotations=classification:taxonomy:Outcomes/Stroke&annotations=inclusion:destiny
+    # Get references annotated with `classification:taxonomy:Outcomes/Stroke` as true and inclusion:destiny as true:
+    ?q=...&annotation=classification:taxonomy:Outcomes/Stroke&annotation=inclusion:destiny
 
-Page ``page``
-_____________
+**Page** ``page``
 
 The page number of results to return. Each page is 20 results.
 
@@ -96,11 +95,10 @@ If omitted, defaults to the first page.
 
 .. code-block::
 
-    Get the 41st to 60th results:
+    # Get the 41st to 60th results:
     ?q=...&page=3
 
-Sort ``sort``
-_____________
+**Sort** ``sort``
 
 The field(s) to sort the results by. Use ``-`` prefix to sort in descending order.
 
@@ -110,13 +108,13 @@ Multiple sort fields can be provided; they will be applied in the order given.
 
 .. code-block::
 
-    Sort by inclusion score ascending:
+    # Sort by inclusion score ascending:
     ?q=...&sort=inclusion:destiny
 
-    Sort by publication year descending:
+    # Sort by publication year descending:
     ?q=...&sort=-publication_year
 
-    Sort by publication year ascending, then inclusion score descending:
+    # Sort by publication year ascending, then inclusion score descending:
     ?q=...&sort=publication_year&sort=-inclusion:destiny
 
 Returns
@@ -140,8 +138,7 @@ Though not strictly a `search`, the `lookup endpoint <https://destiny-repository
 Parameters
 """"""""""
 
-Identifier
-__________
+**Identifier** ``identifier`` **(required)**
 
 The identifier(s) to look up. Multiple identifiers can be provided, either in a comma-separated list or as multiple parameters.
 
@@ -166,8 +163,8 @@ There is a hard cap of 100 identifiers per request. If more are needed, multiple
 Search Fields
 -------------
 
-Method
-^^^^^^
+Search Field Selection
+^^^^^^^^^^^^^^^^^^^^^^
 
 References may have multiple sources of information, so search fields are collapsed into a single set of searchable fields. The relevant data is prioritised by:
 
@@ -182,10 +179,6 @@ Bibliographic
     :no-index:
     :annotation: str
 
-.. autoattribute:: app.domain.references.models.es.ReferenceSearchFieldsMixin.abstract
-    :no-index:
-    :annotation: str
-
 .. autoattribute:: app.domain.references.models.es.ReferenceSearchFieldsMixin.authors
     :no-index:
     :annotation: list[str]
@@ -193,6 +186,13 @@ Bibliographic
 .. autoattribute:: app.domain.references.models.es.ReferenceSearchFieldsMixin.publication_year
     :no-index:
     :annotation: int
+
+Abstract
+^^^^^^^^
+
+.. autoattribute:: app.domain.references.models.es.ReferenceSearchFieldsMixin.abstract
+    :no-index:
+    :annotation: str
 
 Annotations
 ^^^^^^^^^^^
