@@ -25,6 +25,13 @@ Interaction with the DESTINY Repository API requires first obtaining an authenti
         Client->>API: API request with Authorization: Bearer <token>
         API-->>Client: Return requested data
 
+Provisioning
+------------
+
+In order to obtain a token from Azure, you will need to be enrolled in our tenant ``JT_AD``. Please reach out if you need access.
+
+Everyone will have ``reference.reader``, but please reach out if you need additional permission scopes. You can see the available scopes per API resource in `the API documentation <https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc>`_ - it is listed under each sub-category.
+
 
 Obtaining a token
 -----------------
