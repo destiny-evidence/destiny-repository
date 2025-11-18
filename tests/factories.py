@@ -17,6 +17,7 @@ from destiny_sdk.enhancements import (
     EnhancementType,
     Location,
     LocationEnhancement,
+    RawEnhancement,
     ScoreAnnotation,
 )
 from destiny_sdk.identifiers import (
@@ -175,6 +176,16 @@ class LocationEnhancementFactory(factory.Factory):
     locations = factory.LazyFunction(
         lambda: LocationFactory.build_batch(fake.pyint(1, max_list_length))
     )
+
+
+class RawEnhancementFactory(factory.Factory):
+    class Meta:
+        model = RawEnhancement
+
+    enhancement_type = EnhancementType.RAW
+
+    # Introduce some randomness for comparison
+    a_sentence = factory.Faker("sentence", nb_words=10)
 
 
 class LinkedExternalIdentifierFactory(factory.Factory):

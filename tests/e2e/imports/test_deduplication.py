@@ -46,6 +46,7 @@ from tests.factories import (
     DOIIdentifierFactory,
     EnhancementFactory,
     LinkedExternalIdentifierFactory,
+    RawEnhancementFactory,
     ReferenceFactory,
 )
 
@@ -97,6 +98,8 @@ def canonical_reference(canonical_bibliographic_enhancement: Enhancement) -> Ref
             EnhancementFactory.build(content=canonical_bibliographic_enhancement),
             # Another annotation enhancement for fun
             EnhancementFactory.build(content=AnnotationEnhancementFactory.build()),
+            # And a raw enhancement because these could cause problems
+            EnhancementFactory.build(content=RawEnhancementFactory.build()),
         ],
         identifiers=[
             # Make sure we have at least one non-other identifier
