@@ -56,9 +56,9 @@ async def shutdown(_state: TaskiqState) -> None:
     await es_manager.close()
 
 
-# Scheduler for development - only active in local environment
+# Scheduler for development and testing
 scheduler = None
-if settings.env == Environment.LOCAL:
+if settings.env in (Environment.LOCAL, Environment.TEST):
     from taskiq import TaskiqScheduler
 
     scheduler = TaskiqScheduler(broker=broker, sources=[LabelScheduleSource(broker)])

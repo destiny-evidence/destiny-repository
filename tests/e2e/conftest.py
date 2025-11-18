@@ -346,6 +346,51 @@ async def worker(
             print_logs("Worker", container)
 
 
+@pytest.fixture
+async def scheduler(  # noqa: PLR0913
+    postgres: PostgresContainer,
+    elasticsearch: ElasticSearchContainer,
+    rabbitmq: RabbitMqContainer,
+    minio: MinioContainer,
+    destiny_repository_image: str,
+    worker: DockerContainer,  # noqa: ARG001, ensure worker is started first
+):
+    """Get the scheduler container (function-scoped for controlled test usage)."""
+    logger.info("Starting scheduler container...")
+    scheduler = (
+        _add_env(
+            DockerContainer(destiny_repository_image),
+            postgres,
+            elasticsearch,
+            rabbitmq,
+            minio,
+        )
+        .with_name(f"{container_prefix}-scheduler")
+        .with_command(
+            [
+                "uv",
+                "run",
+                "taskiq",
+                "scheduler",
+                "app.tasks:scheduler",
+                "--tasks-pattern",
+                "app/**/tasks.py",
+                "--fs-discover",
+            ]
+        )
+        .with_env("APP_NAME", "destiny-scheduler")
+        .with_volume_mapping(str(_cwd / "app"), "/app/app")
+        .with_volume_mapping(str(_cwd / "libs/sdk"), "/app/libs/sdk")
+        .waiting_for(LogMessageWaitStrategy("Startup completed."))
+    )
+    with scheduler as container:
+        logger.info("Scheduler container ready.")
+        try:
+            yield container
+        finally:
+            print_logs("Scheduler", container)
+
+
 @pytest.fixture(scope="session")
 async def app(  # noqa: PLR0913
     postgres: PostgresContainer,
