@@ -104,6 +104,17 @@ def test_location_enhancement_valid():
     assert enhancement.content.locations[0].license == "cc-by"
 
 
+def test_raw_enhancement_accepts_any_fields():
+    raw = destiny_sdk.enhancements.RawEnhancement(
+        i="can", add="whatever i", want=True, even={"these": "fields"}
+    )
+
+    assert raw.enhancement_type == destiny_sdk.enhancements.EnhancementType.RAW
+    assert raw.add == "whatever i"
+    assert raw.even.get("these") == "fields"
+    assert len(raw.model_dump(mode="json")) == 5  # Includes enhancement type
+
+
 def test_empty_annotation_enhancement_errors():
     # Test that an empty annotations list raises a validation error
     with pytest.raises(

@@ -4,7 +4,7 @@ import datetime
 from enum import StrEnum, auto
 from typing import Annotated, Literal
 
-from pydantic import UUID4, BaseModel, Field, HttpUrl
+from pydantic import UUID4, BaseModel, Extra, Field, HttpUrl
 
 from destiny_sdk.core import _JsonlFileInputMixIn
 from destiny_sdk.visibility import Visibility
@@ -25,6 +25,8 @@ class EnhancementType(StrEnum):
     """A free-form enhancement for tagging with labels."""
     LOCATION = auto()
     """Locations where the reference can be found."""
+    RAW = auto()
+    """A free form enhancement for arbitrary/unstructured data."""
     FULL_TEXT = auto()
     """The full text of the reference. (To be implemented)"""
 
@@ -299,12 +301,26 @@ class LocationEnhancement(BaseModel):
     )
 
 
+class RawEnhancement(BaseModel, extra=Extra.allow):
+    """
+    An enhancement for storing raw/arbitrary/unstructured data.
+
+    Data in these enhancements is intended for future conversion into structured form.
+
+    This enhancement accepts any fields that are passed to it. These enhancements cannot
+    be created by robots.
+    """
+
+    enhancement_type: Literal[EnhancementType.RAW] = EnhancementType.RAW
+
+
 #: Union type for all enhancement content types.
 EnhancementContent = Annotated[
     BibliographicMetadataEnhancement
     | AbstractContentEnhancement
     | AnnotationEnhancement
-    | LocationEnhancement,
+    | LocationEnhancement
+    | RawEnhancement,
     Field(discriminator="enhancement_type"),
 ]
 
