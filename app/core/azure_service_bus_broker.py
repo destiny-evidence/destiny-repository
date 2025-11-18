@@ -12,12 +12,16 @@ from datetime import UTC, datetime, timedelta
 from typing import TypeVar
 
 from azure.identity.aio import DefaultAzureCredential
-from azure.servicebus import ServiceBusReceivedMessage, ServiceBusReceiveMode
+from azure.servicebus import (
+    ServiceBusReceivedMessage,
+    ServiceBusReceiveMode,
+)
 from azure.servicebus.aio import (
     AutoLockRenewer,
     ServiceBusClient,
     ServiceBusReceiver,
     ServiceBusSender,
+    ServiceBusSession,
 )
 from azure.servicebus.amqp import AmqpAnnotatedMessage, AmqpMessageBodyType
 from pydantic import TypeAdapter
@@ -205,6 +209,45 @@ class AzureServiceBusBroker(AsyncBroker):
 
                 # Process each message
                 for sb_message in batch_messages:
+
+                    async def ack_message(
+                        sb_message: ServiceBusReceivedMessage = sb_message,
+                    ) -> None:
+                        logger.info(
+                            "Attempting to complete message", message=str(sb_message)
+                        )
+                        if self.receiver is not None:
+                            async with self._receive_lock:
+                                logger.info("Completing message", sb_message=sb_message)
+                                await self.receiver.complete_message(sb_message)
+                                logger.info("Completed message")
+                        else:
+                            logger.error(
+                                "Receiver is None. Cannot complete the message."
+                            )
+
+                    async def lock_renewal_failure_callback(
+                        sb_message: ServiceBusReceivedMessage | ServiceBusSession,
+                        exception: Exception | None = None,
+                    ) -> None:
+                        logger.error(
+                            "Lock renewal failed for message",
+                            message=str(sb_message),
+                            exception=exception,
+                        )
+                        logger.info("Attempting to re-register lock renewal")
+                        if (
+                            self.auto_lock_renewer is not None
+                            and self.receiver is not None
+                        ):
+                            self.auto_lock_renewer.register(
+                                self.receiver,
+                                sb_message,
+                                # Don't try it again if it fails
+                                on_lock_renew_failure=None,
+                            )
+                            logger.info("Re-registered lock renewal")
+
                     properties = sb_message.application_properties
                     if properties and TypeAdapter(bool).validate_python(
                         # Try binary then string key
@@ -213,18 +256,12 @@ class AzureServiceBusBroker(AsyncBroker):
                         )
                     ):
                         logger.info("Registering message for auto lock renewal")
-                        self.auto_lock_renewer.register(self.receiver, sb_message)
-
-                    async def ack_message(
-                        sb_message: ServiceBusReceivedMessage = sb_message,
-                    ) -> None:
-                        if self.receiver is not None:
-                            async with self._receive_lock:
-                                await self.receiver.complete_message(sb_message)
-                        else:
-                            logger.error(
-                                "Receiver is None. Cannot complete the message."
-                            )
+                        self.auto_lock_renewer.register(
+                            self.receiver,
+                            sb_message,
+                            on_lock_renew_failure=lock_renewal_failure_callback,
+                        )
+                        logger.info("Registered message for auto lock renewal")
 
                     body_type = sb_message.body_type
                     raw_body = sb_message.body
@@ -244,7 +281,9 @@ class AzureServiceBusBroker(AsyncBroker):
                         ack=ack_message,
                     )
 
+                    logger.info("Yielding message")
                     yield ackable
+                    logger.info("Yielded message")
             except Exception:
                 logger.exception("Error receiving messages")
                 # Wait a bit before retrying
