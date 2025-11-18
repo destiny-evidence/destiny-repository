@@ -588,6 +588,7 @@ class PendingEnhancementSQLRepository(
             SQLPendingEnhancement,
         )
 
+    @trace_repository_method(tracer)
     async def count_retry_depth(self, pending_enhancement_id: UUID) -> int:
         """
         Count how many times a pending enhancement has been retried.
@@ -631,6 +632,7 @@ class PendingEnhancementSQLRepository(
 
         return depth if depth is not None else 0
 
+    @trace_repository_method(tracer)
     async def expire_pending_enhancements_past_expiry(
         self,
         now: datetime.datetime,
