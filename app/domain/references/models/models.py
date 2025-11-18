@@ -698,17 +698,29 @@ class PendingEnhancementStatus(StateMachineMixin, StrEnum):
         Returns a mapping of current status to set of allowed next statuses.
         Empty set means the status is terminal (no transitions allowed).
 
+        .. mermaid::
+
+            stateDiagram-v2
+                PENDING --> PROCESSING
+                PROCESSING --> IMPORTING
+                PROCESSING --> EXPIRED
+                PROCESSING --> FAILED
+                IMPORTING --> INDEXING
+                IMPORTING --> DISCARDED
+                IMPORTING --> FAILED
+                INDEXING --> COMPLETED
+                INDEXING --> INDEXING_FAILED
         """
         return {
             cls.PENDING: {cls.PROCESSING},
             cls.PROCESSING: {cls.IMPORTING, cls.EXPIRED, cls.FAILED},
-            cls.IMPORTING: {cls.INDEXING, cls.FAILED},
-            cls.INDEXING: {cls.COMPLETED, cls.INDEXING_FAILED, cls.DISCARDED},
-            cls.INDEXING_FAILED: set(),
-            cls.DISCARDED: set(),
-            cls.COMPLETED: set(),
-            cls.FAILED: set(),
+            cls.IMPORTING: {cls.INDEXING, cls.DISCARDED, cls.FAILED},
+            cls.INDEXING: {cls.COMPLETED, cls.INDEXING_FAILED},
             cls.EXPIRED: set(),
+            cls.DISCARDED: set(),
+            cls.FAILED: set(),
+            cls.COMPLETED: set(),
+            cls.INDEXING_FAILED: set(),
         }
 
 
