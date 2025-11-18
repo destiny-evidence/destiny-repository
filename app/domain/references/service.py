@@ -537,6 +537,62 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     @sql_unit_of_work
+    async def expire_and_replace_stale_pending_enhancements(
+        self,
+        max_retry_count: int = 3,
+    ) -> dict[str, int]:
+        """
+        Expire stale pending enhancements and create replacements.
+
+        Searches for PendingEnhancements with expired leases and:
+        1. Moves them to EXPIRED status
+        2. Creates new PendingEnhancements as replacements (if retry limit not reached)
+        3. Populates the retry_of field to link to the expired enhancement
+
+        Args:
+            max_retry_count: Maximum number of retries allowed (default: 3)
+
+        Returns:
+            Dictionary with counts of expired and replaced_with pending enhancements
+
+        """
+        now = datetime.datetime.now(tz=datetime.UTC)
+        repo = self.sql_uow.pending_enhancements
+        expired_enhancements = await repo.expire_pending_enhancements_past_expiry(
+            now=now,
+            statuses=[
+                PendingEnhancementStatus.PROCESSING,
+            ],
+        )
+
+        if not expired_enhancements:
+            logger.info("No stale pending enhancements found")
+            return {"expired": 0, "replaced_with": 0}
+
+        logger.info(
+            "Found stale pending enhancements",
+            count=len(expired_enhancements),
+        )
+
+        new_pending_enhancements = (
+            await self._enhancement_service.create_retry_pending_enhancements(
+                expired_enhancements,
+                max_retry_count,
+            )
+        )
+
+        if new_pending_enhancements:
+            logger.info(
+                "Created new pending enhancements for retry",
+                count=len(new_pending_enhancements),
+            )
+
+        return {
+            "expired": len(expired_enhancements),
+            "replaced_with": len(new_pending_enhancements),
+        }
+
+    @sql_unit_of_work
     async def get_enhancement_request(
         self,
         enhancement_request_id: UUID,

@@ -7,6 +7,7 @@ from uuid import UUID
 from opentelemetry import trace
 from structlog.contextvars import bound_contextvars
 
+from app.core.config import Environment, get_settings
 from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
@@ -31,6 +32,7 @@ from app.tasks import broker
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+settings = get_settings()
 
 
 @asynccontextmanager
@@ -267,6 +269,25 @@ async def process_reference_duplicate_decision(
                     "No change to active decision, skipping automations",
                     reference_id=str(reference_duplicate_decision.reference_id),
                 )
+
+
+@broker.task(
+    schedule=[{"cron": "*/1 * * * *"}] if settings.env == Environment.LOCAL else None
+)
+async def expire_and_replace_stale_pending_enhancements() -> None:
+    """Expire stale pending enhancements and create replacements."""
+    name_span("Expire and replace stale pending enhancements")
+    logger.info("Expiring and replacing stale pending enhancements")
+    async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
+        blob_repository = await get_blob_repository()
+        reference_anti_corruption_service = ReferenceAntiCorruptionService(
+            blob_repository
+        )
+        reference_service = await get_reference_service(
+            reference_anti_corruption_service, sql_uow, es_uow
+        )
+
+        await reference_service.expire_and_replace_stale_pending_enhancements()
 
 
 @tracer.start_as_current_span("Detect and dispatch robot automations")

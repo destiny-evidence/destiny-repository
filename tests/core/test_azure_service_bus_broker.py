@@ -10,7 +10,10 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from azure.servicebus.aio import ServiceBusClient
+from azure.servicebus.aio import (
+    AutoLockRenewer,
+    ServiceBusClient,
+)
 from azure.servicebus.amqp import AmqpAnnotatedMessage
 from taskiq import BrokerMessage
 from taskiq.utils import maybe_awaitable
@@ -244,7 +247,7 @@ async def test_only_renew_lock_when_specified(
 
     :param broker: current broker.
     """
-    mock_lock_renewer = AsyncMock()
+    mock_lock_renewer = AsyncMock(spec=AutoLockRenewer)
     monkeypatch.setattr(broker, "auto_lock_renewer", mock_lock_renewer)
 
     msg = BrokerMessage(
