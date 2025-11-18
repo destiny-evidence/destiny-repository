@@ -19,9 +19,10 @@ Parameters
 
 The only required parameter is the query string ``q``. Additional optional parameters can be provided to filter, sort, and page through results.
 
-**Query String** ``q`` **(required)**
+Query String (required)
+_____________________________
 
-A query string in the `Lucene syntax <https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html#query-string-syntax>`_
+The ``q`` parameter is a query string in the `Lucene syntax <https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html#query-string-syntax>`_
 
 At it's simplest, this can be a simple keyword search, which will search over ``title`` and ``abstract``:
 
@@ -49,7 +50,8 @@ More complex queries can be constructed using the search syntax and the set of :
     # Get references with "climate change" in any order and a typoed "health":
     ?q="change climate"~2 AND helth~
 
-**Start Year** ``start_year`` **and End Year** ``end_year``
+Start Year and End Year
+__________________________________________________
 
 The minimum and maximum publication years (inclusive) for references to return.
 
@@ -64,7 +66,8 @@ The minimum and maximum publication years (inclusive) for references to return.
     # Get references published from 2015 to 2020:
     ?q=...&start_year=2015&end_year=2020
 
-**Annotations** ``annotation``
+Annotations
+__________________________
 
 The ``annotation`` parameter can be used to filter results based on their annotations.
 
@@ -87,7 +90,8 @@ Multiple annotations can be provided; they will be combined using a logical ``AN
     # Get references annotated with `classification:taxonomy:Outcomes/Stroke` as true and inclusion:destiny as true:
     ?q=...&annotation=classification:taxonomy:Outcomes/Stroke&annotation=inclusion:destiny
 
-**Page** ``page``
+Page
+_____________
 
 The page number of results to return. Each page is 20 results.
 
@@ -98,7 +102,8 @@ If omitted, defaults to the first page.
     # Get the 41st to 60th results:
     ?q=...&page=3
 
-**Sort** ``sort``
+Sort
+_____________
 
 The field(s) to sort the results by. Use ``-`` prefix to sort in descending order.
 
@@ -138,7 +143,8 @@ Though not strictly a `search`, the `lookup endpoint <https://destiny-repository
 Parameters
 """"""""""
 
-**Identifier** ``identifier`` **(required)**
+Identifiers (required)
+____________________________________
 
 The identifier(s) to look up. Multiple identifiers can be provided, either in a comma-separated list or as multiple parameters.
 
