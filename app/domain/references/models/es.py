@@ -190,6 +190,8 @@ class ReferenceDomainMixin(InnerDoc):
             enhancements=[
                 EnhancementDocument.from_domain(enhancement)
                 for enhancement in reference.enhancements or []
+                # Don't index RAW enhancements
+                if enhancement.content.enhancement_type != EnhancementType.RAW
             ],
             duplicate_determination=reference.duplicate_decision.duplicate_determination
             if reference.duplicate_decision
