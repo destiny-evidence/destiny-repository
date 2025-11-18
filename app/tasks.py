@@ -1,6 +1,7 @@
 """Tasks module for the DESTINY Climate and Health Repository API."""
 
 from taskiq import AsyncBroker, InMemoryBroker, TaskiqEvents, TaskiqState
+from taskiq.schedule_sources import LabelScheduleSource
 from taskiq_aio_pika import AioPikaBroker
 
 from app.core.azure_service_bus_broker import AzureServiceBusBroker
@@ -53,3 +54,11 @@ async def shutdown(_state: TaskiqState) -> None:
     """Close DB connections when the worker is shutting down."""
     await db_manager.close()
     await es_manager.close()
+
+
+# Scheduler for development - only active in local environment
+scheduler = None
+if settings.env == Environment.LOCAL:
+    from taskiq import TaskiqScheduler
+
+    scheduler = TaskiqScheduler(broker=broker, sources=[LabelScheduleSource(broker)])

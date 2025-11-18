@@ -10,6 +10,9 @@ from app.domain.imports.models.models import (
     ImportRecord,
     ImportResult,
 )
+from app.domain.references.models.sql import Reference as SQLReference
+from app.domain.robots.models.sql import Robot as SQLRobot
+from tests.factories import ReferenceFactory, RobotFactory
 
 
 class DummyDomainSQLModel(DomainBaseModel, SQLAttributeMixin): ...
@@ -304,3 +307,23 @@ def fake_repository():
 @pytest.fixture
 def fake_uow():
     return FakeUnitOfWork
+
+
+@pytest.fixture
+async def created_reference(session):
+    """Fixture to create and persist a test reference in the database."""
+    reference = ReferenceFactory.build()
+    sql_reference = SQLReference.from_domain(reference)
+    session.add(sql_reference)
+    await session.flush()
+    return reference
+
+
+@pytest.fixture
+async def created_robot(session):
+    """Fixture to create and persist a test robot in the database."""
+    robot = RobotFactory.build(client_secret="test-secret")
+    sql_robot = SQLRobot.from_domain(robot)
+    session.add(sql_robot)
+    await session.flush()
+    return robot

@@ -111,6 +111,38 @@ services:
     networks:
       - default
     entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover --reload
+
+  scheduler:
+    profiles: ["scheduler"]
+    build:
+      context: .
+      args:
+        UV_INSTALL_DEV: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      fs:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+      - ./libs/sdk:/app/libs/sdk
+      - certs:/app/certs
+    env_file:
+      - .env
+    environment:
+      MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
+      DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
+      MINIO_CONFIG: '{"HOST":"fs:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass"}'
+      ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
+      APP_NAME: destiny-scheduler
+    networks:
+      - default
+    entrypoint: taskiq scheduler app.tasks:scheduler --fs-discover --tasks-pattern app/**/tasks.py
+
   ui:
     profiles: ["ui"]
     build:
