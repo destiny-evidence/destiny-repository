@@ -97,6 +97,53 @@ def register_api(
             ParseError: parse_error_exception_handler,
         },
         redoc_url=None,  # Custom definition of redoc below
+        openapi_tags=[
+            {
+                "name": "references",
+                "description": "Requires `reference.reader` auth scope.",
+            },
+            {
+                "name": "search",
+                "description": "Requires `reference.reader` auth scope.",
+            },
+            {
+                "name": "enhancement-requests",
+                "description": "Requires `enhancement_request.writer` auth scope.",
+            },
+            {
+                "name": "automated-enhancement-requests",
+                "description": "Requires `enhancement_request.writer` auth scope.",
+            },
+            {
+                "name": "robot-enhancement-batches",
+                "description": "Requires `enhancement_request.writer` auth scope "
+                "or HMAC `robot` authentication.",
+            },
+            {
+                "name": "robot-management",
+                "description": "Requires `robot.writer` auth scope.",
+            },
+            {
+                "name": "imports",
+                "description": "Requires `import.writer` auth scope.",
+            },
+            {
+                "name": "import-batches",
+                "description": "Requires `import.writer` auth scope.",
+            },
+            {
+                "name": "import-records",
+                "description": "Requires `import.writer` auth scope.",
+            },
+            {
+                "name": "duplicate-decisions",
+                "description": "Requires `reference.deduplicator` auth scope.",
+            },
+            {
+                "name": "system-utilities",
+                "description": "Requires `administrator` auth scope.",
+            },
+        ],
     )
 
     @app.get("/")

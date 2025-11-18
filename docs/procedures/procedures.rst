@@ -7,6 +7,8 @@ Procedures and guidelines for interacting with the DESTINY repository.
     :maxdepth: 1
     :caption: Contents:
 
+    oauth
+    search
     batch-importing
     requesting-batch-enhancements
     deduplication

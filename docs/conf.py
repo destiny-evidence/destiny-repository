@@ -55,7 +55,10 @@ def linkcode_resolve(domain, info):
 
 def patched_get_settings():
     # Return a mock or custom settings object as needed for docs
-    return MagicMock()
+    return MagicMock(
+        log_level="DEBUG",
+        otel_enabled=False
+    )
 
 def setup(app):
     # Patch app.core.config.get_settings for the duration of the build

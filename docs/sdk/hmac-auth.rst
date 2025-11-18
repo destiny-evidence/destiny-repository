@@ -7,6 +7,10 @@ This documentation auto-generates details about the Authentication and Authoriza
     :depth: 2
     :local:
 
+.. note::
+
+    This document is about API authentication for robots. For anyone else, refer to :doc:`OAuth <../procedures/oauth>`.
+
 Service Auth
 ------------
 .. automodule:: libs.sdk.src.destiny_sdk.auth
