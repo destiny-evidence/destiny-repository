@@ -208,12 +208,6 @@ resource "azuread_app_role_assignment" "developer_to_auth" {
 }
 
 
-resource "azuread_app_role_assignment" "ui_users_to_auth" {
-  app_role_id         = "00000000-0000-0000-0000-000000000000"
-  principal_object_id = var.ui_users_group_id
-  resource_object_id  = azuread_service_principal.destiny_repository_auth.object_id
-}
-
 resource "azuread_app_role_assignment" "ui_users_to_auth_ui" {
   app_role_id         = "00000000-0000-0000-0000-000000000000"
   principal_object_id = var.ui_users_group_id
