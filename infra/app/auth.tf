@@ -183,15 +183,6 @@ resource "azuread_application_api_access" "destiny_repository_auth" {
   ]
 }
 
-resource "azuread_application_api_access" "destiny_repository_reader_auth" {
-  application_id = azuread_application_registration.destiny_repository_auth.id
-  api_client_id  = azuread_application.destiny_repository.client_id
-
-  scope_ids = [
-    random_uuid.reference_reader_scope.result,
-  ]
-}
-
 
 resource "azuread_application_registration" "destiny_repository_auth_ui" {
   display_name                   = "${local.name}-auth-ui-client"
@@ -220,7 +211,7 @@ resource "azuread_app_role_assignment" "developer_to_auth" {
 resource "azuread_app_role_assignment" "ui_users_to_auth" {
   app_role_id         = "00000000-0000-0000-0000-000000000000"
   principal_object_id = var.ui_users_group_id
-  resource_object_id  = azuread_service_principal.destiny_repository_reader_auth.object_id
+  resource_object_id  = azuread_service_principal.destiny_repository_auth.object_id
 }
 
 resource "azuread_app_role_assignment" "ui_users_to_auth_ui" {
@@ -230,12 +221,6 @@ resource "azuread_app_role_assignment" "ui_users_to_auth_ui" {
 }
 
 resource "azuread_service_principal" "destiny_repository_auth" {
-  client_id                    = azuread_application_registration.destiny_repository_auth.client_id
-  app_role_assignment_required = true
-  owners                       = [data.azuread_client_config.current.object_id]
-}
-
-resource "azuread_service_principal" "destiny_repository_reader_auth" {
   client_id                    = azuread_application_registration.destiny_repository_auth.client_id
   app_role_assignment_required = true
   owners                       = [data.azuread_client_config.current.object_id]
