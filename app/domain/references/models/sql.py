@@ -289,10 +289,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         UUID, ForeignKey("reference.id"), nullable=False
     )
     enhancement_type: Mapped[EnhancementType] = mapped_column(
-        ENUM(
-            *[enhancement.value for enhancement in EnhancementType],
-            name="enhancement_type",
-        ),
+        String,
         nullable=False,
     )
     robot_version: Mapped[str] = mapped_column(String, nullable=True)

@@ -4,12 +4,15 @@ import datetime
 import uuid
 
 import pytest
+import pytest_asyncio
 import sqlalchemy as sa
 from alembic.command import upgrade
+from destiny_sdk.enhancements import EnhancementType
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from tests import conftest
 from tests.db_utils import alembic_config_from_url, tmp_database
+from tests.factories import AbstractContentEnhancementFactory
 
 
 async def run_migration(db_url: str, target_revision: str) -> None:
@@ -21,18 +24,19 @@ async def run_migration(db_url: str, target_revision: str) -> None:
         await conftest.MIGRATION_TASK
 
 
-@pytest.fixture
-async def db_1d80():
-    """Create temporary database and applies migrations up to 1d8078bc0a95."""
+@pytest_asyncio.fixture
+async def db_at_migration(migration_id: str):
+    """Create temporary database and applies migrations up to the migration id."""
     async with tmp_database("pytest_migration") as tmp_url:
-        await run_migration(tmp_url, "1d8078bc0a95")
+        await run_migration(tmp_url, migration_id)
         yield tmp_url
 
 
 @pytest.mark.asyncio
-async def test_migrate_1d80_to_41a69(db_1d80: str) -> None:
+@pytest.mark.parametrize("migration_id", ["1d8078bc0a95"])
+async def test_migrate_1d80_to_41a69(db_at_migration: str) -> None:
     """Test migrating from 1d8078bc0a95 to 41a6980bb04e, including data migration."""
-    db_url = db_1d80
+    db_url = db_at_migration
     engine = create_async_engine(db_url, future=True)
 
     # Insert a pending_enhancement row with status 'ACCEPTED'
@@ -108,5 +112,82 @@ async def test_migrate_1d80_to_41a69(db_1d80: str) -> None:
             1970, 1, 1, 0, 0, tzinfo=datetime.UTC
         )
         assert row.retry_of is None
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("migration_id", ["41a6980bb04e"])
+async def test_migrate_41a69_to_eb47e(db_at_migration: str) -> None:
+    """
+    Test migrating from 41a6980bb04e to eb47e22ea5af.
+
+    Removing enhancement_type enum.
+    """
+    db_url = db_at_migration
+    engine = create_async_engine(db_url, future=True)
+
+    async with engine.begin() as conn:
+        now = datetime.datetime.now(datetime.UTC)
+
+        # Insert a reference
+        await conn.execute(
+            sa.text(
+                "INSERT INTO reference (id, visibility, created_at, updated_at) VALUES "
+                "(:id, :visibility, :created_at, :updated_at)"
+            ),
+            {
+                "id": (ref_id := str(uuid.uuid4())),
+                "visibility": "public",
+                "created_at": now,
+                "updated_at": now,
+            },
+        )
+
+        # Insert an enhancement that uses enhancement type
+        await conn.execute(
+            sa.text(
+                "INSERT INTO enhancement"
+                "(id, visibility, source, reference_id, enhancement_type, "
+                "content, created_at, updated_at)"
+                "VALUES (:id, :visibility, :source, :reference_id, :enhancement_type, "
+                ":content, :created_at, :updated_at)"
+            ),
+            {
+                "id": (enh_id := str(uuid.uuid4())),
+                "visibility": "public",
+                "source": "test_source",
+                "reference_id": ref_id,
+                "enhancement_type": EnhancementType.ABSTRACT,
+                "content": AbstractContentEnhancementFactory.build().model_dump_json(),
+                "created_at": now,
+                "updated_at": now,
+            },
+        )
+
+    # Apply migrations up to eb47e22ea5af
+    await run_migration(db_url, "eb47e22ea5af")
+
+    # Verify enhancement_type enum has been removed
+    async with engine.begin() as conn:
+        result = await conn.execute(
+            sa.text(
+                "SELECT typname FROM pg_type "
+                "WHERE pg_type.typcategory='E' "
+                "AND typname='enhancement_type'"
+            ),
+        )
+
+        assert result.rowcount == 0
+
+    # Verify that the enhancement still has an enhancement type of abstract
+    async with engine.begin() as conn:
+        result = await conn.execute(
+            sa.text("SELECT enhancement_type " "FROM enhancement WHERE id = :id"),
+            {"id": enh_id},
+        )
+        row = result.first()
+        assert row is not None
+        assert row.enhancement_type == EnhancementType.ABSTRACT
 
     await engine.dispose()
