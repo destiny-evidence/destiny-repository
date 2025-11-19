@@ -1,5 +1,6 @@
 """Repositories for references and associated models."""
 
+import datetime
 import math
 from abc import ABC
 from collections.abc import Sequence
@@ -10,7 +11,17 @@ from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import AsyncSearch, Q
 from opentelemetry import trace
 from pydantic import UUID4
-from sqlalchemy import CompoundSelect, Select, and_, intersect_all, or_, select
+from sqlalchemy import (
+    CompoundSelect,
+    Select,
+    and_,
+    func,
+    intersect_all,
+    literal,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -576,6 +587,83 @@ class PendingEnhancementSQLRepository(
             DomainPendingEnhancement,
             SQLPendingEnhancement,
         )
+
+    @trace_repository_method(tracer)
+    async def count_retry_depth(self, pending_enhancement_id: UUID) -> int:
+        """
+        Count how many times a pending enhancement has been retried.
+
+        This recursively follows the retry_of chain to count the depth.
+
+        Args:
+            pending_enhancement_id: ID of the pending enhancement to check
+
+        Returns:
+            Number of retries (0 if this is the original)
+
+        """
+        # Use a recursive CTE to count retry depth
+        cte = (
+            select(
+                SQLPendingEnhancement.id,
+                SQLPendingEnhancement.retry_of,
+                literal(0).label("depth"),
+            )
+            .where(SQLPendingEnhancement.id == pending_enhancement_id)
+            .cte(name="retry_chain", recursive=True)
+        )
+
+        # Recursive part: join to find the parent (retry_of)
+        recursive_part = select(
+            SQLPendingEnhancement.id,
+            SQLPendingEnhancement.retry_of,
+            (cte.c.depth + 1).label("depth"),
+        ).join(
+            SQLPendingEnhancement,
+            SQLPendingEnhancement.id == cte.c.retry_of,
+        )
+
+        cte = cte.union_all(recursive_part)
+
+        # Get the maximum depth
+        query = select(func.max(cte.c.depth))
+        result = await self._session.execute(query)
+        depth = result.scalar()
+
+        return depth if depth is not None else 0
+
+    @trace_repository_method(tracer)
+    async def expire_pending_enhancements_past_expiry(
+        self,
+        now: datetime.datetime,
+        statuses: list[PendingEnhancementStatus],
+    ) -> list[DomainPendingEnhancement]:
+        """
+        Atomically find and expire pending enhancements past their expiry time.
+
+        This method updates the status to EXPIRED and returns the expired records
+        in a single atomic operation to prevent race conditions in parallel execution.
+
+        Args:
+            now: Current datetime to compare against expires_at
+            statuses: List of statuses to filter by (e.g., PROCESSING)
+
+        Returns:
+            List of pending enhancements that were expired
+
+        """
+        stmt = (
+            update(SQLPendingEnhancement)
+            .where(
+                SQLPendingEnhancement.expires_at < now,
+                SQLPendingEnhancement.status.in_([status.value for status in statuses]),
+            )
+            .values(status=PendingEnhancementStatus.EXPIRED.value)
+            .returning(SQLPendingEnhancement)
+        )
+
+        result = await self._session.execute(stmt)
+        return [record.to_domain() for record in result.scalars().all()]
 
 
 class RobotEnhancementBatchRepositoryBase(

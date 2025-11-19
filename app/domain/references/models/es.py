@@ -209,28 +209,63 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     """
 
     abstract: str | None = mapped_field(Text(required=False), default=None)
+    """The abstract of the reference."""
 
     authors: list[str] | None = mapped_field(
         Text(required=False),
         default=None,
     )
+    """
+    The authors of the reference.
+
+    These are ordered by:
+
+    - First author
+    - Middle authors in alphabetical order
+    - Last author
+    """
 
     publication_year: int | None = mapped_field(
         Integer(required=False),
         default=None,
     )
+    """The publication year of the reference."""
 
     title: str | None = mapped_field(Text(required=False), default=None)
+    """The title of the reference."""
 
     annotations: list[str] | None = mapped_field(
         Keyword(required=False),
         default=None,
     )
+    """
+    Every ``true`` annotation on the reference.
+
+    These are in format ``<scheme>[/<label>]``.
+
+    Examples:
+
+    - ``classification:taxonomy:Outcomes/Stroke``
+    - ``classification:taxonomy:Intervention/Climate policy instruments``
+    - ``inclusion:destiny`` (No label)
+
+    """
 
     evaluated_schemes: list[str] | None = mapped_field(
         Keyword(required=False),
         default=None,
     )
+    """
+    Every scheme that has been evaluated for this reference.
+
+    Combining this with ``annotations`` allows you to determine which annotations
+    were evaluated as ``false``.
+
+    Examples:
+
+    - ``inclusion:destiny``
+    - ``classifier:taxonomy:Outcomes``
+    """
 
     inclusion_destiny: float | None = mapped_field(
         ScaledFloat(
@@ -239,6 +274,13 @@ class ReferenceSearchFieldsMixin(InnerDoc):
         ),
         default=None,
     )
+    """
+    The destiny inclusion score for this reference.
+
+    This is used to apply custom thresholds for inclusion. If you just want to know if
+    the reference was included per the default threshold, check for
+    ``inclusion:destiny`` in ``annotations``.
+    """
 
     @classmethod
     def from_projection(cls, projection: ReferenceSearchFields) -> Self:

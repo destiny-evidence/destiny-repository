@@ -106,6 +106,55 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             status=status,
         )
 
+    async def create_retry_pending_enhancements(
+        self,
+        expired_enhancements: list[PendingEnhancement],
+        max_retry_count: int,
+    ) -> list[PendingEnhancement]:
+        """
+        Create retry pending enhancements for expired ones.
+
+        Args:
+            expired_enhancements: List of expired pending enhancements
+            max_retry_count: Maximum retry depth allowed
+
+        Returns:
+            List of newly created retry pending enhancements
+
+        """
+        enhancements_to_retry = []
+
+        for expired_enhancement in expired_enhancements:
+            retry_depth = await self.sql_uow.pending_enhancements.count_retry_depth(
+                expired_enhancement.id
+            )
+
+            if retry_depth < max_retry_count:
+                new_pending_enhancement = PendingEnhancement(
+                    reference_id=expired_enhancement.reference_id,
+                    robot_id=expired_enhancement.robot_id,
+                    enhancement_request_id=expired_enhancement.enhancement_request_id,
+                    source=expired_enhancement.source,
+                    retry_of=expired_enhancement.id,
+                    status=PendingEnhancementStatus.PENDING,
+                )
+                enhancements_to_retry.append(new_pending_enhancement)
+            else:
+                logger.warning(
+                    "Pending enhancement exceeded retry limit",
+                    pending_enhancement_id=expired_enhancement.id,
+                    reference_id=expired_enhancement.reference_id,
+                    retry_depth=retry_depth,
+                    max_retry_count=max_retry_count,
+                )
+
+        if enhancements_to_retry:
+            return await self.sql_uow.pending_enhancements.add_bulk(
+                enhancements_to_retry
+            )
+
+        return []
+
     async def build_robot_enhancement_batch(
         self,
         robot_enhancement_batch: RobotEnhancementBatch,
