@@ -14,7 +14,6 @@ resource "random_uuid" "reference_deduplicator_scope" {}
 resource "random_uuid" "robot_writer_scope" {}
 resource "random_uuid" "enhancement_request_writer_scope" {}
 
-
 # AD application for destiny repository
 # App scopes to allow various functions (i.e. imports) should be added as oauth2_permission_scope here
 resource "azuread_application" "destiny_repository" {
@@ -252,7 +251,7 @@ resource "azuread_application_redirect_uris" "ui_redirect" {
 }
 
 resource "azuread_application_redirect_uris" "ui_public_client_redirect" {
-  # This is necessary to return the token to the UI when using PublicClient flow
+  # This is necessary to return the token to the user when using PublicClient flow
   application_id = azuread_application_registration.destiny_repository_auth_ui.id
   type           = "PublicClient"
 
