@@ -104,6 +104,61 @@ When making API requests, include the token in the ``Authorization`` header foll
 The tokens will expire after a certain period (usually two hours). After expiration, you will need to obtain a new token using the same method as before.
 
 
+Script template
+---------------
+.. code-block:: python
+    import json
+    import httpx
+    from msal import PublicClientApplication
+
+    # Easy access of configurations listed in the tables above
+    CONFIGS = {
+        "development": {
+            "url": "https://destiny-repository-deve-app.gentlecoast-c1c9497a"
+                   ".swedencentral.azurecontainerapps.io",
+            "tenant": "f870e5ae-5521-4a94-b9ff-cdde7d36dd35",
+            "client": "0fde62ae-2203-44a5-9722-73e965325ae7",
+            "app": "0a4b8df7-5c97-42b2-be07-2bb25e06dbb2",
+        },
+        "staging": {
+            "url": "https://destiny-repository-stag-app.proudmeadow-2a76e8ac"
+                   ".swedencentral.azurecontainerapps.io",
+            "tenant": "f870e5ae-5521-4a94-b9ff-cdde7d36dd35",
+            "client": "96ed941e-15dc-4ec0-b9e7-e4eda99efd2e",
+            "app": "14e3f6c0-b8aa-46c6-98d9-29b0dd2a0f7c",
+        },
+        "production": {
+            "url": "https://destiny-repository-prod-app.politesea-556f2857"
+                   ".swedencentral.azurecontainerapps.io",
+            "tenant": "f870e5ae-5521-4a94-b9ff-cdde7d36dd35",
+            "client": "7164ff26-4078-4107-850f-57b43b97f605",
+            "app": "e314440e-f72c-4b8e-89c1-7eefef4b55ed",
+        },
+    }
+
+    # Select environment
+    ENV = "staging"
+
+    # Authenticate and get auth token
+    app = PublicClientApplication(
+        client_id=CONFIGS[ENV]["client"],
+        authority=f"https://login.microsoftonline.com/{CONFIGS[ENV]['tenant']}",
+        client_credential=None,
+    )
+    token = app.acquire_token_interactive(
+        scopes=[f"api://{CONFIGS[ENV]['app']}/.default"]
+    )
+
+    # Request data from DESTinY API
+    response = httpx.get(
+        f"{CONFIGS[ENV]['url']}/v1/references/search/?q=example",
+        headers={"Authorization": f"Bearer {token["access_token"]}"},
+    )
+
+    # Use response
+    print(json.dumps(response.json(), indent=2))
+
+
 Troubleshooting
 ---------------
 
