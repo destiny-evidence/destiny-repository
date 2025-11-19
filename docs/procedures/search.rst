@@ -22,7 +22,7 @@ The only required parameter is the query string ``q``. Additional optional param
 Query String (required)
 _____________________________
 
-The ``q`` parameter is a query string in the `Lucene syntax <https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html#query-string-syntax>`_
+The ``q`` parameter is a query string in the `Lucene syntax <https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html#query-string-syntax>`_.
 
 At it's simplest, this can be a simple keyword search, which will search over ``title`` and ``abstract``:
 
@@ -132,8 +132,6 @@ Limitations
 
 There is a hard cap on the number of results at 10,000. You cannot page past this point, nor will :class:`total <libs.sdk.src.destiny_sdk.search.SearchResultTotal>` show more than this.
 
-.. _search-fields:
-
 
 API Lookup
 ^^^^^^^^^^
@@ -164,6 +162,8 @@ Limitations
 """""""""""
 
 There is a hard cap of 100 identifiers per request. If more are needed, multiple requests must be made.
+
+.. _search-fields:
 
 
 Search Fields
