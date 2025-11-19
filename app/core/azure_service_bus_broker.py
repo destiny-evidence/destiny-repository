@@ -205,7 +205,9 @@ class AzureServiceBusBroker(AsyncBroker):
             try:
                 # Receive a batch of messages
                 async with self._receive_lock:
-                    batch_messages = await self.receiver.receive_messages()
+                    batch_messages = await self.receiver.receive_messages(
+                        max_wait_time=10
+                    )
 
                 # Process each message
                 for sb_message in batch_messages:
