@@ -43,9 +43,9 @@ In all cases, you will need the following information:
 .. csv-table:: Authentication Details
     :header: "Environment", "Tenant ID", "Client ID", "Application ID"
 
-    "Development", ``f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``12da13eb-0019-408b-b2e3-1898d2a07d5f``, ``0a4b8df7-5c97-42b2-be07-2bb25e06dbb2``
-    "Staging", ``f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``25f4422d-97e4-49bf-b43d-ef732e2db9ca``, ``14e3f6c0-b8aa-46c6-98d9-29b0dd2a0f7c``
-    "Production", ``f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``3a4abad5-baac-4c9d-ac1f-8358c2115b35``, ``e314440e-f72c-4b8e-89c1-7eefef4b55ed``
+    "Development", ``f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``0fde62ae-2203-44a5-9722-73e965325ae7``, ``0a4b8df7-5c97-42b2-be07-2bb25e06dbb2``
+    "Staging", ``f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``96ed941e-15dc-4ec0-b9e7-e4eda99efd2e``, ``14e3f6c0-b8aa-46c6-98d9-29b0dd2a0f7c``
+    "Production", ``f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``7164ff26-4078-4107-850f-57b43b97f605``, ``e314440e-f72c-4b8e-89c1-7eefef4b55ed``
 
 Using a script
 ^^^^^^^^^^^^^^

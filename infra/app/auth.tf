@@ -208,12 +208,6 @@ resource "azuread_app_role_assignment" "developer_to_auth" {
 }
 
 
-resource "azuread_app_role_assignment" "ui_users_to_auth" {
-  app_role_id         = "00000000-0000-0000-0000-000000000000"
-  principal_object_id = var.ui_users_group_id
-  resource_object_id  = azuread_service_principal.destiny_repository_auth.object_id
-}
-
 resource "azuread_app_role_assignment" "ui_users_to_auth_ui" {
   app_role_id         = "00000000-0000-0000-0000-000000000000"
   principal_object_id = var.ui_users_group_id
@@ -237,10 +231,7 @@ resource "azuread_application_redirect_uris" "local_redirect" {
   application_id = azuread_application_registration.destiny_repository_auth.id
   type           = "PublicClient"
 
-  redirect_uris = [
-    "http://localhost",
-    "https://oauth.pstmn.io/v1/callback",
-  ]
+  redirect_uris = var.local_redirect_urls
 }
 
 resource "azuread_application_redirect_uris" "ui_redirect" {
@@ -251,6 +242,14 @@ resource "azuread_application_redirect_uris" "ui_redirect" {
   redirect_uris = [
     "https://${data.azurerm_container_app.ui.ingress[0].fqdn}",
   ]
+}
+
+resource "azuread_application_redirect_uris" "ui_public_client_redirect" {
+  # This is necessary to return the token to the user when using PublicClient flow
+  application_id = azuread_application_registration.destiny_repository_auth_ui.id
+  type           = "PublicClient"
+
+  redirect_uris = var.local_redirect_urls
 }
 
 # Openalex incremental updater role assignments
