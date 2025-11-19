@@ -14,6 +14,7 @@ resource "random_uuid" "reference_deduplicator_scope" {}
 resource "random_uuid" "robot_writer_scope" {}
 resource "random_uuid" "enhancement_request_writer_scope" {}
 
+
 # AD application for destiny repository
 # App scopes to allow various functions (i.e. imports) should be added as oauth2_permission_scope here
 resource "azuread_application" "destiny_repository" {
@@ -237,10 +238,7 @@ resource "azuread_application_redirect_uris" "local_redirect" {
   application_id = azuread_application_registration.destiny_repository_auth.id
   type           = "PublicClient"
 
-  redirect_uris = [
-    "http://localhost",
-    "https://oauth.pstmn.io/v1/callback",
-  ]
+  redirect_uris = var.local_redirect_urls
 }
 
 resource "azuread_application_redirect_uris" "ui_redirect" {
@@ -251,6 +249,14 @@ resource "azuread_application_redirect_uris" "ui_redirect" {
   redirect_uris = [
     "https://${data.azurerm_container_app.ui.ingress[0].fqdn}",
   ]
+}
+
+resource "azuread_application_redirect_uris" "ui_public_client_redirect" {
+  # This is necessary to return the token to the UI when using PublicClient flow
+  application_id = azuread_application_registration.destiny_repository_auth_ui.id
+  type           = "PublicClient"
+
+  redirect_uris = var.local_redirect_urls
 }
 
 # Openalex incremental updater role assignments
