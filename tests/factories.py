@@ -186,6 +186,7 @@ class RawEnhancementFactory(factory.Factory):
 
     # Introduce some randomness for comparison
     a_sentence = factory.Faker("sentence", nb_words=10)
+    some_nesting = factory.Faker("pydict")
 
 
 class LinkedExternalIdentifierFactory(factory.Factory):
@@ -222,6 +223,7 @@ class EnhancementFactory(factory.Factory):
                 AbstractContentEnhancementFactory(),
                 AnnotationEnhancementFactory(),
                 LocationEnhancementFactory(),
+                RawEnhancementFactory(),
             ]
         )
     )
