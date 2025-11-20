@@ -1,5 +1,5 @@
 """
-remove enhancement_type enum from postgres
+Remove enhancement_type enum
 
 Revision ID: eb47e22ea5af
 Revises: 41a6980bb04e
@@ -21,10 +21,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.alter_column('enhancement', 'enhancement_type',
-               existing_type=postgresql.ENUM('bibliographic', 'abstract', 'annotation', 'location', name='enhancement_type'),
-               type_=sa.String(),
-               existing_nullable=False)
+    op.alter_column('enhancement', 'enhancement_type', type_=sa.String(), existing_nullable=False)
     op.execute("DROP TYPE IF EXISTS enhancement_type")
 
 

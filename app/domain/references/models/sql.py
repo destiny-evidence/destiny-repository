@@ -201,10 +201,7 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
         UUID, ForeignKey("reference.id"), nullable=False
     )
     identifier_type: Mapped[ExternalIdentifierType] = mapped_column(
-        ENUM(
-            *[identifier.value for identifier in ExternalIdentifierType],
-            name="external_identifier_type",
-        ),
+        String,
         nullable=False,
     )
     other_identifier_name: Mapped[str] = mapped_column(

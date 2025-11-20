@@ -8,6 +8,7 @@ import pytest_asyncio
 import sqlalchemy as sa
 from alembic.command import upgrade
 from destiny_sdk.enhancements import EnhancementType
+from destiny_sdk.identifiers import ExternalIdentifierType
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from tests import conftest
@@ -118,11 +119,12 @@ async def test_migrate_1d80_to_41a69(db_at_migration: str) -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("migration_id", ["41a6980bb04e"])
-async def test_migrate_41a69_to_eb47e(db_at_migration: str) -> None:
+async def test_migrate_41a69_to_1a717(db_at_migration: str) -> None:
     """
-    Test migrating from 41a6980bb04e to eb47e22ea5af.
+    Test migrating from 41a6980bb04e to 1a717e152dff.
 
     Removing enhancement_type enum.
+    Removing external_identifier_type enum.
     """
     db_url = db_at_migration
     engine = create_async_engine(db_url, future=True)
@@ -133,8 +135,8 @@ async def test_migrate_41a69_to_eb47e(db_at_migration: str) -> None:
         # Insert a reference
         await conn.execute(
             sa.text(
-                "INSERT INTO reference (id, visibility, created_at, updated_at) VALUES "
-                "(:id, :visibility, :created_at, :updated_at)"
+                "INSERT INTO reference (id, visibility, created_at, updated_at) "
+                "VALUES (:id, :visibility, :created_at, :updated_at)"
             ),
             {
                 "id": (ref_id := str(uuid.uuid4())),
@@ -144,7 +146,25 @@ async def test_migrate_41a69_to_eb47e(db_at_migration: str) -> None:
             },
         )
 
-        # Insert an enhancement that uses enhancement type
+        # Insert an external identifier
+        await conn.execute(
+            sa.text(
+                "INSERT INTO external_identifier (id, reference_id, identifier_type, "
+                "identifier , created_at, updated_at) "
+                "VALUES (:id, :reference_id, :identifier_type, "
+                ":identifier, :created_at, :updated_at)"
+            ),
+            {
+                "id": (id_id := str(uuid.uuid4())),
+                "reference_id": ref_id,
+                "identifier": "10.1234/sampledoi",
+                "identifier_type": ExternalIdentifierType.DOI,
+                "created_at": now,
+                "updated_at": now,
+            },
+        )
+
+        # Insert an enhancement
         await conn.execute(
             sa.text(
                 "INSERT INTO enhancement"
@@ -165,8 +185,9 @@ async def test_migrate_41a69_to_eb47e(db_at_migration: str) -> None:
             },
         )
 
-    # Apply migrations up to eb47e22ea5af
-    await run_migration(db_url, "eb47e22ea5af")
+    # Apply migrations up to 1a717e152dff
+    # Applies removal of both enum types
+    await run_migration(db_url, "1a717e152dff")
 
     # Verify enhancement_type enum has been removed
     async with engine.begin() as conn:
@@ -174,11 +195,21 @@ async def test_migrate_41a69_to_eb47e(db_at_migration: str) -> None:
             sa.text(
                 "SELECT typname FROM pg_type "
                 "WHERE pg_type.typcategory='E' "
-                "AND typname='enhancement_type'"
+                "AND (typname='enhancement_type' OR typname='external_identifier_type')"
             ),
         )
 
         assert result.rowcount == 0
+
+    # Verify that the external identifier still has an identifier type of doi
+    async with engine.begin() as conn:
+        result = await conn.execute(
+            sa.text("SELECT identifier_type FROM external_identifier WHERE id = :id"),
+            {"id": id_id},
+        )
+        row = result.first()
+        assert row is not None
+        assert row.identifier_type == ExternalIdentifierType.DOI
 
     # Verify that the enhancement still has an enhancement type of abstract
     async with engine.begin() as conn:
