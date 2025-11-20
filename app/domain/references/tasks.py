@@ -274,7 +274,7 @@ async def process_reference_duplicate_decision(
 @broker.task(
     schedule=(
         [{"cron": "* * * * *"}]  # Every minute
-        if settings.env in (Environment.TEST, Environment.LOCAL)
+        if settings.env == Environment.LOCAL
         else None
     )
 )

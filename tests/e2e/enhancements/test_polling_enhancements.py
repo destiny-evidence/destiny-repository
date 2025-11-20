@@ -218,7 +218,7 @@ async def test_cannot_submit_expired_enhancement_results(
     )
     await asyncio.sleep(3)  # Wait for lease to expire
     await expire_and_replace_stale_pending_enhancements.kiq()
-    await asyncio.sleep(3)  # # Wait for worker to process task
+    await asyncio.sleep(3)  # Wait for worker to process task
 
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
         await _submit_robot_results(
