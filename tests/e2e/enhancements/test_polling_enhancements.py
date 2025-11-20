@@ -18,6 +18,7 @@ from destiny_sdk.robots import (
 from pydantic import HttpUrl
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 
+from app.domain.references.tasks import expire_and_replace_stale_pending_enhancements
 from app.domain.robots.models.models import Robot
 from tests.factories import EnhancementFactory
 
@@ -190,6 +191,7 @@ async def test_polling_pending_enhancements(
     )
 
 
+@pytest.mark.usefixtures("test_broker")
 async def test_cannot_submit_expired_enhancement_results(
     destiny_client_v1: httpx.AsyncClient,
     robot: Robot,
@@ -214,8 +216,9 @@ async def test_cannot_submit_expired_enhancement_results(
         count=1,
         lease="PT2S",
     )
-
-    await asyncio.sleep(62)  # Wait for lease to expire + cron job to run
+    await asyncio.sleep(3)  # Wait for lease to expire
+    await expire_and_replace_stale_pending_enhancements.kiq()
+    await asyncio.sleep(3)  # # Wait for worker to process task
 
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
         await _submit_robot_results(
@@ -229,7 +232,7 @@ async def test_cannot_submit_expired_enhancement_results(
     assert "importing" in error_detail.lower()
 
 
-@pytest.mark.usefixtures("scheduler")
+@pytest.mark.usefixtures("test_broker")
 async def test_can_submit_results_after_renewing_lease(
     destiny_client_v1: httpx.AsyncClient,
     robot: Robot,
@@ -261,9 +264,10 @@ async def test_can_submit_results_after_renewing_lease(
     )
     assert renew_response.status_code == 200
 
-    await asyncio.sleep(
-        62
-    )  # Wait to ensure original lease would have expired + cron job to run
+    # Wait to ensure original lease would have expired
+    await asyncio.sleep(3)
+    await expire_and_replace_stale_pending_enhancements.kiq()
+    await asyncio.sleep(3)  # Wait for worker to process task
 
     await _submit_robot_results(
         minio_proxy_client, batch_ids, batch_refs, batches, repo_url

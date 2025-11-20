@@ -5,6 +5,7 @@ import logging
 import os
 import pathlib
 import uuid
+from collections.abc import AsyncGenerator
 
 import httpx
 import pytest
@@ -14,6 +15,7 @@ from alembic.command import upgrade
 from elasticsearch import AsyncElasticsearch
 from minio import Minio
 from sqlalchemy.ext.asyncio import AsyncSession
+from taskiq import AsyncBroker
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.docker_client import DockerClient
 from testcontainers.core.wait_strategies import HttpWaitStrategy, LogMessageWaitStrategy
@@ -228,11 +230,24 @@ def rabbitmq():
     logger.info("Creating RabbitMQ container...")
     with (
         RabbitMqContainer("rabbitmq:3-management", port=5672)
+        .with_bind_ports(5672, 5672)
         .waiting_for(LogMessageWaitStrategy("Server startup complete"))
         .with_name(f"{container_prefix}-rabbitmq") as rabbitmq
     ):
         logger.info("RabbitMQ container ready.")
         yield rabbitmq
+
+
+@pytest.fixture
+async def test_broker(
+    rabbitmq: RabbitMqContainer,  # noqa: ARG001
+) -> AsyncGenerator[AsyncBroker, None]:
+    """Get a broker for connecting to RabbitMQ container from test process."""
+    from app.tasks import broker
+
+    await broker.startup()
+    yield broker
+    await broker.shutdown()
 
 
 @pytest.fixture(scope="session")
@@ -344,51 +359,6 @@ async def worker(
             yield container
         finally:
             print_logs("Worker", container)
-
-
-@pytest.fixture
-async def scheduler(  # noqa: PLR0913
-    postgres: PostgresContainer,
-    elasticsearch: ElasticSearchContainer,
-    rabbitmq: RabbitMqContainer,
-    minio: MinioContainer,
-    destiny_repository_image: str,
-    worker: DockerContainer,  # noqa: ARG001, ensure worker is started first
-):
-    """Get the scheduler container (function-scoped for controlled test usage)."""
-    logger.info("Starting scheduler container...")
-    scheduler = (
-        _add_env(
-            DockerContainer(destiny_repository_image),
-            postgres,
-            elasticsearch,
-            rabbitmq,
-            minio,
-        )
-        .with_name(f"{container_prefix}-scheduler")
-        .with_command(
-            [
-                "uv",
-                "run",
-                "taskiq",
-                "scheduler",
-                "app.tasks:scheduler",
-                "--tasks-pattern",
-                "app/**/tasks.py",
-                "--fs-discover",
-            ]
-        )
-        .with_env("APP_NAME", "destiny-scheduler")
-        .with_volume_mapping(str(_cwd / "app"), "/app/app")
-        .with_volume_mapping(str(_cwd / "libs/sdk"), "/app/libs/sdk")
-        .waiting_for(LogMessageWaitStrategy("Startup completed."))
-    )
-    with scheduler as container:
-        logger.info("Scheduler container ready.")
-        try:
-            yield container
-        finally:
-            print_logs("Scheduler", container)
 
 
 @pytest.fixture(scope="session")
