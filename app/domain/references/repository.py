@@ -589,6 +589,101 @@ class PendingEnhancementSQLRepository(
         )
 
     @trace_repository_method(tracer)
+    async def update_by_pk(
+        self, pk: UUID, **kwargs: object
+    ) -> DomainPendingEnhancement:
+        """
+        Update a pending enhancement by primary key with status validation.
+
+        Overrides the base implementation to validate status transitions
+        before performing the update.
+
+        Args:
+            pk: Primary key of the pending enhancement to update
+            kwargs: Fields to update (including optional 'status')
+
+        Returns:
+            The updated pending enhancement
+
+        Raises:
+            StateTransitionError: If any status transition is invalid
+
+        """
+        if "status" in kwargs:
+            new_status = PendingEnhancementStatus(kwargs["status"])  # type: ignore[arg-type]
+            current_entity = await self.get_by_pk(pk)
+            current_entity.status.guard_transition(new_status, pk)
+
+        return await super().update_by_pk(pk, **kwargs)
+
+    @trace_repository_method(tracer)
+    async def bulk_update(self, pks: list[UUID4], **kwargs: object) -> int:
+        """
+        Bulk update pending enhancements with status transition validation.
+
+        Overrides the base implementation to validate status transitions
+        before performing the update.
+
+        Args:
+            pks: List of pending enhancement IDs to update
+            kwargs: Fields to update (including optional 'status')
+
+        Returns:
+            Number of records updated
+
+        Raises:
+            ValueError: If any status transition is invalid
+
+        """
+        if "status" in kwargs and pks:
+            new_status = PendingEnhancementStatus(kwargs["status"])  # type: ignore[arg-type]
+
+            stmt = select(SQLPendingEnhancement.id, SQLPendingEnhancement.status).where(
+                SQLPendingEnhancement.id.in_(pks)
+            )
+            result = await self._session.execute(stmt)
+            entities = result.all()
+
+            for entity_id, current_status_value in entities:
+                current_status = PendingEnhancementStatus(current_status_value)
+                current_status.guard_transition(new_status, entity_id)
+
+        return await super().bulk_update(pks, **kwargs)
+
+    @trace_repository_method(tracer)
+    async def bulk_update_by_filter(
+        self, filter_conditions: dict[str, object], **kwargs: object
+    ) -> int:
+        """
+        Bulk update pending enhancements by filter with status validation.
+
+        Overrides the base implementation to validate status transitions
+        before performing the update.
+
+        Args:
+            filter_conditions: Conditions to filter records
+            kwargs: Fields to update (including optional 'status')
+
+        Returns:
+            Number of records updated
+
+        Raises:
+            ValueError: If any status transition is invalid
+
+        """
+        if "status" in kwargs:
+            new_status = PendingEnhancementStatus(kwargs["status"])  # type: ignore[arg-type]
+
+            entities = await self.find(
+                order_by=None, limit=None, preload=None, **filter_conditions
+            )
+
+            for entity in entities:
+                entity.status.guard_transition(new_status, entity.id)
+
+        return await super().bulk_update_by_filter(filter_conditions, **kwargs)
+
+    @trace_repository_method(tracer)
     async def count_retry_depth(self, pending_enhancement_id: UUID) -> int:
         """
         Count how many times a pending enhancement has been retried.

@@ -1,19 +1,15 @@
 import datetime
 import time
-import uuid
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import StateTransitionError
 from app.domain.references.models.models import (
     GenericExternalIdentifier,
-    PendingEnhancement,
     PendingEnhancementStatus,
 )
 from app.domain.references.models.sql import ExternalIdentifier as SQLExternalIdentifier
-from app.domain.references.models.sql import (
-    PendingEnhancement as SQLPendingEnhancement,
-)
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.repository import (
     PendingEnhancementSQLRepository,
@@ -155,64 +151,34 @@ class TestReferenceSQLRepository:
 
 class TestPendingEnhancementSQLRepository:
     async def test_count_retry_depth_no_retries(
-        self, session: AsyncSession, created_reference, created_robot
+        self, session: AsyncSession, created_pending_enhancement
     ):
         """Test counting retry depth for a pending enhancement with no retries."""
         repo = PendingEnhancementSQLRepository(session)
 
-        # Create a pending enhancement with no retries
-        pe = PendingEnhancement(
-            id=uuid.uuid4(),
-            reference_id=created_reference.id,
-            robot_id=created_robot.id,
-            source="test",
-            status=PendingEnhancementStatus.PENDING,
-            expires_at=utc_now() + datetime.timedelta(hours=1),
-        )
-        sql_pe = SQLPendingEnhancement.from_domain(pe)
-        session.add(sql_pe)
-        await session.commit()
-
-        depth = await repo.count_retry_depth(pe.id)
+        depth = await repo.count_retry_depth(created_pending_enhancement.id)
         assert depth == 0
 
     async def test_count_retry_depth_with_retries(
-        self, session: AsyncSession, created_reference, created_robot
+        self, session: AsyncSession, pending_enhancement_factory
     ):
         """Test counting retry depth for a chain of retries."""
         repo = PendingEnhancementSQLRepository(session)
 
-        # Create a chain: pe1 <- pe2 <- pe3
-        pe1 = PendingEnhancement(
-            id=uuid.uuid4(),
-            reference_id=created_reference.id,
-            robot_id=created_robot.id,
-            source="test",
+        pe1 = await pending_enhancement_factory(
             status=PendingEnhancementStatus.EXPIRED,
             expires_at=utc_now() - datetime.timedelta(hours=1),
         )
-        pe2 = PendingEnhancement(
-            id=uuid.uuid4(),
-            reference_id=pe1.reference_id,
-            robot_id=pe1.robot_id,
-            source="test",
+        pe2 = await pending_enhancement_factory(
             status=PendingEnhancementStatus.EXPIRED,
             expires_at=utc_now() - datetime.timedelta(minutes=30),
             retry_of=pe1.id,
         )
-        pe3 = PendingEnhancement(
-            id=uuid.uuid4(),
-            reference_id=pe1.reference_id,
-            robot_id=pe1.robot_id,
-            source="test",
+        pe3 = await pending_enhancement_factory(
             status=PendingEnhancementStatus.PENDING,
             expires_at=utc_now() + datetime.timedelta(hours=1),
             retry_of=pe2.id,
         )
-
-        for pe in [pe1, pe2, pe3]:
-            sql_pe = SQLPendingEnhancement.from_domain(pe)
-            session.add(sql_pe)
         await session.commit()
 
         assert await repo.count_retry_depth(pe1.id) == 0
@@ -220,32 +186,19 @@ class TestPendingEnhancementSQLRepository:
         assert await repo.count_retry_depth(pe3.id) == 2
 
     async def test_expire_pending_enhancements_past_expiry(
-        self, session: AsyncSession, created_reference, created_robot
+        self, session: AsyncSession, pending_enhancement_factory
     ):
         """Test expiring pending enhancements."""
         repo = PendingEnhancementSQLRepository(session)
 
-        expired_pe = PendingEnhancement(
-            id=uuid.uuid4(),
-            reference_id=created_reference.id,
-            robot_id=created_robot.id,
-            source="test",
+        expired_pe = await pending_enhancement_factory(
             status=PendingEnhancementStatus.PROCESSING,
             expires_at=utc_now() - datetime.timedelta(minutes=5),
         )
-
-        non_expired_pe = PendingEnhancement(
-            id=uuid.uuid4(),
-            reference_id=created_reference.id,
-            robot_id=created_robot.id,
-            source="test",
+        non_expired_pe = await pending_enhancement_factory(
             status=PendingEnhancementStatus.PROCESSING,
             expires_at=utc_now() + datetime.timedelta(hours=1),
         )
-
-        for pe in [expired_pe, non_expired_pe]:
-            sql_pe = SQLPendingEnhancement.from_domain(pe)
-            session.add(sql_pe)
         await session.commit()
 
         result = await repo.expire_pending_enhancements_past_expiry(
@@ -265,3 +218,127 @@ class TestPendingEnhancementSQLRepository:
         # Verify non-expired is still PROCESSING
         non_expired = await repo.get_by_pk(non_expired_pe.id)
         assert non_expired.status == PendingEnhancementStatus.PROCESSING
+
+    async def test_update_by_pk_validates_status_transitions(
+        self, session: AsyncSession, pending_enhancement_factory
+    ):
+        """Test that update_by_pk validates status transitions."""
+        repo = PendingEnhancementSQLRepository(session)
+
+        pe = await pending_enhancement_factory(
+            status=PendingEnhancementStatus.COMPLETED,
+        )
+        await session.commit()
+
+        with pytest.raises(StateTransitionError) as exc_info:
+            await repo.update_by_pk(pe.id, status=PendingEnhancementStatus.PENDING)
+
+        assert exc_info.value.entity_id == pe.id
+        assert exc_info.value.current_state == PendingEnhancementStatus.COMPLETED
+        assert exc_info.value.attempted_state == PendingEnhancementStatus.PENDING
+
+    async def test_update_by_pk_allows_valid_transitions(
+        self, session: AsyncSession, created_pending_enhancement
+    ):
+        """Test that update_by_pk allows valid status transitions."""
+        repo = PendingEnhancementSQLRepository(session)
+
+        updated = await repo.update_by_pk(
+            created_pending_enhancement.id, status=PendingEnhancementStatus.PROCESSING
+        )
+        assert updated.status == PendingEnhancementStatus.PROCESSING
+
+    async def test_bulk_update_validates_status_transitions(
+        self, session: AsyncSession, pending_enhancement_factory
+    ):
+        """Test that bulk_update validates status transitions for all records."""
+        repo = PendingEnhancementSQLRepository(session)
+
+        pe1 = await pending_enhancement_factory(
+            status=PendingEnhancementStatus.PENDING,
+        )
+        pe2 = await pending_enhancement_factory(
+            status=PendingEnhancementStatus.COMPLETED,
+        )
+        await session.commit()
+
+        with pytest.raises(StateTransitionError) as exc_info:
+            await repo.bulk_update(
+                [pe1.id, pe2.id], status=PendingEnhancementStatus.PROCESSING
+            )
+
+        assert exc_info.value.entity_id == pe2.id
+        assert exc_info.value.current_state == PendingEnhancementStatus.COMPLETED
+        assert exc_info.value.attempted_state == PendingEnhancementStatus.PROCESSING
+
+    async def test_bulk_update_allows_valid_transitions(
+        self, session: AsyncSession, pending_enhancement_factory
+    ):
+        """Test that bulk_update allows valid status transitions."""
+        repo = PendingEnhancementSQLRepository(session)
+
+        pe1 = await pending_enhancement_factory(
+            status=PendingEnhancementStatus.PENDING,
+        )
+        pe2 = await pending_enhancement_factory(
+            status=PendingEnhancementStatus.PENDING,
+        )
+        await session.commit()
+
+        count = await repo.bulk_update(
+            [pe1.id, pe2.id], status=PendingEnhancementStatus.PROCESSING
+        )
+        assert count == 2
+
+        updated_pe1 = await repo.get_by_pk(pe1.id)
+        updated_pe2 = await repo.get_by_pk(pe2.id)
+        assert updated_pe1.status == PendingEnhancementStatus.PROCESSING
+        assert updated_pe2.status == PendingEnhancementStatus.PROCESSING
+
+    async def test_bulk_update_by_filter_validates_status_transitions(
+        self, session: AsyncSession, pending_enhancement_factory, created_robot
+    ):
+        """Test that bulk_update_by_filter validates status transitions."""
+        repo = PendingEnhancementSQLRepository(session)
+
+        await pending_enhancement_factory(
+            status=PendingEnhancementStatus.PENDING,
+        )
+        pe2 = await pending_enhancement_factory(
+            status=PendingEnhancementStatus.COMPLETED,
+        )
+        await session.commit()
+
+        with pytest.raises(StateTransitionError) as exc_info:
+            await repo.bulk_update_by_filter(
+                {"robot_id": created_robot.id},
+                status=PendingEnhancementStatus.PROCESSING,
+            )
+
+        assert exc_info.value.entity_id == pe2.id
+        assert exc_info.value.current_state == PendingEnhancementStatus.COMPLETED
+        assert exc_info.value.attempted_state == PendingEnhancementStatus.PROCESSING
+
+    async def test_bulk_update_by_filter_allows_valid_transitions(
+        self, session: AsyncSession, pending_enhancement_factory, created_robot
+    ):
+        """Test that bulk_update_by_filter allows valid status transitions."""
+        repo = PendingEnhancementSQLRepository(session)
+
+        pe1 = await pending_enhancement_factory(
+            status=PendingEnhancementStatus.PENDING,
+        )
+        pe2 = await pending_enhancement_factory(
+            status=PendingEnhancementStatus.PENDING,
+        )
+        await session.commit()
+
+        count = await repo.bulk_update_by_filter(
+            {"robot_id": created_robot.id}, status=PendingEnhancementStatus.PROCESSING
+        )
+        assert count == 2
+
+        updated_pe1 = await repo.get_by_pk(pe1.id)
+        updated_pe2 = await repo.get_by_pk(pe2.id)
+        assert updated_pe1.status == PendingEnhancementStatus.PROCESSING
+        assert updated_pe2.status == PendingEnhancementStatus.PROCESSING

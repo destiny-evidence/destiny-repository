@@ -98,7 +98,6 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         status: PendingEnhancementStatus,
     ) -> int:
         """Update status of all pending enhancements for a robot enhancement batch."""
-        # Use the new bulk_update_by_filter method for better performance
         return await self.sql_uow.pending_enhancements.bulk_update_by_filter(
             filter_conditions={
                 "robot_enhancement_batch_id": robot_enhancement_batch_id

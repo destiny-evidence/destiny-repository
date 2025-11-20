@@ -1,9 +1,11 @@
 """Test polling pending enhancements."""
 
+import asyncio
 import uuid
 from collections.abc import Awaitable, Callable
 
 import httpx
+import pytest
 from destiny_sdk.client import Client
 from destiny_sdk.enhancements import Enhancement
 from destiny_sdk.references import Reference
@@ -16,6 +18,7 @@ from destiny_sdk.robots import (
 from pydantic import HttpUrl
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 
+from app.domain.references.tasks import expire_and_replace_stale_pending_enhancements
 from app.domain.robots.models.models import Robot
 from tests.factories import EnhancementFactory
 
@@ -44,12 +47,14 @@ async def _create_enhancement_request(
     return request_out["id"]
 
 
-async def _poll_robot_batches(
+async def _poll_robot_batches(  # noqa: PLR0913
     repo_client: httpx.AsyncClient,
     minio_proxy_client: httpx.AsyncClient,
     robot_id: str,
     reference_ids: list[str],
     request_id: str,
+    count: int = 2,
+    lease: str | None = None,
 ) -> tuple[list[str], list[list[str]], list[RobotEnhancementBatch]]:
     """Poll for robot enhancement batches and return batch data."""
     robot_enhancement_batch_ids = []
@@ -58,9 +63,9 @@ async def _poll_robot_batches(
 
     client = _create_client(HttpUrl(str(repo_client.base_url)))
 
-    for _ in range(2):
+    for _ in range(count):
         result = client.poll_robot_enhancement_batch(
-            robot_id=uuid.UUID(robot_id), limit=2
+            robot_id=uuid.UUID(robot_id), limit=2, lease=lease
         )
         assert result is not None
 
@@ -126,6 +131,28 @@ async def _submit_robot_results(
         assert result is not None
 
 
+async def _wait_for_enhancement_request_status(
+    repo_client: httpx.AsyncClient,
+    request_id: str,
+    expected_status: EnhancementRequestStatus,
+    max_attempts: int = 3,
+    wait_seconds: int = 1,
+) -> None:
+    """Wait for an enhancement request to reach the expected status."""
+    for attempt in Retrying(
+        stop=stop_after_attempt(max_attempts),
+        wait=wait_fixed(wait_seconds),
+        reraise=True,
+    ):
+        with attempt:
+            response = await repo_client.get(f"/enhancement-requests/{request_id}/")
+            assert response.status_code == 200
+            response_status = response.json()["request_status"]
+            if response_status != expected_status.value:
+                msg = f"Status is {response_status}, expected {expected_status.value}"
+                raise Exception(msg)  # noqa: TRY002
+
+
 async def test_polling_pending_enhancements(
     destiny_client_v1: httpx.AsyncClient,
     robot: Robot,
@@ -159,21 +186,93 @@ async def test_polling_pending_enhancements(
         minio_proxy_client, batch_ids, batch_refs, robot_requests, repo_url
     )
 
-    for attempt in Retrying(
-        stop=stop_after_attempt(3), wait=wait_fixed(1), reraise=True
-    ):
-        with attempt:
-            response = await destiny_client_v1.get(
-                f"/enhancement-requests/{request_id}/"
-            )
-            assert response.status_code == 200
-            response_status = response.json()["request_status"]
-            if response_status in (
-                EnhancementRequestStatus.PROCESSING.value,
-                EnhancementRequestStatus.IMPORTING.value,
-                EnhancementRequestStatus.INDEXING.value,
-            ):
-                msg = "Not completed yet"
-                raise Exception(msg)  # noqa: TRY002
+    await _wait_for_enhancement_request_status(
+        destiny_client_v1, request_id, EnhancementRequestStatus.COMPLETED
+    )
 
-    assert response_status == EnhancementRequestStatus.COMPLETED.value
+
+@pytest.mark.usefixtures("test_broker")
+async def test_cannot_submit_expired_enhancement_results(
+    destiny_client_v1: httpx.AsyncClient,
+    robot: Robot,
+    minio_proxy_client: httpx.AsyncClient,
+    add_references: Callable[[int], Awaitable[set[uuid.UUID]]],
+):
+    """Test that robots cannot submit results after pending enhancements expire."""
+    reference_ids = [str(reference_id) for reference_id in await add_references(2)]
+    robot_id = str(robot.id)
+    repo_url = HttpUrl(str(destiny_client_v1.base_url))
+
+    request_id = await _create_enhancement_request(
+        destiny_client_v1, robot_id, reference_ids
+    )
+
+    batch_ids, batch_refs, batches = await _poll_robot_batches(
+        destiny_client_v1,
+        minio_proxy_client,
+        robot_id,
+        reference_ids,
+        request_id,
+        count=1,
+        lease="PT2S",
+    )
+    await asyncio.sleep(3)  # Wait for lease to expire
+    await expire_and_replace_stale_pending_enhancements.kiq()
+    await asyncio.sleep(3)  # Wait for worker to process task
+
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        await _submit_robot_results(
+            minio_proxy_client, batch_ids, batch_refs, batches, repo_url
+        )
+
+    assert exc_info.value.response.status_code == 422
+    error_detail = exc_info.value.response.json()["detail"]
+    assert "cannot process results" in error_detail.lower()
+    assert "expired" in error_detail.lower()
+    assert "importing" in error_detail.lower()
+
+
+@pytest.mark.usefixtures("test_broker")
+async def test_can_submit_results_after_renewing_lease(
+    destiny_client_v1: httpx.AsyncClient,
+    robot: Robot,
+    minio_proxy_client: httpx.AsyncClient,
+    add_references: Callable[[int], Awaitable[set[uuid.UUID]]],
+):
+    """Test that robots can submit results if they renew the lease before expiry."""
+    reference_ids = [str(reference_id) for reference_id in await add_references(2)]
+    robot_id = str(robot.id)
+    repo_url = HttpUrl(str(destiny_client_v1.base_url))
+
+    request_id = await _create_enhancement_request(
+        destiny_client_v1, robot_id, reference_ids
+    )
+
+    batch_ids, batch_refs, batches = await _poll_robot_batches(
+        destiny_client_v1,
+        minio_proxy_client,
+        robot_id,
+        reference_ids,
+        request_id,
+        count=1,
+        lease="PT2S",
+    )
+
+    renew_response = await destiny_client_v1.patch(
+        f"/robot-enhancement-batches/{batch_ids[0]}/renew-lease/",
+        params={"lease": "PT120S"},
+    )
+    assert renew_response.status_code == 200
+
+    # Wait to ensure original lease would have expired
+    await asyncio.sleep(3)
+    await expire_and_replace_stale_pending_enhancements.kiq()
+    await asyncio.sleep(3)  # Wait for worker to process task
+
+    await _submit_robot_results(
+        minio_proxy_client, batch_ids, batch_refs, batches, repo_url
+    )
+
+    await _wait_for_enhancement_request_status(
+        destiny_client_v1, request_id, EnhancementRequestStatus.COMPLETED
+    )

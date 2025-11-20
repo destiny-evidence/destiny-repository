@@ -41,7 +41,7 @@ from app.api.auth import (
 from app.api.decorators import experimental
 from app.api.exception_handlers import APIExceptionContent, APIExceptionResponse
 from app.core.config import get_settings
-from app.core.exceptions import ParseError
+from app.core.exceptions import ParseError, StateTransitionError
 from app.core.telemetry.fastapi import PayloadAttributeTracer
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
@@ -724,10 +724,21 @@ async def fulfill_robot_enhancement_batch(
         robot_enhancement_batch_id
     )
 
-    await reference_service.update_pending_enhancements_status_for_robot_enhancement_batch(  # noqa: E501
-        robot_enhancement_batch_id=robot_enhancement_batch.id,
-        status=PendingEnhancementStatus.IMPORTING,
-    )
+    try:
+        await reference_service.update_pending_enhancements_status_for_robot_enhancement_batch(  # noqa: E501
+            robot_enhancement_batch_id=robot_enhancement_batch.id,
+            status=PendingEnhancementStatus.IMPORTING,
+        )
+    except StateTransitionError as e:
+        logger.warning(
+            "Failed to start importing robot enhancement batch results.",
+            robot_enhancement_batch_id=str(robot_enhancement_batch_id),
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Cannot process results: {e}",
+        ) from e
 
     await queue_task_with_trace(
         validate_and_import_robot_enhancement_batch_result,

@@ -26,6 +26,7 @@ from app.domain.base import (
     ProjectedBaseModel,
     SQLAttributeMixin,
     SQLTimestampMixin,
+    StateMachineMixin,
 )
 from app.persistence.blob.models import BlobStorageFile
 from app.utils.time_and_date import apply_positive_timedelta
@@ -661,7 +662,7 @@ class ReferenceWithChangeset(Reference):
     )
 
 
-class PendingEnhancementStatus(StrEnum):
+class PendingEnhancementStatus(StateMachineMixin, StrEnum):
     """
     The status of a pending enhancement.
 
@@ -686,6 +687,41 @@ class PendingEnhancementStatus(StrEnum):
     COMPLETED = auto()
     FAILED = auto()
     EXPIRED = auto()
+
+    @classmethod
+    def transitions(
+        cls,
+    ) -> dict["PendingEnhancementStatus", set["PendingEnhancementStatus"]]:
+        """
+        Define the allowed state transitions for pending enhancements.
+
+        Returns a mapping of current status to set of allowed next statuses.
+        Empty set means the status is terminal (no transitions allowed).
+
+        .. mermaid::
+
+            stateDiagram-v2
+                PENDING --> PROCESSING
+                PROCESSING --> IMPORTING
+                PROCESSING --> EXPIRED
+                PROCESSING --> FAILED
+                IMPORTING --> INDEXING
+                IMPORTING --> DISCARDED
+                IMPORTING --> FAILED
+                INDEXING --> COMPLETED
+                INDEXING --> INDEXING_FAILED
+        """
+        return {
+            cls.PENDING: {cls.PROCESSING},
+            cls.PROCESSING: {cls.IMPORTING, cls.EXPIRED, cls.FAILED},
+            cls.IMPORTING: {cls.INDEXING, cls.DISCARDED, cls.FAILED},
+            cls.INDEXING: {cls.COMPLETED, cls.INDEXING_FAILED},
+            cls.EXPIRED: set(),
+            cls.DISCARDED: set(),
+            cls.FAILED: set(),
+            cls.COMPLETED: set(),
+            cls.INDEXING_FAILED: set(),
+        }
 
 
 class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
