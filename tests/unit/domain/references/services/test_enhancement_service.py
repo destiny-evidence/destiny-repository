@@ -1,5 +1,6 @@
 import json
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -437,7 +438,10 @@ async def test_process_robot_enhancement_batch_result_raw_enhancement(fake_uow):
                     "reference_id": str(reference_id),
                     "content": {
                         "enhancement_type": "raw",
-                        "data": "some random enhancement data",
+                        "source_export_date": str(datetime.now(tz=UTC)),
+                        "description": "nonsense",
+                        "data": {"some": "data"},
+                        "metadata": {},
                     },
                     "source": "test_source",
                     "visibility": "public",

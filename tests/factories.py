@@ -183,10 +183,10 @@ class RawEnhancementFactory(factory.Factory):
         model = RawEnhancement
 
     enhancement_type = EnhancementType.RAW
-
-    # Introduce some randomness for comparison
-    a_sentence = factory.Faker("sentence", nb_words=10)
-    some_nesting = factory.Faker("pydict")
+    source_export_date = factory.Faker("date_time_this_month")
+    description = factory.Faker("sentence", nb_words=10)
+    metadata = factory.Faker("pydict", nb_elements=3, value_types=[int, str])
+    data = factory.Faker("pydict")
 
 
 class LinkedExternalIdentifierFactory(factory.Factory):
