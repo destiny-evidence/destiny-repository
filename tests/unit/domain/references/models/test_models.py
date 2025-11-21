@@ -4,7 +4,6 @@ import uuid
 
 import destiny_sdk
 import pytest
-from destiny_sdk.enhancements import RawEnhancement
 
 from app.core.exceptions import SDKToDomainError
 from app.domain.references.models.models import (
@@ -15,7 +14,7 @@ from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
-from tests.factories import EnhancementFactory
+from tests.factories import EnhancementFactory, RawEnhancementFactory
 
 
 async def test_generic_external_identifier_from_specific_without_other():
@@ -118,26 +117,24 @@ async def test_enhancement_unserializable_failure(
 
 
 async def test_enhancement_hash_data_handles_unordered_collections():
-    unordered_collection = {"unordered": "collection", "multiple": "keys"}
-    unordered_collection_shuffled = {"multiple": "keys", "unordered": "collection"}
+    unordered_data = {"unordered": "collection", "multiple": "keys"}
+    unordered_data_shuffled = {"multiple": "keys", "unordered": "collection"}
 
-    assert unordered_collection == unordered_collection_shuffled
+    assert unordered_data == unordered_data_shuffled
 
-    unordered_collection_enhancement = EnhancementFactory.build(
-        content=RawEnhancement(unordered_collection=unordered_collection)
+    unordered_data_enhancement = EnhancementFactory.build(
+        content=RawEnhancementFactory.build(data=unordered_data)
     )
 
-    duplicate_unordered_collection_enhancement = (
-        unordered_collection_enhancement.model_copy(deep=True)
+    duplicate_unordered_data_enhancement = unordered_data_enhancement.model_copy(
+        deep=True
     )
 
-    duplicate_unordered_collection_enhancement.content.unordered_collection = (
-        unordered_collection_shuffled
-    )
+    duplicate_unordered_data_enhancement.content.data = unordered_data_shuffled
 
     assert (
-        unordered_collection_enhancement.hash_data()
-        == duplicate_unordered_collection_enhancement.hash_data()
+        unordered_data_enhancement.hash_data()
+        == duplicate_unordered_data_enhancement.hash_data()
     )
 
 

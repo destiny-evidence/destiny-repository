@@ -1,3 +1,4 @@
+import datetime
 import uuid
 from datetime import date
 
@@ -104,14 +105,15 @@ def test_location_enhancement_valid():
     assert enhancement.content.locations[0].license == "cc-by"
 
 
-def test_raw_enhancement_accepts_any_fields():
+def test_raw_enhancement_valid():
     raw = destiny_sdk.enhancements.RawEnhancement(
-        i="can", add="whatever i", want=True, even={"these": "fields"}
+        source_export_date=datetime.datetime.now(tz=datetime.UTC),
+        description="test data",
+        metadata={"this": "is", "metadata": "stuff"},
+        data={"this": "is", "data": "stuff"},
     )
 
     assert raw.enhancement_type == destiny_sdk.enhancements.EnhancementType.RAW
-    assert raw.add == "whatever i"
-    assert raw.even.get("these") == "fields"
     assert len(raw.model_dump(mode="json")) == 5  # Includes enhancement type
 
 

@@ -2,7 +2,7 @@
 
 import datetime
 from enum import StrEnum, auto
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import UUID4, BaseModel, Field, HttpUrl
 
@@ -301,7 +301,7 @@ class LocationEnhancement(BaseModel):
     )
 
 
-class RawEnhancement(BaseModel, extra="allow"):
+class RawEnhancement(BaseModel):
     """
     An enhancement for storing raw/arbitrary/unstructured data.
 
@@ -312,6 +312,19 @@ class RawEnhancement(BaseModel, extra="allow"):
     """
 
     enhancement_type: Literal[EnhancementType.RAW] = EnhancementType.RAW
+    source_export_date: datetime.datetime = Field(
+        description="Date the enhancement data was exported from another source."
+    )
+    description: str = Field(
+        description="Description of the data to aid in future refinement."
+    )
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional metadata to aid in future structuring of raw data",
+    )
+    data: dict[str, Any] = Field(
+        default_factory=dict, description="Unstructured data for later processing"
+    )
 
 
 #: Union type for all enhancement content types.
