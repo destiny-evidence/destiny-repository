@@ -17,6 +17,7 @@ from destiny_sdk.enhancements import (
     EnhancementType,
     Location,
     LocationEnhancement,
+    RawEnhancement,
     ScoreAnnotation,
 )
 from destiny_sdk.identifiers import (
@@ -177,6 +178,17 @@ class LocationEnhancementFactory(factory.Factory):
     )
 
 
+class RawEnhancementFactory(factory.Factory):
+    class Meta:
+        model = RawEnhancement
+
+    enhancement_type = EnhancementType.RAW
+    source_export_date = factory.Faker("date_time_this_month")
+    description = factory.Faker("sentence", nb_words=10)
+    metadata = factory.Faker("pydict", nb_elements=3, value_types=[int, str])
+    data = factory.Faker("pydict")
+
+
 class LinkedExternalIdentifierFactory(factory.Factory):
     class Meta:
         model = LinkedExternalIdentifier
@@ -211,6 +223,7 @@ class EnhancementFactory(factory.Factory):
                 AbstractContentEnhancementFactory(),
                 AnnotationEnhancementFactory(),
                 LocationEnhancementFactory(),
+                RawEnhancementFactory(),
             ]
         )
     )

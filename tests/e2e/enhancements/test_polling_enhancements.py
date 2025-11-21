@@ -2,6 +2,8 @@
 
 import uuid
 from collections.abc import Awaitable, Callable
+from secrets import choice
+from typing import TYPE_CHECKING
 
 import httpx
 from destiny_sdk.client import Client
@@ -17,7 +19,16 @@ from pydantic import HttpUrl
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 
 from app.domain.robots.models.models import Robot
-from tests.factories import EnhancementFactory
+from tests.factories import (
+    AbstractContentEnhancementFactory,
+    AnnotationEnhancementFactory,
+    BibliographicMetadataEnhancementFactory,
+    EnhancementFactory,
+    LocationEnhancementFactory,
+)
+
+if TYPE_CHECKING:
+    import factory
 
 
 def _create_client(repo_url: HttpUrl) -> Client:
@@ -98,6 +109,13 @@ async def _submit_robot_results(
     repo_url: HttpUrl,
 ) -> None:
     """Submit robot enhancement batch results."""
+    allowed_robot_enhancements: list[factory.Factory] = [
+        BibliographicMetadataEnhancementFactory,
+        AbstractContentEnhancementFactory,
+        AnnotationEnhancementFactory,
+        LocationEnhancementFactory,
+    ]
+
     for i, (batch_id, robot_request) in enumerate(
         zip(robot_enhancement_batch_ids, robot_requests, strict=True)
     ):
@@ -105,7 +123,12 @@ async def _submit_robot_results(
 
         for ref_id in batch_references[i]:
             enhancement = Enhancement(
-                **EnhancementFactory.build(reference_id=ref_id).model_dump()
+                **EnhancementFactory.build(
+                    reference_id=ref_id,
+                    # Don't generate any raw enhancements as robots aren't allowed
+                    # to generate these.
+                    content=choice(allowed_robot_enhancements).build(),
+                ).model_dump()
             )
             result_entries.append(enhancement.to_jsonl())
 

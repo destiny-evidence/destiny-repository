@@ -14,6 +14,7 @@ from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from tests.factories import EnhancementFactory, RawEnhancementFactory
 
 
 async def test_generic_external_identifier_from_specific_without_other():
@@ -113,6 +114,28 @@ async def test_enhancement_unserializable_failure(
                 ],
             )
         )
+
+
+async def test_enhancement_hash_data_handles_unordered_collections():
+    unordered_data = {"unordered": "collection", "multiple": "keys"}
+    unordered_data_shuffled = {"multiple": "keys", "unordered": "collection"}
+
+    assert unordered_data == unordered_data_shuffled
+
+    unordered_data_enhancement = EnhancementFactory.build(
+        content=RawEnhancementFactory.build(data=unordered_data)
+    )
+
+    duplicate_unordered_data_enhancement = unordered_data_enhancement.model_copy(
+        deep=True
+    )
+
+    duplicate_unordered_data_enhancement.content.data = unordered_data_shuffled
+
+    assert (
+        unordered_data_enhancement.hash_data()
+        == duplicate_unordered_data_enhancement.hash_data()
+    )
 
 
 async def test_canonical_search_fields_searchable():

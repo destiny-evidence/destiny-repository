@@ -33,6 +33,7 @@ from tests.factories import (
     OpenAlexIdentifierFactory,
     OtherIdentifierFactory,
     PubMedIdentifierFactory,
+    RawEnhancementFactory,
     ReferenceFactory,
     ScoreAnnotationFactory,
 )
@@ -225,6 +226,11 @@ def complete_reference(
     doi_identifier.reference_id = ref_id
     pubmed_identifier.reference_id = ref_id
 
+    # Add a raw enhancement
+    raw_enhancement = EnhancementFactory.build(
+        reference_id=ref_id, content=RawEnhancementFactory.build()
+    )
+
     return ReferenceFactory.build(
         id=ref_id,
         enhancements=[
@@ -232,6 +238,7 @@ def complete_reference(
             abstract_enhancement,
             destiny_inclusion_annotation_enhancement,
             taxonomy_annotation_enhancement,
+            raw_enhancement,
         ],
         identifiers=[doi_identifier, pubmed_identifier],
     )
@@ -881,4 +888,4 @@ class TestDeduplicatedReferenceProjection:
         assert "test_source" in enhancement_sources  # Original
         assert "intermediate_source" in enhancement_sources  # Intermediate
         assert "nested_source" in enhancement_sources  # Nested
-        assert len(result.enhancements) == 6  # 4 original + 1 intermediate + 1 nested
+        assert len(result.enhancements) == 7  # 5 original + 1 intermediate + 1 nested

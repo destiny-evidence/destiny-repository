@@ -157,6 +157,20 @@ async def reference() -> Reference:
                 "source": "test_source",
                 "visibility": "public",
             },
+            {
+                "id": uuid.uuid4(),
+                "reference_id": r,
+                "created_at": utc_now(),
+                "content": {
+                    "enhancement_type": "raw",
+                    "source_export_date": utc_now(),
+                    "description": "nonsense",
+                    "data": {"some": "data"},
+                    "metadata": {},
+                },
+                "source": "test_source",
+                "visibility": "public",
+            },
         ],
         duplicate_decision={
             "reference_id": r,
@@ -295,7 +309,10 @@ async def test_es_repository_cycle(
     assert len(es_reference.enhancements or []) == 3
     # Check that ids are preserved
     assert {enhancement.id for enhancement in es_reference.enhancements or []} == {
-        enhancement.id for enhancement in reference.enhancements or []
+        enhancement.id
+        for enhancement in reference.enhancements or []
+        # Raw enhancements are filtered out
+        if enhancement.content.enhancement_type != EnhancementType.RAW
     }
 
     # Check the ES projections themselves

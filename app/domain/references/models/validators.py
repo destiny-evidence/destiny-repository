@@ -10,6 +10,7 @@ from typing import Self
 from uuid import UUID
 
 import destiny_sdk
+from destiny_sdk.enhancements import EnhancementType
 from pydantic import UUID4, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 from app.core.exceptions import ParseError
@@ -291,6 +292,15 @@ class EnhancementResultValidator(BaseModel):
             )
 
         if isinstance(file_entry, destiny_sdk.enhancements.Enhancement):
+            # Do not allow raw enhancements to be created by robots
+            if file_entry.content.enhancement_type == EnhancementType.RAW:
+                return cls(
+                    robot_error=destiny_sdk.robots.LinkedRobotError(
+                        reference_id=file_entry.reference_id,
+                        message="Robot returned illegal raw enhancement type",
+                    )
+                )
+
             return cls(
                 enhancement_to_add=file_entry,
             )
