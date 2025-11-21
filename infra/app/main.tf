@@ -778,3 +778,113 @@ resource "azurerm_container_app_job" "es_index_migrator" {
     ignore_changes = [template[0].container[0].image, template[0].container[0].command]
   }
 }
+
+locals {
+  scheduled_jobs = {
+    expire_and_replace_stale_pending_enhancements = {
+      cron_expression = "*/1 * * * *" # Every minute
+      command         = ["python", "-m", "app.run_task", "app.domain.references.tasks:expire_and_replace_stale_pending_enhancements"]
+      timeout_seconds = 120
+    }
+  }
+}
+
+resource "azurerm_container_app_job" "scheduled_jobs" {
+  for_each = local.scheduled_jobs
+
+  name                         = "${local.name}-${replace(each.key, "_", "-")}"
+  location                     = azurerm_resource_group.this.location
+  resource_group_name          = azurerm_resource_group.this.name
+  container_app_environment_id = module.container_app.container_app_env_id
+
+  replica_timeout_in_seconds = lookup(each.value, "timeout_seconds", 3600)
+  replica_retry_limit        = lookup(each.value, "retry_limit", 1)
+
+  schedule_trigger_config {
+    cron_expression          = each.value.cron_expression
+    parallelism              = 1
+    replica_completion_count = 1
+  }
+
+  registry {
+    identity = azurerm_user_assigned_identity.container_apps_tasks_identity.id
+    server   = data.azurerm_container_registry.this.login_server
+  }
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.container_apps_tasks_identity.id]
+  }
+
+  secret {
+    name = "es-config"
+    value = jsonencode({
+      cloud_id = ec_deployment.cluster.elasticsearch.cloud_id
+      api_key  = elasticstack_elasticsearch_security_api_key.app.encoded
+    })
+  }
+
+  secret {
+    name = "otel-config"
+    value = jsonencode({
+      trace_endpoint = var.honeycombio_trace_endpoint
+      meter_endpoint = var.honeycombio_meter_endpoint
+      log_endpoint   = var.honeycombio_log_endpoint
+      api_key        = honeycombio_api_key.this.key
+    })
+  }
+
+  template {
+    container {
+      image   = "${data.azurerm_container_registry.this.login_server}/destiny-repository:${var.environment}"
+      name    = "${local.name}-${replace(each.key, "_", "-")}"
+      command = each.value.command
+      cpu     = lookup(each.value, "cpu", 0.5)
+      memory  = lookup(each.value, "memory", "1Gi")
+
+      env {
+        name  = "APP_NAME"
+        value = "${var.app_name}-scheduled-job"
+      }
+
+      env {
+        name  = "ENV"
+        value = var.environment
+      }
+
+      env {
+        name  = "MESSAGE_BROKER_NAMESPACE"
+        value = "${azurerm_servicebus_namespace.this.name}.servicebus.windows.net"
+      }
+
+      env {
+        name  = "MESSAGE_BROKER_QUEUE_NAME"
+        value = azurerm_servicebus_queue.taskiq.name
+      }
+
+      env {
+        name = "DB_CONFIG"
+        value = jsonencode({
+          DB_FQDN = azurerm_postgresql_flexible_server.this.fqdn
+          DB_NAME = azurerm_postgresql_flexible_server_database.this.name
+          DB_USER = data.azuread_group.db_crud_group.display_name
+        })
+      }
+
+      env {
+        name        = "ES_CONFIG"
+        secret_name = "es-config"
+      }
+
+      env {
+        name        = "OTEL_CONFIG"
+        secret_name = "otel-config"
+      }
+
+      env {
+        name  = "OTEL_ENABLED"
+        value = var.telemetry_enabled
+      }
+    }
+  }
+}
