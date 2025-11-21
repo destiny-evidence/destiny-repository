@@ -781,7 +781,7 @@ resource "azurerm_container_app_job" "es_index_migrator" {
 
 locals {
   scheduled_jobs = {
-    expire_and_replace_stale_pending_enhancements = {
+    expire_pending_enhancements = {
       cron_expression = "*/1 * * * *" # Every minute
       command         = ["python", "-m", "app.run_task", "app.domain.references.tasks:expire_and_replace_stale_pending_enhancements"]
       timeout_seconds = 120
@@ -792,7 +792,7 @@ locals {
 resource "azurerm_container_app_job" "scheduled_jobs" {
   for_each = local.scheduled_jobs
 
-  name                         = "${local.name}-${replace(each.key, "_", "-")}"
+  name                         = "${replace(each.key, "_", "-")}-${substr(var.environment, 0, 4)}"
   location                     = azurerm_resource_group.this.location
   resource_group_name          = azurerm_resource_group.this.name
   container_app_environment_id = module.container_app.container_app_env_id
@@ -837,7 +837,7 @@ resource "azurerm_container_app_job" "scheduled_jobs" {
   template {
     container {
       image   = "${data.azurerm_container_registry.this.login_server}/destiny-repository:${var.environment}"
-      name    = "${local.name}-${replace(each.key, "_", "-")}"
+      name    = "${replace(each.key, "_", "-")}-${substr(var.environment, 0, 4)}"
       command = each.value.command
       cpu     = lookup(each.value, "cpu", 0.5)
       memory  = lookup(each.value, "memory", "1Gi")
