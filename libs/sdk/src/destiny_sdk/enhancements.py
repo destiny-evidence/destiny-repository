@@ -322,8 +322,8 @@ class RawEnhancement(BaseModel):
         default_factory=dict,
         description="Additional metadata to aid in future structuring of raw data",
     )
-    data: dict[str, Any] = Field(
-        default_factory=dict, description="Unstructured data for later processing"
+    data: Any = Field(
+        default=None, description="Unstructured data for later processing"
     )
 
 
