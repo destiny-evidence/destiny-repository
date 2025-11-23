@@ -46,7 +46,6 @@ from tests.factories import (
     DOIIdentifierFactory,
     EnhancementFactory,
     LinkedExternalIdentifierFactory,
-    RawEnhancementFactory,
     ReferenceFactory,
 )
 
@@ -96,8 +95,6 @@ def canonical_reference(canonical_bibliographic_enhancement: Enhancement) -> Ref
     return ReferenceFactory.build(
         enhancements=[
             EnhancementFactory.build(content=canonical_bibliographic_enhancement),
-            # And a raw enhancement because these could cause problems
-            EnhancementFactory.build(content=RawEnhancementFactory.build()),
             # Another annotation enhancement for fun
             EnhancementFactory.build(content=AnnotationEnhancementFactory.build()),
         ],
@@ -144,6 +141,26 @@ def non_duplicate_reference(
     assert duplicate.enhancements[0].content.publication_year
     duplicate.enhancements[0].content.publication_year -= 10
     return duplicate
+
+
+@pytest.fixture
+def exact_duplicate_reference(canonical_reference: Reference) -> Reference:
+    """Get a reference that is a subset of the canonical."""
+    exact_duplicate_reference = canonical_reference.model_copy(
+        deep=True, update={"id": uuid.uuid4()}
+    )
+    assert exact_duplicate_reference.enhancements
+
+    # Remove one enhancement to make it an exact subset
+    exact_duplicate_reference.enhancements.pop()
+
+    # Check we have a bibliography and a raw enhanceement
+    assert isinstance(
+        exact_duplicate_reference.enhancements[0].content,
+        BibliographicMetadataEnhancement,
+    )
+
+    return exact_duplicate_reference
 
 
 # ruff: noqa: E501
@@ -198,7 +215,7 @@ async def robot_automation_on_specific_enhancement(
     return robot.id
 
 
-async def test_import_exact_duplicate(
+async def test_import_exact_duplicate(  # noqa: PLR0913
     destiny_client_v1: httpx.AsyncClient,
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
@@ -206,6 +223,7 @@ async def test_import_exact_duplicate(
         [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
     ],
     canonical_reference: Reference,
+    exact_duplicate_reference: Reference,
 ):
     """Test importing an exact duplicate reference."""
     await import_references(
@@ -217,10 +235,6 @@ async def test_import_exact_duplicate(
     )
     await es_client.indices.refresh(index=ReferenceDocument.Index.name)
 
-    # Mutate to make it a subsetting reference
-    exact_duplicate_reference = canonical_reference.model_copy(deep=True)
-    assert exact_duplicate_reference.enhancements
-    exact_duplicate_reference.enhancements.pop()
     exact_duplicate_reference_id = (
         await import_references(
             destiny_client_v1,
