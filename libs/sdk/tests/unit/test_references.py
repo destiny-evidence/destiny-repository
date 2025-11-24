@@ -33,6 +33,7 @@ def test_es_parsing():
                         ],
                         "cited_by_count": 3,
                         "created_date": "2016-08-23",
+                        "updated_date": "2016-08-24",
                         "publication_date": "2016-08-01",
                         "publication_year": 2016,
                         "publisher": "Research for Dummies",
