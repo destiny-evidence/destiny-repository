@@ -2,9 +2,9 @@
 
 import datetime
 from enum import StrEnum, auto
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import UUID4, BaseModel, Field, HttpUrl
+from pydantic import UUID4, BaseModel, Field, HttpUrl, model_validator
 
 from destiny_sdk.core import _JsonlFileInputMixIn
 from destiny_sdk.visibility import Visibility
@@ -307,13 +307,13 @@ class RawEnhancement(BaseModel):
 
     Data in these enhancements is intended for future conversion into structured form.
 
-    This enhancement accepts any fields that are passed to it. These enhancements cannot
+    This enhancement accepts any fields passed in to `data`. These enhancements cannot
     be created by robots.
     """
 
     enhancement_type: Literal[EnhancementType.RAW] = EnhancementType.RAW
     source_export_date: datetime.datetime = Field(
-        description="Date the enhancement data was exported from another source."
+        description="Date the enhancement data was retrieved."
     )
     description: str = Field(
         description="Description of the data to aid in future refinement."
@@ -322,9 +322,15 @@ class RawEnhancement(BaseModel):
         default_factory=dict,
         description="Additional metadata to aid in future structuring of raw data",
     )
-    data: Any = Field(
-        default=None, description="Unstructured data for later processing"
-    )
+    data: Any = Field(description="Unstructured data for later processing.")
+
+    @model_validator(mode="after")
+    def forbid_no_data(self) -> Self:
+        """Prevent a raw enhancement from being created with no data."""
+        if not self.data:
+            msg = "data must be populated on a raw enhancement."
+            raise ValueError(msg)
+        return self
 
 
 #: Union type for all enhancement content types.

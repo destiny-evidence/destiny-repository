@@ -130,14 +130,26 @@ def test_raw_enhancement_valid_data_is_a_string():
     assert isinstance(raw.data, str)
 
 
-def test_raw_enhancement_valid_empty_data():
-    raw = destiny_sdk.enhancements.RawEnhancement(
-        source_export_date=datetime.datetime.now(tz=datetime.UTC),
-        description="test data",
-        metadata={"this": "is", "metadata": 0},
-    )
+def test_raw_enhancement_raise_error_if_empty_data():
+    with pytest.raises(
+        ValidationError, match="data must be populated on a raw enhancement"
+    ):
+        destiny_sdk.enhancements.RawEnhancement(
+            source_export_date=datetime.datetime.now(tz=datetime.UTC),
+            description="test data",
+            metadata={"this": "is", "metadata": 0},
+            data=None,
+        )
 
-    assert not raw.data
+    with pytest.raises(
+        ValidationError, match="data must be populated on a raw enhancement"
+    ):
+        destiny_sdk.enhancements.RawEnhancement(
+            source_export_date=datetime.datetime.now(tz=datetime.UTC),
+            description="test data",
+            metadata={"this": "is", "metadata": 0},
+            data={},
+        )
 
 
 def test_empty_annotation_enhancement_errors():
