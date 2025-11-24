@@ -364,8 +364,9 @@ resource "azurerm_postgresql_flexible_server" "this" {
     }
   }
 
-  storage_mb   = 32768
-  storage_tier = "P4"
+
+  storage_mb   = local.is_development ? local.dev_db_storage_mb : local.prod_db_storage_mb
+  storage_tier = local.is_development ? local.dev_db_storage_tier : local.prod_db_storage_tier
 
   sku_name = "GP_Standard_D2ds_v4"
 

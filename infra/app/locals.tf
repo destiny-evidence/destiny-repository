@@ -7,7 +7,14 @@ locals {
     "reference*",
     "robot-automation-percolation*"
   ]
-  is_production = var.environment == "production"
+  is_production  = var.environment == "production"
+  is_development = var.environment == "development"
+
+  prod_db_storage_mb   = 65536
+  prod_db_storage_tier = "P6"
+  dev_db_storage_mb    = 32768
+  dev_db_storage_tier  = "P4"
+
   minimum_resource_tags = {
     # All these tags are required for UCL tenant compliance policies
     "Created by"  = var.created_by,
