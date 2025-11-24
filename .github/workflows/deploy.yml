@@ -150,23 +150,13 @@ jobs:
               exit 0
             fi
 
-            echo "Found scheduled jobs:"
             for JOB_NAME in $JOBS; do
-              echo "  - $JOB_NAME"
+              echo "Updating job: $JOB_NAME"
+              az containerapp job update \
+                --name "$JOB_NAME" \
+                --resource-group ${{vars.RESOURCE_GROUP}} \
+                --image ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ needs.build.outputs.image_tag }}
             done
-
-            az containerapp job update \
-              --name expire-pending-enhancements-deve \
-              --resource-group ${{vars.RESOURCE_GROUP}} \
-              --image ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ needs.build.outputs.image_tag }}
-
-            # TODO: Replace hardcoded job with tag-based loop
-            # for JOB_NAME in $JOBS; do
-            #   az containerapp job update \
-            #     --name "$JOB_NAME" \
-            #     --resource-group ${{vars.RESOURCE_GROUP}} \
-            #     --image ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ needs.build.outputs.image_tag }}
-            # done
 
   deploy-ui:
     runs-on: ubuntu-latest
