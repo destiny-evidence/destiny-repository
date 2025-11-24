@@ -10,9 +10,13 @@ locals {
   is_production  = var.environment == "production"
   is_development = var.environment == "development"
 
-  prod_db_storage_mb   = 65536
+  prod_db_storage_mb = 65536
+  dev_db_storage_mb  = 32768
+
+  # IPOS tiers for postgresql flexible server
+  # We use the default for our storage size as defined at
+  # https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/postgresql_flexible_server#storage_tier-defaults-based-on-storage_mb
   prod_db_storage_tier = "P6"
-  dev_db_storage_mb    = 32768
   dev_db_storage_tier  = "P4"
 
   minimum_resource_tags = {
