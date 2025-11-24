@@ -106,7 +106,9 @@ The tokens will expire after a certain period (usually two hours). After expirat
 
 Script template
 ---------------
+
 .. code-block:: python
+
     import json
     import httpx
     from msal import PublicClientApplication
