@@ -136,6 +136,37 @@ jobs:
           resourceGroup: ${{vars.RESOURCE_GROUP}}
           containerAppEnvironment: ${{vars.CONTAINER_APP_ENV}}
           imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ needs.build.outputs.image_tag }}
+      - name: Deploy built image to container app jobs
+        uses: Azure/cli@v2.0.0
+        with:
+          inlineScript: |
+            JOBS=$(az containerapp job list \
+              --resource-group ${{vars.RESOURCE_GROUP}} \
+              --query "[?tags.app=='${{vars.APP_NAME}}' && tags.environment=='${{ vars.ENVIRONMENT_NAME }}' && tags.\"job-type\"=='scheduled'].name" \
+              --output tsv)
+
+            if [ -z "$JOBS" ]; then
+              echo "No scheduled jobs found"
+              exit 0
+            fi
+
+            echo "Found scheduled jobs:"
+            for JOB_NAME in $JOBS; do
+              echo "  - $JOB_NAME"
+            done
+
+            az containerapp job update \
+              --name expire-pending-enhancements-deve \
+              --resource-group ${{vars.RESOURCE_GROUP}} \
+              --image ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ needs.build.outputs.image_tag }}
+
+            # TODO: Replace hardcoded job with tag-based loop
+            # for JOB_NAME in $JOBS; do
+            #   az containerapp job update \
+            #     --name "$JOB_NAME" \
+            #     --resource-group ${{vars.RESOURCE_GROUP}} \
+            #     --image ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ needs.build.outputs.image_tag }}
+            # done
 
   deploy-ui:
     runs-on: ubuntu-latest

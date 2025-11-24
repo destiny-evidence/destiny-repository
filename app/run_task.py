@@ -1,25 +1,38 @@
 """
-Generic scheduled-job runner.
+Generic job runner.
 
-This module provides a CLI entry point that dynamically imports a Taskiq task
-by path (module:task_name) and enqueues it using the task's .kiq() helper.
+This module provides a CLI entry point that dynamically imports a task
+by path (module:task_name) and executes it.
 
 Usage (example):
-  python -m app.scheduled_tasks.run_task app.tasks:my_task
+  python -m app.run_task app.tasks:my_task
 """
 
 import argparse
 import asyncio
 import importlib
 
-from app.core.telemetry.logger import get_logger
+from app.core.config import get_settings
+from app.core.telemetry.logger import get_logger, logger_configurer
+from app.core.telemetry.otel import configure_otel
+from app.persistence.es.client import es_manager
+from app.persistence.sql.session import db_manager
 
 logger = get_logger(__name__)
+settings = get_settings()
+logger_configurer.configure_console_logger(
+    log_level=settings.log_level, rich_rendering=settings.running_locally
+)
+
+if settings.otel_config and settings.otel_enabled:
+    configure_otel(
+        settings.otel_config, settings.app_name, settings.app_version, settings.env
+    )
 
 
 async def run_task(task_path: str) -> None:
     """
-    Import and enqueue a task by its module:callable path.
+    Import and execute a task directly by its module:callable path.
 
     Args:
         task_path: Import path in the format `module.path:callable_name`.
@@ -43,17 +56,24 @@ async def run_task(task_path: str) -> None:
 
     task = getattr(module, task_name)
 
-    # Expect task to be a Taskiq-decorated callable exposing .kiq()
-    if not hasattr(task, "kiq"):
+    if not asyncio.iscoroutinefunction(task):
         logger.error(
-            "Task %s does not expose .kiq() - is it decorated?",
+            "Task %s is not an async callable",
             task_path,
         )
         raise SystemExit(2)
 
-    logger.info("Enqueueing task %s", task_path)
+    logger.info("Initializing resources")
+    db_manager.init(settings.db_config, settings.app_name)
+    await es_manager.init(settings.es_config)
 
-    await task.kiq()
+    try:
+        logger.info("Executing task %s directly", task_path)
+        await task()
+    finally:
+        logger.info("Cleaning up resources")
+        await db_manager.close()
+        await es_manager.close()
 
 
 def main(argv: list[str] | None = None) -> int:

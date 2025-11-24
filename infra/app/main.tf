@@ -800,6 +800,15 @@ resource "azurerm_container_app_job" "scheduled_jobs" {
   replica_timeout_in_seconds = lookup(each.value, "timeout_seconds", 3600)
   replica_retry_limit        = lookup(each.value, "retry_limit", 1)
 
+  tags = merge(
+    local.minimum_resource_tags,
+    {
+      "app"         = var.app_name
+      "environment" = var.environment
+      "job-type"    = "scheduled"
+    }
+  )
+
   schedule_trigger_config {
     cron_expression          = each.value.cron_expression
     parallelism              = 1
