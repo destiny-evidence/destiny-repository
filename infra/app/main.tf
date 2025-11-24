@@ -857,6 +857,21 @@ resource "azurerm_container_app_job" "scheduled_jobs" {
       }
 
       env {
+        name  = "AZURE_APPLICATION_ID"
+        value = azuread_application.destiny_repository.client_id
+      }
+
+      env {
+        name  = "AZURE_CLIENT_ID"
+        value = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
+      }
+
+      env {
+        name  = "AZURE_TENANT_ID"
+        value = var.azure_tenant_id
+      }
+
+      env {
         name  = "ENV"
         value = var.environment
       }
@@ -895,5 +910,10 @@ resource "azurerm_container_app_job" "scheduled_jobs" {
         value = var.telemetry_enabled
       }
     }
+  }
+
+  # Allow image updates via GitHub Actions deployment workflow
+  lifecycle {
+    ignore_changes = [template[0].container[0].image]
   }
 }

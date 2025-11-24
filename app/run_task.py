@@ -56,11 +56,8 @@ async def run_task(task_path: str) -> None:
 
     task = getattr(module, task_name)
 
-    if not asyncio.iscoroutinefunction(task):
-        logger.error(
-            "Task %s is not an async callable",
-            task_path,
-        )
+    if not callable(task):
+        logger.error("Task %s is not callable", task_path)
         raise SystemExit(2)
 
     logger.info("Initializing resources")
@@ -68,8 +65,11 @@ async def run_task(task_path: str) -> None:
     await es_manager.init(settings.es_config)
 
     try:
-        logger.info("Executing task %s directly", task_path)
-        await task()
+        logger.info("Executing task %s", task_path)
+        result = task()
+
+        if asyncio.iscoroutine(result):
+            await result
     finally:
         logger.info("Cleaning up resources")
         await db_manager.close()
