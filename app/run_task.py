@@ -79,7 +79,7 @@ async def run_task(task_path: str) -> None:
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point for task runner."""
     parser = argparse.ArgumentParser(
-        description="Enqueue a Taskiq task by module:callable path"
+        description="Run a specified task by its module:path"
     )
     parser.add_argument("task", help="Task to run, e.g. 'app.module.tasks:my_task'")
 

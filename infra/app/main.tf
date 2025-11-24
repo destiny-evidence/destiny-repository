@@ -782,7 +782,7 @@ resource "azurerm_container_app_job" "es_index_migrator" {
 locals {
   scheduled_jobs = {
     expire_pending_enhancements = {
-      cron_expression = "*/1 * * * *" # Every minute
+      cron_expression = "*/10 * * * *" # Every 10 minutes
       command         = ["python", "-m", "app.run_task", "app.domain.references.tasks:expire_and_replace_stale_pending_enhancements"]
       timeout_seconds = 120
     }
