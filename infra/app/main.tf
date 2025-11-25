@@ -779,3 +779,91 @@ resource "azurerm_container_app_job" "es_index_migrator" {
     ignore_changes = [template[0].container[0].image, template[0].container[0].command]
   }
 }
+
+locals {
+  scheduled_jobs = {
+    expire_pending_enhancements = {
+      cron_expression = "*/10 * * * *" # Every 10 minutes
+      command         = ["python", "-m", "app.run_task", "app.domain.references.tasks:expire_and_replace_stale_pending_enhancements"]
+      timeout_seconds = 120
+    }
+  }
+}
+
+resource "azurerm_container_app_job" "scheduled_jobs" {
+  for_each = local.scheduled_jobs
+
+  name                         = "${replace(each.key, "_", "-")}-${substr(var.environment, 0, 4)}"
+  location                     = azurerm_resource_group.this.location
+  resource_group_name          = azurerm_resource_group.this.name
+  container_app_environment_id = module.container_app.container_app_env_id
+
+  replica_timeout_in_seconds = lookup(each.value, "timeout_seconds", 3600)
+  replica_retry_limit        = lookup(each.value, "retry_limit", 1)
+
+  tags = merge(
+    local.minimum_resource_tags,
+    {
+      "app"         = var.app_name
+      "environment" = var.environment
+      "job-type"    = "scheduled"
+    }
+  )
+
+  schedule_trigger_config {
+    cron_expression          = each.value.cron_expression
+    parallelism              = 1
+    replica_completion_count = 1
+  }
+
+  registry {
+    identity = azurerm_user_assigned_identity.container_apps_tasks_identity.id
+    server   = data.azurerm_container_registry.this.login_server
+  }
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.container_apps_tasks_identity.id]
+  }
+
+  dynamic "secret" {
+    for_each = local.secrets
+    content {
+      name  = secret.value.name
+      value = secret.value.value
+    }
+  }
+
+  template {
+    container {
+      image   = "${data.azurerm_container_registry.this.login_server}/destiny-repository:${var.environment}"
+      name    = "${replace(each.key, "_", "-")}-${substr(var.environment, 0, 4)}"
+      command = each.value.command
+      cpu     = lookup(each.value, "cpu", 0.5)
+      memory  = lookup(each.value, "memory", "1Gi")
+
+      dynamic "env" {
+        for_each = concat(local.env_vars, [
+          {
+            name  = "APP_NAME"
+            value = "${var.app_name}-scheduled-job"
+          },
+          {
+            name  = "AZURE_CLIENT_ID"
+            value = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
+          }
+        ])
+        content {
+          name        = env.value.name
+          value       = lookup(env.value, "value", null)
+          secret_name = lookup(env.value, "secret_name", null)
+        }
+      }
+    }
+  }
+
+  # Allow image updates via GitHub Actions deployment workflow
+  lifecycle {
+    ignore_changes = [template[0].container[0].image]
+  }
+}
