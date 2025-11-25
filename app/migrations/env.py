@@ -37,6 +37,9 @@ logger_configurer.configure_console_logger(
 )
 
 if settings.otel_config and settings.otel_enabled:
+    # Always instrument SQL for migrations when OTEL is enabled
+    settings.otel_config.instrument_sql = True
+
     configure_otel(
         settings.otel_config, settings.app_name, settings.app_version, settings.env
     )
