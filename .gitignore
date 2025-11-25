@@ -203,3 +203,5 @@ libs/fake_data/*.jsonl
 .env.*
 !.env.example
 .idea/
+
+.test.tmp

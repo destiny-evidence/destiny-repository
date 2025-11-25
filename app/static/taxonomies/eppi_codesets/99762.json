@@ -1,0 +1,2687 @@
+{
+  "SetName": "EEF attainment effect size data extraction v 2.1 Jan 2024",
+  "SetId": 99762,
+  "ReviewSetId": 99780,
+  "SetDescription": "Data extraction tool to support meta-analysis of the impact data from included studies. Updated January 2024 to add CEDIL strands.",
+  "SetType": {
+    "SetTypeDescription": "The Standard codeset type is used for regular coding such as keywording or data-extraction. This codeset type can contain multiple levels of child codes but cannot contain the special code types \"Include\" and \"Exclude\".",
+    "SetTypeName": "Standard",
+    "SetTypeId": 3
+  },
+  "Attributes": {
+    "AttributesList": [
+      {
+        "AttributeDescription": "",
+        "ExtURL": "",
+        "ExtType": "",
+        "OriginalAttributeID": 0,
+        "AttributeSetId": 5407234,
+        "AttributeId": 5406834,
+        "AttributeSetDescription": "",
+        "AttributeType": "Not selectable (no checkbox)",
+        "AttributeTypeId": 1,
+        "AttributeName": "Section 1 What are the details of the study design?",
+        "Attributes": {
+          "AttributesList": [
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "AttributeSetId": 5407235,
+              "AttributeId": 5406835,
+              "AttributeSetDescription": "What type of study design is used for the evaluation of impact?",
+              "AttributeType": "Not selectable (no checkbox)",
+              "AttributeTypeId": 1,
+              "AttributeName": "What was the study design?",
+              "Attributes": {
+                "AttributesList": [
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407247,
+                    "AttributeId": 5406847,
+                    "AttributeSetDescription": "An experimental design where individual participants are the unit of randomisation and no provision is made for clustering in the design or analysis.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Individual RCT"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407249,
+                    "AttributeId": 5406849,
+                    "AttributeSetDescription": "An experimental design where school or class is the unit of randomisation (i.e. all pupils in the same school are in same group and where classes are randomised between schools. The school-level variance should be assigned to either intervention or control in the analysis.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Cluster RCT"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407251,
+                    "AttributeId": 5406851,
+                    "AttributeSetDescription": "An experimental design where both control and intervention pupils may be in the same class or school (within school/class) so that in the analysis the school or class level variance should be shared between intervention and control groups.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Multisite RCT"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407252,
+                    "AttributeId": 5406852,
+                    "AttributeSetDescription": "A quasi-experimental design which is planned in advance. There may be a prospective allocation, but the design may also take advantage of a naturally occurring experiment. There is often some matching but no randomisation.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Prospective QED"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407256,
+                    "AttributeId": 5406856,
+                    "AttributeSetDescription": "A post-hoc natural experiment where matching and/ or equivalence is achieved through the design and/or analysis. There is no attempt to manage control the intervention or phenomenon under investigation.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Retrospective QED  "
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407253,
+                    "AttributeId": 5406853,
+                    "AttributeSetDescription": "A design where the same group is treated as control and comparison e.g. ABAB and the counterfactual is created over time.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Interrupted time series QED"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407485,
+                    "AttributeId": 5407075,
+                    "AttributeSetDescription": "Prospective regression discontinuity design where participants around the cut off are randomised to treatment or control.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Regression Discontinuity with randomisation"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407254,
+                    "AttributeId": 5406854,
+                    "AttributeSetDescription": "RD with non-random allocation (prospective matching to create equivalence)",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Regression Discontinuity - not randomised"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407257,
+                    "AttributeId": 5406857,
+                    "AttributeSetDescription": "Regression discontinuity design naturally occurring - retrospective matching.\n\nExploits or manipulates a naturally occurring discontinuity to explore the causal effect of an educational intervention or approach. Regression discontinuity designs elicits the causal effects of interventions by assigning a cut off or threshold above or below which an intervention is assigned.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Regression Discontinuity  - naturally occurring"
+                  }
+                ]
+              }
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "AttributeSetId": 5407507,
+              "AttributeId": 5407110,
+              "AttributeSetDescription": "",
+              "AttributeType": "Not selectable (no checkbox)",
+              "AttributeTypeId": 1,
+              "AttributeName": "What is the number of schools involved in the study?",
+              "Attributes": {
+                "AttributesList": [
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407498,
+                    "AttributeId": 5407111,
+                    "AttributeSetDescription": "Please provide the number of schools involved in the intervention or versions of the intervention. Please only enter numeric data in the info box.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "What is the number of schools involved in the intervention group(s)?"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407300,
+                    "AttributeId": 5407106,
+                    "AttributeSetDescription": "Please provide the number of schools involved in the control group. Please only enter numeric data in the info box.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "What is the number of schools involved in the control or comparison group?"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407520,
+                    "AttributeId": 5407115,
+                    "AttributeSetDescription": "Please record the total number of schools involved in the study. This will be the sum of intervention and control schools in a cluster randomised trial, but in a multisite trial, where there are control and intervention pupils in each school, it may be the same as for intervention/ control. Please only enter numeric data in the info box.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "What is the total number of schools involved?"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407500,
+                    "AttributeId": 5407113,
+                    "AttributeSetDescription": "Please indicate if the number of schools involved is not provided, is unclear, or not applicable (such as in an Outdoor Education study).",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Not provided/ unclear / not applicable"
+                  }
+                ]
+              }
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "AttributeSetId": 5407499,
+              "AttributeId": 5407112,
+              "AttributeSetDescription": "",
+              "AttributeType": "Not selectable (no checkbox)",
+              "AttributeTypeId": 1,
+              "AttributeName": "What is the number of classes involved?",
+              "Attributes": {
+                "AttributesList": [
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407299,
+                    "AttributeId": 5407105,
+                    "AttributeSetDescription": "Please provide the number of classes involved in the intervention or versions of the intervention. Please only enter numeric data in the info box.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "What is the total number of classes involved in the intervention group?"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407301,
+                    "AttributeId": 5407107,
+                    "AttributeSetDescription": "Please provide the number of classes involved in the control group. Please only enter numeric data in the info box.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "What is the total number of classes involved in the control or comparison group?"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407553,
+                    "AttributeId": 5407153,
+                    "AttributeSetDescription": "Please record the total number of classes involved in the study. Please only enter numeric data in the info box.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "What is the total number of classes involved?"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407501,
+                    "AttributeId": 5407114,
+                    "AttributeSetDescription": "Please indicate if the number of classes involved is not provided, is unclear, or not applicable (such as in an Outdoor Education study).",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Not provided/ unclear / not applicable"
+                  }
+                ]
+              }
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "AttributeSetId": 5407521,
+              "AttributeId": 5407116,
+              "AttributeSetDescription": "",
+              "AttributeType": "Not selectable (no checkbox)",
+              "AttributeTypeId": 1,
+              "AttributeName": "Are details of randomisation provided?",
+              "Attributes": {
+                "AttributesList": [
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407522,
+                    "AttributeId": 5407117,
+                    "AttributeSetDescription": "Please select if details are provided about how any randomisation was undertaken. Please highlight the relevant section of the study where possible.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Yes"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407524,
+                    "AttributeId": 5407119,
+                    "AttributeSetDescription": "Please select if the study is not described as a randomised design (e.g. Quasi-experimental or naturally occuring experiment).",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Not applicable"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407523,
+                    "AttributeId": 5407118,
+                    "AttributeSetDescription": "Please select if the study is described as randomised but no details are provided or these details are unclear. If the details are unclear, please highlight the relevant section of the report.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "No / Unclear"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "AttributeDescription": "",
+        "ExtURL": "",
+        "ExtType": "",
+        "OriginalAttributeID": 0,
+        "AttributeSetId": 5407271,
+        "AttributeId": 5406871,
+        "AttributeSetDescription": "Information about the sample size, groups and comparability.",
+        "AttributeType": "Not selectable (no checkbox)",
+        "AttributeTypeId": 1,
+        "AttributeName": "Section 2 How is the sample described?",
+        "Attributes": {
+          "AttributesList": [
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "AttributeSetId": 5407519,
+              "AttributeId": 5407108,
+              "AttributeSetDescription": "Record the initial or assigned sample size for the treatment group in the notes. Please enter numeric data only in the info box. This should be either the main counterfactual comparison of the intervention or approach for the Toolkit from this study, or the first reported.",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "What is the sample size for the intervention group?"
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "AttributeSetId": 5407506,
+              "AttributeId": 5407109,
+              "AttributeSetDescription": "Record the initial or assigned sample size for the control group in the notes. Please enter numeric data only in the info box.",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "What is the sample size for the control group?"
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "AttributeSetId": 5407525,
+              "AttributeId": 5407120,
+              "AttributeSetDescription": "Record the initial or assigned sample size for a second or alternative treatment group in the notes (*if there is one). This should be an equally valid comparison of the intervention or approach for the Toolkit as the first intervention group reported above. Please enter numeric data only in the info box.",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "*What is the sample size for the second intervention group?"
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "AttributeSetId": 5407526,
+              "AttributeId": 5407121,
+              "AttributeSetDescription": "Record the initial or assigned sample size for a third or different treatment group in the notes (*if there is one). This should be an equally valid comparison of the intervention or approach for the Toolkit as the other intervention groups reported above. Please enter numeric data only in the info box.",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "*What is the sample size for the third intervention group?"
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "AttributeSetId": 5407236,
+              "AttributeId": 5406836,
+              "AttributeSetDescription": "Is there quantitative information about the similarity of treatment and control groups at the beginning of the intervention?",
+              "AttributeType": "Not selectable (no checkbox)",
+              "AttributeTypeId": 1,
+              "AttributeName": "Does the study report any group differences at baseline? ",
+              "Attributes": {
+                "AttributesList": [
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407266,
+                    "AttributeId": 5406866,
+                    "AttributeSetDescription": "Please select if there is information provided about how comparable the intervention and control groups are at the beginning of the study in terms of the analysis. Please also highlight the relevant section of the text where this is possible.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Yes"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407260,
+                    "AttributeId": 5406860,
+                    "AttributeSetDescription": "Please select this option if there is no information about the baseline comparability of the groups or if this is unclear. If there is information, but it is unclear, please highlight the relevant section of the study, where this is possible.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "No/Unclear"
+                  }
+                ]
+              }
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "AttributeSetId": 5407239,
+              "AttributeId": 5406839,
+              "AttributeSetDescription": "Are covariates in treatment and control groups assessed, and, if unbalanced, controlled in adjusted analysis?",
+              "AttributeType": "Not selectable (no checkbox)",
+              "AttributeTypeId": 1,
+              "AttributeName": "Is comparability taken into account in the analysis?",
+              "Attributes": {
+                "AttributesList": [
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407261,
+                    "AttributeId": 5406861,
+                    "AttributeSetDescription": "",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Yes"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407264,
+                    "AttributeId": 5406864,
+                    "AttributeSetDescription": "",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "No"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407255,
+                    "AttributeId": 5406855,
+                    "AttributeSetDescription": "",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Unclear or details not provided"
+                  }
+                ]
+              }
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "AttributeSetId": 5407450,
+              "AttributeId": 5407033,
+              "AttributeSetDescription": "If the sample recruited differs from the sample analysed, are the reasons for this reported? Please include details of attrition or drop-out or any pupils excluded from the analysis.",
+              "AttributeType": "Not selectable (no checkbox)",
+              "AttributeTypeId": 1,
+              "AttributeName": "Is attrition or drop out reported?",
+              "Attributes": {
+                "AttributesList": [
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407451,
+                    "AttributeId": 5407034,
+                    "AttributeSetDescription": "",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Yes"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407452,
+                    "AttributeId": 5407035,
+                    "AttributeSetDescription": "",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "No"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407453,
+                    "AttributeId": 5407036,
+                    "AttributeSetDescription": "Please check this option if the amount of attrition is unclear. Please also add notes about attrition if there is information about different groups or outcomes.",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Unclear (please add notes)"
+                  }
+                ]
+              }
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "AttributeSetId": 5407454,
+              "AttributeId": 5407037,
+              "AttributeSetDescription": "Please report the percentage of drop-outs in the intervention group. This is the number of drop-outs in the intervention group divided by the number of participants in the intervention group X 100. Please enter only numeric data in the info box",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "What is the percentage attrition in the treatment group?"
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "AttributeSetId": 5407237,
+              "AttributeId": 5406837,
+              "AttributeSetDescription": "Does the study state which variables are used to assess the comparability of the treatment and control groups?",
+              "AttributeType": "Not selectable (no checkbox)",
+              "AttributeTypeId": 1,
+              "AttributeName": "Are the variables used for comparability reported?",
+              "Attributes": {
+                "AttributesList": [
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407259,
+                    "AttributeId": 5406859,
+                    "AttributeSetDescription": "",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Yes"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407262,
+                    "AttributeId": 5406862,
+                    "AttributeSetDescription": "",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "No"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407263,
+                    "AttributeId": 5406863,
+                    "AttributeSetDescription": "",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "N/A"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407238,
+                    "AttributeId": 5406838,
+                    "AttributeSetDescription": "Select the variables considered in assessment of similarity e.g. prior attainment, age, gender, SES, special educational needs, ethnicity.",
+                    "AttributeType": "Not selectable (no checkbox)",
+                    "AttributeTypeId": 1,
+                    "AttributeName": "If yes, which variables are used for comparability?",
+                    "Attributes": {
+                      "AttributesList": [
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407527,
+                          "AttributeId": 5407122,
+                          "AttributeSetDescription": "A measure of either direct (e.g. reading comprehension) or indirect (reasoning) educational performance or capability.",
+                          "AttributeType": "Selectable (show checkbox)",
+                          "AttributeTypeId": 2,
+                          "AttributeName": "Educational attainment"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407528,
+                          "AttributeId": 5407123,
+                          "AttributeSetDescription": "",
+                          "AttributeType": "Selectable (show checkbox)",
+                          "AttributeTypeId": 2,
+                          "AttributeName": "Gender"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407529,
+                          "AttributeId": 5407124,
+                          "AttributeSetDescription": "",
+                          "AttributeType": "Selectable (show checkbox)",
+                          "AttributeTypeId": 2,
+                          "AttributeName": "Socio-economic status"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407533,
+                          "AttributeId": 5407128,
+                          "AttributeSetDescription": "",
+                          "AttributeType": "Selectable (show checkbox)",
+                          "AttributeTypeId": 2,
+                          "AttributeName": "Special educational needs"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407534,
+                          "AttributeId": 5407129,
+                          "AttributeSetDescription": "",
+                          "AttributeType": "Selectable (show checkbox)",
+                          "AttributeTypeId": 2,
+                          "AttributeName": "Other (please specify)"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407455,
+                    "AttributeId": 5407038,
+                    "AttributeSetDescription": "Please report the percentage of drop-outs or overall attrition in the whole sample. This is the number of drop-outs divided by the initial sample x 100. Or you can calculate as the (initial sample minus the analysed sample) divided by the initial sample X 100. ((N-n)/N) x 100. For more information see: https://ies.ed.gov/ncee/wwc/Docs/OnlineTraining/wwc_training_m2.pdf ",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "What is the total or overall percentage attrition?"
+                  }
+                ]
+              }
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "AttributeSetId": 5407557,
+              "AttributeId": 5407157,
+              "AttributeSetDescription": "Does analysis take account of clustering? e.g. regression with school or cluster or MLM (multi-level modelling) or HLM (hierarchical linear modelling)?",
+              "AttributeType": "Not selectable (no checkbox)",
+              "AttributeTypeId": 1,
+              "AttributeName": "Is clustering accounted for in the analysis?",
+              "Attributes": {
+                "AttributesList": [
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407558,
+                    "AttributeId": 5407158,
+                    "AttributeSetDescription": "",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Yes"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407559,
+                    "AttributeId": 5407159,
+                    "AttributeSetDescription": "",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "No"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407560,
+                    "AttributeId": 5407160,
+                    "AttributeSetDescription": "",
+                    "AttributeType": "Selectable (show checkbox)",
+                    "AttributeTypeId": 2,
+                    "AttributeName": "Unclear"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "AttributeDescription": "",
+        "ExtURL": "",
+        "ExtType": "",
+        "OriginalAttributeID": 0,
+        "AttributeSetId": 5407344,
+        "AttributeId": 5406932,
+        "AttributeSetDescription": "",
+        "AttributeType": "Not selectable (no checkbox)",
+        "AttributeTypeId": 1,
+        "AttributeName": "Section 3 Outcome details",
+        "Attributes": {
+          "AttributesList": [
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "AttributeSetId": 5407514,
+              "AttributeId": 5407092,
+              "AttributeSetDescription": "This section describes the primary Toolkit outcome and asks whether it there is follow up data for the study. It should be coded at study level (i.e. not from the Outcome button).",
+              "AttributeType": "Not selectable (no checkbox)",
+              "AttributeTypeId": 1,
+              "AttributeName": "Outcomes (CODE AT STUDY LEVEL)",
+              "Attributes": {
+                "AttributesList": [
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407513,
+                    "AttributeId": 5407091,
+                    "AttributeSetDescription": "Please indicate the primary outcome and enter additional data using the 'Outcomes' box.\rThe primary outcome should be the outcome most relevant to the Toolkit strand(s) in terms of educational impact, such as standardised tests of reading or mathematics (for literacy or mathematics interventions) or national test or examination results. See handbook and supporting resources for further information.",
+                    "AttributeType": "Outcome",
+                    "AttributeTypeId": 4,
+                    "AttributeName": "Primary outcome"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407515,
+                    "AttributeId": 5407093,
+                    "AttributeSetDescription": "Please add secondary outcomes in this section where they represent a fair test of the impact of the evaluation at post test. This should not include delayed or follow up tests, or outcomes used to check the specificity of impact (e.g. a maths test use to control for intervention effect in a literacy intervention) or checking for transfer outcomes.",
+                    "AttributeType": "Outcome",
+                    "AttributeTypeId": 4,
+                    "AttributeName": "Secondary outcome(s)"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407516,
+                    "AttributeId": 5407094,
+                    "AttributeSetDescription": "If a separate effect is reported for low socio-economic status or free or reduced price school meals pupils please add here.",
+                    "AttributeType": "Outcome",
+                    "AttributeTypeId": 4,
+                    "AttributeName": "SES/FSM outcome"
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407345,
+                    "AttributeId": 5406933,
+                    "AttributeSetDescription": "",
+                    "AttributeType": "Not selectable (no checkbox)",
+                    "AttributeTypeId": 1,
+                    "AttributeName": "Are descriptive statistics reported for the primary outcome?",
+                    "Attributes": {
+                      "AttributesList": [
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407517,
+                          "AttributeId": 5407095,
+                          "AttributeSetDescription": "",
+                          "AttributeType": "Selectable (show checkbox)",
+                          "AttributeTypeId": 2,
+                          "AttributeName": "Yes",
+                          "Attributes": {
+                            "AttributesList": [
+                              {
+                                "AttributeDescription": "",
+                                "ExtURL": "",
+                                "ExtType": "",
+                                "OriginalAttributeID": 0,
+                                "AttributeSetId": 5407365,
+                                "AttributeId": 5406953,
+                                "AttributeSetDescription": "Descriptive statistics for the intervention group. *If there is more than one intervention group please add this below.",
+                                "AttributeType": "Not selectable (no checkbox)",
+                                "AttributeTypeId": 1,
+                                "AttributeName": "If yes, please add for the intervention* group",
+                                "Attributes": {
+                                  "AttributesList": [
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407404,
+                                      "AttributeId": 5406980,
+                                      "AttributeSetDescription": "What is the number for the intervention group in the data analysed for this outcome? Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Number (n)"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407405,
+                                      "AttributeId": 5406981,
+                                      "AttributeSetDescription": "Please record the pre-test mean (if provided) for the intervention group for this outcome. Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Pre-test mean"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407406,
+                                      "AttributeId": 5406982,
+                                      "AttributeSetDescription": "Please record the pre-test standard deviation (if provided) for the intervention group for this outcome. Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Pre-test standard deviation"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407407,
+                                      "AttributeId": 5406983,
+                                      "AttributeSetDescription": "Please report the post-test mean for this outcome for the intervention group (if provided) for this outcome. Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Post-test mean"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407413,
+                                      "AttributeId": 5406989,
+                                      "AttributeSetDescription": "Please record the post-test standard deviation for the intervention group for this outcome (if provided). Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Post test standard deviation"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407535,
+                                      "AttributeId": 5407130,
+                                      "AttributeSetDescription": "Please add the gain score (pre-test to post test) mean for the intervention group. Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Gain score mean (if reported)"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407536,
+                                      "AttributeId": 5407131,
+                                      "AttributeSetDescription": "Please add the gain score (pre-test to post test) standard deviation for the intervention group. Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Gain score standard deviation (if reported)"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407414,
+                                      "AttributeId": 5406990,
+                                      "AttributeSetDescription": "Please add any other statistical information reported about this outcome for the intervention group (e.g. standard error (SE)), or use to add notes about the numeric data in the categories above.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Any other information?"
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "AttributeDescription": "",
+                                "ExtURL": "",
+                                "ExtType": "",
+                                "OriginalAttributeID": 0,
+                                "AttributeSetId": 5407398,
+                                "AttributeId": 5406974,
+                                "AttributeSetDescription": "Descriptive statistics for the intervention group",
+                                "AttributeType": "Not selectable (no checkbox)",
+                                "AttributeTypeId": 1,
+                                "AttributeName": "If yes please add for the control group",
+                                "Attributes": {
+                                  "AttributesList": [
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407409,
+                                      "AttributeId": 5406985,
+                                      "AttributeSetDescription": "What is the number for the control group in the data analysed for this outcome? Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Number (n)"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407410,
+                                      "AttributeId": 5406986,
+                                      "AttributeSetDescription": "Please record the pre-test mean (if provided) for the control group for this outcome. Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Pre-test mean"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407411,
+                                      "AttributeId": 5406987,
+                                      "AttributeSetDescription": "Please record the pre-test standard deviation (if provided) for the control group for this outcome. Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Pre-test standard deviation"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407412,
+                                      "AttributeId": 5406988,
+                                      "AttributeSetDescription": "Please report the post-test mean for this outcome for the control group (if provided) for this outcome.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Post-test mean"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407408,
+                                      "AttributeId": 5406984,
+                                      "AttributeSetDescription": "Please record the post-test standard deviation for the control group for this outcome (if provided).",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Post test standard deviation"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407537,
+                                      "AttributeId": 5407132,
+                                      "AttributeSetDescription": "Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Gain score mean (if reported)"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407538,
+                                      "AttributeId": 5407133,
+                                      "AttributeSetDescription": "Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Gain score standard deviation (if reported)"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407415,
+                                      "AttributeId": 5406991,
+                                      "AttributeSetDescription": "Please add any other statistical information reported about this outcome for the intervention group (e.g. standard error (SE)). ",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Any other information?"
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "AttributeDescription": "",
+                                "ExtURL": "",
+                                "ExtType": "",
+                                "OriginalAttributeID": 0,
+                                "AttributeSetId": 5407539,
+                                "AttributeId": 5407134,
+                                "AttributeSetDescription": "Descriptive statistics for a second intervention group, if needed. ",
+                                "AttributeType": "Not selectable (no checkbox)",
+                                "AttributeTypeId": 1,
+                                "AttributeName": "If yes, please add for a second intervention* group (if needed)",
+                                "Attributes": {
+                                  "AttributesList": [
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407540,
+                                      "AttributeId": 5407135,
+                                      "AttributeSetDescription": "What is the number for the intervention group in the data analysed for this outcome? Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Number (n)"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407541,
+                                      "AttributeId": 5407136,
+                                      "AttributeSetDescription": "Please record the pre-test mean (if provided) for the intervention group for this outcome. Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Pre-test mean"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407542,
+                                      "AttributeId": 5407137,
+                                      "AttributeSetDescription": "Please record the pre-test standard deviation (if provided) for the intervention group for this outcome. Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Pre-test standard deviation"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407543,
+                                      "AttributeId": 5407138,
+                                      "AttributeSetDescription": "Please report the post-test mean for this outcome for the intervention group (if provided) for this outcome. Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Post-test mean"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407544,
+                                      "AttributeId": 5407139,
+                                      "AttributeSetDescription": "Please record the post-test standard deviation for the intervention group for this outcome (if provided). Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Post test standard deviation"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407546,
+                                      "AttributeId": 5407141,
+                                      "AttributeSetDescription": "Please add the gain score (pre-test to post test) mean for a second intervention group (if needed). Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Gain score mean (if reported)"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407547,
+                                      "AttributeId": 5407142,
+                                      "AttributeSetDescription": "Please add the gain score (pre-test to post test) standard deviation for a second intervention group (if need). Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Gain score standard deviation (if reported)"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407545,
+                                      "AttributeId": 5407140,
+                                      "AttributeSetDescription": "Please add any other statistical information reported about this outcome for the intervention group (e.g. standard error (SE)), or use to add notes about the numeric data in the categories above.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Any other information?"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5447452,
+                                      "AttributeId": 5447052,
+                                      "AttributeSetDescription": "Descriptive statistics for the second control group (if needed and if different from the primary outcome control)",
+                                      "AttributeType": "Not selectable (no checkbox)",
+                                      "AttributeTypeId": 1,
+                                      "AttributeName": "If needed, please add for the control group",
+                                      "Attributes": {
+                                        "AttributesList": [
+                                          {
+                                            "AttributeDescription": "",
+                                            "ExtURL": "",
+                                            "ExtType": "",
+                                            "OriginalAttributeID": 0,
+                                            "AttributeSetId": 5447453,
+                                            "AttributeId": 5447053,
+                                            "AttributeSetDescription": "What is the number for the control group in the data analysed for this outcome? Add numeric data only to the info box.",
+                                            "AttributeType": "Selectable (show checkbox)",
+                                            "AttributeTypeId": 2,
+                                            "AttributeName": "Number (n)"
+                                          },
+                                          {
+                                            "AttributeDescription": "",
+                                            "ExtURL": "",
+                                            "ExtType": "",
+                                            "OriginalAttributeID": 0,
+                                            "AttributeSetId": 5447454,
+                                            "AttributeId": 5447054,
+                                            "AttributeSetDescription": "Please record the pre-test mean (if provided) for the control group for this outcome. Add numeric data only to the info box.",
+                                            "AttributeType": "Selectable (show checkbox)",
+                                            "AttributeTypeId": 2,
+                                            "AttributeName": "Pre-test mean"
+                                          },
+                                          {
+                                            "AttributeDescription": "",
+                                            "ExtURL": "",
+                                            "ExtType": "",
+                                            "OriginalAttributeID": 0,
+                                            "AttributeSetId": 5447455,
+                                            "AttributeId": 5447055,
+                                            "AttributeSetDescription": "Please record the pre-test standard deviation (if provided) for the control group for this outcome. Add numeric data only to the info box.",
+                                            "AttributeType": "Selectable (show checkbox)",
+                                            "AttributeTypeId": 2,
+                                            "AttributeName": "Pre-test standard deviation"
+                                          },
+                                          {
+                                            "AttributeDescription": "",
+                                            "ExtURL": "",
+                                            "ExtType": "",
+                                            "OriginalAttributeID": 0,
+                                            "AttributeSetId": 5447456,
+                                            "AttributeId": 5447056,
+                                            "AttributeSetDescription": "Please report the post-test mean for this outcome for the control group (if provided) for this outcome.",
+                                            "AttributeType": "Selectable (show checkbox)",
+                                            "AttributeTypeId": 2,
+                                            "AttributeName": "Post-test mean"
+                                          },
+                                          {
+                                            "AttributeDescription": "",
+                                            "ExtURL": "",
+                                            "ExtType": "",
+                                            "OriginalAttributeID": 0,
+                                            "AttributeSetId": 5447457,
+                                            "AttributeId": 5447057,
+                                            "AttributeSetDescription": "Please record the post-test standard deviation for the control group for this outcome (if provided).",
+                                            "AttributeType": "Selectable (show checkbox)",
+                                            "AttributeTypeId": 2,
+                                            "AttributeName": "Post test standard deviation"
+                                          },
+                                          {
+                                            "AttributeDescription": "",
+                                            "ExtURL": "",
+                                            "ExtType": "",
+                                            "OriginalAttributeID": 0,
+                                            "AttributeSetId": 5447458,
+                                            "AttributeId": 5447058,
+                                            "AttributeSetDescription": "Please add the gain score (pre-test to post test) mean for this group (if need). Add numeric data only to the info box.",
+                                            "AttributeType": "Selectable (show checkbox)",
+                                            "AttributeTypeId": 2,
+                                            "AttributeName": "Gain score mean (if reported)"
+                                          },
+                                          {
+                                            "AttributeDescription": "",
+                                            "ExtURL": "",
+                                            "ExtType": "",
+                                            "OriginalAttributeID": 0,
+                                            "AttributeSetId": 5447459,
+                                            "AttributeId": 5447059,
+                                            "AttributeSetDescription": "Please add the gain score (pre-test to post test) standard deviation for this group (if need). Add numeric data only to the info box.",
+                                            "AttributeType": "Selectable (show checkbox)",
+                                            "AttributeTypeId": 2,
+                                            "AttributeName": "Gain score standard deviation (if reported)"
+                                          },
+                                          {
+                                            "AttributeDescription": "",
+                                            "ExtURL": "",
+                                            "ExtType": "",
+                                            "OriginalAttributeID": 0,
+                                            "AttributeSetId": 5447460,
+                                            "AttributeId": 5447060,
+                                            "AttributeSetDescription": "Please add any other statistical information reported about this outcome for the intervention group (e.g. standard error (SE)). ",
+                                            "AttributeType": "Selectable (show checkbox)",
+                                            "AttributeTypeId": 2,
+                                            "AttributeName": "Any other information?"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "AttributeDescription": "",
+                                "ExtURL": "",
+                                "ExtType": "",
+                                "OriginalAttributeID": 0,
+                                "AttributeSetId": 5407548,
+                                "AttributeId": 5407143,
+                                "AttributeSetDescription": "Descriptive statistics for a third intervention group, if needed. ",
+                                "AttributeType": "Not selectable (no checkbox)",
+                                "AttributeTypeId": 1,
+                                "AttributeName": "If yes, please add for a third intervention* group (if needed)",
+                                "Attributes": {
+                                  "AttributesList": [
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407549,
+                                      "AttributeId": 5407144,
+                                      "AttributeSetDescription": "What is the number for the intervention group in the data analysed for this outcome? Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Number (n)"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407550,
+                                      "AttributeId": 5407145,
+                                      "AttributeSetDescription": "Please record the pre-test mean (if provided) for the intervention group for this outcome. Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Pre-test mean"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407551,
+                                      "AttributeId": 5407146,
+                                      "AttributeSetDescription": "Please record the pre-test standard deviation (if provided) for the intervention group for this outcome. Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Pre-test standard deviation"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407307,
+                                      "AttributeId": 5407147,
+                                      "AttributeSetDescription": "Please report the post-test mean for this outcome for the intervention group (if provided) for this outcome. Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Post-test mean"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407502,
+                                      "AttributeId": 5407148,
+                                      "AttributeSetDescription": "Please record the post-test standard deviation for the intervention group for this outcome (if provided). Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Post test standard deviation"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407504,
+                                      "AttributeId": 5407150,
+                                      "AttributeSetDescription": "Please report the gain score (pre-test to post-test) mean for this outcome for a third intervention group (if needed) for this outcome. Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Gain score mean (if reported)"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407505,
+                                      "AttributeId": 5407151,
+                                      "AttributeSetDescription": "Add numeric data only to the info box.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Gain score standard deviation (if reported)"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5407503,
+                                      "AttributeId": 5407149,
+                                      "AttributeSetDescription": "Please add any other statistical information reported about this outcome for the intervention group (e.g. standard error (SE)), or use to add notes about the numeric data in the categories above.",
+                                      "AttributeType": "Selectable (show checkbox)",
+                                      "AttributeTypeId": 2,
+                                      "AttributeName": "Any other information?"
+                                    },
+                                    {
+                                      "AttributeDescription": "",
+                                      "ExtURL": "",
+                                      "ExtType": "",
+                                      "OriginalAttributeID": 0,
+                                      "AttributeSetId": 5447461,
+                                      "AttributeId": 5447061,
+                                      "AttributeSetDescription": "Descriptive statistics for a third control group (if needed and if different from the primary outcome control)",
+                                      "AttributeType": "Not selectable (no checkbox)",
+                                      "AttributeTypeId": 1,
+                                      "AttributeName": "If needed please add for a control group",
+                                      "Attributes": {
+                                        "AttributesList": [
+                                          {
+                                            "AttributeDescription": "",
+                                            "ExtURL": "",
+                                            "ExtType": "",
+                                            "OriginalAttributeID": 0,
+                                            "AttributeSetId": 5447462,
+                                            "AttributeId": 5447062,
+                                            "AttributeSetDescription": "What is the number for the control group in the data analysed for this outcome? Add numeric data only to the info box.",
+                                            "AttributeType": "Selectable (show checkbox)",
+                                            "AttributeTypeId": 2,
+                                            "AttributeName": "Number (n)"
+                                          },
+                                          {
+                                            "AttributeDescription": "",
+                                            "ExtURL": "",
+                                            "ExtType": "",
+                                            "OriginalAttributeID": 0,
+                                            "AttributeSetId": 5447463,
+                                            "AttributeId": 5447063,
+                                            "AttributeSetDescription": "Please record the pre-test mean (if provided) for the control group for this outcome. Add numeric data only to the info box.",
+                                            "AttributeType": "Selectable (show checkbox)",
+                                            "AttributeTypeId": 2,
+                                            "AttributeName": "Pre-test mean"
+                                          },
+                                          {
+                                            "AttributeDescription": "",
+                                            "ExtURL": "",
+                                            "ExtType": "",
+                                            "OriginalAttributeID": 0,
+                                            "AttributeSetId": 5447464,
+                                            "AttributeId": 5447064,
+                                            "AttributeSetDescription": "Please record the pre-test standard deviation (if provided) for the control group for this outcome. Add numeric data only to the info box.",
+                                            "AttributeType": "Selectable (show checkbox)",
+                                            "AttributeTypeId": 2,
+                                            "AttributeName": "Pre-test standard deviation"
+                                          },
+                                          {
+                                            "AttributeDescription": "",
+                                            "ExtURL": "",
+                                            "ExtType": "",
+                                            "OriginalAttributeID": 0,
+                                            "AttributeSetId": 5447465,
+                                            "AttributeId": 5447065,
+                                            "AttributeSetDescription": "Please report the post-test mean for this outcome for the control group (if provided) for this outcome.",
+                                            "AttributeType": "Selectable (show checkbox)",
+                                            "AttributeTypeId": 2,
+                                            "AttributeName": "Post-test mean"
+                                          },
+                                          {
+                                            "AttributeDescription": "",
+                                            "ExtURL": "",
+                                            "ExtType": "",
+                                            "OriginalAttributeID": 0,
+                                            "AttributeSetId": 5447466,
+                                            "AttributeId": 5447066,
+                                            "AttributeSetDescription": "Please record the post-test standard deviation for the control group for this outcome (if provided).",
+                                            "AttributeType": "Selectable (show checkbox)",
+                                            "AttributeTypeId": 2,
+                                            "AttributeName": "Post test standard deviation"
+                                          },
+                                          {
+                                            "AttributeDescription": "",
+                                            "ExtURL": "",
+                                            "ExtType": "",
+                                            "OriginalAttributeID": 0,
+                                            "AttributeSetId": 5447467,
+                                            "AttributeId": 5447067,
+                                            "AttributeSetDescription": "Add numeric data only to the info box.",
+                                            "AttributeType": "Selectable (show checkbox)",
+                                            "AttributeTypeId": 2,
+                                            "AttributeName": "Gain score mean (if reported)"
+                                          },
+                                          {
+                                            "AttributeDescription": "",
+                                            "ExtURL": "",
+                                            "ExtType": "",
+                                            "OriginalAttributeID": 0,
+                                            "AttributeSetId": 5447468,
+                                            "AttributeId": 5447068,
+                                            "AttributeSetDescription": "Add numeric data only to the info box.",
+                                            "AttributeType": "Selectable (show checkbox)",
+                                            "AttributeTypeId": 2,
+                                            "AttributeName": "Gain score standard deviation (if reported)"
+                                          },
+                                          {
+                                            "AttributeDescription": "",
+                                            "ExtURL": "",
+                                            "ExtType": "",
+                                            "OriginalAttributeID": 0,
+                                            "AttributeSetId": 5447469,
+                                            "AttributeId": 5447069,
+                                            "AttributeSetDescription": "Please add any other statistical information reported about this outcome for the intervention group (e.g. standard error (SE)). ",
+                                            "AttributeType": "Selectable (show checkbox)",
+                                            "AttributeTypeId": 2,
+                                            "AttributeName": "Any other information?"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407518,
+                          "AttributeId": 5407096,
+                          "AttributeSetDescription": "",
+                          "AttributeType": "Selectable (show checkbox)",
+                          "AttributeTypeId": 2,
+                          "AttributeName": "No"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407291,
+                    "AttributeId": 5407102,
+                    "AttributeSetDescription": "Please provide details of any assessment to measure long lasting effects (e.g. delayed post-test or long term follow up)",
+                    "AttributeType": "Not selectable (no checkbox)",
+                    "AttributeTypeId": 1,
+                    "AttributeName": "Is there follow up data?",
+                    "Attributes": {
+                      "AttributesList": [
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407297,
+                          "AttributeId": 5407103,
+                          "AttributeSetDescription": "",
+                          "AttributeType": "Selectable (show checkbox)",
+                          "AttributeTypeId": 2,
+                          "AttributeName": "Yes"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407298,
+                          "AttributeId": 5407104,
+                          "AttributeSetDescription": "",
+                          "AttributeType": "Selectable (show checkbox)",
+                          "AttributeTypeId": 2,
+                          "AttributeName": "No"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "AttributeSetId": 5407376,
+              "AttributeId": 5407005,
+              "AttributeSetDescription": "Outcome classifications for meta-analysis and meta-regressions. These need to be added from the Outcome button and within the outcome window NOT from this section.",
+              "AttributeType": "Not selectable (no checkbox)",
+              "AttributeTypeId": 1,
+              "AttributeName": "Outcome classification (CODE FROM OUTCOME BUTTON)",
+              "Attributes": {
+                "AttributesList": [
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 6503077,
+                    "AttributeId": 6503152,
+                    "AttributeSetDescription": "Outcome classification relating to the sample.",
+                    "AttributeType": "Not selectable (no checkbox)",
+                    "AttributeTypeId": 1,
+                    "AttributeName": "Sample (select one from this group)",
+                    "Attributes": {
+                      "AttributesList": [
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407426,
+                          "AttributeId": 5407009,
+                          "AttributeSetDescription": "Analysis applied to neurotypical or typically developing sample of pupils. The whole range of attainment or 'ability' for the educational setting was included in the intervention.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Sample: All"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407458,
+                          "AttributeId": 5407041,
+                          "AttributeSetDescription": "Students described as gifted and talented or of exceptional 'ability'. Usually those in the top 10 per cent of the distribution.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Sample: Exceptional"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407423,
+                          "AttributeId": 5407006,
+                          "AttributeSetDescription": "Classification of the students in the sample in relation to their level of academic attainment. Those described as high attainers or high 'ability'; usually those in the top half or the top third of the distribution (depending on classifications).",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Sample: High achievers"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407425,
+                          "AttributeId": 5407008,
+                          "AttributeSetDescription": "Classification of the students in the sample in relation to their level of academic attainment. Those described as performing at or around average attainment or of average 'ability'; usually those in the middle quartiles (depending on classifications).",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Sample: Average"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407424,
+                          "AttributeId": 5407007,
+                          "AttributeSetDescription": "Classification of the students in the sample in relation to their level of academic attainment. Those described as low attainers or low 'ability'; usually those in the bottom half or the bottom third of the distribution (depending on classifications).",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Sample: Low achievers"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 6503078,
+                    "AttributeId": 6503153,
+                    "AttributeSetDescription": "",
+                    "AttributeType": "Not selectable (no checkbox)",
+                    "AttributeTypeId": 1,
+                    "AttributeName": "Test type (select one from this group)",
+                    "Attributes": {
+                      "AttributesList": [
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407445,
+                          "AttributeId": 5407028,
+                          "AttributeSetDescription": "A standardised test is administered and scored in a consistent way. The properties of the test are established through piloting on a group to determine the mean and spread of the scores for a particular target group. Standardised tests are usually named and the properties published.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Test type: Standardised test "
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407446,
+                          "AttributeId": 5407029,
+                          "AttributeSetDescription": "A test developed or designed for a specific research project",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Test type: Researcher developed test"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407448,
+                          "AttributeId": 5407031,
+                          "AttributeSetDescription": "A test or examination used in regional or national evaluations of students and school performance. These may be optional or compulsory, but are organised and/or administered by the regional or national administration in a particular jurisdiction.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Test type: National test"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407447,
+                          "AttributeId": 5407030,
+                          "AttributeSetDescription": "A test or examination developed and used by a school or schools involved in the research as part of their usual assessment approach.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Test type: School-developed test"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407449,
+                          "AttributeId": 5407032,
+                          "AttributeSetDescription": "Tests used for international comparisons of student performance (e.g. PISA, TIMMS, PIRLS, etc.)",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Test type: International tests"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 6503080,
+                    "AttributeId": 6503155,
+                    "AttributeSetDescription": "What kind of effect size is being reported for this outcome?",
+                    "AttributeType": "Not selectable (no checkbox)",
+                    "AttributeTypeId": 1,
+                    "AttributeName": "Effect size calculation (select one from this group)",
+                    "Attributes": {
+                      "AttributesList": [
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407427,
+                          "AttributeId": 5407010,
+                          "AttributeSetDescription": "A simple comparison of the differences between control and intervention groups using only the post-test data, usually from an older randomised controlled trial (RCT) or where baseline equivalence has been established.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Post-test unadjusted (select one from this group)"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407428,
+                          "AttributeId": 5407011,
+                          "AttributeSetDescription": "A post-test comparison where a measure of educational attainment at pre-test is controlled for in the analysis of the impact of the intervention or approach e.g. ANCOVA, OLS regression.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Post-test adjusted for baseline attainment"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407552,
+                          "AttributeId": 5407152,
+                          "AttributeSetDescription": "A post-test comparison where a measure of educational attainment at pre-test is controlled for in the analysis of the impact of the intervention or approach and where the estimate is adjusted for clustering at class or school level (e.g. ANCOVA, MLM, OLS regression).",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Post-test adjusted for baseline attainment AND clustering"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407429,
+                          "AttributeId": 5407012,
+                          "AttributeSetDescription": "Outcome assessment based on the difference between an individual's pre-test and post test scores and the range of these difference (gain score or pre-post analysis). ",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Pre-post gain"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 7755476,
+                    "AttributeId": 7755569,
+                    "AttributeSetDescription": "This section identifies different kinds of primary outcomes for meta-analysis for the Toolkit overall (main effect), for Reading, for Writing and Spelling, for Mathematics, for Science and other outcomes. Please check the coding guide for more details. Some outcomes will have more than one code checked (often 'Toolkit primary outcome' and 'Reading primary outcome'). 'Other outcome' should only be used when no other codes are selected.",
+                    "AttributeType": "Not selectable (no checkbox)",
+                    "AttributeTypeId": 1,
+                    "AttributeName": "Outcome type (select all that apply)",
+                    "Attributes": {
+                      "AttributesList": [
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 7755477,
+                          "AttributeId": 7755570,
+                          "AttributeSetDescription": "Select this code for the primary outcome for the Toolkit. This will usually be a measure of reading comprehension or another standardised test with good predictive validity as an indicator of learning.",
+                          "AttributeType": "Selectable (show checkbox)",
+                          "AttributeTypeId": 2,
+                          "AttributeName": "Toolkit primary outcome"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 7755478,
+                          "AttributeId": 7755571,
+                          "AttributeSetDescription": "Select this option if this outcome is the best overall indicator of improvement in reading. This will usually be a standardised measure of reading comprehension, where this is available.",
+                          "AttributeType": "Selectable (show checkbox)",
+                          "AttributeTypeId": 2,
+                          "AttributeName": "Reading primary outcome"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 7755479,
+                          "AttributeId": 7755572,
+                          "AttributeSetDescription": "Select this code where the outcome is the best overall measure of writing or spelling. Preference should be given to an overall measure of writing where this is available. Standardised tests or national and state testes should be selected in preference to researcher or teacher designed measures.",
+                          "AttributeType": "Selectable (show checkbox)",
+                          "AttributeTypeId": 2,
+                          "AttributeName": "Writing and spelling primary outcome."
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 7755480,
+                          "AttributeId": 7755573,
+                          "AttributeSetDescription": "Select this code where this outcome is the best overall measure of mathematics learning. This will usually be a standardised test of mathematics involving number and/or arithmetic.",
+                          "AttributeType": "Selectable (show checkbox)",
+                          "AttributeTypeId": 2,
+                          "AttributeName": "Mathematics primary outcome"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 7755481,
+                          "AttributeId": 7755574,
+                          "AttributeSetDescription": "Select this code for the best overall measure of science learning. This will usually be a standardised test or a national or state test or examination.",
+                          "AttributeType": "Selectable (show checkbox)",
+                          "AttributeTypeId": 2,
+                          "AttributeName": "Science primary outcome"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 7755482,
+                          "AttributeId": 7755575,
+                          "AttributeSetDescription": "Select this code where none the five categories above apply (e.g. Combined subjects). This will include all other secondary outcomes.",
+                          "AttributeType": "Selectable (show checkbox)",
+                          "AttributeTypeId": 2,
+                          "AttributeName": "Other outcome"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 6503079,
+                    "AttributeId": 6503154,
+                    "AttributeSetDescription": "Please select the Toolkit strand or strands which this outcome is evaluating. Each study has usually been classified as appropriate for the Toolkit. There will not usually be more than one, but occasionally some outcomes are appropriate measures of more than one approach (such as when a teaching assistant delivers a phonics intervention). If unsure please check with the Toolkit team.",
+                    "AttributeType": "Not selectable (no checkbox)",
+                    "AttributeTypeId": 1,
+                    "AttributeName": "Toolkit strand(s) (select at least one Toolkit strand)",
+                    "Attributes": {
+                      "AttributesList": [
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407459,
+                          "AttributeId": 5407042,
+                          "AttributeSetDescription": "Arts participation is defined as involvement in artistic and creative activities, such as dance, drama, music, painting, or sculpture. It can occur either as part of the curriculum or as extra-curricular activity. Participation may be organised as regular weekly or monthly activities, or more intensive programmes such as summer schools or residential courses. Whilst these activities have educational value in themselves, this Toolkit entry focuses on the benefits of arts participation for core academic attainment. ",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Arts participation "
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407460,
+                          "AttributeId": 5407043,
+                          "AttributeSetDescription": "By aspirations we mean the things children and young people hope to achieve for themselves in the future. To meet their aspirations about careers, university, and further education, pupils often require good educational outcomes. Raising aspirations is therefore often believed to incentivise improved attainment. ",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Aspiration interventions"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407461,
+                          "AttributeId": 5407044,
+                          "AttributeSetDescription": "Behaviour interventions seek to improve attainment by reducing challenging behaviour. This entry covers interventions aimed at reducing a variety of behaviours, from low-level disruption to general anti-social activities, aggression, violence, bullying, and substance abuse. The interventions themselves can be split into three broad categories:\r1. Approaches to developing a positive school ethos or improving discipline across the whole school which also aim to support greater engagement in learning.\r2. Universal programmes which seek to improve behaviour and generally take place in the classroom.\r3. More specialised programmes which are targeted at students with specific behavioural issues.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Behaviour interventions"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407463,
+                          "AttributeId": 5407046,
+                          "AttributeSetDescription": "Changing the physical conditions or built environment of the learning setting, either by moving to a new school building or seeking to improve the structure, air quality, noise, light, or temperature of an existing building or classroom.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Built environment"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407464,
+                          "AttributeId": 5407047,
+                          "AttributeSetDescription": "A collaborative (or cooperative) learning approach involve pupils working together on activities or learning tasks in a group small enough for everyone to participate on a collective task that has been clearly assigned. Pupils in the group may work on separate tasks contributing to a common overall outcome, or work together on a shared task.\rSome collaborative learning approaches put mixed ability teams or groups to work in competition with each other in order to drive more effective collaboration. There is a very wide range of approaches to collaborative and cooperative learning involving different kinds of organisation and tasks. Peer tutoring can also be considered as a type of collaborative learning, but in the Toolkit it is reviewed it as a separate topic.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Collaborative learning"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407465,
+                          "AttributeId": 5407048,
+                          "AttributeSetDescription": "The use of digital technologies to support learning. Approaches in this area are very varied, but a simple split can be made between:\rProgrammes for students, where learners use technology in problem solving or more open-ended learning, and\rTechnology for teachers such as interactive whiteboards or learning platforms which may be used by the teachers, or where the technology may provide instruction more directly.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Digital technology"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407467,
+                          "AttributeId": 5407050,
+                          "AttributeSetDescription": "This summary focuses on extending core teaching and learning time in schools and the use of targeted before and after school programmes. Other approaches to increasing learning time are included in other sections of the Toolkit, such as Homework, Early years intervention and Summer schools.\rThe research focuses on three main approaches to extending teaching and learning time in schools:\rextending the length of the school year;\rextending the length of the school day; and\rproviding additional time for targeted groups of pupils, particularly disadvantaged or low-attaining pupils, either before or after school. ",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Extending school time"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407468,
+                          "AttributeId": 5407051,
+                          "AttributeSetDescription": "Feedback is information given to the learner and/or the teacher about the learner’s performance relative to learning goals. It should aim towards (and be capable of producing) improvement in students’ learning. Feedback redirects or refocuses either the teacher’s or the learner’s actions to achieve a goal, by aligning effort and activity with an outcome. It can be about the learning activity itself, about the process of activity, about the student’s management of their learning or self-regulation or (the least effective) about them as individuals. This feedback can be verbal, written, or can be given through tests or via digital technology. It can come from a teacher or someone taking a teaching role, or from peers.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Feedback"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407469,
+                          "AttributeId": 5407052,
+                          "AttributeSetDescription": "Homework refers to tasks given to pupils by their teachers to be completed outside of usual lessons. Common homework activities in primary schools tend to be reading or practising spelling and number facts, but may also include more extended activities to develop inquiry skills or more directed and focused work such as revision for tests which is more similar to homework set in secondary schools.  Other homework activities may include reading or preparing for work to be done in class, or practising and completing tasks or activities already taught or started in lessons, as well as revision for exams.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Homework"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407470,
+                          "AttributeId": 5407053,
+                          "AttributeSetDescription": "Individualised instruction involves different tasks for each learner and support at the individual level. It is based on the idea that all learners have different needs, and that therefore an approach that is personally tailored — particularly in terms of the activities that pupils undertake and the pace at which they progress through the curriculum — will be more effective. Various models of individualised instruction have been tried over the years in education, particularly in subjects like mathematics where pupils can have individual sets of activities which they complete, often largely independently. More recently, digital technologies have been employed to facilitate individual activities and feedback.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Individualised instruction"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407472,
+                          "AttributeId": 5407055,
+                          "AttributeSetDescription": "Mastery learning breaks subject matter and learning content into units with clearly specified objectives which are pursued until they are achieved. Learners work through each block of content in a series of sequential steps.\rStudents must demonstrate a high level of success on tests, typically at about the 80% level, before progressing to new content. Mastery learning can be contrasted with other approaches which require pupils to move through the curriculum at a pre-determined pace. Teachers seek to avoid unnecessary repetition by regularly assessing knowledge and skills. Those who do not reach the required level are provided with additional tuition, peer support, small group discussions, or homework so that they can reach the expected level.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Mastery learning"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407474,
+                          "AttributeId": 5407057,
+                          "AttributeSetDescription": "Mentoring in education involves pairing young people with an older peer or volunteer, who acts as a positive role model. In general, mentoring aims to build confidence, develop resilience and character, or raise aspirations, rather than to deliver specific academic skills or knowledge. \rMentors typically build relationships with young people by meeting with them one to one for about an hour a week over a sustained period, either during school, at the end of the school day, or at weekends.\rActivities vary between different mentoring programmes, sometimes including direct academic support with homework or other school tasks. For programmes focused primarily on direct academic support see One to one tuition and Peer tutoring.\rMentoring has increasingly been offered to young people who are deemed to be hard to reach or at risk of educational failure or exclusion.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Mentoring"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407473,
+                          "AttributeId": 5407056,
+                          "AttributeSetDescription": "Metacognition and self-regulation approaches aim to help pupils think about their own learning more explicitly, often by teaching them specific strategies for planning, monitoring and evaluating their learning. Interventions are usually designed to give pupils a repertoire of strategies to choose from and the skills to select the most suitable strategy for a given learning task.\rSelf-regulated learning can be broken into three essential components:\rcognition - the mental process involved in knowing, understanding, and learning;\rmetacognition - often defined as 'learning to learn'; and\rmotivation - willingness to engage our metacognitive and cognitive skills.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Metacognition and self-regulation"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407475,
+                          "AttributeId": 5407058,
+                          "AttributeSetDescription": "One to one tuition involves a teacher, teaching assistant or other adult giving a pupil intensive individual support. It may happen outside of normal lessons as additional teaching – for example as part of Extending school time or a Summer school – or as a replacement for other lessons. ",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: One to one tuition"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407477,
+                          "AttributeId": 5407059,
+                          "AttributeSetDescription": "Oral language interventions emphasise the importance of spoken language and verbal interaction in the classroom. \rThey are based on the idea that comprehension and reading skills benefit from explicit discussion of either the content or processes of learning, or both. Oral language approaches include:\rTargeted reading aloud and discussing books with young children\rExplicitly extending pupils’ spoken vocabulary\rThe use of structured questioning to develop reading comprehension. All of the approaches reviewed in this section support learners’ articulation of ideas and spoken expression, such as Thinking Together or Philosophy for Children. Oral language interventions therefore have some similarity to approaches based on metacognition, which make talk about learning explicit in classrooms, and to Collaborative Learning approaches, which promote pupils’ talk and interaction in groups.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Oral language interventions"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407478,
+                          "AttributeId": 5407060,
+                          "AttributeSetDescription": "Outdoor adventure learning typically involves outdoor experiences, such as climbing or mountaineering; survival, ropes or assault courses; or outdoor sports, such as orienteering, sailing and canoeing. These can be organised as intensive residential courses or shorter courses run in schools or local outdoor centers.\rAdventure education usually involves collaborative learning experiences with a high level of physical (and often emotional) challenge. Practical problem-solving, explicit reflection and discussion of thinking and emotion (see also Metacognition and self-regulation) may also be involved.\rAdventure learning interventions typically do not include a formal academic component, so this summary does not include forest schools or field trips.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Outdoor adventure learning"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407479,
+                          "AttributeId": 5407061,
+                          "AttributeSetDescription": "We define parental engagement as the involvement of parents in supporting their children’s academic learning. It includes: \r1. approaches and programmes which aim to develop parental skills such as literacy or IT skills; \r2. general approaches which encourage parents to support their children with, for example reading or homework; \r3. the involvement of parents in their children’s learning activities; and \r4. more intensive programmes for families in crisis.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Parental engagement"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407480,
+                          "AttributeId": 5407062,
+                          "AttributeSetDescription": "Peer tutoring includes a range of approaches in which learners work in pairs or small groups to provide each other with explicit teaching support. In cross-age tutoring, an older learner takes the tutoring role and is paired with a younger tutee or tutees. Peer-assisted learning is a structured approach for mathematics and reading with sessions of 25-35 minutes two or three times a week. In reciprocal peer tutoring, learners alternate between the role of tutor and tutee. The common characteristic is that learners take on responsibility for aspects of teaching and for evaluating their success. Peer assessment involves the peer tutor providing feedback to children relating to their performance and can have different forms such as reinforcing or correcting aspects of learning.\rPeers are defined as other students or pupils at the same school or educational setting as the intervention group; or at another local school (e.g. secondary students tutoring pupils at their own or their peers' primary schools). Peers will normally be of similar age and socio-economic or cultural background.\rUniversity students tutoring primary school pupils would not usually be classified as 'peers'.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Peer Tutoring"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407476,
+                          "AttributeId": 5407063,
+                          "AttributeSetDescription": "Performance pay schemes aim to create a direct link between teacher pay or bonuses, and the performance of their class in order to incentivise better teaching and so improve outcomes. A distinction can be drawn between awards, where improved performance leads to a higher permanent salary, and payment by results, where teachers get a bonus for higher test scores. Approaches differ in how performance is measured and how closely those measures are linked to outcomes for learners. In some schemes, students’ test outcomes are the sole factor used to determine performance pay awards. In others, performance judgements can also include information from lesson observations or feedback from pupils, or be left to the discretion of the headteacher.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Performance pay"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407481,
+                          "AttributeId": 5407064,
+                          "AttributeSetDescription": "Phonics is an approach to teaching reading, and some aspects of writing, by developing learners’ phonemic awareness. This involves the skills of hearing, identifying and using phonemes or sound patterns in English. The aim is to systematically teach learners the relationship between these sounds and the written spelling patterns, or graphemes, which represent them. Phonics emphasises the skills of decoding new words by sounding them out and combining or 'blending' the sound-spelling patterns.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Phonics"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407491,
+                          "AttributeId": 5407072,
+                          "AttributeSetDescription": "Physical activity refers to approaches that engage pupils in sports, dance, or any kind of physical exercise.\nThis might be through organised after school activities or a programme organised by a local sporting club or association. Sometimes sporting activity is used as a means to encourage young people to engage in additional learning activities, such as football training at a local football club combined with study skills, ICT, literacy, or mathematics lessons.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Physical activity"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407482,
+                          "AttributeId": 5407065,
+                          "AttributeSetDescription": "Reading comprehension strategies focus on the learners’ understanding of written text. Pupils are taught a range of techniques which enable them to comprehend the meaning of what they read. These can include: inferring meaning from context; summarising or identifying key points; using graphic or semantic organisers; developing questioning strategies; and monitoring their own comprehension and identifying difficulties themselves (see also 'Metacognition and self-regulation').",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Reading comprehension strategies"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407483,
+                          "AttributeId": 5407066,
+                          "AttributeSetDescription": "As the size of a class or teaching group gets smaller it is suggested that the range of approaches a teacher can employ and the amount of attention each student will receive will increase, thereby improving outcomes for pupils.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Reducing class size"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407486,
+                          "AttributeId": 5407067,
+                          "AttributeSetDescription": "Pupils who do not reach a given standard of learning at the end of a year are required to repeat the year by joining a class of younger students the following academic year. This is also known as “grade retention”, “non-promotion” or “failing a grade”. For students at secondary school level, repeating a year is usually limited to the particular subject or classes that a student has not passed.\rRepeating a year is very rare in the UK but is relatively common in the USA where the No Child Left Behind Act (2002) recommended that students be required to demonstrate a set standard of achievement before progressing to the next grade level. Students can also be required to repeat a year in some European countries including Spain, France and Germany. In some countries, such as Finland, pupils can repeat a year in exceptional circumstances, but this decision is made collectively by teachers, parents and the student rather than on the basis of end of year testing.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Repeating a year"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407487,
+                          "AttributeId": 5407068,
+                          "AttributeSetDescription": "Schools identify clothing considered appropriate for pupils to wear in school, and usually specify the style and colour. Schools vary as to how strictly a uniform policy is enforced.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: School uniform"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407488,
+                          "AttributeId": 5407069,
+                          "AttributeSetDescription": "Pupils with similar levels of current attainment are grouped together either for specific lessons on a regular basis (setting or regrouping), or as a whole class (streaming or tracking). The assumption is that it will be possible to teach more effectively or more efficiently with a narrower range of attainment in a class.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Setting or streaming"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407489,
+                          "AttributeId": 5407070,
+                          "AttributeSetDescription": "Small group tuition is defined as one teacher or professional educator working with two, three, four, or five pupils. This arrangement enables the teacher to focus exclusively on a small number of learners, usually on their own in a separate classroom or working area. Intensive tuition in small groups is often provided to support lower attaining learners or those who are falling behind, but it can also be used as a more general strategy to ensure effective progress, or to teach challenging topics or skills.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Small Group Tuition"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407490,
+                          "AttributeId": 5407071,
+                          "AttributeSetDescription": "Interventions which target social and emotional learning (SEL) seek to improve attainment by improving the social and emotional dimensions of learning, as opposed to focusing directly on the academic or cognitive elements of learning. SEL interventions might focus on the ways in which students work with (and alongside) their peers, teachers, family or community. Three broad categories of SEL interventions can be identified: \r1. Universal programmes which generally take place in the classroom; \r2. More specialised programmes which are targeted at students with particular social or emotional problems; \r3. School-level approaches to developing a positive school ethos which also aim to support greater engagement in learning.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Social and emotional learning"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407492,
+                          "AttributeId": 5407073,
+                          "AttributeSetDescription": "Summer schools are lessons or classes during the summer holidays, and are often designed as catch-up programmes. Some summer schools do not have an academic focus and concentrate on sports or other non-academic activities. Others may have a specific focus, such as pupils at the transition from primary to secondary school, or advanced classes to prepare high-attaining pupils for university.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Summer schools"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407484,
+                          "AttributeId": 5407074,
+                          "AttributeSetDescription": "Teaching assistants (also known as TAs or classroom support assistants) are adults who support teachers in the classroom. Teaching assistants’ duties can vary widely from school to school, ranging from providing administrative and classroom support to providing targeted academic support to individual pupils or small groups.\rCognate terms: support staff; adult support staff; teaching assistants; associate staff; classroom assistants; classroom support assistant; auxiliary teachers; teacher's aide; education paraprofessional; nursery nurse (in early years' settings)",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Teaching assistants"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 8931636,
+                          "AttributeId": 8931762,
+                          "AttributeSetDescription": "Within-class attainment grouping involves organising pupils within their usual class for specific activities or topics, such as literacy. Pupils with similar levels of current attainment are grouped together, for example, on specific tables, but all pupils are taught by their usual teacher and support staff, and they usually all follow the same curriculum.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "Toolkit: Within-class attainment grouping"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 11183560,
+                          "AttributeId": 11183748,
+                          "AttributeSetDescription": "Communication and language approaches involve intentionally acting to develop young children’s understanding of language and their ability and confidence to use language, and other strategies, to communicate effectively. They are based on the idea that children’s language development benefits from approaches that support communication through talking and non-verbal expression.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "EY_Toolkit: Communication and language approaches"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 11183555,
+                          "AttributeId": 11183743,
+                          "AttributeSetDescription": "“Earlier starting age” refers to increasing the time a child spends in early years education by beginning at a younger age. This would typically mean being enrolled in nursery or pre-school from the age of two or three and experiencing up to two years of early years education before starting school.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "EY_Toolkit: Earlier starting age"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 11183556,
+                          "AttributeId": 11183744,
+                          "AttributeSetDescription": "Early literacy approaches aim to improve young children’s skills, knowledge or understanding related to reading or writing. Common approaches include:\n-storytelling and group reading;\n-activities that aim to develop letter knowledge, knowledge of sounds and early phonics; and\n-introductions to different kinds of writing.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "EY_Toolkit: Early literacy approaches"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 11183557,
+                          "AttributeId": 11183745,
+                          "AttributeSetDescription": "Early numeracy approaches aim to develop number skills and improve young children’s knowledge and understanding of early mathematical concepts. Activities in this area might be structured, for example through programmes designed to develop children’s​‘number sense’ (their developing understanding of quantity and number), or more informal, such as using mathematical games including computer games or play activities involving counting or using other mathematical language.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "EY_Toolkit: Early numeracy approaches"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 11183558,
+                          "AttributeId": 11183746,
+                          "AttributeSetDescription": "This refers to increasing the amount of early years education that a child receives at a given age. Most commonly, extra hours are provided by switching from half-day to full-day provision. For a summary of the evidence related to starting early years education at a younger age, you can read the entry on an earlier starting age.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "EY_Toolkit: Extra hours"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 11710102,
+                          "AttributeId": 11710297,
+                          "AttributeSetDescription": "Parental engagement refers to early years professionals and settings actively involving parents in supporting their children’s learning and development. It includes:\n\n-Approaches that encourage parents to read and talk with their children at home or to participate in activities in the early years setting.\n-Programmes that focus directly on parents themselves, for example, providing training in parenting skills or adult numeracy and literacy support.\n-Intensive programmes for disadvantaged families or families in crisis, for example, through settings appointing a family liaison that work with parents through either home visits or other targeted approaches.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "EY_Toolkit: Parental engagement"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 11710103,
+                          "AttributeId": 11710298,
+                          "AttributeSetDescription": "Physical development approaches aim to improve young children’s physical growth, skills and health. Activities in this area may be focused on a particular aspect of physical development, e.g. fine motor skills related to writing, or be more general, for instance, encouraging active outdoor play or integrating physical development approaches with other early years activities.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "EY_Toolkit: Physical development approaches"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 11183559,
+                          "AttributeId": 11183747,
+                          "AttributeSetDescription": "The definition of ​‘play’ and its relationship with the curriculum, the role of adults and the children themselves varies considerably. Play will often be enjoyable for its own sake. Play-based activities might be solitary or social, and involve a combination of cognitive and physical elements. While play is a core part of the experience of children in early years settings and has potential benefits around physical development, relationship building and expressive arts",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "EY_Toolkit: Play-based learning"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 11710104,
+                          "AttributeId": 11710299,
+                          "AttributeSetDescription": "Self-regulatory skills can be defined as the ability of children to manage their own behaviour and aspects of their learning. In the early years, efforts to develop self-regulation often seek to improve levels of self-control and reduce impulsivity. These skills are also sometimes described as executive function capability.\n\nActivities typically include supporting children in articulating their plans and learning strategies and reviewing what they have done. A number of approaches use stories or characters to help children remember different learning strategies. It is often easier to observe children’s current self-regulation capabilities when they are playing or interacting with a peer.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "EY_Toolkit: Self-regulation strategies"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 11710106,
+                          "AttributeId": 11710301,
+                          "AttributeSetDescription": "Social and emotional learning (SEL) strategies seek to improve learning and wider child development by improving children’s social and emotional skills. They can be contrasted with approaches that focus explicitly on the academic or cognitive dimensions of learning. SEL strategies might seek to improve the ways in which children interact with their peers, parents or other adults and are often linked with self-regulation strategies and behavioural interventions.",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "EY_Toolkit: Social and emotional learning strategies"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 14354036,
+                          "AttributeId": 14355389,
+                          "AttributeSetDescription": "Created by SG (EPPISupport) on 26/01/2024 to support copying data from review 25051 - will be assigned to 1 item only, as part of this work.",
+                          "AttributeType": "Selectable (show checkbox)",
+                          "AttributeTypeId": 2,
+                          "AttributeName": "CEDIL: Cash Transfer"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 14409748,
+                          "AttributeId": 14411101,
+                          "AttributeSetDescription": "",
+                          "AttributeType": "Outcome classification code",
+                          "AttributeTypeId": 9,
+                          "AttributeName": "CEDIL: Menstrual hygiene"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "AttributeSetId": 5407286,
+              "AttributeId": 5407097,
+              "AttributeSetDescription": "Please do not mark this section at study level. This section is completed in the 'Outcome specific code' screen accessed from the outcome button.",
+              "AttributeType": "Not selectable (no checkbox)",
+              "AttributeTypeId": 1,
+              "AttributeName": "Outcome labels (CODE FROM OUTCOME BUTTON)",
+              "Attributes": {
+                "AttributesList": [
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407372,
+                    "AttributeId": 5407001,
+                    "AttributeSetDescription": "Please do not mark this section. This section is completed in the 'Outcomes specific code' screen.",
+                    "AttributeType": "Not selectable (no checkbox)",
+                    "AttributeTypeId": 1,
+                    "AttributeName": "Comparison",
+                    "Attributes": {
+                      "AttributesList": [
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407373,
+                          "AttributeId": 5407002,
+                          "AttributeSetDescription": "i.e. there is control for novelty/ an introduced new treatment",
+                          "AttributeType": "Comparison",
+                          "AttributeTypeId": 6,
+                          "AttributeName": "With active control"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407374,
+                          "AttributeId": 5407003,
+                          "AttributeSetDescription": "i.e. comparison group having usual learning experience",
+                          "AttributeType": "Comparison",
+                          "AttributeTypeId": 6,
+                          "AttributeName": "With business as usual"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407375,
+                          "AttributeId": 5407004,
+                          "AttributeSetDescription": "i.e. additional learning time / no treatment, such as in a Summer School intervention or a Before or After school club",
+                          "AttributeType": "Comparison",
+                          "AttributeTypeId": 6,
+                          "AttributeName": "With no equivalent teaching"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "AttributeDescription": "",
+                    "ExtURL": "",
+                    "ExtType": "",
+                    "OriginalAttributeID": 0,
+                    "AttributeSetId": 5407430,
+                    "AttributeId": 5407013,
+                    "AttributeSetDescription": "Type or focus of educational test used to measure the outcome of the impact of the intervention or approach.",
+                    "AttributeType": "Not selectable (no checkbox)",
+                    "AttributeTypeId": 1,
+                    "AttributeName": "Intervention outcome measure",
+                    "Attributes": {
+                      "AttributesList": [
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407431,
+                          "AttributeId": 5407014,
+                          "AttributeSetDescription": "e.g. passage comprehension",
+                          "AttributeType": "Intervention",
+                          "AttributeTypeId": 5,
+                          "AttributeName": "Literacy: reading comprehension"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407432,
+                          "AttributeId": 5407015,
+                          "AttributeSetDescription": "",
+                          "AttributeType": "Intervention",
+                          "AttributeTypeId": 5,
+                          "AttributeName": "Literacy: decoding/phonics"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407435,
+                          "AttributeId": 5407018,
+                          "AttributeSetDescription": "",
+                          "AttributeType": "Intervention",
+                          "AttributeTypeId": 5,
+                          "AttributeName": "Literacy: spelling"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407433,
+                          "AttributeId": 5407016,
+                          "AttributeSetDescription": "Other reading outcomes (e.g. reading fluency, vocabulary comprehension (receptive vocabulary))",
+                          "AttributeType": "Intervention",
+                          "AttributeTypeId": 5,
+                          "AttributeName": "Literacy: reading other"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407436,
+                          "AttributeId": 5407019,
+                          "AttributeSetDescription": "",
+                          "AttributeType": "Intervention",
+                          "AttributeTypeId": 5,
+                          "AttributeName": "Literacy: speaking and listening/oral language"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407434,
+                          "AttributeId": 5407017,
+                          "AttributeSetDescription": "",
+                          "AttributeType": "Intervention",
+                          "AttributeTypeId": 5,
+                          "AttributeName": "Literacy: writing"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407437,
+                          "AttributeId": 5407020,
+                          "AttributeSetDescription": "",
+                          "AttributeType": "Intervention",
+                          "AttributeTypeId": 5,
+                          "AttributeName": "Mathematics"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407438,
+                          "AttributeId": 5407021,
+                          "AttributeSetDescription": "",
+                          "AttributeType": "Intervention",
+                          "AttributeTypeId": 5,
+                          "AttributeName": "Science"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407439,
+                          "AttributeId": 5407022,
+                          "AttributeSetDescription": "e.g. history, geography, economics",
+                          "AttributeType": "Intervention",
+                          "AttributeTypeId": 5,
+                          "AttributeName": "Social Studies"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407440,
+                          "AttributeId": 5407023,
+                          "AttributeSetDescription": "e.g. music, art",
+                          "AttributeType": "Intervention",
+                          "AttributeTypeId": 5,
+                          "AttributeName": "Arts"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407441,
+                          "AttributeId": 5407024,
+                          "AttributeSetDescription": "Second or foreign languages, based on the dominant language of instruction in the educational setting.",
+                          "AttributeType": "Intervention",
+                          "AttributeTypeId": 5,
+                          "AttributeName": "Languages"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407442,
+                          "AttributeId": 5407025,
+                          "AttributeSetDescription": "Other curriculum outcomes not included in the above options (please specify)",
+                          "AttributeType": "Intervention",
+                          "AttributeTypeId": 5,
+                          "AttributeName": "Curriculum: other"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5815650,
+                          "AttributeId": 5815710,
+                          "AttributeSetDescription": "Where the study combines two or more test outcomes from different subjects to provide an overall measure of educational progress (e.g. KS2 English and mathematics or multiple GCSE subjects.",
+                          "AttributeType": "Intervention",
+                          "AttributeTypeId": 5,
+                          "AttributeName": "Combined subjects"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407443,
+                          "AttributeId": 5407026,
+                          "AttributeSetDescription": "Tests of verbal, analogical or visual reasoning, including IQ or other 'intelligence' tests.",
+                          "AttributeType": "Intervention",
+                          "AttributeTypeId": 5,
+                          "AttributeName": "Cognitive: reasoning"
+                        },
+                        {
+                          "AttributeDescription": "",
+                          "ExtURL": "",
+                          "ExtType": "",
+                          "OriginalAttributeID": 0,
+                          "AttributeSetId": 5407444,
+                          "AttributeId": 5407027,
+                          "AttributeSetDescription": "Other tests of cognitive performance such as working memory or perception.",
+                          "AttributeType": "Intervention",
+                          "AttributeTypeId": 5,
+                          "AttributeName": "Cognitive: other"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
