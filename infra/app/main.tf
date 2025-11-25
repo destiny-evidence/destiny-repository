@@ -232,14 +232,14 @@ module "container_app" {
   }
 
   custom_scale_rules = [
-    {
-      name             = "cpu-scale-rule"
-      custom_rule_type = "cpu"
-      metadata = {
-        type  = "Utilization"
-        value = var.cpu_scaling_threshold
-      }
-    }
+    # {
+    #   name             = "cpu-scale-rule"
+    #   custom_rule_type = "cpu"
+    #   metadata = {
+    #     type  = "Utilization"
+    #     value = var.cpu_scaling_threshold
+    #   }
+    # }
   ]
 }
 
