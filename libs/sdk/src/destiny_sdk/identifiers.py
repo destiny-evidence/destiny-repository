@@ -17,6 +17,10 @@ class ExternalIdentifierType(StrEnum):
 
     DOI = auto()
     """A DOI (Digital Object Identifier) which is a unique identifier for a document."""
+    ERIC = auto()
+    """An ERIC (Education Resources Information Identifier) ID which is a unique
+    identifier for a document in ERIC.
+    """
     PM_ID = auto()
     """A PubMed ID which is a unique identifier for a document in PubMed."""
     OPEN_ALEX = auto()
@@ -43,6 +47,32 @@ class DOIIdentifier(BaseModel):
         return (
             value.removeprefix("http://doi.org/")
             .removeprefix("https://doi.org/")
+            .strip()
+        )
+
+
+class ERICIdentifier(BaseModel):
+    """
+    An external identifier representing an ERIC Number.
+
+    An ERIC Number is defined as a unqiue identifiying number preceeded by
+    EJ (for a journal article) or ED (for a non-journal document).
+    """
+
+    identifier: str = Field(
+        description="The ERIC Number of the refrence.", pattern=r"E[D|J][0-9]+$"
+    )
+    identifier_type: Literal[ExternalIdentifierType.ERIC] = Field(
+        ExternalIdentifierType.ERIC, description="The type of identifier used."
+    )
+
+    @field_validator("identifier", mode="before")
+    @classmethod
+    def remove_eric_url(cls, value: str) -> str:
+        """Remove the URL part of the ERIC ID if it exists."""
+        return (
+            value.removeprefix("http://eric.ed.gov/?id=")
+            .removeprefix("https://eric.ed.gov/?id=")
             .strip()
         )
 
@@ -91,7 +121,11 @@ class OtherIdentifier(BaseModel):
 
 #: Union type for all external identifiers.
 ExternalIdentifier = Annotated[
-    DOIIdentifier | PubMedIdentifier | OpenAlexIdentifier | OtherIdentifier,
+    DOIIdentifier
+    | ERICIdentifier
+    | PubMedIdentifier
+    | OpenAlexIdentifier
+    | OtherIdentifier,
     Field(discriminator="identifier_type"),
 ]
 

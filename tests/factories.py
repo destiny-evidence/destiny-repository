@@ -21,11 +21,13 @@ from destiny_sdk.enhancements import (
 )
 from destiny_sdk.identifiers import (
     DOIIdentifier,
+    ERICIdentifier,
     OpenAlexIdentifier,
     OtherIdentifier,
     PubMedIdentifier,
 )
 from faker import Faker
+from faker.providers import BaseProvider
 
 from app.domain.references.models.models import (
     Enhancement,
@@ -38,7 +40,29 @@ from app.domain.references.models.models import (
 from app.domain.robots.models.models import Robot
 from app.utils.time_and_date import utc_now
 
+
+class ERICNumberProvider(BaseProvider):
+    """
+    Provider for ERIC Number object.
+
+    Source of info: https://eric.ed.gov/pdf/ERIC_Field.pdf.
+    """
+
+    def eric_number(self) -> str:
+        """
+        Generate a valid ERIC Number.
+
+        Format: [{EJ|ED}{number}]
+        Eg: ED581143.
+        """
+        prefix = self.generator.random.choice(["EJ", "ED"])
+        suffix = self.generator.random.randint(100, 999999)
+
+        return f"{prefix}{suffix}"
+
+
 fake = Faker()
+fake.add_provider(ERICNumberProvider)
 max_list_length = 3
 
 
@@ -47,6 +71,13 @@ class DOIIdentifierFactory(factory.Factory):
         model = DOIIdentifier
 
     identifier = factory.Faker("doi")
+
+
+class ERICIdentifierFactory(factory.Factory):
+    class Meta:
+        model = ERICIdentifier
+
+    identifier = fake.eric_number()
 
 
 class PubMedIdentifierFactory(factory.Factory):
@@ -189,6 +220,7 @@ class LinkedExternalIdentifierFactory(factory.Factory):
         lambda: fake.random_element(
             [
                 DOIIdentifierFactory(),
+                ERICIdentifierFactory(),
                 PubMedIdentifierFactory(),
                 OpenAlexIdentifierFactory(),
                 OtherIdentifierFactory(),
