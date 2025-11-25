@@ -1,56 +1,14 @@
 """Unit tests for Elasticsearch repository query string search functionality."""
 
-from collections.abc import AsyncGenerator
-from typing import Self
 from uuid import uuid4
 
 import pytest
 from elasticsearch import AsyncElasticsearch
-from elasticsearch.dsl.field import Integer, Text
 from elasticsearch.helpers import async_bulk
 
 from app.core.exceptions import ESQueryError
-from app.domain.base import SQLAttributeMixin
-from app.persistence.es.persistence import GenericESPersistence
 from app.persistence.es.repository import GenericAsyncESRepository
-
-
-class DomainSimpleDoc(SQLAttributeMixin):
-    """Simple domain document with basic fields."""
-
-    title: str
-    year: int
-    content: str
-
-
-class SimpleDoc(GenericESPersistence):
-    """Simple test document with basic fields."""
-
-    title = Text()
-    year = Integer()
-    content = Text()
-
-    class Index:
-        name = "test_simple"
-
-    def to_domain(self) -> DomainSimpleDoc:
-        """Convert to simple domain dict."""
-        return DomainSimpleDoc(
-            id=self.meta.id,
-            title=self.title,
-            year=self.year,
-            content=self.content,
-        )
-
-    @classmethod
-    def from_domain(cls, domain_model: DomainSimpleDoc) -> Self:
-        """Create from simple domain dict."""
-        return cls(
-            meta={"id": domain_model.id},
-            title=domain_model.title,
-            year=domain_model.year,
-            content=domain_model.content,
-        )
+from tests.es_utils import DomainSimpleDoc, SimpleDoc
 
 
 class SimpleRepository(GenericAsyncESRepository[DomainSimpleDoc, SimpleDoc]):
@@ -67,16 +25,9 @@ class SimpleRepository(GenericAsyncESRepository[DomainSimpleDoc, SimpleDoc]):
 @pytest.fixture
 async def simple_repository(
     es_client: AsyncElasticsearch,
-) -> AsyncGenerator[SimpleRepository, None]:
+) -> SimpleRepository:
     """Create a simple repository with test index."""
-    # Initialize the index
-    await SimpleDoc.init(using=es_client)
-
-    repo = SimpleRepository(client=es_client)
-    yield repo
-
-    # Cleanup
-    await es_client.indices.delete(index="test_simple", ignore=[404])
+    return SimpleRepository(client=es_client)
 
 
 async def create_simple_doc(
@@ -86,10 +37,9 @@ async def create_simple_doc(
     content: str,
 ) -> str:
     """Helper to create and index a simple document."""
-    doc_id = str(uuid4())
-    doc = SimpleDoc(title=title, year=year, content=content, meta={"id": doc_id})
-    await doc.save(using=repository._client)  # noqa: SLF001
-    return doc_id
+    doc = DomainSimpleDoc(title=title, year=year, content=content)
+    await repository.add(doc)
+    return str(doc.id)
 
 
 @pytest.fixture
