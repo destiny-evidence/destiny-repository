@@ -534,6 +534,13 @@ class ReferenceDuplicateDecision(
             "ix_reference_duplicate_decision_duplicate_determination",
             "duplicate_determination",
         ),
+        # For getting references that duplicate a canonical reference
+        Index(
+            "ix_reference_duplicate_decision_active_canonical_reference_id",
+            "canonical_reference_id",
+            "active_decision",
+            postgresql_where=active_decision.is_(True),
+        ),
     )
 
     @classmethod
