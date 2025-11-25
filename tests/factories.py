@@ -30,10 +30,13 @@ from faker import Faker
 from app.domain.references.models.models import (
     Enhancement,
     LinkedExternalIdentifier,
+    PendingEnhancement,
+    PendingEnhancementStatus,
     Reference,
     Visibility,
 )
 from app.domain.robots.models.models import Robot
+from app.utils.time_and_date import utc_now
 
 fake = Faker()
 max_list_length = 3
@@ -253,3 +256,17 @@ class RobotFactory(factory.Factory):
     description = factory.Faker("sentence")
     name = factory.Faker("name")
     owner = factory.Faker("company")
+
+
+class PendingEnhancementFactory(factory.Factory):
+    class Meta:
+        model = PendingEnhancement
+
+    id = factory.Faker("uuid4")
+    reference_id = factory.Faker("uuid4")
+    robot_id = factory.Faker("uuid4")
+    source = factory.Faker("word")
+    status = PendingEnhancementStatus.PENDING
+    expires_at = factory.LazyFunction(
+        lambda: utc_now() + fake.time_delta(end_datetime="+1h")
+    )
