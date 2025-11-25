@@ -825,22 +825,12 @@ resource "azurerm_container_app_job" "scheduled_jobs" {
     identity_ids = [azurerm_user_assigned_identity.container_apps_tasks_identity.id]
   }
 
-  secret {
-    name = "es-config"
-    value = jsonencode({
-      cloud_id = ec_deployment.cluster.elasticsearch.cloud_id
-      api_key  = elasticstack_elasticsearch_security_api_key.app.encoded
-    })
-  }
-
-  secret {
-    name = "otel-config"
-    value = jsonencode({
-      trace_endpoint = var.honeycombio_trace_endpoint
-      meter_endpoint = var.honeycombio_meter_endpoint
-      log_endpoint   = var.honeycombio_log_endpoint
-      api_key        = honeycombio_api_key.this.key
-    })
+  dynamic "secret" {
+    for_each = local.secrets
+    content {
+      name  = secret.value.name
+      value = secret.value.value
+    }
   }
 
   template {
@@ -851,63 +841,22 @@ resource "azurerm_container_app_job" "scheduled_jobs" {
       cpu     = lookup(each.value, "cpu", 0.5)
       memory  = lookup(each.value, "memory", "1Gi")
 
-      env {
-        name  = "APP_NAME"
-        value = "${var.app_name}-scheduled-job"
-      }
-
-      env {
-        name  = "AZURE_APPLICATION_ID"
-        value = azuread_application.destiny_repository.client_id
-      }
-
-      env {
-        name  = "AZURE_CLIENT_ID"
-        value = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
-      }
-
-      env {
-        name  = "AZURE_TENANT_ID"
-        value = var.azure_tenant_id
-      }
-
-      env {
-        name  = "ENV"
-        value = var.environment
-      }
-
-      env {
-        name  = "MESSAGE_BROKER_NAMESPACE"
-        value = "${azurerm_servicebus_namespace.this.name}.servicebus.windows.net"
-      }
-
-      env {
-        name  = "MESSAGE_BROKER_QUEUE_NAME"
-        value = azurerm_servicebus_queue.taskiq.name
-      }
-
-      env {
-        name = "DB_CONFIG"
-        value = jsonencode({
-          DB_FQDN = azurerm_postgresql_flexible_server.this.fqdn
-          DB_NAME = azurerm_postgresql_flexible_server_database.this.name
-          DB_USER = data.azuread_group.db_crud_group.display_name
-        })
-      }
-
-      env {
-        name        = "ES_CONFIG"
-        secret_name = "es-config"
-      }
-
-      env {
-        name        = "OTEL_CONFIG"
-        secret_name = "otel-config"
-      }
-
-      env {
-        name  = "OTEL_ENABLED"
-        value = var.telemetry_enabled
+      dynamic "env" {
+        for_each = concat(local.env_vars, [
+          {
+            name  = "APP_NAME"
+            value = "${var.app_name}-scheduled-job"
+          },
+          {
+            name  = "AZURE_CLIENT_ID"
+            value = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
+          }
+        ])
+        content {
+          name        = env.value.name
+          value       = lookup(env.value, "value", null)
+          secret_name = lookup(env.value, "secret_name", null)
+        }
       }
     }
   }
