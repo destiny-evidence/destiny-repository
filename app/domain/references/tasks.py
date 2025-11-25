@@ -272,7 +272,11 @@ async def process_reference_duplicate_decision(
 
 
 @broker.task(
-    schedule=[{"cron": "*/1 * * * *"}] if settings.env == Environment.LOCAL else None
+    schedule=(
+        [{"cron": "* * * * *"}]  # Every minute
+        if settings.env == Environment.LOCAL
+        else None
+    )
 )
 async def expire_and_replace_stale_pending_enhancements() -> None:
     """Expire stale pending enhancements and create replacements."""

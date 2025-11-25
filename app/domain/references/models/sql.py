@@ -201,10 +201,7 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
         UUID, ForeignKey("reference.id"), nullable=False
     )
     identifier_type: Mapped[ExternalIdentifierType] = mapped_column(
-        ENUM(
-            *[identifier.value for identifier in ExternalIdentifierType],
-            name="external_identifier_type",
-        ),
+        String,
         nullable=False,
     )
     other_identifier_name: Mapped[str] = mapped_column(
@@ -289,10 +286,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         UUID, ForeignKey("reference.id"), nullable=False
     )
     enhancement_type: Mapped[EnhancementType] = mapped_column(
-        ENUM(
-            *[enhancement.value for enhancement in EnhancementType],
-            name="enhancement_type",
-        ),
+        String,
         nullable=False,
     )
     robot_version: Mapped[str] = mapped_column(String, nullable=True)
@@ -539,6 +533,12 @@ class ReferenceDuplicateDecision(
         Index(
             "ix_reference_duplicate_decision_duplicate_determination",
             "duplicate_determination",
+        ),
+        # For getting references that duplicate a canonical reference
+        Index(
+            "ix_reference_duplicate_decision_active_canonical_reference_id",
+            "canonical_reference_id",
+            "active_decision",
         ),
     )
 
