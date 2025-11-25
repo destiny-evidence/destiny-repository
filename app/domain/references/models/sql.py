@@ -539,7 +539,6 @@ class ReferenceDuplicateDecision(
             "ix_reference_duplicate_decision_active_canonical_reference_id",
             "canonical_reference_id",
             "active_decision",
-            postgresql_where=active_decision.is_(True),
         ),
     )
 
