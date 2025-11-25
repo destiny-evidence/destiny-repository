@@ -26,6 +26,9 @@ from app.persistence.sql.persistence import Base
 config = context.config
 settings = get_settings()
 
+if "PYTEST_CURRENT_TEST" not in os.environ:
+    config.set_main_option("sqlalchemy.url", str(settings.db_config.connection_string))
+
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
@@ -37,14 +40,6 @@ if settings.otel_config and settings.otel_enabled:
     configure_otel(
         settings.otel_config, settings.app_name, settings.app_version, settings.env
     )
-
-if "PYTEST_CURRENT_TEST" not in os.environ:
-    config.set_main_option("sqlalchemy.url", str(settings.db_config.connection_string))
-
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
