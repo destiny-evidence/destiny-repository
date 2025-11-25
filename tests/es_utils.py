@@ -72,10 +72,8 @@ async def create_test_indices(client: AsyncElasticsearch):
 async def delete_test_indices(client: AsyncElasticsearch):
     """Delete all indices after tests."""
     for index_alias in index_managers:
-        index_manager = index_managers[index_alias](client)
-        current_index_name = await index_manager.get_current_index_name()
-        if current_index_name:
-            await client.indices.delete(index=current_index_name)
+        for index in await client.indices.get(index=f"{index_alias}*"):
+            await client.indices.delete(index=index)
 
 
 async def clean_test_indices(client: AsyncElasticsearch):
