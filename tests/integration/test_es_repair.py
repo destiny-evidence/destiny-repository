@@ -12,7 +12,7 @@ from taskiq import InMemoryBroker
 
 from app.api.exception_handlers import not_found_exception_handler
 from app.core.exceptions import NotFoundError
-from app.domain.references.models.models import EnhancementType, Visibility
+from app.domain.references.models.models import Visibility
 from app.domain.references.models.sql import (
     Enhancement as SQLEnhancement,
 )
@@ -30,6 +30,14 @@ from app.persistence.es.client import AsyncESClientManager
 from app.persistence.es.index_manager import IndexManager
 from app.system import routes as system_routes
 from app.tasks import broker
+from tests.factories import (
+    AnnotationEnhancementFactory,
+    DOIIdentifierFactory,
+    EnhancementFactory,
+    LinkedExternalIdentifierFactory,
+    PubMedIdentifierFactory,
+    RawEnhancementFactory,
+)
 
 
 async def sub_test_reference_index_initial_rebuild(
@@ -88,11 +96,11 @@ async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
     # Update SQL data - change visibility and add another identifier
     index_name = index_manager.alias_name
     reference.visibility = Visibility.RESTRICTED
-    new_identifier = SQLExternalIdentifier(
-        id=uuid.uuid4(),
-        reference_id=reference_id,
-        identifier_type="pm_id",
-        identifier="12345678",
+    new_identifier = SQLExternalIdentifier.from_domain(
+        LinkedExternalIdentifierFactory.build(
+            reference_id=reference_id,
+            identifier=PubMedIdentifierFactory.build(identifier=12345678),
+        )
     )
     session.add(new_identifier)
     await session.commit()
@@ -290,34 +298,34 @@ async def test_repair_reference_index_with_rebuild(
     session.add(reference)
 
     # Add identifier
-    identifier = SQLExternalIdentifier(
-        id=uuid.uuid4(),
-        reference_id=reference_id,
-        identifier_type="doi",
-        identifier="10.1234/test-reference",
+    identifier = SQLExternalIdentifier.from_domain(
+        LinkedExternalIdentifierFactory.build(
+            reference_id=reference_id,
+            identifier=DOIIdentifierFactory.build(identifier="10.1234/test-reference"),
+        )
     )
+
     session.add(identifier)
 
     # Add enhancement
-    enhancement = SQLEnhancement(
-        id=uuid.uuid4(),
-        reference_id=reference_id,
-        visibility=Visibility.PUBLIC,
-        source="test_source",
-        enhancement_type=EnhancementType.ANNOTATION,
-        content={
-            "enhancement_type": "annotation",
-            "annotations": [
-                {
-                    "annotation_type": "boolean",
-                    "scheme": "test:scheme",
-                    "label": "test_label",
-                    "value": True,
-                }
-            ],
-        },
+    enhancement = SQLEnhancement.from_domain(
+        EnhancementFactory.build(
+            reference_id=reference_id,
+            source="test_source",
+            content=AnnotationEnhancementFactory.build(),
+        )
     )
+
     session.add(enhancement)
+
+    # Add a raw enhancement as these are special
+    raw_enhancement = SQLEnhancement.from_domain(
+        EnhancementFactory.build(
+            reference_id=reference_id, content=RawEnhancementFactory.build()
+        )
+    )
+
+    session.add(raw_enhancement)
     await session.commit()
 
     # Run sub-tests

@@ -339,12 +339,17 @@ class Enhancement(DomainBaseModel, SQLTimestampMixin):
 
         Excludes relationships and timestamps.
         """
-        return hash(
-            self.model_dump_json(
-                exclude={"id", "reference_id", "reference", "created_at", "updated_at"},
-                exclude_none=True,
-            )
+        json_dump = self.model_dump_json(
+            exclude={
+                "id",
+                "reference_id",
+                "reference",
+                "created_at",
+                "updated_at",
+            },
+            exclude_none=True,
         )
+        return hash(json_dump)
 
 
 class EnhancementRequest(DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin):

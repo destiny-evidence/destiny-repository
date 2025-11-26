@@ -1,3 +1,4 @@
+import datetime
 import uuid
 from datetime import date
 
@@ -102,6 +103,53 @@ def test_location_enhancement_valid():
         reference_id=uuid.uuid4(),
     )
     assert enhancement.content.locations[0].license == "cc-by"
+
+
+def test_raw_enhancement_valid():
+    raw = destiny_sdk.enhancements.RawEnhancement(
+        source_export_date=datetime.datetime.now(tz=datetime.UTC),
+        description="test data",
+        metadata={"this": "is", "metadata": 0},
+        data={"this": "is", "data": "stuff"},
+    )
+
+    assert raw.enhancement_type == destiny_sdk.enhancements.EnhancementType.RAW
+    assert len(raw.model_dump(mode="json")) == 5  # Includes enhancement type
+    assert raw.data.get("this") == "is"
+
+
+def test_raw_enhancement_valid_data_is_a_string():
+    raw = destiny_sdk.enhancements.RawEnhancement(
+        source_export_date=datetime.datetime.now(tz=datetime.UTC),
+        description="test data",
+        metadata={"this": "is", "metadata": 0},
+        data="I can make a sentence here",
+    )
+
+    assert len(raw.model_dump(mode="json")) == 5  # Includes enhancement type
+    assert isinstance(raw.data, str)
+
+
+def test_raw_enhancement_raise_error_if_empty_data():
+    with pytest.raises(
+        ValidationError, match="data must be populated on a raw enhancement"
+    ):
+        destiny_sdk.enhancements.RawEnhancement(
+            source_export_date=datetime.datetime.now(tz=datetime.UTC),
+            description="test data",
+            metadata={"this": "is", "metadata": 0},
+            data=None,
+        )
+
+    with pytest.raises(
+        ValidationError, match="data must be populated on a raw enhancement"
+    ):
+        destiny_sdk.enhancements.RawEnhancement(
+            source_export_date=datetime.datetime.now(tz=datetime.UTC),
+            description="test data",
+            metadata={"this": "is", "metadata": 0},
+            data={},
+        )
 
 
 def test_empty_annotation_enhancement_errors():
