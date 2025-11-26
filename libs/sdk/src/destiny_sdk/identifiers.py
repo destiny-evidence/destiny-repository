@@ -60,7 +60,7 @@ class ERICIdentifier(BaseModel):
     """
 
     identifier: str = Field(
-        description="The ERIC Number of the refrence.", pattern=r"E[D|J][0-9]+$"
+        description="The ERIC Number of the reference.", pattern=r"E[D|J][0-9]+$"
     )
     identifier_type: Literal[ExternalIdentifierType.ERIC] = Field(
         ExternalIdentifierType.ERIC, description="The type of identifier used."
