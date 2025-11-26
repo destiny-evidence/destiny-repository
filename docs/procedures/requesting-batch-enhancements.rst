@@ -126,6 +126,14 @@ To implement a polling-based robot:
 - **Batch-level errors**: If the entire batch fails (e.g., due to connectivity issues), set the ``error`` field in the :class:`RobotEnhancementBatchResult <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatchResult>`.
 - **Reference-level errors**: For individual reference failures, include :class:`LinkedRobotError <libs.sdk.src.destiny_sdk.robots.LinkedRobotError>` entries in the result file and leave the batch result ``error`` field as ``None``.
 
+**Leasing and Expiry**
+
+Each batch is leased to a robot for a configurable duration (default: 10 minutes). If processing takes longer than the lease duration:
+
+- **Lease Renewal**: Call ``PATCH /robot-enhancement-batches/<batch_id>/renew-lease/`` to extend the lease before it expires.
+- **Expiry**: If the lease expires before results are submitted, pending enhancements transition to ``EXPIRED`` status and replacement enhancements become available for future batches.
+- **Result Rejection**: If results are submitted after expiry, they will be rejected with an HTTP 422 Unprocessable Entity error. The robot should discard the results and poll for new batches.
+
 **Status Monitoring and URL Refresh**
 
 Robots can call ``GET /robot-enhancement-batches/<batch_id>/`` to refresh signed URLs for a specific batch if they expire. Note that the reference data however is not refreshed, it is point-in-time from the time of the initial enhancement request.
