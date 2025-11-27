@@ -303,7 +303,7 @@ class AzureJwtAuth(AuthMethod):
 
         if rsa_key:
             try:
-                expected_issuer = f"{self.login_url}/{self.tenant_id}/v2.0"
+                expected_issuer = f"{self.login_url}/v2.0"
                 payload = jwt.decode(
                     token,
                     rsa_key,
@@ -344,9 +344,7 @@ class AzureJwtAuth(AuthMethod):
 
     async def _get_microsoft_keys(self) -> Any:  # noqa: ANN401
         async with AsyncClient() as client:
-            response = await client.get(
-                f"{self.login_url}/{self.tenant_id}/discovery/v2.0/keys"
-            )
+            response = await client.get(f"{self.login_url}/discovery/v2.0/keys")
             return response.json()
 
     def _require_scope_or_role(self, verified_claims: dict[str, Any]) -> bool:
