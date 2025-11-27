@@ -24,9 +24,10 @@ from testcontainers.minio import MinioContainer
 from testcontainers.postgres import PostgresContainer
 from testcontainers.rabbitmq import RabbitMqContainer
 
-from app.core.config import DatabaseConfig
+from app.core.config import DatabaseConfig, ESConfig, get_settings
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.robots.models.models import Robot
+from app.persistence.es.client import es_manager
 from app.persistence.sql.session import (
     AsyncDatabaseSessionManager,
     db_manager,
@@ -57,6 +58,8 @@ app_port = 8000
 bucket_name = "test"
 host_name = os.getenv("DOCKER_HOSTNAME", "host.docker.internal")
 container_prefix = "e2e"
+
+settings = get_settings()
 
 
 def print_logs(name: str, container: DockerContainer):
@@ -229,10 +232,10 @@ def rabbitmq():
     """RabbitMQ container."""
     logger.info("Creating RabbitMQ container...")
     with (
-        RabbitMqContainer("rabbitmq:3-management", port=5672)
-        .with_bind_ports(5672, 5672)
+        RabbitMqContainer("rabbitmq:3-management")
+        .with_exposed_ports(5672)
         .waiting_for(LogMessageWaitStrategy("Server startup complete"))
-        .with_name(f"{container_prefix}-rabbitmq") as rabbitmq
+        .with_name(f"{container_prefix}-rabbitmq-2") as rabbitmq
     ):
         logger.info("RabbitMQ container ready.")
         yield rabbitmq
@@ -240,11 +243,22 @@ def rabbitmq():
 
 @pytest.fixture
 async def test_broker(
-    rabbitmq: RabbitMqContainer,  # noqa: ARG001
+    rabbitmq: RabbitMqContainer,
+    elasticsearch: ElasticSearchContainer,
+    postgres: PostgresContainer,
 ) -> AsyncGenerator[AsyncBroker, None]:
     """Get a broker for connecting to RabbitMQ container from test process."""
-    from app.tasks import broker
+    from app.tasks import get_aio_pika_broker
 
+    broker = get_aio_pika_broker(
+        f"amqp://guest:guest@{rabbitmq.get_container_host_ip()}:"
+        f"{rabbitmq.get_exposed_port(5672)}/"
+    )
+    db_manager.init(
+        DatabaseConfig(db_url=postgres.get_connection_url()),
+        settings.app_name,
+    )
+    await es_manager.init(ESConfig(es_insecure_url=elasticsearch.get_url()))
     await broker.startup()
     yield broker
     await broker.shutdown()
