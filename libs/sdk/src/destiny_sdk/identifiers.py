@@ -190,3 +190,7 @@ class IdentifierLookup(BaseModel):
         if self.identifier_type is None:
             return UUID4(self.identifier)
         return ExternalIdentifierAdapter.validate_python(self.model_dump())
+
+    def __repr__(self) -> str:
+        """Serialize the identifier lookup to a string."""
+        return self.serialize()

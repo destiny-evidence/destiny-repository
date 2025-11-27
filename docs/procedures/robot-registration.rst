@@ -49,4 +49,4 @@ The robot owner can check the robot details by calling the ``GET /robots/<robot_
 
 For Robots
 ----------
-Robots must be configured witht the robot_id and client_secret provided by destiny repository, and use these with the Client in :class:`Client <libs.sdk.src.destiny_sdk.client.Client>` to authenticate against the destiny repository.
+Robots must be configured witht the robot_id and client_secret provided by destiny repository, and use these with the Client in :class:`RobotClient <libs.sdk.src.destiny_sdk.client.RobotClient>` to authenticate against the destiny repository.

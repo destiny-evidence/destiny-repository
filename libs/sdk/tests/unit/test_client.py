@@ -4,7 +4,7 @@ import time
 import uuid
 
 import pytest
-from destiny_sdk.client import Client, create_signature
+from destiny_sdk.client import RobotClient, create_signature
 from destiny_sdk.robots import (
     RobotEnhancementBatchRead,
     RobotEnhancementBatchResult,
@@ -61,7 +61,7 @@ def test_verify_hmac_headers_sent(
         json=expected_response_body.model_dump(mode="json"),
     )
 
-    Client(
+    RobotClient(
         base_url=HttpUrl(fake_destiny_repository_url),
         secret_key=fake_secret_key,
         client_id=fake_robot_id,

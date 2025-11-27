@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
-from destiny_sdk.client import Client
+from destiny_sdk.client import RobotClient
 from destiny_sdk.enhancements import Enhancement
 from destiny_sdk.references import Reference
 from destiny_sdk.robots import (
@@ -34,10 +34,10 @@ if TYPE_CHECKING:
     import factory
 
 
-def _create_client(repo_url: HttpUrl) -> Client:
+def _create_client(repo_url: HttpUrl) -> RobotClient:
     """Create a test client for API calls."""
     # For e2e tests, we use a dummy secret key and client_id since auth is bypassed
-    return Client(
+    return RobotClient(
         base_url=repo_url,
         secret_key="dummy_secret_key",
         client_id=uuid.uuid4(),
