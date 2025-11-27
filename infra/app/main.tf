@@ -68,6 +68,10 @@ locals {
       value = var.external_directory_tenant_id
     },
     {
+      name  = "AZURE_LOGIN_URL"
+      value = var.azure_login_url
+    },
+    {
       name = "DB_CONFIG",
       value = jsonencode({
         DB_FQDN = azurerm_postgresql_flexible_server.this.fqdn

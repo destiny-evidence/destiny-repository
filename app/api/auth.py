@@ -266,6 +266,7 @@ class AzureJwtAuth(AuthMethod):
         self.api_audience = application_id
         self.scope = scope
         self.role = role
+        self.login_url = settings.azure_login_url.rstrip("/")
         self.cache: TTLCache = TTLCache(maxsize=1, ttl=cache_ttl)
 
     async def verify_token(self, token: str) -> dict[str, Any]:
@@ -307,7 +308,7 @@ class AzureJwtAuth(AuthMethod):
                     rsa_key,
                     algorithms=["RS256"],
                     audience=self.api_audience,
-                    issuer=f"https://login.microsoftonline.com/{self.tenant_id}/v2.0",
+                    issuer=f"{self.login_url}/{self.tenant_id}/v2.0",
                 )
             except exceptions.ExpiredSignatureError as exc:
                 raise AuthError(
@@ -336,7 +337,7 @@ class AzureJwtAuth(AuthMethod):
     async def _get_microsoft_keys(self) -> Any:  # noqa: ANN401
         async with AsyncClient() as client:
             response = await client.get(
-                f"https://login.microsoftonline.com/{self.tenant_id}/discovery/v2.0/keys"
+                f"{self.login_url}/{self.tenant_id}/discovery/v2.0/keys"
             )
             return response.json()
 

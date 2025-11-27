@@ -49,6 +49,12 @@ variable "external_directory_tenant_id" {
   type        = string
 }
 
+variable "azure_login_url" {
+  description = "Azure login URL for JWT token validation. Examples: https://login.microsoftonline.com, https://tenantName.ciamlogin.com"
+  type        = string
+  default     = "https://login.microsoftonline.com"
+}
+
 variable "budget_code" {
   description = "Budget code for tagging resource groups. Required tag for resource groups"
   type        = string
