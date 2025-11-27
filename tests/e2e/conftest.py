@@ -5,7 +5,6 @@ import logging
 import os
 import pathlib
 import uuid
-from collections.abc import AsyncGenerator
 
 import httpx
 import pytest
@@ -15,7 +14,6 @@ from alembic.command import upgrade
 from elasticsearch import AsyncElasticsearch
 from minio import Minio
 from sqlalchemy.ext.asyncio import AsyncSession
-from taskiq import AsyncBroker
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.docker_client import DockerClient
 from testcontainers.core.wait_strategies import HttpWaitStrategy, LogMessageWaitStrategy
@@ -24,10 +22,9 @@ from testcontainers.minio import MinioContainer
 from testcontainers.postgres import PostgresContainer
 from testcontainers.rabbitmq import RabbitMqContainer
 
-from app.core.config import DatabaseConfig, ESConfig, get_settings
+from app.core.config import DatabaseConfig, get_settings
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.robots.models.models import Robot
-from app.persistence.es.client import es_manager
 from app.persistence.sql.session import (
     AsyncDatabaseSessionManager,
     db_manager,
@@ -239,29 +236,6 @@ def rabbitmq():
     ):
         logger.info("RabbitMQ container ready.")
         yield rabbitmq
-
-
-@pytest.fixture
-async def test_broker(
-    rabbitmq: RabbitMqContainer,
-    elasticsearch: ElasticSearchContainer,
-    postgres: PostgresContainer,
-) -> AsyncGenerator[AsyncBroker, None]:
-    """Get a broker for connecting to RabbitMQ container from test process."""
-    from app.tasks import get_aio_pika_broker
-
-    broker = get_aio_pika_broker(
-        f"amqp://guest:guest@{rabbitmq.get_container_host_ip()}:"
-        f"{rabbitmq.get_exposed_port(5672)}/"
-    )
-    db_manager.init(
-        DatabaseConfig(db_url=postgres.get_connection_url()),
-        settings.app_name,
-    )
-    await es_manager.init(ESConfig(es_insecure_url=elasticsearch.get_url()))
-    await broker.startup()
-    yield broker
-    await broker.shutdown()
 
 
 @pytest.fixture(scope="session")
