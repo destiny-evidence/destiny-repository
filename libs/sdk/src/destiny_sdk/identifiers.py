@@ -194,3 +194,7 @@ class IdentifierLookup(BaseModel):
     def __repr__(self) -> str:
         """Serialize the identifier lookup to a string."""
         return self.serialize()
+
+    def __str__(self) -> str:
+        """Serialize the identifier lookup to a string."""
+        return self.serialize()
