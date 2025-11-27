@@ -19,8 +19,8 @@ from destiny_sdk.robots import (
 )
 from pydantic import HttpUrl
 from tenacity import Retrying, stop_after_attempt, wait_fixed
+from testcontainers.core.container import DockerContainer
 
-from app.domain.references.tasks import expire_and_replace_stale_pending_enhancements
 from app.domain.robots.models.models import Robot
 from tests.factories import (
     AbstractContentEnhancementFactory,
@@ -214,11 +214,30 @@ async def test_polling_pending_enhancements(
     )
 
 
-@pytest.mark.usefixtures("test_broker")
+async def send_expiry_task(worker: DockerContainer) -> None:
+    """
+    Execute the expiry task in the worker container.
+
+    This is the same way it is executed in production via the scheduled container app
+    job.
+    """
+    worker.exec(
+        [
+            "uv",
+            "run",
+            "python",
+            "-m",
+            "app.run_task",
+            "app.domain.references.tasks:expire_and_replace_stale_pending_enhancements",
+        ]
+    )
+
+
 async def test_cannot_submit_expired_enhancement_results(
     destiny_client_v1: httpx.AsyncClient,
     robot: Robot,
     minio_proxy_client: httpx.AsyncClient,
+    worker: DockerContainer,
     add_references: Callable[[int], Awaitable[set[uuid.UUID]]],
 ):
     """Test that robots cannot submit results after pending enhancements expire."""
@@ -240,7 +259,7 @@ async def test_cannot_submit_expired_enhancement_results(
         lease="PT2S",
     )
     await asyncio.sleep(3)  # Wait for lease to expire
-    await expire_and_replace_stale_pending_enhancements.kiq()
+    await send_expiry_task(worker)
     await asyncio.sleep(3)  # Wait for worker to process task
 
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
@@ -255,11 +274,11 @@ async def test_cannot_submit_expired_enhancement_results(
     assert "importing" in error_detail.lower()
 
 
-@pytest.mark.usefixtures("test_broker")
 async def test_can_submit_results_after_renewing_lease(
     destiny_client_v1: httpx.AsyncClient,
     robot: Robot,
     minio_proxy_client: httpx.AsyncClient,
+    worker: DockerContainer,
     add_references: Callable[[int], Awaitable[set[uuid.UUID]]],
 ):
     """Test that robots can submit results if they renew the lease before expiry."""
@@ -289,7 +308,7 @@ async def test_can_submit_results_after_renewing_lease(
 
     # Wait to ensure original lease would have expired
     await asyncio.sleep(3)
-    await expire_and_replace_stale_pending_enhancements.kiq()
+    await send_expiry_task(worker)
     await asyncio.sleep(3)  # Wait for worker to process task
 
     await _submit_robot_results(
