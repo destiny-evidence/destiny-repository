@@ -312,6 +312,7 @@ class OAuthClient:
         azure_client_id: str,
         azure_application_id: str,
         azure_login_url: str = "https://login.microsoftonline.com/",
+        azure_client_secret: str | None = None,
         *,
         use_managed_identity: bool = False,
     ) -> None:
@@ -328,6 +329,8 @@ class OAuthClient:
         :type application_id: str
         :param azure_login_url: The Azure login URL.
         :type azure_login_url: str
+        :param azure_client_secret: The Azure client secret.
+        :type azure_client_secret: str | None
         :param use_managed_identity: Whether to use managed identity for authentication
         :type use_managed_identity: bool
         """
@@ -335,6 +338,12 @@ class OAuthClient:
             oauth_app = ConfidentialClientApplication(
                 client_id=azure_client_id,
                 authority=f"{azure_login_url}{azure_tenant_id}",
+            )
+        elif azure_client_secret:
+            oauth_app = ConfidentialClientApplication(
+                client_id=azure_client_id,
+                authority=f"{azure_login_url}{azure_tenant_id}",
+                client_credential=azure_client_secret,
             )
         else:
             oauth_app = PublicClientApplication(
