@@ -1,5 +1,7 @@
 """Utilities for file handling."""
 
+from pathlib import Path
+
 import httpx
 from fastapi import status
 
@@ -25,3 +27,8 @@ def check_signed_url(
             return response.text
     except httpx.RequestError as e:
         return str(e)
+
+
+def get_project_root() -> Path:
+    """Get the project root directory."""
+    return Path(__file__).parent.parent
