@@ -43,7 +43,7 @@ resource "azuread_application" "external_directory_destiny_repository" {
       admin_consent_display_name = "Import as user"
       id                         = random_uuid.external_directory_importer_scope.result
       type                       = "User"
-      value                      = "import.all"
+      value                      = "import.writer.all"
       user_consent_description   = "Allow you to import"
       user_consent_display_name  = "Import"
     }
