@@ -303,21 +303,29 @@ class AzureJwtAuth(AuthMethod):
 
         if rsa_key:
             try:
+                expected_issuer = f"{self.login_url}/{self.tenant_id}/v2.0"
                 payload = jwt.decode(
                     token,
                     rsa_key,
                     algorithms=["RS256"],
                     audience=self.api_audience,
-                    issuer=f"{self.login_url}/{self.tenant_id}/v2.0",
+                    issuer=expected_issuer,
                 )
             except exceptions.ExpiredSignatureError as exc:
                 raise AuthError(
                     status_code=status.HTTP_401_UNAUTHORIZED, detail="Token is expired."
                 ) from exc
             except exceptions.JWTClaimsError as exc:
+                unverified = jwt.get_unverified_claims(token)
+                token_aud = unverified.get("aud")
+                token_iss = unverified.get("iss")
                 raise AuthError(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Incorrect claims, please check the audience and issuer.",
+                    detail=(
+                        f"Incorrect claims. "
+                        f"Expected aud={self.api_audience}, got={token_aud}. "
+                        f"Expected iss={expected_issuer}, got={token_iss}"
+                    ),
                 ) from exc
             except Exception as exc:
                 if cached_jwks:
