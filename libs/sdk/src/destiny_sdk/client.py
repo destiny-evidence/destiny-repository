@@ -1,11 +1,15 @@
 """Send authenticated requests to Destiny Repository."""
 
 import time
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 
 import httpx
-from pydantic import UUID4, HttpUrl
+from msal import ConfidentialClientApplication, PublicClientApplication
+from pydantic import UUID4, HttpUrl, TypeAdapter
 
+from destiny_sdk.auth import create_signature
+from destiny_sdk.identifiers import IdentifierLookup
+from destiny_sdk.references import Reference, ReferenceSearchResult
 from destiny_sdk.robots import (
     EnhancementRequestRead,
     RobotEnhancementBatch,
@@ -13,8 +17,7 @@ from destiny_sdk.robots import (
     RobotEnhancementBatchResult,
     RobotResult,
 )
-
-from .auth import create_signature
+from destiny_sdk.search import AnnotationFilter
 
 
 class HMACSigningAuth(httpx.Auth):
@@ -53,7 +56,7 @@ class HMACSigningAuth(httpx.Auth):
         yield request
 
 
-class Client:
+class RobotClient:
     """
     Client for interaction with the Destiny API.
 
@@ -172,3 +175,273 @@ class Client:
             params={"lease": lease_duration} if lease_duration else None,
         )
         response.raise_for_status()
+
+
+# Backward compatibility
+Client = RobotClient
+
+
+class OAuth2TokenRefreshAuth(httpx.Auth):
+    """Auth middleware that handles OAuth2 token refresh on expiration."""
+
+    def __init__(
+        self,
+        oauth_app: PublicClientApplication | ConfidentialClientApplication,
+        scope: str,
+    ) -> None:
+        """
+        Initialize the auth middleware.
+
+        :param oauth_app: The MSAL PublicClientApplication instance.
+        :type oauth_app: PublicClientApplication
+        :param scope: The OAuth2 scope to request.
+        :type scope: str
+        """
+        self._oauth_app = oauth_app
+        self._scope = scope
+        self._account = None
+        self._get_token: Callable[..., str] = (
+            self._get_token_from_public_client
+            if isinstance(oauth_app, PublicClientApplication)
+            else self._get_token_from_confidential_client
+        )
+
+    def _get_token_from_public_client(self, *, force_refresh: bool = False) -> str:
+        """
+        Get an OAuth2 token from a PublicClientApplication.
+
+        :param force_refresh: Whether to force a token refresh.
+        :type force_refresh: bool
+        :return: The OAuth2 token.
+        :rtype: str
+        """
+        if not isinstance(self._oauth_app, PublicClientApplication):
+            msg = "oauth_app must be a PublicClientApplication for this method"
+            raise TypeError(msg)
+
+        # Uses msal cache if possible, else interactive login
+        result = self._oauth_app.acquire_token_silent(
+            scopes=[self._scope],
+            account=self._account,
+            force_refresh=force_refresh,
+        )
+        if not result:
+            result = self._oauth_app.acquire_token_interactive(scopes=[self._scope])
+
+        if not result.get("access_token"):
+            msg = (
+                "Failed to acquire access token: "
+                f"{result.get('error', 'Unknown error')}"
+            )
+            raise RuntimeError(msg)
+
+        # After first login, cache the account for silent token acquisition
+        if not self._account and (accounts := self._oauth_app.get_accounts()):
+            self._account = accounts[0]
+
+        return result["access_token"]
+
+    def _get_token_from_confidential_client(
+        self,
+        *,
+        force_refresh: bool = False,  # noqa: ARG002
+    ) -> str:
+        """
+        Get an OAuth2 token from a ConfidentialClientApplication.
+
+        :param force_refresh: Whether to force a token refresh.
+        :type force_refresh: bool
+        :return: The OAuth2 token.
+        :rtype: str
+        """
+        if not isinstance(self._oauth_app, ConfidentialClientApplication):
+            msg = "oauth_app must be a ConfidentialClientApplication for this method"
+            raise TypeError(msg)
+
+        # Uses msal cache if possible, else client credentials flow
+        result = self._oauth_app.acquire_token_for_client(scopes=[self._scope])
+
+        if not result.get("access_token"):
+            msg = (
+                "Failed to acquire access token: "
+                f"{result.get('error', 'Unknown error')}"
+            )
+            raise RuntimeError(msg)
+
+        return result["access_token"]
+
+    def auth_flow(
+        self, request: httpx.Request
+    ) -> Generator[httpx.Request, httpx.Response]:
+        """
+        Add OAuth2 token to request and handle token refresh on expiration.
+
+        :param request: The request to authenticate.
+        :type request: httpx.Request
+        :yield: Authenticated request with token refresh handling.
+        :rtype: Generator[httpx.Request, httpx.Response]
+        """
+        # Add initial token
+        token = self._get_token()
+        request.headers["Authorization"] = f"Bearer {token}"
+
+        response = yield request
+
+        # Check if token expired and retry once with fresh token
+        if response.status_code == httpx.codes.UNAUTHORIZED:
+            try:
+                json_response: dict = response.json()
+                error_detail: str = json_response.get("detail", {})
+            except ValueError:
+                error_detail = ""
+
+            if error_detail == "Token has expired.":
+                # Force refresh token and retry
+                token = self._get_token(force_refresh=True)
+                request.headers["Authorization"] = f"Bearer {token}"
+                yield request
+
+
+class OAuthClient:
+    """Client for interaction with the Destiny API using OAuth2."""
+
+    def __init__(  # noqa: PLR0913
+        self,
+        base_url: HttpUrl | str,
+        azure_tenant_id: str,
+        azure_client_id: str,
+        azure_application_id: str,
+        azure_login_url: str = "https://login.microsoftonline.com/",
+        azure_client_secret: str | None = None,
+        *,
+        use_managed_identity: bool = False,
+    ) -> None:
+        """
+        Initialize the client.
+
+        :param base_url: The base URL for the Destiny Repository API.
+        :type base_url: HttpUrl
+        :param tenant_id: The OAuth2 tenant ID.
+        :type tenant_id: str
+        :param client_id: The OAuth2 client ID.
+        :type client_id: str
+        :param application_id: The application ID for the Destiny API.
+        :type application_id: str
+        :param azure_login_url: The Azure login URL.
+        :type azure_login_url: str
+        :param azure_client_secret: The Azure client secret.
+        :type azure_client_secret: str | None
+        :param use_managed_identity: Whether to use managed identity for authentication
+        :type use_managed_identity: bool
+        """
+        if use_managed_identity:
+            oauth_app = ConfidentialClientApplication(
+                client_id=azure_client_id,
+                authority=f"{azure_login_url}{azure_tenant_id}",
+            )
+        elif azure_client_secret:
+            oauth_app = ConfidentialClientApplication(
+                client_id=azure_client_id,
+                authority=f"{azure_login_url}{azure_tenant_id}",
+                client_credential=azure_client_secret,
+            )
+        else:
+            oauth_app = PublicClientApplication(
+                azure_client_id,
+                authority=f"{azure_login_url}{azure_tenant_id}",
+                client_credential=None,
+            )
+
+        scope = f"api://{azure_application_id}/.default"
+        self._client = httpx.Client(
+            base_url=str(base_url).removesuffix("/").removesuffix("/v1") + "/v1",
+            headers={"Content-Type": "application/json"},
+            auth=OAuth2TokenRefreshAuth(oauth_app=oauth_app, scope=scope),
+        )
+
+    def _raise_for_status(self, response: httpx.Response) -> None:
+        """
+        Raise an error if the response status is not successful.
+
+        :param response: The HTTP response to check.
+        :type response: httpx.Response
+        :raises httpx.HTTPStatusError: If the response status is not successful.
+        """
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            msg = (
+                f"Error response {exc.response.status_code} from "
+                f"{exc.request.url}: {exc.response.text}"
+            )
+            raise httpx.HTTPStatusError(
+                msg, request=exc.request, response=exc.response
+            ) from exc
+
+    def search(  # noqa: PLR0913
+        self,
+        query: str,
+        start_year: int | None = None,
+        end_year: int | None = None,
+        annotations: list[str | AnnotationFilter] | None = None,
+        sort: str | None = None,
+        page: int = 1,
+    ) -> ReferenceSearchResult:
+        """
+        Send a search request to the Destiny Repository API.
+
+        See also: :doc:`Search <../procedures/search>`.
+
+        :param query: The search query string.
+        :type query: str
+        :param start_year: The start year for filtering results.
+        :type start_year: int | None
+        :param end_year: The end year for filtering results.
+        :type end_year: int | None
+        :param annotations: A list of annotation filters to apply.
+        :type annotations: list[str | libs.sdk.src.destiny_sdk.search.AnnotationFilter] | None
+        :param sort: The sort order for the results.
+        :type sort: str | None
+        :param page: The page number of results to retrieve.
+        :type page: int
+        :return: The response from the API.
+        :rtype: libs.sdk.src.destiny_sdk.references.ReferenceSearchResult
+        """  # noqa: E501
+        params = {"q": query, "page": page}
+        if start_year:
+            params["start_year"] = start_year
+        if end_year:
+            params["end_year"] = end_year
+        if annotations:
+            params["annotation"] = [str(annotation) for annotation in annotations]
+        if sort:
+            params["sort"] = sort
+        response = self._client.get(
+            "/references/search/",
+            params=params,
+        )
+        self._raise_for_status(response)
+        return ReferenceSearchResult.model_validate(response.json())
+
+    def lookup(
+        self,
+        identifiers: list[str | IdentifierLookup],
+    ) -> list[Reference]:
+        """
+        Lookup references by identifiers.
+
+        See also: :doc:`Search <../procedures/search>`.
+
+        :param identifiers: The identifiers to look up.
+        :type identifiers: list[str | libs.sdk.src.destiny_sdk.identifiers.IdentifierLookup]
+        :return: The list of references matching the identifiers.
+        :rtype: list[libs.sdk.src.destiny_sdk.references.Reference]
+        """  # noqa: E501
+        response = self._client.get(
+            "/references/",
+            params={
+                "identifier": ",".join([str(identifier) for identifier in identifiers])
+            },
+        )
+        self._raise_for_status(response)
+        return TypeAdapter(list[Reference]).validate_python(response.json())

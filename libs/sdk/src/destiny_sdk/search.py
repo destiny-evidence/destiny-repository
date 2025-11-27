@@ -51,3 +51,7 @@ class AnnotationFilter(BaseModel):
         if self.score is not None:
             annotation += f"@{self.score}"
         return annotation
+
+    def __str__(self) -> str:
+        """Serialize the annotation filter to a string."""
+        return repr(self)
