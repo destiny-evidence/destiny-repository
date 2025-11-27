@@ -24,17 +24,11 @@ broker: AsyncBroker = AzureServiceBusBroker(
     max_lock_renewal_duration=settings.message_lock_renewal_duration,
 )
 
-
-def get_aio_pika_broker(message_broker_url: str | None) -> AioPikaBroker:
-    """Get an AioPika broker for local development and testing."""
-    return AioPikaBroker(message_broker_url)
-
-
 if settings.env == Environment.LOCAL or settings.tests_use_rabbitmq:
     from opentelemetry.instrumentation.aio_pika import AioPikaInstrumentor
 
     AioPikaInstrumentor().instrument()
-    broker = get_aio_pika_broker(settings.message_broker_url)
+    broker = AioPikaBroker(settings.message_broker_url)
 
 elif settings.env == "test":
     broker = InMemoryBroker()

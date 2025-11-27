@@ -22,7 +22,7 @@ from testcontainers.minio import MinioContainer
 from testcontainers.postgres import PostgresContainer
 from testcontainers.rabbitmq import RabbitMqContainer
 
-from app.core.config import DatabaseConfig, get_settings
+from app.core.config import DatabaseConfig
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.robots.models.models import Robot
 from app.persistence.sql.session import (
@@ -55,8 +55,6 @@ app_port = 8000
 bucket_name = "test"
 host_name = os.getenv("DOCKER_HOSTNAME", "host.docker.internal")
 container_prefix = "e2e"
-
-settings = get_settings()
 
 
 def print_logs(name: str, container: DockerContainer):
@@ -232,7 +230,7 @@ def rabbitmq():
         RabbitMqContainer("rabbitmq:3-management")
         .with_exposed_ports(5672)
         .waiting_for(LogMessageWaitStrategy("Server startup complete"))
-        .with_name(f"{container_prefix}-rabbitmq-2") as rabbitmq
+        .with_name(f"{container_prefix}-rabbitmq") as rabbitmq
     ):
         logger.info("RabbitMQ container ready.")
         yield rabbitmq
