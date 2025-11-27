@@ -9,6 +9,7 @@ from fastapi.middleware import Middleware
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from app.api.exception_handlers import (
@@ -41,6 +42,7 @@ from app.domain.references.routes import (
 )
 from app.domain.robots.routes import router as robot_management_router_v1
 from app.system.routes import router as system_utilities_router_v1
+from app.utils.files import get_project_root
 
 logger = get_logger(__name__)
 
@@ -55,6 +57,11 @@ def create_v1_router() -> APIRouter:
     api_v1.include_router(robot_management_router_v1)
     api_v1.include_router(system_utilities_router_v1)
     return api_v1
+
+
+def mount_static_files(app: FastAPI, static_dir: pathlib.Path) -> None:
+    """Mount static files to the FastAPI application."""
+    app.mount("/v1/static", StaticFiles(directory=static_dir), name="static")
 
 
 def register_api(
@@ -161,6 +168,8 @@ def register_api(
         )
 
     app.include_router(create_v1_router())
+
+    mount_static_files(app, static_dir=get_project_root() / "static")
 
     if otel_enabled:
         FastAPIInstrumentor().instrument_app(app)
