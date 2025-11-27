@@ -18,7 +18,7 @@ from destiny_sdk.robots import (
 )
 from destiny_sdk.search import AnnotationFilter
 
-from .auth import AuthException, create_signature
+from .auth import create_signature
 
 
 class HMACSigningAuth(httpx.Auth):
@@ -196,6 +196,7 @@ class OAuth2TokenRefreshAuth(httpx.Auth):
         """
         self._oauth_app = oauth_app
         self._scope = scope
+        self._account = None
 
     def _get_token(self) -> str:
         """
@@ -204,13 +205,22 @@ class OAuth2TokenRefreshAuth(httpx.Auth):
         :return: The OAuth2 token.
         :rtype: str
         """
-        result = self._oauth_app.acquire_token_interactive(scopes=[self._scope])
+        result = self._oauth_app.acquire_token_silent(
+            scopes=[self._scope],
+            account=self._account,
+        )
+        if not result:
+            result = self._oauth_app.acquire_token_interactive(scopes=[self._scope])
+
         if not result.get("access_token"):
             msg = (
                 "Failed to acquire access token: "
                 f"{result.get('error', 'Unknown error')}"
             )
-            raise AuthException(status_code=401, detail=msg)
+            raise RuntimeError(msg)
+
+        if not self._account:
+            self._account = result.get("account")
         return result["access_token"]
 
     def auth_flow(
