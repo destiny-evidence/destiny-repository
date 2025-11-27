@@ -16,8 +16,9 @@ from destiny_sdk.enhancements import (
 )
 from destiny_sdk.identifiers import (
     DOIIdentifier,
+    ERICIdentifier,
     ExternalIdentifier,
-    ExternalIdentifierType,
+    ProquestIdentifier,
 )
 from destiny_sdk.references import ReferenceFileInput
 from destiny_sdk.visibility import Visibility
@@ -48,12 +49,16 @@ class EPPIParser:
     ) -> list[ExternalIdentifier]:
         identifiers = []
         if doi := ref_to_import.get("DOI"):
-            identifiers.append(
-                DOIIdentifier(
-                    identifier=doi,
-                    identifier_type=ExternalIdentifierType.DOI,
-                )
+            identifiers.append(DOIIdentifier(identifier=doi))
+        url = ref_to_import.get("URL")
+        if url and url.startswith("https://eric.ed.gov/"):
+            identifiers.append(ERICIdentifier(identifier=url))
+        if url and (
+            url.startswith(
+                ("https://search.proquest.com/", "https://www.proquest.com/")
             )
+        ):
+            identifiers.append(ProquestIdentifier(identifier=url))
         return identifiers
 
     def _parse_abstract_enhancement(

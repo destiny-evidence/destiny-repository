@@ -23,6 +23,8 @@ class ExternalIdentifierType(StrEnum):
     """
     PM_ID = auto()
     """A PubMed ID which is a unique identifier for a document in PubMed."""
+    PROQUEST = auto()
+    """A ProQuest ID which is a unqiue identifier for a document in ProQuest."""
     OPEN_ALEX = auto()
     """An OpenAlex ID which is a unique identifier for a document in OpenAlex."""
     OTHER = auto()
@@ -47,6 +49,27 @@ class DOIIdentifier(BaseModel):
         return (
             value.removeprefix("http://doi.org/")
             .removeprefix("https://doi.org/")
+            .strip()
+        )
+
+
+class ProquestIdentifier(BaseModel):
+    """An external identifier representing a ProQuest ID."""
+
+    identifier: int = Field(description="The ProQuest id of the reference")
+    identifier_type: Literal[ExternalIdentifierType.PROQUEST] = Field(
+        ExternalIdentifierType.PROQUEST, description="The type of identifier used."
+    )
+
+    @field_validator("identifier", mode="before")
+    @classmethod
+    def remove_doi_url(cls, value: str) -> int:
+        """Remove the URL part of the ProQuest id if it exists."""
+        return int(
+            value.removeprefix("https://search.proquest.com/docview/")
+            .removeprefix("http://search.proquest.com/docview/")
+            .removeprefix("https://www.proquest.com/docview/")
+            .removeprefix("http://www.proquest.com/docview/")
             .strip()
         )
 
@@ -124,6 +147,7 @@ ExternalIdentifier = Annotated[
     DOIIdentifier
     | ERICIdentifier
     | PubMedIdentifier
+    | ProquestIdentifier
     | OpenAlexIdentifier
     | OtherIdentifier,
     Field(discriminator="identifier_type"),
