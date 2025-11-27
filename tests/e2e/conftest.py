@@ -5,6 +5,7 @@ import logging
 import os
 import pathlib
 import uuid
+from collections.abc import AsyncGenerator
 
 import httpx
 import pytest
@@ -14,6 +15,7 @@ from alembic.command import upgrade
 from elasticsearch import AsyncElasticsearch
 from minio import Minio
 from sqlalchemy.ext.asyncio import AsyncSession
+from taskiq import AsyncBroker
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.docker_client import DockerClient
 from testcontainers.core.wait_strategies import HttpWaitStrategy, LogMessageWaitStrategy
@@ -228,11 +230,24 @@ def rabbitmq():
     logger.info("Creating RabbitMQ container...")
     with (
         RabbitMqContainer("rabbitmq:3-management", port=5672)
+        .with_bind_ports(5672, 5672)
         .waiting_for(LogMessageWaitStrategy("Server startup complete"))
         .with_name(f"{container_prefix}-rabbitmq") as rabbitmq
     ):
         logger.info("RabbitMQ container ready.")
         yield rabbitmq
+
+
+@pytest.fixture
+async def test_broker(
+    rabbitmq: RabbitMqContainer,  # noqa: ARG001
+) -> AsyncGenerator[AsyncBroker, None]:
+    """Get a broker for connecting to RabbitMQ container from test process."""
+    from app.tasks import broker
+
+    await broker.startup()
+    yield broker
+    await broker.shutdown()
 
 
 @pytest.fixture(scope="session")
@@ -432,7 +447,6 @@ async def robot(destiny_client_v1: httpx.AsyncClient) -> Robot:
         json={
             "name": robot.name,
             "description": robot.description,
-            "base_url": str(robot.base_url),
             "owner": robot.owner,
         },
     )

@@ -37,9 +37,11 @@ class Attributes(StrEnum):
     # Database attributes
     DB_SYSTEM_NAME = db_attributes.DB_SYSTEM_NAME
     DB_COLLECTION_NAME = db_attributes.DB_COLLECTION_NAME
+    DB_COLLECTION_ALIAS_NAME = "db.collection.alias_name"
     DB_OPERATION_NAME = db_attributes.DB_OPERATION_NAME
     DB_PK = _db_attributes.DB_QUERY_PARAMETER_TEMPLATE + ".pk"
     DB_PARAMS = _db_attributes.DB_QUERY_PARAMETER_TEMPLATE
+    DB_QUERY = db_attributes.DB_QUERY_TEXT
     DB_RECORD_COUNT = "db.record_count"
 
     # Deployment attributes

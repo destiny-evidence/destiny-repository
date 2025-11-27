@@ -199,6 +199,8 @@ class GenericAsyncSqlRepository(
         self,
         pks: Collection[UUID],
         preload: list[GenericSQLPreloadableType] | None = None,
+        *,
+        fail_on_missing: bool = True,
     ) -> list[GenericDomainModelType]:
         """
         Get records using their primary keys.
@@ -206,6 +208,8 @@ class GenericAsyncSqlRepository(
         Args:
         - pks (list[UUID]): The primary keys to use to look up the records.
         - preload (list[str]): A list of attributes to preload using a join.
+        - fail_on_missing (bool): Whether to raise an error if any records are
+          missing. Defaults to True.
 
         Returns:
         - list[GenericDomainModelType]: A list of domain models.
@@ -223,7 +227,7 @@ class GenericAsyncSqlRepository(
         result = await self._session.execute(query)
         db_references = result.unique().scalars().all()
 
-        if len(db_references) != len(pks):
+        if len(db_references) != len(pks) and fail_on_missing:
             missing_pks = set(pks) - {ref.id for ref in db_references}
             detail = (
                 f"Unable to find {self._persistence_cls.__name__}"
@@ -385,7 +389,7 @@ class GenericAsyncSqlRepository(
 
     @trace_repository_method(tracer)
     async def add_bulk(
-        self, records: list[GenericDomainModelType]
+        self, records: Collection[GenericDomainModelType]
     ) -> list[GenericDomainModelType]:
         """
         Add multiple records to the repository in bulk.

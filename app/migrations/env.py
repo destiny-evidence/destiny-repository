@@ -8,11 +8,14 @@ from typing import Any
 
 from alembic import context
 from alembic.runtime.environment import EnvironmentContext
+from opentelemetry import trace
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.core.config import get_settings
+from app.core.telemetry.logger import get_logger, logger_configurer
+from app.core.telemetry.otel import configure_otel
 from app.domain.imports.models.sql import *  # noqa: F403
 from app.domain.references.models.sql import *  # noqa: F403
 from app.domain.robots.models.sql import *  # noqa: F403
@@ -23,14 +26,23 @@ from app.persistence.sql.persistence import Base
 config = context.config
 settings = get_settings()
 
-
 if "PYTEST_CURRENT_TEST" not in os.environ:
     config.set_main_option("sqlalchemy.url", str(settings.db_config.connection_string))
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name, disable_existing_loggers=False)
+logger = get_logger(__name__)
+tracer = trace.get_tracer(__name__)
+
+logger_configurer.configure_console_logger(
+    log_level=settings.log_level, rich_rendering=settings.running_locally
+)
+
+if settings.otel_config and settings.otel_enabled:
+    # Always instrument SQL for migrations when OTEL is enabled
+    settings.otel_config.instrument_sql = True
+
+    configure_otel(
+        settings.otel_config, "db-migrator", settings.app_version, settings.env
+    )
 
 # add your model's MetaData object here
 # for 'autogenerate' support
@@ -86,6 +98,7 @@ def do_run_migrations(connection: Connection) -> None:  # noqa: D103
                 context.run_migrations()
 
 
+@tracer.start_as_current_span("Run alembic migration")
 async def run_async_migrations() -> None:
     """Run migrations with an Engine and associate a connection with the context."""
     connectable = async_engine_from_config(

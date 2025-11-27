@@ -1,5 +1,6 @@
 """Models associated with references."""
 
+import datetime
 import uuid
 from enum import StrEnum, auto
 from typing import Any, Literal, Self
@@ -13,13 +14,22 @@ from pydantic import (
     UUID4,
     BaseModel,
     Field,
+    PositiveInt,
     TypeAdapter,
+    field_validator,
     model_validator,
 )
 
 from app.core.telemetry.logger import get_logger
-from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
+from app.domain.base import (
+    DomainBaseModel,
+    ProjectedBaseModel,
+    SQLAttributeMixin,
+    SQLTimestampMixin,
+    StateMachineMixin,
+)
 from app.persistence.blob.models import BlobStorageFile
+from app.utils.time_and_date import apply_positive_timedelta
 
 logger = get_logger(__name__)
 
@@ -266,11 +276,11 @@ class GenericExternalIdentifier(DomainBaseModel):
     identifier: str = Field(
         description="The identifier itself.",
     )
-    identifier_type: ExternalIdentifierType = Field(
-        description="The type of the identifier.",
+    identifier_type: ExternalIdentifierType | None = Field(
+        description="The type of the identifier. If None, identifier is a database id.",
     )
     other_identifier_name: str | None = Field(
-        None,
+        default=None,
         description="The name of the other identifier.",
     )
 
@@ -289,11 +299,11 @@ class GenericExternalIdentifier(DomainBaseModel):
         )
 
 
-class ExternalIdentifierSearch(GenericExternalIdentifier):
+class IdentifierLookup(GenericExternalIdentifier):
     """Model to search for an external identifier."""
 
 
-class Enhancement(DomainBaseModel, SQLAttributeMixin):
+class Enhancement(DomainBaseModel, SQLTimestampMixin):
     """Core enhancement model with database attributes included."""
 
     source: str = Field(
@@ -324,12 +334,22 @@ class Enhancement(DomainBaseModel, SQLAttributeMixin):
     )
 
     def hash_data(self) -> int:
-        """Contentwise hash of the enhancement, excluding relationships."""
-        return hash(
-            self.model_dump_json(
-                exclude={"id", "reference_id", "reference"}, exclude_none=True
-            )
+        """
+        Contentwise hash of the enhancement.
+
+        Excludes relationships and timestamps.
+        """
+        json_dump = self.model_dump_json(
+            exclude={
+                "id",
+                "reference_id",
+                "reference",
+                "created_at",
+                "updated_at",
+            },
+            exclude_none=True,
         )
+        return hash(json_dump)
 
 
 class EnhancementRequest(DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin):
@@ -428,13 +448,9 @@ class RobotAutomationPercolationResult(BaseModel):
 
 class CandidateCanonicalSearchFields(ProjectedBaseModel):
     """
-    Projection representing fields used for candidate canonical selection.
+    Fields used for candidate canonical selection.
 
-    This model is a projection of
-    :class:`app.domain.references.models.models.Reference`.
-
-    This is injected into the root of Elasticsearch Reference documents for easy
-    searching. The search implementation lives at
+    The search implementation lives at
     :attr:`app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals`.
     """
 
@@ -456,6 +472,86 @@ class CandidateCanonicalSearchFields(ProjectedBaseModel):
         return all((self.publication_year, self.authors, self.title))
 
 
+class ReferenceSearchFields(ProjectedBaseModel):
+    """
+    Projection representing fields used for searching references.
+
+    This model is a projection of
+    :class:`app.domain.references.models.models.Reference`.
+
+    This is injected into the root of Elasticsearch Reference documents for easy
+    searching.
+    """
+
+    abstract: str | None = Field(
+        default=None, description="The abstract of the reference."
+    )
+
+    authors: list[str] = Field(
+        default_factory=list, description="The authors of the reference."
+    )
+
+    publication_year: int | None = Field(
+        default=None,
+        description="The publication year of the reference.",
+    )
+
+    title: str | None = Field(
+        default=None,
+        description="The title of the reference.",
+    )
+
+    annotations: list[str] = Field(
+        default_factory=list,
+        description=(
+            "List of true annotations on the reference."
+            "Each annotation is in the format `<scheme>/<label>`."
+        ),
+    )
+
+    evaluated_schemes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "List of annotation schemes that have been evaluated on the reference."
+        ),
+    )
+
+    destiny_inclusion_score: float | None = Field(
+        default=None,
+        description=(
+            "The inclusion score on the destiny domain inclusion annotation, "
+            "if evaluated."
+        ),
+    )
+
+    def to_canonical_candidate_search_fields(self) -> CandidateCanonicalSearchFields:
+        """Return fields needed for candidate canonical selection."""
+        return CandidateCanonicalSearchFields(
+            publication_year=self.publication_year,
+            authors=self.authors,
+            title=self.title,
+        )
+
+    @classmethod
+    def _normalise_string(cls, value: str) -> str:
+        """Normalise string fields by stripping whitespace."""
+        return value.strip()
+
+    @field_validator("abstract", "title", mode="after")
+    @classmethod
+    def normalise_string_validator(cls, value: str | None) -> str | None:
+        """Normalise string fields by stripping whitespace."""
+        if not value:
+            return value
+        return cls._normalise_string(value)
+
+    @field_validator("authors", "annotations", "evaluated_schemes", mode="after")
+    @classmethod
+    def normalise_string_list_validator(cls, value: list[str]) -> list[str]:
+        """Normalise string list fields by stripping whitespace."""
+        return [cls._normalise_string(v) for v in value if v]
+
+
 class ReferenceDuplicateDeterminationResult(BaseModel):
     """Model representing the result of a duplicate determination."""
 
@@ -463,6 +559,7 @@ class ReferenceDuplicateDeterminationResult(BaseModel):
         DuplicateDetermination.CANONICAL,
         DuplicateDetermination.DUPLICATE,
         DuplicateDetermination.UNRESOLVED,
+        DuplicateDetermination.UNSEARCHABLE,
     ]
     canonical_reference_id: UUID4 | None = Field(
         default=None,
@@ -471,16 +568,14 @@ class ReferenceDuplicateDeterminationResult(BaseModel):
     detail: str | None = Field(
         default=None,
         description="Optional detail about the determination process, particularly"
-        " where the determination is UNRESOLVED.",
+        " where the determination is UNRESOLVED or UNSEARCHABLE.",
     )
 
     @model_validator(mode="after")
-    def check_canonical_reference_id_populated_iff_canonical(self) -> Self:
+    def check_canonical_reference_id_populated_iff_duplicate(self) -> Self:
         """Assert that canonical must exist if and only if decision is duplicate."""
-        if (
-            self.canonical_reference_id
-            is not None
-            == (self.duplicate_determination == DuplicateDetermination.DUPLICATE)
+        if (self.canonical_reference_id is not None) != (
+            self.duplicate_determination == DuplicateDetermination.DUPLICATE
         ):
             msg = (
                 "canonical_reference_id must be populated if and only if "
@@ -572,27 +667,66 @@ class ReferenceWithChangeset(Reference):
     )
 
 
-class PendingEnhancementStatus(StrEnum):
+class PendingEnhancementStatus(StateMachineMixin, StrEnum):
     """
     The status of a pending enhancement.
 
     **Allowed values**:
     - `pending`: Enhancement is waiting to be processed.
-    - `accepted`: Enhancement has been accepted for processing.
+    - `processing`: Enhancement is currently being processed.
     - `importing`: Enhancement is currently being imported.
     - `indexing`: Enhancement is currently being indexed.
     - `indexing_failed`: Enhancement indexing has failed.
+    - `discarded`: Enhancement has been discarded as an exact duplicate.
     - `completed`: Enhancement has been processed successfully.
     - `failed`: Enhancement processing has failed.
+    - `expired`: Enhancement lease has expired during processing.
     """
 
     PENDING = auto()
-    ACCEPTED = auto()
+    PROCESSING = auto()
     IMPORTING = auto()
     INDEXING = auto()
     INDEXING_FAILED = auto()
+    DISCARDED = auto()
     COMPLETED = auto()
     FAILED = auto()
+    EXPIRED = auto()
+
+    @classmethod
+    def transitions(
+        cls,
+    ) -> dict["PendingEnhancementStatus", set["PendingEnhancementStatus"]]:
+        """
+        Define the allowed state transitions for pending enhancements.
+
+        Returns a mapping of current status to set of allowed next statuses.
+        Empty set means the status is terminal (no transitions allowed).
+
+        .. mermaid::
+
+            stateDiagram-v2
+                PENDING --> PROCESSING
+                PROCESSING --> IMPORTING
+                PROCESSING --> EXPIRED
+                PROCESSING --> FAILED
+                IMPORTING --> INDEXING
+                IMPORTING --> DISCARDED
+                IMPORTING --> FAILED
+                INDEXING --> COMPLETED
+                INDEXING --> INDEXING_FAILED
+        """
+        return {
+            cls.PENDING: {cls.PROCESSING},
+            cls.PROCESSING: {cls.IMPORTING, cls.EXPIRED, cls.FAILED},
+            cls.IMPORTING: {cls.INDEXING, cls.DISCARDED, cls.FAILED},
+            cls.INDEXING: {cls.COMPLETED, cls.INDEXING_FAILED},
+            cls.EXPIRED: set(),
+            cls.DISCARDED: set(),
+            cls.FAILED: set(),
+            cls.COMPLETED: set(),
+            cls.INDEXING_FAILED: set(),
+        }
 
 
 class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
@@ -606,8 +740,8 @@ class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
         ...,
         description="The ID of the robot that will perform the enhancement.",
     )
-    enhancement_request_id: UUID4 = Field(
-        ...,
+    enhancement_request_id: UUID4 | None = Field(
+        default=None,
         description=(
             "The ID of the batch enhancement request that this pending enhancement"
             " belongs to."
@@ -624,6 +758,46 @@ class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
         default=PendingEnhancementStatus.PENDING,
         description="The status of the pending enhancement.",
     )
+    source: str | None = Field(
+        default=None,
+        description=(
+            "The source of the pending enhancement for provenance tracking, "
+            "if not an enhancement request."
+        ),
+    )
+    expires_at: datetime.datetime = Field(
+        # TODO (Adam): remove after fulfilling #338  # noqa: TD003
+        # This provides back-compatibility.
+        # (Some unit tests will need updating to provide a value)
+        default=datetime.datetime(1970, 1, 1, tzinfo=datetime.UTC),
+        description="The datetime at which the pending enhancement expires.",
+    )
+    retry_of: UUID4 | None = Field(
+        default=None,
+        description=(
+            "The ID of the pending enhancement that this is a retry of, if any."
+        ),
+    )
+
+    @field_validator("expires_at", mode="before")
+    @classmethod
+    def set_expires_at(
+        cls, val: datetime.datetime | datetime.timedelta
+    ) -> datetime.datetime:
+        """Allow setting expires_at as a timedelta from now on instantiation."""
+        if isinstance(val, datetime.timedelta):
+            return apply_positive_timedelta(val)
+
+        return val
+
+    @model_validator(mode="after")
+    def check_enhancement_request_or_source_present(self) -> Self:
+        """Ensure either enhancement request ID or source is present."""
+        if not (self.enhancement_request_id or self.source):
+            msg = "Either enhancement_request_id or source must be present."
+            raise ValueError(msg)
+
+        return self
 
 
 class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):
@@ -661,4 +835,40 @@ class ReferenceIds(BaseModel):
     reference_ids: list[UUID4] = Field(
         ...,
         description="A list of reference IDs.",
+    )
+
+
+class PublicationYearRange(BaseModel):
+    """A range of publication years for filtering search results."""
+
+    start: PositiveInt | None = Field(
+        None,
+        description="Start year (inclusive)",
+    )
+    end: PositiveInt | None = Field(
+        None,
+        description="End year (inclusive)",
+    )
+
+    @model_validator(mode="after")
+    def validate_end_ge_start(self) -> Self:
+        """Validate that end year is greater than or equal to start year."""
+        if self.start and self.end and self.end < self.start:
+            msg = "End year must be greater than or equal to start year."
+            raise ValueError(msg)
+        return self
+
+
+class AnnotationFilter(BaseModel):
+    """Model representing an annotation filter for searching references."""
+
+    scheme: str = Field(description="The annotation scheme to filter on.")
+    label: str | None = Field(
+        description="The annotation label to filter on.", default=None
+    )
+    score: float | None = Field(
+        default=None,
+        description="Optional score threshold for the annotation filter.",
+        ge=0.0,
+        le=1.0,
     )

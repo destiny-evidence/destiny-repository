@@ -10,7 +10,7 @@ from pydantic import (
     Field,
 )
 
-from app.utils.time_and_date import utc_now
+from app.core.exceptions import StateTransitionError
 
 
 class DomainBaseModel(BaseModel):
@@ -36,10 +36,11 @@ GenericDomainBaseModelType = TypeVar(
 
 class SQLAttributeMixin(BaseModel):
     """
-    Mixin for SQLAlchemy attributes.
+    Mixin for the DESTINY Repository id attribute.
 
     This is used to allow the use of Pydantic models with SQLAlchemy
-    and add common properties.
+    and add common properties. Every class that inherits this mixin
+    will inherently be linked to the DESTINY repository.
 
     Note that `created_at` and `updated_at` are deliberately excluded
     to allow the database to manage these automatically.
@@ -61,13 +62,15 @@ class SQLTimestampMixin(SQLAttributeMixin):
     Timestamps should not be directly set by the application.
     """
 
-    created_at: datetime.datetime = Field(
-        default_factory=utc_now,
+    created_at: datetime.datetime | None = Field(
+        default=None,
         description="The timestamp at which the object was created.",
+        frozen=True,
     )
-    updated_at: datetime.datetime = Field(
-        default_factory=utc_now,
+    updated_at: datetime.datetime | None = Field(
+        default=None,
         description="The timestamp at which the object was last updated.",
+        frozen=True,
     )
 
 
@@ -87,3 +90,69 @@ GenericProjectedBaseModelType = TypeVar(
 
 class GenericProjection(Generic[GenericProjectedBaseModelType]):
     """Generic projection class for projected models."""
+
+
+StateMachineType = TypeVar("StateMachineType", bound="StateMachineMixin")
+
+
+class StateMachineMixin:
+    """
+    Mixin for status enums that implement state machine behavior.
+
+    Provides reusable methods for defining and validating state transitions.
+    Subclasses must implement the transitions() classmethod.
+    """
+
+    @classmethod
+    def transitions(
+        cls: type[StateMachineType],
+    ) -> dict[StateMachineType, set[StateMachineType]]:
+        """
+        Define the allowed state transitions.
+
+        Returns a mapping of current status to set of allowed next statuses.
+        Empty set means the status is terminal (no transitions allowed).
+
+        Must be implemented by subclasses.
+        """
+        msg = "Subclasses must implement transitions()"
+        raise NotImplementedError(msg)
+
+    def can_transition_to(self: StateMachineType, new_status: StateMachineType) -> bool:
+        """
+        Check if transition from current status to new status is allowed.
+
+        Args:
+            new_status: The target status to transition to
+
+        Returns:
+            True if transition is allowed, False otherwise
+
+        """
+        allowed_transitions = self.transitions().get(self, set())
+        return new_status in allowed_transitions
+
+    def guard_transition(
+        self: StateMachineType, new_status: StateMachineType, entity_id: object
+    ) -> None:
+        """
+        Guard against invalid state transitions.
+
+        Raises StateTransitionError if transition is not allowed.
+
+        Args:
+            new_status: The target status to transition to
+            entity_id: The ID of the entity attempting the transition
+
+        Raises:
+            StateTransitionError: If the transition is not allowed
+
+        """
+        if not self.can_transition_to(new_status):
+            msg = f"Cannot transition from status '{self}' to '{new_status}'"
+            raise StateTransitionError(
+                msg,
+                entity_id=entity_id,
+                current_state=self,
+                attempted_state=new_status,
+            )

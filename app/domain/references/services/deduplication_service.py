@@ -17,7 +17,7 @@ from app.domain.references.models.models import (
     ReferenceDuplicateDeterminationResult,
 )
 from app.domain.references.models.projections import (
-    CandidateCanonicalSearchFieldsProjection,
+    ReferenceSearchFieldsProjection,
 )
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -173,9 +173,13 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision.reference_id,
             preload=["enhancements", "identifiers"],
         )
-        search_fields = CandidateCanonicalSearchFieldsProjection.get_from_reference(
-            reference
+
+        search_fields = (
+            ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(
+                reference
+            )
         )
+
         if not search_fields.is_searchable:
             return await self.sql_uow.reference_duplicate_decisions.update_by_pk(
                 reference_duplicate_decision.id,
@@ -190,7 +194,11 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision = (
                 await self.sql_uow.reference_duplicate_decisions.update_by_pk(
                     reference_duplicate_decision.id,
-                    duplicate_determination=DuplicateDetermination.CANONICAL,
+                    # This should simplify to CANONICAL only once the search strategy is
+                    # implemented and evaluated.
+                    duplicate_determination=DuplicateDetermination.CANONICAL
+                    if settings.env == Environment.TEST
+                    else DuplicateDetermination.UNSEARCHABLE,
                 )
             )
         else:
@@ -231,7 +239,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             if settings.env == Environment.TEST
             and reference_duplicate_decision.candidate_canonical_ids
             else ReferenceDuplicateDeterminationResult(
-                duplicate_determination=DuplicateDetermination.UNSEARCHABLE
+                duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
+                detail="Placeholder duplicate determinator used.",
             )
         )
 

@@ -21,6 +21,7 @@ from app.domain.imports.models.sql import (
 )
 from app.domain.imports.repository import (
     ImportBatchSQLRepository,
+    ImportRecordSQLRepository,
     ImportResultSQLRepository,
 )
 from app.domain.references.models.models import (
@@ -57,7 +58,7 @@ from app.domain.robots.models.sql import Robot as SQLRobot
 async def test_enhancement_interface(
     session: AsyncSession,
 ):
-    """Test that the enhancement content type is set correctly."""
+    """Test that enhancements are correctly persisted to the database."""
     reference = SQLReference.from_domain(
         Reference(
             id=uuid.uuid4(),
@@ -107,7 +108,18 @@ async def test_enhancement_interface(
     )
     assert loaded_enhancement
     enhancement = loaded_enhancement.to_domain()
-    assert enhancement == enhancement_in
+
+    # Check that expected fields are the same
+    assert enhancement.id == enhancement_in.id
+    assert enhancement.source == enhancement_in.source
+    assert enhancement.reference_id == enhancement_in.reference_id
+    assert enhancement.visibility == enhancement_in.visibility
+    assert enhancement.content == enhancement_in.content
+
+    # Assert the created_at and updated_at timestamps have been returned
+    # from the database
+    assert isinstance(enhancement.created_at, datetime.datetime)
+    assert isinstance(enhancement.updated_at, datetime.datetime)
 
 
 async def test_reference_get_with_duplicates(session: AsyncSession):
@@ -291,7 +303,7 @@ async def test_import_batch_status_projection(
         ([], None),  # No pending enhancements -> keep original status
         ([PendingEnhancementStatus.PENDING], EnhancementRequestStatus.RECEIVED),
         (
-            [PendingEnhancementStatus.ACCEPTED],
+            [PendingEnhancementStatus.PROCESSING],
             EnhancementRequestStatus.PROCESSING,
         ),
         (
@@ -334,7 +346,7 @@ async def test_import_batch_status_projection(
         (
             [
                 PendingEnhancementStatus.PENDING,
-                PendingEnhancementStatus.ACCEPTED,
+                PendingEnhancementStatus.PROCESSING,
             ],
             EnhancementRequestStatus.PROCESSING,
         ),
@@ -376,7 +388,6 @@ async def test_enhancement_request_status_projection(
             name="Test Robot",
             description="A test robot",
             owner="test@example.com",
-            base_url="https://example.com",
             client_secret="test-secret",
         )
     )
@@ -403,6 +414,7 @@ async def test_enhancement_request_status_projection(
                 robot_id=robot_id,
                 enhancement_request_id=request_id,
                 status=status,
+                expires_at=datetime.timedelta(seconds=10),
             )
         )
         session.add(pending_enhancement)
@@ -419,3 +431,90 @@ async def test_enhancement_request_status_projection(
         assert loaded_request.request_status == EnhancementRequestStatus.RECEIVED
     else:
         assert loaded_request.request_status == expected_status
+
+
+async def test_multiple_import_batch_status_projection(
+    session: AsyncSession,
+):
+    """Test ImportBatch status projection logic for multiple batches."""
+    record_id = uuid.uuid4()
+    record = ImportRecord(
+        id=record_id,
+        searched_at=datetime.datetime.now(tz=datetime.UTC),
+        processor_name="test",
+        processor_version="1.0",
+        status=ImportRecordStatus.STARTED,
+        expected_reference_count=-1,
+        source_name="test",
+    )
+    session.add(record)
+
+    batch1_id = uuid.uuid4()
+    batch1 = ImportBatch(
+        id=batch1_id,
+        import_record_id=record_id,
+        storage_url="https://example.com/bucket1",
+    )
+    session.add(batch1)
+
+    batch2_id = uuid.uuid4()
+    batch2 = ImportBatch(
+        id=batch2_id,
+        import_record_id=record_id,
+        storage_url="https://example.com/bucket2",
+    )
+    session.add(batch2)
+
+    # Batch 1 results
+    session.add_all(
+        [
+            ImportResult(
+                id=uuid.uuid4(),
+                import_batch_id=batch1_id,
+                status=ImportResultStatus.COMPLETED,
+                reference_id=None,
+                failure_details=None,
+            ),
+            ImportResult(
+                id=uuid.uuid4(),
+                import_batch_id=batch1_id,
+                status=ImportResultStatus.FAILED,
+                reference_id=None,
+                failure_details=None,
+            ),
+        ]
+    )
+
+    # Batch 2 results
+    session.add_all(
+        [
+            ImportResult(
+                id=uuid.uuid4(),
+                import_batch_id=batch2_id,
+                status=ImportResultStatus.STARTED,
+                reference_id=None,
+                failure_details=None,
+            ),
+            ImportResult(
+                id=uuid.uuid4(),
+                import_batch_id=batch2_id,
+                status=ImportResultStatus.CREATED,
+                reference_id=None,
+                failure_details=None,
+            ),
+        ]
+    )
+
+    await session.flush()
+    await session.commit()
+
+    repo = ImportRecordSQLRepository(
+        session, ImportBatchSQLRepository(session, ImportResultSQLRepository(session))
+    )
+    import_record = await repo.get_by_pk(
+        record_id, preload=["batches", "ImportBatch.status"]
+    )
+    assert {batch.status for batch in (import_record.batches or [])} == {
+        ImportBatchStatus.PARTIALLY_FAILED,
+        ImportBatchStatus.STARTED,
+    }

@@ -6,7 +6,11 @@ from collections.abc import AsyncGenerator
 
 import destiny_sdk
 import pytest
-from destiny_sdk.enhancements import AuthorPosition, Authorship, EnhancementType
+from destiny_sdk.enhancements import (
+    AuthorPosition,
+    Authorship,
+    EnhancementType,
+)
 from elasticsearch import AsyncElasticsearch
 
 from app.core.exceptions import ESNotFoundError
@@ -17,12 +21,13 @@ from app.domain.references.models.models import (
     RobotAutomation,
 )
 from app.domain.references.models.projections import (
-    CandidateCanonicalSearchFieldsProjection,
+    ReferenceSearchFieldsProjection,
 )
 from app.domain.references.repository import (
     ReferenceESRepository,
     RobotAutomationESRepository,
 )
+from app.utils.time_and_date import utc_now
 
 
 @pytest.fixture
@@ -82,6 +87,7 @@ async def reference() -> Reference:
             {
                 "id": uuid.uuid4(),
                 "reference_id": r,
+                "created_at": utc_now(),
                 "content": {
                     "enhancement_type": "annotation",
                     "annotations": [
@@ -101,6 +107,7 @@ async def reference() -> Reference:
             {
                 "id": uuid.uuid4(),
                 "reference_id": r,
+                "created_at": utc_now(),
                 "content": {
                     "enhancement_type": "location",
                     "locations": [
@@ -115,6 +122,7 @@ async def reference() -> Reference:
             {
                 "id": uuid.uuid4(),
                 "reference_id": r,
+                "created_at": utc_now(),
                 "content": {
                     "enhancement_type": "bibliographic",
                     "title": " Sample reference Title with whitespace and a funny charactér ",
@@ -137,6 +145,20 @@ async def reference() -> Reference:
                         },
                     ],
                     "publication_year": 2023,
+                },
+                "source": "test_source",
+                "visibility": "public",
+            },
+            {
+                "id": uuid.uuid4(),
+                "reference_id": r,
+                "created_at": utc_now(),
+                "content": {
+                    "enhancement_type": "raw",
+                    "source_export_date": utc_now(),
+                    "description": "nonsense",
+                    "data": {"some": "data"},
+                    "metadata": {},
                 },
                 "source": "test_source",
                 "visibility": "public",
@@ -279,7 +301,10 @@ async def test_es_repository_cycle(
     assert len(es_reference.enhancements or []) == 3
     # Check that ids are preserved
     assert {enhancement.id for enhancement in es_reference.enhancements or []} == {
-        enhancement.id for enhancement in reference.enhancements or []
+        enhancement.id
+        for enhancement in reference.enhancements or []
+        # Raw enhancements are filtered out
+        if enhancement.content.enhancement_type != EnhancementType.RAW
     }
 
     # Check the ES projections themselves
@@ -618,16 +643,28 @@ async def test_canonical_candidate_search(
         index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
     )
 
+    matching_search_fields = (
+        ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(
+            matching_ref1
+        )
+    )
+
     # Test the search_for_candidate_canonicals method
     results = await es_reference_repository.search_for_candidate_canonicals(
-        CandidateCanonicalSearchFieldsProjection.get_from_reference(matching_ref1),
+        search_fields=matching_search_fields,
         reference_id=matching_ref1.id,
     )
 
     assert {reference.id for reference in results} == {matching_ref2.id}
 
+    non_matching_search_fields = (
+        ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(
+            non_matching_ref
+        )
+    )
+
     results = await es_reference_repository.search_for_candidate_canonicals(
-        CandidateCanonicalSearchFieldsProjection.get_from_reference(non_matching_ref),
+        non_matching_search_fields,
         reference_id=non_matching_ref.id,
     )
     assert not results

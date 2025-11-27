@@ -17,6 +17,7 @@ from destiny_sdk.enhancements import (
     EnhancementType,
     Location,
     LocationEnhancement,
+    RawEnhancement,
     ScoreAnnotation,
 )
 from destiny_sdk.identifiers import (
@@ -30,10 +31,13 @@ from faker import Faker
 from app.domain.references.models.models import (
     Enhancement,
     LinkedExternalIdentifier,
+    PendingEnhancement,
+    PendingEnhancementStatus,
     Reference,
     Visibility,
 )
 from app.domain.robots.models.models import Robot
+from app.utils.time_and_date import utc_now
 
 fake = Faker()
 max_list_length = 3
@@ -92,9 +96,18 @@ class BibliographicMetadataEnhancementFactory(factory.Factory):
     cited_by_count = factory.Faker("pyint", min_value=0, max_value=1000)
     created_date = factory.Faker("date_this_century")
     publication_date = factory.Faker("date_this_century")
-    publication_year = factory.Faker("year")
     publisher = factory.Faker("company")
     title = factory.Faker("sentence", nb_words=6)
+
+    @factory.post_generation
+    def publication_year(self, create, extracted, **kwargs):  # noqa: ANN001, ANN003, ARG002
+        """Set publication year from publication date if not provided seperately."""
+        if not extracted:
+            self.publication_year = (
+                self.publication_date.year if self.publication_date else None
+            )
+        else:
+            self.publication_year = extracted
 
 
 class AbstractContentEnhancementFactory(factory.Factory):
@@ -168,6 +181,17 @@ class LocationEnhancementFactory(factory.Factory):
     )
 
 
+class RawEnhancementFactory(factory.Factory):
+    class Meta:
+        model = RawEnhancement
+
+    enhancement_type = EnhancementType.RAW
+    source_export_date = factory.Faker("date_time_this_month")
+    description = factory.Faker("sentence", nb_words=10)
+    metadata = factory.Faker("pydict", nb_elements=3, value_types=[int, str])
+    data = factory.Faker("pydict")
+
+
 class LinkedExternalIdentifierFactory(factory.Factory):
     class Meta:
         model = LinkedExternalIdentifier
@@ -194,6 +218,7 @@ class EnhancementFactory(factory.Factory):
     source = factory.Faker("company")
     visibility = Visibility.PUBLIC
     robot_version = factory.Faker("numerify", text="%!!.%!!.%!!")
+    created_at = factory.Faker("date_time_this_month")
     content = factory.LazyFunction(
         lambda: fake.random_element(
             [
@@ -201,6 +226,7 @@ class EnhancementFactory(factory.Factory):
                 AbstractContentEnhancementFactory(),
                 AnnotationEnhancementFactory(),
                 LocationEnhancementFactory(),
+                RawEnhancementFactory(),
             ]
         )
     )
@@ -240,7 +266,20 @@ class RobotFactory(factory.Factory):
         model = Robot
 
     id = factory.Faker("uuid4")
-    base_url = factory.Faker("url")
     description = factory.Faker("sentence")
     name = factory.Faker("name")
     owner = factory.Faker("company")
+
+
+class PendingEnhancementFactory(factory.Factory):
+    class Meta:
+        model = PendingEnhancement
+
+    id = factory.Faker("uuid4")
+    reference_id = factory.Faker("uuid4")
+    robot_id = factory.Faker("uuid4")
+    source = factory.Faker("word")
+    status = PendingEnhancementStatus.PENDING
+    expires_at = factory.LazyFunction(
+        lambda: utc_now() + fake.time_delta(end_datetime="+1h")
+    )

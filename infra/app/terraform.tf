@@ -21,6 +21,11 @@ terraform {
       version = "3.1.0"
     }
 
+    azapi = {
+      source  = "Azure/azapi"
+      version = "2.7.0"
+    }
+
     github = {
       source  = "integrations/github"
       version = "6.6.0"
@@ -54,6 +59,9 @@ provider "azuread" {
   tenant_id = var.external_directory_tenant_id
   client_id = var.external_directory_client_id
   alias     = "external_directory"
+}
+
+provider "azapi" {
 }
 
 provider "github" {

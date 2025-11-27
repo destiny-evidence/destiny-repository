@@ -6,23 +6,40 @@ from uuid import UUID
 from fastapi import Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 from app.core.exceptions import (
     ESMalformedDocumentError,
     ESNotFoundError,
+    ESQueryError,
     IntegrityError,
     InvalidPayloadError,
     NotFoundError,
+    ParseError,
     SDKToDomainError,
     SQLIntegrityError,
     SQLNotFoundError,
 )
 
 
+class APIExceptionContent(BaseModel):
+    """Return model for API exception content."""
+
+    detail: str = Field(description="Details about the error.")
+
+
+class APIExceptionResponse(JSONResponse):
+    """Return model for API 4XX codes."""
+
+    def __init__(self, status_code: int, content: APIExceptionContent) -> None:
+        """Initialize the response with JSON content."""
+        super().__init__(status_code=status_code, content=jsonable_encoder(content))
+
+
 async def not_found_exception_handler(
     request: Request,
     exception: NotFoundError,
-) -> JSONResponse:
+) -> APIExceptionResponse:
     """
     Exception handler for when an object cannot be found.
 
@@ -31,12 +48,12 @@ async def not_found_exception_handler(
     Otherwise, it returns a 422.
     """
     if isinstance(exception, SQLNotFoundError | ESNotFoundError):
-        content = {
-            "detail": (
+        content = APIExceptionContent(
+            detail=(
                 f"{exception.lookup_model} with "
                 f"{exception.lookup_type} {exception.lookup_value} does not exist."
             )
-        }
+        )
         status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
         if (
             isinstance(exception.lookup_value, UUID | str | int)
@@ -56,9 +73,9 @@ async def not_found_exception_handler(
                 status_code = status.HTTP_404_NOT_FOUND
     else:
         status_code = status.HTTP_404_NOT_FOUND
-        content = {"detail": exception.detail}
+        content = APIExceptionContent(detail=exception.detail)
 
-    return JSONResponse(
+    return APIExceptionResponse(
         status_code=status_code,
         content=content,
     )
@@ -67,14 +84,16 @@ async def not_found_exception_handler(
 async def integrity_exception_handler(
     _request: Request,
     exception: IntegrityError,
-) -> JSONResponse:
+) -> APIExceptionResponse:
     """Exception handler to return 409 responses when an IntegrityError is thrown."""
     if isinstance(exception, SQLIntegrityError):
-        content = {"detail": f"{exception.detail} {exception.collision}"}
+        content = APIExceptionContent(
+            detail=f"{exception.detail} {exception.collision}"
+        )
     else:
-        content = {"detail": exception.detail}
+        content = APIExceptionContent(detail=exception.detail)
 
-    return JSONResponse(
+    return APIExceptionResponse(
         status_code=status.HTTP_409_CONFLICT,
         content=content,
     )
@@ -84,36 +103,48 @@ async def integrity_exception_handler(
 async def sdk_to_domain_exception_handler(
     _request: Request,
     exception: SDKToDomainError,
-) -> JSONResponse:
+) -> APIExceptionResponse:
     """Return unprocessable entity response when sdk -> domain conversion fails."""
     # Probably want to reduce the amount of information we're giving back here.
-    return JSONResponse(
+    return APIExceptionResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content=jsonable_encoder({"detail": exception.errors}),
+        content=APIExceptionContent(detail=exception.errors),
     )
 
 
 async def invalid_payload_exception_handler(
     _request: Request,
     exception: InvalidPayloadError,
-) -> JSONResponse:
+) -> APIExceptionResponse:
     """Return unprocessable entity response when the payload is invalid."""
-    return JSONResponse(
+    return APIExceptionResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content=jsonable_encoder({"detail": exception.detail}),
+        content=APIExceptionContent(detail=exception.detail),
     )
 
 
-async def es_malformed_exception_handler(
+async def es_exception_handler(
     _request: Request,
-    exception: ESMalformedDocumentError,
-) -> JSONResponse:
+    exception: ESQueryError | ESMalformedDocumentError,
+) -> APIExceptionResponse:
     """
-    Return unprocessable entity response when an Elasticsearch document is malformed.
+    Return unprocessable entity response when an Elasticsearch operation fails.
 
-    This is generally raised on incorrect percolation queries attempting to be saved.
+    This is generally raised on incorrect query structures for percolation and
+    searching.
     """
-    return JSONResponse(
+    return APIExceptionResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content=jsonable_encoder({"detail": exception.detail}),
+        content=APIExceptionContent(detail=exception.detail),
+    )
+
+
+async def parse_error_exception_handler(
+    _request: Request,
+    exception: ParseError,
+) -> APIExceptionResponse:
+    """Return bad request response when a parsing error occurs."""
+    return APIExceptionResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=APIExceptionContent(detail=exception.detail),
     )

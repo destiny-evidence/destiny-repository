@@ -114,7 +114,11 @@ class Client:
         return RobotEnhancementBatchRead.model_validate(response.json())
 
     def poll_robot_enhancement_batch(
-        self, robot_id: UUID4, limit: int = 10
+        self,
+        robot_id: UUID4,
+        limit: int = 10,
+        lease: str | None = None,
+        timeout: int = 60,
     ) -> RobotEnhancementBatch | None:
         """
         Poll for a robot enhancement batch.
@@ -125,13 +129,21 @@ class Client:
         :type robot_id: UUID4
         :param limit: The maximum number of pending enhancements to return
         :type limit: int
+        :param lease: The duration to lease the pending enhancements for,
+            in ISO 8601 duration format eg PT10M. If not provided the repository will
+            use a default lease duration.
+        :type lease: str | None
         :return: The RobotEnhancementBatch object from the response, or None if no
             batches available
         :rtype: destiny_sdk.robots.RobotEnhancementBatch | None
         """
+        params = {"robot_id": str(robot_id), "limit": limit}
+        if lease:
+            params["lease"] = lease
         response = self.session.post(
             "/robot-enhancement-batches/",
-            params={"robot_id": str(robot_id), "limit": limit},
+            params=params,
+            timeout=timeout,
         )
         # HTTP 204 No Content indicates no batches available
         if response.status_code == httpx.codes.NO_CONTENT:
@@ -139,3 +151,24 @@ class Client:
 
         response.raise_for_status()
         return RobotEnhancementBatch.model_validate(response.json())
+
+    def renew_robot_enhancement_batch_lease(
+        self, robot_enhancement_batch_id: UUID4, lease_duration: str | None = None
+    ) -> None:
+        """
+        Renew the lease for a robot enhancement batch.
+
+        Signs the request with the client's secret key.
+
+        :param robot_enhancement_batch_id: The ID of the robot enhancement batch
+        :type robot_enhancement_batch_id: UUID4
+        :param lease_duration: The duration to lease the pending enhancements for,
+            in ISO 8601 duration format eg PT10M. If not provided the repository will
+            use a default lease duration.
+        :type lease_duration: str | None
+        """
+        response = self.session.post(
+            f"/robot-enhancement-batches/{robot_enhancement_batch_id}/renew-lease/",
+            params={"lease": lease_duration} if lease_duration else None,
+        )
+        response.raise_for_status()

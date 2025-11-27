@@ -83,6 +83,25 @@ resource "azurerm_role_assignment" "gha-container-app-tasks-contributor" {
   principal_id         = azuread_service_principal.github_actions.object_id
 }
 
+resource "azurerm_role_assignment" "gha-container-app-ui-contributor" {
+  role_definition_name = "Contributor"
+  scope                = module.container_app_ui.container_app_id
+  principal_id         = azuread_service_principal.github_actions.object_id
+}
+
+resource "azurerm_role_assignment" "gha-resource-group-reader" {
+  role_definition_name = "Reader"
+  scope                = azurerm_resource_group.this.id
+  principal_id         = azuread_service_principal.github_actions.object_id
+}
+
+resource "azurerm_role_assignment" "gha-scheduled-jobs-contributor" {
+  for_each             = azurerm_container_app_job.scheduled_jobs
+  role_definition_name = "Contributor"
+  scope                = each.value.id
+  principal_id         = azuread_service_principal.github_actions.object_id
+}
+
 # The eppi-import GitHub Action needs to be able to upload the processed
 # JSONL file to the storage account.
 resource "azurerm_role_assignment" "gha_storage_blob_contributor" {

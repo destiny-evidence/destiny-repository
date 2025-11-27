@@ -22,6 +22,17 @@ resource "azurerm_user_assigned_identity" "container_apps_tasks_identity" {
   resource_group_name = azurerm_resource_group.this.name
 }
 
+resource "azurerm_user_assigned_identity" "container_apps_ui_identity" {
+  name                = "${local.name}-ui"
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+}
+
+resource "azurerm_user_assigned_identity" "es_index_migrator" {
+  name                = local.es_index_migrator_name
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+}
 
 data "azuread_group" "db_crud_group" {
   object_id = var.db_crud_group_id
@@ -98,8 +109,21 @@ locals {
     {
       name  = "FEATURE_FLAGS"
       value = jsonencode(var.feature_flags)
+    },
+    {
+      name  = "DEFAULT_UPLOAD_FILE_CHUNK_SIZE",
+      value = tostring(var.default_upload_file_chunk_size)
+    },
+    {
+      name  = "MAX_REFERENCE_LOOKUP_QUERY_LENGTH",
+      value = var.max_reference_lookup_query_length
+    },
+    {
+      name  = "MESSAGE_LOCK_RENEWAL_DURATION",
+      value = var.message_lock_renewal_duration
     }
   ]
+
 
   secrets = [
     {
@@ -134,16 +158,23 @@ locals {
   ]
 }
 
-data "azurerm_container_app" "this" {
+data "azurerm_container_app" "api" {
   # This data source is used to get the latest revision FQDN for the container app
   # so that we can use it in the eppi-import GitHub Action.
   name                = module.container_app.container_app_name
   resource_group_name = azurerm_resource_group.this.name
+  depends_on          = [module.container_app]
+}
+
+data "azurerm_container_app" "ui" {
+  name                = module.container_app_ui.container_app_name
+  resource_group_name = azurerm_resource_group.this.name
+  depends_on          = [module.container_app_ui]
 }
 
 module "container_app" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "1.6.2"
+  version                         = "1.7.1"
   app_name                        = var.app_name
   cpu                             = var.container_app_cpu
   environment                     = var.environment
@@ -153,6 +184,7 @@ module "container_app" {
   memory                          = var.container_app_memory
   resource_group_name             = azurerm_resource_group.this.name
   region                          = azurerm_resource_group.this.location
+  min_replicas                    = var.app_min_replicas
   max_replicas                    = var.app_max_replicas
   tags                            = local.minimum_resource_tags
 
@@ -162,8 +194,12 @@ module "container_app" {
     client_id    = azurerm_user_assigned_identity.container_apps_identity.client_id
   }
 
-  env_vars = local.env_vars
-  secrets  = local.secrets
+  env_vars = concat(local.env_vars, [{
+    name  = "CORS_ALLOW_ORIGINS",
+    value = jsonencode(["*"])
+  }])
+
+  secrets = local.secrets
 
   # NOTE: ingress changes will be ignored to avoid messing up manual custom domain config. See https://github.com/hashicorp/terraform-provider-azurerm/issues/21866#issuecomment-1755381572.
   ingress = {
@@ -209,7 +245,7 @@ module "container_app" {
 
 module "container_app_tasks" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "1.6.2"
+  version                         = "1.7.1"
   app_name                        = "${var.app_name}-task"
   cpu                             = var.container_app_tasks_cpu
   environment                     = var.environment
@@ -219,6 +255,7 @@ module "container_app_tasks" {
   memory                          = var.container_app_tasks_memory
   resource_group_name             = azurerm_resource_group.this.name
   region                          = azurerm_resource_group.this.location
+  min_replicas                    = var.tasks_min_replicas
   max_replicas                    = var.tasks_max_replicas
   tags                            = local.minimum_resource_tags
 
@@ -256,6 +293,57 @@ module "container_app_tasks" {
   ]
 }
 
+module "container_app_ui" {
+  source                          = "app.terraform.io/destiny-evidence/container-app/azure"
+  version                         = "1.7.1"
+  app_name                        = "${var.app_name}-ui"
+  environment                     = var.environment
+  container_registry_id           = data.azurerm_container_registry.this.id
+  container_registry_login_server = data.azurerm_container_registry.this.login_server
+  infrastructure_subnet_id        = azurerm_subnet.ui.id
+  resource_group_name             = azurerm_resource_group.this.name
+  region                          = azurerm_resource_group.this.location
+  tags                            = local.minimum_resource_tags
+
+  identity = {
+    id           = azurerm_user_assigned_identity.container_apps_ui_identity.id
+    principal_id = azurerm_user_assigned_identity.container_apps_ui_identity.principal_id
+    client_id    = azurerm_user_assigned_identity.container_apps_ui_identity.client_id
+  }
+
+  env_vars = [
+    {
+      name  = "NEXT_PUBLIC_AZURE_CLIENT_ID"
+      value = azuread_application_registration.destiny_repository_auth_ui.client_id
+    },
+    {
+      name  = "NEXT_PUBLIC_AZURE_TENANT_ID"
+      value = var.azure_tenant_id
+    },
+    {
+      name  = "NEXT_PUBLIC_API_URL"
+      value = "https://${data.azurerm_container_app.api.ingress[0].fqdn}/v1/"
+    },
+    {
+      name  = "NEXT_PUBLIC_AZURE_APPLICATION_ID"
+      value = azuread_application.destiny_repository.client_id
+    },
+  ]
+
+  ingress = {
+    external_enabled           = true
+    allow_insecure_connections = false
+    target_port                = 3000
+    transport                  = "auto"
+    traffic_weight = {
+      latest_revision = true
+      percentage      = 100
+    }
+  }
+}
+
+
+
 resource "azurerm_postgresql_flexible_server" "this" {
   name                          = "${local.name}-psqlflexibleserver"
   resource_group_name           = azurerm_resource_group.this.name
@@ -276,8 +364,9 @@ resource "azurerm_postgresql_flexible_server" "this" {
     }
   }
 
-  storage_mb   = 32768
-  storage_tier = "P4"
+
+  storage_mb   = local.is_development ? local.dev_db_storage_mb : local.prod_db_storage_mb
+  storage_tier = local.is_development ? local.dev_db_storage_tier : local.prod_db_storage_tier
 
   sku_name = "GP_Standard_D2ds_v4"
 
@@ -536,7 +625,7 @@ resource "elasticstack_elasticsearch_security_api_key" "app" {
       cluster = ["monitor"]
       indices = [
         {
-          names                    = ["${var.app_name}-*"]
+          names                    = local.managed_indices
           privileges               = ["read", "write", "create_index", "manage"]
           allow_restricted_indices = false
         }
@@ -545,6 +634,7 @@ resource "elasticstack_elasticsearch_security_api_key" "app" {
   })
 }
 
+
 resource "elasticstack_elasticsearch_security_api_key" "read_only" {
   name = "${var.app_name}-${var.environment}-read-only"
   role_descriptors = jsonencode({
@@ -552,7 +642,7 @@ resource "elasticstack_elasticsearch_security_api_key" "read_only" {
       cluster = ["monitor"]
       indices = [
         {
-          names                    = ["${var.app_name}-*"]
+          names                    = local.managed_indices
           privileges               = ["read"]
           allow_restricted_indices = false
         }
@@ -570,4 +660,210 @@ resource "elasticstack_elasticsearch_snapshot_lifecycle" "snapshots" {
 
   expire_after = "30d"
   min_count    = local.is_production ? 336 : 7 # 7 days worth
+}
+
+resource "azurerm_role_assignment" "es_index_migrator_acr_access" {
+  principal_id         = azurerm_user_assigned_identity.es_index_migrator.principal_id
+  scope                = data.azurerm_container_registry.this.id
+  role_definition_name = "AcrPull"
+
+  # terraform seems unable to replace the role assignment, so we need to ignore changes
+  lifecycle {
+    ignore_changes = [principal_id, scope]
+  }
+}
+
+resource "elasticstack_elasticsearch_security_api_key" "es_index_migrator" {
+  name = local.es_index_migrator_name
+  role_descriptors = jsonencode({
+    app_access = {
+      cluster = ["monitor"]
+      indices = [
+        {
+          names                    = local.managed_indices
+          privileges               = ["all"]
+          allow_restricted_indices = false
+        }
+      ]
+    }
+  })
+}
+
+resource "azurerm_container_app_job" "es_index_migrator" {
+  name                         = local.es_index_migrator_name
+  location                     = azurerm_resource_group.this.location
+  resource_group_name          = azurerm_resource_group.this.name
+  container_app_environment_id = module.container_app.container_app_env_id
+
+  replica_timeout_in_seconds = var.elasticsearch_index_migrator_timeout
+
+  # If the replica fails, do not retry
+  replica_retry_limit = 0
+
+  manual_trigger_config {
+    parallelism              = 1
+    replica_completion_count = 1
+  }
+
+  registry {
+    identity = azurerm_user_assigned_identity.es_index_migrator.id
+    server   = data.azurerm_container_registry.this.login_server
+  }
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.es_index_migrator.id]
+  }
+
+  secret {
+    name = "es-config"
+    value = jsonencode({
+      cloud_id = ec_deployment.cluster.elasticsearch.cloud_id
+      api_key  = elasticstack_elasticsearch_security_api_key.es_index_migrator.encoded
+    })
+  }
+
+  secret {
+    name = "otel-config"
+    value = jsonencode({
+      trace_endpoint = var.honeycombio_trace_endpoint
+      meter_endpoint = var.honeycombio_meter_endpoint
+      log_endpoint   = var.honeycombio_log_endpoint
+      api_key        = honeycombio_api_key.this.key
+    })
+  }
+
+  template {
+    container {
+      image   = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+      name    = "${local.es_index_migrator_name}0"
+      command = ["echo", "'Empty command'"]
+      cpu     = 0.5
+      memory  = "1Gi"
+
+      env {
+        name  = "APP_NAME"
+        value = local.es_index_migrator_name
+      }
+
+      env {
+        name        = "ES_CONFIG"
+        secret_name = "es-config"
+      }
+
+      env {
+        name        = "OTEL_CONFIG"
+        secret_name = "otel-config"
+      }
+
+      env {
+        name  = "ENV"
+        value = var.environment
+      }
+
+      env {
+        name  = "OTEL_ENABLED"
+        value = var.telemetry_enabled
+      }
+
+      env {
+        name  = "REINDEX_STATUS_POLLING_INTERVAL"
+        value = var.es_migrator_reindex_polling_interval
+      }
+    }
+  }
+
+  # Allow us to update the image via github actions or the Azure Portal
+  # Allow us to specify the command via the Azure Portal when triggering the job without it being overwritten
+  lifecycle {
+    ignore_changes = [template[0].container[0].image, template[0].container[0].command]
+  }
+}
+
+locals {
+  scheduled_jobs = {
+    expire_pending_enhancements = {
+      cron_expression = "*/10 * * * *" # Every 10 minutes
+      command         = ["python", "-m", "app.run_task", "app.domain.references.tasks:expire_and_replace_stale_pending_enhancements"]
+      timeout_seconds = 120
+    }
+  }
+}
+
+resource "azurerm_container_app_job" "scheduled_jobs" {
+  for_each = local.scheduled_jobs
+
+  name                         = "${replace(each.key, "_", "-")}-${substr(var.environment, 0, 4)}"
+  location                     = azurerm_resource_group.this.location
+  resource_group_name          = azurerm_resource_group.this.name
+  container_app_environment_id = module.container_app.container_app_env_id
+
+  replica_timeout_in_seconds = lookup(each.value, "timeout_seconds", 3600)
+  replica_retry_limit        = lookup(each.value, "retry_limit", 1)
+
+  tags = merge(
+    local.minimum_resource_tags,
+    {
+      "app"         = var.app_name
+      "environment" = var.environment
+      "job-type"    = "scheduled"
+    }
+  )
+
+  schedule_trigger_config {
+    cron_expression          = each.value.cron_expression
+    parallelism              = 1
+    replica_completion_count = 1
+  }
+
+  registry {
+    identity = azurerm_user_assigned_identity.container_apps_tasks_identity.id
+    server   = data.azurerm_container_registry.this.login_server
+  }
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.container_apps_tasks_identity.id]
+  }
+
+  dynamic "secret" {
+    for_each = local.secrets
+    content {
+      name  = secret.value.name
+      value = secret.value.value
+    }
+  }
+
+  template {
+    container {
+      image   = "${data.azurerm_container_registry.this.login_server}/destiny-repository:${var.environment}"
+      name    = "${replace(each.key, "_", "-")}-${substr(var.environment, 0, 4)}"
+      command = each.value.command
+      cpu     = lookup(each.value, "cpu", 0.5)
+      memory  = lookup(each.value, "memory", "1Gi")
+
+      dynamic "env" {
+        for_each = concat(local.env_vars, [
+          {
+            name  = "APP_NAME"
+            value = "${var.app_name}-scheduled-job"
+          },
+          {
+            name  = "AZURE_CLIENT_ID"
+            value = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
+          }
+        ])
+        content {
+          name        = env.value.name
+          value       = lookup(env.value, "value", null)
+          secret_name = lookup(env.value, "secret_name", null)
+        }
+      }
+    }
+  }
+
+  # Allow image updates via GitHub Actions deployment workflow
+  lifecycle {
+    ignore_changes = [template[0].container[0].image]
+  }
 }

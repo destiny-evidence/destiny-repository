@@ -111,7 +111,7 @@ To implement a polling-based robot:
 
 1. **Poll for batches**: Use :meth:`Client.poll_robot_enhancement_batch() <libs.sdk.src.destiny_sdk.client.Client.poll_robot_enhancement_batch>` to retrieve pending batches. The method returns a :class:`RobotEnhancementBatch <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch>` object or ``None`` if no batches are available.
 
-2. **Process references**: Download the references from the :attr:`reference_storage_url <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.reference_storage_url>`. Each line in the file is a JSON-serialized :class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>` object, which can be parsed using :meth:`Reference.from_jsonl() <libs.sdk.src.destiny_sdk.references.Reference.from_jsonl>`.
+2. **Process references**: Download the references from the :attr:`reference_storage_url <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.reference_storage_url>`. Each line in the file is a JSON-serialized :class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>` object, which can be parsed using :meth:`Reference.from_jsonl() <libs.sdk.src.destiny_sdk.references.Reference.from_jsonl>`. These references will be in the :ref:`deduplicated form <deduplicated-projection>`, giving robots full access to the reference's data.
 
 3. **Create enhancements**: Process each reference and create :class:`Enhancement <libs.sdk.src.destiny_sdk.enhancements.Enhancement>` objects or :class:`LinkedRobotError <libs.sdk.src.destiny_sdk.robots.LinkedRobotError>` objects for failed references.
 
@@ -125,6 +125,14 @@ To implement a polling-based robot:
 
 - **Batch-level errors**: If the entire batch fails (e.g., due to connectivity issues), set the ``error`` field in the :class:`RobotEnhancementBatchResult <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatchResult>`.
 - **Reference-level errors**: For individual reference failures, include :class:`LinkedRobotError <libs.sdk.src.destiny_sdk.robots.LinkedRobotError>` entries in the result file and leave the batch result ``error`` field as ``None``.
+
+**Leasing and Expiry**
+
+Each batch is leased to a robot for a configurable duration (default: 10 minutes). If processing takes longer than the lease duration:
+
+- **Lease Renewal**: Call ``PATCH /robot-enhancement-batches/<batch_id>/renew-lease/`` to extend the lease before it expires.
+- **Expiry**: If the lease expires before results are submitted, pending enhancements transition to ``EXPIRED`` status and replacement enhancements become available for future batches.
+- **Result Rejection**: If results are submitted after expiry, they will be rejected with an HTTP 422 Unprocessable Entity error. The robot should discard the results and poll for new batches.
 
 **Status Monitoring and URL Refresh**
 

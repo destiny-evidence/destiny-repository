@@ -1,5 +1,6 @@
 """Repositories for references and associated models."""
 
+import datetime
 import math
 from abc import ABC
 from collections.abc import Sequence
@@ -10,11 +11,20 @@ from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import AsyncSearch, Q
 from opentelemetry import trace
 from pydantic import UUID4
-from sqlalchemy import and_, or_, select
+from sqlalchemy import (
+    CompoundSelect,
+    Select,
+    and_,
+    func,
+    intersect_all,
+    literal,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.core.exceptions import SQLNotFoundError
 from app.core.telemetry.repository import trace_repository_method
 from app.domain.references.models.es import (
     ReferenceDocument,
@@ -23,7 +33,6 @@ from app.domain.references.models.es import (
 from app.domain.references.models.models import (
     CandidateCanonicalSearchFields,
     DuplicateDetermination,
-    ExternalIdentifierType,
     GenericExternalIdentifier,
     PendingEnhancementStatus,
     ReferenceWithChangeset,
@@ -74,7 +83,7 @@ from app.domain.references.models.sql import RobotAutomation as SQLRobotAutomati
 from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
-from app.persistence.es.persistence import ESSearchResult
+from app.persistence.es.persistence import ESScoreResult
 from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
@@ -162,31 +171,58 @@ class ReferenceSQLRepository(
     @trace_repository_method(tracer)
     async def find_with_identifiers(
         self,
-        identifiers: list[GenericExternalIdentifier],
+        identifiers: Sequence[GenericExternalIdentifier],
         preload: list[_reference_sql_preloadable] | None = None,
+        match: Literal["all", "any"] = "all",
     ) -> list[DomainReference]:
-        """Find references that possess ALL of the given identifiers."""
+        """
+        Find references that possess ALL or ANY of the given identifiers.
+
+        :param identifiers: List of external identifiers to match against.
+        :type identifiers: list[GenericExternalIdentifier]
+        :param preload: List of relationships to preload.
+        :type preload: list[_reference_sql_preloadable] | None
+        :param match: Whether to match 'all' or 'any' of the identifiers.
+        :type match: Literal["all", "any"]
+
+        Returns:
+            List of DomainReference objects matching the criteria.
+
+        """
+        if not identifiers:
+            return []
+
         options = []
         if preload:
             options.extend(self._get_relationship_loads(preload))
 
-        query = (
-            select(SQLReference)
-            .where(
+        predicates = [
+            and_(
+                SQLExternalIdentifier.identifier_type == identifier.identifier_type,
+                SQLExternalIdentifier.identifier == identifier.identifier,
+                SQLExternalIdentifier.other_identifier_name
+                == identifier.other_identifier_name,
+            )
+            for identifier in identifiers
+        ]
+
+        subquery: CompoundSelect[tuple[UUID]] | Select[tuple[UUID]]
+        if match == "any":
+            subquery = (
+                select(SQLExternalIdentifier.reference_id)
+                .where(or_(*predicates))
+                .distinct()
+            )
+        else:
+            subquery = intersect_all(
                 *[
-                    SQLReference.identifiers.any(
-                        and_(
-                            SQLExternalIdentifier.identifier_type
-                            == identifier.identifier_type,
-                            SQLExternalIdentifier.identifier == identifier.identifier,
-                            SQLExternalIdentifier.other_identifier_name
-                            == identifier.other_identifier_name,
-                        )
-                    )
-                    for identifier in identifiers
+                    select(SQLExternalIdentifier.reference_id).where(predicate)
+                    for predicate in predicates
                 ]
             )
-            .options(*options)
+
+        query = (
+            select(SQLReference).where(SQLReference.id.in_(subquery)).options(*options)
         )
 
         result = await self._session.execute(query)
@@ -215,7 +251,7 @@ class ReferenceESRepository(
         self,
         search_fields: CandidateCanonicalSearchFields,
         reference_id: UUID,
-    ) -> list[ESSearchResult]:
+    ) -> list[ESScoreResult]:
         """
         Fuzzy match candidate fingerprints to existing references.
 
@@ -235,7 +271,7 @@ class ReferenceESRepository(
         :param reference_id: The ID of the potential duplicate.
         :type reference_id: UUID
         :return: A list of search results with IDs and scores.
-        :rtype: list[ESSearchResult]
+        :rtype: list[ESScoreResult]
         """
         search = (
             AsyncSearch(using=self._client)
@@ -293,7 +329,7 @@ class ReferenceESRepository(
 
         return sorted(
             [
-                ESSearchResult(id=hit.meta.id, score=hit.meta.score)
+                ESScoreResult(id=hit.meta.id, score=hit.meta.score)
                 for hit in response.hits
             ],
             key=lambda result: result.score,
@@ -328,90 +364,6 @@ class ExternalIdentifierSQLRepository(
             DomainExternalIdentifier,
             SQLExternalIdentifier,
         )
-
-    @trace_repository_method(tracer)
-    async def get_by_type_and_identifier(
-        self,
-        identifier_type: ExternalIdentifierType,
-        identifier: str,
-        other_identifier_name: str | None = None,
-        preload: list[_external_identifier_sql_preloadable] | None = None,
-    ) -> DomainExternalIdentifier:
-        """
-        Get a single external identifier by type and identifier, if it exists.
-
-        Args:
-            identifier_type (ExternalIdentifierType): The type of the identifier.
-            identifier (str): The identifier value.
-            other_identifier_name (str | None): An optional name for another identifier.
-
-        Returns:
-            DomainExternalIdentifier | None: The external identifier if found.
-
-        """
-        query = select(SQLExternalIdentifier).where(
-            SQLExternalIdentifier.identifier_type == identifier_type,
-            SQLExternalIdentifier.identifier == identifier,
-        )
-        if other_identifier_name:
-            query = query.where(
-                SQLExternalIdentifier.other_identifier_name == other_identifier_name
-            )
-        if preload:
-            query = query.options(*self._get_relationship_loads(preload))
-        result = await self._session.execute(query)
-        db_identifier = result.scalar_one_or_none()
-
-        if not db_identifier:
-            detail = (
-                f"Unable to find {self._persistence_cls.__name__} with type "
-                f"{identifier_type}, identifier {identifier}, and other "
-                f"identifier name {other_identifier_name}"
-            )
-            raise SQLNotFoundError(
-                detail=detail,
-                lookup_model="ExternalIdentifier",
-                lookup_type="external_identifier",
-                lookup_value=(identifier_type, identifier, other_identifier_name),
-            )
-
-        return db_identifier.to_domain(preload=preload)
-
-    @trace_repository_method(tracer)
-    async def get_by_identifiers(
-        self,
-        identifiers: list[GenericExternalIdentifier],
-    ) -> list[DomainExternalIdentifier]:
-        """
-        Get multiple external identifiers that match the given identifiers.
-
-        :param identifiers: List of generic external identifiers to search for
-        :type identifiers: list[GenericExternalIdentifier]
-        :return: List of matching external identifiers found in the database
-        :rtype: list[DomainExternalIdentifier]
-        """
-        if not identifiers:
-            return []
-
-        # Build OR conditions for each identifier combination
-        conditions = []
-        for identifier in identifiers:
-            condition = (
-                SQLExternalIdentifier.identifier_type == identifier.identifier_type
-            ) & (SQLExternalIdentifier.identifier == identifier.identifier)
-            if identifier.identifier_type == ExternalIdentifierType.OTHER:
-                condition &= (
-                    SQLExternalIdentifier.other_identifier_name
-                    == identifier.other_identifier_name
-                )
-            conditions.append(condition)
-
-        query = select(SQLExternalIdentifier).where(or_(*conditions))
-
-        result = await self._session.execute(query)
-        db_identifiers = result.unique().scalars().all()
-
-        return [db_identifier.to_domain() for db_identifier in db_identifiers]
 
 
 class EnhancementRepositoryBase(
@@ -635,6 +587,178 @@ class PendingEnhancementSQLRepository(
             DomainPendingEnhancement,
             SQLPendingEnhancement,
         )
+
+    @trace_repository_method(tracer)
+    async def update_by_pk(
+        self, pk: UUID, **kwargs: object
+    ) -> DomainPendingEnhancement:
+        """
+        Update a pending enhancement by primary key with status validation.
+
+        Overrides the base implementation to validate status transitions
+        before performing the update.
+
+        Args:
+            pk: Primary key of the pending enhancement to update
+            kwargs: Fields to update (including optional 'status')
+
+        Returns:
+            The updated pending enhancement
+
+        Raises:
+            StateTransitionError: If any status transition is invalid
+
+        """
+        if "status" in kwargs:
+            new_status = PendingEnhancementStatus(kwargs["status"])  # type: ignore[arg-type]
+            current_entity = await self.get_by_pk(pk)
+            current_entity.status.guard_transition(new_status, pk)
+
+        return await super().update_by_pk(pk, **kwargs)
+
+    @trace_repository_method(tracer)
+    async def bulk_update(self, pks: list[UUID4], **kwargs: object) -> int:
+        """
+        Bulk update pending enhancements with status transition validation.
+
+        Overrides the base implementation to validate status transitions
+        before performing the update.
+
+        Args:
+            pks: List of pending enhancement IDs to update
+            kwargs: Fields to update (including optional 'status')
+
+        Returns:
+            Number of records updated
+
+        Raises:
+            ValueError: If any status transition is invalid
+
+        """
+        if "status" in kwargs and pks:
+            new_status = PendingEnhancementStatus(kwargs["status"])  # type: ignore[arg-type]
+
+            stmt = select(SQLPendingEnhancement.id, SQLPendingEnhancement.status).where(
+                SQLPendingEnhancement.id.in_(pks)
+            )
+            result = await self._session.execute(stmt)
+            entities = result.all()
+
+            for entity_id, current_status_value in entities:
+                current_status = PendingEnhancementStatus(current_status_value)
+                current_status.guard_transition(new_status, entity_id)
+
+        return await super().bulk_update(pks, **kwargs)
+
+    @trace_repository_method(tracer)
+    async def bulk_update_by_filter(
+        self, filter_conditions: dict[str, object], **kwargs: object
+    ) -> int:
+        """
+        Bulk update pending enhancements by filter with status validation.
+
+        Overrides the base implementation to validate status transitions
+        before performing the update.
+
+        Args:
+            filter_conditions: Conditions to filter records
+            kwargs: Fields to update (including optional 'status')
+
+        Returns:
+            Number of records updated
+
+        Raises:
+            ValueError: If any status transition is invalid
+
+        """
+        if "status" in kwargs:
+            new_status = PendingEnhancementStatus(kwargs["status"])  # type: ignore[arg-type]
+
+            entities = await self.find(
+                order_by=None, limit=None, preload=None, **filter_conditions
+            )
+
+            for entity in entities:
+                entity.status.guard_transition(new_status, entity.id)
+
+        return await super().bulk_update_by_filter(filter_conditions, **kwargs)
+
+    @trace_repository_method(tracer)
+    async def count_retry_depth(self, pending_enhancement_id: UUID) -> int:
+        """
+        Count how many times a pending enhancement has been retried.
+
+        This recursively follows the retry_of chain to count the depth.
+
+        Args:
+            pending_enhancement_id: ID of the pending enhancement to check
+
+        Returns:
+            Number of retries (0 if this is the original)
+
+        """
+        # Use a recursive CTE to count retry depth
+        cte = (
+            select(
+                SQLPendingEnhancement.id,
+                SQLPendingEnhancement.retry_of,
+                literal(0).label("depth"),
+            )
+            .where(SQLPendingEnhancement.id == pending_enhancement_id)
+            .cte(name="retry_chain", recursive=True)
+        )
+
+        # Recursive part: join to find the parent (retry_of)
+        recursive_part = select(
+            SQLPendingEnhancement.id,
+            SQLPendingEnhancement.retry_of,
+            (cte.c.depth + 1).label("depth"),
+        ).join(
+            SQLPendingEnhancement,
+            SQLPendingEnhancement.id == cte.c.retry_of,
+        )
+
+        cte = cte.union_all(recursive_part)
+
+        # Get the maximum depth
+        query = select(func.max(cte.c.depth))
+        result = await self._session.execute(query)
+        depth = result.scalar()
+
+        return depth if depth is not None else 0
+
+    @trace_repository_method(tracer)
+    async def expire_pending_enhancements_past_expiry(
+        self,
+        now: datetime.datetime,
+        statuses: list[PendingEnhancementStatus],
+    ) -> list[DomainPendingEnhancement]:
+        """
+        Atomically find and expire pending enhancements past their expiry time.
+
+        This method updates the status to EXPIRED and returns the expired records
+        in a single atomic operation to prevent race conditions in parallel execution.
+
+        Args:
+            now: Current datetime to compare against expires_at
+            statuses: List of statuses to filter by (e.g., PROCESSING)
+
+        Returns:
+            List of pending enhancements that were expired
+
+        """
+        stmt = (
+            update(SQLPendingEnhancement)
+            .where(
+                SQLPendingEnhancement.expires_at < now,
+                SQLPendingEnhancement.status.in_([status.value for status in statuses]),
+            )
+            .values(status=PendingEnhancementStatus.EXPIRED.value)
+            .returning(SQLPendingEnhancement)
+        )
+
+        result = await self._session.execute(stmt)
+        return [record.to_domain() for record in result.scalars().all()]
 
 
 class RobotEnhancementBatchRepositoryBase(

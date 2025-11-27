@@ -36,7 +36,7 @@ resource "azuread_application" "destiny_repository" {
       admin_consent_display_name = "Import as user"
       id                         = random_uuid.importer_scope.result
       type                       = "User"
-      value                      = "import.all"
+      value                      = "import.writer.all"
       user_consent_description   = "Allow you to import"
       user_consent_display_name  = "Import"
     }
@@ -179,6 +179,23 @@ resource "azuread_application_api_access" "destiny_repository_auth" {
     random_uuid.reference_reader_scope.result,
     random_uuid.enhancement_request_writer_scope.result,
     random_uuid.robot_writer_scope.result,
+    random_uuid.reference_deduplicator_scope.result,
+  ]
+}
+
+
+resource "azuread_application_registration" "destiny_repository_auth_ui" {
+  display_name                   = "${local.name}-auth-ui-client"
+  sign_in_audience               = "AzureADMyOrg"
+  requested_access_token_version = 2
+}
+
+resource "azuread_application_api_access" "destiny_repository_auth_ui" {
+  application_id = azuread_application_registration.destiny_repository_auth_ui.id
+  api_client_id  = azuread_application.destiny_repository.client_id
+
+  scope_ids = [
+    random_uuid.reference_reader_scope.result,
   ]
 }
 
@@ -190,8 +207,21 @@ resource "azuread_app_role_assignment" "developer_to_auth" {
   resource_object_id  = azuread_service_principal.destiny_repository_auth.object_id
 }
 
+
+resource "azuread_app_role_assignment" "ui_users_to_auth_ui" {
+  app_role_id         = "00000000-0000-0000-0000-000000000000"
+  principal_object_id = var.ui_users_group_id
+  resource_object_id  = azuread_service_principal.destiny_repository_auth_ui.object_id
+}
+
 resource "azuread_service_principal" "destiny_repository_auth" {
   client_id                    = azuread_application_registration.destiny_repository_auth.client_id
+  app_role_assignment_required = true
+  owners                       = [data.azuread_client_config.current.object_id]
+}
+
+resource "azuread_service_principal" "destiny_repository_auth_ui" {
+  client_id                    = azuread_application_registration.destiny_repository_auth_ui.client_id
   app_role_assignment_required = true
   owners                       = [data.azuread_client_config.current.object_id]
 }
@@ -201,10 +231,25 @@ resource "azuread_application_redirect_uris" "local_redirect" {
   application_id = azuread_application_registration.destiny_repository_auth.id
   type           = "PublicClient"
 
+  redirect_uris = var.local_redirect_urls
+}
+
+resource "azuread_application_redirect_uris" "ui_redirect" {
+  # This is necessary to return the token to the UI
+  application_id = azuread_application_registration.destiny_repository_auth_ui.id
+  type           = "SPA"
+
   redirect_uris = [
-    "http://localhost",
-    "https://oauth.pstmn.io/v1/callback",
+    "https://${data.azurerm_container_app.ui.ingress[0].fqdn}",
   ]
+}
+
+resource "azuread_application_redirect_uris" "ui_public_client_redirect" {
+  # This is necessary to return the token to the user when using PublicClient flow
+  application_id = azuread_application_registration.destiny_repository_auth_ui.id
+  type           = "PublicClient"
+
+  redirect_uris = var.local_redirect_urls
 }
 
 # Openalex incremental updater role assignments

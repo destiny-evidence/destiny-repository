@@ -15,6 +15,18 @@ variable "admin_password" {
   sensitive   = true
 }
 
+variable "app_min_replicas" {
+  description = "Minimum number of replicas for the app container app"
+  type        = number
+  default     = 2
+}
+
+variable "tasks_min_replicas" {
+  description = "Minimum number of replicas for the tasks container app"
+  type        = number
+  default     = 2
+}
+
 variable "app_max_replicas" {
   description = "Maximum number of replicas for the app container app"
   type        = number
@@ -115,6 +127,11 @@ variable "external_directory_client_id" {
   type        = string
 }
 
+variable "ui_users_group_id" {
+  type        = string
+  description = "Id of a group to assign to UI-relevant API roles on destiny repository"
+}
+
 variable "db_crud_group_id" {
   type        = string
   description = "Id of a group to assign DB crud access to. Not exclusive to other DB groups."
@@ -207,6 +224,12 @@ variable "elastic_cloud_apikey" {
   sensitive   = true
 }
 
+variable "elasticsearch_index_migrator_timeout" {
+  description = "How long to wait for an ES index migration to complete when running a container app job in seconds"
+  type        = number
+  default     = 28800 # 8 hour timeout
+}
+
 
 variable "pypi_token" {
   description = "API token for PyPI"
@@ -273,4 +296,38 @@ variable "feature_flags" {
   description = "Feature flags for the application"
   type        = map(bool)
   default     = {}
+}
+
+variable "default_upload_file_chunk_size" {
+  description = "Default number of entries to write per file upload chunk"
+  type        = number
+  default     = 1
+}
+
+variable "max_reference_lookup_query_length" {
+  description = "Maximum number of identifiers to allow in a single reference lookup query"
+  type        = number
+  default     = 100
+}
+
+variable "es_migrator_reindex_polling_interval" {
+  description = "How frequently to poll the reindexing task when migrating indices"
+  type        = number
+  default     = 5 * 60 # 5min
+
+}
+
+variable "message_lock_renewal_duration" {
+  description = "Duration to renew message locks for in seconds"
+  type        = number
+  default     = 12 * 60 * 60 # 12 hours
+}
+
+variable "local_redirect_urls" {
+  description = "List of supported redirect URLs for PublicClient authentication flow"
+  type        = list(string)
+  default = [
+    "http://localhost",
+    "https://oauth.pstmn.io/v1/callback",
+  ]
 }

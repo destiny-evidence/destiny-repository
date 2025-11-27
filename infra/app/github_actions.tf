@@ -79,6 +79,13 @@ resource "github_actions_environment_variable" "container_app_tasks_name" {
   value         = module.container_app_tasks.container_app_name
 }
 
+resource "github_actions_environment_variable" "container_app_ui_name" {
+  repository    = github_repository_environment.environment.repository
+  environment   = github_repository_environment.environment.environment
+  variable_name = "CONTAINER_APP_UI_NAME"
+  value         = module.container_app_ui.container_app_name
+}
+
 resource "github_actions_environment_variable" "container_app_env" {
   repository    = github_repository_environment.environment.repository
   environment   = github_repository_environment.environment.environment
@@ -132,5 +139,5 @@ resource "github_actions_environment_secret" "destiny_api_endpoint" {
   repository      = github_repository_environment.environment.repository
   environment     = github_repository_environment.environment.environment
   secret_name     = "DESTINY_API_ENDPOINT"
-  plaintext_value = "https://${data.azurerm_container_app.this.ingress[0].fqdn}/v1/"
+  plaintext_value = "https://${data.azurerm_container_app.api.ingress[0].fqdn}/v1/"
 }

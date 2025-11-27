@@ -1,23 +1,24 @@
 """Objects used to interface with Elasticsearch implementations."""
 
+import datetime
 from typing import Any, Self
 from uuid import UUID
 
 from elasticsearch.dsl import (
     Boolean,
+    Date,
     InnerDoc,
     Integer,
     Keyword,
     Nested,
     Object,
     Percolator,
+    ScaledFloat,
     Text,
     mapped_field,
 )
 
-from app.core.config import get_settings
 from app.domain.references.models.models import (
-    CandidateCanonicalSearchFields,
     DuplicateDetermination,
     Enhancement,
     EnhancementType,
@@ -25,26 +26,22 @@ from app.domain.references.models.models import (
     ExternalIdentifierType,
     LinkedExternalIdentifier,
     Reference,
+    ReferenceSearchFields,
     ReferenceWithChangeset,
     RobotAutomation,
     Visibility,
 )
 from app.domain.references.models.projections import (
-    CandidateCanonicalSearchFieldsProjection,
+    ReferenceSearchFieldsProjection,
 )
-from app.persistence.es.persistence import (
-    INDEX_PREFIX,
-    GenericESPersistence,
-)
-
-settings = get_settings()
+from app.persistence.es.persistence import GenericESPersistence, GenericNestedDocument
 
 
-class ExternalIdentifierDocument(InnerDoc):
+class ExternalIdentifierDocument(GenericNestedDocument):
     """Persistence model for external identifiers in Elasticsearch."""
 
     reference_id: UUID = mapped_field(Keyword(required=True))
-    identifier: str = mapped_field(Text(required=True))
+    identifier: str = mapped_field(Keyword(required=True))
     identifier_type: ExternalIdentifierType = mapped_field(Keyword(required=True))
     other_identifier_name: str | None = mapped_field(Keyword())
 
@@ -74,7 +71,7 @@ class ExternalIdentifierDocument(InnerDoc):
         )
 
 
-class AnnotationDocument(InnerDoc):
+class AnnotationDocument(GenericNestedDocument):
     """Persistence model for useful annotation fields in Elasticsearch."""
 
     scheme: str = mapped_field(Keyword())
@@ -88,7 +85,7 @@ class AnnotationDocument(InnerDoc):
         dynamic = True
 
 
-class EnhancementContentDocument(InnerDoc):
+class EnhancementContentDocument(GenericNestedDocument):
     """
     Persistence model for enhancement content in Elasticsearch.
 
@@ -101,13 +98,26 @@ class EnhancementContentDocument(InnerDoc):
         Nested(AnnotationDocument, required=False)
     )
 
+    def clean(self) -> None:
+        """
+        Automatically called when saving a document.
+
+        We utilise to provide a final barrier to prevent RAW enhancements being indexed.
+        """
+        if self.enhancement_type == EnhancementType.RAW:
+            msg = (
+                "Attempted to create elasticsearch document for a raw enhancement. ",
+                "This should never happen.",
+            )
+            raise RuntimeError(msg)
+
     class Meta:
         """Allow unmapped fields in the document."""
 
         dynamic = True
 
 
-class EnhancementDocument(InnerDoc):
+class EnhancementDocument(GenericNestedDocument):
     """Persistence model for enhancements in Elasticsearch."""
 
     id: UUID = mapped_field(Keyword(required=True, index=True))
@@ -115,6 +125,12 @@ class EnhancementDocument(InnerDoc):
     visibility: Visibility = mapped_field(Keyword(required=True))
     source: str = mapped_field(Keyword(required=True))
     robot_version: str | None = mapped_field(Keyword())
+
+    # We'd like to make this required after we've done a repair
+    created_at: datetime.datetime | None = mapped_field(
+        Date(required=False, default_timezone=datetime.UTC)
+    )
+
     content: EnhancementContentDocument = mapped_field(
         Object(EnhancementContentDocument, required=True)
     )
@@ -128,6 +144,7 @@ class EnhancementDocument(InnerDoc):
             visibility=domain_obj.visibility,
             source=domain_obj.source,
             robot_version=domain_obj.robot_version,
+            created_at=domain_obj.created_at,
             content=EnhancementContentDocument(
                 **domain_obj.content.model_dump(mode="json")
             ),
@@ -142,6 +159,7 @@ class EnhancementDocument(InnerDoc):
             source=self.source,
             enhancement_type=self.content.enhancement_type,
             robot_version=self.robot_version,
+            created_at=self.created_at,
             content=self.content.to_dict(),
         )
 
@@ -172,6 +190,8 @@ class ReferenceDomainMixin(InnerDoc):
             enhancements=[
                 EnhancementDocument.from_domain(enhancement)
                 for enhancement in reference.enhancements or []
+                # Don't index RAW enhancements
+                if enhancement.content.enhancement_type != EnhancementType.RAW
             ],
             duplicate_determination=reference.duplicate_decision.duplicate_determination
             if reference.duplicate_decision
@@ -195,47 +215,120 @@ class ReferenceDomainMixin(InnerDoc):
         )
 
 
-class ReferenceCandidateCanonicalMixin(InnerDoc):
-    """Mixin to project Reference fields relevant to deduplication."""
+class ReferenceSearchFieldsMixin(InnerDoc):
+    """
+    Mixin to project Reference fields relevant to various search strategies.
 
-    title: str | None = mapped_field(Text(required=False), default=None)
+    Currently this holds fields for identifing candidate canonicals during deduplication
+    and for searching references by query on title, authors, and abstracts.
+    """
+
+    abstract: str | None = mapped_field(Text(required=False), default=None)
+    """The abstract of the reference."""
+
     authors: list[str] | None = mapped_field(
         Text(required=False),
         default=None,
     )
+    """
+    The authors of the reference.
+
+    These are ordered by:
+
+    - First author
+    - Middle authors in alphabetical order
+    - Last author
+    """
+
     publication_year: int | None = mapped_field(
         Integer(required=False),
         default=None,
     )
+    """The publication year of the reference."""
+
+    title: str | None = mapped_field(Text(required=False), default=None)
+    """The title of the reference."""
+
+    annotations: list[str] | None = mapped_field(
+        Keyword(required=False),
+        default=None,
+    )
+    """
+    Every ``true`` annotation on the reference.
+
+    These are in format ``<scheme>[/<label>]``.
+
+    Examples:
+
+    - ``classification:taxonomy:Outcomes/Stroke``
+    - ``classification:taxonomy:Intervention/Climate policy instruments``
+    - ``inclusion:destiny`` (No label)
+
+    """
+
+    evaluated_schemes: list[str] | None = mapped_field(
+        Keyword(required=False),
+        default=None,
+    )
+    """
+    Every scheme that has been evaluated for this reference.
+
+    Combining this with ``annotations`` allows you to determine which annotations
+    were evaluated as ``false``.
+
+    Examples:
+
+    - ``inclusion:destiny``
+    - ``classifier:taxonomy:Outcomes``
+    """
+
+    inclusion_destiny: float | None = mapped_field(
+        ScaledFloat(
+            required=False,
+            scaling_factor=10**4,  # 4 digits of precision
+        ),
+        default=None,
+    )
+    """
+    The destiny inclusion score for this reference.
+
+    This is used to apply custom thresholds for inclusion. If you just want to know if
+    the reference was included per the default threshold, check for
+    ``inclusion:destiny`` in ``annotations``.
+    """
 
     @classmethod
-    def from_projection(cls, projection: CandidateCanonicalSearchFields) -> Self:
+    def from_projection(cls, projection: ReferenceSearchFields) -> Self:
         """Create a ReferenceCandidateCanonicalMixin from the search projection."""
         return cls(
+            abstract=projection.abstract,
             title=projection.title,
             authors=projection.authors,
             publication_year=projection.publication_year,
+            annotations=projection.annotations,
+            evaluated_schemes=projection.evaluated_schemes,
+            inclusion_destiny=projection.destiny_inclusion_score,
         )
 
     @classmethod
     def from_domain(cls, reference: Reference) -> Self:
         """Create the ES ReferenceDeduplicationMixin."""
         return cls.from_projection(
-            CandidateCanonicalSearchFieldsProjection.get_from_reference(reference)
+            ReferenceSearchFieldsProjection.get_from_reference(reference)
         )
 
 
 class ReferenceDocument(
     GenericESPersistence[Reference],
     ReferenceDomainMixin,
-    ReferenceCandidateCanonicalMixin,
+    ReferenceSearchFieldsMixin,
 ):
     """Persistence model for references in Elasticsearch."""
 
     class Index:
         """Index metadata for the persistence model."""
 
-        name = f"{INDEX_PREFIX}-reference"
+        name = "reference"
 
     @classmethod
     def from_domain(cls, domain_obj: Reference) -> Self:
@@ -245,7 +338,7 @@ class ReferenceDocument(
             # Ignoring easier than chaining __init__ methods IMO.
             meta={"id": domain_obj.id},  # type: ignore[call-arg]
             **ReferenceDomainMixin.from_domain(domain_obj).to_dict(),
-            **ReferenceCandidateCanonicalMixin.from_domain(domain_obj).to_dict(),
+            **ReferenceSearchFieldsMixin.from_domain(domain_obj).to_dict(),
         )
 
     def to_domain(self) -> Reference:
@@ -265,7 +358,7 @@ class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
     class Index:
         """Index metadata for the persistence model."""
 
-        name = f"{INDEX_PREFIX}-robot-automation-percolation"
+        name = "robot-automation-percolation"
 
     query: dict[str, Any] | None = mapped_field(
         Percolator(required=False),

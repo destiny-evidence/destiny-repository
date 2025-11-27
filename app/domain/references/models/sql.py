@@ -1,9 +1,10 @@
 """Objects used to interface with SQL implementations."""
 
+import datetime
 import uuid
 from typing import Any, Self
 
-from sqlalchemy import UUID, Enum, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import UUID, DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
 from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -200,10 +201,7 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
         UUID, ForeignKey("reference.id"), nullable=False
     )
     identifier_type: Mapped[ExternalIdentifierType] = mapped_column(
-        ENUM(
-            *[identifier.value for identifier in ExternalIdentifierType],
-            name="external_identifier_type",
-        ),
+        String,
         nullable=False,
     )
     other_identifier_name: Mapped[str] = mapped_column(
@@ -288,10 +286,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         UUID, ForeignKey("reference.id"), nullable=False
     )
     enhancement_type: Mapped[EnhancementType] = mapped_column(
-        ENUM(
-            *[enhancement.value for enhancement in EnhancementType],
-            name="enhancement_type",
-        ),
+        String,
         nullable=False,
     )
     robot_version: Mapped[str] = mapped_column(String, nullable=True)
@@ -311,7 +306,13 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
 
     @classmethod
     def from_domain(cls, domain_obj: DomainEnhancement) -> Self:
-        """Create a persistence model from a domain Enhancement object."""
+        """
+        Create a persistence model from a domain Enhancement object.
+
+        Note that we never want to pass in the created_at and updated_at
+        timestamps when converting from the domain. They're purely managed
+        by the persistence model.
+        """
         return cls(
             id=domain_obj.id,
             reference_id=domain_obj.reference_id,
@@ -330,6 +331,8 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         return DomainEnhancement(
             id=self.id,
             source=self.source,
+            created_at=self.created_at,
+            updated_at=self.updated_at,
             visibility=self.visibility,
             reference_id=self.reference_id,
             robot_version=self.robot_version,
@@ -531,6 +534,12 @@ class ReferenceDuplicateDecision(
             "ix_reference_duplicate_decision_duplicate_determination",
             "duplicate_determination",
         ),
+        # For getting references that duplicate a canonical reference
+        Index(
+            "ix_reference_duplicate_decision_active_canonical_reference_id",
+            "canonical_reference_id",
+            "active_decision",
+        ),
     )
 
     @classmethod
@@ -580,16 +589,23 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
     robot_id: Mapped[uuid.UUID] = mapped_column(
         UUID, ForeignKey("robot.id"), nullable=False
     )
-    enhancement_request_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("enhancement_request.id"), nullable=False
+    enhancement_request_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("enhancement_request.id"),
+        nullable=True,
     )
     robot_enhancement_batch_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID, ForeignKey("robot_enhancement_batch.id"), nullable=True
     )
     status: Mapped[PendingEnhancementStatus] = mapped_column(
-        Enum(PendingEnhancementStatus),
+        String,
         nullable=False,
         default=PendingEnhancementStatus.PENDING,
+    )
+    source: Mapped[str | None] = mapped_column(String, nullable=True)
+    expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))
+    retry_of: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("pending_enhancement.id"), nullable=True
     )
 
     robot_enhancement_batch: Mapped["RobotEnhancementBatch"] = relationship(
@@ -614,6 +630,11 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
             postgresql_where="robot_enhancement_batch_id IS NULL",
         ),
         Index(
+            "ix_pending_enhancement_processing",
+            "status",
+            postgresql_where=(status == PendingEnhancementStatus.PROCESSING),
+        ),
+        Index(
             "ix_pending_enhancement_robot_enhancement_batch_id",
             "robot_enhancement_batch_id",
         ),
@@ -629,6 +650,9 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
             enhancement_request_id=domain_obj.enhancement_request_id,
             robot_enhancement_batch_id=domain_obj.robot_enhancement_batch_id,
             status=domain_obj.status,
+            source=domain_obj.source,
+            expires_at=domain_obj.expires_at,
+            retry_of=domain_obj.retry_of,
         )
 
     def to_domain(
@@ -643,6 +667,9 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
             enhancement_request_id=self.enhancement_request_id,
             robot_enhancement_batch_id=self.robot_enhancement_batch_id,
             status=self.status,
+            source=self.source,
+            expires_at=self.expires_at,
+            retry_of=self.retry_of,
         )
 
 

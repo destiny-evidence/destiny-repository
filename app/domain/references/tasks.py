@@ -7,11 +7,11 @@ from uuid import UUID
 from opentelemetry import trace
 from structlog.contextvars import bound_contextvars
 
+from app.core.config import Environment, get_settings
 from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
-    EnhancementRequest,
-    EnhancementRequestStatus,
+    DuplicateDetermination,
     PendingEnhancementStatus,
     ReferenceWithChangeset,
 )
@@ -19,7 +19,6 @@ from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
-from app.domain.robots.robot_request_dispatcher import RobotRequestDispatcher
 from app.domain.robots.service import RobotService
 from app.domain.robots.services.anti_corruption_service import (
     RobotAntiCorruptionService,
@@ -33,6 +32,7 @@ from app.tasks import broker
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+settings = get_settings()
 
 
 @asynccontextmanager
@@ -78,130 +78,6 @@ async def get_blob_repository() -> BlobRepository:
     return BlobRepository()
 
 
-async def get_robot_request_dispatcher() -> RobotRequestDispatcher:
-    """Return the robot request dispatcher."""
-    return RobotRequestDispatcher()
-
-
-@broker.task
-async def collect_and_dispatch_references_for_enhancement(
-    enhancement_request_id: UUID,
-) -> None:
-    """Async logic for dispatching a enhancement request."""
-    logger.info("Processing enhancement request")
-    trace_attribute(Attributes.ENHANCEMENT_REQUEST_ID, str(enhancement_request_id))
-    name_span(f"Dispatch enhancement request {enhancement_request_id}")
-    async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
-        blob_repository = await get_blob_repository()
-        reference_anti_corruption_service = ReferenceAntiCorruptionService(
-            blob_repository
-        )
-        robot_anti_corruption_service = RobotAntiCorruptionService()
-        reference_service = await get_reference_service(
-            reference_anti_corruption_service, sql_uow, es_uow
-        )
-        robot_service = await get_robot_service(robot_anti_corruption_service, sql_uow)
-        robot_request_dispatcher = await get_robot_request_dispatcher()
-        enhancement_request = await reference_service.get_enhancement_request(
-            enhancement_request_id
-        )
-        trace_attribute(Attributes.ROBOT_ID, str(enhancement_request.robot_id))
-
-        try:
-            with bound_contextvars(
-                robot_id=str(enhancement_request.robot_id),
-            ):
-                # Collect and dispatch references for the enhancement request
-                await reference_service.collect_and_dispatch_references_for_enhancement(
-                    enhancement_request,
-                    robot_service,
-                    robot_request_dispatcher,
-                    blob_repository,
-                )
-        except Exception as e:
-            logger.exception("Error occurred while creating enhancement request")
-            await reference_service.mark_enhancement_request_failed(
-                enhancement_request_id,
-                str(e),
-            )
-
-
-@broker.task
-async def validate_and_import_enhancement_result(
-    enhancement_request_id: UUID,
-) -> None:
-    """Async logic for validating and importing an enhancement result."""
-    logger.info("Processing enhancement request result")
-    trace_attribute(Attributes.ENHANCEMENT_REQUEST_ID, str(enhancement_request_id))
-    name_span(f"Import enhancement result for request {enhancement_request_id}")
-    async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
-        blob_repository = await get_blob_repository()
-        reference_anti_corruption_service = ReferenceAntiCorruptionService(
-            blob_repository
-        )
-        reference_service = await get_reference_service(
-            reference_anti_corruption_service, sql_uow, es_uow
-        )
-        enhancement_request = await reference_service.get_enhancement_request(
-            enhancement_request_id
-        )
-        trace_attribute(Attributes.ROBOT_ID, str(enhancement_request.robot_id))
-
-        try:
-            with bound_contextvars(
-                robot_id=str(enhancement_request.robot_id),
-            ):
-                # Validate and import the enhancement result
-                (
-                    terminal_status,
-                    imported_enhancement_ids,
-                ) = await reference_service.validate_and_import_enhancement_result(
-                    enhancement_request,
-                    blob_repository,
-                )
-        except Exception as exc:
-            logger.exception(
-                "Error occurred while validating and importing enhancement result"
-            )
-            await reference_service.mark_enhancement_request_failed(
-                enhancement_request_id,
-                str(exc),
-            )
-            return
-
-        # Update elasticsearch index
-        # For now we naively update all references in the request - this is at worse a
-        # superset of the actual enhancement updates.
-
-        await reference_service.update_enhancement_request_status(
-            enhancement_request.id,
-            EnhancementRequestStatus.INDEXING,
-        )
-
-        try:
-            await reference_service.index_references(
-                reference_ids=enhancement_request.reference_ids,
-            )
-            await reference_service.update_enhancement_request_status(
-                enhancement_request.id,
-                terminal_status,
-            )
-        except Exception:
-            logger.exception("Error indexing references in Elasticsearch")
-            await reference_service.update_enhancement_request_status(
-                enhancement_request.id,
-                EnhancementRequestStatus.INDEXING_FAILED,
-            )
-
-        # Perform robot automations
-        await detect_and_dispatch_robot_automations(
-            reference_service,
-            enhancement_ids=imported_enhancement_ids,
-            source_str=f"EnhancementRequest:{enhancement_request.id}",
-            skip_robot_id=enhancement_request.robot_id,
-        )
-
-
 @broker.task
 async def validate_and_import_robot_enhancement_batch_result(
     robot_enhancement_batch_id: UUID,
@@ -232,11 +108,7 @@ async def validate_and_import_robot_enhancement_batch_result(
                 robot_id=str(robot_enhancement_batch.robot_id),
             ):
                 # Validate and import the enhancement result
-                (
-                    imported_enhancement_ids,
-                    successful_pending_enhancement_ids,
-                    failed_pending_enhancement_ids,
-                ) = await reference_service.validate_and_import_robot_enhancement_batch_result(  # noqa: E501
+                results = await reference_service.validate_and_import_robot_enhancement_batch_result(  # noqa: E501
                     robot_enhancement_batch,
                     blob_repository,
                 )
@@ -251,12 +123,17 @@ async def validate_and_import_robot_enhancement_batch_result(
             return
 
         await reference_service.update_pending_enhancements_status(
-            pending_enhancement_ids=list(failed_pending_enhancement_ids),
+            pending_enhancement_ids=list(results.failed_pending_enhancement_ids),
             status=PendingEnhancementStatus.FAILED,
         )
 
         await reference_service.update_pending_enhancements_status(
-            pending_enhancement_ids=list(successful_pending_enhancement_ids),
+            pending_enhancement_ids=list(results.discarded_pending_enhancement_ids),
+            status=PendingEnhancementStatus.DISCARDED,
+        )
+
+        await reference_service.update_pending_enhancements_status(
+            pending_enhancement_ids=list(results.successful_pending_enhancement_ids),
             status=PendingEnhancementStatus.INDEXING,
         )
 
@@ -269,20 +146,24 @@ async def validate_and_import_robot_enhancement_batch_result(
             )
 
             await reference_service.update_pending_enhancements_status(
-                pending_enhancement_ids=list(successful_pending_enhancement_ids),
+                pending_enhancement_ids=list(
+                    results.successful_pending_enhancement_ids
+                ),
                 status=PendingEnhancementStatus.COMPLETED,
             )
         except Exception:
             logger.exception("Error indexing references in Elasticsearch")
             await reference_service.update_pending_enhancements_status(
-                pending_enhancement_ids=list(successful_pending_enhancement_ids),
+                pending_enhancement_ids=list(
+                    results.successful_pending_enhancement_ids
+                ),
                 status=PendingEnhancementStatus.INDEXING_FAILED,
             )
 
         # Perform robot automations
         await detect_and_dispatch_robot_automations(
             reference_service,
-            enhancement_ids=imported_enhancement_ids,
+            enhancement_ids=results.imported_enhancement_ids,
             source_str=f"RobotEnhancementBatch:{robot_enhancement_batch.id}",
             skip_robot_id=robot_enhancement_batch.robot_id,
         )
@@ -290,7 +171,7 @@ async def validate_and_import_robot_enhancement_batch_result(
 
 @broker.task
 async def repair_reference_index() -> None:
-    """Async logic for rebuilding the reference index."""
+    """Async logic for repairing the reference index."""
     name_span("Repair reference index")
     logger.info("Repairing reference index")
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
@@ -306,7 +187,7 @@ async def repair_reference_index() -> None:
 
 @broker.task
 async def repair_robot_automation_percolation_index() -> None:
-    """Async logic for rebuilding the robot automation percolation index."""
+    """Async logic for repairing the robot automation percolation index."""
     name_span("Repair robot automation percolation index")
     logger.info("Repairing robot automation percolation index")
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
@@ -347,10 +228,20 @@ async def process_reference_duplicate_decision(
         trace_attribute(
             Attributes.REFERENCE_ID, str(reference_duplicate_decision.reference_id)
         )
-
         with bound_contextvars(
             reference_id=str(reference_duplicate_decision.reference_id),
         ):
+            # Sanity check to make task safely idempotent
+            if (
+                reference_duplicate_decision.duplicate_determination
+                != DuplicateDetermination.PENDING
+            ):
+                logger.info(
+                    "Duplicate decision already processed, skipping.",
+                    duplicate_determination=reference_duplicate_decision.duplicate_determination,
+                )
+                return
+
             (
                 reference_duplicate_decision,
                 decision_changed,
@@ -368,21 +259,39 @@ async def process_reference_duplicate_decision(
                 reference = await reference_service.get_canonical_reference_with_implied_changeset(  # noqa: E501
                     reference_duplicate_decision.reference_id
                 )
-                requests = await detect_and_dispatch_robot_automations(
+                await detect_and_dispatch_robot_automations(
                     reference_service=reference_service,
                     reference=reference,
                     source_str=f"DuplicateDecision:{reference_duplicate_decision.id}",
                 )
-                for request in requests:
-                    logger.info(
-                        "Created automatic enhancement request",
-                        enhancement_request_id=str(request.id),
-                    )
             else:
                 logger.info(
                     "No change to active decision, skipping automations",
                     reference_id=str(reference_duplicate_decision.reference_id),
                 )
+
+
+@broker.task(
+    schedule=(
+        [{"cron": "* * * * *"}]  # Every minute
+        if settings.env == Environment.LOCAL
+        else None
+    )
+)
+async def expire_and_replace_stale_pending_enhancements() -> None:
+    """Expire stale pending enhancements and create replacements."""
+    name_span("Expire and replace stale pending enhancements")
+    logger.info("Expiring and replacing stale pending enhancements")
+    async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
+        blob_repository = await get_blob_repository()
+        reference_anti_corruption_service = ReferenceAntiCorruptionService(
+            blob_repository
+        )
+        reference_service = await get_reference_service(
+            reference_anti_corruption_service, sql_uow, es_uow
+        )
+
+        await reference_service.expire_and_replace_stale_pending_enhancements()
 
 
 @tracer.start_as_current_span("Detect and dispatch robot automations")
@@ -392,7 +301,7 @@ async def detect_and_dispatch_robot_automations(
     enhancement_ids: Iterable[UUID] | None = None,
     source_str: str | None = None,
     skip_robot_id: UUID | None = None,
-) -> list[EnhancementRequest]:
+) -> None:
     """
     Request default enhancements for a set of references.
 
@@ -402,7 +311,6 @@ async def detect_and_dispatch_robot_automations(
     NB this is in a transient state, see comments in
     ReferenceService.detect_robot_automations.
     """
-    requests: list[EnhancementRequest] = []
     robot_automations = await reference_service.detect_robot_automations(
         reference=reference,
         enhancement_ids=enhancement_ids,
@@ -416,14 +324,8 @@ async def detect_and_dispatch_robot_automations(
                 source=source_str,
             )
             continue
-        enhancement_request = (
-            await reference_service.register_reference_enhancement_request(
-                enhancement_request=EnhancementRequest(
-                    reference_ids=robot_automation.reference_ids,
-                    robot_id=robot_automation.robot_id,
-                    source=source_str,
-                ),
-            )
+        await reference_service.create_pending_enhancements(
+            robot_id=robot_automation.robot_id,
+            reference_ids=robot_automation.reference_ids,
+            source=source_str,
         )
-        requests.append(enhancement_request)
-    return requests

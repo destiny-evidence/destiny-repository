@@ -1,10 +1,12 @@
 """Defines tests for the references router."""
 
+import datetime
 import uuid
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import pytest
+from destiny_sdk.enhancements import EnhancementType
 from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
@@ -13,15 +15,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
 from app.api.exception_handlers import (
-    es_malformed_exception_handler,
+    es_exception_handler,
     invalid_payload_exception_handler,
     not_found_exception_handler,
+    parse_error_exception_handler,
     sdk_to_domain_exception_handler,
 )
+from app.core.config import get_settings
 from app.core.exceptions import (
     ESMalformedDocumentError,
+    ESQueryError,
     InvalidPayloadError,
     NotFoundError,
+    ParseError,
     SDKToDomainError,
 )
 from app.domain.references import routes as references
@@ -30,6 +36,8 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     Visibility,
 )
+from app.domain.references.models.models import Reference as DomainReference
+from app.domain.references.models.sql import Enhancement as SQLEnhancement
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import (
     ExternalIdentifier,
@@ -45,7 +53,12 @@ from app.domain.references.service import ReferenceService
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
+from app.persistence.es.persistence import ESSearchResult, ESSearchTotal
 from app.tasks import broker
+from app.utils.time_and_date import apply_positive_timedelta, iso8601_duration_adapter
+from tests.factories import (
+    ReferenceFactory,
+)
 
 # Use the database session in all tests to set up the database manager.
 pytestmark = pytest.mark.usefixtures("session")
@@ -65,7 +78,9 @@ def app() -> FastAPI:
             NotFoundError: not_found_exception_handler,
             SDKToDomainError: sdk_to_domain_exception_handler,
             InvalidPayloadError: invalid_payload_exception_handler,
-            ESMalformedDocumentError: es_malformed_exception_handler,
+            ESMalformedDocumentError: es_exception_handler,
+            ESQueryError: es_exception_handler,
+            ParseError: parse_error_exception_handler,
         }
     )
 
@@ -128,7 +143,6 @@ async def add_reference(session: AsyncSession) -> SQLReference:
 async def add_robot(session: AsyncSession) -> SQLRobot:
     """Add a robot to the database."""
     robot = SQLRobot(
-        base_url="http://www.test-robot-here.com/",
         client_secret="secret-secret",
         description="description",
         name="name",
@@ -164,6 +178,7 @@ async def add_pending_enhancement(
         robot_id=enhancement_request.robot_id,
         enhancement_request_id=enhancement_request.id,
         status=PendingEnhancementStatus.PENDING,
+        expires_at=datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=10),
     )
     session.add(pending_enhancement)
     await session.commit()
@@ -185,7 +200,48 @@ async def add_robot_enhancement_batch(
     session.add(robot_enhancement_batch)
     session.add(pending_enhancement)
     await session.commit()
-    return robot_enhancement_batch
+    return robot_enhancement_batch.to_domain()
+
+
+async def add_enhancement(session: AsyncSession, reference_id: uuid.UUID):
+    """Add a basic enhancement to a reference."""
+    enhancement = SQLEnhancement(
+        id=uuid.uuid4(),
+        reference_id=reference_id,
+        visibility=Visibility.PUBLIC,
+        source="test_source",
+        enhancement_type=EnhancementType.ANNOTATION,
+        content={
+            "enhancement_type": "annotation",
+            "annotations": [
+                {
+                    "annotation_type": "boolean",
+                    "scheme": "test:scheme",
+                    "label": "test_label",
+                    "value": True,
+                }
+            ],
+        },
+    )
+
+    session.add(enhancement)
+    await session.commit()
+    return enhancement
+
+
+async def test_get_reference_with_enhancements_happy_path(
+    session: AsyncSession, client: AsyncClient
+):
+    """Test requesting a single reference by id."""
+    reference = await add_reference(session)
+    enhancement = await add_enhancement(session, reference.id)
+
+    response = await client.get(f"/v1/references/{reference.id}/")
+
+    response_data = response.json()
+
+    assert uuid.UUID(response_data["id"]) == reference.id
+    assert uuid.UUID(response_data["enhancements"][0]["id"]) == enhancement.id
 
 
 async def test_request_batch_enhancement_happy_path(
@@ -299,33 +355,6 @@ async def test_add_robot_automation_invalid_query(
     assert (
         "No field mapping can be found for the field with name [invalid]"
         in response.json()["detail"]
-    )
-
-
-async def test_get_reference_by_identifier_fails_with_404(
-    session: AsyncSession,
-    client: AsyncClient,
-) -> None:
-    """Test retrieving a reference by its identifier."""
-    reference = await add_reference(session)
-    session.add(
-        ExternalIdentifier(
-            reference_id=reference.id,
-            identifier="10.1234/example",
-            identifier_type="doi",
-        )
-    )
-
-    response = await client.get(
-        "/v1/references/",
-        params={"identifier": "10.1234/example", "identifier_type": "doi"},
-    )
-
-    assert response.status_code == status.HTTP_404_NOT_FOUND
-    response_data = response.json()
-    assert (
-        response_data["detail"] == "ExternalIdentifier with external_identifier ("
-        "<ExternalIdentifierType.DOI: 'doi'>, '10.1234/example', None) does not exist."
     )
 
 
@@ -489,18 +518,55 @@ async def test_request_robot_enhancement_batch(
     session: AsyncSession,
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
+    mock_blob_repository: None,  # noqa: ARG001
 ) -> None:
     """Test requesting a batch of pending enhancements for a robot."""
     # Set up test data
     robot = await add_robot(session)
     reference = await add_reference(session)
     enhancement_request = await add_enhancement_request(session, robot, reference)
-    await add_pending_enhancement(session, reference, enhancement_request)
+    pending_enhancement = await add_pending_enhancement(
+        session, reference, enhancement_request
+    )
+    robot_enhancement_batch = await add_robot_enhancement_batch(
+        session, pending_enhancement
+    )
 
-    # Mock the service methods
+    mock_get_pending = AsyncMock(return_value=[pending_enhancement])
+    mock_create_batch = AsyncMock(return_value=robot_enhancement_batch)
+
+    monkeypatch.setattr(
+        ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
+    )
+    monkeypatch.setattr(
+        ReferenceService, "create_robot_enhancement_batch", mock_create_batch
+    )
+
+    response = await client.post(
+        f"/v1/robot-enhancement-batches/?robot_id={robot.id}&limit=10&lease=PT5M"
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    mock_get_pending.assert_awaited_once_with(robot_id=robot.id, limit=10)
+
+    mock_create_batch.assert_awaited_once_with(
+        robot_id=robot.id,
+        pending_enhancements=[pending_enhancement],
+        lease_duration=datetime.timedelta(minutes=5),
+        blob_repository=ANY,
+    )
+
+
+async def test_request_robot_enhancement_batch_no_pending_enhancements(
+    session: AsyncSession,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test requesting a batch when there are no pending enhancements."""
+    robot = await add_robot(session)
+
     mock_get_pending = AsyncMock(return_value=[])
     mock_create_batch = AsyncMock()
-
     monkeypatch.setattr(
         ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
     )
@@ -514,6 +580,7 @@ async def test_request_robot_enhancement_batch(
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
     mock_get_pending.assert_awaited_once_with(robot_id=robot.id, limit=10)
+    mock_create_batch.assert_not_awaited()
 
 
 async def test_request_robot_enhancement_batch_limit_exceeded(
@@ -602,8 +669,231 @@ async def test_get_robot_enhancement_batch_happy_path(
     assert "signed" in response_data["reference_storage_url"]
 
 
+async def test_lookup_references_multiple_identifiers(
+    session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """Test lookup_references with multiple identifiers of different types."""
+    # Add a reference with a UUID
+    reference = await add_reference(session)
+    # Add a reference with a DOI identifier (simulate by setting external identifier)
+    doi_identifier = "10.1000/abc123"
+    reference_doi = SQLReference(visibility=Visibility.RESTRICTED)
+    session.add(reference_doi)
+    await session.commit()
+    # Simulate ExternalIdentifier for DOI
+    external_identifier = ExternalIdentifier(
+        reference_id=reference_doi.id,
+        identifier=doi_identifier,
+        identifier_type="doi",
+    )
+    session.add(external_identifier)
+    await session.commit()
+
+    identifiers = [str(reference.id), f"doi:{doi_identifier}"]
+    response = await client.get(
+        "/v1/references/",
+        params={
+            "identifier": identifiers,
+        },
+    )
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    returned_ids = {item["id"] for item in data}
+    assert str(reference.id) in returned_ids
+    assert str(reference_doi.id) in returned_ids
+
+
+async def test_lookup_references_accepts_csv(
+    session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """Test lookup_references accepts comma-separated identifiers."""
+    # Add a reference with a UUID
+    reference = await add_reference(session)
+    # Add a reference with a DOI identifier (simulate by setting external identifier)
+    doi_identifier = "10.1000/abc123"
+    reference_doi = SQLReference(visibility=Visibility.RESTRICTED)
+    session.add(reference_doi)
+    await session.commit()
+    # Simulate ExternalIdentifier for DOI
+    external_identifier = ExternalIdentifier(
+        reference_id=reference_doi.id,
+        identifier=doi_identifier,
+        identifier_type="doi",
+    )
+    session.add(external_identifier)
+    await session.commit()
+
+    response = await client.get(
+        "/v1/references/",
+        params={
+            "identifier": f"{reference.id},doi:{doi_identifier}",
+        },
+    )
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    returned_ids = {item["id"] for item in data}
+    assert str(reference.id) in returned_ids
+    assert str(reference_doi.id) in returned_ids
+
+
+async def test_lookup_references_too_many_identifiers(
+    client: AsyncClient,
+) -> None:
+    """Test lookup_references with too many identifiers."""
+    too_many_identifiers = [
+        str(uuid.uuid4())
+        for _ in range(get_settings().max_lookup_reference_query_length + 1)
+    ]
+    response = await client.get(
+        "/v1/references/",
+        params={"identifier": too_many_identifiers},
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    response = await client.get(
+        "/v1/references/",
+        params={"identifier": ",".join(too_many_identifiers)},
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+async def test_lookup_references_invalid_identifier_format(
+    client: AsyncClient,
+) -> None:
+    """Test lookup_references with an invalid identifier format."""
+    invalid_identifier = "not-a-uuid"
+    response = await client.get(
+        "/v1/references/",
+        params={"identifier": invalid_identifier},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "Must be UUIDv4" in response.text
+
+
 async def test_get_robot_enhancement_batch_nonexistent_batch(client: AsyncClient):
     """Test getting a robot enhancement batch that does not exist."""
     response = await client.get(f"/v1/robot-enhancement-batces/{uuid.uuid4()}/")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+async def test_robot_enhancement_batch_renew_lease(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Test renewing a lease on a robot enhancement batch."""
+    dt = datetime.timedelta(minutes=5)
+    dt_iso = iso8601_duration_adapter.dump_python(dt, mode="json")
+    expiry = apply_positive_timedelta(dt)
+    mock_renew_lease = AsyncMock(return_value=(5, expiry))
+    monkeypatch.setattr(
+        ReferenceService, "renew_robot_enhancement_batch_lease", mock_renew_lease
+    )
+
+    _id = uuid.uuid4()
+    response = await client.patch(
+        f"/v1/robot-enhancement-batches/{_id}/renew-lease/?lease={dt_iso}"
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.text == expiry.isoformat()
+
+    mock_renew_lease.assert_awaited_once_with(
+        robot_enhancement_batch_id=_id,
+        lease_duration=dt,
+    )
+
+
+async def test_robot_enhancement_batch_renew_lease_empty_response(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Test renewing a lease on a robot enhancement batch with no renewals left."""
+    dt = datetime.timedelta(minutes=5)
+    dt_iso = iso8601_duration_adapter.dump_python(dt, mode="json")
+    expiry = apply_positive_timedelta(dt)
+    mock_renew_lease = AsyncMock(return_value=(0, expiry))
+    monkeypatch.setattr(
+        ReferenceService, "renew_robot_enhancement_batch_lease", mock_renew_lease
+    )
+
+    _id = uuid.uuid4()
+    response = await client.patch(
+        f"/v1/robot-enhancement-batches/{_id}/renew-lease/?lease={dt_iso}"
+    )
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert (
+        response.json()["detail"] == "This batch has no pending enhancements. "
+        "They may have already expired or been completed."
+    )
+
+    mock_renew_lease.assert_awaited_once_with(
+        robot_enhancement_batch_id=_id,
+        lease_duration=dt,
+    )
+
+
+async def test_search_references_with_annotation_filters(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that annotation filters are correctly parsed and passed to the service."""
+    reference = ReferenceFactory.build()
+
+    # Create a mock search result
+    mock_search_result = ESSearchResult[DomainReference](
+        hits=[reference],
+        total=ESSearchTotal(value=1, relation="eq"),
+        page=1,
+    )
+
+    # Mock the service method
+    # Temporary patch until ES itself includes annotations
+    mock_search = AsyncMock(return_value=mock_search_result)
+    monkeypatch.setattr(ReferenceService, "search_references", mock_search)
+
+    # Test with annotation filters
+    response = await client.get(
+        "/v1/references/search/",
+        params={
+            "q": "test",
+            "annotation": [
+                "test:scheme/test_label",
+                "another:scheme/another_label@0.8",
+                "just_a_scheme@0.8",
+                "test:scheme/label/with/lots/of/slashes",
+            ],
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["total"]["count"] == 1
+
+    # Verify the service was called with the correct annotation filters
+    mock_search.assert_awaited_once()
+    call_kwargs = mock_search.call_args.kwargs
+    assert call_kwargs["annotations"] is not None
+    assert len(call_kwargs["annotations"]) == 4
+
+    # Check first annotation filter
+    assert call_kwargs["annotations"][0].scheme == "test:scheme"
+    assert call_kwargs["annotations"][0].label == "test_label"
+    assert call_kwargs["annotations"][0].score is None
+
+    # Check second annotation filter with score
+    assert call_kwargs["annotations"][1].scheme == "another:scheme"
+    assert call_kwargs["annotations"][1].label == "another_label"
+    assert call_kwargs["annotations"][1].score == 0.8
+
+    # Check third annotation filter without label is ignored
+    assert call_kwargs["annotations"][2].scheme == "just_a_scheme"
+    assert not call_kwargs["annotations"][2].label
+    assert call_kwargs["annotations"][2].score == 0.8
+
+    # Check fourth annotation filter with slashes in label
+    assert call_kwargs["annotations"][3].scheme == "test:scheme"
+    assert call_kwargs["annotations"][3].label == "label/with/lots/of/slashes"
+    assert call_kwargs["annotations"][3].score is None

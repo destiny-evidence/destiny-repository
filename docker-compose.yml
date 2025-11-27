@@ -68,12 +68,15 @@ services:
     depends_on:
       worker:
         condition: service_started
+      es_index_setup:
+        condition: service_completed_successfully
     environment:
       MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
       MINIO_CONFIG: '{"HOST":"fs:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass"}'
       ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
       APP_NAME: destiny-app
+      CORS_ALLOW_ORIGINS: '["*"]'
     networks:
       - default
     entrypoint: fastapi dev app/main.py --host 0.0.0.0 --port 8000
@@ -108,6 +111,61 @@ services:
     networks:
       - default
     entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover --reload
+
+  scheduler:
+    profiles: ["scheduler"]
+    build:
+      context: .
+      args:
+        UV_INSTALL_DEV: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      fs:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+      - ./libs/sdk:/app/libs/sdk
+      - certs:/app/certs
+    env_file:
+      - .env
+    environment:
+      MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
+      DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
+      MINIO_CONFIG: '{"HOST":"fs:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass"}'
+      ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
+      APP_NAME: destiny-scheduler
+    networks:
+      - default
+    entrypoint: taskiq scheduler app.tasks:scheduler --fs-discover --tasks-pattern app/**/tasks.py
+
+  ui:
+    profiles: ["ui"]
+    build:
+      context: ./ui
+      target: runner # or use a dedicated dev target
+    depends_on:
+      app:
+        condition: service_started
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost:8000/v1/"
+      ENV: local
+      NODE_ENV: development
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ./ui:/app
+      - /app/node_modules
+    networks:
+      - default
+    entrypoint: /entrypoint.sh
+    command: ["npm", "run", "dev", "--", "-H", "0.0.0.0"]
   es_setup:
     image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_STACK_VERSION}
     volumes:
@@ -167,7 +225,7 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_STACK_VERSION}
     volumes:
       - certs:/usr/share/elasticsearch/config/certs
-      - esdata01:/usr/share/elasticsearch/data
+      - esdata:/usr/share/elasticsearch/data
     ports:
       - ${ES_PORT}:9200
     environment:
@@ -203,6 +261,26 @@ services:
       timeout: 10s
       retries: 120
 
+  es_index_setup:
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    build:
+      context: .
+      args:
+        UV_INSTALL_DEV: "true"
+    volumes:
+      - ./app:/app/app
+      - ./libs/sdk:/app/libs/sdk
+      - certs:/app/certs
+    env_file:
+      - .env
+    environment:
+      ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
+    networks:
+      - default
+    entrypoint: python -m app.utils.es.es_migration --migrate --alias all
+
   kibana:
     profiles: ["search"]
     depends_on:
@@ -234,7 +312,7 @@ services:
 volumes:
   certs:
     driver: local
-  esdata01:
+  esdata:
     driver: local
   kibanadata:
     driver: local

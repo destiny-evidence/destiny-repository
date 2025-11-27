@@ -2,9 +2,9 @@
 
 import datetime
 from enum import StrEnum, auto
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import UUID4, BaseModel, Field, HttpUrl
+from pydantic import UUID4, BaseModel, Field, HttpUrl, model_validator
 
 from destiny_sdk.core import _JsonlFileInputMixIn
 from destiny_sdk.visibility import Visibility
@@ -25,6 +25,8 @@ class EnhancementType(StrEnum):
     """A free-form enhancement for tagging with labels."""
     LOCATION = auto()
     """Locations where the reference can be found."""
+    RAW = auto()
+    """A free form enhancement for arbitrary/unstructured data."""
     FULL_TEXT = auto()
     """The full text of the reference. (To be implemented)"""
 
@@ -145,7 +147,25 @@ class AnnotationType(StrEnum):
     """
 
 
-class ScoreAnnotation(BaseModel):
+class BaseAnnotation(BaseModel):
+    """Base class for annotations, defining the minimal required fields."""
+
+    scheme: str = Field(
+        description="An identifier for the scheme of annotation",
+        examples=["openalex:topic", "pubmed:mesh"],
+        pattern=r"^[^/]+$",  # No slashes allowed
+    )
+    label: str = Field(
+        description="A high level label for this annotation like the name of the topic",
+    )
+
+    @property
+    def qualified_label(self) -> str:
+        """The qualified label for this annotation."""
+        return f"{self.scheme}/{self.label}"
+
+
+class ScoreAnnotation(BaseAnnotation):
     """
     An annotation which represents the score for a label.
 
@@ -154,13 +174,6 @@ class ScoreAnnotation(BaseModel):
     """
 
     annotation_type: Literal[AnnotationType.SCORE] = AnnotationType.SCORE
-    scheme: str = Field(
-        description="An identifier for the scheme of annotation",
-        examples=["openalex:topic", "pubmed:mesh"],
-    )
-    label: str = Field(
-        description="A high level label for this annotation like the name of the topic",
-    )
     score: float = Field(description="""Score for this annotation""")
     data: dict = Field(
         default_factory=dict,
@@ -171,7 +184,7 @@ class ScoreAnnotation(BaseModel):
     )
 
 
-class BooleanAnnotation(BaseModel):
+class BooleanAnnotation(BaseAnnotation):
     """
     An annotation is a way of tagging the content with a label of some kind.
 
@@ -180,13 +193,6 @@ class BooleanAnnotation(BaseModel):
     """
 
     annotation_type: Literal[AnnotationType.BOOLEAN] = AnnotationType.BOOLEAN
-    scheme: str = Field(
-        description="An identifier for the scheme of the annotation",
-        examples=["openalex:topic", "pubmed:mesh"],
-    )
-    label: str = Field(
-        description="A high level label for this annotation like the name of the topic",
-    )
     value: bool = Field(description="""Boolean flag for this annotation""")
     score: float | None = Field(
         None, description="A confidence score for this annotation"
@@ -295,12 +301,45 @@ class LocationEnhancement(BaseModel):
     )
 
 
+class RawEnhancement(BaseModel):
+    """
+    An enhancement for storing raw/arbitrary/unstructured data.
+
+    Data in these enhancements is intended for future conversion into structured form.
+
+    This enhancement accepts any fields passed in to `data`. These enhancements cannot
+    be created by robots.
+    """
+
+    enhancement_type: Literal[EnhancementType.RAW] = EnhancementType.RAW
+    source_export_date: datetime.datetime = Field(
+        description="Date the enhancement data was retrieved."
+    )
+    description: str = Field(
+        description="Description of the data to aid in future refinement."
+    )
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional metadata to aid in future structuring of raw data",
+    )
+    data: Any = Field(description="Unstructured data for later processing.")
+
+    @model_validator(mode="after")
+    def forbid_no_data(self) -> Self:
+        """Prevent a raw enhancement from being created with no data."""
+        if not self.data:
+            msg = "data must be populated on a raw enhancement."
+            raise ValueError(msg)
+        return self
+
+
 #: Union type for all enhancement content types.
 EnhancementContent = Annotated[
     BibliographicMetadataEnhancement
     | AbstractContentEnhancement
     | AnnotationEnhancement
-    | LocationEnhancement,
+    | LocationEnhancement
+    | RawEnhancement,
     Field(discriminator="enhancement_type"),
 ]
 
