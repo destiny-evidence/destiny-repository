@@ -77,6 +77,14 @@ async def reference() -> Reference:
                 "id": uuid.uuid4(),
                 "reference_id": r,
                 "identifier": {
+                    "identifier_type": "eric",
+                    "identifier": "ED3925083",
+                },
+            },
+            {
+                "id": uuid.uuid4(),
+                "reference_id": r,
+                "identifier": {
                     "identifier_type": "other",
                     "other_identifier_name": "isbn",
                     "identifier": "978-3-16-148410-0",
@@ -297,7 +305,7 @@ async def test_es_repository_cycle(
 
     assert es_reference.id == reference.id
     assert es_reference.visibility == "public"
-    assert len(es_reference.identifiers or []) == 3
+    assert len(es_reference.identifiers or []) == 4
     assert len(es_reference.enhancements or []) == 3
     # Check that ids are preserved
     assert {enhancement.id for enhancement in es_reference.enhancements or []} == {
@@ -359,7 +367,7 @@ async def test_es_repository_update_existing(
 
     assert updated_reference.id == reference.id
     assert updated_reference.visibility == "restricted"
-    assert len(updated_reference.identifiers or []) == 3
+    assert len(updated_reference.identifiers or []) == 4
     assert len(updated_reference.enhancements or []) == 0
 
 
@@ -381,7 +389,7 @@ async def test_add_bulk(
     for ref_id in ref_ids:
         retrieved_ref = await es_reference_repository.get_by_pk(ref_id)
         assert retrieved_ref.visibility == "public"
-        assert len(retrieved_ref.identifiers or []) == 3
+        assert len(retrieved_ref.identifiers or []) == 4
         assert len(retrieved_ref.enhancements or []) == 3
 
 
