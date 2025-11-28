@@ -1,7 +1,10 @@
 """Tests for the EPPI parser."""
 
+from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+from destiny_sdk.enhancements import EnhancementType
 from destiny_sdk.identifiers import ExternalIdentifierType
 from destiny_sdk.parsers.eppi_parser import EPPIParser
 
@@ -78,3 +81,40 @@ def test_parsing_identifiers():
     )
     assert references[1].identifiers[0].identifier_type == ExternalIdentifierType.ERIC
     assert len(references[2].identifiers) == 0
+
+
+def test_parsing_with_raw_data_included():
+    """Test that we can include raw enhancements as necessary."""
+    test_data = {
+        "References": [
+            {
+                "ShortTitle": "Husain (2016)",
+                "DateCreated": "19/11/2018",
+                "DOI": "https://doi.org/10.1080/00220973.1978.11011636",
+                "Issue": "July",
+            }
+        ]
+    }
+
+    parser = EPPIParser(
+        include_raw_data=True,
+        source_export_date=datetime.now(tz=UTC),
+        data_description="EPPI test data",
+        raw_enhancement_metadata={"test": "metadata"},
+    )
+
+    references = parser.parse_data(test_data)
+    assert len(references) == 1
+    assert len(references[0].enhancements) == 1
+    assert references[0].enhancements[0].content.enhancement_type == EnhancementType.RAW
+    assert references[0].enhancements[0].content.data == test_data["References"][0]
+    assert references[0].enhancements[0].content.metadata == {"test": "metadata"}
+
+
+def test_parsing_raw_data_incorrectly_configured():
+    """
+    Test that we throw a runtime error if not all needed info
+    for raw enhancements is provided
+    """
+    with pytest.raises(RuntimeError):
+        EPPIParser(include_raw_data=True, source_export_date=datetime.now(tz=UTC))
