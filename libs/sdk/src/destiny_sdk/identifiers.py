@@ -53,7 +53,7 @@ class DOIIdentifier(BaseModel):
         )
 
 
-class ProquestIdentifier(BaseModel):
+class ProQuestIdentifier(BaseModel):
     """An external identifier representing a ProQuest ID."""
 
     identifier: int = Field(description="The ProQuest id of the reference")
@@ -147,7 +147,7 @@ ExternalIdentifier = Annotated[
     DOIIdentifier
     | ERICIdentifier
     | PubMedIdentifier
-    | ProquestIdentifier
+    | ProQuestIdentifier
     | OpenAlexIdentifier
     | OtherIdentifier,
     Field(discriminator="identifier_type"),

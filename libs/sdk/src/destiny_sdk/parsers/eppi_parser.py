@@ -18,7 +18,7 @@ from destiny_sdk.identifiers import (
     DOIIdentifier,
     ERICIdentifier,
     ExternalIdentifier,
-    ProquestIdentifier,
+    ProQuestIdentifier,
 )
 from destiny_sdk.references import ReferenceFileInput
 from destiny_sdk.visibility import Visibility
@@ -58,7 +58,7 @@ class EPPIParser:
                 ("https://search.proquest.com/", "https://www.proquest.com/")
             )
         ):
-            identifiers.append(ProquestIdentifier(identifier=url))
+            identifiers.append(ProQuestIdentifier(identifier=url))
         return identifiers
 
     def _parse_abstract_enhancement(
