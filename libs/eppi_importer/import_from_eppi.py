@@ -4,10 +4,22 @@ import argparse
 import base64
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 from destiny_sdk.parsers.eppi_parser import EPPIParser
+
+
+def date(date: str) -> datetime:
+    """Parse the date of the source export."""
+    try:
+        return datetime.strptime(date, "%Y-%m-%d %H:%M %Z")  # noqa: DTZ007
+    except ValueError as e:
+        msg = (
+            f"Could not parse --source-export-date {date}, "
+            "ensure in format YYYY-MM-DD hh:mm TZ"
+        )
+        raise RuntimeError(msg) from e
 
 
 def main() -> None:
@@ -41,10 +53,14 @@ def main() -> None:
     )
 
     arg_parser.add_argument(
-        "--source-export-timestamp",
-        type=int,
+        "--source-export-date",
+        type=date,
         default=None,
-        help="Timestamp of when the source file was exported",
+        help=(
+            "Date and time when the source file was exported. "
+            "Format: 'YEAR-MONTH-DAY HOUR:MINUTE TIMEZONE' "
+            "For example '2023-12-2 16:30 UTC'"
+        ),
     )
 
     arg_parser.add_argument(
@@ -71,18 +87,12 @@ def main() -> None:
 
     data = json.loads(file_bytes.decode("utf-8"))
 
-    source_export_date = (
-        datetime.fromtimestamp(args.source_export_timestamp, tz=UTC)
-        if args.source_export_timestamp
-        else None
-    )
-
     metadata = {"codeset_id": args.codeset_id} if args.codeset_id else None
 
     eppi_parser = EPPIParser(
         tags=args.tags,
         include_raw_data=args.include_raw,
-        source_export_date=source_export_date,
+        source_export_date=args.source_export_date,
         data_description=args.description,
         raw_enhancement_metadata=metadata,
     )

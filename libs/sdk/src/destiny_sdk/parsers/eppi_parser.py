@@ -65,8 +65,10 @@ class EPPIParser:
                 self.raw_enhancement_metadata,
             )
         ):
-            msg = "Cannot include raw data enhancements without "
-            "source_export_date, data_description, and raw_enhancement_metadata"
+            msg = (
+                "Cannot include raw data enhancements without "
+                "source_export_date, data_description, and raw_enhancement_metadata"
+            )
             raise RuntimeError(msg)
 
     def _parse_identifiers(
