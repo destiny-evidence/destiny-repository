@@ -143,7 +143,13 @@ class EPPIParser:
         self,
         ref_to_import: dict[str, Any],
     ) -> EnhancementContent | None:
-        """Add full Reference data as a raw enhancement."""
+        """Add Reference data as a raw enhancement."""
+        if ref_to_import.get("Abstract"):
+            # Don't store the abstract as this will be stored in its own enhancement
+            raw_enhancement_data = ref_to_import.copy()
+            raw_enhancement_data.pop("Abstract")
+            ref_to_import = raw_enhancement_data
+
         return RawEnhancement(
             source_export_date=self.source_export_date,
             description=self.data_description,

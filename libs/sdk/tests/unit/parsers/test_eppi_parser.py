@@ -111,6 +111,38 @@ def test_parsing_with_raw_data_included():
     assert references[0].enhancements[0].content.metadata == {"test": "metadata"}
 
 
+def test_raw_enhancements_exclude_abstracts():
+    """Test that we can include raw enhancements as necessary."""
+    test_data = {
+        # Contains info for bibliographic, abstract, and raw enhancements.
+        "References": [
+            {
+                "Title": "Tuatara Extra Eye",
+                "Abstract": "They've got an extra one on top of their head it's true.",
+                "DateCreated": "19/11/2011",
+                "DOI": "https://doi.org/10.1080/00220973.1978.11011636",
+                "Issue": "July",
+            }
+        ]
+    }
+
+    parser = EPPIParser(
+        include_raw_data=True,
+        source_export_date=datetime.now(tz=UTC),
+        data_description="EPPI test data",
+        raw_enhancement_metadata={"test": "metadata"},
+    )
+
+    references = parser.parse_data(test_data)
+    assert len(references) == 1
+    assert len(references[0].enhancements) == 3
+
+    raw_enhancement = references[0].enhancements[2]
+    assert raw_enhancement.content.enhancement_type == EnhancementType.RAW
+    assert not raw_enhancement.content.data.get("Abstract")
+    assert raw_enhancement.content.data.get("Title") == "Tuatara Extra Eye"
+
+
 def test_parsing_raw_data_incorrectly_configured():
     """
     Test that we throw a runtime error if not all needed info
