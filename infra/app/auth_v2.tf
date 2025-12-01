@@ -23,7 +23,7 @@ resource "random_uuid" "external_directory_reference_deduplicator_scope" {}
 resource "azuread_application" "external_directory_destiny_repository" {
   provider         = azuread.external_directory
   display_name     = local.name
-  sign_in_audience = "AzureADMyOrg"
+  sign_in_audience = "AzureADandPersonalMicrosoftAccount"
 
   api {
     requested_access_token_version = "2"
@@ -192,7 +192,7 @@ resource "azuread_application_api_access" "external_directory_github_actions" {
 resource "azuread_application_registration" "external_directory_destiny_repository_auth" {
   provider                       = azuread.external_directory
   display_name                   = "${local.name}-auth-client"
-  sign_in_audience               = "AzureADMyOrg"
+  sign_in_audience               = "AzureADandPersonalMicrosoftAccount"
   requested_access_token_version = 2
 }
 
