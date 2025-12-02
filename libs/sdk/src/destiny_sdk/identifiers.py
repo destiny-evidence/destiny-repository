@@ -56,16 +56,16 @@ class DOIIdentifier(BaseModel):
 class ProQuestIdentifier(BaseModel):
     """An external identifier representing a ProQuest ID."""
 
-    identifier: int = Field(description="The ProQuest id of the reference")
+    identifier: str = Field(description="The ProQuest id of the reference")
     identifier_type: Literal[ExternalIdentifierType.PROQUEST] = Field(
         ExternalIdentifierType.PROQUEST, description="The type of identifier used."
     )
 
     @field_validator("identifier", mode="before")
     @classmethod
-    def remove_doi_url(cls, value: str) -> int:
+    def remove_proquest_url(cls, value: str) -> str:
         """Remove the URL part of the ProQuest id if it exists."""
-        return int(
+        return (
             value.removeprefix("https://search.proquest.com/docview/")
             .removeprefix("http://search.proquest.com/docview/")
             .removeprefix("https://www.proquest.com/docview/")
