@@ -1,5 +1,6 @@
 """Send authenticated requests to Destiny Repository."""
 
+import sys
 import time
 from collections.abc import Generator
 
@@ -25,7 +26,8 @@ from destiny_sdk.robots import (
 )
 from destiny_sdk.search import AnnotationFilter
 
-user_agent = f"python/destiny-sdk/{sdk_version}"
+python_version = ".".join(map(str, sys.version_info[:3]))
+user_agent = f"python@{python_version}/destiny-sdk@{sdk_version}"
 
 
 class HMACSigningAuth(httpx.Auth):
