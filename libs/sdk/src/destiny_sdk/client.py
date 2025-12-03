@@ -1,10 +1,15 @@
 """Send authenticated requests to Destiny Repository."""
 
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 
 import httpx
-from msal import ConfidentialClientApplication, PublicClientApplication
+from msal import (
+    ConfidentialClientApplication,
+    ManagedIdentityClient,
+    PublicClientApplication,
+    SystemAssignedManagedIdentity,
+)
 from pydantic import UUID4, HttpUrl, TypeAdapter
 
 from destiny_sdk.auth import create_signature
@@ -186,9 +191,9 @@ class OAuthMiddleware(httpx.Auth):
 
     def __init__(  # noqa: PLR0913
         self,
-        azure_tenant_id: str,
-        azure_client_id: str,
-        azure_application_id: str,
+        azure_tenant_id: str | None = None,
+        azure_client_id: str | None = None,
+        azure_application_id: str | None = None,
         azure_login_url: str = "https://login.microsoftonline.com/",
         azure_client_secret: str | None = None,
         *,
@@ -211,30 +216,78 @@ class OAuthMiddleware(httpx.Auth):
         :type use_managed_identity: bool
         """
         if use_managed_identity:
-            self._oauth_app = ConfidentialClientApplication(
-                client_id=azure_client_id,
-                authority=f"{azure_login_url}{azure_tenant_id}",
+            if any(
+                [
+                    azure_tenant_id,
+                    azure_client_id,
+                    azure_application_id,
+                    azure_client_secret,
+                ]
+            ):
+                msg = (
+                    "tenant_id, client_id, application_id, and client_secret "
+                    "must not be provided when using managed identity authentication"
+                )
+                raise ValueError(msg)
+            self._oauth_app = ManagedIdentityClient(
+                SystemAssignedManagedIdentity(),
+                http_client=httpx.Client(),
             )
+            self._get_token = self._get_token_from_managed_identity
         elif azure_client_secret:
+            if not all(
+                [
+                    azure_tenant_id,
+                    azure_client_id,
+                    azure_application_id,
+                    azure_client_secret,
+                ]
+            ):
+                msg = (
+                    "tenant_id, client_id, and application_id must be provided "
+                    "when using client secret authentication"
+                )
+                raise ValueError(msg)
             self._oauth_app = ConfidentialClientApplication(
                 client_id=azure_client_id,
                 authority=f"{azure_login_url}{azure_tenant_id}",
                 client_credential=azure_client_secret,
             )
+            self._get_token = self._get_token_from_confidential_client
         else:
+            if not all([azure_tenant_id, azure_client_id, azure_application_id]):
+                msg = (
+                    "tenant_id, client_id, and application_id must be provided "
+                    "when using public client authentication"
+                )
+                raise ValueError(msg)
             self._oauth_app = PublicClientApplication(
                 azure_client_id,
                 authority=f"{azure_login_url}{azure_tenant_id}",
                 client_credential=None,
             )
+            self._get_token = self._get_token_from_public_client
 
         self._scope = f"api://{azure_application_id}/.default"
         self._account = None
-        self._get_token: Callable[..., str] = (
-            self._get_token_from_public_client
-            if isinstance(self._oauth_app, PublicClientApplication)
-            else self._get_token_from_confidential_client
-        )
+
+    def _parse_token(self, msal_response: dict) -> str:
+        """
+        Parse the OAuth2 token from an MSAL response.
+
+        :param msal_response: The MSAL response containing the token.
+        :type msal_response: dict
+        :return: The OAuth2 token.
+        :rtype: str
+        """
+        if not msal_response.get("access_token"):
+            msg = (
+                "Failed to acquire access token: "
+                f"{msal_response.get('error', 'Unknown error')}"
+            )
+            raise RuntimeError(msg)
+
+        return msal_response["access_token"]
 
     def _get_token_from_public_client(self, *, force_refresh: bool = False) -> str:
         """
@@ -258,18 +311,13 @@ class OAuthMiddleware(httpx.Auth):
         if not result:
             result = self._oauth_app.acquire_token_interactive(scopes=[self._scope])
 
-        if not result.get("access_token"):
-            msg = (
-                "Failed to acquire access token: "
-                f"{result.get('error', 'Unknown error')}"
-            )
-            raise RuntimeError(msg)
+        access_token = self._parse_token(result)
 
         # After first login, cache the account for silent token acquisition
         if not self._account and (accounts := self._oauth_app.get_accounts()):
             self._account = accounts[0]
 
-        return result["access_token"]
+        return access_token
 
     def _get_token_from_confidential_client(
         self,
@@ -291,14 +339,30 @@ class OAuthMiddleware(httpx.Auth):
         # Uses msal cache if possible, else client credentials flow
         result = self._oauth_app.acquire_token_for_client(scopes=[self._scope])
 
-        if not result.get("access_token"):
-            msg = (
-                "Failed to acquire access token: "
-                f"{result.get('error', 'Unknown error')}"
-            )
-            raise RuntimeError(msg)
+        return self._parse_token(result)
 
-        return result["access_token"]
+    def _get_token_from_managed_identity(
+        self,
+        *,
+        force_refresh: bool = False,  # noqa: ARG002 MSAL will handle refreshing
+    ) -> str:
+        """
+        Get an OAuth2 token from a ManagedIdentityClient.
+
+        :param force_refresh: Whether to force a token refresh.
+        :type force_refresh: bool
+        :return: The OAuth2 token.
+        :rtype: str
+        """
+        if not isinstance(self._oauth_app, ManagedIdentityClient):
+            msg = "oauth_app must be a ManagedIdentityClient for this method"
+            raise TypeError(msg)
+
+        result = self._oauth_app.acquire_token_for_client(
+            resource=self._scope.removesuffix("/.default")
+        )
+
+        return self._parse_token(result)
 
     def auth_flow(
         self, request: httpx.Request

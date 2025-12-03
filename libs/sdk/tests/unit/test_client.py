@@ -19,7 +19,11 @@ from destiny_sdk.robots import (
     RobotError,
 )
 from destiny_sdk.search import AnnotationFilter
-from msal import ConfidentialClientApplication, PublicClientApplication
+from msal import (
+    ConfidentialClientApplication,
+    ManagedIdentityClient,
+    PublicClientApplication,
+)
 from pydantic import HttpUrl
 from pytest_httpx import HTTPXMock
 
@@ -328,6 +332,39 @@ class TestOAuthMiddleware:
             azure_client_id="test-client",
             azure_application_id="test-app",
             azure_client_secret="test-secret",
+        )
+
+        # Create a test request
+        request = httpx.Request("GET", "https://api.example.com/test")
+
+        # Execute the auth flow
+        flow = middleware.auth_flow(request)
+        authenticated_request = next(flow)
+
+        assert "Authorization" in authenticated_request.headers
+        assert authenticated_request.headers["Authorization"] == f"Bearer {mock_token}"
+
+    def test_managed_identity_auth_flow(self, monkeypatch) -> None:
+        """Test OAuth middleware auth flow with managed identity."""
+
+        mock_token = "managed_identity_token_789"
+
+        class MockManagedIdentityClient(ManagedIdentityClient):
+            def __init__(self, *args, **kwargs):
+                # Don't call super().__init__ to avoid actual MSAL initialization
+                pass
+
+            def acquire_token_for_client(self, resource):
+                return {"access_token": mock_token}
+
+        # Patch the class before instantiation
+        monkeypatch.setattr(
+            "destiny_sdk.client.ManagedIdentityClient",
+            MockManagedIdentityClient,
+        )
+
+        middleware = OAuthMiddleware(
+            use_managed_identity=True,
         )
 
         # Create a test request
