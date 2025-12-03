@@ -13,6 +13,7 @@ from msal import (
 from pydantic import UUID4, HttpUrl, TypeAdapter
 
 from destiny_sdk.auth import create_signature
+from destiny_sdk.core import sdk_version
 from destiny_sdk.identifiers import IdentifierLookup
 from destiny_sdk.references import Reference, ReferenceSearchResult
 from destiny_sdk.robots import (
@@ -23,6 +24,8 @@ from destiny_sdk.robots import (
     RobotResult,
 )
 from destiny_sdk.search import AnnotationFilter
+
+user_agent = f"python/destiny-sdk/{sdk_version}"
 
 
 class HMACSigningAuth(httpx.Auth):
@@ -79,7 +82,10 @@ class RobotClient:
         """
         self.session = httpx.Client(
             base_url=str(base_url).removesuffix("/").removesuffix("/v1") + "/v1",
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": user_agent,
+            },
             auth=HMACSigningAuth(secret_key=secret_key, client_id=client_id),
         )
 
@@ -409,8 +415,12 @@ class OAuthClient:
         """
         self._client = httpx.Client(
             base_url=str(base_url).removesuffix("/").removesuffix("/v1") + "/v1",
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": user_agent,
+            },
         )
+
         if auth:
             self._client.auth = auth
 
