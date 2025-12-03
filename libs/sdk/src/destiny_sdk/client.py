@@ -192,8 +192,8 @@ class OAuthMiddleware(httpx.Auth):
     def __init__(  # noqa: PLR0913
         self,
         azure_client_id: str,
+        azure_application_id: str,
         azure_tenant_id: str | None = None,
-        azure_application_id: str | None = None,
         azure_login_url: str = "https://login.microsoftonline.com/",
         azure_client_secret: str | None = None,
         *,
@@ -220,15 +220,14 @@ class OAuthMiddleware(httpx.Auth):
                 any(
                     [
                         azure_tenant_id,
-                        azure_application_id,
                         azure_client_secret,
                     ]
                 )
                 or not azure_client_id
             ):
                 msg = (
-                    "Only client_id must be provided when using managed identity "
-                    "authentication"
+                    "azure_tenant_id and azure_client_secret must not be provided "
+                    "when using managed identity authentication"
                 )
                 raise ValueError(msg)
             self._oauth_app = ManagedIdentityClient(
@@ -237,17 +236,10 @@ class OAuthMiddleware(httpx.Auth):
             )
             self._get_token = self._get_token_from_managed_identity
         elif azure_client_secret:
-            if not all(
-                [
-                    azure_tenant_id,
-                    azure_client_id,
-                    azure_application_id,
-                    azure_client_secret,
-                ]
-            ):
+            if not azure_tenant_id:
                 msg = (
-                    "tenant_id, client_id, and application_id must be provided "
-                    "when using client secret authentication"
+                    "azure_tenant_id must be provided "
+                    "when not using managed identity authentication"
                 )
                 raise ValueError(msg)
             self._oauth_app = ConfidentialClientApplication(
@@ -257,10 +249,10 @@ class OAuthMiddleware(httpx.Auth):
             )
             self._get_token = self._get_token_from_confidential_client
         else:
-            if not all([azure_tenant_id, azure_client_id, azure_application_id]):
+            if not azure_tenant_id:
                 msg = (
-                    "tenant_id, client_id, and application_id must be provided "
-                    "when using public client authentication"
+                    "azure_tenant_id must be provided "
+                    "when not using managed identity authentication"
                 )
                 raise ValueError(msg)
             self._oauth_app = PublicClientApplication(
