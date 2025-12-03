@@ -10,13 +10,13 @@ from pathlib import Path
 from destiny_sdk.parsers.eppi_parser import EPPIParser
 
 
-def date(date: str) -> datetime:
-    """Parse the date of the source export."""
+def parse_date(date_to_parse: str) -> datetime:
+    """Parse a date string and return a datetime object."""
     try:
-        return datetime.strptime(date, "%Y-%m-%d %H:%M %Z")  # noqa: DTZ007
+        return datetime.strptime(date_to_parse, "%Y-%m-%d %H:%M %Z")  # noqa: DTZ007
     except ValueError as e:
         msg = (
-            f"Could not parse --source-export-date {date}, "
+            f"Could not parse --source-export-date {date_to_parse}, "
             "ensure in format YYYY-MM-DD hh:mm TZ"
         )
         raise RuntimeError(msg) from e
@@ -54,7 +54,7 @@ def main() -> None:
 
     arg_parser.add_argument(
         "--source-export-date",
-        type=date,
+        type=parse_date,
         default=None,
         help=(
             "Date and time when the source file was exported. "
