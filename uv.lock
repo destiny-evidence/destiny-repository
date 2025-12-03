@@ -690,7 +690,7 @@ test = [
 
 [[package]]
 name = "destiny-sdk"
-version = "0.7.0.dev4"
+version = "0.7.0"
 source = { editable = "libs/sdk" }
 dependencies = [
     { name = "cachetools" },
