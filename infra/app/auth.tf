@@ -267,14 +267,15 @@ resource "azuread_application_api_access" "openalex_incremental_updater" {
   ]
 }
 
-# DESTINY GUI role assignments
-# NB this is the external UI application, not the one on the repository
-data "azuread_application" "destiny_ui" {
-  client_id = var.destiny_ui_client_id
+# DESTINY UI role assignments
+# Note: this is a separate app, not the inbuilt repository UI
+data "azurerm_user_assigned_identity" "destiny_ui" {
+  name                = var.destiny_ui_app_name
+  resource_group_name = "rg-${var.destiny_ui_app_name}-${var.environment}"
 }
 
-resource "azuread_application_api_access" "destiny_ui" {
-  application_id = data.azuread_application.destiny_ui.id
+resource "azuread_application_api_access" "container_app_to_reference_reader" {
+  application_id = data.azurerm_user_assigned_identity.destiny_ui.client_id
   api_client_id  = azuread_application.destiny_repository.client_id
 
   role_ids = [
