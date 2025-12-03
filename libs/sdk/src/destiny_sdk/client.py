@@ -193,7 +193,58 @@ Client = RobotClient
 
 
 class OAuthMiddleware(httpx.Auth):
-    """Auth middleware that handles OAuth2 token retrieval and refresh."""
+    """
+    Auth middleware that handles OAuth2 token retrieval and refresh.
+
+    This is generally used in conjunction with
+    :class:`OAuthClient <libs.sdk.src.destiny_sdk.client.OAuthClient>`.
+
+    Supports three authentication flows:
+
+    **Public Client Application (human login)**
+
+    Initial login will be interactive through a browser window. Subsequent token
+    retrievals will use cached tokens and refreshes where possible, and only prompt
+    for login again if necessary.
+
+    .. code-block:: python
+
+        auth = OAuthMiddleware(
+            azure_client_id="repository-client-id",
+            azure_application_id="repository-application-id",
+            azure_tenant_id="repository-tenant-id",
+        )
+
+    **Confidential Client Application (client credentials)**
+
+    Suitable for service-to-service authentication where no user interaction is
+    possible or desired. Reach out if you need help setting up a confidential client
+    application. The secret must be stored securely.
+
+    .. code-block:: python
+
+        auth = OAuthMiddleware(
+            azure_client_id="repository-client-id",
+            azure_application_id="repository-application-id",
+            azure_tenant_id="repository-tenant-id",
+            azure_client_secret="your-azure-client-secret",
+        )
+
+    **Azure Managed Identity**
+
+    Suitable for Azure environments that have had API permissions provisioned for
+    their managed identity. Note that the ``azure_client_id`` here is the client ID of
+    the managed identity, not the repository.
+
+    .. code-block:: python
+
+        auth = OAuthMiddleware(
+            azure_client_id="your-managed-identity-client-id",
+            azure_application_id="repository-application-id",
+            use_managed_identity=True,
+        )
+
+    """
 
     def __init__(  # noqa: PLR0913
         self,
@@ -397,21 +448,47 @@ class OAuthMiddleware(httpx.Auth):
 
 
 class OAuthClient:
-    """Client for interaction with the Destiny API using OAuth2."""
+    """
+    Client for interaction with the Destiny API using OAuth2.
+
+    This will apply the provided authentication, usually
+    :class:`OAuthMiddleware <libs.sdk.src.destiny_sdk.client.OAuthMiddleware>`,
+    to all requests. Some API endpoints are supported directly through methods on this
+    class, while others can be accessed through the underlying ``httpx`` client.
+
+    Example usage:
+
+    .. code-block:: python
+
+        from destiny_sdk.client import OAuthClient, OAuthMiddleware
+
+        client = OAuthClient(
+            base_url="https://destiny-repository.example.com",
+            auth=OAuthMiddleware(...),
+        )
+
+        # Supported method
+        response = client.search(query="example")
+
+        # Unsupported method, use underlying httpx client
+        response = client.get_client().get("/system/healthcheck/")
+    """
 
     def __init__(
         self,
         base_url: HttpUrl | str,
-        auth: OAuthMiddleware | None = None,
+        auth: httpx.Auth | None = None,
     ) -> None:
         """
         Initialize the client.
 
         :param base_url: The base URL for the Destiny Repository API.
         :type base_url: HttpUrl
-        :param auth: The OAuthMiddleware for authentication. If not provided, only
-            unauthenticated requests can be made.
-        :type auth: OAuthMiddleware | None
+        :param auth: The middleware for authentication. If not provided, only
+            unauthenticated requests can be made. This should almost always be an
+            instance of ``OAuthMiddleware``, unless you need to create a custom auth
+            class.
+        :type auth: httpx.Auth | None
         """
         self._client = httpx.Client(
             base_url=str(base_url).removesuffix("/").removesuffix("/v1") + "/v1",
@@ -455,7 +532,7 @@ class OAuthClient:
         """
         Send a search request to the Destiny Repository API.
 
-        See also: :doc:`Search <../procedures/search>`.
+        See also: :ref:`search-procedure`.
 
         :param query: The search query string.
         :type query: str
@@ -495,7 +572,7 @@ class OAuthClient:
         """
         Lookup references by identifiers.
 
-        See also: :doc:`Search <../procedures/search>`.
+        See also: :ref:`lookup-procedure`.
 
         :param identifiers: The identifiers to look up.
         :type identifiers: list[str | libs.sdk.src.destiny_sdk.identifiers.IdentifierLookup]
@@ -510,3 +587,14 @@ class OAuthClient:
         )
         self._raise_for_status(response)
         return TypeAdapter(list[Reference]).validate_python(response.json())
+
+    def get_client(self) -> httpx.Client:
+        """
+        Get the underlying ``httpx`` client.
+
+        This can be used to make custom requests not covered by the SDK methods.
+
+        :return: The underlying ``httpx`` client with authentication attached.
+        :rtype: `httpx.Client <https://www.python-httpx.org/advanced/clients/>`_
+        """
+        return self._client
