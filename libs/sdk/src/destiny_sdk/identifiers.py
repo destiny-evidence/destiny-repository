@@ -23,7 +23,7 @@ class ExternalIdentifierType(StrEnum):
     """
     PM_ID = auto()
     """A PubMed ID which is a unique identifier for a document in PubMed."""
-    PROQUEST = auto()
+    PRO_QUEST = auto()
     """A ProQuest ID which is a unqiue identifier for a document in ProQuest."""
     OPEN_ALEX = auto()
     """An OpenAlex ID which is a unique identifier for a document in OpenAlex."""
@@ -56,9 +56,11 @@ class DOIIdentifier(BaseModel):
 class ProQuestIdentifier(BaseModel):
     """An external identifier representing a ProQuest ID."""
 
-    identifier: str = Field(description="The ProQuest id of the reference")
-    identifier_type: Literal[ExternalIdentifierType.PROQUEST] = Field(
-        ExternalIdentifierType.PROQUEST, description="The type of identifier used."
+    identifier: str = Field(
+        description="The ProQuest id of the reference", pattern=r"[0-9]+$"
+    )
+    identifier_type: Literal[ExternalIdentifierType.PRO_QUEST] = Field(
+        ExternalIdentifierType.PRO_QUEST, description="The type of identifier used."
     )
 
     @field_validator("identifier", mode="before")

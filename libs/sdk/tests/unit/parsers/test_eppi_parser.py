@@ -77,7 +77,7 @@ def test_parsing_identifiers():
     assert len(references) == 3
     assert references[0].identifiers[0].identifier_type == ExternalIdentifierType.DOI
     assert (
-        references[0].identifiers[1].identifier_type == ExternalIdentifierType.PROQUEST
+        references[0].identifiers[1].identifier_type == ExternalIdentifierType.PRO_QUEST
     )
     assert references[1].identifiers[0].identifier_type == ExternalIdentifierType.ERIC
     assert len(references[2].identifiers) == 0
