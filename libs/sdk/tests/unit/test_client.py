@@ -365,6 +365,7 @@ class TestOAuthMiddleware:
 
         middleware = OAuthMiddleware(
             use_managed_identity=True,
+            azure_client_id="test-client",
         )
 
         # Create a test request

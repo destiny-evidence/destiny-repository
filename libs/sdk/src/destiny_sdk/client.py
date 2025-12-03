@@ -8,7 +8,7 @@ from msal import (
     ConfidentialClientApplication,
     ManagedIdentityClient,
     PublicClientApplication,
-    SystemAssignedManagedIdentity,
+    UserAssignedManagedIdentity,
 )
 from pydantic import UUID4, HttpUrl, TypeAdapter
 
@@ -191,8 +191,8 @@ class OAuthMiddleware(httpx.Auth):
 
     def __init__(  # noqa: PLR0913
         self,
+        azure_client_id: str,
         azure_tenant_id: str | None = None,
-        azure_client_id: str | None = None,
         azure_application_id: str | None = None,
         azure_login_url: str = "https://login.microsoftonline.com/",
         azure_client_secret: str | None = None,
@@ -216,21 +216,23 @@ class OAuthMiddleware(httpx.Auth):
         :type use_managed_identity: bool
         """
         if use_managed_identity:
-            if any(
-                [
-                    azure_tenant_id,
-                    azure_client_id,
-                    azure_application_id,
-                    azure_client_secret,
-                ]
+            if (
+                any(
+                    [
+                        azure_tenant_id,
+                        azure_application_id,
+                        azure_client_secret,
+                    ]
+                )
+                or not azure_client_id
             ):
                 msg = (
-                    "tenant_id, client_id, application_id, and client_secret "
-                    "must not be provided when using managed identity authentication"
+                    "Only client_id must be provided when using managed identity "
+                    "authentication"
                 )
                 raise ValueError(msg)
             self._oauth_app = ManagedIdentityClient(
-                SystemAssignedManagedIdentity(),
+                UserAssignedManagedIdentity(client_id=azure_client_id),
                 http_client=httpx.Client(),
             )
             self._get_token = self._get_token_from_managed_identity
