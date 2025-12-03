@@ -174,8 +174,8 @@ variable "open_alex_incremental_updater_client_id" {
   type        = string
 }
 
-variable "destiny_ui_app_name" {
-  description = "The name of the destiny ui application"
+variable "destiny_demonstrator_ui_app_name" {
+  description = "The name of the destiny demonstrator ui application"
   type        = string
   default     = "demonstrator-ui"
 }
