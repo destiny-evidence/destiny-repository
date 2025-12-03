@@ -181,28 +181,58 @@ class RobotClient:
 Client = RobotClient
 
 
-class OAuth2TokenRefreshAuth(httpx.Auth):
-    """Auth middleware that handles OAuth2 token refresh on expiration."""
+class OAuthMiddleware(httpx.Auth):
+    """Auth middleware that handles OAuth2 token retrieval and refresh."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
-        oauth_app: PublicClientApplication | ConfidentialClientApplication,
-        scope: str,
+        azure_tenant_id: str,
+        azure_client_id: str,
+        azure_application_id: str,
+        azure_login_url: str = "https://login.microsoftonline.com/",
+        azure_client_secret: str | None = None,
+        *,
+        use_managed_identity: bool = False,
     ) -> None:
         """
         Initialize the auth middleware.
 
-        :param oauth_app: The MSAL PublicClientApplication instance.
-        :type oauth_app: PublicClientApplication
-        :param scope: The OAuth2 scope to request.
-        :type scope: str
+        :param tenant_id: The OAuth2 tenant ID.
+        :type tenant_id: str
+        :param client_id: The OAuth2 client ID.
+        :type client_id: str
+        :param application_id: The application ID for the Destiny API.
+        :type application_id: str
+        :param azure_login_url: The Azure login URL.
+        :type azure_login_url: str
+        :param azure_client_secret: The Azure client secret.
+        :type azure_client_secret: str | None
+        :param use_managed_identity: Whether to use managed identity for authentication
+        :type use_managed_identity: bool
         """
-        self._oauth_app = oauth_app
-        self._scope = scope
+        if use_managed_identity:
+            self._oauth_app = ConfidentialClientApplication(
+                client_id=azure_client_id,
+                authority=f"{azure_login_url}{azure_tenant_id}",
+            )
+        elif azure_client_secret:
+            self._oauth_app = ConfidentialClientApplication(
+                client_id=azure_client_id,
+                authority=f"{azure_login_url}{azure_tenant_id}",
+                client_credential=azure_client_secret,
+            )
+        else:
+            self._oauth_app = PublicClientApplication(
+                azure_client_id,
+                authority=f"{azure_login_url}{azure_tenant_id}",
+                client_credential=None,
+            )
+
+        self._scope = f"api://{azure_application_id}/.default"
         self._account = None
         self._get_token: Callable[..., str] = (
             self._get_token_from_public_client
-            if isinstance(oauth_app, PublicClientApplication)
+            if isinstance(self._oauth_app, PublicClientApplication)
             else self._get_token_from_confidential_client
         )
 
@@ -244,7 +274,7 @@ class OAuth2TokenRefreshAuth(httpx.Auth):
     def _get_token_from_confidential_client(
         self,
         *,
-        force_refresh: bool = False,  # noqa: ARG002
+        force_refresh: bool = False,  # noqa: ARG002 MSAL will handle refreshing
     ) -> str:
         """
         Get an OAuth2 token from a ConfidentialClientApplication.
@@ -305,59 +335,26 @@ class OAuth2TokenRefreshAuth(httpx.Auth):
 class OAuthClient:
     """Client for interaction with the Destiny API using OAuth2."""
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         base_url: HttpUrl | str,
-        azure_tenant_id: str,
-        azure_client_id: str,
-        azure_application_id: str,
-        azure_login_url: str = "https://login.microsoftonline.com/",
-        azure_client_secret: str | None = None,
-        *,
-        use_managed_identity: bool = False,
+        auth: OAuthMiddleware | None = None,
     ) -> None:
         """
         Initialize the client.
 
         :param base_url: The base URL for the Destiny Repository API.
         :type base_url: HttpUrl
-        :param tenant_id: The OAuth2 tenant ID.
-        :type tenant_id: str
-        :param client_id: The OAuth2 client ID.
-        :type client_id: str
-        :param application_id: The application ID for the Destiny API.
-        :type application_id: str
-        :param azure_login_url: The Azure login URL.
-        :type azure_login_url: str
-        :param azure_client_secret: The Azure client secret.
-        :type azure_client_secret: str | None
-        :param use_managed_identity: Whether to use managed identity for authentication
-        :type use_managed_identity: bool
+        :param auth: The OAuthMiddleware for authentication. If not provided, only
+            unauthenticated requests can be made.
+        :type auth: OAuthMiddleware | None
         """
-        if use_managed_identity:
-            oauth_app = ConfidentialClientApplication(
-                client_id=azure_client_id,
-                authority=f"{azure_login_url}{azure_tenant_id}",
-            )
-        elif azure_client_secret:
-            oauth_app = ConfidentialClientApplication(
-                client_id=azure_client_id,
-                authority=f"{azure_login_url}{azure_tenant_id}",
-                client_credential=azure_client_secret,
-            )
-        else:
-            oauth_app = PublicClientApplication(
-                azure_client_id,
-                authority=f"{azure_login_url}{azure_tenant_id}",
-                client_credential=None,
-            )
-
-        scope = f"api://{azure_application_id}/.default"
         self._client = httpx.Client(
             base_url=str(base_url).removesuffix("/").removesuffix("/v1") + "/v1",
             headers={"Content-Type": "application/json"},
-            auth=OAuth2TokenRefreshAuth(oauth_app=oauth_app, scope=scope),
         )
+        if auth:
+            self._client.auth = auth
 
     def _raise_for_status(self, response: httpx.Response) -> None:
         """
