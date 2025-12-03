@@ -174,6 +174,11 @@ variable "open_alex_incremental_updater_client_id" {
   type        = string
 }
 
+variable "destiny_ui_client_id" {
+  description = "The client id of the destiny ui application"
+  type        = string
+}
+
 variable "elasticsearch_sku" {
   description = "SKU for the Elasticsearch cluster"
   type        = string

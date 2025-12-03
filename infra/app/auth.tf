@@ -266,3 +266,18 @@ resource "azuread_application_api_access" "openalex_incremental_updater" {
     azuread_application_app_role.importer.role_id
   ]
 }
+
+# DESTINY GUI role assignments
+# NB this is the external UI application, not the one on the repository
+data "azuread_application" "destiny_ui" {
+  client_id = var.destiny_ui_client_id
+}
+
+resource "azuread_application_api_access" "destiny_ui" {
+  application_id = data.azuread_application.destiny_ui.id
+  api_client_id  = azuread_application.destiny_repository.client_id
+
+  role_ids = [
+    azuread_application_app_role.reference_reader.role_id
+  ]
+}
