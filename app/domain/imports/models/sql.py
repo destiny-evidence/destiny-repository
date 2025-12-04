@@ -44,10 +44,7 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
         UUID, ForeignKey("import_batch.id"), nullable=False
     )
     status: Mapped[ImportResultStatus] = mapped_column(
-        ENUM(
-            *[status.value for status in ImportResultStatus],
-            name="import_result_status",
-        ),
+        String,
         nullable=False,
     )
     reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
