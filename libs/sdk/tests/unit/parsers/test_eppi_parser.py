@@ -1,5 +1,6 @@
 """Tests for the EPPI parser."""
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -14,8 +15,6 @@ def test_parse_data():
     test_data_path = Path(__file__).parent.parent / "test_data"
     input_path = test_data_path / "eppi_report.json"
     output_path = test_data_path / "eppi_import.jsonl"
-
-    import json
 
     parser = EPPIParser()
     with input_path.open() as f:
@@ -36,8 +35,6 @@ def test_parse_data_with_annotations():
     input_path = test_data_path / "eppi_report.json"
     output_path = test_data_path / "eppi_import_with_annotations.jsonl"
 
-    import json
-
     parser = EPPIParser(tags=["test-tag", "another-tag"])
     with input_path.open() as f:
         data = json.load(f)
@@ -51,6 +48,31 @@ def test_parse_data_with_annotations():
     assert [json.loads(line) for line in actual_output.splitlines()] == [
         json.loads(line) for line in expected_output.splitlines()
     ]
+
+
+def test_parse_data_with_raw():
+    test_data_path = Path(__file__).parent.parent / "test_data"
+    input_path = test_data_path / "eppi_report.json"
+    output_path = test_data_path / "eppi_import_with_raw.jsonl"
+
+    parser = EPPIParser(
+        include_raw_data=True,
+        source_export_date=datetime.fromisoformat("2023-12-02T16:30:00"),
+        data_description="A full reference as exported from EPPI",
+        raw_enhancement_metadata={"codeset_id": 999823},
+        raw_enhancement_excludes=["Abstract"],
+    )
+
+    with input_path.open() as f:
+        data = json.load(f)
+    references = parser.parse_data(data, robot_version="test-robot-version")
+
+    with output_path.open() as f:
+        expected_output = f.read()
+
+    actual_output = "".join([ref.to_jsonl() + "\n" for ref in references])
+
+    assert actual_output == expected_output
 
 
 def test_parsing_identifiers():
@@ -111,8 +133,8 @@ def test_parsing_with_raw_data_included():
     assert references[0].enhancements[0].content.metadata == {"test": "metadata"}
 
 
-def test_raw_enhancements_exclude_abstracts():
-    """Test that we can include raw enhancements as necessary."""
+def test_raw_enhancements_exclude_fields():
+    """Test that we can exclude fields from raw enhancements as necessary."""
     test_data = {
         # Contains info for bibliographic, abstract, and raw enhancements.
         "References": [
@@ -131,6 +153,7 @@ def test_raw_enhancements_exclude_abstracts():
         source_export_date=datetime.now(tz=UTC),
         data_description="EPPI test data",
         raw_enhancement_metadata={"test": "metadata"},
+        raw_enhancement_excludes=["Abstract", "Issue"],
     )
 
     references = parser.parse_data(test_data)
@@ -140,6 +163,7 @@ def test_raw_enhancements_exclude_abstracts():
     raw_enhancement = references[0].enhancements[2]
     assert raw_enhancement.content.enhancement_type == EnhancementType.RAW
     assert not raw_enhancement.content.data.get("Abstract")
+    assert not raw_enhancement.content.data.get("Issue")
     assert raw_enhancement.content.data.get("Title") == "Tuatara Extra Eye"
 
 

@@ -35,7 +35,7 @@ class EPPIParser:
 
     version = "1.0"
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         tags: list[str] | None = None,
@@ -43,6 +43,7 @@ class EPPIParser:
         source_export_date: datetime | None = None,
         data_description: str | None = None,
         raw_enhancement_metadata: dict[str, Any] | None = None,
+        raw_enhancement_excludes: list[str] | None = None,
     ) -> None:
         """
         Initialize the EPPIParser with optional tags.
@@ -57,6 +58,9 @@ class EPPIParser:
         self.source_export_date = source_export_date
         self.data_description = data_description
         self.raw_enhancement_metadata = raw_enhancement_metadata
+        self.raw_enhancement_excludes = (
+            raw_enhancement_excludes if raw_enhancement_excludes else []
+        )
 
         if self.include_raw_data and not all(
             (
@@ -144,17 +148,17 @@ class EPPIParser:
         ref_to_import: dict[str, Any],
     ) -> EnhancementContent | None:
         """Add Reference data as a raw enhancement."""
-        if ref_to_import.get("Abstract"):
-            # Don't store the abstract as this will be stored in its own enhancement
-            raw_enhancement_data = ref_to_import.copy()
-            raw_enhancement_data.pop("Abstract")
-            ref_to_import = raw_enhancement_data
+        raw_enhancement_data = ref_to_import.copy()
+
+        # Remove any keys that should be excluded
+        for exclude in self.raw_enhancement_excludes:
+            raw_enhancement_data.pop(exclude, None)
 
         return RawEnhancement(
             source_export_date=self.source_export_date,
             description=self.data_description,
             metadata=self.raw_enhancement_metadata,
-            data=ref_to_import,
+            data=raw_enhancement_data,
         )
 
     def _create_annotation_enhancement(self) -> EnhancementContent | None:

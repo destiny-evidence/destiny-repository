@@ -77,6 +77,16 @@ def main() -> None:
         help="The codeset id of the attributes on the incoming references.",
     )
 
+    arg_parser.add_argument(
+        "--exclude-from-raw",
+        nargs="+",
+        default=["Abstract"],
+        help=(
+            "Any fields to exclude from the raw enhancements. "
+            "Defaults to 'Abstract' as this is stored in its own enhancement."
+        ),
+    )
+
     args = arg_parser.parse_args()
 
     input_path = Path(args.input)
@@ -95,6 +105,7 @@ def main() -> None:
         source_export_date=args.source_export_date,
         data_description=args.description,
         raw_enhancement_metadata=metadata,
+        raw_enhancement_excludes=args.exclude_from_raw,
     )
 
     references = eppi_parser.parse_data(
