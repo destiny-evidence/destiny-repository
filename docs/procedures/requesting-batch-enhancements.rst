@@ -109,7 +109,7 @@ Implementation Steps
 
 To implement a polling-based robot:
 
-1. **Poll for batches**: Use :meth:`Client.poll_robot_enhancement_batch() <libs.sdk.src.destiny_sdk.client.Client.poll_robot_enhancement_batch>` to retrieve pending batches. The method returns a :class:`RobotEnhancementBatch <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch>` object or ``None`` if no batches are available.
+1. **Poll for batches**: Use :meth:`RobotClient.poll_robot_enhancement_batch() <libs.sdk.src.destiny_sdk.client.RobotClient.poll_robot_enhancement_batch>` to retrieve pending batches. The method returns a :class:`RobotEnhancementBatch <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch>` object or ``None`` if no batches are available.
 
 2. **Process references**: Download the references from the :attr:`reference_storage_url <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.reference_storage_url>`. Each line in the file is a JSON-serialized :class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>` object, which can be parsed using :meth:`Reference.from_jsonl() <libs.sdk.src.destiny_sdk.references.Reference.from_jsonl>`. These references will be in the :ref:`deduplicated form <deduplicated-projection>`, giving robots full access to the reference's data.
 
@@ -117,7 +117,7 @@ To implement a polling-based robot:
 
 4. **Upload results**: Upload the results as a JSONL file to the :attr:`result_storage_url <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.result_storage_url>`. Each line should be either an enhancement or an error entry.
 
-5. **Submit batch result**: Use :meth:`Client.send_robot_enhancement_batch_result() <libs.sdk.src.destiny_sdk.client.Client.send_robot_enhancement_batch_result>` to notify the repository that the batch is complete. Submit a :class:`RobotEnhancementBatchResult <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatchResult>` object.
+5. **Submit batch result**: Use :meth:`RobotClient.send_robot_enhancement_batch_result() <libs.sdk.src.destiny_sdk.client.RobotClient.send_robot_enhancement_batch_result>` to notify the repository that the batch is complete. Submit a :class:`RobotEnhancementBatchResult <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatchResult>` object.
 
 6. **Continue polling**.
 

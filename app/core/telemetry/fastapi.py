@@ -48,6 +48,11 @@ class FastAPITracingMiddleware(BaseHTTPMiddleware):
         """
         current_span = trace.get_current_span()
         contextvars: set[str] = set()
+        if user_agent := request.headers.get("User-Agent"):
+            current_span.set_attribute(Attributes.USER_AGENT_ORIGINAL, user_agent)
+            contextvars.add("user_agent")
+            bind_contextvars(user_agent=user_agent)
+
         if request.url.query:
             # Add individual query parameters as attributes using FastAPI
             if current_span.is_recording():

@@ -9,6 +9,8 @@ Search
 Search Procedures
 -----------------
 
+.. _search-procedure:
+
 API Query String Search
 ^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -132,6 +134,7 @@ Limitations
 
 There is a hard cap on the number of results at 10,000. You cannot page past this point, nor will :class:`total <libs.sdk.src.destiny_sdk.search.SearchResultTotal>` show more than this.
 
+.. _lookup-procedure:
 
 API Lookup
 ^^^^^^^^^^

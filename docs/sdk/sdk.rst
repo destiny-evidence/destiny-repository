@@ -22,5 +22,6 @@ Or whichever python package installation method you prefer.
    :caption: Contents:
 
    schemas
-   hmac-auth
+   client
+   robot-client
    labs

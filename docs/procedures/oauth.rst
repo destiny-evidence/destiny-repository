@@ -7,7 +7,7 @@ API Authentication
 
 .. note::
 
-    This document is about API authentication for anyone **except** robots. For robots, refer to :doc:`HMAC Auth <../sdk/hmac-auth>`.
+    This document is about API authentication for anyone **except** robots. For robots, refer to :doc:`HMAC Auth <../sdk/robot-client>`.
 
 Background
 ----------
@@ -41,20 +41,24 @@ There are a number of ways to obtain an OAuth2 token from Azure.
 In all cases, you will need the following information:
 
 .. csv-table:: Authentication Details
-    :header: "Environment", "Tenant ID", "Client ID", "Application ID"
+    :header: "Environment", "Login URL", "Client ID", "Application ID"
 
-    "Development", ``f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``0fde62ae-2203-44a5-9722-73e965325ae7``, ``0a4b8df7-5c97-42b2-be07-2bb25e06dbb2``
-    "Staging", ``f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``96ed941e-15dc-4ec0-b9e7-e4eda99efd2e``, ``14e3f6c0-b8aa-46c6-98d9-29b0dd2a0f7c``
-    "Production", ``f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``7164ff26-4078-4107-850f-57b43b97f605``, ``e314440e-f72c-4b8e-89c1-7eefef4b55ed``
+    "Development", ``https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``0fde62ae-2203-44a5-9722-73e965325ae7``, ``0a4b8df7-5c97-42b2-be07-2bb25e06dbb2``
+    "Staging", ``https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``96ed941e-15dc-4ec0-b9e7-e4eda99efd2e``, ``14e3f6c0-b8aa-46c6-98d9-29b0dd2a0f7c``
+    "Production", ``https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``7164ff26-4078-4107-850f-57b43b97f605``, ``e314440e-f72c-4b8e-89c1-7eefef4b55ed``
+
+Using the SDK
+^^^^^^^^^^^^^
+
+This is the recommended way to obtain tokens, as the :doc:`SDK <../sdk/client>` will handle token caching and refreshing for you, and will be kept up to date with any changes to the API authentication process.
+
+.. autoclass:: destiny_sdk.client.OAuthMiddleware
+    :no-index:
 
 Using a script
 ^^^^^^^^^^^^^^
 
 You can obtain a token programmatically using libraries such as `MSAL for Python <https://pypi.org/project/msal/>`_.
-
-This is probably the easiest way.
-
-This might be particularly useful for ad-hoc scripts or notebooks that need to interact with the API.
 
 .. code-block:: python
 
@@ -62,19 +66,13 @@ This might be particularly useful for ad-hoc scripts or notebooks that need to i
 
     app = PublicClientApplication(
         client_id="<your-client-id>",
-        authority="https://login.microsoftonline.com/<tenant-id>",
+        authority="<your-login-url>",
         client_credential=None,
     )
     token = app.acquire_token_interactive(
         scopes=["api://<application-id>/.default"]
     )
     access_token = token["access_token"]
-
-
-Using assumed identities
-^^^^^^^^^^^^^^^^^^^^^^^^
-
-If your code is running in an Azure environment, we can use a managed identity to manage the machine-to-machine authentication. Please reach out if this is you and we'll help you set this up.
 
 
 Using the token
@@ -89,6 +87,16 @@ The API base URL for each environment is as follows:
     "Staging", "https://destiny-repository-stag-app.proudmeadow-2a76e8ac.swedencentral.azurecontainerapps.io"
     "Production", "https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io"
 
+Using the SDK
+^^^^^^^^^^^^^
+
+Again, we recommend using the :doc:`SDK <../sdk/client>` to make API requests, as it will handle including the token for you. Some endpoints will have convenience methods available, otherwise you can access the underlying ``httpx`` client directly.
+
+.. autoclass:: destiny_sdk.client.OAuthClient
+    :no-index:
+
+Using directly
+^^^^^^^^^^^^^^
 
 When making API requests, include the token in the ``Authorization`` header following ``Bearer``, eg:
 
@@ -109,30 +117,26 @@ Script template
 
 .. code-block:: python
 
-    import json
-    import httpx
-    from msal import PublicClientApplication
-
     # Easy access of configurations listed in the tables above
     CONFIGS = {
         "development": {
             "url": "https://destiny-repository-deve-app.gentlecoast-c1c9497a"
                    ".swedencentral.azurecontainerapps.io",
-            "tenant": "f870e5ae-5521-4a94-b9ff-cdde7d36dd35",
+            "login_url": "https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35",
             "client": "0fde62ae-2203-44a5-9722-73e965325ae7",
             "app": "0a4b8df7-5c97-42b2-be07-2bb25e06dbb2",
         },
         "staging": {
             "url": "https://destiny-repository-stag-app.proudmeadow-2a76e8ac"
                    ".swedencentral.azurecontainerapps.io",
-            "tenant": "f870e5ae-5521-4a94-b9ff-cdde7d36dd35",
+            "login_url": "https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35",
             "client": "96ed941e-15dc-4ec0-b9e7-e4eda99efd2e",
             "app": "14e3f6c0-b8aa-46c6-98d9-29b0dd2a0f7c",
         },
         "production": {
             "url": "https://destiny-repository-prod-app.politesea-556f2857"
                    ".swedencentral.azurecontainerapps.io",
-            "tenant": "f870e5ae-5521-4a94-b9ff-cdde7d36dd35",
+            "login_url": "https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35",
             "client": "7164ff26-4078-4107-850f-57b43b97f605",
             "app": "e314440e-f72c-4b8e-89c1-7eefef4b55ed",
         },
@@ -141,10 +145,28 @@ Script template
     # Select environment
     ENV = "staging"
 
+    ### Option 1: Use the SDK (recommended)
+    from destiny_sdk.client import OAuthClient, OAuthMiddleware
+    client = OAuthClient(
+        base_url=CONFIGS[ENV]["url"],
+        auth=OAuthMiddleware(
+            azure_client_id=CONFIGS[ENV]["client"],
+            azure_application_id=CONFIGS[ENV]["app"],
+            azure_login_url=CONFIGS[ENV]["login_url"],
+        ),
+    )
+    response = client.search(query="example")
+    print(response)
+
+    ### Option 2: Use MSAL directly
+    from msal import PublicClientApplication
+    import httpx
+    import json
+
     # Authenticate and get auth token
     app = PublicClientApplication(
         client_id=CONFIGS[ENV]["client"],
-        authority=f"https://login.microsoftonline.com/{CONFIGS[ENV]['tenant']}",
+        authority=CONFIGS[ENV]["login_url"],
         client_credential=None,
     )
     token = app.acquire_token_interactive(
@@ -159,6 +181,8 @@ Script template
 
     # Use response
     print(json.dumps(response.json(), indent=2))
+
+
 
 
 Troubleshooting
