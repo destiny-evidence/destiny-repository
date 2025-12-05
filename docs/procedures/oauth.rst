@@ -41,11 +41,11 @@ There are a number of ways to obtain an OAuth2 token from Azure.
 In all cases, you will need the following information:
 
 .. csv-table:: Authentication Details
-    :header: "Environment", "Tenant ID", "Client ID", "Application ID"
+    :header: "Environment", "Login URL", "Client ID", "Application ID"
 
-    "Development", ``f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``0fde62ae-2203-44a5-9722-73e965325ae7``, ``0a4b8df7-5c97-42b2-be07-2bb25e06dbb2``
-    "Staging", ``f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``96ed941e-15dc-4ec0-b9e7-e4eda99efd2e``, ``14e3f6c0-b8aa-46c6-98d9-29b0dd2a0f7c``
-    "Production", ``f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``7164ff26-4078-4107-850f-57b43b97f605``, ``e314440e-f72c-4b8e-89c1-7eefef4b55ed``
+    "Development", ``https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``0fde62ae-2203-44a5-9722-73e965325ae7``, ``0a4b8df7-5c97-42b2-be07-2bb25e06dbb2``
+    "Staging", ``https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``96ed941e-15dc-4ec0-b9e7-e4eda99efd2e``, ``14e3f6c0-b8aa-46c6-98d9-29b0dd2a0f7c``
+    "Production", ``https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35``, ``7164ff26-4078-4107-850f-57b43b97f605``, ``e314440e-f72c-4b8e-89c1-7eefef4b55ed``
 
 Using the SDK
 ^^^^^^^^^^^^^
@@ -66,7 +66,7 @@ You can obtain a token programmatically using libraries such as `MSAL for Python
 
     app = PublicClientApplication(
         client_id="<your-client-id>",
-        authority="https://login.microsoftonline.com/<tenant-id>",
+        authority="<your-login-url>",
         client_credential=None,
     )
     token = app.acquire_token_interactive(
@@ -122,21 +122,21 @@ Script template
         "development": {
             "url": "https://destiny-repository-deve-app.gentlecoast-c1c9497a"
                    ".swedencentral.azurecontainerapps.io",
-            "tenant": "f870e5ae-5521-4a94-b9ff-cdde7d36dd35",
+            "login_url": "https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35",
             "client": "0fde62ae-2203-44a5-9722-73e965325ae7",
             "app": "0a4b8df7-5c97-42b2-be07-2bb25e06dbb2",
         },
         "staging": {
             "url": "https://destiny-repository-stag-app.proudmeadow-2a76e8ac"
                    ".swedencentral.azurecontainerapps.io",
-            "tenant": "f870e5ae-5521-4a94-b9ff-cdde7d36dd35",
+            "login_url": "https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35",
             "client": "96ed941e-15dc-4ec0-b9e7-e4eda99efd2e",
             "app": "14e3f6c0-b8aa-46c6-98d9-29b0dd2a0f7c",
         },
         "production": {
             "url": "https://destiny-repository-prod-app.politesea-556f2857"
                    ".swedencentral.azurecontainerapps.io",
-            "tenant": "f870e5ae-5521-4a94-b9ff-cdde7d36dd35",
+            "login_url": "https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35",
             "client": "7164ff26-4078-4107-850f-57b43b97f605",
             "app": "e314440e-f72c-4b8e-89c1-7eefef4b55ed",
         },
@@ -152,7 +152,7 @@ Script template
         auth=OAuthMiddleware(
             azure_client_id=CONFIGS[ENV]["client"],
             azure_application_id=CONFIGS[ENV]["app"],
-            azure_tenant_id=CONFIGS[ENV]["tenant"],
+            azure_login_url=CONFIGS[ENV]["login_url"],
         ),
     )
     response = client.search(query="example")
@@ -166,7 +166,7 @@ Script template
     # Authenticate and get auth token
     app = PublicClientApplication(
         client_id=CONFIGS[ENV]["client"],
-        authority=f"https://login.microsoftonline.com/{CONFIGS[ENV]['tenant']}",
+        authority=CONFIGS[ENV]["login_url"],
         client_credential=None,
     )
     token = app.acquire_token_interactive(

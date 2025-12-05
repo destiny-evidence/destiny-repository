@@ -212,9 +212,9 @@ class OAuthMiddleware(httpx.Auth):
     .. code-block:: python
 
         auth = OAuthMiddleware(
-            azure_client_id="repository-client-id",
-            azure_application_id="repository-application-id",
-            azure_tenant_id="repository-tenant-id",
+            azure_client_id="client-id",
+            azure_application_id="login-url",
+            azure_tenant_id="tenant-id",
         )
 
     **Confidential Client Application (client credentials)**
@@ -226,9 +226,9 @@ class OAuthMiddleware(httpx.Auth):
     .. code-block:: python
 
         auth = OAuthMiddleware(
-            azure_client_id="repository-client-id",
-            azure_application_id="repository-application-id",
-            azure_tenant_id="repository-tenant-id",
+            azure_client_id="client-id",
+            azure_application_id="application-id",
+            azure_login_url="login-url",
             azure_client_secret="your-azure-client-secret",
         )
 
@@ -242,18 +242,17 @@ class OAuthMiddleware(httpx.Auth):
 
         auth = OAuthMiddleware(
             azure_client_id="your-managed-identity-client-id",
-            azure_application_id="repository-application-id",
+            azure_application_id="application-id",
             use_managed_identity=True,
         )
 
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         azure_client_id: str,
         azure_application_id: str,
-        azure_tenant_id: str | None = None,
-        azure_login_url: str = "https://login.microsoftonline.com/",
+        azure_login_url: HttpUrl | str | None = None,
         azure_client_secret: str | None = None,
         *,
         use_managed_identity: bool = False,
@@ -278,14 +277,14 @@ class OAuthMiddleware(httpx.Auth):
             if (
                 any(
                     [
-                        azure_tenant_id,
+                        azure_login_url,
                         azure_client_secret,
                     ]
                 )
                 or not azure_client_id
             ):
                 msg = (
-                    "azure_tenant_id and azure_client_secret must not be provided "
+                    "azure_login_url and azure_client_secret must not be provided "
                     "when using managed identity authentication"
                 )
                 raise ValueError(msg)
@@ -295,28 +294,28 @@ class OAuthMiddleware(httpx.Auth):
             )
             self._get_token = self._get_token_from_managed_identity
         elif azure_client_secret:
-            if not azure_tenant_id:
+            if not azure_login_url:
                 msg = (
-                    "azure_tenant_id must be provided "
+                    "azure_login_url must be provided "
                     "when not using managed identity authentication"
                 )
                 raise ValueError(msg)
             self._oauth_app = ConfidentialClientApplication(
                 client_id=azure_client_id,
-                authority=f"{azure_login_url}{azure_tenant_id}",
+                authority=str(azure_login_url),
                 client_credential=azure_client_secret,
             )
             self._get_token = self._get_token_from_confidential_client
         else:
-            if not azure_tenant_id:
+            if not azure_login_url:
                 msg = (
-                    "azure_tenant_id must be provided "
+                    "azure_login_url must be provided "
                     "when not using managed identity authentication"
                 )
                 raise ValueError(msg)
             self._oauth_app = PublicClientApplication(
                 azure_client_id,
-                authority=f"{azure_login_url}{azure_tenant_id}",
+                authority=str(azure_login_url),
                 client_credential=None,
             )
             self._get_token = self._get_token_from_public_client

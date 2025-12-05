@@ -300,7 +300,7 @@ class TestOAuthMiddleware:
         )
 
         middleware = OAuthMiddleware(
-            azure_tenant_id="test-tenant",
+            azure_login_url="test-url",
             azure_client_id="test-client",
             azure_application_id="test-app",
         )
@@ -328,7 +328,7 @@ class TestOAuthMiddleware:
         )
 
         middleware = OAuthMiddleware(
-            azure_tenant_id="test-tenant",
+            azure_login_url="test-url",
             azure_client_id="test-client",
             azure_application_id="test-app",
             azure_client_secret="test-secret",
@@ -398,7 +398,7 @@ class TestOAuthMiddleware:
         )
 
         middleware = OAuthMiddleware(
-            azure_tenant_id="test-tenant",
+            azure_login_url="test-url",
             azure_client_id="test-client",
             azure_application_id="test-app",
         )
