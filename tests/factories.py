@@ -25,6 +25,7 @@ from destiny_sdk.identifiers import (
     ERICIdentifier,
     OpenAlexIdentifier,
     OtherIdentifier,
+    ProQuestIdentifier,
     PubMedIdentifier,
 )
 from faker import Faker
@@ -86,6 +87,13 @@ class PubMedIdentifierFactory(factory.Factory):
         model = PubMedIdentifier
 
     identifier = factory.Faker("pyint", min_value=100000, max_value=999999)
+
+
+class ProquestIdentifierFactory(factory.Factory):
+    class Meta:
+        model = ProQuestIdentifier
+
+    identifier = str(fake.pyint(min_value=1000000, max_value=9999999))
 
 
 class OpenAlexIdentifierFactory(factory.Factory):
@@ -234,6 +242,7 @@ class LinkedExternalIdentifierFactory(factory.Factory):
                 DOIIdentifierFactory(),
                 ERICIdentifierFactory(),
                 PubMedIdentifierFactory(),
+                ProquestIdentifierFactory(),
                 OpenAlexIdentifierFactory(),
                 OtherIdentifierFactory(),
             ]
