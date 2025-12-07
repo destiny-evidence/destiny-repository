@@ -274,7 +274,7 @@ data "azurerm_user_assigned_identity" "destiny_demonstrator_ui" {
   resource_group_name = "rg-${var.destiny_demonstrator_ui_app_name}-${var.environment}"
 }
 
-resource "azuread_app_role_assignment" "destiny_ui_to_reference_reader" {
+resource "azuread_app_role_assignment" "destiny_demonstrator_ui_to_reference_reader" {
   app_role_id         = azuread_application_app_role.reference_reader.role_id
   principal_object_id = data.azurerm_user_assigned_identity.destiny_demonstrator_ui.principal_id
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
