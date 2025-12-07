@@ -23,12 +23,12 @@ This documentation provides information on how to interact with the DESTINY Repo
 Glossary
 --------
 
-- :class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>`: The core data unit in the Repository, representing a piece of research data.
-- :class:`ExternalIdentifier <libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifier>`: Identifiers used to reference data within the repository. These can be internal DESTINY identifiers or external third-party identifiers.
+- :class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>`: The core data unit in the Repository, representing a piece of research.
+- :class:`ExternalIdentifier <libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifier>`: Data that identifies a reference. These can be internal DESTINY identifiers or external third-party identifiers.
 - :class:`Enhancement <libs.sdk.src.destiny_sdk.enhancements.Enhancement>`: Data that enriches a Reference.
-- :doc:`Importers <procedures/batch-importing>`: A process that brings References into the Repository from external sources. These references may contain Enhancements.
+- :doc:`Importers <procedures/batch-importing>`: A process that brings References into the Repository from external sources. These references may contain Identifiers and Enhancements.
 - :doc:`Robots <procedures/requesting-batch-enhancements>`: A process that adds Enhancements to References within the Repository. These are specialised, for instance there is a Robot for fetching abstract Enhancements.
-- :doc:`Users / UIs <procedures/search>`: Individuals or interfaces that interact with the Repository to retrieve enhanced References.
+- :doc:`Users / UIs <procedures/search>`: Individuals or interfaces that interact with the Repository to retrieve References.
 
 
 Flowcharts
@@ -45,13 +45,12 @@ Flowcharts
       ROBOT([Robots])
       USER([Users / UIs])
 
-      I-- Imports References -->REPO
+      I-- Provide References -->REPO
 
-      REPO-- Provides References -->ROBOT
-      ROBOT-- Provides Enhancements -->REPO
+      REPO-- Provide References -->ROBOT
+      ROBOT-- Provide Enhancements -->REPO
 
-      REPO-- Provides References -->USER
-
+      REPO-- Provide References -->USER
 
 .. mermaid::
 
@@ -71,4 +70,4 @@ Flowcharts
          ROBOT->>REPO: Provide Enhancement
       end
 
-      REPO->>U: Provide Enhanced Reference
+      REPO->>U: Provide Reference
