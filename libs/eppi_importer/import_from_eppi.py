@@ -95,7 +95,7 @@ def main() -> None:
         file_bytes = f.read()
         checksum = base64.b64encode(hashlib.md5(file_bytes).digest()).decode("ascii")  # noqa: S324
 
-    data = json.loads(file_bytes.decode("utf-8"))
+    data = json.loads(file_bytes.decode("latin-1"))
 
     metadata = {"codeset_id": args.codeset_id} if args.codeset_id else None
 
