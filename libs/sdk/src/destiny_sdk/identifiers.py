@@ -100,6 +100,10 @@ class ERICIdentifier(BaseModel):
         return (
             value.removeprefix("http://eric.ed.gov/?id=")
             .removeprefix("https://eric.ed.gov/?id=")
+            # Allow us to parse the ERIC Number from a pdf link
+            .removeprefix("http://files.eric.ed.gov/fulltext/")
+            .removeprefix("https://files.eric.ed.gov/fulltext/")
+            .removesuffix(".pdf")
             .strip()
         )
 
@@ -130,6 +134,9 @@ class OpenAlexIdentifier(BaseModel):
         return (
             value.removeprefix("http://openalex.org/")
             .removeprefix("https://openalex.org/")
+            .removeprefix("http://explore.openalex.org/")
+            .removeprefix("https://explore.openalex.org/")
+            .removeprefix("works/")
             .strip()
         )
 

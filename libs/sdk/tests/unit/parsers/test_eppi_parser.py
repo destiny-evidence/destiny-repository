@@ -88,21 +88,34 @@ def test_parsing_identifiers():
                 # An eric identifier
                 "URL": "https://eric.ed.gov/?id=ED581143"
             },
-            {
-                # No identifiers
-            },
         ]
     }
 
     parser = EPPIParser()
     references = parser.parse_data(test_data)
-    assert len(references) == 3
+    assert len(references) == 2
     assert references[0].identifiers[0].identifier_type == ExternalIdentifierType.DOI
     assert (
         references[0].identifiers[1].identifier_type == ExternalIdentifierType.PRO_QUEST
     )
     assert references[1].identifiers[0].identifier_type == ExternalIdentifierType.ERIC
-    assert len(references[2].identifiers) == 0
+
+
+def test_reference_with_no_identifiers_is_not_included():
+    """Test that we do not return references with no identifiers."""
+    test_data = {
+        "References": [
+            {
+                "Stuff": "that isn't",
+                "An": "identifier",
+            },
+
+        ]
+    }
+
+    parser = EPPIParser()
+    references = parser.parse_data(test_data)
+    assert len(references) == 0
 
 
 def test_parsing_with_raw_data_included():
