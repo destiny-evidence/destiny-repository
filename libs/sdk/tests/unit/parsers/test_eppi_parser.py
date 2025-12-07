@@ -19,7 +19,7 @@ def test_parse_data():
     parser = EPPIParser()
     with input_path.open() as f:
         data = json.load(f)
-    references = parser.parse_data(data, robot_version="test-robot-version")
+    references, _ = parser.parse_data(data, robot_version="test-robot-version")
 
     with output_path.open() as f:
         expected_output = f.read()
@@ -38,7 +38,7 @@ def test_parse_data_with_annotations():
     parser = EPPIParser(tags=["test-tag", "another-tag"])
     with input_path.open() as f:
         data = json.load(f)
-    references = parser.parse_data(data, robot_version="test-robot-version")
+    references, _ = parser.parse_data(data, robot_version="test-robot-version")
 
     with output_path.open() as f:
         expected_output = f.read()
@@ -65,7 +65,7 @@ def test_parse_data_with_raw():
 
     with input_path.open() as f:
         data = json.load(f)
-    references = parser.parse_data(data, robot_version="test-robot-version")
+    references, _ = parser.parse_data(data, robot_version="test-robot-version")
 
     with output_path.open() as f:
         expected_output = f.read()
@@ -92,7 +92,7 @@ def test_parsing_identifiers():
     }
 
     parser = EPPIParser()
-    references = parser.parse_data(test_data)
+    references, _ = parser.parse_data(test_data)
     assert len(references) == 2
     assert references[0].identifiers[0].identifier_type == ExternalIdentifierType.DOI
     assert (
@@ -109,13 +109,13 @@ def test_reference_with_no_identifiers_is_not_included():
                 "Stuff": "that isn't",
                 "An": "identifier",
             },
-
         ]
     }
 
     parser = EPPIParser()
-    references = parser.parse_data(test_data)
+    references, failed_refs = parser.parse_data(test_data)
     assert len(references) == 0
+    assert len(failed_refs) == 1
 
 
 def test_parsing_with_raw_data_included():
@@ -138,12 +138,14 @@ def test_parsing_with_raw_data_included():
         raw_enhancement_metadata={"test": "metadata"},
     )
 
-    references = parser.parse_data(test_data)
+    references, failed_refs = parser.parse_data(test_data)
     assert len(references) == 1
     assert len(references[0].enhancements) == 1
     assert references[0].enhancements[0].content.enhancement_type == EnhancementType.RAW
     assert references[0].enhancements[0].content.data == test_data["References"][0]
     assert references[0].enhancements[0].content.metadata == {"test": "metadata"}
+
+    assert len(failed_refs) == 0
 
 
 def test_raw_enhancements_exclude_fields():
@@ -169,7 +171,7 @@ def test_raw_enhancements_exclude_fields():
         raw_enhancement_excludes=["Abstract", "Issue"],
     )
 
-    references = parser.parse_data(test_data)
+    references, _ = parser.parse_data(test_data)
     assert len(references) == 1
     assert len(references[0].enhancements) == 3
 

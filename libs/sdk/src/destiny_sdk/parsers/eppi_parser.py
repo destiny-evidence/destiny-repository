@@ -219,7 +219,7 @@ class EPPIParser:
         data: dict,
         source: str | None = None,
         robot_version: str | None = None,
-    ) -> list[ReferenceFileInput]:
+    ) -> tuple[list[ReferenceFileInput], list[dict]]:
         """
         Parse an EPPI JSON export dict and return a list of ReferenceFileInput objects.
 
@@ -235,8 +235,8 @@ class EPPIParser:
         """
         parser_source = source if source is not None else self.parser_source
         references = []
-        total_failed = 0
-        for index, ref_to_import in enumerate(data.get("References", [])):
+        failed_refs = []
+        for ref_to_import in data.get("References", []):
             try:
                 enhancement_contents = [
                     content
@@ -275,10 +275,7 @@ class EPPIParser:
                     )
                 )
 
-            except ExternalIdentifierNotFoundError as exc:
-                total_failed += 1
-                print(f"References[{index}] parsing failed: {exc.detail}")
+            except ExternalIdentifierNotFoundError:
+                failed_refs.append(ref_to_import)
 
-        print(f"Total Failed: {total_failed}")
-
-        return references
+        return references, failed_refs
