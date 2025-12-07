@@ -49,6 +49,8 @@ class DOIIdentifier(BaseModel):
         return (
             value.removeprefix("http://doi.org/")
             .removeprefix("https://doi.org/")
+            .removeprefix("http://dx.doi.org/")
+            .removeprefix("https://dx.doi.org/")
             .strip()
         )
 
