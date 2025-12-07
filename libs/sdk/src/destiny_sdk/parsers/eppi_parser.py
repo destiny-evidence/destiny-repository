@@ -1,5 +1,6 @@
 """Parser for a EPPI JSON export file."""
 
+from datetime import datetime
 from typing import Any
 
 from destiny_sdk.enhancements import (
@@ -13,11 +14,13 @@ from destiny_sdk.enhancements import (
     BooleanAnnotation,
     EnhancementContent,
     EnhancementFileInput,
+    RawEnhancement,
 )
 from destiny_sdk.identifiers import (
     DOIIdentifier,
+    ERICIdentifier,
     ExternalIdentifier,
-    ExternalIdentifierType,
+    ProQuestIdentifier,
 )
 from destiny_sdk.references import ReferenceFileInput
 from destiny_sdk.visibility import Visibility
@@ -32,7 +35,16 @@ class EPPIParser:
 
     version = "1.0"
 
-    def __init__(self, tags: list[str] | None = None) -> None:
+    def __init__(  # noqa: PLR0913
+        self,
+        *,
+        tags: list[str] | None = None,
+        include_raw_data: bool = False,
+        source_export_date: datetime | None = None,
+        data_description: str | None = None,
+        raw_enhancement_metadata: dict[str, Any] | None = None,
+        raw_enhancement_excludes: list[str] | None = None,
+    ) -> None:
         """
         Initialize the EPPIParser with optional tags.
 
@@ -42,18 +54,42 @@ class EPPIParser:
         """
         self.tags = tags or []
         self.parser_source = f"destiny_sdk.eppi_parser@{self.version}"
+        self.include_raw_data = include_raw_data
+        self.source_export_date = source_export_date
+        self.data_description = data_description
+        self.raw_enhancement_metadata = raw_enhancement_metadata
+        self.raw_enhancement_excludes = (
+            raw_enhancement_excludes if raw_enhancement_excludes else []
+        )
+
+        if self.include_raw_data and not all(
+            (
+                self.source_export_date,
+                self.data_description,
+                self.raw_enhancement_metadata,
+            )
+        ):
+            msg = (
+                "Cannot include raw data enhancements without "
+                "source_export_date, data_description, and raw_enhancement_metadata"
+            )
+            raise RuntimeError(msg)
 
     def _parse_identifiers(
         self, ref_to_import: dict[str, Any]
     ) -> list[ExternalIdentifier]:
         identifiers = []
         if doi := ref_to_import.get("DOI"):
-            identifiers.append(
-                DOIIdentifier(
-                    identifier=doi,
-                    identifier_type=ExternalIdentifierType.DOI,
-                )
+            identifiers.append(DOIIdentifier(identifier=doi))
+        url = ref_to_import.get("URL")
+        if url and url.startswith("https://eric.ed.gov/"):
+            identifiers.append(ERICIdentifier(identifier=url))
+        if url and (
+            url.startswith(
+                ("https://search.proquest.com/", "https://www.proquest.com/")
             )
+        ):
+            identifiers.append(ProQuestIdentifier(identifier=url))
         return identifiers
 
     def _parse_abstract_enhancement(
@@ -107,6 +143,24 @@ class EPPIParser:
             authorship=authorships if authorships else None,
         )
 
+    def _parse_raw_enhancement(
+        self,
+        ref_to_import: dict[str, Any],
+    ) -> EnhancementContent | None:
+        """Add Reference data as a raw enhancement."""
+        raw_enhancement_data = ref_to_import.copy()
+
+        # Remove any keys that should be excluded
+        for exclude in self.raw_enhancement_excludes:
+            raw_enhancement_data.pop(exclude, None)
+
+        return RawEnhancement(
+            source_export_date=self.source_export_date,
+            description=self.data_description,
+            metadata=self.raw_enhancement_metadata,
+            data=raw_enhancement_data,
+        )
+
     def _create_annotation_enhancement(self) -> EnhancementContent | None:
         if not self.tags:
             return None
@@ -124,7 +178,10 @@ class EPPIParser:
         )
 
     def parse_data(
-        self, data: dict, source: str | None = None, robot_version: str | None = None
+        self,
+        data: dict,
+        source: str | None = None,
+        robot_version: str | None = None,
     ) -> list[ReferenceFileInput]:
         """
         Parse an EPPI JSON export dict and return a list of ReferenceFileInput objects.
@@ -151,6 +208,13 @@ class EPPIParser:
                 ]
                 if content
             ]
+
+            if self.include_raw_data:
+                raw_enhancement = self._parse_raw_enhancement(
+                    ref_to_import=ref_to_import
+                )
+                if raw_enhancement:
+                    enhancement_contents.append(raw_enhancement)
 
             enhancements = [
                 EnhancementFileInput(
