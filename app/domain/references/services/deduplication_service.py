@@ -365,3 +365,142 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         )
 
         return new_decision, decision_changed
+
+    async def shortcut_deduplication_using_identifiers(
+        self,
+        reference_id: uuid.UUID,
+        trusted_unique_identifier_types: set[ExternalIdentifierType],
+    ) -> ReferenceDuplicateDecision | None:
+        """
+        Deduplicate the given reference using trusted unique identifiers.
+
+        This shortcuts the regular deduplication flow and is only run on import.
+
+        This is a very powerful operation and should only be used with identifier types
+        that are certain to be unique and reliable. Misuse can lead to incorrect
+        duplicate relationships that are hard to correct.
+
+        The search will likely return multiple references ("candidates"),
+        to be handled by:
+        **Terminal Cases**:
+        - If they all belong to the same duplicate relationship graph, the given
+        reference will be marked as duplicate of that graph's canonical reference.
+        - If they belong to more than one duplicate relationship graph, the given
+        reference is marked as decoupled for manual review, as it indicates disconnected
+        duplicate relationship graphs and undermines the assumption of the shortcut.
+        - If none of them belong to a duplicate relationship graph, the given reference
+        becomes the canonical of a new duplicate relationship graph including all
+        candidates.
+        - If some of them belong to a single duplicate relationship graph and some
+        don't, the non-graph references are marked as duplicates of the canonical of
+        the graph.
+
+        **Non-terminal Cases**:
+        Finally, if the given reference has no trusted identifiers or no candidates are
+        found, no action is taken and regular deduplication continues.
+
+        :param reference: The reference to deduplicate.
+        :type reference: app.domain.references.models.models.Reference
+        :param trusted_unique_identifier_types: The identifier types considered
+            trusted unique identifiers.
+        :type trusted_unique_identifier_types: set[ExternalIdentifierType]
+        :return: The generated duplicate decision, if any.
+        :rtype: ReferenceDuplicateDecision | None
+        """
+        reference = await self.sql_uow.references.get_by_pk(
+            reference_id, preload=["identifiers", "duplicate_decision"]
+        )
+        if not reference.identifiers or reference.duplicate_decision:
+            # No identifiers or already deduplicated, skip shortcutting
+            return None
+
+        trusted_identifiers = [
+            GenericExternalIdentifier.from_specific(identifier.identifier)
+            for identifier in reference.identifiers
+            if identifier.identifier.identifier_type in trusted_unique_identifier_types
+        ]
+        candidates = await self.sql_uow.references.find_with_identifiers(
+            trusted_identifiers,
+            preload=["duplicate_decision"],
+            match="any",
+        )
+        if not candidates:
+            return None
+
+        canonical_ids, undeduplicated_ids = set(), set()
+        for candidate in candidates:
+            if (
+                not candidate.duplicate_decision
+                or candidate.duplicate_decision.duplicate_determination
+                == DuplicateDetermination.UNSEARCHABLE
+            ):
+                undeduplicated_ids.add(candidate.id)
+            elif candidate.canonical:
+                canonical_ids.add(candidate.id)
+            else:
+                # Duplicate of a canonical, find the canonical ID
+                # We get this fresh without the filters so we can traverse a chain if
+                # required
+                _reference = await self.sql_uow.references.get_by_pk(
+                    candidate.id, preload=["canonical_reference"]
+                )
+                while _reference.canonical_reference:
+                    _reference = _reference.canonical_reference
+                canonical_ids.add(_reference.id)
+
+        if len(canonical_ids) > 1:
+            new_decision, _ = await self.map_duplicate_decision(
+                ReferenceDuplicateDecision(
+                    reference_id=reference.id,
+                    duplicate_determination=DuplicateDetermination.DECOUPLED,
+                    active_decision=True,
+                    detail=(
+                        "Multiple canonical references found for trusted unique "
+                        "identifiers. This may indicate we have disconnected duplicate "
+                        "relationship graphs. Manual review required. Canonical IDs: "
+                        ", ".join(str(canonical_id) for canonical_id in canonical_ids)
+                    ),
+                )
+            )
+            return new_decision
+
+        if not canonical_ids:
+            # No canonicals found, make this reference the canonical
+            canonical_id = reference.id
+            new_decision, _ = await self.map_duplicate_decision(
+                ReferenceDuplicateDecision(
+                    reference_id=reference.id,
+                    duplicate_determination=DuplicateDetermination.CANONICAL,
+                    active_decision=True,
+                    detail="Shortcutted with trusted identifier(s)",
+                )
+            )
+        else:
+            # Exactly one canonical found, make this reference a duplicate of it
+            canonical_id = canonical_ids.pop()
+            new_decision, _ = await self.map_duplicate_decision(
+                ReferenceDuplicateDecision(
+                    reference_id=reference.id,
+                    duplicate_determination=DuplicateDetermination.DUPLICATE,
+                    canonical_reference_id=canonical_id,
+                    active_decision=True,
+                    detail="Shortcutted with trusted identifier(s)",
+                )
+            )
+
+        # Map any undeduplicated candidates as duplicates of the canonical
+        for candidate_id in undeduplicated_ids:
+            await self.map_duplicate_decision(
+                ReferenceDuplicateDecision(
+                    reference_id=candidate_id,
+                    duplicate_determination=DuplicateDetermination.DUPLICATE,
+                    canonical_reference_id=canonical_id,
+                    active_decision=True,
+                    detail=(
+                        f"Shortcutted via proxy reference {reference.id} "
+                        "with trusted identifier(s)"
+                    ),
+                )
+            )
+
+        return new_decision
