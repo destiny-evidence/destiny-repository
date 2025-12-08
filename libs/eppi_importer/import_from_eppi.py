@@ -126,10 +126,10 @@ def main() -> None:
     with Path(args.output).open("w") as f:
         f.writelines(ref.to_jsonl() + "\n" for ref in references)
 
-    failed_refs_path = args.output.removesuffix(".jsonl") + "-failures.jsonl"
+    failed_refs_path = args.output.removesuffix(".jsonl") + "-failures.json"
 
     with Path(failed_refs_path).open("w") as f:
-        f.writelines(json.dumps(ref, ensure_ascii=False) + "\n" for ref in failed_refs)
+        f.write(json.dumps({"References": failed_refs}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
