@@ -3,6 +3,8 @@
 from datetime import datetime
 from typing import Any
 
+from pydantic import ValidationError
+
 from destiny_sdk.enhancements import (
     AbstractContentEnhancement,
     AbstractProcessType,
@@ -20,8 +22,10 @@ from destiny_sdk.identifiers import (
     DOIIdentifier,
     ERICIdentifier,
     ExternalIdentifier,
+    OpenAlexIdentifier,
     ProQuestIdentifier,
 )
+from destiny_sdk.parsers.exceptions import ExternalIdentifierNotFoundError
 from destiny_sdk.references import ReferenceFileInput
 from destiny_sdk.visibility import Visibility
 
@@ -33,7 +37,7 @@ class EPPIParser:
     See example here: https://eppi.ioe.ac.uk/cms/Portals/35/Maps/Examples/example_orignal.json
     """
 
-    version = "1.0"
+    version = "2.0"
 
     def __init__(  # noqa: PLR0913
         self,
@@ -80,17 +84,50 @@ class EPPIParser:
     ) -> list[ExternalIdentifier]:
         identifiers = []
         if doi := ref_to_import.get("DOI"):
-            identifiers.append(DOIIdentifier(identifier=doi))
-        url = ref_to_import.get("URL")
-        if url and url.startswith("https://eric.ed.gov/"):
-            identifiers.append(ERICIdentifier(identifier=url))
-        if url and (
-            url.startswith(
-                ("https://search.proquest.com/", "https://www.proquest.com/")
+            doi_identifier = self._parse_doi(doi=doi)
+            if doi_identifier:
+                identifiers.append(doi_identifier)
+
+        if url := ref_to_import.get("URL"):
+            identifier = self._parse_url_to_identifier(url=url)
+            if identifier:
+                identifiers.append(identifier)
+
+        if not identifiers:
+            msg = (
+                "No known external identifiers found for Reference data "
+                f"with DOI: '{doi if doi else None}' "
+                f"and URL: '{url if url else None}'."
             )
-        ):
-            identifiers.append(ProQuestIdentifier(identifier=url))
+            raise ExternalIdentifierNotFoundError(detail=msg)
+
         return identifiers
+
+    def _parse_doi(self, doi: str) -> DOIIdentifier | None:
+        """Attempt to parse a DOI from a string."""
+        try:
+            doi = doi.strip()
+            return DOIIdentifier(identifier=doi)
+        except ValidationError:
+            return None
+
+    def _parse_url_to_identifier(self, url: str) -> ExternalIdentifier | None:
+        """Attempt to parse an external identifier from a url string."""
+        url = url.strip()
+        identifier_cls = None
+        if "eric" in url:
+            identifier_cls = ERICIdentifier
+        elif "proquest" in url:
+            identifier_cls = ProQuestIdentifier
+        elif "openalex" in url:
+            identifier_cls = OpenAlexIdentifier
+        else:
+            return None
+
+        try:
+            return identifier_cls(identifier=url)
+        except ValidationError:
+            return None
 
     def _parse_abstract_enhancement(
         self, ref_to_import: dict[str, Any]
@@ -182,7 +219,7 @@ class EPPIParser:
         data: dict,
         source: str | None = None,
         robot_version: str | None = None,
-    ) -> list[ReferenceFileInput]:
+    ) -> tuple[list[ReferenceFileInput], list[dict]]:
         """
         Parse an EPPI JSON export dict and return a list of ReferenceFileInput objects.
 
@@ -198,39 +235,47 @@ class EPPIParser:
         """
         parser_source = source if source is not None else self.parser_source
         references = []
+        failed_refs = []
         for ref_to_import in data.get("References", []):
-            enhancement_contents = [
-                content
-                for content in [
-                    self._parse_abstract_enhancement(ref_to_import),
-                    self._parse_bibliographic_enhancement(ref_to_import),
-                    self._create_annotation_enhancement(),
+            try:
+                enhancement_contents = [
+                    content
+                    for content in [
+                        self._parse_abstract_enhancement(ref_to_import),
+                        self._parse_bibliographic_enhancement(ref_to_import),
+                        self._create_annotation_enhancement(),
+                    ]
+                    if content
                 ]
-                if content
-            ]
 
-            if self.include_raw_data:
-                raw_enhancement = self._parse_raw_enhancement(
-                    ref_to_import=ref_to_import
-                )
-                if raw_enhancement:
-                    enhancement_contents.append(raw_enhancement)
+                if self.include_raw_data:
+                    raw_enhancement = self._parse_raw_enhancement(
+                        ref_to_import=ref_to_import
+                    )
+                    if raw_enhancement:
+                        enhancement_contents.append(raw_enhancement)
 
-            enhancements = [
-                EnhancementFileInput(
-                    source=parser_source,
-                    visibility=Visibility.PUBLIC,
-                    content=content,
-                    robot_version=robot_version,
-                )
-                for content in enhancement_contents
-            ]
+                enhancements = [
+                    EnhancementFileInput(
+                        source=parser_source,
+                        visibility=Visibility.PUBLIC,
+                        content=content,
+                        robot_version=robot_version,
+                    )
+                    for content in enhancement_contents
+                ]
 
-            references.append(
-                ReferenceFileInput(
-                    visibility=Visibility.PUBLIC,
-                    identifiers=self._parse_identifiers(ref_to_import),
-                    enhancements=enhancements,
+                references.append(
+                    ReferenceFileInput(
+                        visibility=Visibility.PUBLIC,
+                        identifiers=self._parse_identifiers(
+                            ref_to_import=ref_to_import
+                        ),
+                        enhancements=enhancements,
+                    )
                 )
-            )
-        return references
+
+            except ExternalIdentifierNotFoundError:
+                failed_refs.append(ref_to_import)
+
+        return references, failed_refs
