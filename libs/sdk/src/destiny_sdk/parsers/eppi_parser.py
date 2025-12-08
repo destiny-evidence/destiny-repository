@@ -37,7 +37,7 @@ class EPPIParser:
     See example here: https://eppi.ioe.ac.uk/cms/Portals/35/Maps/Examples/example_orignal.json
     """
 
-    version = "1.0"
+    version = "2.0"
 
     def __init__(  # noqa: PLR0913
         self,
