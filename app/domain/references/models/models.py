@@ -347,13 +347,11 @@ class Enhancement(DomainBaseModel, SQLTimestampMixin):
                 self.content.model_dump(mode="json", exclude_none=True), sort_keys=True
             )
 
-        json_repr = {
-            "source": self.source,
-            "visibility": self.visibility,
-            "robot_version": self.robot_version,
-            "derived_from": tuple(sorted(self.derived_from or [])),
-            "content": content_fingerprint,
-        }
+        json_repr = self.model_dump(
+            mode="json",
+            include={"source", "visibility", "robot_version", "derived_from"},
+            exclude_none=True,
+        ) | {"content": content_fingerprint}
         return hash(json.dumps(json_repr, sort_keys=True))
 
 
