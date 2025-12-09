@@ -383,21 +383,21 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         The search will likely return multiple references ("candidates"),
         to be handled by:
         **Terminal Cases**:
-        - If they all belong to the same duplicate relationship graph, the given
+        A: If they all belong to the same duplicate relationship graph, the given
         reference will be marked as duplicate of that graph's canonical reference.
-        - If they belong to more than one duplicate relationship graph, the given
+        B: If they belong to more than one duplicate relationship graph, the given
         reference is marked as decoupled for manual review, as it indicates disconnected
         duplicate relationship graphs and undermines the assumption of the shortcut.
-        - If none of them belong to a duplicate relationship graph, the given reference
+        C: If none of them belong to a duplicate relationship graph, the given reference
         becomes the canonical of a new duplicate relationship graph including all
         candidates.
-        - If some of them belong to a single duplicate relationship graph and some
+        D: If some of them belong to a single duplicate relationship graph and some
         don't, the non-graph references are marked as duplicates of the canonical of
         the graph.
 
         **Non-terminal Cases**:
-        Finally, if the given reference has no trusted identifiers or no candidates are
-        found, no action is taken and regular deduplication continues.
+        E: Finally, if the given reference has no trusted identifiers or no candidates
+        are found, no action is taken and regular deduplication continues.
 
         :param reference: The reference to deduplicate.
         :type reference: app.domain.references.models.models.Reference
@@ -407,6 +407,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         :return: The generated duplicate decision, if any.
         :rtype: ReferenceDuplicateDecision | None
         """
+        if not trusted_unique_identifier_types:
+            return None
+
         reference = await self.sql_uow.references.get_by_pk(
             reference_id, preload=["identifiers", "duplicate_decision"]
         )
@@ -449,19 +452,19 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 canonical_ids.add(_reference.id)
 
         if len(canonical_ids) > 1:
-            new_decision, _ = await self.map_duplicate_decision(
-                ReferenceDuplicateDecision(
-                    reference_id=reference.id,
-                    duplicate_determination=DuplicateDetermination.DECOUPLED,
-                    active_decision=True,
-                    detail=(
-                        "Multiple canonical references found for trusted unique "
-                        "identifiers. This may indicate we have disconnected duplicate "
-                        "relationship graphs. Manual review required. Canonical IDs: "
-                        ", ".join(str(canonical_id) for canonical_id in canonical_ids)
-                    ),
-                )
+            new_decision = ReferenceDuplicateDecision(
+                reference_id=reference.id,
+                duplicate_determination=DuplicateDetermination.DECOUPLED,
+                active_decision=False,
+                detail=(
+                    "Multiple canonical references found for trusted unique "
+                    "identifiers. This may indicate we have disconnected duplicate "
+                    "relationship graphs. Manual review required. Canonical IDs: "
+                    f"{', '.join(str(canonical_id) for canonical_id in canonical_ids)}"
+                ),
             )
+            # Not a terminal decision, don't use the map method
+            self.sql_uow.reference_duplicate_decisions.add(new_decision)
             return new_decision
 
         if not canonical_ids:
