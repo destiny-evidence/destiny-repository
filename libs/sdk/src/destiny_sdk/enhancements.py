@@ -87,6 +87,10 @@ other works have cited this work
     created_date: datetime.date | None = Field(
         default=None, description="The ISO8601 date this metadata record was created"
     )
+    updated_date: datetime.date | None = Field(
+        default=None,
+        description="The ISO8601 date of the last OpenAlex update to this metadata",
+    )
     publication_date: datetime.date | None = Field(
         default=None, description="The date which the version of record was published."
     )
