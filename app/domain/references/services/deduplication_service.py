@@ -468,7 +468,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                         "identifiers. This may indicate we have disconnected duplicate "
                         "relationship graphs. Manual review required. Canonical IDs: "
                         f"{', '.join(
-                            str(canonical_id) for canonical_id in canonical_ids)}"
+                            str(canonical_id) for canonical_id in canonical_ids
+                        )}"
                     ),
                 )
             ]
