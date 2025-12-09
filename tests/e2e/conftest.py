@@ -1,10 +1,12 @@
 """Containers setup for end-to-end tests."""
 
+import contextlib
 import json
 import logging
 import os
 import pathlib
 import uuid
+from collections.abc import AsyncIterator
 
 import httpx
 import pytest
@@ -398,14 +400,48 @@ async def app(  # noqa: PLR0913
             print_logs("App", container)
 
 
-@pytest.fixture(scope="session")
-async def destiny_client_v1(app: DockerContainer) -> httpx.AsyncClient:
-    """Get a httpx client for the main application."""
+def _get_httpx_client_for_app(app: DockerContainer) -> httpx.AsyncClient:
+    """Create an httpx client for the app container."""
     host = app.get_container_host_ip()
     port = app.get_exposed_port(app_port)
     url = f"http://{host}:{port}/v1/"
     logger.info("Creating httpx client for %s", url)
     return httpx.AsyncClient(base_url=url)
+
+
+@pytest.fixture(scope="session")
+async def configured_repository_factory(app: DockerContainer, worker: DockerContainer):
+    """Get a factory to configure repository containers with specific env vars."""
+
+    @contextlib.asynccontextmanager
+    async def _factory(env: dict) -> AsyncIterator[httpx.AsyncClient]:
+        msg = f"Reconfiguring repository containers with env vars: {env}"
+        logger.info(msg)
+        old_envs = {}
+        for container in (app, worker):
+            old_envs[container._name] = container.env.copy()  # noqa: SLF001
+            container.stop()
+            container.with_envs(**env)
+            container.start()
+
+        async with _get_httpx_client_for_app(app) as client:
+            try:
+                yield client
+            finally:
+                for container in (app, worker):
+                    container.stop()
+                    container.with_envs(**{k: None for k in env})
+                    container.with_envs(**old_envs[container._name])  # noqa: SLF001
+                    container.start()
+
+    return _factory
+
+
+# Function scoped as the bindings may change per test due to the factory above
+@pytest.fixture
+async def destiny_client_v1(app: DockerContainer) -> httpx.AsyncClient:
+    """Get a httpx client for the main application."""
+    return _get_httpx_client_for_app(app)
 
 
 def pytest_addoption(parser: pytest.Parser):

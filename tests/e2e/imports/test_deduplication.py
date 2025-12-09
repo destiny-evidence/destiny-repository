@@ -1,5 +1,6 @@
 """End-to-end tests for import deduplication."""
 
+import json
 import uuid
 from collections.abc import Callable
 from contextlib import _AsyncGeneratorContextManager
@@ -21,6 +22,7 @@ from app.domain.references.models.es import ReferenceDocument
 from app.domain.references.models.models import (
     DuplicateDetermination,
     Enhancement,
+    ExternalIdentifierType,
     PendingEnhancementStatus,
     Reference,
 )
@@ -46,6 +48,7 @@ from tests.factories import (
     DOIIdentifierFactory,
     EnhancementFactory,
     LinkedExternalIdentifierFactory,
+    OpenAlexIdentifierFactory,
     ReferenceFactory,
 )
 
@@ -621,3 +624,97 @@ async def test_duplicate_change(  # noqa: PLR0913
     )
     assert old_decision
     assert old_decision.active_decision
+
+
+async def test_deduplication_shortcut(  # noqa: PLR0913
+    configured_repository_factory: Callable[
+        [dict], _AsyncGeneratorContextManager[httpx.AsyncClient]
+    ],
+    pg_session: AsyncSession,
+    es_client: AsyncElasticsearch,
+    get_import_file_signed_url: Callable[
+        [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
+    ],
+    canonical_reference: Reference,
+    duplicate_reference: Reference,
+    robot_automation_on_specific_enhancement: uuid.UUID,
+):
+    """Test that deduplication shortcutting works as expected."""
+    trusted_identifier = LinkedExternalIdentifierFactory.build(
+        identifier=OpenAlexIdentifierFactory.build(),
+    )
+    assert canonical_reference.identifiers
+    assert duplicate_reference.identifiers
+    canonical_reference.identifiers.append(trusted_identifier)
+    duplicate_reference.identifiers.append(trusted_identifier)
+    async with configured_repository_factory(
+        {
+            "TRUSTED_UNIQUE_IDENTIFIER_TYPES": json.dumps(
+                [ExternalIdentifierType.OPEN_ALEX.value]
+            )
+        }
+    ) as destiny_client_v1:
+        canonical_reference_id = (
+            await import_references(
+                destiny_client_v1,
+                pg_session,
+                es_client,
+                [canonical_reference],
+                get_import_file_signed_url,
+            )
+        ).pop()
+        await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+        duplicate_reference_id = (
+            await import_references(
+                destiny_client_v1,
+                pg_session,
+                es_client,
+                [duplicate_reference],
+                get_import_file_signed_url,
+            )
+        ).pop()
+        decision = await poll_duplicate_process(
+            pg_session, duplicate_reference_id, DuplicateDetermination.DUPLICATE
+        )
+        assert decision.detail == "Shortcutted with trusted identifier(s)"
+        assert decision.canonical_reference_id == canonical_reference_id
+
+        # Check that the Elasticsearch index contains only the canonical, with the near
+        # duplicate's data merged in.
+        es_result = await es_client.search(
+            index=ReferenceDocument.Index.name,
+            query={
+                "terms": {
+                    "_id": [
+                        str(canonical_reference_id),
+                        str(duplicate_reference_id),
+                    ]
+                }
+            },
+        )
+        assert es_result["hits"]["total"]["value"] == 1
+        assert es_result["hits"]["hits"][0]["_id"] == str(canonical_reference_id)
+        es_source = es_result["hits"]["hits"][0]["_source"]
+        assert es_source["duplicate_determination"] == "canonical"
+
+        authors, titles = set(), set()
+        for enhancement in es_source["enhancements"]:
+            if enhancement["content"]["enhancement_type"] == "bibliographic":
+                titles.add(enhancement["content"]["title"])
+                for author in enhancement["content"]["authorship"]:
+                    authors.add(author["display_name"])
+        assert titles >= {
+            "A Study on the Effects of Testing",
+            "A Study on the Effects of Testing!",
+        }
+        assert authors >= {"Jayne Doe", "Jane Doe", "John Smith"}
+
+        # Finally, check that the robot automation was triggered on the canonical reference
+        # by the near duplicate's annotation enhancement.
+        pe = await poll_pending_enhancement(
+            pg_session,
+            reference_id=canonical_reference_id,
+            robot_id=robot_automation_on_specific_enhancement,
+        )
+        assert pe["status"].casefold() == PendingEnhancementStatus.PENDING.casefold()
+        assert not pe["robot_enhancement_batch_id"]

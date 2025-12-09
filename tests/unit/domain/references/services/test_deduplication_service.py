@@ -29,7 +29,7 @@ from tests.factories import (
 
 @pytest.fixture
 def reference() -> Reference:
-    return ReferenceFactory.build()
+    return ReferenceFactory.build(visibility="public")
 
 
 @pytest.fixture
@@ -145,6 +145,7 @@ async def test_register_duplicate_decision_invalid_combination(
 async def test_nominate_candidate_canonicals_candidates_not_found(
     reference, anti_corruption_service, fake_uow, fake_repository
 ):
+    reference.enhancements = []
     decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.PENDING,
@@ -573,26 +574,33 @@ class TestShortcutDeduplication:
 
         canonical, duplicate = existing_canonical_and_duplicate
 
-        repo = fake_repository([canonical, duplicate, incoming])
-        duplicate_repo = fake_repository(
-            [canonical.duplicate_decision, duplicate.duplicate_decision]
-        )
-        uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
-        service = DeduplicationService(
-            anti_corruption_service,
-            uow,
-            fake_uow(),
-        )
         # Should work regardless of which is found
         for found in [canonical, duplicate]:
+            repo = fake_repository([canonical, duplicate, incoming])
+            decision = ReferenceDuplicateDecision(
+                reference_id=incoming.id,
+                duplicate_determination=DuplicateDetermination.PENDING,
+            )
+            duplicate_repo = fake_repository(
+                [decision, canonical.duplicate_decision, duplicate.duplicate_decision]
+            )
+            uow = fake_uow(
+                references=repo, reference_duplicate_decisions=duplicate_repo
+            )
+            service = DeduplicationService(
+                anti_corruption_service,
+                uow,
+                fake_uow(),
+            )
             uow.references.find_with_identifiers = AsyncMock(return_value=[found])
 
-            # This should match against existing and then deduplicate against canonical
-            result = await service.shortcut_deduplication_using_identifiers(
-                incoming.id,
+            results = await service.shortcut_deduplication_using_identifiers(
+                decision,
                 trusted_unique_identifier_types={ExternalIdentifierType.OPEN_ALEX},
             )
-            assert result
+            assert results
+            result = results[0]
+            assert result.id == decision.id
             assert result.reference_id == incoming.id
             assert result.duplicate_determination == DuplicateDetermination.DUPLICATE
             assert result.canonical_reference_id == canonical.id
@@ -618,24 +626,40 @@ class TestShortcutDeduplication:
         assert incoming.identifiers
         incoming.identifiers.append(trusted_identifier)
 
-        repo = fake_repository([duplicate_1, duplicate_2, incoming])
-        duplicate_repo = fake_repository()
-        uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
-        service = DeduplicationService(
-            anti_corruption_service,
-            uow,
-            fake_uow(),
-        )
-
         for found in itertools.product(
             (duplicate_1, canonical_1), (duplicate_2, canonical_2)
         ):
+            repo = fake_repository([duplicate_1, duplicate_2, incoming])
+
+            decision = ReferenceDuplicateDecision(
+                reference_id=incoming.id,
+                duplicate_determination=DuplicateDetermination.PENDING,
+            )
+            duplicate_repo = fake_repository(
+                [
+                    decision,
+                    canonical_1.duplicate_decision,
+                    duplicate_1.duplicate_decision,
+                    canonical_2.duplicate_decision,
+                    duplicate_2.duplicate_decision,
+                ]
+            )
+            uow = fake_uow(
+                references=repo, reference_duplicate_decisions=duplicate_repo
+            )
+            service = DeduplicationService(
+                anti_corruption_service,
+                uow,
+                fake_uow(),
+            )
+
             uow.references.find_with_identifiers = AsyncMock(return_value=found)
-            result = await service.shortcut_deduplication_using_identifiers(
-                incoming.id,
+            results = await service.shortcut_deduplication_using_identifiers(
+                decision,
                 trusted_unique_identifier_types={ExternalIdentifierType.OPEN_ALEX},
             )
-            assert result
+            assert results
+            result = results[0]
             assert result.reference_id == incoming.id
             assert result.duplicate_determination == DuplicateDetermination.DECOUPLED
             assert result.detail
@@ -665,7 +689,11 @@ class TestShortcutDeduplication:
         incoming.identifiers.append(trusted_identifier)
 
         repo = fake_repository([existing_1, existing_2, incoming])
-        duplicate_repo = fake_repository()
+        decision = ReferenceDuplicateDecision(
+            reference_id=incoming.id,
+            duplicate_determination=DuplicateDetermination.PENDING,
+        )
+        duplicate_repo = fake_repository([decision])
         uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
         uow.references.find_with_identifiers = AsyncMock(
             return_value=[existing_1, existing_2]
@@ -676,25 +704,26 @@ class TestShortcutDeduplication:
             fake_uow(),
         )
 
-        result = await service.shortcut_deduplication_using_identifiers(
-            incoming.id,
+        results = await service.shortcut_deduplication_using_identifiers(
+            decision,
             trusted_unique_identifier_types={ExternalIdentifierType.OPEN_ALEX},
         )
-        assert result
+        assert results
+        assert len(results) == 3
+        result = results[0]
         assert result.reference_id == incoming.id
         assert result.duplicate_determination == DuplicateDetermination.CANONICAL
         assert result.detail == "Shortcutted with trusted identifier(s)"
 
-        for existing in [existing_1, existing_2]:
-            existing_result = await duplicate_repo.find(reference_id=existing.id)
+        for existing_result in results[1:]:
             assert existing_result
             assert (
-                existing_result[0].duplicate_determination
+                existing_result.duplicate_determination
                 == DuplicateDetermination.DUPLICATE
             )
-            assert existing_result[0].canonical_reference_id == incoming.id
+            assert existing_result.canonical_reference_id == incoming.id
             assert (
-                existing_result[0].detail
+                existing_result.detail
                 == f"Shortcutted via proxy reference {incoming.id} "
                 "with trusted identifier(s)"
             )
@@ -722,7 +751,11 @@ class TestShortcutDeduplication:
         repo = fake_repository(
             [canonical, duplicate, existing_undeduplicated, incoming]
         )
-        duplicate_repo = fake_repository()
+        decision = ReferenceDuplicateDecision(
+            reference_id=incoming.id,
+            duplicate_determination=DuplicateDetermination.PENDING,
+        )
+        duplicate_repo = fake_repository([decision])
         uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
         service = DeduplicationService(
             anti_corruption_service,
@@ -733,11 +766,12 @@ class TestShortcutDeduplication:
             return_value=[duplicate, existing_undeduplicated]
         )
 
-        result = await service.shortcut_deduplication_using_identifiers(
-            incoming.id,
+        results = await service.shortcut_deduplication_using_identifiers(
+            decision,
             trusted_unique_identifier_types={ExternalIdentifierType.OPEN_ALEX},
         )
-        assert result
+        assert results
+        result = results[0]
         assert result.reference_id == incoming.id
         assert result.duplicate_determination == DuplicateDetermination.DUPLICATE
         assert result.canonical_reference_id == canonical.id
@@ -757,3 +791,50 @@ class TestShortcutDeduplication:
             == f"Shortcutted via proxy reference {incoming.id} "
             "with trusted identifier(s)"
         )
+
+    async def test_shortcut_deduplication_case_e(
+        self,
+        trusted_identifier: LinkedExternalIdentifier,
+        anti_corruption_service: ReferenceAntiCorruptionService,
+        fake_uow,
+        fake_repository,
+    ):
+        """Various scenarios that should not shortcut deduplication."""
+        incoming: Reference = ReferenceFactory.build()
+        assert incoming.identifiers
+        incoming.identifiers.append(trusted_identifier)
+
+        repo = fake_repository([incoming])
+        decision = ReferenceDuplicateDecision(
+            reference_id=incoming.id,
+            duplicate_determination=DuplicateDetermination.PENDING,
+        )
+        duplicate_repo = fake_repository([decision])
+        uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
+        service = DeduplicationService(
+            anti_corruption_service,
+            uow,
+            fake_uow(),
+        )
+        uow.references.find_with_identifiers = AsyncMock(return_value=[])
+
+        # No trusted identifiers
+        assert not await service.shortcut_deduplication_using_identifiers(
+            decision,
+            trusted_unique_identifier_types=set(),
+        )
+
+        # No matching references found
+        assert not await service.shortcut_deduplication_using_identifiers(
+            decision,
+            trusted_unique_identifier_types={ExternalIdentifierType.OPEN_ALEX},
+        )
+
+        # Not a pending duplicate decision
+        decision.active_decision = True
+        decision.duplicate_determination = DuplicateDetermination.DUPLICATE
+        with pytest.raises(DeduplicationValueError):
+            await service.shortcut_deduplication_using_identifiers(
+                decision,
+                trusted_unique_identifier_types={ExternalIdentifierType.OPEN_ALEX},
+            )

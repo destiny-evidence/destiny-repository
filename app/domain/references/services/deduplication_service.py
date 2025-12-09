@@ -368,9 +368,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
     async def shortcut_deduplication_using_identifiers(
         self,
-        reference_id: uuid.UUID,
+        reference_duplicate_decision: ReferenceDuplicateDecision,
         trusted_unique_identifier_types: set[ExternalIdentifierType],
-    ) -> ReferenceDuplicateDecision | None:
+    ) -> list[ReferenceDuplicateDecision] | None:
         """
         Deduplicate the given reference using trusted unique identifiers.
 
@@ -407,11 +407,15 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         :return: The generated duplicate decision, if any.
         :rtype: ReferenceDuplicateDecision | None
         """
-        if not trusted_unique_identifier_types:
-            return None
+        if reference_duplicate_decision.duplicate_determination != (
+            DuplicateDetermination.PENDING
+        ):
+            msg = "Shortcut deduplication can only be run on pending decisions."
+            raise DeduplicationValueError(msg)
 
         reference = await self.sql_uow.references.get_by_pk(
-            reference_id, preload=["identifiers", "duplicate_decision"]
+            reference_duplicate_decision.reference_id,
+            preload=["identifiers", "duplicate_decision"],
         )
         if not reference.identifiers or reference.duplicate_decision:
             # No identifiers or already deduplicated, skip shortcutting
@@ -427,6 +431,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             preload=["duplicate_decision"],
             match="any",
         )
+        candidates = [
+            candidate for candidate in candidates if candidate.id != reference.id
+        ]
         if not candidates:
             return None
 
@@ -452,48 +459,51 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 canonical_ids.add(_reference.id)
 
         if len(canonical_ids) > 1:
-            new_decision = ReferenceDuplicateDecision(
-                reference_id=reference.id,
-                duplicate_determination=DuplicateDetermination.DECOUPLED,
-                active_decision=False,
-                detail=(
-                    "Multiple canonical references found for trusted unique "
-                    "identifiers. This may indicate we have disconnected duplicate "
-                    "relationship graphs. Manual review required. Canonical IDs: "
-                    f"{', '.join(str(canonical_id) for canonical_id in canonical_ids)}"
-                ),
-            )
-            # Not a terminal decision, don't use the map method
-            self.sql_uow.reference_duplicate_decisions.add(new_decision)
-            return new_decision
+            return [
+                await self.sql_uow.reference_duplicate_decisions.update_by_pk(
+                    reference_duplicate_decision.id,
+                    duplicate_determination=DuplicateDetermination.DECOUPLED,
+                    detail=(
+                        "Multiple canonical references found for trusted unique "
+                        "identifiers. This may indicate we have disconnected duplicate "
+                        "relationship graphs. Manual review required. Canonical IDs: "
+                        f"{', '.join(
+                            str(canonical_id) for canonical_id in canonical_ids)}"
+                    ),
+                )
+            ]
 
         if not canonical_ids:
             # No canonicals found, make this reference the canonical
             canonical_id = reference.id
-            new_decision, _ = await self.map_duplicate_decision(
-                ReferenceDuplicateDecision(
-                    reference_id=reference.id,
-                    duplicate_determination=DuplicateDetermination.CANONICAL,
-                    active_decision=True,
-                    detail="Shortcutted with trusted identifier(s)",
-                )
+            reference_duplicate_decision.duplicate_determination = (
+                DuplicateDetermination.CANONICAL
+            )
+            reference_duplicate_decision.detail = (
+                "Shortcutted with trusted identifier(s)"
+            )
+
+            reference_duplicate_decision, _ = await self.map_duplicate_decision(
+                reference_duplicate_decision
             )
         else:
             # Exactly one canonical found, make this reference a duplicate of it
             canonical_id = canonical_ids.pop()
-            new_decision, _ = await self.map_duplicate_decision(
-                ReferenceDuplicateDecision(
-                    reference_id=reference.id,
-                    duplicate_determination=DuplicateDetermination.DUPLICATE,
-                    canonical_reference_id=canonical_id,
-                    active_decision=True,
-                    detail="Shortcutted with trusted identifier(s)",
-                )
+            reference_duplicate_decision.duplicate_determination = (
+                DuplicateDetermination.DUPLICATE
+            )
+            reference_duplicate_decision.canonical_reference_id = canonical_id
+            reference_duplicate_decision.detail = (
+                "Shortcutted with trusted identifier(s)"
+            )
+            reference_duplicate_decision, _ = await self.map_duplicate_decision(
+                reference_duplicate_decision
             )
 
         # Map any undeduplicated candidates as duplicates of the canonical
+        side_effect_decisions = []
         for candidate_id in undeduplicated_ids:
-            await self.map_duplicate_decision(
+            decision, _ = await self.map_duplicate_decision(
                 ReferenceDuplicateDecision(
                     reference_id=candidate_id,
                     duplicate_determination=DuplicateDetermination.DUPLICATE,
@@ -505,5 +515,6 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                     ),
                 )
             )
+            side_effect_decisions.append(decision)
 
-        return new_decision
+        return [reference_duplicate_decision, *side_effect_decisions]

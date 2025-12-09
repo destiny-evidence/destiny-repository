@@ -6,6 +6,8 @@ from collections import defaultdict
 from collections.abc import Collection, Iterable
 from uuid import UUID
 
+from opentelemetry.trace import get_tracer
+
 from app.core.config import (
     ESPercolationOperation,
     UploadFile,
@@ -73,6 +75,7 @@ from app.utils.time_and_date import apply_positive_timedelta
 
 logger = get_logger(__name__)
 settings = get_settings()
+tracer = get_tracer(__name__)
 
 
 class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
@@ -253,8 +256,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
         return canonical_references
 
-    @sql_unit_of_work
-    async def get_canonical_reference_with_implied_changeset(
+    async def _get_canonical_reference_with_implied_changeset(
         self, reference_id: UUID
     ) -> ReferenceWithChangeset:
         """
@@ -276,6 +278,13 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             **deduplicated_canonical_reference.model_dump(),
             changeset=reference,
         )
+
+    @sql_unit_of_work
+    async def get_canonical_reference_with_implied_changeset(
+        self, reference_id: UUID
+    ) -> ReferenceWithChangeset:
+        """Get a canonical reference with its implied changeset per its duplicate decision."""  # noqa: E501
+        return await self._get_canonical_reference_with_implied_changeset(reference_id)
 
     async def _merge_reference(self, reference: Reference) -> Reference:
         """Persist a reference with an existing SQL & ES UOW."""
@@ -820,7 +829,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
         ]
 
-    @es_unit_of_work
     async def _detect_robot_automations(
         self,
         reference: ReferenceWithChangeset | None = None,
@@ -862,6 +870,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             for robot_id, reference_ids in robot_automations_dict.items()
         ]
 
+    @es_unit_of_work
     @sql_unit_of_work
     async def detect_robot_automations(
         self,
@@ -947,13 +956,49 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision_id
         )
 
+    async def apply_reference_duplicate_decision(
+        self,
+        reference_duplicate_decision: ReferenceDuplicateDecision,
+        *,
+        decision_changed: bool,
+    ) -> ReferenceDuplicateDecision:
+        """Apply a reference duplicate decision."""
+        if reference_duplicate_decision.active_decision:
+            await self._synchronizer.references.sql_to_es(
+                reference_duplicate_decision.reference_id
+            )
+            if decision_changed:
+                reference = await self._get_canonical_reference_with_implied_changeset(
+                    reference_duplicate_decision.reference_id
+                )
+                await self.detect_and_dispatch_robot_automations(
+                    reference=reference,
+                    source_str=f"DuplicateDecision:{reference_duplicate_decision.id}",
+                )
+        return reference_duplicate_decision
+
     @sql_unit_of_work
     @es_unit_of_work
     async def process_reference_duplicate_decision(
         self,
         reference_duplicate_decision: ReferenceDuplicateDecision,
-    ) -> tuple[ReferenceDuplicateDecision, bool]:
+    ) -> None:
         """Process a reference duplicate decision."""
+        shortcutted_decisions = (
+            await self._deduplication_service.shortcut_deduplication_using_identifiers(
+                reference_duplicate_decision,
+                settings.trusted_unique_identifier_types,
+            )
+        )
+        if shortcutted_decisions:
+            for decision in shortcutted_decisions:
+                await self.apply_reference_duplicate_decision(
+                    decision,
+                    decision_changed=True,
+                )
+            return
+
+        # Carry on with normal processing
         reference_duplicate_decision = (
             await self._deduplication_service.nominate_candidate_canonicals(
                 reference_duplicate_decision
@@ -973,12 +1018,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision
         )
 
-        if reference_duplicate_decision.active_decision:
-            await self._synchronizer.references.sql_to_es(
-                reference_duplicate_decision.reference_id
-            )
-
-        return reference_duplicate_decision, decision_changed
+        await self.apply_reference_duplicate_decision(
+            reference_duplicate_decision,
+            decision_changed=decision_changed,
+        )
 
     @sql_unit_of_work
     async def get_pending_enhancements_for_robot(
@@ -1127,3 +1170,39 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             publication_year_range=publication_year_range,
             sort=sort,
         )
+
+    @tracer.start_as_current_span("Detect and dispatch robot automations")
+    async def detect_and_dispatch_robot_automations(
+        self,
+        reference: ReferenceWithChangeset | None = None,
+        enhancement_ids: Iterable[uuid.UUID] | None = None,
+        source_str: str | None = None,
+        skip_robot_id: uuid.UUID | None = None,
+    ) -> None:
+        """
+        Request default enhancements for a set of references.
+
+        Technically this is a task distributor, not a task - may live in a higher layer
+        later in life.
+
+        NB this is in a transient state, see comments in
+        ReferenceService.detect_robot_automations.
+        """
+        robot_automations = await self._detect_robot_automations(
+            reference=reference,
+            enhancement_ids=enhancement_ids,
+        )
+        for robot_automation in robot_automations:
+            if robot_automation.robot_id == skip_robot_id:
+                logger.warning(
+                    "Detected robot automation loop, skipping."
+                    " This is likely a problem in the percolation query.",
+                    robot_id=str(robot_automation.robot_id),
+                    source=source_str,
+                )
+                continue
+            await self._create_pending_enhancements(
+                robot_id=robot_automation.robot_id,
+                reference_ids=robot_automation.reference_ids,
+                source=source_str,
+            )
