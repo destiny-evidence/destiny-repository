@@ -33,6 +33,15 @@ def main() -> None:
     arg_parser.add_argument(
         "--output", "-o", type=str, required=True, help="Output .jsonl filename"
     )
+
+    arg_parser.add_argument(
+        "--input-codec",
+        "-ic",
+        type=str,
+        default="latin-1",
+        help="The codec to decode the input file with, defaults to 'latin-1'",
+    )
+
     arg_parser.add_argument(
         "--tags",
         nargs="+",
@@ -71,13 +80,6 @@ def main() -> None:
     )
 
     arg_parser.add_argument(
-        "--codeset-id",
-        type=int,
-        default=None,
-        help="The codeset id of the attributes on the incoming references.",
-    )
-
-    arg_parser.add_argument(
         "--exclude-from-raw",
         nargs="+",
         default=["Abstract"],
@@ -95,20 +97,17 @@ def main() -> None:
         file_bytes = f.read()
         checksum = base64.b64encode(hashlib.md5(file_bytes).digest()).decode("ascii")  # noqa: S324
 
-    data = json.loads(file_bytes.decode("utf-8"))
-
-    metadata = {"codeset_id": args.codeset_id} if args.codeset_id else None
+    data = json.loads(file_bytes.decode(args.input_codec))
 
     eppi_parser = EPPIParser(
         tags=args.tags,
         include_raw_data=args.include_raw,
         source_export_date=args.source_export_date,
         data_description=args.description,
-        raw_enhancement_metadata=metadata,
         raw_enhancement_excludes=args.exclude_from_raw,
     )
 
-    references = eppi_parser.parse_data(
+    references, failed_refs = eppi_parser.parse_data(
         data,
         source=args.source,
         robot_version=checksum,
@@ -116,6 +115,16 @@ def main() -> None:
 
     with Path(args.output).open("w") as f:
         f.writelines(ref.to_jsonl() + "\n" for ref in references)
+
+    failed_refs_path = args.output.removesuffix(".jsonl") + "-failures.json"
+
+    with Path(failed_refs_path).open("w") as f:
+        f.write(
+            json.dumps(
+                {"CodeSets": data.get("CodeSets"), "References": failed_refs},
+                ensure_ascii=False,
+            )
+        )
 
 
 if __name__ == "__main__":
