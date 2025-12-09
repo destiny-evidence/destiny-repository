@@ -39,14 +39,13 @@ class EPPIParser:
 
     version = "2.0"
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         tags: list[str] | None = None,
         include_raw_data: bool = False,
         source_export_date: datetime | None = None,
         data_description: str | None = None,
-        raw_enhancement_metadata: dict[str, Any] | None = None,
         raw_enhancement_excludes: list[str] | None = None,
     ) -> None:
         """
@@ -61,7 +60,6 @@ class EPPIParser:
         self.include_raw_data = include_raw_data
         self.source_export_date = source_export_date
         self.data_description = data_description
-        self.raw_enhancement_metadata = raw_enhancement_metadata
         self.raw_enhancement_excludes = (
             raw_enhancement_excludes if raw_enhancement_excludes else []
         )
@@ -70,7 +68,6 @@ class EPPIParser:
             (
                 self.source_export_date,
                 self.data_description,
-                self.raw_enhancement_metadata,
             )
         ):
             msg = (
@@ -181,8 +178,7 @@ class EPPIParser:
         )
 
     def _parse_raw_enhancement(
-        self,
-        ref_to_import: dict[str, Any],
+        self, ref_to_import: dict[str, Any], raw_enhancement_metadata: dict[str, Any]
     ) -> EnhancementContent | None:
         """Add Reference data as a raw enhancement."""
         raw_enhancement_data = ref_to_import.copy()
@@ -194,7 +190,7 @@ class EPPIParser:
         return RawEnhancement(
             source_export_date=self.source_export_date,
             description=self.data_description,
-            metadata=self.raw_enhancement_metadata,
+            metadata=raw_enhancement_metadata,
             data=raw_enhancement_data,
         )
 
@@ -234,6 +230,11 @@ class EPPIParser:
 
         """
         parser_source = source if source is not None else self.parser_source
+
+        if self.include_raw_data:
+            codesets = [codeset.get("SetId") for codeset in data.get("CodeSets", [])]
+            raw_enhancement_metadata = {"codeset_ids": codesets}
+
         references = []
         failed_refs = []
         for ref_to_import in data.get("References", []):
@@ -250,8 +251,10 @@ class EPPIParser:
 
                 if self.include_raw_data:
                     raw_enhancement = self._parse_raw_enhancement(
-                        ref_to_import=ref_to_import
+                        ref_to_import=ref_to_import,
+                        raw_enhancement_metadata=raw_enhancement_metadata,
                     )
+
                     if raw_enhancement:
                         enhancement_contents.append(raw_enhancement)
 

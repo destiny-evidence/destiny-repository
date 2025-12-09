@@ -80,13 +80,6 @@ def main() -> None:
     )
 
     arg_parser.add_argument(
-        "--codeset-id",
-        type=int,
-        default=None,
-        help="The codeset id of the attributes on the incoming references.",
-    )
-
-    arg_parser.add_argument(
         "--exclude-from-raw",
         nargs="+",
         default=["Abstract"],
@@ -106,14 +99,11 @@ def main() -> None:
 
     data = json.loads(file_bytes.decode(args.input_codec))
 
-    metadata = {"codeset_id": args.codeset_id} if args.codeset_id else None
-
     eppi_parser = EPPIParser(
         tags=args.tags,
         include_raw_data=args.include_raw,
         source_export_date=args.source_export_date,
         data_description=args.description,
-        raw_enhancement_metadata=metadata,
         raw_enhancement_excludes=args.exclude_from_raw,
     )
 
@@ -129,7 +119,12 @@ def main() -> None:
     failed_refs_path = args.output.removesuffix(".jsonl") + "-failures.json"
 
     with Path(failed_refs_path).open("w") as f:
-        f.write(json.dumps({"References": failed_refs}, ensure_ascii=False))
+        f.write(
+            json.dumps(
+                {"CodeSets": data.get("CodeSets"), "References": failed_refs},
+                ensure_ascii=False,
+            )
+        )
 
 
 if __name__ == "__main__":
