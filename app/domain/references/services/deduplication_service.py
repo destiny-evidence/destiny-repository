@@ -382,30 +382,38 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
         The search will likely return multiple references ("candidates"),
         to be handled by:
-        **Terminal Cases**:
-        A: If they all belong to the same duplicate relationship graph, the given
+
+        **Terminal Cases:**
+
+        **A.** If they all belong to the same duplicate relationship graph, the given
         reference will be marked as duplicate of that graph's canonical reference.
-        B: If they belong to more than one duplicate relationship graph, the given
+
+        **B.** If they belong to more than one duplicate relationship graph, the given
         reference is marked as decoupled for manual review, as it indicates disconnected
         duplicate relationship graphs and undermines the assumption of the shortcut.
-        C: If none of them belong to a duplicate relationship graph, the given reference
-        becomes the canonical of a new duplicate relationship graph including all
-        candidates.
-        D: If some of them belong to a single duplicate relationship graph and some
+
+        **C.** If none of them belong to a duplicate relationship graph, the given
+        reference becomes the canonical of a new duplicate relationship graph including
+        all candidates.
+
+        **D.** If some of them belong to a single duplicate relationship graph and some
         don't, the non-graph references are marked as duplicates of the canonical of
         the graph.
 
-        **Non-terminal Cases**:
-        E: Finally, if the given reference has no trusted identifiers or no candidates
-        are found, no action is taken and regular deduplication continues.
+
+        **Non-terminal Cases:**
+
+        **E.** Finally, if the given reference has no trusted identifiers or no
+        candidates are found, no action is taken and regular deduplication continues.
+
 
         :param reference: The reference to deduplicate.
         :type reference: app.domain.references.models.models.Reference
         :param trusted_unique_identifier_types: The identifier types considered
             trusted unique identifiers.
         :type trusted_unique_identifier_types: set[ExternalIdentifierType]
-        :return: The generated duplicate decision, if any.
-        :rtype: ReferenceDuplicateDecision | None
+        :return: The generated duplicate decisions, if any.
+        :rtype: list[ReferenceDuplicateDecision] | None
         """
         if reference_duplicate_decision.duplicate_determination != (
             DuplicateDetermination.PENDING
