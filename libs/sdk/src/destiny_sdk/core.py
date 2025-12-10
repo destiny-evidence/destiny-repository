@@ -1,10 +1,17 @@
 """Core classes for the Destiny SDK, not exposed to package users."""
 
+from importlib.metadata import PackageNotFoundError, version
 from typing import Self
 
 from pydantic import BaseModel, Field
 
 from destiny_sdk.search import SearchResultPage, SearchResultTotal
+
+try:
+    sdk_version = version("destiny-sdk")
+except PackageNotFoundError:
+    sdk_version = "unknown"
+
 
 # These are non-standard newline characters that are not escaped by model_dump_json().
 # We want jsonl files to have empirical new lines so they can be streamed line by line.
