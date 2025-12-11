@@ -452,6 +452,7 @@ async def configured_repository_factory(app: DockerContainer, worker: DockerCont
                 yield client
             finally:
                 for container in (app, worker):
+                    print_logs(container._name, container)  # noqa: SLF001
                     container.stop()
                     container.with_envs(**{k: None for k in env})
                     container.with_envs(**old_envs[container._name])  # noqa: SLF001
