@@ -16,7 +16,7 @@ from alembic.command import upgrade
 from elasticsearch import AsyncElasticsearch
 from minio import Minio
 from sqlalchemy.ext.asyncio import AsyncSession
-from tenacity import Retrying, stop_after_attempt, wait_exponential
+from tenacity import Retrying, stop_after_attempt, wait_fixed
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.docker_client import DockerClient
 from testcontainers.core.wait_strategies import (
@@ -127,9 +127,7 @@ def postgres():
     # testcontainers container. Sometimes this fails to start due to some
     # low-level port mapping issues, so we retry a few times.
     # Similar to the workaround in app, except we can't fix this one ourselves.
-    for retry in Retrying(
-        stop=stop_after_attempt(5), wait=wait_exponential(), reraise=True
-    ):
+    for retry in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(1), reraise=True):
         with retry:
             postgres.start()
 
@@ -447,6 +445,13 @@ async def configured_repository_factory(app: DockerContainer, worker: DockerCont
             container.with_envs(**env)
             container.start()
 
+        # # Need to wait a bit of time for the old worker container to stop.
+        # # Ask me how I know.
+        # # There might be some fancier way to do all this restarting through the
+        # # testcontainers.Container._container, which accesses the
+        # # low-level docker SDK container object, but this works for now.
+        # await asyncio.sleep(10)
+
         async with _get_httpx_client_for_app(app) as client:
             try:
                 yield client
@@ -457,6 +462,9 @@ async def configured_repository_factory(app: DockerContainer, worker: DockerCont
                     container.with_envs(**{k: None for k in env})
                     container.with_envs(**old_envs[container._name])  # noqa: SLF001
                     container.start()
+
+                # # Same as above
+                # await asyncio.sleep(10)
 
     return _factory
 
