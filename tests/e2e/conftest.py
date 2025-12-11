@@ -19,7 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.docker_client import DockerClient
-from testcontainers.core.wait_strategies import HttpWaitStrategy, LogMessageWaitStrategy
+from testcontainers.core.wait_strategies import (
+    CompositeWaitStrategy,
+    HttpWaitStrategy,
+    LogMessageWaitStrategy,
+)
 from testcontainers.elasticsearch import ElasticSearchContainer
 from testcontainers.minio import MinioContainer
 from testcontainers.postgres import PostgresContainer
@@ -119,10 +123,10 @@ def postgres():
         f"{container_prefix}-postgres"
     )
 
-    # This is the top of the fixture tree
-    # Sometimes the testcontainers parent container hasn't started fully and throws
-    # an unmapped port error.
-    # Soooo we try it a few times
+    # This is the top of the fixture tree and starts the parent
+    # testcontainers container. Sometimes this fails to start due to some
+    # low-level port mapping issues, so we retry a few times.
+    # Similar to the workaround in app, except we can't fix this one ourselves.
     for retry in Retrying(
         stop=stop_after_attempt(5), wait=wait_exponential(), reraise=True
     ):
@@ -401,7 +405,15 @@ async def app(  # noqa: PLR0913
         )
         .with_volume_mapping(str(_cwd / "app"), "/app/app")
         .with_volume_mapping(str(_cwd / "libs/sdk"), "/app/libs/sdk")
-        .waiting_for(LogMessageWaitStrategy("Uvicorn running on http://0.0.0.0:8000"))
+        .waiting_for(
+            CompositeWaitStrategy(
+                LogMessageWaitStrategy("Uvicorn running on http://0.0.0.0:8000"),
+                HttpWaitStrategy(
+                    port=app_port,
+                    path="/v1/system/healthcheck/?azure_blob_storage=false",
+                ).for_status_code(200),
+            )
+        )
     )
     with app as container:
         logger.info("App container ready.")
