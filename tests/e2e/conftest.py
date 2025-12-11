@@ -16,6 +16,7 @@ from alembic.command import upgrade
 from elasticsearch import AsyncElasticsearch
 from minio import Minio
 from sqlalchemy.ext.asyncio import AsyncSession
+from tenacity import Retrying, stop_after_attempt, wait_exponential
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.docker_client import DockerClient
 from testcontainers.core.wait_strategies import HttpWaitStrategy, LogMessageWaitStrategy
@@ -114,14 +115,28 @@ async def minio_proxy_client(minio_proxy: DockerContainer):
 def postgres():
     """Postgres container with alembic migrations applied."""
     logger.info("Creating Postgres container...")
-    with PostgresContainer("postgres:17", driver="asyncpg").with_name(
+    postgres = PostgresContainer("postgres:17", driver="asyncpg").with_name(
         f"{container_prefix}-postgres"
-    ) as postgres:
-        logger.info("Applying alembic migrations.")
-        alembic_config = alembic_config_from_url(postgres.get_connection_url())
-        upgrade(alembic_config, "head")
-        logger.info("Postgres container ready.")
-        yield postgres
+    )
+
+    # This is the top of the fixture tree
+    # Sometimes the testcontainers parent container hasn't started fully and throws
+    # an unmapped port error.
+    # Soooo we try it a few times
+    for retry in Retrying(
+        stop=stop_after_attempt(5), wait=wait_exponential(), reraise=True
+    ):
+        with retry:
+            postgres.start()
+
+    logger.info("Applying alembic migrations.")
+    alembic_config = alembic_config_from_url(postgres.get_connection_url())
+    upgrade(alembic_config, "head")
+
+    logger.info("Postgres container ready.")
+    yield postgres
+
+    postgres.stop()
 
 
 @pytest.fixture(scope="session")
@@ -386,11 +401,7 @@ async def app(  # noqa: PLR0913
         )
         .with_volume_mapping(str(_cwd / "app"), "/app/app")
         .with_volume_mapping(str(_cwd / "libs/sdk"), "/app/libs/sdk")
-        .waiting_for(
-            HttpWaitStrategy(
-                port=app_port, path="/v1/system/healthcheck/?azure_blob_storage=false"
-            ).for_status_code(200)
-        )
+        .waiting_for(LogMessageWaitStrategy("Uvicorn running on http://0.0.0.0:8000"))
     )
     with app as container:
         logger.info("App container ready.")
