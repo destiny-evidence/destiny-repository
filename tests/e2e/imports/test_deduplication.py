@@ -26,6 +26,7 @@ from app.domain.references.models.models import (
     ExternalIdentifierType,
     PendingEnhancementStatus,
     Reference,
+    Visibility,
 )
 from app.domain.references.models.sql import (
     Reference as SQLReference,
@@ -109,6 +110,7 @@ def canonical_reference(canonical_bibliographic_enhancement: Enhancement) -> Ref
             ),
             LinkedExternalIdentifierFactory.build(),
         ],
+        visibility=Visibility.PUBLIC,
     )
 
 
@@ -648,7 +650,9 @@ async def test_deduplication_shortcut(  # noqa: PLR0913
     assert duplicate_reference.identifiers
     canonical_reference.identifiers.append(trusted_identifier)
     duplicate_reference.identifiers.append(trusted_identifier)
-    other_reference = canonical_reference.model_copy(deep=True)
+    other_reference = canonical_reference.model_copy(
+        deep=True, update={"visibility": Visibility.HIDDEN}
+    )
     async with configured_repository_factory(
         {
             "TRUSTED_UNIQUE_IDENTIFIER_TYPES": json.dumps(
