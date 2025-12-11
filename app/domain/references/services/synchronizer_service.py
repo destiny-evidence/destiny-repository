@@ -43,7 +43,7 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
 
         if not reference.canonical_like and reference.canonical_reference:
             # If definitely a duplicate, we don't index and we update the canonical
-            await self.es_uow.references.delete_by_pk(reference.id)
+            await self.es_uow.references.delete_by_pk(reference.id, fail_hard=False)
             return await self.sql_to_es(reference.canonical_reference.id)
 
         return await self.es_uow.references.add(
