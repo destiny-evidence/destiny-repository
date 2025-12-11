@@ -445,13 +445,6 @@ async def configured_repository_factory(app: DockerContainer, worker: DockerCont
             container.with_envs(**env)
             container.start()
 
-        # # Need to wait a bit of time for the old worker container to stop.
-        # # Ask me how I know.
-        # # There might be some fancier way to do all this restarting through the
-        # # testcontainers.Container._container, which accesses the
-        # # low-level docker SDK container object, but this works for now.
-        # await asyncio.sleep(10)
-
         async with _get_httpx_client_for_app(app) as client:
             try:
                 yield client
@@ -462,9 +455,6 @@ async def configured_repository_factory(app: DockerContainer, worker: DockerCont
                     container.with_envs(**{k: None for k in env})
                     container.with_envs(**old_envs[container._name])  # noqa: SLF001
                     container.start()
-
-                # # Same as above
-                # await asyncio.sleep(10)
 
     return _factory
 
