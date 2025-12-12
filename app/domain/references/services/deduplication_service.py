@@ -459,12 +459,12 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 # Duplicate of a canonical, find the canonical ID
                 # We get this fresh without the filters so we can traverse a chain if
                 # required
-                _reference = await self.sql_uow.references.get_by_pk(
+                canonical_reference = await self.sql_uow.references.get_by_pk(
                     candidate.id, preload=["canonical_reference"]
                 )
-                while _reference.canonical_reference:
-                    _reference = _reference.canonical_reference
-                canonical_ids.add(_reference.id)
+                while canonical_reference.canonical_reference:
+                    canonical_reference = canonical_reference.canonical_reference
+                canonical_ids.add(canonical_reference.id)
 
         if len(canonical_ids) > 1:
             return [

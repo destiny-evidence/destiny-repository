@@ -956,13 +956,18 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision_id
         )
 
-    async def apply_reference_duplicate_decision(
+    async def apply_reference_duplicate_decision_side_effects(
         self,
         reference_duplicate_decision: ReferenceDuplicateDecision,
         *,
         decision_changed: bool,
     ) -> ReferenceDuplicateDecision:
-        """Apply a reference duplicate decision."""
+        """
+        Apply side-effects of a reference duplicate decision.
+
+        This reprojects the deduplicated reference to ES, and triggers any robot
+        automations if the decision has changed.
+        """
         if reference_duplicate_decision.active_decision:
             await self._synchronizer.references.sql_to_es(
                 reference_duplicate_decision.reference_id
@@ -984,19 +989,18 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference_duplicate_decision: ReferenceDuplicateDecision,
     ) -> None:
         """Process a reference duplicate decision."""
-        shortcutted_decisions = (
-            await self._deduplication_service.shortcut_deduplication_using_identifiers(
+        if settings.trusted_unique_identifier_types:
+            shortcutted_decisions = await self._deduplication_service.shortcut_deduplication_using_identifiers(  # noqa: E501
                 reference_duplicate_decision,
                 settings.trusted_unique_identifier_types,
             )
-        )
-        if shortcutted_decisions:
-            for decision in shortcutted_decisions:
-                await self.apply_reference_duplicate_decision(
-                    decision,
-                    decision_changed=True,
-                )
-            return
+            if shortcutted_decisions:
+                for decision in shortcutted_decisions:
+                    await self.apply_reference_duplicate_decision_side_effects(
+                        decision,
+                        decision_changed=True,
+                    )
+                return
 
         # Carry on with normal processing
         reference_duplicate_decision = (
@@ -1018,7 +1022,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision
         )
 
-        await self.apply_reference_duplicate_decision(
+        await self.apply_reference_duplicate_decision_side_effects(
             reference_duplicate_decision,
             decision_changed=decision_changed,
         )

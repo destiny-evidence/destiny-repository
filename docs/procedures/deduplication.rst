@@ -71,8 +71,9 @@ High Level Process
         A~~~DP
 
 
-There are five key steps:
+There are six key steps:
 
+- `Exact Duplicates`_ - an early-exit check to see if the incoming reference is an exact duplicate of an existing reference. This occurs outside the main deduplication flow.
 - `Identifier Shortcut`_ - a fast-path check to see if the incoming reference has any unique identifiers that match an existing reference.
 - `Candidate Selection`_ - a high-recall, low-precision search to find potential canonical references.
 - `Deep Deduplication`_ - a high-precision comparison of the incoming reference against each candidate to determine if it duplicates the candidate.
@@ -248,7 +249,7 @@ See also:
 Exact Duplicates
 ----------------
 
-Exact duplicates are references which are wholly represented by an existing reference in the repository. This does not form part of the main deduplication flow, but provides an early-exit optimisation for importers and enhancement processors.
+Exact duplicates are references which are wholly represented (superset) by an existing reference in the repository. This does not form part of the main deduplication flow, but provides an early-exit optimisation for importers and enhancement processors.
 
 Exact duplication is performed on individual references, not the deduplicated projection. This preserves any implied contextual information from the incoming reference.
 

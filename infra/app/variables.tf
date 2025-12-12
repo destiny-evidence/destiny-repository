@@ -321,5 +321,5 @@ variable "local_redirect_urls" {
 variable "trusted_unique_identifier_types" {
   description = "External identifier types that are certain to be unique. Used for shortcutting deduplication."
   type        = list(string)
-  default     = ["open_alex"]
+  default     = []
 }
