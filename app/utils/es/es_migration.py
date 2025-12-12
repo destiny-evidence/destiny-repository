@@ -31,7 +31,6 @@ if settings.otel_config and settings.otel_enabled:
         settings.app_name,
         settings.app_version,
         settings.env,
-        f"log_level={settings.log_level}",
     )
 
 index_documents = {

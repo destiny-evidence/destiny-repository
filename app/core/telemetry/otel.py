@@ -64,7 +64,7 @@ def configure_otel(
             Attributes.SERVICE_VERSION: app_version,
             Attributes.SERVICE_INSTANCE_ID: service_instance_id,
             Attributes.DEPLOYMENT_ENVIRONMENT: env.value,
-            Attributes.SERVICE_CONFIG: trace_config,
+            Attributes.SERVICE_CONFIG: trace_config or "",
         }
     )
 

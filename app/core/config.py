@@ -453,12 +453,10 @@ class Settings(BaseSettings):
     def trace_repr(self) -> str:
         # ruff: noqa: E501
         """Get a string representation of the config for tracing."""
-        return self.model_dump_json(
-            include={
-                "feature_flags",
-                "log_level",
-                "trusted_unique_identifier_types",
-            }
+        return (
+            f"feature_flags={self.feature_flags.model_dump_json()},"
+            "trusted_unique_identifier_types="
+            f"{[t.value for t in self.trusted_unique_identifier_types]}"
         )
 
 

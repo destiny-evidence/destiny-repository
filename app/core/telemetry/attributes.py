@@ -91,9 +91,6 @@ class Attributes(StrEnum):
 
     # Other
     FILE_LINE_NO = "app.file.line_number"
-    TRUSTED_UNIQUE_IDENTIFIER_TYPES = (
-        "app.reference_duplicate_decision.trusted_unique_identifier_types"
-    )
 
 
 def trace_attribute(attribute: Attributes, value: AttributeValue) -> None:
