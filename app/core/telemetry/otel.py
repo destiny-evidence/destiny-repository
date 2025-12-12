@@ -33,7 +33,11 @@ tracer = trace.get_tracer(__name__)
 
 
 def configure_otel(
-    config: OTelConfig, app_name: str, app_version: str, env: Environment
+    config: OTelConfig,
+    app_name: str,
+    app_version: str,
+    env: Environment,
+    trace_config: str | None = None,
 ) -> None:
     """
     Configure OpenTelemetry for tracing and metrics.
@@ -60,6 +64,7 @@ def configure_otel(
             Attributes.SERVICE_VERSION: app_version,
             Attributes.SERVICE_INSTANCE_ID: service_instance_id,
             Attributes.DEPLOYMENT_ENVIRONMENT: env.value,
+            Attributes.SERVICE_CONFIG: trace_config,
         }
     )
 

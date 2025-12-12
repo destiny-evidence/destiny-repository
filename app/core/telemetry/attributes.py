@@ -65,6 +65,7 @@ class Attributes(StrEnum):
     SERVICE_VERSION = service_attributes.SERVICE_VERSION
     SERVICE_NAMESPACE = _service_attributes.SERVICE_NAMESPACE
     SERVICE_INSTANCE_ID = _service_attributes.SERVICE_INSTANCE_ID
+    SERVICE_CONFIG = "service.config"
 
     # User attributes
     USER_ID = _user_attributes.USER_ID
@@ -90,6 +91,9 @@ class Attributes(StrEnum):
 
     # Other
     FILE_LINE_NO = "app.file.line_number"
+    TRUSTED_UNIQUE_IDENTIFIER_TYPES = (
+        "app.reference_duplicate_decision.trusted_unique_identifier_types"
+    )
 
 
 def trace_attribute(attribute: Attributes, value: AttributeValue) -> None:

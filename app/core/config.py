@@ -449,6 +449,18 @@ class Settings(BaseSettings):
         """Get the application version from pyproject.toml."""
         return self.pyproject_toml["project"]["version"]
 
+    @property
+    def trace_repr(self) -> str:
+        # ruff: noqa: E501
+        """Get a string representation of the config for tracing."""
+        return self.model_dump_json(
+            include={
+                "feature_flags",
+                "log_level",
+                "trusted_unique_identifier_types",
+            }
+        )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
