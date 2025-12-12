@@ -174,7 +174,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             preload=["duplicate_decision"],
         )
 
-        if reference.canonical_like:
+        if reference.is_canonical_like:
             return await self._get_deduplicated_reference(reference.id)
 
         if (
@@ -229,7 +229,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
         canonical_references, duplicate_canonical_ids = [], []
         for reference in references:
-            if reference.canonical_like:
+            if reference.is_canonical_like:
                 canonical_references.append(reference)
             else:
                 if (

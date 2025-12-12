@@ -92,9 +92,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             candidates,
             key=lambda candidate: (
                 1
-                if candidate.canonical is True
+                if candidate.is_canonical is True
                 else 0
-                if candidate.canonical is False
+                if candidate.is_canonical is False
                 else -1
             ),
             reverse=True,
@@ -453,7 +453,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 == DuplicateDetermination.UNSEARCHABLE
             ):
                 undeduplicated_ids.add(candidate.id)
-            elif candidate.canonical:
+            elif candidate.is_canonical:
                 canonical_ids.add(candidate.id)
             else:
                 # Duplicate of a canonical, find the canonical ID
