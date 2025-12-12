@@ -317,3 +317,9 @@ variable "local_redirect_urls" {
     "https://oauth.pstmn.io/v1/callback",
   ]
 }
+
+variable "trusted_unique_identifier_types" {
+  description = "External identifier types that are certain to be unique. Used for shortcutting deduplication."
+  type        = list(string)
+  default     = []
+}

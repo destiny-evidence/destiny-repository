@@ -41,7 +41,11 @@ if settings.otel_config and settings.otel_enabled:
     settings.otel_config.instrument_sql = True
 
     configure_otel(
-        settings.otel_config, "db-migrator", settings.app_version, settings.env
+        settings.otel_config,
+        "db-migrator",
+        settings.app_version,
+        settings.env,
+        settings.trace_repr,
     )
 
 # add your model's MetaData object here

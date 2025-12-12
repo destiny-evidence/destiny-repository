@@ -1,5 +1,7 @@
 """End-to-end tests for import deduplication."""
 
+import asyncio
+import json
 import uuid
 from collections.abc import Callable
 from contextlib import _AsyncGeneratorContextManager
@@ -13,7 +15,7 @@ from destiny_sdk.enhancements import (
 )
 from destiny_sdk.references import ReferenceFileInput
 from elasticsearch import AsyncElasticsearch
-from sqlalchemy import text
+from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 
@@ -21,8 +23,10 @@ from app.domain.references.models.es import ReferenceDocument
 from app.domain.references.models.models import (
     DuplicateDetermination,
     Enhancement,
+    ExternalIdentifierType,
     PendingEnhancementStatus,
     Reference,
+    Visibility,
 )
 from app.domain.references.models.sql import (
     Reference as SQLReference,
@@ -46,6 +50,7 @@ from tests.factories import (
     DOIIdentifierFactory,
     EnhancementFactory,
     LinkedExternalIdentifierFactory,
+    OpenAlexIdentifierFactory,
     ReferenceFactory,
 )
 
@@ -105,6 +110,7 @@ def canonical_reference(canonical_bibliographic_enhancement: Enhancement) -> Ref
             ),
             LinkedExternalIdentifierFactory.build(),
         ],
+        visibility=Visibility.PUBLIC,
     )
 
 
@@ -621,3 +627,239 @@ async def test_duplicate_change(  # noqa: PLR0913
     )
     assert old_decision
     assert old_decision.active_decision
+
+
+async def test_deduplication_shortcut(  # noqa: PLR0913
+    configured_repository_factory: Callable[
+        [dict], _AsyncGeneratorContextManager[httpx.AsyncClient]
+    ],
+    pg_session: AsyncSession,
+    es_client: AsyncElasticsearch,
+    get_import_file_signed_url: Callable[
+        [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
+    ],
+    canonical_reference: Reference,
+    duplicate_reference: Reference,
+    robot_automation_on_specific_enhancement: uuid.UUID,
+):
+    """Test that deduplication shortcutting works as expected."""
+    trusted_identifier = LinkedExternalIdentifierFactory.build(
+        identifier=OpenAlexIdentifierFactory.build(),
+    )
+    assert canonical_reference.identifiers
+    assert duplicate_reference.identifiers
+    canonical_reference.identifiers.append(trusted_identifier)
+    duplicate_reference.identifiers.append(trusted_identifier)
+    other_reference = canonical_reference.model_copy(
+        deep=True, update={"visibility": Visibility.HIDDEN}
+    )
+    async with configured_repository_factory(
+        {
+            "TRUSTED_UNIQUE_IDENTIFIER_TYPES": json.dumps(
+                [ExternalIdentifierType.OPEN_ALEX.value]
+            )
+        }
+    ) as destiny_client_v1:
+        canonical_reference_id = (
+            await import_references(
+                destiny_client_v1,
+                pg_session,
+                es_client,
+                [canonical_reference],
+                get_import_file_signed_url,
+            )
+        ).pop()
+        other_reference_id = (
+            await import_references(
+                destiny_client_v1,
+                pg_session,
+                es_client,
+                [other_reference],
+                get_import_file_signed_url,
+            )
+        ).pop()
+        await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+
+        # Delete the existing decision (as if it was never deduplicated)
+        await pg_session.execute(
+            delete(SQLReferenceDuplicateDecision).where(
+                SQLReferenceDuplicateDecision.reference_id == other_reference_id
+            )
+        )
+        await pg_session.commit()
+
+        duplicate_reference_id = (
+            await import_references(
+                destiny_client_v1,
+                pg_session,
+                es_client,
+                [duplicate_reference],
+                get_import_file_signed_url,
+            )
+        ).pop()
+        decision = await poll_duplicate_process(
+            pg_session, duplicate_reference_id, DuplicateDetermination.DUPLICATE
+        )
+        assert decision.detail == "Shortcutted with trusted identifier(s)"
+        assert decision.canonical_reference_id == canonical_reference_id
+
+        # Check that the other reference received the same treatment
+        decision = await poll_duplicate_process(
+            pg_session, other_reference_id, DuplicateDetermination.DUPLICATE
+        )
+        assert decision.canonical_reference_id == canonical_reference_id
+        assert (
+            decision.detail
+            == f"Shortcutted via proxy reference {duplicate_reference_id} with trusted identifier(s)"
+        )
+
+        # Check that the Elasticsearch index contains only the canonical, with the near
+        # duplicate's data merged in.
+        es_result = await es_client.search(
+            index=ReferenceDocument.Index.name,
+            query={
+                "terms": {
+                    "_id": [
+                        str(canonical_reference_id),
+                        str(duplicate_reference_id),
+                    ]
+                }
+            },
+        )
+        assert es_result["hits"]["total"]["value"] == 1
+        assert es_result["hits"]["hits"][0]["_id"] == str(canonical_reference_id)
+        es_source = es_result["hits"]["hits"][0]["_source"]
+        assert es_source["duplicate_determination"] == "canonical"
+
+        authors, titles = set(), set()
+        for enhancement in es_source["enhancements"]:
+            if enhancement["content"]["enhancement_type"] == "bibliographic":
+                titles.add(enhancement["content"]["title"])
+                for author in enhancement["content"]["authorship"]:
+                    authors.add(author["display_name"])
+        assert titles >= {
+            "A Study on the Effects of Testing",
+            "A Study on the Effects of Testing!",
+        }
+        assert authors >= {"Jayne Doe", "Jane Doe", "John Smith"}
+
+        # Finally, check that the robot automation was triggered on the canonical reference
+        # by the near duplicate's annotation enhancement.
+        pe = await poll_pending_enhancement(
+            pg_session,
+            reference_id=canonical_reference_id,
+            robot_id=robot_automation_on_specific_enhancement,
+        )
+        assert pe["status"].casefold() == PendingEnhancementStatus.PENDING.casefold()
+        assert not pe["robot_enhancement_batch_id"]
+
+
+async def test_deduplication_shortcut_from_scratch(  # noqa: PLR0913
+    configured_repository_factory: Callable[
+        [dict], _AsyncGeneratorContextManager[httpx.AsyncClient]
+    ],
+    pg_session: AsyncSession,
+    es_client: AsyncElasticsearch,
+    get_import_file_signed_url: Callable[
+        [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
+    ],
+    canonical_reference: Reference,
+    duplicate_reference: Reference,
+):
+    """
+    Test that deduplication shortcutting builds a tree as expected.
+
+    In this case, two existing undeduplicated references share different
+    unique identifiers with the incoming reference. The incoming reference
+    should become the canonical of the two undeduplicated references.
+    """
+    trusted_identifier_1 = LinkedExternalIdentifierFactory.build(
+        identifier=OpenAlexIdentifierFactory.build(),
+    )
+    trusted_identifier_2 = LinkedExternalIdentifierFactory.build(
+        identifier=DOIIdentifierFactory.build(),
+    )
+    existing_reference_1 = canonical_reference
+    existing_reference_2 = canonical_reference.model_copy(deep=True)
+    incoming_reference = duplicate_reference
+    assert existing_reference_1.identifiers
+    assert existing_reference_2.identifiers
+    assert incoming_reference.identifiers
+    existing_reference_1.identifiers.append(trusted_identifier_1)
+    existing_reference_2.identifiers.append(trusted_identifier_2)
+    incoming_reference.identifiers.extend([trusted_identifier_1, trusted_identifier_2])
+
+    async with configured_repository_factory(
+        {
+            "TRUSTED_UNIQUE_IDENTIFIER_TYPES": json.dumps(
+                [
+                    ExternalIdentifierType.OPEN_ALEX.value,
+                    ExternalIdentifierType.DOI.value,
+                ]
+            ),
+        }
+    ) as destiny_client_v1:
+        existing_reference_ids = await import_references(
+            destiny_client_v1,
+            pg_session,
+            es_client,
+            [existing_reference_1, existing_reference_2],
+            get_import_file_signed_url,
+        )
+        await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+
+        # Delete the existing decisions (as if they were never deduplicated)
+        await pg_session.execute(
+            delete(SQLReferenceDuplicateDecision).where(
+                SQLReferenceDuplicateDecision.reference_id.in_(existing_reference_ids)
+            )
+        )
+        await pg_session.commit()
+
+        # Small sleep to ensure that the above transaction is fully settled before proceeding
+        # Without this, the below deduplication can deadlock
+        # We should find a better way to do this in the future
+        await asyncio.sleep(10)
+
+        incoming_reference_id = (
+            await import_references(
+                destiny_client_v1,
+                pg_session,
+                es_client,
+                [incoming_reference],
+                get_import_file_signed_url,
+            )
+        ).pop()
+        decision = await poll_duplicate_process(
+            pg_session, incoming_reference_id, DuplicateDetermination.CANONICAL
+        )
+        assert decision.detail == "Shortcutted with trusted identifier(s)"
+        assert not decision.canonical_reference_id
+
+        for existing_reference_id in existing_reference_ids:
+            decision = await poll_duplicate_process(
+                pg_session, existing_reference_id, DuplicateDetermination.DUPLICATE
+            )
+            assert decision.canonical_reference_id == incoming_reference_id
+            assert (
+                decision.detail
+                == f"Shortcutted via proxy reference {incoming_reference_id} with trusted identifier(s)"
+            )
+
+        # Check that the Elasticsearch index contains only the canonical, with the two duplicates
+        # removed
+        es_result = await es_client.search(
+            index=ReferenceDocument.Index.name,
+            query={
+                "terms": {
+                    "_id": [
+                        str(incoming_reference_id),
+                        *[str(_id) for _id in existing_reference_ids],
+                    ]
+                }
+            },
+        )
+        assert es_result["hits"]["total"]["value"] == 1
+        assert es_result["hits"]["hits"][0]["_id"] == str(incoming_reference_id)
+        es_source = es_result["hits"]["hits"][0]["_source"]
+        assert es_source["duplicate_determination"] == "canonical"

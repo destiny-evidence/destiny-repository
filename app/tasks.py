@@ -37,7 +37,11 @@ elif settings.env == "test":
 # Add OpenTelemetry middleware to all brokers
 if settings.otel_config and settings.otel_enabled:
     configure_otel(
-        settings.otel_config, settings.app_name, settings.app_version, settings.env
+        settings.otel_config,
+        settings.app_name,
+        settings.app_version,
+        settings.env,
+        settings.trace_repr,
     )
     broker.add_middlewares(TaskiqTracingMiddleware())
 

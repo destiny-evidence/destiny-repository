@@ -167,7 +167,7 @@ class Reference(
     )
 
     @property
-    def canonical(self) -> bool | None:
+    def is_canonical(self) -> bool | None:
         """
         Pessimistically check if this reference is the canonical version.
 
@@ -182,7 +182,7 @@ class Reference(
         )
 
     @property
-    def canonical_like(self) -> bool:
+    def is_canonical_like(self) -> bool:
         """
         Optimistically check if this reference is the canonical version.
 
