@@ -142,6 +142,12 @@ form {
   gap: 16px;
 }
 
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 label {
   font-weight: 500;
   margin-bottom: 4px;
@@ -472,6 +478,73 @@ code {
   font-weight: 500;
 }
 
+.filter-count {
+  font-size: 0.85em;
+  color: #666;
+  margin-top: 4px;
+}
+
+.year-fields {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.year-fields > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.year-fields input {
+  width: 100%;
+}
+
+.pagination-info {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #f0f4ff;
+  border-radius: var(--radius);
+  font-size: 0.9em;
+  color: #555;
+}
+
+.pagination-controls {
+  margin-top: 16px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.pagination-controls span {
+  font-size: 0.9em;
+  color: #666;
+  padding: 0 16px;
+}
+
+.search-form-pagination {
+  margin-top: 16px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.search-form-pagination span {
+  font-size: 0.9em;
+  color: #666;
+}
+
+.empty-state {
+  margin-top: 24px;
+  padding: 24px;
+  background: #f8f9fa;
+  border: 1px solid #eee;
+  border-radius: var(--radius);
+  color: #555;
+  text-align: center;
+}
+
 @media (max-width: 700px) {
   .main-content {
     padding: 12px;
@@ -491,4 +564,33 @@ code {
 
 .error {
   color: var(--error);
+}
+
+.error-display {
+  background: #fff3f3;
+  border: 1px solid #ffcdd2;
+  border-left: 4px solid var(--error);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.error-title {
+  font-weight: 600;
+  color: var(--error);
+  margin-bottom: 8px;
+  font-size: 1.05em;
+}
+
+.error-message {
+  color: #333;
+  margin-bottom: 8px;
+  font-family: var(--mono);
+  font-size: 0.95em;
+}
+
+.error-details {
+  font-size: 0.85em;
+  color: #666;
+  font-style: italic;
 }

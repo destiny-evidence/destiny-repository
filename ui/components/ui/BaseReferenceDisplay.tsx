@@ -1,18 +1,32 @@
-// MultiReferenceDisplay component for displaying multiple reference lookup results
+// Base component for displaying multiple references with shared logic
 
 import React, { useState } from "react";
 import ReferenceDisplay from "./ReferenceDisplay";
 import JsonDisplay from "./JsonDisplay";
 
-interface MultiReferenceDisplayProps {
-  results: any[];
+interface BaseReferenceDisplayProps {
+  references: any[];
+  visualTabLabel: string;
+  downloadFilename: string;
+  emptyStateTitle?: string;
+  emptyStateMessage?: string;
   searchedIdentifiers?: string[];
+  showSearchedIdentifiers?: boolean;
+  headerContent?: React.ReactNode;
+  jsonData?: any; // Allow overriding what gets displayed in JSON tab
 }
 
-export default function MultiReferenceDisplay({
-  results,
+export default function BaseReferenceDisplay({
+  references,
+  visualTabLabel,
+  downloadFilename,
+  emptyStateTitle = "No references loaded yet",
+  emptyStateMessage = "Please search for references to display their details.",
   searchedIdentifiers = [],
-}: MultiReferenceDisplayProps) {
+  showSearchedIdentifiers = false,
+  headerContent,
+  jsonData,
+}: BaseReferenceDisplayProps) {
   const [tab, setTab] = useState<"visual" | "json">("visual");
   const [collapsedStates, setCollapsedStates] = useState<{
     [key: number]: boolean;
@@ -26,7 +40,7 @@ export default function MultiReferenceDisplay({
     // Collect all identifiers found in the results
     const foundIdentifierStrings = new Set<string>();
 
-    results?.forEach((result) => {
+    references?.forEach((result) => {
       // Add the reference ID itself
       if (result.id) {
         foundIdentifierStrings.add(result.id);
@@ -49,33 +63,35 @@ export default function MultiReferenceDisplay({
     return searchedIdentifiers.filter(
       (searchedId) => !foundIdentifierStrings.has(searchedId),
     );
-  }, [searchedIdentifiers, results]);
+  }, [searchedIdentifiers, references]);
 
   // Initialize all references as collapsed (except when there's only one)
   React.useEffect(() => {
-    if (results && results.length > 0) {
+    if (references && references.length > 0) {
       const initialStates: { [key: number]: boolean } = {};
-      results.forEach((_, idx) => {
+      references.forEach((_, idx) => {
         // Auto-expand if there's only one reference, otherwise collapse all
-        initialStates[idx] = results.length > 1; // true means collapsed
+        initialStates[idx] = references.length > 1; // true means collapsed
       });
       setCollapsedStates(initialStates);
     }
-  }, [results]);
+  }, [references]);
 
   function handleDownload() {
-    const jsonlContent = results
-      .map((result) => JSON.stringify(result))
-      .join("\n");
-    const blob = new Blob([jsonlContent], {
-      type: "application/jsonl",
+    const dataToDownload = jsonData || references;
+    const content = Array.isArray(dataToDownload)
+      ? dataToDownload.map((item) => JSON.stringify(item)).join("\n")
+      : JSON.stringify(dataToDownload, null, 2);
+
+    const blob = new Blob([content], {
+      type: Array.isArray(dataToDownload)
+        ? "application/jsonl"
+        : "application/json",
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `references-bulk-${
-      new Date().toISOString().split("T")[0]
-    }.jsonl`;
+    a.download = downloadFilename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -89,34 +105,25 @@ export default function MultiReferenceDisplay({
     }));
   }
 
-  if (!results || results.length === 0) {
+  if (!references || references.length === 0) {
     return (
-      <div
-        style={{
-          marginTop: 24,
-          padding: "24px",
-          background: "#f8f9fa",
-          border: "1px solid #eee",
-          borderRadius: "var(--border-radius)",
-          color: "#555",
-          textAlign: "center",
-        }}
-      >
-        <h3>No references loaded yet</h3>
-        <p>Please search for references to display their details.</p>
+      <div className="empty-state">
+        <h3>{emptyStateTitle}</h3>
+        <p>{emptyStateMessage}</p>
       </div>
     );
   }
 
   return (
     <div style={{ marginTop: 24 }}>
+      {headerContent}
       <div className="tabs">
         <div className="tab-group">
           <button
             className={`tab ${tab === "visual" ? "active" : ""}`}
             onClick={() => setTab("visual")}
           >
-            Visual ({results.length} reference{results.length !== 1 ? "s" : ""})
+            {visualTabLabel}
           </button>
           <button
             className={`tab ${tab === "json" ? "active" : ""}`}
@@ -128,7 +135,8 @@ export default function MultiReferenceDisplay({
         {tab === "json" && (
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={handleDownload} title="Download as JSONL file">
-              Download JSONL
+              Download{" "}
+              {Array.isArray(jsonData || references) ? "JSONL" : "JSON"}
             </button>
           </div>
         )}
@@ -137,11 +145,11 @@ export default function MultiReferenceDisplay({
         {tab === "visual" ? (
           <div
             className={`multi-reference-visual ${
-              results.length === 1 ? "single" : ""
+              references.length === 1 ? "single" : ""
             }`}
           >
             {/* Unfound identifiers section */}
-            {unfoundIdentifiers.length > 0 && (
+            {showSearchedIdentifiers && unfoundIdentifiers.length > 0 && (
               <div
                 className="collapsible-item unfound-identifiers"
                 style={{ marginBottom: 16 }}
@@ -184,19 +192,21 @@ export default function MultiReferenceDisplay({
                 )}
               </div>
             )}
-            {results.map((result, idx) => (
+            {references.map((result, idx) => (
               <ReferenceDisplay
                 key={result?.id || idx}
                 result={result}
                 isCollapsed={collapsedStates[idx]}
                 onToggle={() => toggleCollapsed(idx)}
-                searchedIdentifiers={searchedIdentifiers}
+                searchedIdentifiers={
+                  showSearchedIdentifiers ? searchedIdentifiers : []
+                }
               />
             ))}
           </div>
         ) : (
           <div style={{ padding: 16 }}>
-            <JsonDisplay data={results} showCopyButton={true} />
+            <JsonDisplay data={jsonData || references} showCopyButton={true} />
           </div>
         )}
       </div>

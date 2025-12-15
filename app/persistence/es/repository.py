@@ -223,8 +223,7 @@ class GenericAsyncESRepository(
         """
         trace_attribute(Attributes.DB_QUERY, query)
         search = (
-            AsyncSearch(using=self._client)
-            .doc_type(self._persistence_cls)
+            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
             .extra(size=page_size)
             .extra(from_=(page - 1) * page_size)
             .query(
@@ -233,8 +232,6 @@ class GenericAsyncESRepository(
                 else QueryString(query=query)
             )
         )
-        if fields:
-            search = search.extra(fields=fields)
         if sort:
             search = search.sort(*sort)
         try:
