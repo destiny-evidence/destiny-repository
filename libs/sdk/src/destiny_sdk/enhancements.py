@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal, Self
 from pydantic import UUID4, BaseModel, Field, HttpUrl, model_validator
 
 from destiny_sdk.core import _JsonlFileInputMixIn
+from destiny_sdk.identifiers import Identifier
 from destiny_sdk.visibility import Visibility
 
 
@@ -25,6 +26,8 @@ class EnhancementType(StrEnum):
     """A free-form enhancement for tagging with labels."""
     LOCATION = auto()
     """Locations where the reference can be found."""
+    RELATIONSHIP = auto()
+    """Relationships to other references."""
     RAW = auto()
     """A free form enhancement for arbitrary/unstructured data."""
     FULL_TEXT = auto()
@@ -301,6 +304,36 @@ class LocationEnhancement(BaseModel):
     )
 
 
+class RelationshipType(StrEnum):
+    """The type of relationship between references."""
+
+    CITES = auto()
+    """This reference cites the related reference."""
+    IS_CITED_BY = auto()
+    """This reference is cited by the related reference."""
+    IS_SIMILAR_TO = auto()
+    """This reference is similar to the related reference."""
+
+
+class RelationshipEnhancement(BaseModel):
+    """An enhancement for storing relationships between references."""
+
+    enhancement_type: Literal[EnhancementType.RELATIONSHIP] = (
+        EnhancementType.RELATIONSHIP
+    )
+    related_reference_ids: list[Identifier] = Field(
+        min_length=1,
+        description="A list of Identifiers which are related to this reference.",
+    )
+    relationship_type: RelationshipType = Field(
+        description=(
+            "The type of relationship between this reference and the related ones. "
+            "Direction is important: "
+            '"this reference <relationship_type> related reference".'
+        )
+    )
+
+
 class RawEnhancement(BaseModel):
     """
     An enhancement for storing raw/arbitrary/unstructured data.
@@ -339,6 +372,7 @@ EnhancementContent = Annotated[
     | AbstractContentEnhancement
     | AnnotationEnhancement
     | LocationEnhancement
+    | RelationshipEnhancement
     | RawEnhancement,
     Field(discriminator="enhancement_type"),
 ]

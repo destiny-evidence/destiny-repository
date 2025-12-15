@@ -18,6 +18,8 @@ from destiny_sdk.enhancements import (
     Location,
     LocationEnhancement,
     RawEnhancement,
+    RelationshipEnhancement,
+    RelationshipType,
     ScoreAnnotation,
 )
 from destiny_sdk.identifiers import (
@@ -111,6 +113,16 @@ class OtherIdentifierFactory(factory.Factory):
 
     identifier = factory.Faker("word")
     other_identifier_name = factory.Faker("company")
+
+
+ExternalIdentifierFactories = [
+    DOIIdentifierFactory(),
+    ERICIdentifierFactory(),
+    PubMedIdentifierFactory(),
+    ProquestIdentifierFactory(),
+    OpenAlexIdentifierFactory(),
+    OtherIdentifierFactory(),
+]
 
 
 class AuthorshipFactory(factory.Factory):
@@ -220,6 +232,20 @@ class LocationEnhancementFactory(factory.Factory):
     )
 
 
+class RelationshipEnhancementFactory(factory.Factory):
+    class Meta:
+        model = RelationshipEnhancement
+
+    enhancement_type = EnhancementType.RELATIONSHIP
+    related_reference_ids = factory.LazyFunction(
+        lambda: fake.random_elements(
+            [*ExternalIdentifierFactories, fake.uuid4()],
+            length=fake.pyint(1, max_list_length),
+        )
+    )
+    relationship_type = factory.Faker("enum", enum_cls=RelationshipType)
+
+
 class RawEnhancementFactory(factory.Factory):
     class Meta:
         model = RawEnhancement
@@ -237,16 +263,7 @@ class LinkedExternalIdentifierFactory(factory.Factory):
 
     id = factory.Faker("uuid4")
     identifier = factory.LazyFunction(
-        lambda: fake.random_element(
-            [
-                DOIIdentifierFactory(),
-                ERICIdentifierFactory(),
-                PubMedIdentifierFactory(),
-                ProquestIdentifierFactory(),
-                OpenAlexIdentifierFactory(),
-                OtherIdentifierFactory(),
-            ]
-        )
+        lambda: fake.random_element(ExternalIdentifierFactories)
     )
     reference_id = factory.Faker("uuid4")
 
@@ -267,6 +284,7 @@ class EnhancementFactory(factory.Factory):
                 AbstractContentEnhancementFactory(),
                 AnnotationEnhancementFactory(),
                 LocationEnhancementFactory(),
+                RelationshipEnhancementFactory(),
                 RawEnhancementFactory(),
             ]
         )
