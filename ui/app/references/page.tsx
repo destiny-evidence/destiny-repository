@@ -3,10 +3,9 @@
 "use client";
 
 import { useState } from "react";
-import ReferenceSearchForm from "../../components/forms/ReferenceSearchForm";
-import MultiReferenceSearchForm from "../../components/forms/MultiReferenceSearchForm";
+import ReferenceLookupForm from "../../components/forms/ReferenceSearchForm";
+import MultiReferenceLookupForm from "../../components/forms/MultiReferenceSearchForm";
 import ErrorDisplay from "../../components/ui/ErrorDisplay";
-import ReferenceDisplay from "../../components/ui/ReferenceDisplay";
 import LoadingSpinner from "../../components/ui/LoadingSpinner";
 import PageOverlay from "../../components/ui/PageOverlay";
 import { useApi } from "../../lib/api/useApi";
@@ -20,13 +19,13 @@ export default function ReferenceLookupPage() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [bulkIdentifiers, setBulkIdentifiers] = useState<string[]>([]);
-  const [searchedIdentifiers, setSearchedIdentifiers] = useState<string[]>([]);
+  const [lookedUpIdentifiers, setLookedUpIdentifiers] = useState<string[]>([]);
 
   const { fetchReferences, isLoggedIn, isLoginProcessing } = useApi();
 
   // Detect login processing state is now handled by useApi
 
-  const handleSearch = async (params: ReferenceLookupParams) => {
+  const handleLookup = async (params: ReferenceLookupParams) => {
     setError(null);
     setValidationError(null);
     setResult(null);
@@ -35,7 +34,7 @@ export default function ReferenceLookupPage() {
 
     try {
       const identifierString = toIdentifierString(params);
-      setSearchedIdentifiers([identifierString]);
+      setLookedUpIdentifiers([identifierString]);
       const apiResult = await fetchReferences([identifierString]);
 
       if (apiResult.error) {
@@ -59,7 +58,7 @@ export default function ReferenceLookupPage() {
     setBulkIdentifiers((prev) => [...prev, identifierString]);
   };
 
-  const handleBulkSearch = async (identifiers: string[]) => {
+  const handleBulkLookup = async (identifiers: string[]) => {
     setError(null);
     setValidationError(null);
     setResult(null);
@@ -67,7 +66,7 @@ export default function ReferenceLookupPage() {
     setLoading(true);
 
     try {
-      setSearchedIdentifiers(identifiers);
+      setLookedUpIdentifiers(identifiers);
       const apiResult = await fetchReferences(identifiers);
 
       if (apiResult.error) {
@@ -115,7 +114,7 @@ export default function ReferenceLookupPage() {
           width: "fit-content",
         }}
       >
-        Reference Lookup
+        References
       </h1>
       <div
         style={{
@@ -148,13 +147,13 @@ export default function ReferenceLookupPage() {
               fullPage={false}
             />
           )}
-          <ReferenceSearchForm
-            onSearch={handleSearch}
+          <ReferenceLookupForm
+            onSearch={handleLookup}
             onAddToBulk={handleAddToBulk}
             loading={loading}
           />
-          <MultiReferenceSearchForm
-            onSearch={handleBulkSearch}
+          <MultiReferenceLookupForm
+            onSearch={handleBulkLookup}
             loading={loading}
             externalIdentifiers={bulkIdentifiers}
           />
@@ -168,7 +167,7 @@ export default function ReferenceLookupPage() {
             flexDirection: "column",
             gap: 16,
             height: "100%",
-            border: "1px solid #ddd",
+            border: "1px solid #a97c7cff",
             background: "#fff",
             boxSizing: "border-box",
           }}
@@ -181,7 +180,7 @@ export default function ReferenceLookupPage() {
           {result && (
             <MultiReferenceDisplay
               results={result}
-              searchedIdentifiers={searchedIdentifiers}
+              searchedIdentifiers={lookedUpIdentifiers}
             />
           )}
         </section>
