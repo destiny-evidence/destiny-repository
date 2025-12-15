@@ -18,6 +18,7 @@ from pydantic import (
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.telemetry.logger import get_logger
+from app.domain.references.models.models import ExternalIdentifierType
 from app.utils.time_and_date import iso8601_duration_adapter
 
 logger = get_logger(__name__)
@@ -392,6 +393,15 @@ class Settings(BaseSettings):
         description="List of allowed origins for CORS.",
     )
 
+    trusted_unique_identifier_types: set[ExternalIdentifierType] = Field(
+        default_factory=set,
+        description=(
+            "Set of external identifier types that are considered trusted unique "
+            "identifiers for references. These are used to shortcut deduplication. "
+            "If empty, shortcutting is essentially feature-flagged off."
+        ),
+    )
+
     @property
     def running_locally(self) -> bool:
         """Return True if the app is running locally."""
@@ -438,6 +448,16 @@ class Settings(BaseSettings):
     def app_version(self) -> str:
         """Get the application version from pyproject.toml."""
         return self.pyproject_toml["project"]["version"]
+
+    @property
+    def trace_repr(self) -> str:
+        # ruff: noqa: E501
+        """Get a string representation of the config for tracing."""
+        return (
+            f"feature_flags={self.feature_flags.model_dump_json()},"
+            "trusted_unique_identifier_types="
+            f"{[t.value for t in self.trusted_unique_identifier_types]}"
+        )
 
 
 @lru_cache(maxsize=1)

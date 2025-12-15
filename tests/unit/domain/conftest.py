@@ -162,8 +162,10 @@ class FakeRepository:
     async def find(self, **kwargs) -> list[DummyDomainSQLModel]:
         """Find records matching the given criteria."""
         results = []
-        del kwargs["order_by"]
-        del kwargs["limit"]
+        if "order_by" in kwargs:
+            del kwargs["order_by"]
+        if "limit" in kwargs:
+            del kwargs["limit"]
         for record in self.repository.values():
             match = True
             for key, value in kwargs.items():

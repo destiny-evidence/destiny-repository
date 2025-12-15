@@ -54,28 +54,72 @@ High Level Process
         R[[Repository Process]]
         P[(Register Pending Decision)]
         T[Initiate Duplicate Decision]
+        IS[[Identifier Shortcut]]
         CS[[Candidate Selection]]
-        CF{"Candidate(s) Found?"}
         DD[[Deep Deduplication]]
         A[[Action Decision]]
         DP>Deduplicated Projection]
 
-        T-->CS
-        CS-->CF
-        CF-->|No|A
-        CF-->|Yes|DD
+        T-->IS
+        IS-->|Shortcut|A
+        IS-->|No shortcut|CS
+        CS-->|No candidates found|A
+        CS-->|Candidates found|DD
         DD-->A
         R-->P
         P-.->|Queue|T
         A~~~DP
 
 
-There are four key steps:
+There are six key steps:
 
+- `Exact Duplicates`_ - an early-exit check to see if the incoming reference is an exact duplicate of an existing reference. This occurs outside the main deduplication flow.
+- `Identifier Shortcut`_ - a fast-path check to see if the incoming reference has any unique identifiers that match an existing reference.
 - `Candidate Selection`_ - a high-recall, low-precision search to find potential canonical references.
 - `Deep Deduplication`_ - a high-precision comparison of the incoming reference against each candidate to determine if it duplicates the candidate.
 - `Action Decision`_ - deciding what to do with the reference based on the deduplication results.
 - `Deduplicated Projection`_ - the output of the process, the final representation of the deduplicated reference.
+
+Identifier Shortcut
+-------------------
+
+.. mermaid::
+
+    flowchart LR
+
+        D["Duplicate Decision"]
+        I["Get Unique Identifiers"]
+        E[("Search for Identifiers")]
+        CS["Go to Candidate Selection"]
+        C1{"Matches Found?"}
+        A["Go to Action Decision"]
+        M["Manual Review"]
+        C2{"Multiple Matches?"}
+        C3{"Different Canonicals?"}
+        F["For each unmapped match"]
+
+        D-->I-->E-->C1
+        C1-->|No|CS
+        C1-->|Yes|C2
+        C2-->|Yes|C3
+        C2-->|No|A
+        C3-->|Yes|M
+        C3-->|No|F
+        F-->A
+        F-->A
+        F-->A
+        F-->A
+        F-->A
+
+The identifier shortcut is a high precision, low-recall step that attempts to quickly determine the duplicate decision for an incoming reference based on its unique identifiers. These identifiers are configured by :attr:`trusted_unique_identifier_types <app.core.config.Settings.trusted_unique_identifier_types>`.
+
+This is a very powerful operation that should be enabled with caution. It relies on both the uniqueness of the identifiers and the accuracy of the incoming data. An instance where it is suitable to be used is with OpenAlex IDs and OpenAlex imports, where we can verify both those assumptions.
+
+There are a handful of possible outcomes, documented more fully in :meth:`shortcut_deduplication_using_identifiers() <app.domain.references.services.deduplication_service.DeduplicationService.shortcut_deduplication_using_identifiers>`, but in summary:
+
+- If no matches are found or no unique identifiers exist, we proceed to `Candidate Selection`_.
+- If any matches are found, we build a duplicate decision tree for **all** of them - any undeduplicated references that are matched are included.
+- If the above is unresolvable, (i.e. we find more than one existing duplicate decision tree), we raise the decision for manual review. This provides an important sense-check of our core assumptions.
 
 Candidate Selection
 -------------------
@@ -205,7 +249,7 @@ See also:
 Exact Duplicates
 ----------------
 
-Exact duplicates are references which are wholly represented by an existing reference in the repository. This does not form part of the main deduplication flow, but provides an early-exit optimisation for importers and enhancement processors.
+Exact duplicates are references which are wholly represented (superset) by an existing reference in the repository. This does not form part of the main deduplication flow, but provides an early-exit optimisation for importers and enhancement processors.
 
 Exact duplication is performed on individual references, not the deduplicated projection. This preserves any implied contextual information from the incoming reference.
 
