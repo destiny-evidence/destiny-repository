@@ -36,6 +36,8 @@ from app.domain.references.models.projections import (
 )
 from app.persistence.es.persistence import GenericESPersistence, GenericNestedDocument
 
+EXCLUDED_ENHANCEMENT_TYPES = {EnhancementType.RAW, EnhancementType.RELATIONSHIP}
+
 
 class ExternalIdentifierDocument(GenericNestedDocument):
     """Persistence model for external identifiers in Elasticsearch."""
@@ -104,7 +106,7 @@ class EnhancementContentDocument(GenericNestedDocument):
 
         We utilise to provide a final barrier to prevent RAW enhancements being indexed.
         """
-        if self.enhancement_type == EnhancementType.RAW:
+        if self.enhancement_type in EXCLUDED_ENHANCEMENT_TYPES:
             msg = (
                 "Attempted to create elasticsearch document for a raw enhancement. ",
                 "This should never happen.",
@@ -190,8 +192,9 @@ class ReferenceDomainMixin(InnerDoc):
             enhancements=[
                 EnhancementDocument.from_domain(enhancement)
                 for enhancement in reference.enhancements or []
-                # Don't index RAW enhancements
-                if enhancement.content.enhancement_type != EnhancementType.RAW
+                # Don't index unneeded enhancements
+                if enhancement.content.enhancement_type
+                not in EXCLUDED_ENHANCEMENT_TYPES
             ],
             duplicate_determination=reference.duplicate_decision.duplicate_determination
             if reference.duplicate_decision

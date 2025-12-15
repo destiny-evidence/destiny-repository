@@ -323,7 +323,10 @@ class RelationshipEnhancement(BaseModel):
     )
     related_reference_ids: list[Identifier] = Field(
         min_length=1,
-        description="A list of Identifiers which are related to this reference.",
+        description=(
+            "A list of Identifiers which are related to this reference. "
+            "These can either be ExternalIdentifiers or resolved repository UUID4s."
+        ),
     )
     relationship_type: RelationshipType = Field(
         description=(
