@@ -4,7 +4,7 @@ import React from "react";
 import { useMsal } from "@azure/msal-react";
 import { getLoginRequest } from "../msalConfig";
 import { apiGet, ApiResult } from "./client";
-import { ReferenceLookupResult } from "./types";
+import { ReferenceLookupResult, SearchApiResult } from "./types";
 import { getRuntimeConfig } from "../runtimeConfig";
 import { InteractionStatus } from "@azure/msal-browser";
 
@@ -94,5 +94,37 @@ export function useApi() {
     }
   }
 
-  return { fetchReferences, isLoggedIn, isLoginProcessing };
+  async function searchReferences(
+    query: string,
+    page: number = 1,
+  ): Promise<SearchApiResult> {
+    try {
+      const token = await getToken();
+      const urlParams = new URLSearchParams();
+      urlParams.set("q", query);
+      urlParams.set("page", page.toString());
+
+      const path = `/references/search/?${urlParams.toString()}`;
+      const result: ApiResult<any> = await apiGet(path, token);
+
+      if (result.error) {
+        return {
+          data: undefined,
+          error: result.error,
+        };
+      }
+
+      return {
+        data: result.data,
+        error: undefined,
+      };
+    } catch (err: any) {
+      return {
+        data: undefined,
+        error: { type: "generic", detail: err?.message ?? "Unknown error" },
+      };
+    }
+  }
+
+  return { fetchReferences, searchReferences, isLoggedIn, isLoginProcessing };
 }
