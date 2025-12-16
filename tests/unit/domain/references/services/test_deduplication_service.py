@@ -1,3 +1,4 @@
+import datetime
 import itertools
 import uuid
 from unittest.mock import AsyncMock, MagicMock
@@ -23,6 +24,7 @@ from tests.factories import (
     EnhancementFactory,
     LinkedExternalIdentifierFactory,
     OpenAlexIdentifierFactory,
+    RawEnhancementFactory,
     ReferenceFactory,
 )
 
@@ -107,6 +109,40 @@ async def test_find_exact_duplicate_only_other_identifier(
     uow = fake_uow(references=fake_repository())
     service = DeduplicationService(anti_corruption_service, uow, fake_uow())
     result = await service.find_exact_duplicate(ref)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_find_exact_duplicate_updated_enhancement(
+    anti_corruption_service, fake_uow, fake_repository
+):
+    bibliography = BibliographicMetadataEnhancementFactory.build(title="A title")
+    raw_enhancement = RawEnhancementFactory.build()
+    ref = ReferenceFactory.build(
+        enhancements=[
+            EnhancementFactory.build(
+                content=bibliography,
+            ),
+            EnhancementFactory.build(
+                content=raw_enhancement,
+            ),
+        ],
+    )
+    repo = fake_repository([ref])
+    uow = fake_uow(references=repo)
+    uow.references.find_with_identifiers = AsyncMock(return_value=[ref])
+    service = DeduplicationService(anti_corruption_service, uow, fake_uow())
+
+    # Change non-meaningful field
+    updated_ref = ref.model_copy(deep=True)
+    updated_ref.enhancements[0].content.updated_date += datetime.timedelta(days=1)
+    updated_ref.enhancements[1].content.source_export_date += datetime.timedelta(days=1)
+    result = await service.find_exact_duplicate(updated_ref)
+    assert result == ref
+
+    # Change something meaningful
+    updated_ref.enhancements[0].content.title = "A different title"
+    result = await service.find_exact_duplicate(updated_ref)
     assert result is None
 
 

@@ -1,6 +1,7 @@
 """Enhancement classes for the Destiny Repository."""
 
 import datetime
+import json
 from enum import StrEnum, auto
 from typing import Annotated, Any, Literal, Self
 
@@ -103,6 +104,20 @@ other works have cited this work
         description="The name of the entity which published the version of record.",
     )
     title: str | None = Field(default=None, description="The title of the reference.")
+
+    @property
+    def fingerprint(self) -> str:
+        """
+        The fingerprint of this bibliographic metadata enhancement.
+
+        Excludes updated_at from the fingerprint calculation, meaning
+        that two raw enhancements with identical data but different export dates
+        will be considered the same.
+        """
+        return json.dumps(
+            self.model_dump(mode="json", exclude={"updated_date"}, exclude_none=True),
+            sort_keys=True,
+        )
 
 
 class AbstractProcessType(StrEnum):
@@ -335,6 +350,25 @@ class RawEnhancement(BaseModel):
             msg = "data must be populated on a raw enhancement."
             raise ValueError(msg)
         return self
+
+    @property
+    def fingerprint(self) -> str:
+        """
+        The unique fingerprint of this raw enhancement.
+
+        Excludes the source_export_date from the fingerprint calculation, meaning
+        that two raw enhancements with identical data but different export dates
+        will be considered the same.
+
+        Unstructured data in `data` and `metadata` is included in the fingerprint,
+        sorted by key.
+        """
+        return json.dumps(
+            self.model_dump(
+                mode="json", exclude={"source_export_date"}, exclude_none=True
+            ),
+            sort_keys=True,
+        )
 
 
 #: Union type for all enhancement content types.
