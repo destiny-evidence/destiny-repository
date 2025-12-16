@@ -522,12 +522,24 @@ code {
   padding: 0 16px;
 }
 
+.search-query-input {
+  font-family: var(--mono);
+  font-size: 0.8em;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
 .search-form-pagination {
   margin-top: 16px;
   display: flex;
   gap: 8px;
   align-items: center;
   justify-content: space-between;
+}
+
+.search-form-pagination button {
+  padding: 6px 10px;
+  font-size: 0.9em;
 }
 
 .search-form-pagination span {

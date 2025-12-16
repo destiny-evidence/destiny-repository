@@ -74,7 +74,7 @@ export default function SearchForm({
         <a href="https://destiny-evidence.github.io/destiny-repository/procedures/search.html#query-string-required">
           documentation
         </a>{" "}
-        for more advanced queries.
+        for a list of fields and more advanced queries.
         <br />
         <br />
         Examples:
@@ -86,21 +86,29 @@ export default function SearchForm({
             <code>cats OR dogs</code>
           </li>
           <li>
-            <code>title:"machine learning"</code>
+            <code>
+              title:"machine learning" AND inclusion_destiny:{">"}=0.8
+            </code>
           </li>
           <li>
             <code>
-              abstract:"randomi?ed controlled trial" AND publication_year:2020
+              abstract:(/randomi[sz]ed/ AND "control trial") AND
+              title:behavior~1 AND publication_year:2020
             </code>
           </li>
         </ul>
       </div>
-      <FormField
-        label="Search Query:"
-        value={query}
-        onChange={setQuery}
-        required
-      />
+      <div className="form-field">
+        <label>Search Query:</label>
+        <textarea
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          required
+          rows={3}
+          className="search-query-input"
+          placeholder="Enter search query..."
+        />
+      </div>
       <button
         type="button"
         className="button-secondary"
@@ -113,7 +121,8 @@ export default function SearchForm({
         <div>
           <div className="hint" style={{ marginBottom: 8 }}>
             These filters are applied to the above query to narrow down the
-            search results. They might be helpful to avoid complex queries.
+            search results. They might be helpful to avoid complex queries,
+            particularly for annotations.
           </div>
           <div className="form-field">
             <div className="year-fields">
@@ -154,7 +163,7 @@ export default function SearchForm({
       <button type="submit" disabled={!query || loading}>
         {loading ? "Searching..." : "Search References"}
       </button>
-      {currentPage && currentPage > 1 && totalPages && (
+      {totalPages != null && totalPages > 0 && (
         <div className="search-form-pagination">
           <button
             type="button"
@@ -162,7 +171,7 @@ export default function SearchForm({
             disabled={loading || currentPage <= 1}
             className="button-secondary"
           >
-            ← Previous
+            ← Prev
           </button>
           <span>
             Page {currentPage} of {totalPages}

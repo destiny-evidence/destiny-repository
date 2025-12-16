@@ -51,44 +51,16 @@ export default function SearchResultsDisplay({
     </div>
   );
 
-  // Footer content with pagination controls
-  const footerContent = onPageChange && totalPages > 1 && (
-    <div className="pagination-controls">
-      <button
-        type="button"
-        onClick={() => onPageChange(results.page.number - 1)}
-        disabled={results.page.number <= 1}
-        className="button-secondary"
-      >
-        ← Previous
-      </button>
-      <span>
-        Page {results.page.number} of {totalPages}
-      </span>
-      <button
-        type="button"
-        onClick={() => onPageChange(results.page.number + 1)}
-        disabled={results.page.number >= totalPages}
-        className="button-secondary"
-      >
-        Next →
-      </button>
-    </div>
-  );
-
   return (
-    <>
-      <BaseReferenceDisplay
-        references={results.references}
-        visualTabLabel={visualTabLabel}
-        downloadFilename={downloadFilename}
-        headerContent={headerContent}
-        jsonData={results.references}
-        showSearchedIdentifiers={false}
-        emptyStateTitle="No results found"
-        emptyStateMessage="Try adjusting your search query or filters."
-      />
-      {footerContent}
-    </>
+    <BaseReferenceDisplay
+      references={results.references}
+      visualTabLabel={visualTabLabel}
+      downloadFilename={downloadFilename}
+      headerContent={headerContent}
+      jsonData={results.references}
+      showSearchedIdentifiers={false}
+      emptyStateTitle="No results found"
+      emptyStateMessage="Try adjusting your search query or filters."
+    />
   );
 }
