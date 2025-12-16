@@ -1,6 +1,6 @@
 """Import tasks module for the DESTINY Climate and Health Repository API."""
 
-from collections.abc import AsyncGenerator, Iterable
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from uuid import UUID
 
@@ -13,7 +13,6 @@ from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     DuplicateDetermination,
     PendingEnhancementStatus,
-    ReferenceWithChangeset,
 )
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
@@ -161,8 +160,7 @@ async def validate_and_import_robot_enhancement_batch_result(
             )
 
         # Perform robot automations
-        await detect_and_dispatch_robot_automations(
-            reference_service,
+        await reference_service.detect_and_dispatch_robot_automations(
             enhancement_ids=results.imported_enhancement_ids,
             source_str=f"RobotEnhancementBatch:{robot_enhancement_batch.id}",
             skip_robot_id=robot_enhancement_batch.robot_id,
@@ -242,37 +240,17 @@ async def process_reference_duplicate_decision(
                 )
                 return
 
-            (
-                reference_duplicate_decision,
-                decision_changed,
-            ) = await reference_service.process_reference_duplicate_decision(
+            await reference_service.process_reference_duplicate_decision(
                 reference_duplicate_decision
             )
 
-            logger.info(
-                "Processed reference duplicate decision",
-                active_decision=reference_duplicate_decision.active_decision,
-                determination=reference_duplicate_decision.duplicate_determination,
-            )
-
-            if reference_duplicate_decision.active_decision and decision_changed:
-                reference = await reference_service.get_canonical_reference_with_implied_changeset(  # noqa: E501
-                    reference_duplicate_decision.reference_id
-                )
-                await detect_and_dispatch_robot_automations(
-                    reference_service=reference_service,
-                    reference=reference,
-                    source_str=f"DuplicateDecision:{reference_duplicate_decision.id}",
-                )
-            else:
-                logger.info(
-                    "No change to active decision, skipping automations",
-                    reference_id=str(reference_duplicate_decision.reference_id),
-                )
-
 
 @broker.task(
-    schedule=[{"cron": "*/1 * * * *"}] if settings.env == Environment.LOCAL else None
+    schedule=(
+        [{"cron": "* * * * *"}]  # Every minute
+        if settings.env == Environment.LOCAL
+        else None
+    )
 )
 async def expire_and_replace_stale_pending_enhancements() -> None:
     """Expire stale pending enhancements and create replacements."""
@@ -288,40 +266,3 @@ async def expire_and_replace_stale_pending_enhancements() -> None:
         )
 
         await reference_service.expire_and_replace_stale_pending_enhancements()
-
-
-@tracer.start_as_current_span("Detect and dispatch robot automations")
-async def detect_and_dispatch_robot_automations(
-    reference_service: ReferenceService,
-    reference: ReferenceWithChangeset | None = None,
-    enhancement_ids: Iterable[UUID] | None = None,
-    source_str: str | None = None,
-    skip_robot_id: UUID | None = None,
-) -> None:
-    """
-    Request default enhancements for a set of references.
-
-    Technically this is a task distributor, not a task - may live in a higher layer
-    later in life.
-
-    NB this is in a transient state, see comments in
-    ReferenceService.detect_robot_automations.
-    """
-    robot_automations = await reference_service.detect_robot_automations(
-        reference=reference,
-        enhancement_ids=enhancement_ids,
-    )
-    for robot_automation in robot_automations:
-        if robot_automation.robot_id == skip_robot_id:
-            logger.warning(
-                "Detected robot automation loop, skipping."
-                " This is likely a problem in the percolation query.",
-                robot_id=str(robot_automation.robot_id),
-                source=source_str,
-            )
-            continue
-        await reference_service.create_pending_enhancements(
-            robot_id=robot_automation.robot_id,
-            reference_ids=robot_automation.reference_ids,
-            source=source_str,
-        )

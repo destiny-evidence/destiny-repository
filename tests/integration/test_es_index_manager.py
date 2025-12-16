@@ -1,61 +1,13 @@
 """Tests for the elasticsearch index manager."""
 
 from collections.abc import AsyncGenerator
-from typing import Self
 
 import pytest
-from elasticsearch.dsl import (
-    Keyword,
-    mapped_field,
-)
-from pydantic import Field
 
 from app.core.exceptions import NotFoundError
-from app.domain.base import DomainBaseModel, SQLAttributeMixin
 from app.persistence.es.client import AsyncESClientManager
 from app.persistence.es.index_manager import IndexManager
-from app.persistence.es.persistence import GenericESPersistence
-
-
-class Dummy(DomainBaseModel, SQLAttributeMixin):
-    """
-    A Dummy model to use for ES index manager tests.
-
-    Uses the SQLAttributeMixin to autogenerate ids.
-    Contains only an id and a note.
-    """
-
-    note: str = Field(description="some text for the tests.")
-
-
-class DummyDocument(
-    GenericESPersistence[Dummy],
-):
-    """Persistence model for Dummy in elasticsearch."""
-
-    note: str = mapped_field(Keyword(required=True))
-
-    class Index:
-        """Index metadata for the persistence model."""
-
-        name = "dummy"
-
-    class Meta:
-        """Allow unmapped fields in the document."""
-
-        dynamic = True
-
-    @classmethod
-    def from_domain(cls, domain_obj: Dummy) -> Self:
-        """Create a persistence model from a domain model."""
-        return cls(
-            meta={"id": str(domain_obj.id)},  # type: ignore[call-arg]
-            note=domain_obj.note,
-        )
-
-    def to_domain(self) -> Dummy:
-        """Create a domain model from this persistence model."""
-        return Dummy(id=self.meta.id, note=self.note)
+from tests.es_utils import DomainSimpleDoc, SimpleDoc, delete_test_indices
 
 
 @pytest.fixture
@@ -63,34 +15,28 @@ async def index_manager(
     es_manager_for_tests: AsyncESClientManager,
 ) -> AsyncGenerator[IndexManager, None]:
     """
-    Fixture for an index manager for the DummyDocument.
+    Fixture for an index manager for the SimpleDoc.
 
     Cleans up its index at the end of of the test.
     """
     async with es_manager_for_tests.client() as client:
-        # Cleanup any hanging indices
-        for index in await client.indices.get(index=f"{DummyDocument.Index.name}*"):
-            await client.indices.delete(index=index)
+        await delete_test_indices(client)
 
         index_manager = IndexManager(
-            DummyDocument,
+            SimpleDoc,
             client,
             reindex_status_polling_interval=1,
         )
 
         yield index_manager
 
-        # Cleanup any hanging indices
-        for index in await client.indices.get(index=f"{DummyDocument.Index.name}*"):
-            await client.indices.delete(index=index)
+        await delete_test_indices(client)
 
 
 async def test_initialise_es_index_happy_path(index_manager: IndexManager):
     """Test that we can initalise an index for a GenericESPersistence."""
     # Assert that the index does not exist
-    index_exists = await index_manager.client.indices.exists(
-        index=DummyDocument.Index.name
-    )
+    index_exists = await index_manager.client.indices.exists(index=SimpleDoc.Index.name)
     assert not index_exists
 
     # Initialise the index
@@ -104,7 +50,7 @@ async def test_initialise_es_index_happy_path(index_manager: IndexManager):
     assert versioned_index_exists
 
     # Check that the correct alias has been applied
-    assert DummyDocument.Index.name == index_manager.alias_name
+    assert SimpleDoc.Index.name == index_manager.alias_name
     alias_exists = await index_manager.client.indices.exists_alias(
         name=index_manager.alias_name, index=versioned_index_name
     )
@@ -124,7 +70,7 @@ async def test_initialise_es_index_is_idempotent(index_manager: IndexManager):
 
     # Add a document to the index so we can check for it
     # after reinitialising
-    dummy_doc = DummyDocument.from_domain(Dummy(note="test document"))
+    dummy_doc = SimpleDoc.from_domain(DomainSimpleDoc(content="test document"))
     doc_added = await dummy_doc.save(using=index_manager.client, validate=True)
     assert doc_added == "created"
 
@@ -150,7 +96,7 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
 
     # Add documents to index so we can check for them after migrating
     dummy_docs = [
-        DummyDocument.from_domain(Dummy(note=f"test document {i}"))
+        SimpleDoc.from_domain(DomainSimpleDoc(content=f"test document {i}"))
         for i in range(1, 11)
     ]
 
@@ -195,12 +141,12 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
 
 async def test_we_can_migrate_an_index_with_a_random_name(index_manager: IndexManager):
     """Test we can migrate if alias points to non-versioned index name."""
-    non_versioned_index_name = "dummy_forever"
+    non_versioned_index_name = f"{SimpleDoc.Index.name}_forever"
 
     # Create non_versioned index and apply alias index manager will recognise
-    await DummyDocument.init(index=non_versioned_index_name, using=index_manager.client)
+    await SimpleDoc.init(index=non_versioned_index_name, using=index_manager.client)
     await index_manager.client.indices.put_alias(
-        index=non_versioned_index_name, name=DummyDocument.Index.name
+        index=non_versioned_index_name, name=SimpleDoc.Index.name
     )
 
     # Migrating should move us over to dummy_v1
@@ -227,8 +173,8 @@ async def test_reindex_preserves_data_updated_in_source(index_manager: IndexMana
     assert src_index_name
 
     # Add a document to the  source index
-    dummy = Dummy(note="test document")
-    dummy_document_src = DummyDocument.from_domain(dummy)
+    dummy = DomainSimpleDoc(content="test document")
+    dummy_document_src = SimpleDoc.from_domain(dummy)
 
     doc_added = await dummy_document_src.save(using=index_manager.client, validate=True)
     assert doc_added == "created"
@@ -237,8 +183,8 @@ async def test_reindex_preserves_data_updated_in_source(index_manager: IndexMana
     await index_manager.client.indices.refresh(index=src_index_name)
 
     # Create our destination index
-    dest_index_name = "dummy_v2"
-    await DummyDocument.init(index=dest_index_name, using=index_manager.client)
+    dest_index_name = f"{SimpleDoc.Index.name}_v2"
+    await SimpleDoc.init(index=dest_index_name, using=index_manager.client)
 
     # Reindex from src to dest
     await index_manager._reindex_data(  # noqa: SLF001
@@ -252,14 +198,14 @@ async def test_reindex_preserves_data_updated_in_source(index_manager: IndexMana
 
     assert doc_from_index["found"]
     assert doc_from_index["_version"] == 1
-    assert doc_from_index["_source"]["note"] == "test document"
+    assert doc_from_index["_source"]["content"] == "test document"
 
     # Add an updated version of dummy to the _source_ index
     # After this we should have an updated document in the
     # source index with an elasticsearch version of 2
     # and the destination index will have the old document
     # with an elasticsearch version of 1
-    dummy_document_src.note = "updated test document"
+    dummy_document_src.content = "updated test document"
     doc_added = await dummy_document_src.save(
         index=src_index_name, using=index_manager.client, validate=True
     )
@@ -279,7 +225,7 @@ async def test_reindex_preserves_data_updated_in_source(index_manager: IndexMana
 
     assert doc_from_index["found"]
     assert doc_from_index["_version"] == 2
-    assert doc_from_index["_source"]["note"] == "updated test document"
+    assert doc_from_index["_source"]["content"] == "updated test document"
 
 
 async def test_reindex_succeeds_on_version_clash(index_manager: IndexManager):
@@ -305,8 +251,8 @@ async def test_reindex_succeeds_on_version_clash(index_manager: IndexManager):
     src_index_name = await index_manager.get_current_index_name()
     assert src_index_name
 
-    dummy = Dummy(note="test document")
-    dummy_document_src = DummyDocument.from_domain(dummy)
+    dummy = DomainSimpleDoc(content="test document")
+    dummy_document_src = SimpleDoc.from_domain(dummy)
 
     doc_added = await dummy_document_src.save(using=index_manager.client, validate=True)
     assert doc_added == "created"
@@ -321,15 +267,15 @@ async def test_reindex_succeeds_on_version_clash(index_manager: IndexManager):
 
     assert doc_from_src_index["found"]
     assert doc_from_src_index["_version"] == 1
-    assert doc_from_src_index["_source"]["note"] == "test document"
+    assert doc_from_src_index["_source"]["content"] == "test document"
 
     # Create the destination index
-    dest_index_name = "dummy_v2"
-    await DummyDocument.init(index=dest_index_name, using=index_manager.client)
+    dest_index_name = f"{SimpleDoc.Index.name}_v2"
+    await SimpleDoc.init(index=dest_index_name, using=index_manager.client)
 
-    # Update the note and save to the destination index
-    dummy.note = "updated test document"
-    dummy_document_dest = DummyDocument.from_domain(dummy)
+    # Update the content and save to the destination index
+    dummy.content = "updated test document"
+    dummy_document_dest = SimpleDoc.from_domain(dummy)
     doc_added = await dummy_document_dest.save(
         using=index_manager.client, index=dest_index_name
     )
@@ -338,13 +284,13 @@ async def test_reindex_succeeds_on_version_clash(index_manager: IndexManager):
     await index_manager.client.indices.refresh(index=dest_index_name)
 
     # Assert that document in destination index with version 1
-    # but with updated note
+    # but with updated content
     doc_from_dest_index = await index_manager.client.get(
         index=dest_index_name, id=str(dummy.id)
     )
     assert doc_from_dest_index["found"]
     assert doc_from_dest_index["_version"] == 1
-    assert doc_from_dest_index["_source"]["note"] == "updated test document"
+    assert doc_from_dest_index["_source"]["content"] == "updated test document"
 
     # reindex from src to dest
     await index_manager._reindex_data(  # noqa: SLF001
@@ -357,7 +303,7 @@ async def test_reindex_succeeds_on_version_clash(index_manager: IndexManager):
     )
     assert doc_from_dest_index["found"]
     assert doc_from_dest_index["_version"] == 1
-    assert doc_from_dest_index["_source"]["note"] == "updated test document"
+    assert doc_from_dest_index["_source"]["content"] == "updated test document"
 
 
 async def test_reindex_does_not_delete_documents_from_destination(
@@ -375,8 +321,8 @@ async def test_reindex_does_not_delete_documents_from_destination(
     assert dest_index_name
 
     # Add a document to the new index
-    dummy = Dummy(note="test document")
-    dummy_document_dest = DummyDocument.from_domain(dummy)
+    dummy = DomainSimpleDoc(content="test document")
+    dummy_document_dest = SimpleDoc.from_domain(dummy)
 
     doc_added = await dummy_document_dest.save(
         using=index_manager.client, validate=True
@@ -408,7 +354,7 @@ async def test_rollback_to_previous_version(index_manager: IndexManager):
 
     # Add a document to the new index to we can confirm is
     # is _not_ present after we roll back
-    dummy_doc = DummyDocument.from_domain(Dummy(note="test document"))
+    dummy_doc = SimpleDoc.from_domain(DomainSimpleDoc(content="test document"))
     doc_added = await dummy_doc.save(using=index_manager.client, validate=True)
     assert doc_added == "created"
 
@@ -440,10 +386,10 @@ async def test_rollback_to_previous_index_without_version(index_manager: IndexMa
     does not match our versioning pattern.
     """
     # Create an old index
-    non_versioned_index_name = "dummy_forever"
+    non_versioned_index_name = f"{SimpleDoc.Index.name}_forever"
 
     # Create non_versioned index
-    await DummyDocument.init(index=non_versioned_index_name, using=index_manager.client)
+    await SimpleDoc.init(index=non_versioned_index_name, using=index_manager.client)
 
     # Initialise a v1 index with correct alias
     await index_manager.initialize_index()
@@ -453,7 +399,7 @@ async def test_rollback_to_previous_index_without_version(index_manager: IndexMa
 
     # Verify the alias has been moved to the non versioned index
     assert await index_manager.client.indices.exists_alias(
-        name=DummyDocument.Index.name, index=non_versioned_index_name
+        name=SimpleDoc.Index.name, index=non_versioned_index_name
     )
 
 
@@ -498,5 +444,7 @@ async def test_we_do_not_roll_back_to_nonexistent_index(index_manager: IndexMana
     await index_manager._delete_index_safely(index_name=current_index)  # noqa: SLF001
 
     # Try to roll back two versions to zero
-    with pytest.raises(NotFoundError, match="Target index dummy_v1 does not exist"):
+    with pytest.raises(
+        NotFoundError, match=f"Target index {SimpleDoc.Index.name}_v1 does not exist"
+    ):
         await index_manager.rollback()

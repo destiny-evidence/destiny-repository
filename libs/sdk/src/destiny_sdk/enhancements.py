@@ -2,9 +2,9 @@
 
 import datetime
 from enum import StrEnum, auto
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import UUID4, BaseModel, Field, HttpUrl
+from pydantic import UUID4, BaseModel, Field, HttpUrl, model_validator
 
 from destiny_sdk.core import _JsonlFileInputMixIn
 from destiny_sdk.visibility import Visibility
@@ -25,6 +25,8 @@ class EnhancementType(StrEnum):
     """A free-form enhancement for tagging with labels."""
     LOCATION = auto()
     """Locations where the reference can be found."""
+    RAW = auto()
+    """A free form enhancement for arbitrary/unstructured data."""
     FULL_TEXT = auto()
     """The full text of the reference. (To be implemented)"""
 
@@ -303,12 +305,45 @@ class LocationEnhancement(BaseModel):
     )
 
 
+class RawEnhancement(BaseModel):
+    """
+    An enhancement for storing raw/arbitrary/unstructured data.
+
+    Data in these enhancements is intended for future conversion into structured form.
+
+    This enhancement accepts any fields passed in to `data`. These enhancements cannot
+    be created by robots.
+    """
+
+    enhancement_type: Literal[EnhancementType.RAW] = EnhancementType.RAW
+    source_export_date: datetime.datetime = Field(
+        description="Date the enhancement data was retrieved."
+    )
+    description: str = Field(
+        description="Description of the data to aid in future refinement."
+    )
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional metadata to aid in future structuring of raw data",
+    )
+    data: Any = Field(description="Unstructured data for later processing.")
+
+    @model_validator(mode="after")
+    def forbid_no_data(self) -> Self:
+        """Prevent a raw enhancement from being created with no data."""
+        if not self.data:
+            msg = "data must be populated on a raw enhancement."
+            raise ValueError(msg)
+        return self
+
+
 #: Union type for all enhancement content types.
 EnhancementContent = Annotated[
     BibliographicMetadataEnhancement
     | AbstractContentEnhancement
     | AnnotationEnhancement
-    | LocationEnhancement,
+    | LocationEnhancement
+    | RawEnhancement,
     Field(discriminator="enhancement_type"),
 ]
 

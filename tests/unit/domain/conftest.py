@@ -1,3 +1,4 @@
+import uuid
 from uuid import UUID, uuid4
 
 import pytest
@@ -10,9 +11,16 @@ from app.domain.imports.models.models import (
     ImportRecord,
     ImportResult,
 )
+from app.domain.references.models.models import (
+    PendingEnhancement,
+    PendingEnhancementStatus,
+)
+from app.domain.references.models.sql import (
+    PendingEnhancement as SQLPendingEnhancement,
+)
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.robots.models.sql import Robot as SQLRobot
-from tests.factories import ReferenceFactory, RobotFactory
+from tests.factories import PendingEnhancementFactory, ReferenceFactory, RobotFactory
 
 
 class DummyDomainSQLModel(DomainBaseModel, SQLAttributeMixin): ...
@@ -154,8 +162,10 @@ class FakeRepository:
     async def find(self, **kwargs) -> list[DummyDomainSQLModel]:
         """Find records matching the given criteria."""
         results = []
-        del kwargs["order_by"]
-        del kwargs["limit"]
+        if "order_by" in kwargs:
+            del kwargs["order_by"]
+        if "limit" in kwargs:
+            del kwargs["limit"]
         for record in self.repository.values():
             match = True
             for key, value in kwargs.items():
@@ -327,3 +337,39 @@ async def created_robot(session):
     session.add(sql_robot)
     await session.flush()
     return robot
+
+
+@pytest.fixture
+def pending_enhancement_factory(session, created_reference, created_robot):
+    """Factory fixture to create pending enhancements with configurable parameters."""
+
+    async def _create_pending_enhancement(
+        status: PendingEnhancementStatus = PendingEnhancementStatus.PENDING,
+        expires_at=None,
+        source: str = "test",
+        retry_of: uuid.UUID | None = None,
+        **kwargs,
+    ) -> PendingEnhancement:
+        pending_enhancement = PendingEnhancementFactory.build(
+            reference_id=created_reference.id,
+            robot_id=created_robot.id,
+            status=status,
+            source=source,
+            retry_of=retry_of,
+            **kwargs,
+        )
+        if expires_at is not None:
+            pending_enhancement.expires_at = expires_at
+
+        sql_pending_enhancement = SQLPendingEnhancement.from_domain(pending_enhancement)
+        session.add(sql_pending_enhancement)
+        await session.flush()
+        return pending_enhancement
+
+    return _create_pending_enhancement
+
+
+@pytest.fixture
+async def created_pending_enhancement(pending_enhancement_factory):
+    """Fixture to create and persist a test pending enhancement with default status."""
+    return await pending_enhancement_factory()

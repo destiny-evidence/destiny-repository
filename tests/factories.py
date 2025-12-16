@@ -17,25 +17,54 @@ from destiny_sdk.enhancements import (
     EnhancementType,
     Location,
     LocationEnhancement,
+    RawEnhancement,
     ScoreAnnotation,
 )
 from destiny_sdk.identifiers import (
     DOIIdentifier,
+    ERICIdentifier,
     OpenAlexIdentifier,
     OtherIdentifier,
+    ProQuestIdentifier,
     PubMedIdentifier,
 )
 from faker import Faker
+from faker.providers import BaseProvider
 
 from app.domain.references.models.models import (
     Enhancement,
     LinkedExternalIdentifier,
+    PendingEnhancement,
+    PendingEnhancementStatus,
     Reference,
     Visibility,
 )
 from app.domain.robots.models.models import Robot
+from app.utils.time_and_date import utc_now
+
+
+class ERICNumberProvider(BaseProvider):
+    """
+    Provider for ERIC Number object.
+
+    Source of info: https://eric.ed.gov/pdf/ERIC_Field.pdf.
+    """
+
+    def eric_number(self) -> str:
+        """
+        Generate a valid ERIC Number.
+
+        Format: [{EJ|ED}{number}]
+        Eg: ED581143.
+        """
+        prefix = self.generator.random.choice(["EJ", "ED"])
+        suffix = self.generator.random.randint(100, 999999)
+
+        return f"{prefix}{suffix}"
+
 
 fake = Faker()
+fake.add_provider(ERICNumberProvider)
 max_list_length = 3
 
 
@@ -46,11 +75,25 @@ class DOIIdentifierFactory(factory.Factory):
     identifier = factory.Faker("doi")
 
 
+class ERICIdentifierFactory(factory.Factory):
+    class Meta:
+        model = ERICIdentifier
+
+    identifier = fake.eric_number()
+
+
 class PubMedIdentifierFactory(factory.Factory):
     class Meta:
         model = PubMedIdentifier
 
     identifier = factory.Faker("pyint", min_value=100000, max_value=999999)
+
+
+class ProquestIdentifierFactory(factory.Factory):
+    class Meta:
+        model = ProQuestIdentifier
+
+    identifier = str(fake.pyint(min_value=1000000, max_value=9999999))
 
 
 class OpenAlexIdentifierFactory(factory.Factory):
@@ -178,6 +221,17 @@ class LocationEnhancementFactory(factory.Factory):
     )
 
 
+class RawEnhancementFactory(factory.Factory):
+    class Meta:
+        model = RawEnhancement
+
+    enhancement_type = EnhancementType.RAW
+    source_export_date = factory.Faker("date_time_this_month")
+    description = factory.Faker("sentence", nb_words=10)
+    metadata = factory.Faker("pydict", nb_elements=3, value_types=[int, str])
+    data = factory.Faker("pydict")
+
+
 class LinkedExternalIdentifierFactory(factory.Factory):
     class Meta:
         model = LinkedExternalIdentifier
@@ -187,7 +241,9 @@ class LinkedExternalIdentifierFactory(factory.Factory):
         lambda: fake.random_element(
             [
                 DOIIdentifierFactory(),
+                ERICIdentifierFactory(),
                 PubMedIdentifierFactory(),
+                ProquestIdentifierFactory(),
                 OpenAlexIdentifierFactory(),
                 OtherIdentifierFactory(),
             ]
@@ -212,6 +268,7 @@ class EnhancementFactory(factory.Factory):
                 AbstractContentEnhancementFactory(),
                 AnnotationEnhancementFactory(),
                 LocationEnhancementFactory(),
+                RawEnhancementFactory(),
             ]
         )
     )
@@ -254,3 +311,17 @@ class RobotFactory(factory.Factory):
     description = factory.Faker("sentence")
     name = factory.Faker("name")
     owner = factory.Faker("company")
+
+
+class PendingEnhancementFactory(factory.Factory):
+    class Meta:
+        model = PendingEnhancement
+
+    id = factory.Faker("uuid4")
+    reference_id = factory.Faker("uuid4")
+    robot_id = factory.Faker("uuid4")
+    source = factory.Faker("word")
+    status = PendingEnhancementStatus.PENDING
+    expires_at = factory.LazyFunction(
+        lambda: utc_now() + fake.time_delta(end_datetime="+1h")
+    )

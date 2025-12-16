@@ -2,8 +2,10 @@
 
 const options = [
   { value: "doi", label: "DOI" },
+  { value: "eric", label: "ERIC Number" },
   { value: "open_alex", label: "OpenAlex" },
   { value: "pm_id", label: "Pubmed ID" },
+  { value: "pro_quest", label: "ProQuest ID" },
   { value: "other", label: "Other" },
   { value: "destiny_id", label: "DESTINY ID" },
 ];

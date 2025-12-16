@@ -90,7 +90,7 @@ uv run fastapi dev
 Run the taskiq worker:
 
 ```sh
-uv run taskiq worker app.tasks:broker --fs-discover --reload
+uv run taskiq worker app.tasks:broker --tasks-pattern 'app/**/tasks.py' --fs-discover --reload
 ```
 
 Alternatively, you can run the development server and taskiq worker via docker:

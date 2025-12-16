@@ -563,3 +563,29 @@ class DuplicateEnhancementError(DestinyRepositoryError):
 
         """
         super().__init__(detail)
+
+
+class StateTransitionError(DestinyRepositoryError):
+    """An exception for when an invalid state transition is attempted."""
+
+    def __init__(
+        self,
+        detail: str,
+        entity_id: object,
+        current_state: object,
+        attempted_state: object,
+    ) -> None:
+        """
+        Initialize the StateTransitionError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            entity_id: The ID of the entity with invalid transition
+            current_state: The current state of the entity
+            attempted_state: The state that was attempted
+
+        """
+        self.entity_id = entity_id
+        self.current_state = current_state
+        self.attempted_state = attempted_state
+        super().__init__(detail)

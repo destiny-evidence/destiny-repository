@@ -69,7 +69,7 @@ export default function MultiReferenceSearchForm({
         value={bulkInput}
         onChange={(e) => setBulkInput(e.target.value)}
         rows={8}
-        placeholder={`doi:10.1234/abcd\npm_id:123456\nopen_alex:W1234567\nother:isbn:978-1-234-56789-0\n02e376ee-8374-4a8c-997f-9a813bc5b8f8`}
+        placeholder={`doi:10.1234/abcd\neric:EJ1480525\npm_id:123456\npro_quest:654321\nopen_alex:W1234567\nother:isbn:978-1-234-56789-0\n02e376ee-8374-4a8c-997f-9a813bc5b8f8`}
         disabled={loading}
       />
       <button type="submit" disabled={loading || identifierCount === 0}>

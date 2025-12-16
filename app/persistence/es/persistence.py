@@ -1,12 +1,13 @@
 """Objects used to interface with SQL implementations."""
 
 from abc import abstractmethod
-from typing import Generic, Literal, Self
+from typing import Generic, Literal, Self, get_args, get_origin
 
 from elasticsearch.dsl import AsyncDocument, InnerDoc
 from elasticsearch.dsl.document_base import InstrumentedField
 from elasticsearch.dsl.field import Nested
 from elasticsearch.dsl.response import Hit
+from elasticsearch.dsl.utils import AttrList
 from pydantic import UUID4, BaseModel, Field
 
 from app.domain.base import (
@@ -65,7 +66,7 @@ class GenericNestedDocument(InnerDoc):
         return cls(**nested_hit_to_document(hits, cls))
 
 
-def nested_hit_to_document(
+def nested_hit_to_document(  # noqa: PLR0912
     data: dict, cls: type[GenericESPersistence] | type[GenericNestedDocument]
 ) -> dict:
     """
@@ -86,6 +87,12 @@ def nested_hit_to_document(
     play nice with our nested fields and mixins.
 
     """
+    # Collect all annotations from the class and its parents (including mixins)
+    all_annotations = {}
+    for base in reversed(cls.__mro__):
+        if hasattr(base, "__annotations__"):
+            all_annotations.update(base.__annotations__)
+
     for key, value in data.items():
         field = getattr(cls, key, None)
         if not field:
@@ -107,6 +114,27 @@ def nested_hit_to_document(
                 )
                 raise TypeError(msg)
             data[key] = [doc_class.from_hit(item) for item in value]
+
+        # Sometimes Elasticsearch returns single-item lists for non-list fields...
+        # This checks the type hint on the persistence class to see if it's a list type,
+        # and unwraps it if not.
+        # We've only seen this behavior on test data so far, but this is a safeguard.
+        if isinstance(value, list | AttrList) and all_annotations.get(key):
+            is_list_type = False
+            if get_origin(all_annotations.get(key)) is list:
+                is_list_type = True
+            for arg in get_args(all_annotations.get(key)):
+                if get_origin(arg) is list:
+                    is_list_type = True
+            if not is_list_type:
+                if len(value) > 1:
+                    msg = (
+                        f"Cannot unwrap returned list field '{key}' "
+                        "with multiple values"
+                    )
+                    raise ValueError(msg)
+                data[key] = value[0] if value else None
+
     return data
 
 

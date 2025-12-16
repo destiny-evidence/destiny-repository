@@ -22,6 +22,7 @@ from opentelemetry.semconv.attributes import (
     code_attributes,
     db_attributes,
     service_attributes,
+    user_agent_attributes,
 )
 from opentelemetry.util.types import AttributeValue
 
@@ -64,6 +65,7 @@ class Attributes(StrEnum):
     SERVICE_VERSION = service_attributes.SERVICE_VERSION
     SERVICE_NAMESPACE = _service_attributes.SERVICE_NAMESPACE
     SERVICE_INSTANCE_ID = _service_attributes.SERVICE_INSTANCE_ID
+    SERVICE_CONFIG = "service.config"
 
     # User attributes
     USER_ID = _user_attributes.USER_ID
@@ -71,6 +73,8 @@ class Attributes(StrEnum):
     USER_FULL_NAME = _user_attributes.USER_FULL_NAME
     USER_ROLES = _user_attributes.USER_ROLES
     USER_AUTH_METHOD = "user.auth.method"
+
+    USER_AGENT_ORIGINAL = user_agent_attributes.USER_AGENT_ORIGINAL
 
     ### Application attributes
 

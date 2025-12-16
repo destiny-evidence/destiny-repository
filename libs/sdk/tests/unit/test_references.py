@@ -15,6 +15,7 @@ def test_es_parsing():
             "identifiers": [
                 {"identifier_type": "open_alex", "identifier": "W1234567890"},
                 {"identifier_type": "doi", "identifier": "10.1234/sample"},
+                {"identifier_type": "eric", "identifier": "EJ4532453"},
             ],
             "enhancements": [
                 {
@@ -76,7 +77,7 @@ def test_es_parsing():
     reference = destiny_sdk.references.Reference.from_es(es_reference)
     assert reference.id == uuid.UUID("7c54f72e-8833-484f-9000-4f403b13a243")
     assert reference.visibility == destiny_sdk.visibility.Visibility.PUBLIC
-    assert len(reference.identifiers) == 2
+    assert len(reference.identifiers) == 3
     assert len(reference.enhancements) == 3
     assert reference.enhancements[0].reference_id == uuid.UUID(
         "7c54f72e-8833-484f-9000-4f403b13a243"

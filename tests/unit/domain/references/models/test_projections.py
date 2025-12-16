@@ -29,10 +29,12 @@ from tests.factories import (
     BooleanAnnotationFactory,
     DOIIdentifierFactory,
     EnhancementFactory,
+    ERICIdentifierFactory,
     LinkedExternalIdentifierFactory,
     OpenAlexIdentifierFactory,
     OtherIdentifierFactory,
     PubMedIdentifierFactory,
+    RawEnhancementFactory,
     ReferenceFactory,
     ScoreAnnotationFactory,
 )
@@ -119,6 +121,14 @@ def doi_identifier():
 
 
 @pytest.fixture
+def eric_identifier():
+    """Create an ERIC identifier"""
+    return LinkedExternalIdentifierFactory.build(
+        identifier=ERICIdentifierFactory.build(identifier="ED325323")
+    )
+
+
+@pytest.fixture
 def pubmed_identifier():
     """Create a PubMed identifier."""
     return LinkedExternalIdentifierFactory.build(
@@ -182,40 +192,26 @@ def reference_with_annotations(
 
 
 @pytest.fixture
-def reference_with_identifiers(
-    doi_identifier, pubmed_identifier, openalex_identifier, other_identifier
-):
-    """Create a reference with identifiers."""
-    ref_id = uuid.uuid4()
-
-    doi_identifier.reference_id = ref_id
-    pubmed_identifier.reference_id = ref_id
-    openalex_identifier.reference_id = ref_id
-    other_identifier.reference_id = ref_id
-
-    return ReferenceFactory.build(
-        id=ref_id,
-        enhancements=[],
-        identifiers=[
-            doi_identifier,
-            pubmed_identifier,
-            openalex_identifier,
-            other_identifier,
-        ],
-    )
-
-
-@pytest.fixture
 def complete_reference(
+    doi_identifier,
+    eric_identifier,
+    pubmed_identifier,
+    openalex_identifier,
+    other_identifier,
     bibliographic_enhancement,
     abstract_enhancement,
     destiny_inclusion_annotation_enhancement,
     taxonomy_annotation_enhancement,
-    doi_identifier,
-    pubmed_identifier,
 ):
     """Create a reference with both enhancements and identifiers."""
     ref_id = uuid.uuid4()
+
+    # Update the identifier IDs to match
+    doi_identifier.reference_id = ref_id
+    eric_identifier.reference_id = ref_id
+    pubmed_identifier.reference_id = ref_id
+    openalex_identifier.reference_id = ref_id
+    other_identifier.reference_id = ref_id
 
     # Update enhancement reference IDs to match
     bibliographic_enhancement.reference_id = ref_id
@@ -225,6 +221,11 @@ def complete_reference(
     doi_identifier.reference_id = ref_id
     pubmed_identifier.reference_id = ref_id
 
+    # Add a raw enhancement
+    raw_enhancement = EnhancementFactory.build(
+        reference_id=ref_id, content=RawEnhancementFactory.build()
+    )
+
     return ReferenceFactory.build(
         id=ref_id,
         enhancements=[
@@ -232,8 +233,15 @@ def complete_reference(
             abstract_enhancement,
             destiny_inclusion_annotation_enhancement,
             taxonomy_annotation_enhancement,
+            raw_enhancement,
         ],
-        identifiers=[doi_identifier, pubmed_identifier],
+        identifiers=[
+            doi_identifier,
+            eric_identifier,
+            pubmed_identifier,
+            openalex_identifier,
+            other_identifier,
+        ],
     )
 
 
@@ -881,4 +889,4 @@ class TestDeduplicatedReferenceProjection:
         assert "test_source" in enhancement_sources  # Original
         assert "intermediate_source" in enhancement_sources  # Intermediate
         assert "nested_source" in enhancement_sources  # Nested
-        assert len(result.enhancements) == 6  # 4 original + 1 intermediate + 1 nested
+        assert len(result.enhancements) == 7  # 5 original + 1 intermediate + 1 nested
