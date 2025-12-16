@@ -47,8 +47,11 @@ class DOIIdentifier(BaseModel):
     def remove_doi_url(cls, value: str) -> str:
         """Remove the URL part of the DOI if it exists."""
         return (
-            value.removeprefix("http://doi.org/")
-            .removeprefix("https://doi.org/")
+            value.removeprefix("http://")
+            .removeprefix("https://")
+            .removeprefix("doi.org/")
+            .removeprefix("dx.doi.org/")
+            .removeprefix("doi:")
             .strip()
         )
 
@@ -68,10 +71,11 @@ class ProQuestIdentifier(BaseModel):
     def remove_proquest_url(cls, value: str) -> str:
         """Remove the URL part of the ProQuest id if it exists."""
         return (
-            value.removeprefix("https://search.proquest.com/docview/")
-            .removeprefix("http://search.proquest.com/docview/")
-            .removeprefix("https://www.proquest.com/docview/")
-            .removeprefix("http://www.proquest.com/docview/")
+            value.removeprefix("http://")
+            .removeprefix("https://")
+            .removeprefix("search.proquest.com/")
+            .removeprefix("www.proquest.com/")
+            .removeprefix("docview/")
             .strip()
         )
 
@@ -96,8 +100,11 @@ class ERICIdentifier(BaseModel):
     def remove_eric_url(cls, value: str) -> str:
         """Remove the URL part of the ERIC ID if it exists."""
         return (
-            value.removeprefix("http://eric.ed.gov/?id=")
-            .removeprefix("https://eric.ed.gov/?id=")
+            value.removeprefix("http://")
+            .removeprefix("https://")
+            .removeprefix("eric.ed.gov/?id=")
+            .removeprefix("files.eric.ed.gov/fulltext/")
+            .removesuffix(".pdf")
             .strip()
         )
 
@@ -126,8 +133,11 @@ class OpenAlexIdentifier(BaseModel):
     def remove_open_alex_url(cls, value: str) -> str:
         """Remove the OpenAlex URL if it exists."""
         return (
-            value.removeprefix("http://openalex.org/")
-            .removeprefix("https://openalex.org/")
+            value.removeprefix("http://")
+            .removeprefix("https://")
+            .removeprefix("openalex.org/")
+            .removeprefix("explore.openalex.org/")
+            .removeprefix("works/")
             .strip()
         )
 
@@ -250,3 +260,11 @@ class IdentifierLookup(BaseModel):
         if self.identifier_type is None:
             return UUID4(self.identifier)
         return ExternalIdentifierAdapter.validate_python(self.model_dump())
+
+    def __repr__(self) -> str:
+        """Serialize the identifier lookup to a string."""
+        return self.serialize()
+
+    def __str__(self) -> str:
+        """Serialize the identifier lookup to a string."""
+        return self.serialize()

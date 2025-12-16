@@ -1,5 +1,10 @@
 {
-  "CodeSets": [],
+  "CodeSets": [
+    {
+      "SetName": "Fake codeset for testing",
+      "SetId": 83429
+    }
+  ],
   "References": [
     {
       "QuickCitation": "Abbas Kaja, Yoo Katelyn, Prem Kiesha, and Jit Mark (2024) Equity impact of HPV vaccination on lifetime projections of cervical cancer burden among cohorts in 84 countries by global, regional, and income levels, 2010–22: a modelling study. EClinicalMedicine 70, 102524-102524 DOI: 10.1016/j.eclinm.2024.102524",
