@@ -14,7 +14,9 @@ import testcontainers.rabbitmq
 from alembic.command import upgrade
 from elasticsearch import AsyncElasticsearch
 from minio import Minio
-from opentelemetry import trace
+from opentelemetry import context, trace
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.trace import set_span_in_context
 from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 from testcontainers.core.container import DockerContainer
@@ -69,6 +71,9 @@ if otel_config := os.getenv("OTEL_CONFIG"):
         Environment.TEST,
     )
 
+# Instrument httpx globally to ensure proper context propagation
+HTTPXClientInstrumentor().instrument()
+
 _cwd = pathlib.Path.cwd()
 logger.info("Current working directory: %s", _cwd)
 
@@ -92,18 +97,20 @@ def print_logs(name: str, container: DockerContainer):
 @pytest.fixture(scope="session", autouse=True)
 def trace_test_suite():
     """Trace the entire test suite with OpenTelemetry."""
-    with tracer.start_as_current_span("E2E Test Suite") as span:
-        # Store the span in pytest's stash for child fixtures to access
-        yield span
+    with tracer.start_as_current_span("E2E Test Suite"):
+        yield
 
 
 @pytest.fixture(autouse=True)
-def trace_test(request: pytest.FixtureRequest, trace_test_suite):  # noqa: ANN001, ARG001
+async def trace_test(request: pytest.FixtureRequest):
     """Trace each test with OpenTelemetry."""
-    test_name = request.node.name
-    # This will automatically create a child span under trace_test_suite
-    with tracer.start_as_current_span(test_name):
-        yield
+    with tracer.start_as_current_span(f"Test: {request.node.name}") as span:
+        # Explicitly attach span to context for async execution
+        token = context.attach(set_span_in_context(span))
+        try:
+            yield
+        finally:
+            context.detach(token)
 
 
 ###########################
@@ -242,8 +249,13 @@ async def es_lifecycle(elasticsearch: ElasticSearchContainer):
     # Indices are created with session scope,
     # so we just need to clean them after each test
     yield
-    async with AsyncElasticsearch(elasticsearch.get_url()) as client:
-        await clean_test_indices(client)
+    # Suppress the cleaning, it's very noisy
+    token = context.attach(set_span_in_context(trace.INVALID_SPAN))
+    try:
+        async with AsyncElasticsearch(elasticsearch.get_url()) as client:
+            await clean_test_indices(client)
+    finally:
+        context.detach(token)
 
 
 @pytest.fixture(scope="session")
@@ -350,7 +362,7 @@ def _add_env(
         .with_env("AZURE_APPLICATION_ID", "dummy")
         .with_env("AZURE_TENANT_ID", "dummy")
     )
-    if otel_config := os.getenv("OTEL_CONFIG"):
+    if otel_config:
         container = container.with_env("OTEL_CONFIG", otel_config).with_env(
             "OTEL_ENABLED", os.getenv("OTEL_ENABLED", "true")
         )
@@ -462,7 +474,8 @@ def _get_httpx_client_for_app(app: DockerContainer) -> httpx.AsyncClient:
     port = app.get_exposed_port(app_port)
     url = f"http://{host}:{port}/v1/"
     logger.info("Creating httpx client for %s", url)
-    return httpx.AsyncClient(base_url=url)
+    client = httpx.AsyncClient(base_url=url)
+    return client
 
 
 @pytest.fixture(scope="session")
