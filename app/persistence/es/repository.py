@@ -1,6 +1,5 @@
 """Generic repositories define expected functionality."""
 
-import contextlib
 from abc import ABC
 from collections.abc import AsyncGenerator, Sequence
 from typing import Generic, Never
@@ -77,12 +76,13 @@ class GenericAsyncESRepository(
             msg = "Preloading is not supported in Elasticsearch repositories."
             raise ESError(msg)
 
-        result = None
-        with contextlib.suppress(NotFoundError):
+        try:
             result = await self._persistence_cls.get(
                 id=str(pk),
                 using=self._client,
             )
+        except NotFoundError:
+            result = None
 
         if not result:
             detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
@@ -92,6 +92,7 @@ class GenericAsyncESRepository(
                 lookup_type="id",
                 lookup_value=pk,
             )
+
         return result.to_domain()
 
     @trace_repository_method(tracer)
@@ -139,27 +140,37 @@ class GenericAsyncESRepository(
         return added
 
     @trace_repository_method(tracer)
-    async def delete_by_pk(self, pk: UUID) -> None:
+    async def delete_by_pk(self, pk: UUID, *, fail_hard: bool = True) -> None:
         """
         Delete a record using its primary key.
 
         :param pk: The primary key of the record to delete.
         :type pk: UUID4
+        :param fail_hard: Whether to raise an error if the record does not exist.
+        :type fail_hard: bool
         :return: None
         :rtype: None
 
         :raises ESNotFoundError: If the record does not exist.
         """
         trace_attribute(Attributes.DB_PK, str(pk))
-        record = await self._persistence_cls.get(id=str(pk), using=self._client)
-        if not record:
+        try:
+            record = await self._persistence_cls.get(id=str(pk), using=self._client)
+        except NotFoundError:
+            record = None
+
+        if record:
+            await record.delete(using=self._client)
+            return
+
+        if fail_hard:
+            detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
             raise ESNotFoundError(
-                detail=f"Unable to find {self._persistence_cls.__name__} with pk {pk}",
+                detail=detail,
                 lookup_model=self._persistence_cls.__name__,
                 lookup_type="id",
                 lookup_value=pk,
             )
-        await record.delete(using=self._client)
 
     def _parse_search_result(
         self, response: Response[Hit], page: int
@@ -212,8 +223,7 @@ class GenericAsyncESRepository(
         """
         trace_attribute(Attributes.DB_QUERY, query)
         search = (
-            AsyncSearch(using=self._client)
-            .doc_type(self._persistence_cls)
+            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
             .extra(size=page_size)
             .extra(from_=(page - 1) * page_size)
             .query(
@@ -222,8 +232,6 @@ class GenericAsyncESRepository(
                 else QueryString(query=query)
             )
         )
-        if fields:
-            search = search.extra(fields=fields)
         if sort:
             search = search.sort(*sort)
         try:

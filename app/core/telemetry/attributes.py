@@ -65,6 +65,7 @@ class Attributes(StrEnum):
     SERVICE_VERSION = service_attributes.SERVICE_VERSION
     SERVICE_NAMESPACE = _service_attributes.SERVICE_NAMESPACE
     SERVICE_INSTANCE_ID = _service_attributes.SERVICE_INSTANCE_ID
+    SERVICE_CONFIG = "service.config"
 
     # User attributes
     USER_ID = _user_attributes.USER_ID

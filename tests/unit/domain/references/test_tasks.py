@@ -19,7 +19,6 @@ from app.domain.references.services.anti_corruption_service import (
 )
 from app.domain.references.services.enhancement_service import ProcessedResults
 from app.domain.references.tasks import (
-    detect_and_dispatch_robot_automations,
     validate_and_import_robot_enhancement_batch_result,
 )
 
@@ -43,7 +42,7 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
     mock_create_pending_enhancements = AsyncMock(return_value=expected_request)
     monkeypatch.setattr(
         ReferenceService,
-        "create_pending_enhancements",
+        "_create_pending_enhancements",
         mock_create_pending_enhancements,
     )
 
@@ -56,14 +55,13 @@ async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
     )
     monkeypatch.setattr(
         ReferenceService,
-        "detect_robot_automations",
+        "_detect_robot_automations",
         mock_detect_robot_automations,
     )
 
-    await detect_and_dispatch_robot_automations(
-        reference_service=ReferenceService(
-            ReferenceAntiCorruptionService(fake_repository), fake_uow(), fake_uow()
-        ),
+    await ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository), fake_uow(), fake_uow()
+    ).detect_and_dispatch_robot_automations(
         reference=reference,
         enhancement_ids=in_enhancement_ids,
         source_str="test_source",
@@ -134,7 +132,10 @@ async def test_validate_and_import_robot_enhancement_batch_result(monkeypatch):
     )
     validate_method.return_value = result
 
-    mock_detect_and_dispatch = AsyncMock(return_value=[])
+    mock_detect_and_dispatch = (
+        mock_reference_service.detect_and_dispatch_robot_automations
+    )
+    mock_detect_and_dispatch.return_value = []
 
     monkeypatch.setattr(
         "app.domain.references.tasks.get_blob_repository",
@@ -143,10 +144,6 @@ async def test_validate_and_import_robot_enhancement_batch_result(monkeypatch):
     monkeypatch.setattr(
         "app.domain.references.tasks.get_reference_service",
         AsyncMock(return_value=mock_reference_service),
-    )
-    monkeypatch.setattr(
-        "app.domain.references.tasks.detect_and_dispatch_robot_automations",
-        mock_detect_and_dispatch,
     )
 
     await validate_and_import_robot_enhancement_batch_result(robot_enhancement_batch_id)
@@ -279,7 +276,7 @@ async def test_validate_and_import_robot_enhancement_batch_result_indexing_failu
         AsyncMock(return_value=mock_reference_service),
     )
     monkeypatch.setattr(
-        "app.domain.references.tasks.detect_and_dispatch_robot_automations",
+        "app.domain.references.service.ReferenceService.detect_and_dispatch_robot_automations",
         AsyncMock(return_value=[]),
     )
 

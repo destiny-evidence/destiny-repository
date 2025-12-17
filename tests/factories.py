@@ -146,6 +146,7 @@ class BibliographicMetadataEnhancementFactory(factory.Factory):
     )
     cited_by_count = factory.Faker("pyint", min_value=0, max_value=1000)
     created_date = factory.Faker("date_this_century")
+    updated_date = factory.Faker("date_this_century")
     publication_date = factory.Faker("date_this_century")
     publisher = factory.Faker("company")
     title = factory.Faker("sentence", nb_words=6)

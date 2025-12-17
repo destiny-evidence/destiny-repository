@@ -274,8 +274,7 @@ class ReferenceESRepository(
         :rtype: list[ESScoreResult]
         """
         search = (
-            AsyncSearch(using=self._client)
-            .doc_type(self._persistence_cls)
+            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
             .query(
                 Q(
                     "bool",

@@ -1,6 +1,7 @@
 """Models associated with references."""
 
 import datetime
+import json
 import uuid
 from enum import StrEnum, auto
 from typing import Any, Literal, Self
@@ -167,7 +168,7 @@ class Reference(
     )
 
     @property
-    def canonical(self) -> bool | None:
+    def is_canonical(self) -> bool | None:
         """
         Pessimistically check if this reference is the canonical version.
 
@@ -182,7 +183,7 @@ class Reference(
         )
 
     @property
-    def canonical_like(self) -> bool:
+    def is_canonical_like(self) -> bool:
         """
         Optimistically check if this reference is the canonical version.
 
@@ -339,17 +340,19 @@ class Enhancement(DomainBaseModel, SQLTimestampMixin):
 
         Excludes relationships and timestamps.
         """
-        json_dump = self.model_dump_json(
-            exclude={
-                "id",
-                "reference_id",
-                "reference",
-                "created_at",
-                "updated_at",
-            },
+        if hasattr(self.content, "fingerprint"):
+            content_fingerprint = self.content.fingerprint
+        else:
+            content_fingerprint = json.dumps(
+                self.content.model_dump(mode="json", exclude_none=True), sort_keys=True
+            )
+
+        json_repr = self.model_dump(
+            mode="json",
+            include={"source", "visibility", "robot_version", "derived_from"},
             exclude_none=True,
-        )
-        return hash(json_dump)
+        ) | {"content": content_fingerprint}
+        return hash(json.dumps(json_repr, sort_keys=True))
 
 
 class EnhancementRequest(DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin):
