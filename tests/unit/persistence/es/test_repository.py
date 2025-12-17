@@ -200,9 +200,17 @@ async def test_query_string_search_with_fields(
     assert len(results.hits) == 1
     assert str(results.hits[0].id) == doc_id
 
-    # Search restricted to year field only - should find nothing
+    # Search restricted to year field only - should first error
+    # because it's not allowed to search text in a numeric field,
+    # then should find nothing
+    with pytest.raises(ESQueryError):
+        results_year_only = await simple_repository.search_with_query_string(
+            "searchterm",
+            fields=["year"],
+        )
+
     results_year_only = await simple_repository.search_with_query_string(
-        "searchterm",
+        "2000",
         fields=["year"],
     )
     assert len(results_year_only.hits) == 0
