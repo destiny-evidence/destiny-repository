@@ -275,13 +275,12 @@ def _add_env(
 ) -> DockerContainer:
     """Add environment variables to a container."""
     minio_config = minio.get_config()
-    return (
+    container = (
         container.with_env(
             "MESSAGE_BROKER_URL",
-            f"amqp://guest:guest@{(
-                rabbitmq.get_container_host_ip()
-                .replace('localhost', host_name)
-            )}:{rabbitmq.get_exposed_port(5672)}/",
+            f"amqp://guest:guest@{
+                (rabbitmq.get_container_host_ip().replace('localhost', host_name))
+            }:{rabbitmq.get_exposed_port(5672)}/",
         )
         .with_env(
             "DB_CONFIG",
@@ -320,6 +319,11 @@ def _add_env(
         .with_env("AZURE_APPLICATION_ID", "dummy")
         .with_env("AZURE_TENANT_ID", "dummy")
     )
+    if otel_config := os.getenv("OTEL_CONFIG"):
+        container = container.with_env("OTEL_CONFIG", otel_config).with_env(
+            "OTEL_ENABLED", os.getenv("OTEL_ENABLED", "true")
+        )
+    return container
 
 
 @pytest.fixture(scope="session")
