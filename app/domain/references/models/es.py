@@ -192,7 +192,7 @@ class ReferenceDomainMixin(InnerDoc):
             enhancements=[
                 EnhancementDocument.from_domain(enhancement)
                 for enhancement in reference.enhancements or []
-                # Don't index unneeded enhancements
+                # Don't index excluded enhancements
                 if enhancement.content.enhancement_type
                 not in EXCLUDED_ENHANCEMENT_TYPES
             ],
