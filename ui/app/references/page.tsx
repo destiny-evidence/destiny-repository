@@ -3,30 +3,36 @@
 "use client";
 
 import { useState } from "react";
-import ReferenceSearchForm from "../../components/forms/ReferenceSearchForm";
-import MultiReferenceSearchForm from "../../components/forms/MultiReferenceSearchForm";
+import ReferenceLookupForm from "../../components/forms/ReferenceLookupForm";
+import MultiReferenceLookupForm from "../../components/forms/MultiReferenceLookupForm";
+import SearchForm from "../../components/forms/SearchForm";
 import ErrorDisplay from "../../components/ui/ErrorDisplay";
-import ReferenceDisplay from "../../components/ui/ReferenceDisplay";
 import LoadingSpinner from "../../components/ui/LoadingSpinner";
 import PageOverlay from "../../components/ui/PageOverlay";
 import { useApi } from "../../lib/api/useApi";
-import { ReferenceLookupParams } from "../../lib/api/types";
-import MultiReferenceDisplay from "@/components/ui/MultiReferenceDisplay";
+import { ReferenceLookupParams, SearchParams } from "../../lib/api/types";
+import LookupResultsDisplay from "@/components/ui/LookupResultsDisplay";
+import SearchResultsDisplay from "@/components/ui/SearchResultsDisplay";
 import { toIdentifierString } from "../../lib/api/identifierUtils";
 
 export default function ReferenceLookupPage() {
+  const [activeTab, setActiveTab] = useState<"lookup" | "search">("lookup");
   const [result, setResult] = useState<Array<any> | null>(null);
+  const [searchResult, setSearchResult] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [bulkIdentifiers, setBulkIdentifiers] = useState<string[]>([]);
-  const [searchedIdentifiers, setSearchedIdentifiers] = useState<string[]>([]);
+  const [lookedUpIdentifiers, setLookedUpIdentifiers] = useState<string[]>([]);
+  const [currentSearchParams, setCurrentSearchParams] =
+    useState<SearchParams | null>(null);
 
-  const { fetchReferences, isLoggedIn, isLoginProcessing } = useApi();
+  const { fetchReferences, searchReferences, isLoggedIn, isLoginProcessing } =
+    useApi();
 
   // Detect login processing state is now handled by useApi
 
-  const handleSearch = async (params: ReferenceLookupParams) => {
+  const handleLookup = async (params: ReferenceLookupParams) => {
     setError(null);
     setValidationError(null);
     setResult(null);
@@ -35,7 +41,7 @@ export default function ReferenceLookupPage() {
 
     try {
       const identifierString = toIdentifierString(params);
-      setSearchedIdentifiers([identifierString]);
+      setLookedUpIdentifiers([identifierString]);
       const apiResult = await fetchReferences([identifierString]);
 
       if (apiResult.error) {
@@ -59,7 +65,7 @@ export default function ReferenceLookupPage() {
     setBulkIdentifiers((prev) => [...prev, identifierString]);
   };
 
-  const handleBulkSearch = async (identifiers: string[]) => {
+  const handleBulkLookup = async (identifiers: string[]) => {
     setError(null);
     setValidationError(null);
     setResult(null);
@@ -67,7 +73,7 @@ export default function ReferenceLookupPage() {
     setLoading(true);
 
     try {
-      setSearchedIdentifiers(identifiers);
+      setLookedUpIdentifiers(identifiers);
       const apiResult = await fetchReferences(identifiers);
 
       if (apiResult.error) {
@@ -84,6 +90,40 @@ export default function ReferenceLookupPage() {
       setError("Error fetching references.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSearch = async (params: SearchParams) => {
+    setError(null);
+    setValidationError(null);
+    setSearchResult(null);
+    setCurrentSearchParams(params);
+
+    setLoading(true);
+
+    try {
+      const apiResult = await searchReferences(params);
+
+      if (apiResult.error) {
+        if (apiResult.error.type === "validation") {
+          setValidationError(apiResult.error.detail);
+        } else {
+          setError(apiResult.error.detail);
+        }
+      } else {
+        setSearchResult(apiResult.data);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError("Error searching references.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearchPageChange = (page: number) => {
+    if (currentSearchParams) {
+      handleSearch({ ...currentSearchParams, page });
     }
   };
 
@@ -115,7 +155,7 @@ export default function ReferenceLookupPage() {
           width: "fit-content",
         }}
       >
-        Reference Lookup
+        References
       </h1>
       <div
         style={{
@@ -148,16 +188,59 @@ export default function ReferenceLookupPage() {
               fullPage={false}
             />
           )}
-          <ReferenceSearchForm
-            onSearch={handleSearch}
-            onAddToBulk={handleAddToBulk}
-            loading={loading}
-          />
-          <MultiReferenceSearchForm
-            onSearch={handleBulkSearch}
-            loading={loading}
-            externalIdentifiers={bulkIdentifiers}
-          />
+
+          {/* Tab switcher */}
+          <div
+            className="tab-group"
+            style={{ width: "100%", marginBottom: 16 }}
+          >
+            <button
+              className={`tab ${activeTab === "lookup" ? "active" : ""}`}
+              onClick={() => setActiveTab("lookup")}
+              style={{ flex: 1 }}
+            >
+              Lookup
+            </button>
+            <button
+              className={`tab ${activeTab === "search" ? "active" : ""}`}
+              onClick={() => setActiveTab("search")}
+              style={{ flex: 1 }}
+            >
+              Search
+            </button>
+          </div>
+
+          {/* Lookup Tab Content */}
+          {activeTab === "lookup" && (
+            <>
+              <ReferenceLookupForm
+                onSearch={handleLookup}
+                onAddToBulk={handleAddToBulk}
+                loading={loading}
+              />
+              <MultiReferenceLookupForm
+                onSearch={handleBulkLookup}
+                loading={loading}
+                externalIdentifiers={bulkIdentifiers}
+              />
+            </>
+          )}
+
+          {/* Search Tab Content */}
+          {activeTab === "search" && (
+            <SearchForm
+              onSearch={handleSearch}
+              loading={loading}
+              currentPage={searchResult?.page.number}
+              totalPages={
+                searchResult
+                  ? Math.ceil(
+                      searchResult.total.count / searchResult.page.count,
+                    )
+                  : undefined
+              }
+            />
+          )}
         </section>
         <section
           style={{
@@ -168,7 +251,7 @@ export default function ReferenceLookupPage() {
             flexDirection: "column",
             gap: 16,
             height: "100%",
-            border: "1px solid #ddd",
+            border: "1px solid #a97c7cff",
             background: "#fff",
             boxSizing: "border-box",
           }}
@@ -178,10 +261,16 @@ export default function ReferenceLookupPage() {
             <ErrorDisplay error={validationError} type="validation" />
           )}
           {error && <ErrorDisplay error={error} type="generic" />}
-          {result && (
-            <MultiReferenceDisplay
+          {activeTab === "lookup" && result && (
+            <LookupResultsDisplay
               results={result}
-              searchedIdentifiers={searchedIdentifiers}
+              searchedIdentifiers={lookedUpIdentifiers}
+            />
+          )}
+          {activeTab === "search" && searchResult && (
+            <SearchResultsDisplay
+              results={searchResult}
+              onPageChange={handleSearchPageChange}
             />
           )}
         </section>

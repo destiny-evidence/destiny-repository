@@ -5,7 +5,7 @@ import FormField from "./FormField";
 import IdentifierTypeSelect from "./IdentifierTypeSelect";
 import { toIdentifierString } from "../../lib/api/identifierUtils";
 
-interface ReferenceSearchFormProps {
+interface ReferenceLookupFormProps {
   onSearch: (params: {
     identifier: string;
     identifierType: string;
@@ -15,11 +15,11 @@ interface ReferenceSearchFormProps {
   loading: boolean;
 }
 
-export default function ReferenceSearchForm({
+export default function ReferenceLookupForm({
   onSearch,
   onAddToBulk,
   loading,
-}: ReferenceSearchFormProps) {
+}: ReferenceLookupFormProps) {
   const [identifier, setIdentifier] = useState("");
   const [identifierType, setIdentifierType] = useState("doi");
   const [otherIdentifierName, setOtherIdentifierName] = useState("");

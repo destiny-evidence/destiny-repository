@@ -4,7 +4,7 @@ import React from "react";
 import { useMsal } from "@azure/msal-react";
 import { getLoginRequest } from "../msalConfig";
 import { apiGet, ApiResult } from "./client";
-import { ReferenceLookupResult } from "./types";
+import { ReferenceLookupResult, SearchParams, SearchResult } from "./types";
 import { getRuntimeConfig } from "../runtimeConfig";
 import { InteractionStatus } from "@azure/msal-browser";
 
@@ -94,5 +94,55 @@ export function useApi() {
     }
   }
 
-  return { fetchReferences, isLoggedIn, isLoginProcessing };
+  async function searchReferences(params: SearchParams): Promise<SearchResult> {
+    try {
+      const token = await getToken();
+      const urlParams = new URLSearchParams();
+
+      urlParams.set("q", params.query);
+      if (params.page) urlParams.set("page", params.page.toString());
+      if (params.startYear)
+        urlParams.set("start_year", params.startYear.toString());
+      if (params.endYear) urlParams.set("end_year", params.endYear.toString());
+      if (params.annotations) {
+        params.annotations.forEach((annotation) => {
+          urlParams.append("annotation", annotation);
+        });
+      }
+      if (params.sort) {
+        params.sort.forEach((sortField) => {
+          urlParams.append("sort", sortField);
+        });
+      }
+
+      const path = `/references/search/?${urlParams.toString()}`;
+      const result: ApiResult<any> = await apiGet(path, token);
+
+      if (result.error) {
+        return {
+          data: undefined,
+          error: result.error,
+        };
+      }
+
+      if (!result.data || !result.data.references) {
+        return {
+          data: undefined,
+          error: { type: "not_found", detail: "No results found" },
+        };
+      }
+
+      return {
+        data: result.data,
+        error: null,
+      };
+    } catch (err: any) {
+      return {
+        data: undefined,
+        error: { type: "generic", detail: err?.message ?? "Unknown error" },
+      };
+    }
+  }
+
+  return { fetchReferences, searchReferences, isLoggedIn, isLoginProcessing };
 }

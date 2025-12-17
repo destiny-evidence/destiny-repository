@@ -40,7 +40,7 @@ export default function RootLayout({
             <span className="navbar-title">DESTINY Repository</span>
             <div className="navbar-actions">
               <a className="navbar-link active" href="/references">
-                Reference Lookup
+                References
               </a>
               <div id="auth-btn-container" style={{ marginLeft: 24 }}>
                 <AuthButton />

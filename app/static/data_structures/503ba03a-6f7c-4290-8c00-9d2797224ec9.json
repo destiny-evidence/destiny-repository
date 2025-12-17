@@ -1,0 +1,204 @@
+[
+  { "Field": "id", "Description": "identificator" },
+  {
+    "Field": "type",
+    "Description": "ier = Impact evaluation report; we have not included SRs as the MVP will focus on primary studies"
+  },
+  {
+    "Field": "study_status",
+    "Description": "Select one of the following: Completed; Protocol/ongoing; Ongoing (3ie)"
+  },
+  {
+    "Field": "title",
+    "Description": "Use only the English version of the publication's main title. If paper is not written in English and has the title translated, use the translated version of the title. If the publication does not provide an English version, include the title in its original language."
+  },
+  {
+    "Field": "foreign_title",
+    "Description": "When publication is not written in English, code the original title using original accents and special characters."
+  },
+  {
+    "Field": "language",
+    "Description": "Select full text language that applies: English, French, Spanish, Portuguese or Other."
+  },
+  {
+    "Field": "authors",
+    "Description": "Enter all authors one by one. The format is \"Last name/s\", \"First name\" \"Second name\" (if any)."
+  },
+  {
+    "Field": "author_affiliation",
+    "Description": "Code the institution with which the author is affiliated according to what is noted in the article. If no information is included in the paper code as \"999\"."
+  },
+  {
+    "Field": "department",
+    "Description": "Code the faculty, department, lab, etc. within the affiliated institution. If no information is included in the paper code as \"999\"."
+  },
+  {
+    "Field": "author_country",
+    "Description": "If specified or obvious, select country in which author’s institutional affiliation sits. If the institution’s headquarters are in one country but the organization has affiliates or country offices all over the world (such as the World Bank or JPAL), and the affiliation mentioned does not specify a country office, then select the HQ country. For example, if the affiliated mentioned is simply “JPAL” select United States, if it says “JPAL Africa”, then select South Africa. Select \"Not reported\" if country is not easily determined."
+  },
+  {
+    "Field": "year_of_publication",
+    "Description": "Select the year when the the paper was published online. If the study does not provide information about the publication year select 999."
+  },
+  {
+    "Field": "doi",
+    "Description": "Code the study's DOI. If no information is found, code as \"No DOI\"."
+  },
+  { "Field": "abstract", "Description": "Copy and paste study's abstract." },
+  {
+    "Field": "open_access",
+    "Description": "If the study's full-text content is available free from the publisher, code as \"Yes\". If the study has paywalls code as \"No\"."
+  },
+  {
+    "Field": "publication_type",
+    "Description": "Select from list: Journal article; Published working paper (these include discussion papers and technical reports/papers, if they are part of a series); Published report (such as a report published by an INGO or a donor agency, not as a working paper but as a final product); 3ie Series report; 3ie Grantee final report; 3ie-funded ongoing study; Book or book chapter; Thesis; Published protocol (select if a published protocol, registration or pre-analysis plan); Ongoing study (select if not a registered study or published protocol, but for example, a description of the study on an organisational or authors’ personal webpage)\""
+  },
+  {
+    "Field": "sector_name",
+    "Description": "(only Education studies are shown)"
+  },
+  {
+    "Field": "sub_sector",
+    "Description": "Select all sub-sectors that apply according to the sector indicated in previous column. See World Bank taxonomy for definitions."
+  },
+  {
+    "Field": "primary_theme",
+    "Description": "Select one theme that applies. See World Bank taxonomy for definitions."
+  },
+  {
+    "Field": "sub_primary_theme",
+    "Description": "Select all sub-themes that apply according to the theme indicated in previous column. See World Bank taxonomy for definitions."
+  },
+  {
+    "Field": "additional_theme",
+    "Description": "Select one theme that applies. See World Bank taxonomy for definitions. If no other themes are applicable, leave blank."
+  },
+  {
+    "Field": "additional_sub_theme",
+    "Description": "Select all sub-themes that apply according to the theme indicated in previous column. See World Bank taxonomy for definitions. If no other sub-themes are applicable, leave blank."
+  },
+  {
+    "Field": "first_year_of_intervention",
+    "Description": "Enter the first year in which the intervention takes place."
+  },
+  {
+    "Field": "equity_focus",
+    "Description": "Select one or more as applicable: Does not address gender or equity; Sub-group analysis by sex; Sub-group analysis (other than sex); Heterogeneity analysis (other than sub-group); Equity sensitive analytical framework; Equity sensitive methodology; Equity sensitive research process; Measures effects on an inequality outcome; Research ethics informed by equity."
+  },
+  {
+    "Field": "equity_dimension",
+    "Description": "If a study does address gender or equity please select one or more dimensions below: Age; Caste; Conflict-affected; Culture; Disability; Displaced populations; Education; Ethnicity; Head of household; HIV/AIDS; Land size; Land ownership; Place of residence; Religion; Socioeconomic status; Social capital; Sex; Sexual orientation; Sexual identity; Other."
+  },
+  {
+    "Field": "equity_description",
+    "Description": "Provide a description of how the study considers gender and equity, and for which population to corroborate answers above. This field will be auto-populated with 'Not applicable' if you select 'Does not address gender or equity' for equity focus.\""
+  },
+  {
+    "Field": "keywords",
+    "Description": "Enter all author provided keywords, one per row."
+  },
+  {
+    "Field": "pre_registration",
+    "Description": "Scan the paper for any mention of study registration. If not, check the registries listed below to see if the study has been registered. If the study appears in one or more of these registries, code as “Yes”. Otherwise, code as “No”."
+  },
+  {
+    "Field": "pre_registration_location",
+    "Description": "Which registry has the study been registered in? Please check the following registries to find if the study has been registered, or look for a mention in the paper: AEA RCT registry [socialscienceregistry.org]; RIDIE [ridie.3ieimpact.org]; Clinicaltrials.gov; Open Science Framework [osf.io]. This will auto-populate if you have selected \"No\" for \"Study registration\"."
+  },
+  {
+    "Field": "pre_registration_url",
+    "Description": "Enter the URL of the registration study landing page. This will auto-populate if you have selected \"No\" for \"Study registration\"."
+  },
+  {
+    "Field": "protocol_pre_analysis_plan",
+    "Description": "Code “Yes” if the study has a pre-analysis plan, a step-by-step plan which describes how the researchers plan to conduct the study and collect and analyze the data. If the study’s registration mentions there is a pre-analysis plan, but the plan is temporarily embargoed, code “Yes”.\""
+  },
+  {
+    "Field": "ethics_approval",
+    "Description": "Code “Yes” if ethics approval or institutional review board approval is referenced in the paper. If an IRB certificate is found, but is not mentioned anywhere in the paper, code “Yes” for this field."
+  },
+  {
+    "Field": "continent",
+    "Description": "Select the continent/region in which the study was conducted: East Asia and Pacific; Europe and Central Asia; Latin America and Caribbean; Middle East and North Africa; North America; South Asia; Sub-Saharan Africa; Multi-continent."
+  },
+  {
+    "Field": "country",
+    "Description": "Select the countries in which the study was conducted (drop down menu)."
+  },
+  {
+    "Field": "income_level",
+    "Description": "Auto-populated with the country's World Bank Income level status based on the year from the First Year of Intervention field, or if empty, the Year of publication."
+  },
+  {
+    "Field": "fcv_status",
+    "Description": "Auto-populated with the country's World Bank Fragility, Conflict and Violence classification based on the year from the First Year of Intervention field, or if empty, the Year of publication."
+  },
+  {
+    "Field": "evaluation_design",
+    "Description": "Select one: 1. Experimental (prospective randomised assignment implemented by researchers); 2. Quasi-experimental (quasi-random assignment or non-random assignment)."
+  },
+  {
+    "Field": "evaluation_method",
+    "Description": "If Experimental select: Randomised controlled trial. If Quasi-experimental select one: Regression Discontinuity Design (RDD); Fixed effects (incl. difference-in-differences); Instrumental variable (IV) estimation; Statistical matching; Interrupted time series (ITS); Synthetic control."
+  },
+  {
+    "Field": "mixed_methods",
+    "Description": "Select YES if the study includes quantitative and qualitative analyses, otherwise select NO."
+  },
+  {
+    "Field": "additional_method",
+    "Description": "Select additional method if any. If none, select not applicable."
+  },
+  {
+    "Field": "additional_method_2",
+    "Description": "Select additional method if any. If none, select not applicable."
+  },
+  {
+    "Field": "unit_of_observation",
+    "Description": "Enter all the the levels of observation of the variables used for the analysis: Individual; Household; Cohort (includes schools or clinics); Firm/organisation; Property; Surface area (acres, hectares, m2 etc); Community/village; Municipal; District; State/Provincial; Country; Not specified."
+  },
+  {
+    "Field": "project_name",
+    "Description": "If the programme, project, or policy being evaluated has a specific name (e.g., “Bolsa Familia”), code that here. If the project has no specific name (e.g., “green energy subsidies”) code “Not specified”."
+  },
+  {
+    "Field": "implementation_agencies",
+    "Description": "Auto-populated from agency name: Government agency; International Aid Agency; International Financial Institution; Non-Profit Organization; For-Profit Firm; Academic Institution; Charitable or Private Foundation; Not specified."
+  },
+  {
+    "Field": "implementation_agencies_name",
+    "Description": "Input the name of the agenc(ies) implementing the program."
+  },
+  {
+    "Field": "program_funding_agency",
+    "Description": "Auto-populated from agency name: Government agency; International Aid Agency; International Financial Institution; Non-Profit Organization; For-Profit Firm; Academic Institution; Charitable or Private Foundation; Not specified."
+  },
+  {
+    "Field": "program_funding_agency_name",
+    "Description": "Input the name of the agenc(ies) funding the program."
+  },
+  {
+    "Field": "research_funding_agency",
+    "Description": "Auto-populated from agency name: Government agency; International Aid Agency; International Financial Institution; Non-Profit Organization; For-Profit Firm; Academic Institution; Charitable or Private Foundation; Not specified."
+  },
+  {
+    "Field": "research_funding_agency_name",
+    "Description": "Input the name of the agenc(ies) funding the research. "
+  },
+  {
+    "Field": "intervention",
+    "Description": "From DEP taxonomy https://developmentevidence.3ieimpact.org/taxonomy-search "
+  },
+  {
+    "Field": "intervention_description",
+    "Description": "Open field to enter a description of the intervention"
+  },
+  {
+    "Field": "outcome",
+    "Description": "From DEP taxonomy https://developmentevidence.3ieimpact.org/taxonomy-search "
+  },
+  {
+    "Field": "outcome_description",
+    "Description": "Open field to enter a description of the outcome"
+  }
+]

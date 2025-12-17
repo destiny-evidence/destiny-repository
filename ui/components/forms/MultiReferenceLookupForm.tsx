@@ -2,17 +2,17 @@
 
 import React, { useState, useEffect } from "react";
 
-interface MultiReferenceSearchFormProps {
+interface MultiReferenceLookupFormProps {
   onSearch: (identifiers: string[]) => void;
   loading: boolean;
   externalIdentifiers?: string[];
 }
 
-export default function MultiReferenceSearchForm({
+export default function MultiReferenceLookupForm({
   onSearch,
   loading,
   externalIdentifiers = [],
-}: MultiReferenceSearchFormProps) {
+}: MultiReferenceLookupFormProps) {
   const [bulkInput, setBulkInput] = useState("");
   const [identifierCount, setIdentifierCount] = useState(0);
 
