@@ -36,7 +36,10 @@ from app.domain.references.models.projections import (
 )
 from app.persistence.es.persistence import GenericESPersistence, GenericNestedDocument
 
-EXCLUDED_ENHANCEMENT_TYPES = {EnhancementType.RAW, EnhancementType.RELATIONSHIP}
+EXCLUDED_ENHANCEMENT_TYPES = {
+    EnhancementType.RAW,
+    EnhancementType.REFERENCE_ASSOCIATION,
+}
 
 
 class ExternalIdentifierDocument(GenericNestedDocument):

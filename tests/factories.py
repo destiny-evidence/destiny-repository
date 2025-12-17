@@ -236,7 +236,7 @@ class ReferenceAssociationEnhancementFactory(factory.Factory):
     class Meta:
         model = ReferenceAssociationEnhancement
 
-    enhancement_type = EnhancementType.RELATIONSHIP
+    enhancement_type = EnhancementType.REFERENCE_ASSOCIATION
     related_reference_ids = factory.LazyFunction(
         lambda: fake.random_elements(
             [*ExternalIdentifierFactories, fake.uuid4()],

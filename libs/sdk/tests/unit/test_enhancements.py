@@ -174,52 +174,52 @@ def test_empty_location_enhancement_errors():
         )
 
 
-def test_relationship_enhancement_valid():
-    # Create valid relationship content
-    relationship_content = destiny_sdk.enhancements.ReferenceAssociationEnhancement(
-        enhancement_type=destiny_sdk.enhancements.EnhancementType.RELATIONSHIP,
-        related_reference_ids=[
+def test_association_enhancement_valid():
+    # Create valid association content
+    association_content = destiny_sdk.enhancements.ReferenceAssociationEnhancement(
+        enhancement_type=destiny_sdk.enhancements.EnhancementType.REFERENCE_ASSOCIATION,
+        associated_reference_ids=[
             uuid.uuid4(),
             destiny_sdk.identifiers.OpenAlexIdentifier(
                 identifier="https://openalex.org/W1234567890",
                 identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.OPEN_ALEX,
             ),
         ],
-        relationship_type=destiny_sdk.enhancements.RelationshipType.CITES,
+        association_type=destiny_sdk.enhancements.ReferenceAssociationType.CITES,
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
         id=uuid.uuid4(),
         source="test_source",
         visibility="public",
         robot_version="1.0",
-        enhancement_type=destiny_sdk.enhancements.EnhancementType.RELATIONSHIP,
-        content=relationship_content,
+        enhancement_type=destiny_sdk.enhancements.EnhancementType.REFERENCE_ASSOCIATION,
+        content=association_content,
         reference_id=uuid.uuid4(),
     )
     assert (
-        enhancement.content.relationship_type
-        == destiny_sdk.enhancements.RelationshipType.CITES
+        enhancement.content.association_type
+        == destiny_sdk.enhancements.ReferenceAssociationType.CITES
     )
-    assert enhancement.content.related_reference_ids[1].identifier == "W1234567890"
+    assert enhancement.content.associated_reference_ids[1].identifier == "W1234567890"
 
 
-def test_relationship_enhancement_empty_related_reference_ids_errors():
-    # Test that an empty related_reference_ids list raises a validation error
+def test_association_enhancement_empty_associated_reference_ids_errors():
+    # Test that an empty associated_reference_ids list raises a validation error
     with pytest.raises(ValidationError):
         destiny_sdk.enhancements.ReferenceAssociationEnhancement(
-            enhancement_type=destiny_sdk.enhancements.EnhancementType.RELATIONSHIP,
-            related_reference_ids=[],
-            relationship_type=destiny_sdk.enhancements.RelationshipType.CITES,
+            enhancement_type=destiny_sdk.enhancements.EnhancementType.REFERENCE_ASSOCIATION,
+            associated_reference_ids=[],
+            association_type=destiny_sdk.enhancements.ReferenceAssociationType.CITES,
         )
 
 
-def test_relationship_enhancement_invalid_identifier_type_errors():
+def test_association_enhancement_invalid_identifier_type_errors():
     # Test that an invalid identifier type raises a validation error
     with pytest.raises(ValidationError):
         destiny_sdk.enhancements.ReferenceAssociationEnhancement(
-            enhancement_type=destiny_sdk.enhancements.EnhancementType.RELATIONSHIP,
-            related_reference_ids=[
+            enhancement_type=destiny_sdk.enhancements.EnhancementType.REFERENCE_ASSOCIATION,
+            associated_reference_ids=[
                 "random-string",
             ],
-            relationship_type=destiny_sdk.enhancements.RelationshipType.CITES,
+            association_type=destiny_sdk.enhancements.ReferenceAssociationType.CITES,
         )
