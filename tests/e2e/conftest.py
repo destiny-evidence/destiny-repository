@@ -15,6 +15,7 @@ import testcontainers.rabbitmq
 from alembic.command import upgrade
 from elasticsearch import AsyncElasticsearch
 from minio import Minio
+from opentelemetry import trace
 from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 from testcontainers.core.container import DockerContainer
@@ -55,6 +56,8 @@ testcontainers.rabbitmq.RabbitMqContainer.readiness_probe = lambda self: self
 # Pass --log-cli-level info to see these
 logger = logging.getLogger(__name__)
 
+tracer = trace.get_tracer(__name__)
+
 _cwd = pathlib.Path.cwd()
 logger.info("Current working directory: %s", _cwd)
 
@@ -73,6 +76,23 @@ def print_logs(name: str, container: DockerContainer):
         name,
         container._container.logs().decode("utf-8"),  # noqa: SLF001
     )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def trace_test_suite():
+    """Trace the entire test suite with OpenTelemetry."""
+    with tracer.start_as_current_span("E2E Test Suite") as span:
+        # Store the span in pytest's stash for child fixtures to access
+        yield span
+
+
+@pytest.fixture(autouse=True)
+def trace_test(request: pytest.FixtureRequest, trace_test_suite):  # noqa: ANN001, ARG001
+    """Trace each test with OpenTelemetry."""
+    test_name = request.node.name
+    # This will automatically create a child span under trace_test_suite
+    with tracer.start_as_current_span(test_name):
+        yield
 
 
 ###########################
