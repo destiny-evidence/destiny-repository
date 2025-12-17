@@ -19,7 +19,7 @@ from destiny_sdk.enhancements import (
     LocationEnhancement,
     RawEnhancement,
     ReferenceAssociationEnhancement,
-    RelationshipType,
+    ReferenceAssociationType,
     ScoreAnnotation,
 )
 from destiny_sdk.identifiers import (
@@ -238,13 +238,13 @@ class ReferenceAssociationEnhancementFactory(factory.Factory):
         model = ReferenceAssociationEnhancement
 
     enhancement_type = EnhancementType.REFERENCE_ASSOCIATION
-    related_reference_ids = factory.LazyFunction(
+    associated_reference_ids = factory.LazyFunction(
         lambda: fake.random_elements(
             [*ExternalIdentifierFactories, fake.uuid4()],
             length=fake.pyint(1, max_list_length),
         )
     )
-    relationship_type = factory.Faker("enum", enum_cls=RelationshipType)
+    association_type = factory.Faker("enum", enum_cls=ReferenceAssociationType)
 
 
 class RawEnhancementFactory(factory.Factory):
