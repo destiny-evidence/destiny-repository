@@ -2,7 +2,6 @@
 
 import contextlib
 import json
-import logging
 import os
 import pathlib
 import uuid
@@ -30,7 +29,9 @@ from testcontainers.minio import MinioContainer
 from testcontainers.postgres import PostgresContainer
 from testcontainers.rabbitmq import RabbitMqContainer
 
-from app.core.config import DatabaseConfig
+from app.core.config import DatabaseConfig, Environment, LogLevel, OTelConfig
+from app.core.telemetry.logger import get_logger, logger_configurer
+from app.core.telemetry.otel import configure_otel
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.robots.models.models import Robot
 from app.persistence.sql.session import (
@@ -54,9 +55,19 @@ testcontainers.rabbitmq.RabbitMqContainer.readiness_probe = lambda self: self
 
 
 # Pass --log-cli-level info to see these
-logger = logging.getLogger(__name__)
-
+logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+logger_configurer.configure_console_logger(
+    log_level=LogLevel.INFO, rich_rendering=False
+)
+
+if otel_config := os.getenv("OTEL_CONFIG"):
+    configure_otel(
+        OTelConfig.model_validate_json(otel_config),
+        "e2e-runner",
+        "1.0.0",
+        Environment.TEST,
+    )
 
 _cwd = pathlib.Path.cwd()
 logger.info("Current working directory: %s", _cwd)
