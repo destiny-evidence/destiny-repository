@@ -26,8 +26,8 @@ class EnhancementType(StrEnum):
     """A free-form enhancement for tagging with labels."""
     LOCATION = auto()
     """Locations where the reference can be found."""
-    RELATIONSHIP = auto()
-    """Relationships to other references."""
+    REFERENCE_ASSOCIATION = auto()
+    """Associations to other references."""
     RAW = auto()
     """A free form enhancement for arbitrary/unstructured data."""
     FULL_TEXT = auto()
@@ -304,8 +304,12 @@ class LocationEnhancement(BaseModel):
     )
 
 
-class RelationshipType(StrEnum):
-    """The type of relationship between references."""
+class ReferenceAssociationType(StrEnum):
+    """
+    The type of association between references.
+
+    Direction is important: "this reference <association_type> associated reference".
+    """
 
     CITES = auto()
     """This reference cites the related reference."""
@@ -315,24 +319,24 @@ class RelationshipType(StrEnum):
     """This reference is similar to the related reference."""
 
 
-class RelationshipEnhancement(BaseModel):
-    """An enhancement for storing relationships between references."""
+class ReferenceAssociationEnhancement(BaseModel):
+    """An enhancement for storing associations between references."""
 
-    enhancement_type: Literal[EnhancementType.RELATIONSHIP] = (
-        EnhancementType.RELATIONSHIP
+    enhancement_type: Literal[EnhancementType.REFERENCE_ASSOCIATION] = (
+        EnhancementType.REFERENCE_ASSOCIATION
     )
-    related_reference_ids: list[Identifier] = Field(
+    associated_reference_ids: list[Identifier] = Field(
         min_length=1,
         description=(
-            "A list of Identifiers which are related to this reference. "
+            "A list of Identifiers which are associated to this reference. "
             "These can either be ExternalIdentifiers or resolved repository UUID4s."
         ),
     )
-    relationship_type: RelationshipType = Field(
+    association_type: ReferenceAssociationType = Field(
         description=(
-            "The type of relationship between this reference and the related ones. "
+            "The type of association between this reference and the associated ones. "
             "Direction is important: "
-            '"this reference <relationship_type> related reference".'
+            '"this reference <association_type> associated reference".'
         )
     )
 
@@ -375,7 +379,7 @@ EnhancementContent = Annotated[
     | AbstractContentEnhancement
     | AnnotationEnhancement
     | LocationEnhancement
-    | RelationshipEnhancement
+    | ReferenceAssociationEnhancement
     | RawEnhancement,
     Field(discriminator="enhancement_type"),
 ]

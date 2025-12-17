@@ -176,7 +176,7 @@ def test_empty_location_enhancement_errors():
 
 def test_relationship_enhancement_valid():
     # Create valid relationship content
-    relationship_content = destiny_sdk.enhancements.RelationshipEnhancement(
+    relationship_content = destiny_sdk.enhancements.ReferenceAssociationEnhancement(
         enhancement_type=destiny_sdk.enhancements.EnhancementType.RELATIONSHIP,
         related_reference_ids=[
             uuid.uuid4(),
@@ -206,7 +206,7 @@ def test_relationship_enhancement_valid():
 def test_relationship_enhancement_empty_related_reference_ids_errors():
     # Test that an empty related_reference_ids list raises a validation error
     with pytest.raises(ValidationError):
-        destiny_sdk.enhancements.RelationshipEnhancement(
+        destiny_sdk.enhancements.ReferenceAssociationEnhancement(
             enhancement_type=destiny_sdk.enhancements.EnhancementType.RELATIONSHIP,
             related_reference_ids=[],
             relationship_type=destiny_sdk.enhancements.RelationshipType.CITES,
@@ -216,7 +216,7 @@ def test_relationship_enhancement_empty_related_reference_ids_errors():
 def test_relationship_enhancement_invalid_identifier_type_errors():
     # Test that an invalid identifier type raises a validation error
     with pytest.raises(ValidationError):
-        destiny_sdk.enhancements.RelationshipEnhancement(
+        destiny_sdk.enhancements.ReferenceAssociationEnhancement(
             enhancement_type=destiny_sdk.enhancements.EnhancementType.RELATIONSHIP,
             related_reference_ids=[
                 "random-string",

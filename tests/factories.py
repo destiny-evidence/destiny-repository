@@ -18,7 +18,7 @@ from destiny_sdk.enhancements import (
     Location,
     LocationEnhancement,
     RawEnhancement,
-    RelationshipEnhancement,
+    ReferenceAssociationEnhancement,
     RelationshipType,
     ScoreAnnotation,
 )
@@ -232,9 +232,9 @@ class LocationEnhancementFactory(factory.Factory):
     )
 
 
-class RelationshipEnhancementFactory(factory.Factory):
+class ReferenceAssociationEnhancementFactory(factory.Factory):
     class Meta:
-        model = RelationshipEnhancement
+        model = ReferenceAssociationEnhancement
 
     enhancement_type = EnhancementType.RELATIONSHIP
     related_reference_ids = factory.LazyFunction(
@@ -284,7 +284,7 @@ class EnhancementFactory(factory.Factory):
                 AbstractContentEnhancementFactory(),
                 AnnotationEnhancementFactory(),
                 LocationEnhancementFactory(),
-                RelationshipEnhancementFactory(),
+                ReferenceAssociationEnhancementFactory(),
                 RawEnhancementFactory(),
             ]
         )
