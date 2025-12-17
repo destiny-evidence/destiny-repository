@@ -71,7 +71,6 @@ if otel_config := os.getenv("OTEL_CONFIG"):
         Environment.TEST,
     )
 
-# Instrument httpx globally to ensure proper context propagation
 HTTPXClientInstrumentor().instrument()
 
 _cwd = pathlib.Path.cwd()
@@ -474,8 +473,7 @@ def _get_httpx_client_for_app(app: DockerContainer) -> httpx.AsyncClient:
     port = app.get_exposed_port(app_port)
     url = f"http://{host}:{port}/v1/"
     logger.info("Creating httpx client for %s", url)
-    client = httpx.AsyncClient(base_url=url)
-    return client
+    return httpx.AsyncClient(base_url=url)
 
 
 @pytest.fixture(scope="session")
