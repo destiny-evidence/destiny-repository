@@ -108,7 +108,8 @@ class EnhancementContentDocument(GenericNestedDocument):
         """
         if self.enhancement_type in EXCLUDED_ENHANCEMENT_TYPES:
             msg = (
-                "Attempted to create elasticsearch document for a raw enhancement. ",
+                "Attempted to create elasticsearch document for excluded enhancement "
+                f"type {self.enhancement_type}. ",
                 "This should never happen.",
             )
             raise RuntimeError(msg)
