@@ -6,7 +6,6 @@ data "azuread_client_config" "external_directory" {
 resource "random_uuid" "external_directory_administrator_role" {}
 resource "random_uuid" "external_directory_importer_role" {}
 resource "random_uuid" "external_directory_reference_reader_role" {}
-resource "random_uuid" "external_directory_robot_writer_role" {}
 resource "random_uuid" "external_directory_enhancement_request_writer_role" {}
 resource "random_uuid" "external_directory_reference_deduplicator_role" {}
 
@@ -57,6 +56,15 @@ resource "azuread_application" "external_directory_destiny_repository" {
       user_consent_description   = "Allow you to view references"
       user_consent_display_name  = "Reference Reader"
     }
+    oauth2_permission_scope {
+      admin_consent_description  = "Allow the app to deduplicate references as the signed-in user"
+      admin_consent_display_name = "Reference Deduplicator as user"
+      id                         = random_uuid.external_directory_reference_deduplicator_scope.result
+      type                       = "User"
+      value                      = "reference.deduplicator.all"
+      user_consent_description   = "Allow you to deduplicate references"
+      user_consent_display_name  = "Reference Deduplicator"
+    }
 
     oauth2_permission_scope {
       admin_consent_description  = "Allow the app to request enhancements as the signed-in user"
@@ -76,15 +84,6 @@ resource "azuread_application" "external_directory_destiny_repository" {
       value                      = "robot.writer.all"
       user_consent_description   = "Allow you to register robots and rotate robot client secrets"
       user_consent_display_name  = "Robot Writer"
-    }
-    oauth2_permission_scope {
-      admin_consent_description  = "Allow the app to deduplicate references as the signed-in user"
-      admin_consent_display_name = "Reference Deduplicator as user"
-      id                         = random_uuid.external_directory_reference_deduplicator_scope.result
-      type                       = "User"
-      value                      = "reference.deduplicator.all"
-      user_consent_description   = "Allow you to deduplicate references"
-      user_consent_display_name  = "Reference Deduplicator"
     }
   }
 
@@ -127,26 +126,6 @@ resource "azuread_application_app_role" "external_directory_reference_reader" {
   value                = "reference.reader"
 }
 
-resource "azuread_application_app_role" "external_directory_enhancement_request_writer" {
-  provider             = azuread.external_directory
-  application_id       = azuread_application.external_directory_destiny_repository.id
-  allowed_member_types = ["Application"]
-  description          = "Can request enhancements"
-  display_name         = "Enhancement Request Writer"
-  role_id              = random_uuid.external_directory_enhancement_request_writer_role.result
-  value                = "enhancement_request.writer"
-}
-
-resource "azuread_application_app_role" "external_directory_robot_writer" {
-  provider             = azuread.external_directory
-  application_id       = azuread_application.external_directory_destiny_repository.id
-  allowed_member_types = ["Application"]
-  description          = "Can register robots and rotate robot client secrets"
-  display_name         = "Robot Writer"
-  role_id              = random_uuid.external_directory_robot_writer_role.result
-  value                = "robot.writer"
-}
-
 resource "azuread_application_app_role" "external_directory_reference_deduplicator" {
   provider             = azuread.external_directory
   application_id       = azuread_application.external_directory_destiny_repository.id
@@ -155,6 +134,16 @@ resource "azuread_application_app_role" "external_directory_reference_deduplicat
   display_name         = "Reference Deduplicator"
   role_id              = random_uuid.external_directory_reference_deduplicator_role.result
   value                = "reference.deduplicator"
+}
+
+resource "azuread_application_app_role" "external_directory_enhancement_request_writer" {
+  provider             = azuread.external_directory
+  application_id       = azuread_application.external_directory_destiny_repository.id
+  allowed_member_types = ["Application"]
+  description          = "Can request enhancements"
+  display_name         = "Enhancement Request Writer"
+  role_id              = random_uuid.external_directory_enhancement_request_writer_role.result
+  value                = "enhancement_request.writer"
 }
 
 resource "azuread_service_principal" "external_directory_destiny_repository" {
@@ -211,6 +200,24 @@ resource "azuread_application_api_access" "external_directory_destiny_repository
   ]
 }
 
+
+resource "azuread_application_registration" "external_directory_destiny_repository_auth_ui" {
+  provider                       = azuread.external_directory
+  display_name                   = "${local.name}-auth-ui-client"
+  sign_in_audience               = "AzureADMyOrg"
+  requested_access_token_version = 2
+}
+
+resource "azuread_application_api_access" "external_directory_destiny_repository_auth_ui" {
+  provider       = azuread.external_directory
+  application_id = azuread_application_registration.external_directory_destiny_repository_auth_ui.id
+  api_client_id  = azuread_application.external_directory_destiny_repository.client_id
+
+  scope_ids = [
+    random_uuid.external_directory_reference_reader_scope.result,
+  ]
+}
+
 # This group is managed by click-ops in Entra Id
 # Allow group members to authenticate via the auth client
 resource "azuread_app_role_assignment" "external_directory_developer_to_auth" {
@@ -220,9 +227,24 @@ resource "azuread_app_role_assignment" "external_directory_developer_to_auth" {
   resource_object_id  = azuread_service_principal.external_directory_destiny_repository_auth.object_id
 }
 
+
+resource "azuread_app_role_assignment" "external_directory_ui_users_to_auth_ui" {
+  provider            = azuread.external_directory
+  app_role_id         = "00000000-0000-0000-0000-000000000000"
+  principal_object_id = var.external_directory_ui_users_group_id
+  resource_object_id  = azuread_service_principal.external_directory_destiny_repository_auth_ui.object_id
+}
+
 resource "azuread_service_principal" "external_directory_destiny_repository_auth" {
   provider                     = azuread.external_directory
   client_id                    = azuread_application_registration.external_directory_destiny_repository_auth.client_id
+  app_role_assignment_required = true
+  owners                       = [data.azuread_client_config.external_directory.object_id]
+}
+
+resource "azuread_service_principal" "external_directory_destiny_repository_auth_ui" {
+  provider                     = azuread.external_directory
+  client_id                    = azuread_application_registration.external_directory_destiny_repository_auth_ui.client_id
   app_role_assignment_required = true
   owners                       = [data.azuread_client_config.external_directory.object_id]
 }
@@ -233,10 +255,27 @@ resource "azuread_application_redirect_uris" "external_directory_local_redirect"
   application_id = azuread_application_registration.external_directory_destiny_repository_auth.id
   type           = "PublicClient"
 
+  redirect_uris = var.local_redirect_urls
+}
+
+resource "azuread_application_redirect_uris" "external_directory_ui_redirect" {
+  # This is necessary to return the token to the UI
+  provider       = azuread.external_directory
+  application_id = azuread_application_registration.external_directory_destiny_repository_auth_ui.id
+  type           = "SPA"
+
   redirect_uris = [
-    "http://localhost",
-    "https://oauth.pstmn.io/v1/callback",
+    "https://${data.azurerm_container_app.ui.ingress[0].fqdn}",
   ]
+}
+
+resource "azuread_application_redirect_uris" "external_directory_ui_public_client_redirect" {
+  # This is necessary to return the token to the user when using PublicClient flow
+  provider       = azuread.external_directory
+  application_id = azuread_application_registration.external_directory_destiny_repository_auth_ui.id
+  type           = "PublicClient"
+
+  redirect_uris = var.local_redirect_urls
 }
 
 # Openalex incremental updater role assignments
@@ -254,4 +293,11 @@ resource "azuread_application_api_access" "external_directory_openalex_increment
   role_ids = [
     azuread_application_app_role.external_directory_importer.role_id
   ]
+}
+
+resource "azuread_app_role_assignment" "external_directory_destiny_demonstrator_ui_to_reference_reader" {
+  provider            = azuread.external_directory
+  app_role_id         = azuread_application_app_role.external_directory_reference_reader.role_id
+  principal_object_id = data.azurerm_user_assigned_identity.destiny_demonstrator_ui.principal_id
+  resource_object_id  = azuread_service_principal.external_directory_destiny_repository.object_id
 }
