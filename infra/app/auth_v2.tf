@@ -294,10 +294,3 @@ resource "azuread_application_api_access" "external_directory_openalex_increment
     azuread_application_app_role.external_directory_importer.role_id
   ]
 }
-
-resource "azuread_app_role_assignment" "external_directory_destiny_demonstrator_ui_to_reference_reader" {
-  provider            = azuread.external_directory
-  app_role_id         = azuread_application_app_role.external_directory_reference_reader.role_id
-  principal_object_id = data.azurerm_user_assigned_identity.destiny_demonstrator_ui.principal_id
-  resource_object_id  = azuread_service_principal.external_directory_destiny_repository.object_id
-}
