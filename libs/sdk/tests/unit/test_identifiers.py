@@ -30,6 +30,33 @@ def test_doi_url_removed():
     assert obj.identifier == "10.1000/xyz123"
 
 
+def test_valid_eric_identifier():
+    obj = destiny_sdk.identifiers.ERICIdentifier(
+        identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.ERIC,
+        identifier="EJ1480525",
+    )
+
+    assert obj.identifier == "EJ1480525"
+
+
+def test_invalid_eric_identifier():
+    with pytest.raises(ValidationError, match="String should match pattern"):
+        destiny_sdk.identifiers.ERICIdentifier(
+            identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.ERIC,
+            identifier="CD15423432",
+        )
+
+
+def test_eric_identifier_url_removed():
+    """Test that a ERIC number with a URL is fixed to just the ERIC ID part."""
+    obj = destiny_sdk.identifiers.ERICIdentifier(
+        identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.ERIC,
+        identifier="https://eric.ed.gov/?id=EJ1480525",
+    )
+
+    assert obj.identifier == "EJ1480525"
+
+
 def test_valid_pmid():
     identifier = 123456
 

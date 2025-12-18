@@ -22,11 +22,14 @@ from destiny_sdk.enhancements import (
 )
 from destiny_sdk.identifiers import (
     DOIIdentifier,
+    ERICIdentifier,
     OpenAlexIdentifier,
     OtherIdentifier,
+    ProQuestIdentifier,
     PubMedIdentifier,
 )
 from faker import Faker
+from faker.providers import BaseProvider
 
 from app.domain.references.models.models import (
     Enhancement,
@@ -39,7 +42,29 @@ from app.domain.references.models.models import (
 from app.domain.robots.models.models import Robot
 from app.utils.time_and_date import utc_now
 
+
+class ERICNumberProvider(BaseProvider):
+    """
+    Provider for ERIC Number object.
+
+    Source of info: https://eric.ed.gov/pdf/ERIC_Field.pdf.
+    """
+
+    def eric_number(self) -> str:
+        """
+        Generate a valid ERIC Number.
+
+        Format: [{EJ|ED}{number}]
+        Eg: ED581143.
+        """
+        prefix = self.generator.random.choice(["EJ", "ED"])
+        suffix = self.generator.random.randint(100, 999999)
+
+        return f"{prefix}{suffix}"
+
+
 fake = Faker()
+fake.add_provider(ERICNumberProvider)
 max_list_length = 3
 
 
@@ -50,11 +75,25 @@ class DOIIdentifierFactory(factory.Factory):
     identifier = factory.Faker("doi")
 
 
+class ERICIdentifierFactory(factory.Factory):
+    class Meta:
+        model = ERICIdentifier
+
+    identifier = fake.eric_number()
+
+
 class PubMedIdentifierFactory(factory.Factory):
     class Meta:
         model = PubMedIdentifier
 
     identifier = factory.Faker("pyint", min_value=100000, max_value=999999)
+
+
+class ProquestIdentifierFactory(factory.Factory):
+    class Meta:
+        model = ProQuestIdentifier
+
+    identifier = str(fake.pyint(min_value=1000000, max_value=9999999))
 
 
 class OpenAlexIdentifierFactory(factory.Factory):
@@ -95,6 +134,7 @@ class BibliographicMetadataEnhancementFactory(factory.Factory):
     )
     cited_by_count = factory.Faker("pyint", min_value=0, max_value=1000)
     created_date = factory.Faker("date_this_century")
+    updated_date = factory.Faker("date_this_century")
     publication_date = factory.Faker("date_this_century")
     publisher = factory.Faker("company")
     title = factory.Faker("sentence", nb_words=6)
@@ -201,7 +241,9 @@ class LinkedExternalIdentifierFactory(factory.Factory):
         lambda: fake.random_element(
             [
                 DOIIdentifierFactory(),
+                ERICIdentifierFactory(),
                 PubMedIdentifierFactory(),
+                ProquestIdentifierFactory(),
                 OpenAlexIdentifierFactory(),
                 OtherIdentifierFactory(),
             ]

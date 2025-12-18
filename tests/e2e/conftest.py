@@ -1,11 +1,12 @@
 """Containers setup for end-to-end tests."""
 
+import contextlib
 import json
 import logging
 import os
 import pathlib
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncIterator
 
 import httpx
 import pytest
@@ -15,10 +16,14 @@ from alembic.command import upgrade
 from elasticsearch import AsyncElasticsearch
 from minio import Minio
 from sqlalchemy.ext.asyncio import AsyncSession
-from taskiq import AsyncBroker
+from tenacity import Retrying, stop_after_attempt, wait_fixed
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.docker_client import DockerClient
-from testcontainers.core.wait_strategies import HttpWaitStrategy, LogMessageWaitStrategy
+from testcontainers.core.wait_strategies import (
+    CompositeWaitStrategy,
+    HttpWaitStrategy,
+    LogMessageWaitStrategy,
+)
 from testcontainers.elasticsearch import ElasticSearchContainer
 from testcontainers.minio import MinioContainer
 from testcontainers.postgres import PostgresContainer
@@ -114,14 +119,26 @@ async def minio_proxy_client(minio_proxy: DockerContainer):
 def postgres():
     """Postgres container with alembic migrations applied."""
     logger.info("Creating Postgres container...")
-    with PostgresContainer("postgres:17", driver="asyncpg").with_name(
+    postgres = PostgresContainer("postgres:17", driver="asyncpg").with_name(
         f"{container_prefix}-postgres"
-    ) as postgres:
-        logger.info("Applying alembic migrations.")
-        alembic_config = alembic_config_from_url(postgres.get_connection_url())
-        upgrade(alembic_config, "head")
-        logger.info("Postgres container ready.")
-        yield postgres
+    )
+
+    # This is the top of the fixture tree and starts the parent
+    # testcontainers container. Sometimes this fails to start due to some
+    # low-level port mapping issues, so we retry a few times.
+    # Similar to the workaround in app, except we can't fix this one ourselves.
+    for retry in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(1), reraise=True):
+        with retry:
+            postgres.start()
+
+    logger.info("Applying alembic migrations.")
+    alembic_config = alembic_config_from_url(postgres.get_connection_url())
+    upgrade(alembic_config, "head")
+
+    logger.info("Postgres container ready.")
+    yield postgres
+
+    postgres.stop()
 
 
 @pytest.fixture(scope="session")
@@ -229,25 +246,13 @@ def rabbitmq():
     """RabbitMQ container."""
     logger.info("Creating RabbitMQ container...")
     with (
-        RabbitMqContainer("rabbitmq:3-management", port=5672)
-        .with_bind_ports(5672, 5672)
+        RabbitMqContainer("rabbitmq:3-management")
+        .with_exposed_ports(5672)
         .waiting_for(LogMessageWaitStrategy("Server startup complete"))
         .with_name(f"{container_prefix}-rabbitmq") as rabbitmq
     ):
         logger.info("RabbitMQ container ready.")
         yield rabbitmq
-
-
-@pytest.fixture
-async def test_broker(
-    rabbitmq: RabbitMqContainer,  # noqa: ARG001
-) -> AsyncGenerator[AsyncBroker, None]:
-    """Get a broker for connecting to RabbitMQ container from test process."""
-    from app.tasks import broker
-
-    await broker.startup()
-    yield broker
-    await broker.shutdown()
 
 
 @pytest.fixture(scope="session")
@@ -399,9 +404,13 @@ async def app(  # noqa: PLR0913
         .with_volume_mapping(str(_cwd / "app"), "/app/app")
         .with_volume_mapping(str(_cwd / "libs/sdk"), "/app/libs/sdk")
         .waiting_for(
-            HttpWaitStrategy(
-                port=app_port, path="/v1/system/healthcheck/?azure_blob_storage=false"
-            ).for_status_code(200)
+            CompositeWaitStrategy(
+                LogMessageWaitStrategy("Uvicorn running on http://0.0.0.0:8000"),
+                HttpWaitStrategy(
+                    port=app_port,
+                    path="/v1/system/healthcheck/?azure_blob_storage=false",
+                ).for_status_code(200),
+            )
         )
     )
     with app as container:
@@ -412,14 +421,49 @@ async def app(  # noqa: PLR0913
             print_logs("App", container)
 
 
-@pytest.fixture(scope="session")
-async def destiny_client_v1(app: DockerContainer) -> httpx.AsyncClient:
-    """Get a httpx client for the main application."""
+def _get_httpx_client_for_app(app: DockerContainer) -> httpx.AsyncClient:
+    """Create an httpx client for the app container."""
     host = app.get_container_host_ip()
     port = app.get_exposed_port(app_port)
     url = f"http://{host}:{port}/v1/"
     logger.info("Creating httpx client for %s", url)
     return httpx.AsyncClient(base_url=url)
+
+
+@pytest.fixture(scope="session")
+async def configured_repository_factory(app: DockerContainer, worker: DockerContainer):
+    """Get a factory to configure repository containers with specific env vars."""
+
+    @contextlib.asynccontextmanager
+    async def _factory(env: dict) -> AsyncIterator[httpx.AsyncClient]:
+        msg = f"Reconfiguring repository containers with env vars: {env}"
+        logger.info(msg)
+        old_envs = {}
+        for container in (app, worker):
+            old_envs[container._name] = container.env.copy()  # noqa: SLF001
+            container.stop()
+            container.with_envs(**env)
+            container.start()
+
+        async with _get_httpx_client_for_app(app) as client:
+            try:
+                yield client
+            finally:
+                for container in (app, worker):
+                    print_logs(container._name, container)  # noqa: SLF001
+                    container.stop()
+                    container.with_envs(**{k: None for k in env})
+                    container.with_envs(**old_envs[container._name])  # noqa: SLF001
+                    container.start()
+
+    return _factory
+
+
+# Function scoped as the bindings may change per test due to the factory above
+@pytest.fixture
+async def destiny_client_v1(app: DockerContainer) -> httpx.AsyncClient:
+    """Get a httpx client for the main application."""
+    return _get_httpx_client_for_app(app)
 
 
 def pytest_addoption(parser: pytest.Parser):

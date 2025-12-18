@@ -17,8 +17,14 @@ class ExternalIdentifierType(StrEnum):
 
     DOI = auto()
     """A DOI (Digital Object Identifier) which is a unique identifier for a document."""
+    ERIC = auto()
+    """An ERIC (Education Resources Information Identifier) ID which is a unique
+    identifier for a document in ERIC.
+    """
     PM_ID = auto()
     """A PubMed ID which is a unique identifier for a document in PubMed."""
+    PRO_QUEST = auto()
+    """A ProQuest ID which is a unqiue identifier for a document in ProQuest."""
     OPEN_ALEX = auto()
     """An OpenAlex ID which is a unique identifier for a document in OpenAlex."""
     OTHER = auto()
@@ -41,8 +47,64 @@ class DOIIdentifier(BaseModel):
     def remove_doi_url(cls, value: str) -> str:
         """Remove the URL part of the DOI if it exists."""
         return (
-            value.removeprefix("http://doi.org/")
-            .removeprefix("https://doi.org/")
+            value.removeprefix("http://")
+            .removeprefix("https://")
+            .removeprefix("doi.org/")
+            .removeprefix("dx.doi.org/")
+            .removeprefix("doi:")
+            .strip()
+        )
+
+
+class ProQuestIdentifier(BaseModel):
+    """An external identifier representing a ProQuest ID."""
+
+    identifier: str = Field(
+        description="The ProQuest id of the reference", pattern=r"[0-9]+$"
+    )
+    identifier_type: Literal[ExternalIdentifierType.PRO_QUEST] = Field(
+        ExternalIdentifierType.PRO_QUEST, description="The type of identifier used."
+    )
+
+    @field_validator("identifier", mode="before")
+    @classmethod
+    def remove_proquest_url(cls, value: str) -> str:
+        """Remove the URL part of the ProQuest id if it exists."""
+        return (
+            value.removeprefix("http://")
+            .removeprefix("https://")
+            .removeprefix("search.proquest.com/")
+            .removeprefix("www.proquest.com/")
+            .removeprefix("docview/")
+            .strip()
+        )
+
+
+class ERICIdentifier(BaseModel):
+    """
+    An external identifier representing an ERIC Number.
+
+    An ERIC Number is defined as a unqiue identifiying number preceeded by
+    EJ (for a journal article) or ED (for a non-journal document).
+    """
+
+    identifier: str = Field(
+        description="The ERIC Number of the reference.", pattern=r"E[D|J][0-9]+$"
+    )
+    identifier_type: Literal[ExternalIdentifierType.ERIC] = Field(
+        ExternalIdentifierType.ERIC, description="The type of identifier used."
+    )
+
+    @field_validator("identifier", mode="before")
+    @classmethod
+    def remove_eric_url(cls, value: str) -> str:
+        """Remove the URL part of the ERIC ID if it exists."""
+        return (
+            value.removeprefix("http://")
+            .removeprefix("https://")
+            .removeprefix("eric.ed.gov/?id=")
+            .removeprefix("files.eric.ed.gov/fulltext/")
+            .removesuffix(".pdf")
             .strip()
         )
 
@@ -71,8 +133,11 @@ class OpenAlexIdentifier(BaseModel):
     def remove_open_alex_url(cls, value: str) -> str:
         """Remove the OpenAlex URL if it exists."""
         return (
-            value.removeprefix("http://openalex.org/")
-            .removeprefix("https://openalex.org/")
+            value.removeprefix("http://")
+            .removeprefix("https://")
+            .removeprefix("openalex.org/")
+            .removeprefix("explore.openalex.org/")
+            .removeprefix("works/")
             .strip()
         )
 
@@ -91,7 +156,12 @@ class OtherIdentifier(BaseModel):
 
 #: Union type for all external identifiers.
 ExternalIdentifier = Annotated[
-    DOIIdentifier | PubMedIdentifier | OpenAlexIdentifier | OtherIdentifier,
+    DOIIdentifier
+    | ERICIdentifier
+    | PubMedIdentifier
+    | ProQuestIdentifier
+    | OpenAlexIdentifier
+    | OtherIdentifier,
     Field(discriminator="identifier_type"),
 ]
 
@@ -190,3 +260,11 @@ class IdentifierLookup(BaseModel):
         if self.identifier_type is None:
             return UUID4(self.identifier)
         return ExternalIdentifierAdapter.validate_python(self.model_dump())
+
+    def __repr__(self) -> str:
+        """Serialize the identifier lookup to a string."""
+        return self.serialize()
+
+    def __str__(self) -> str:
+        """Serialize the identifier lookup to a string."""
+        return self.serialize()

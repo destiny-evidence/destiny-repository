@@ -125,7 +125,11 @@ locals {
     {
       name  = "MESSAGE_LOCK_RENEWAL_DURATION",
       value = var.message_lock_renewal_duration
-    }
+    },
+    {
+      name  = "TRUSTED_UNIQUE_IDENTIFIER_TYPES",
+      value = jsonencode(var.trusted_unique_identifier_types)
+    },
   ]
 
 

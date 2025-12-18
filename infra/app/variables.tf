@@ -200,6 +200,12 @@ variable "open_alex_incremental_updater_external_client_id" {
   type        = string
 }
 
+variable "destiny_demonstrator_ui_app_name" {
+  description = "The name of the destiny demonstrator ui application"
+  type        = string
+  default     = "demonstrator-ui"
+}
+
 variable "elasticsearch_sku" {
   description = "SKU for the Elasticsearch cluster"
   type        = string
@@ -336,4 +342,10 @@ variable "local_redirect_urls" {
     "http://localhost",
     "https://oauth.pstmn.io/v1/callback",
   ]
+}
+
+variable "trusted_unique_identifier_types" {
+  description = "External identifier types that are certain to be unique. Used for shortcutting deduplication."
+  type        = list(string)
+  default     = []
 }
