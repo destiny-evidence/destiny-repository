@@ -127,3 +127,15 @@ resource "github_actions_environment_secret" "destiny_api_endpoint" {
   secret_name     = "DESTINY_API_ENDPOINT"
   plaintext_value = "https://${data.azurerm_container_app.api.ingress[0].fqdn}/v1/"
 }
+
+
+resource "github_actions_secret" "otel_config" {
+  repository  = github_repository_environment.environment.repository
+  secret_name = "OTEL_CONFIG"
+  plaintext_value = jsonencode({
+    trace_endpoint = var.honeycombio_trace_endpoint
+    meter_endpoint = var.honeycombio_meter_endpoint
+    log_endpoint   = var.honeycombio_log_endpoint
+    api_key        = honeycombio_api_key.github_actions.key
+  })
+}

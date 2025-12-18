@@ -39,7 +39,6 @@ jobs:
 
       - name: Run test with pytest via uv
         env:
-          # Click-ops managed directly into github secrets
           OTEL_CONFIG: ${{ secrets.OTEL_CONFIG }}
           DOCKER_HOSTNAME: "172.17.0.1"
           TESTS_USE_RABBITMQ: "true"
