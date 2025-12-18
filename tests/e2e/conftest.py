@@ -2,7 +2,6 @@
 
 import contextlib
 import json
-import logging
 import os
 import pathlib
 import uuid
@@ -15,6 +14,9 @@ import testcontainers.rabbitmq
 from alembic.command import upgrade
 from elasticsearch import AsyncElasticsearch
 from minio import Minio
+from opentelemetry import context, trace
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.trace import set_span_in_context
 from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 from testcontainers.core.container import DockerContainer
@@ -29,7 +31,9 @@ from testcontainers.minio import MinioContainer
 from testcontainers.postgres import PostgresContainer
 from testcontainers.rabbitmq import RabbitMqContainer
 
-from app.core.config import DatabaseConfig
+from app.core.config import DatabaseConfig, Environment, LogLevel, OTelConfig
+from app.core.telemetry.logger import get_logger, logger_configurer
+from app.core.telemetry.otel import configure_otel
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.robots.models.models import Robot
 from app.persistence.sql.session import (
@@ -53,7 +57,21 @@ testcontainers.rabbitmq.RabbitMqContainer.readiness_probe = lambda self: self
 
 
 # Pass --log-cli-level info to see these
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+tracer = trace.get_tracer(__name__)
+logger_configurer.configure_console_logger(
+    log_level=LogLevel.INFO, rich_rendering=False
+)
+
+if otel_config := os.getenv("OTEL_CONFIG"):
+    configure_otel(
+        OTelConfig.model_validate_json(otel_config),
+        "e2e-runner",
+        "1.0.0",
+        Environment.TEST,
+    )
+
+HTTPXClientInstrumentor().instrument()
 
 _cwd = pathlib.Path.cwd()
 logger.info("Current working directory: %s", _cwd)
@@ -73,6 +91,25 @@ def print_logs(name: str, container: DockerContainer):
         name,
         container._container.logs().decode("utf-8"),  # noqa: SLF001
     )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def trace_test_suite():
+    """Trace the entire test suite with OpenTelemetry."""
+    with tracer.start_as_current_span("E2E Test Suite"):
+        yield
+
+
+@pytest.fixture(autouse=True)
+async def trace_test(request: pytest.FixtureRequest):
+    """Trace each test with OpenTelemetry."""
+    with tracer.start_as_current_span(f"Test: {request.node.name}") as span:
+        # Explicitly attach span to context for async execution
+        token = context.attach(set_span_in_context(span))
+        try:
+            yield
+        finally:
+            context.detach(token)
 
 
 ###########################
@@ -211,8 +248,13 @@ async def es_lifecycle(elasticsearch: ElasticSearchContainer):
     # Indices are created with session scope,
     # so we just need to clean them after each test
     yield
-    async with AsyncElasticsearch(elasticsearch.get_url()) as client:
-        await clean_test_indices(client)
+    # Suppress the cleaning, it's very noisy
+    token = context.attach(set_span_in_context(trace.INVALID_SPAN))
+    try:
+        async with AsyncElasticsearch(elasticsearch.get_url()) as client:
+            await clean_test_indices(client)
+    finally:
+        context.detach(token)
 
 
 @pytest.fixture(scope="session")
@@ -275,13 +317,12 @@ def _add_env(
 ) -> DockerContainer:
     """Add environment variables to a container."""
     minio_config = minio.get_config()
-    return (
+    container = (
         container.with_env(
             "MESSAGE_BROKER_URL",
-            f"amqp://guest:guest@{(
-                rabbitmq.get_container_host_ip()
-                .replace('localhost', host_name)
-            )}:{rabbitmq.get_exposed_port(5672)}/",
+            f"amqp://guest:guest@{
+                (rabbitmq.get_container_host_ip().replace('localhost', host_name))
+            }:{rabbitmq.get_exposed_port(5672)}/",
         )
         .with_env(
             "DB_CONFIG",
@@ -320,6 +361,11 @@ def _add_env(
         .with_env("AZURE_APPLICATION_ID", "dummy")
         .with_env("AZURE_TENANT_ID", "dummy")
     )
+    if otel_config:
+        container = container.with_env("OTEL_CONFIG", otel_config).with_env(
+            "OTEL_ENABLED", os.getenv("OTEL_ENABLED", "true")
+        )
+    return container
 
 
 @pytest.fixture(scope="session")

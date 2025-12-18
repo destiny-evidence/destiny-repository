@@ -976,7 +976,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 reference = await self._get_canonical_reference_with_implied_changeset(
                     reference_duplicate_decision.reference_id
                 )
-                await self.detect_and_dispatch_robot_automations(
+                await self._detect_and_dispatch_robot_automations(
                     reference=reference,
                     source_str=f"DuplicateDecision:{reference_duplicate_decision.id}",
                 )
@@ -1176,7 +1176,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     @tracer.start_as_current_span("Detect and dispatch robot automations")
-    async def detect_and_dispatch_robot_automations(
+    async def _detect_and_dispatch_robot_automations(
         self,
         reference: ReferenceWithChangeset | None = None,
         enhancement_ids: Iterable[uuid.UUID] | None = None,
@@ -1210,3 +1210,20 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 reference_ids=robot_automation.reference_ids,
                 source=source_str,
             )
+
+    @sql_unit_of_work
+    @es_unit_of_work
+    async def detect_and_dispatch_robot_automations(
+        self,
+        reference: ReferenceWithChangeset | None = None,
+        enhancement_ids: Iterable[uuid.UUID] | None = None,
+        source_str: str | None = None,
+        skip_robot_id: uuid.UUID | None = None,
+    ) -> None:
+        """Detect and dispatch robot automations for an added reference/enhancement."""
+        await self._detect_and_dispatch_robot_automations(
+            reference=reference,
+            enhancement_ids=enhancement_ids,
+            source_str=source_str,
+            skip_robot_id=skip_robot_id,
+        )
