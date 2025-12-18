@@ -255,7 +255,7 @@ resource "azuread_application_redirect_uris" "external_directory_local_redirect"
   application_id = azuread_application_registration.external_directory_destiny_repository_auth.id
   type           = "PublicClient"
 
-  redirect_uris = var.local_redirect_urls
+  redirect_uris = local.redirect_uris
 }
 
 resource "azuread_application_redirect_uris" "external_directory_ui_redirect" {
@@ -275,7 +275,7 @@ resource "azuread_application_redirect_uris" "external_directory_ui_public_clien
   application_id = azuread_application_registration.external_directory_destiny_repository_auth_ui.id
   type           = "PublicClient"
 
-  redirect_uris = var.local_redirect_urls
+  redirect_uris = local.redirect_uris
 }
 
 # Openalex incremental updater role assignments

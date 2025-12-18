@@ -27,4 +27,10 @@ locals {
     "Project"     = var.project
     "Region"      = var.region
   }
+
+  redirect_uris = [
+    "http://localhost",
+    "https://oauth.pstmn.io/v1/callback",
+    "https://${var.external_directory_tenant_id}.ciamlogin.com/${var.external_directory_tenant_id}/federation/oauth2"
+  ]
 }

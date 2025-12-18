@@ -340,15 +340,6 @@ variable "message_lock_renewal_duration" {
   default     = 12 * 60 * 60 # 12 hours
 }
 
-variable "local_redirect_urls" {
-  description = "List of supported redirect URLs for PublicClient authentication flow"
-  type        = list(string)
-  default = [
-    "http://localhost",
-    "https://oauth.pstmn.io/v1/callback",
-  ]
-}
-
 variable "trusted_unique_identifier_types" {
   description = "External identifier types that are certain to be unique. Used for shortcutting deduplication."
   type        = list(string)
