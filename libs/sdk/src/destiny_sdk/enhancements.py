@@ -56,7 +56,11 @@ class Authorship(BaseModel):
     for our purposes.
     """
 
-    display_name: str = Field(description="The display name of the author.")
+    display_name: str = Field(
+        description="The display name of the author. "
+        "Expected format FIRSTNAME <MIDDLENAME> LASTNAME. "
+        "Providing display_name in an unexpected format will affect search performance."
+    )
     orcid: str | None = Field(default=None, description="The ORCid of the author.")
     position: AuthorPosition = Field(
         description="The position of the author within the list of authors."
