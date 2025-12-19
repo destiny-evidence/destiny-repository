@@ -165,6 +165,9 @@ ExternalIdentifier = Annotated[
     Field(discriminator="identifier_type"),
 ]
 
+#: Any identifier including external identifiers and repository UUID4s.
+Identifier = Annotated[ExternalIdentifier | UUID4, Field()]
+
 ExternalIdentifierAdapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
     ExternalIdentifier
 )
@@ -245,7 +248,7 @@ class IdentifierLookup(BaseModel):
         )
 
     @classmethod
-    def from_identifier(cls, identifier: ExternalIdentifier | UUID4) -> Self:
+    def from_identifier(cls, identifier: Identifier) -> Self:
         """Create an IdentifierLookup from an ExternalIdentifier or UUID4."""
         if isinstance(identifier, uuid.UUID):
             return cls(identifier=str(identifier), identifier_type=None)
@@ -255,7 +258,7 @@ class IdentifierLookup(BaseModel):
             other_identifier_name=getattr(identifier, "other_identifier_name", None),
         )
 
-    def to_identifier(self) -> ExternalIdentifier | UUID4:
+    def to_identifier(self) -> Identifier:
         """Convert into an ExternalIdentifier or UUID4 if it has no identifier_type."""
         if self.identifier_type is None:
             return UUID4(self.identifier)
