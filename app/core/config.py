@@ -262,7 +262,7 @@ class Settings(BaseSettings):
     otel_enabled: bool = False
 
     azure_application_id: str
-    azure_login_url: HttpUrl = HttpUrl("https://login.microsoftonline.com")
+    azure_login_url: str = "https://login.microsoftonline.com"
     azure_tenant_id: str
     message_broker_url: str | None = None
     message_broker_namespace: str | None = None

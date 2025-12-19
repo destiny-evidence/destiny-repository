@@ -44,6 +44,17 @@ variable "azure_tenant_id" {
   type        = string
 }
 
+variable "external_directory_tenant_id" {
+  description = "ID of the external directory tenant for the Azure AD provider"
+  type        = string
+}
+
+variable "azure_login_url" {
+  description = "Azure login URL for JWT token validation. Examples: https://login.microsoftonline.com, https://tenantName.ciamlogin.com"
+  type        = string
+  default     = "https://login.microsoftonline.com"
+}
+
 variable "budget_code" {
   description = "Budget code for tagging resource groups. Required tag for resource groups"
   type        = string
@@ -112,7 +123,22 @@ variable "developers_group_id" {
   description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs"
 }
 
+variable "external_directory_developers_group_id" {
+  type        = string
+  description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs"
+}
+
+variable "external_directory_client_id" {
+  description = "Client ID of the external directory application"
+  type        = string
+}
+
 variable "ui_users_group_id" {
+  type        = string
+  description = "Id of a group to assign to UI-relevant API roles on destiny repository"
+}
+
+variable "external_directory_ui_users_group_id" {
   type        = string
   description = "Id of a group to assign to UI-relevant API roles on destiny repository"
 }
@@ -171,6 +197,11 @@ variable "region" {
 
 variable "open_alex_incremental_updater_client_id" {
   description = "The client id of the open alex incrememtal updater application"
+  type        = string
+}
+
+variable "open_alex_incremental_updater_external_client_id" {
+  description = "The client id of the open alex incrememtal updater application in the external tenant"
   type        = string
 }
 
@@ -307,15 +338,6 @@ variable "message_lock_renewal_duration" {
   description = "Duration to renew message locks for in seconds"
   type        = number
   default     = 12 * 60 * 60 # 12 hours
-}
-
-variable "local_redirect_urls" {
-  description = "List of supported redirect URLs for PublicClient authentication flow"
-  type        = list(string)
-  default = [
-    "http://localhost",
-    "https://oauth.pstmn.io/v1/callback",
-  ]
 }
 
 variable "trusted_unique_identifier_types" {
