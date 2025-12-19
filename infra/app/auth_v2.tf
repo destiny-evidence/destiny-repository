@@ -266,6 +266,7 @@ resource "azuread_application_redirect_uris" "external_directory_ui_redirect" {
 
   redirect_uris = [
     "https://${data.azurerm_container_app.ui.ingress[0].fqdn}",
+    "http://localhost"
   ]
 }
 

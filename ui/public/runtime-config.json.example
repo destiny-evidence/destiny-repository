@@ -7,4 +7,5 @@
     "NEXT_PUBLIC_AZURE_CLIENT_ID"="<replace-me>",
     "NEXT_PUBLIC_AZURE_TENANT_ID="<replace-me>",
     "NEXT_PUBLIC_AZURE_APPLICATION_ID"="<replace-me>"
+    "AZURE_LOGIN_URL"="<replace-me>"
 }
