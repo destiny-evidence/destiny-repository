@@ -252,30 +252,30 @@ resource "azuread_application_redirect_uris" "ui_public_client_redirect" {
   redirect_uris = var.local_redirect_urls
 }
 
-# Openalex incremental updater role assignments
-data "azuread_application" "openalex_incremental_updater" {
-  client_id = var.open_alex_incremental_updater_client_id
-}
+# # Openalex incremental updater role assignments
+# data "azuread_application" "openalex_incremental_updater" {
+#   client_id = var.open_alex_incremental_updater_client_id
+# }
 
-resource "azuread_application_api_access" "openalex_incremental_updater" {
-  application_id = data.azuread_application.openalex_incremental_updater.id
-  api_client_id  = azuread_application.destiny_repository.client_id
+# resource "azuread_application_api_access" "openalex_incremental_updater" {
+#   application_id = data.azuread_application.openalex_incremental_updater.id
+#   api_client_id  = azuread_application.destiny_repository.client_id
 
-  # Only importer role
-  role_ids = [
-    azuread_application_app_role.importer.role_id
-  ]
-}
+#   # Only importer role
+#   role_ids = [
+#     azuread_application_app_role.importer.role_id
+#   ]
+# }
 
-# DESTINY UI role assignments
-# Note: this is a separate app, not the inbuilt repository UI
-data "azurerm_user_assigned_identity" "destiny_demonstrator_ui" {
-  name                = var.destiny_demonstrator_ui_app_name
-  resource_group_name = "rg-${var.destiny_demonstrator_ui_app_name}-${var.environment}"
-}
+# # DESTINY UI role assignments
+# # Note: this is a separate app, not the inbuilt repository UI
+# data "azurerm_user_assigned_identity" "destiny_demonstrator_ui" {
+#   name                = var.destiny_demonstrator_ui_app_name
+#   resource_group_name = "rg-${var.destiny_demonstrator_ui_app_name}-${var.environment}"
+# }
 
-resource "azuread_app_role_assignment" "destiny_demonstrator_ui_to_reference_reader" {
-  app_role_id         = azuread_application_app_role.reference_reader.role_id
-  principal_object_id = data.azurerm_user_assigned_identity.destiny_demonstrator_ui.principal_id
-  resource_object_id  = azuread_service_principal.destiny_repository.object_id
-}
+# resource "azuread_app_role_assignment" "destiny_demonstrator_ui_to_reference_reader" {
+#   app_role_id         = azuread_application_app_role.reference_reader.role_id
+#   principal_object_id = data.azurerm_user_assigned_identity.destiny_demonstrator_ui.principal_id
+#   resource_object_id  = azuread_service_principal.destiny_repository.object_id
+# }
