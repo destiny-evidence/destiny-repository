@@ -94,19 +94,32 @@ jobs:
           echo "::add-mask::$url"
           echo "url=$url" >> $GITHUB_OUTPUT
 
-      - name: "Az CLI login to external tenant"
-        uses: azure/login@v2.1.0
-        with:
-          client-id: ${{ vars.AZURE_EXTERNAL_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_EXTERNAL_TENANT_ID }}
-          allow-no-subscriptions: true
-
       - name: Get access token for Destiny API
         id: get_token
         env:
-          API_IDENTIFIER_URI: ${{ vars.DESTINY_API_IDENTIFIER_URI }}
+          TENANT_ID: ${{ vars.AZURE_EXTERNAL_TENANT_ID }}
+          CLIENT_ID: ${{ vars.AZURE_EXTERNAL_CLIENT_ID }}
+          API_SCOPE: ${{ vars.DESTINY_API_IDENTIFIER_URI }}/.default
         run: |
-          access_token=$(az account get-access-token --resource $API_IDENTIFIER_URI --query accessToken --output tsv)
+          # Get GitHub's OIDC token
+          GITHUB_TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" | jq -r '.value')
+
+          # Exchange for CIAM access token
+          RESPONSE=$(curl -s -X POST \
+            "https://${TENANT_ID}.ciamlogin.com/${TENANT_ID}/oauth2/v2.0/token" \
+            -d "client_id=${CLIENT_ID}" \
+            -d "scope=${API_SCOPE}" \
+            -d "client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer" \
+            -d "client_assertion=${GITHUB_TOKEN}" \
+            -d "grant_type=client_credentials")
+
+          access_token=$(echo "$RESPONSE" | jq -r '.access_token')
+          if [ "$access_token" = "null" ]; then
+            echo "Error: $(echo "$RESPONSE" | jq -r '.error_description')"
+            exit 1
+          fi
+
           echo "::add-mask::$access_token"
           echo "token=$access_token" >> $GITHUB_OUTPUT
 
