@@ -8,7 +8,7 @@ locals {
     "robot-automation-percolation*"
   ]
   is_production  = var.environment == "production"
-  is_development = var.environment == "development"
+  is_development = var.environment == "development" || var.environment == "infra-sandbox"
 
   minimum_resource_tags = {
     # All these tags are required for UCL tenant compliance policies
