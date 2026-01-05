@@ -5,8 +5,7 @@ terraform {
     organization = "destiny-evidence"
 
     workspaces {
-      project = "DESTINY"
-      tags    = ["destiny-repository"]
+      name = "destiny-repository-infra-sandbox"
     }
   }
 
@@ -31,15 +30,15 @@ terraform {
       version = "6.6.0"
     }
 
-    ec = {
-      source  = "elastic/ec"
-      version = "0.12.2"
-    }
+    # ec = {
+    #   source  = "elastic/ec"
+    #   version = "0.12.2"
+    # }
 
-    elasticstack = {
-      source  = "elastic/elasticstack"
-      version = "0.11.15"
-    }
+    # elasticstack = {
+    #   source  = "elastic/elasticstack"
+    #   version = "0.11.15"
+    # }
 
     honeycombio = {
       source  = "honeycombio/honeycombio"
@@ -67,17 +66,17 @@ provider "github" {
   }
 }
 
-provider "ec" {
-  apikey = var.elastic_cloud_apikey
-}
+# provider "ec" {
+#   apikey = var.elastic_cloud_apikey
+# }
 
-provider "elasticstack" {
-  elasticsearch {
-    endpoints = ["${ec_deployment.cluster.elasticsearch.https_endpoint}"]
-    username  = ec_deployment.cluster.elasticsearch_username
-    password  = ec_deployment.cluster.elasticsearch_password
-  }
-}
+# provider "elasticstack" {
+#   elasticsearch {
+#     endpoints = ["${ec_deployment.cluster.elasticsearch.https_endpoint}"]
+#     username  = ec_deployment.cluster.elasticsearch_username
+#     password  = ec_deployment.cluster.elasticsearch_password
+#   }
+# }
 
 provider "honeycombio" {
   # Honeycomb requires two different API auth scopes

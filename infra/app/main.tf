@@ -86,10 +86,10 @@ locals {
         container            = azurerm_storage_container.operations.name
       })
     },
-    {
-      name        = "ES_CONFIG"
-      secret_name = "es-config"
-    },
+    # {
+    #   name        = "ES_CONFIG"
+    #   secret_name = "es-config"
+    # },
     {
       name        = "OTEL_CONFIG"
       secret_name = "otel-config"
@@ -126,13 +126,13 @@ locals {
       name  = "servicebus-connection-string"
       value = azurerm_servicebus_namespace.this.default_primary_connection_string
     },
-    {
-      name = "es-config"
-      value = jsonencode({
-        cloud_id = ec_deployment.cluster.elasticsearch.cloud_id
-        api_key  = elasticstack_elasticsearch_security_api_key.app.encoded
-      })
-    },
+    # {
+    #   name = "es-config"
+    #   value = jsonencode({
+    #     cloud_id = ec_deployment.cluster.elasticsearch.cloud_id
+    #     api_key  = elasticstack_elasticsearch_security_api_key.app.encoded
+    #   })
+    # },
     {
       name = "otel-config"
       value = jsonencode({
@@ -444,237 +444,237 @@ resource "azurerm_role_assignment" "blob_storage_rw" {
   principal_id         = each.value
 }
 
-resource "ec_deployment" "cluster" {
-  name                   = "${var.app_name}-${substr(var.environment, 0, 4)}-es"
-  region                 = var.elasticsearch_region
-  version                = var.elastic_stack_version
-  deployment_template_id = "azure-general-purpose"
+# resource "ec_deployment" "cluster" {
+#   name                   = "${var.app_name}-${substr(var.environment, 0, 4)}-es"
+#   region                 = var.elasticsearch_region
+#   version                = var.elastic_stack_version
+#   deployment_template_id = "azure-general-purpose"
 
-  elasticsearch = {
-    autoscale = true
+#   elasticsearch = {
+#     autoscale = true
 
-    hot = {
-      size = "2g"
-      autoscaling = {
-        max_size          = "30g"
-        max_size_resource = "memory"
-      }
-    }
+#     hot = {
+#       size = "2g"
+#       autoscaling = {
+#         max_size          = "30g"
+#         max_size_resource = "memory"
+#       }
+#     }
 
-    warm = {
-      size = "0g"
-      autoscaling = {
-        max_size          = "30g"
-        max_size_resource = "memory"
-      }
-    }
+#     warm = {
+#       size = "0g"
+#       autoscaling = {
+#         max_size          = "30g"
+#         max_size_resource = "memory"
+#       }
+#     }
 
-    cold = {
-      size = "0g"
-      autoscaling = {
-        max_size          = "60g"
-        max_size_resource = "memory"
-      }
-    }
+#     cold = {
+#       size = "0g"
+#       autoscaling = {
+#         max_size          = "60g"
+#         max_size_resource = "memory"
+#       }
+#     }
 
-    frozen = {
-      size = "0g"
-      autoscaling = {
-        max_size          = "60g"
-        max_size_resource = "memory"
-      }
-    }
+#     frozen = {
+#       size = "0g"
+#       autoscaling = {
+#         max_size          = "60g"
+#         max_size_resource = "memory"
+#       }
+#     }
 
-    ml = {
-      size = "0g"
-      autoscaling = {
-        max_size          = "30g"
-        max_size_resource = "memory"
-      }
-    }
-  }
+#     ml = {
+#       size = "0g"
+#       autoscaling = {
+#         max_size          = "30g"
+#         max_size_resource = "memory"
+#       }
+#     }
+#   }
 
-  kibana = {}
+#   kibana = {}
 
-  observability = {
-    deployment_id = "self"
-    logs          = true
-    metrics       = true
-  }
+#   observability = {
+#     deployment_id = "self"
+#     logs          = true
+#     metrics       = true
+#   }
 
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes = [
-      elasticsearch.hot.size,
-      elasticsearch.warm.size,
-      elasticsearch.cold.size,
-      elasticsearch.frozen.size,
-      elasticsearch.ml.size
-    ]
-  }
-}
+#   lifecycle {
+#     prevent_destroy = true
+#     ignore_changes = [
+#       elasticsearch.hot.size,
+#       elasticsearch.warm.size,
+#       elasticsearch.cold.size,
+#       elasticsearch.frozen.size,
+#       elasticsearch.ml.size
+#     ]
+#   }
+# }
 
-resource "elasticstack_elasticsearch_security_api_key" "app" {
-  name = "${var.app_name}-${var.environment}-app"
-  role_descriptors = jsonencode({
-    app_access = {
-      cluster = ["monitor"]
-      indices = [
-        {
-          names                    = local.managed_indices
-          privileges               = ["read", "write", "create_index", "manage"]
-          allow_restricted_indices = false
-        }
-      ]
-    }
-  })
-}
+# resource "elasticstack_elasticsearch_security_api_key" "app" {
+#   name = "${var.app_name}-${var.environment}-app"
+#   role_descriptors = jsonencode({
+#     app_access = {
+#       cluster = ["monitor"]
+#       indices = [
+#         {
+#           names                    = local.managed_indices
+#           privileges               = ["read", "write", "create_index", "manage"]
+#           allow_restricted_indices = false
+#         }
+#       ]
+#     }
+#   })
+# }
 
 
-resource "elasticstack_elasticsearch_security_api_key" "read_only" {
-  name = "${var.app_name}-${var.environment}-read-only"
-  role_descriptors = jsonencode({
-    app_access = {
-      cluster = ["monitor"]
-      indices = [
-        {
-          names                    = local.managed_indices
-          privileges               = ["read"]
-          allow_restricted_indices = false
-        }
-      ]
-    }
-  })
-}
+# resource "elasticstack_elasticsearch_security_api_key" "read_only" {
+#   name = "${var.app_name}-${var.environment}-read-only"
+#   role_descriptors = jsonencode({
+#     app_access = {
+#       cluster = ["monitor"]
+#       indices = [
+#         {
+#           names                    = local.managed_indices
+#           privileges               = ["read"]
+#           allow_restricted_indices = false
+#         }
+#       ]
+#     }
+#   })
+# }
 
-resource "elasticstack_elasticsearch_snapshot_lifecycle" "snapshots" {
-  name = "snapshot-policy"
+# resource "elasticstack_elasticsearch_snapshot_lifecycle" "snapshots" {
+#   name = "snapshot-policy"
 
-  # Every 30 minutes for production, once a day at 01:30 AM otherwise
-  schedule   = local.is_production ? "0 */30 * * * ?" : "0 30 1 * * ?"
-  repository = "found-snapshots" # Default Elastic Cloud repository
+#   # Every 30 minutes for production, once a day at 01:30 AM otherwise
+#   schedule   = local.is_production ? "0 */30 * * * ?" : "0 30 1 * * ?"
+#   repository = "found-snapshots" # Default Elastic Cloud repository
 
-  expire_after = "30d"
-  min_count    = local.is_production ? 336 : 7 # 7 days worth
-}
+#   expire_after = "30d"
+#   min_count    = local.is_production ? 336 : 7 # 7 days worth
+# }
 
-resource "azurerm_role_assignment" "es_index_migrator_acr_access" {
-  principal_id         = azurerm_user_assigned_identity.es_index_migrator.principal_id
-  scope                = data.azurerm_container_registry.this.id
-  role_definition_name = "AcrPull"
+# resource "azurerm_role_assignment" "es_index_migrator_acr_access" {
+#   principal_id         = azurerm_user_assigned_identity.es_index_migrator.principal_id
+#   scope                = data.azurerm_container_registry.this.id
+#   role_definition_name = "AcrPull"
 
-  # terraform seems unable to replace the role assignment, so we need to ignore changes
-  lifecycle {
-    ignore_changes = [principal_id, scope]
-  }
-}
+#   # terraform seems unable to replace the role assignment, so we need to ignore changes
+#   lifecycle {
+#     ignore_changes = [principal_id, scope]
+#   }
+# }
 
-resource "elasticstack_elasticsearch_security_api_key" "es_index_migrator" {
-  name = local.es_index_migrator_name
-  role_descriptors = jsonencode({
-    app_access = {
-      cluster = ["monitor"]
-      indices = [
-        {
-          names                    = local.managed_indices
-          privileges               = ["all"]
-          allow_restricted_indices = false
-        }
-      ]
-    }
-  })
-}
+# resource "elasticstack_elasticsearch_security_api_key" "es_index_migrator" {
+#   name = local.es_index_migrator_name
+#   role_descriptors = jsonencode({
+#     app_access = {
+#       cluster = ["monitor"]
+#       indices = [
+#         {
+#           names                    = local.managed_indices
+#           privileges               = ["all"]
+#           allow_restricted_indices = false
+#         }
+#       ]
+#     }
+#   })
+# }
 
-resource "azurerm_container_app_job" "es_index_migrator" {
-  name                         = local.es_index_migrator_name
-  location                     = azurerm_resource_group.this.location
-  resource_group_name          = azurerm_resource_group.this.name
-  container_app_environment_id = module.container_app.container_app_env_id
+# resource "azurerm_container_app_job" "es_index_migrator" {
+#   name                         = local.es_index_migrator_name
+#   location                     = azurerm_resource_group.this.location
+#   resource_group_name          = azurerm_resource_group.this.name
+#   container_app_environment_id = module.container_app.container_app_env_id
 
-  replica_timeout_in_seconds = var.elasticsearch_index_migrator_timeout
+#   replica_timeout_in_seconds = var.elasticsearch_index_migrator_timeout
 
-  # If the replica fails, do not retry
-  replica_retry_limit = 0
+#   # If the replica fails, do not retry
+#   replica_retry_limit = 0
 
-  manual_trigger_config {
-    parallelism              = 1
-    replica_completion_count = 1
-  }
+#   manual_trigger_config {
+#     parallelism              = 1
+#     replica_completion_count = 1
+#   }
 
-  registry {
-    identity = azurerm_user_assigned_identity.es_index_migrator.id
-    server   = data.azurerm_container_registry.this.login_server
-  }
+#   registry {
+#     identity = azurerm_user_assigned_identity.es_index_migrator.id
+#     server   = data.azurerm_container_registry.this.login_server
+#   }
 
-  identity {
-    type         = "UserAssigned"
-    identity_ids = [azurerm_user_assigned_identity.es_index_migrator.id]
-  }
+#   identity {
+#     type         = "UserAssigned"
+#     identity_ids = [azurerm_user_assigned_identity.es_index_migrator.id]
+#   }
 
-  secret {
-    name = "es-config"
-    value = jsonencode({
-      cloud_id = ec_deployment.cluster.elasticsearch.cloud_id
-      api_key  = elasticstack_elasticsearch_security_api_key.es_index_migrator.encoded
-    })
-  }
+#   # secret {
+#   #   name = "es-config"
+#   #   value = jsonencode({
+#   #     cloud_id = ec_deployment.cluster.elasticsearch.cloud_id
+#   #     api_key  = elasticstack_elasticsearch_security_api_key.es_index_migrator.encoded
+#   #   })
+#   # }
 
-  secret {
-    name = "otel-config"
-    value = jsonencode({
-      trace_endpoint = var.honeycombio_trace_endpoint
-      meter_endpoint = var.honeycombio_meter_endpoint
-      log_endpoint   = var.honeycombio_log_endpoint
-      api_key        = honeycombio_api_key.this.key
-    })
-  }
+#   secret {
+#     name = "otel-config"
+#     value = jsonencode({
+#       trace_endpoint = var.honeycombio_trace_endpoint
+#       meter_endpoint = var.honeycombio_meter_endpoint
+#       log_endpoint   = var.honeycombio_log_endpoint
+#       api_key        = honeycombio_api_key.this.key
+#     })
+#   }
 
-  template {
-    container {
-      image   = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
-      name    = "${local.es_index_migrator_name}0"
-      command = ["echo", "'Empty command'"]
-      cpu     = 0.5
-      memory  = "1Gi"
+#   template {
+#     container {
+#       image   = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+#       name    = "${local.es_index_migrator_name}0"
+#       command = ["echo", "'Empty command'"]
+#       cpu     = 0.5
+#       memory  = "1Gi"
 
-      env {
-        name  = "APP_NAME"
-        value = local.es_index_migrator_name
-      }
+#       env {
+#         name  = "APP_NAME"
+#         value = local.es_index_migrator_name
+#       }
 
-      env {
-        name        = "ES_CONFIG"
-        secret_name = "es-config"
-      }
+#       # env {
+#       #   name        = "ES_CONFIG"
+#       #   secret_name = "es-config"
+#       # }
 
-      env {
-        name        = "OTEL_CONFIG"
-        secret_name = "otel-config"
-      }
+#       env {
+#         name        = "OTEL_CONFIG"
+#         secret_name = "otel-config"
+#       }
 
-      env {
-        name  = "ENV"
-        value = var.environment
-      }
+#       env {
+#         name  = "ENV"
+#         value = var.environment
+#       }
 
-      env {
-        name  = "OTEL_ENABLED"
-        value = var.telemetry_enabled
-      }
+#       env {
+#         name  = "OTEL_ENABLED"
+#         value = var.telemetry_enabled
+#       }
 
-      env {
-        name  = "REINDEX_STATUS_POLLING_INTERVAL"
-        value = var.es_migrator_reindex_polling_interval
-      }
-    }
-  }
+#       env {
+#         name  = "REINDEX_STATUS_POLLING_INTERVAL"
+#         value = var.es_migrator_reindex_polling_interval
+#       }
+#     }
+#   }
 
-  # Allow us to update the image via github actions or the Azure Portal
-  # Allow us to specify the command via the Azure Portal when triggering the job without it being overwritten
-  lifecycle {
-    ignore_changes = [template[0].container[0].image, template[0].container[0].command]
-  }
-}
+#   # Allow us to update the image via github actions or the Azure Portal
+#   # Allow us to specify the command via the Azure Portal when triggering the job without it being overwritten
+#   lifecycle {
+#     ignore_changes = [template[0].container[0].image, template[0].container[0].command]
+#   }
+# }
 
 locals {
   scheduled_jobs = {
