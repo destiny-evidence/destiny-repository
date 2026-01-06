@@ -56,8 +56,9 @@ variable "external_directory_tenant_id" {
 }
 
 variable "azure_login_url" {
-  description = "Azure login URL for JWT token validation. Examples: https://login.microsoftonline.com/tenantId, https://tenantName.ciamlogin.com/tenantId"
+  description = "Azure login URL for JWT token validation. Required when external_directory_enabled is true. Examples: https://login.microsoftonline.com/tenantId, https://tenantName.ciamlogin.com/tenantId"
   type        = string
+  default     = null
 }
 
 variable "budget_code" {
