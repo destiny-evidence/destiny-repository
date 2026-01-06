@@ -3,7 +3,6 @@
 import asyncio
 import os
 from contextvars import ContextVar
-from logging.config import fileConfig
 from typing import Any
 
 from alembic import context
@@ -43,7 +42,7 @@ if settings.otel_config and settings.otel_enabled:
     configure_otel(
         settings.otel_config,
         "db-migrator",
-        settings.app_version,
+        settings.toml.app_version,
         settings.env,
         settings.trace_repr,
     )
