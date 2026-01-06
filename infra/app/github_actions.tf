@@ -122,7 +122,7 @@ resource "github_actions_environment_variable" "destiny_api_identifier_uri" {
   repository    = github_repository_environment.environment.repository
   environment   = github_repository_environment.environment.environment
   variable_name = "DESTINY_API_IDENTIFIER_URI"
-  value         = var.external_directory_enabled ? azuread_application_identifier_uri.external_directory_identifier_uri.identifier_uri : azuread_application_identifier_uri.destiny_repository.identifier_uri
+  value         = var.external_directory_enabled ? azuread_application_identifier_uri.external_directory_identifier_uri.identifier_uri : azuread_application_identifier_uri.this.identifier_uri
 }
 
 resource "github_actions_environment_variable" "pypi_repository" {
