@@ -97,17 +97,17 @@ jobs:
       - name: Get access token for Destiny API
         id: get_token
         env:
-          TENANT_ID: ${{ vars.AZURE_EXTERNAL_TENANT_ID }}
-          CLIENT_ID: ${{ vars.AZURE_EXTERNAL_CLIENT_ID }}
+          LOGIN_URL: ${{ vars.AZURE_LOGIN_URL }}
+          CLIENT_ID: ${{ vars.AZURE_DIRECTORY_CLIENT_ID }}
           API_SCOPE: ${{ vars.DESTINY_API_IDENTIFIER_URI }}/.default
         run: |
           # Get GitHub's OIDC token
           GITHUB_TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" | jq -r '.value')
 
-          # Exchange for CIAM access token
+          # Exchange for access token
           RESPONSE=$(curl -s -X POST \
-            "https://${TENANT_ID}.ciamlogin.com/${TENANT_ID}/oauth2/v2.0/token" \
+            "${LOGIN_URL}/oauth2/v2.0/token" \
             -d "client_id=${CLIENT_ID}" \
             -d "scope=${API_SCOPE}" \
             -d "client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer" \

@@ -44,9 +44,16 @@ variable "azure_tenant_id" {
   type        = string
 }
 
+variable "external_directory_enabled" {
+  description = "Enable authentication via the external directory (CIAM). When false, uses the application tenant for authentication."
+  type        = bool
+  default     = false
+}
+
 variable "external_directory_tenant_id" {
-  description = "ID of the external directory tenant for the Azure AD provider"
+  description = "ID of the external directory tenant for the Azure AD provider. Required when external_directory_enabled is true."
   type        = string
+  default     = ""
 }
 
 variable "azure_login_url" {
@@ -125,12 +132,14 @@ variable "developers_group_id" {
 
 variable "external_directory_developers_group_id" {
   type        = string
-  description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs"
+  description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs. Required when external_directory_enabled is true."
+  default     = ""
 }
 
 variable "external_directory_client_id" {
-  description = "Client ID of the external directory application"
+  description = "Client ID of the external directory application. Required when external_directory_enabled is true."
   type        = string
+  default     = ""
 }
 
 variable "ui_users_group_id" {
@@ -140,7 +149,8 @@ variable "ui_users_group_id" {
 
 variable "external_directory_ui_users_group_id" {
   type        = string
-  description = "Id of a group to assign to UI-relevant API roles on destiny repository"
+  description = "Id of a group to assign to UI-relevant API roles on destiny repository. Required when external_directory_enabled is true."
+  default     = ""
 }
 
 variable "db_crud_group_id" {
@@ -201,8 +211,9 @@ variable "open_alex_incremental_updater_client_id" {
 }
 
 variable "open_alex_incremental_updater_external_client_id" {
-  description = "The client id of the open alex incrememtal updater application in the external tenant"
+  description = "The client id of the open alex incrememtal updater application in the external tenant. Required when external_directory_enabled is true."
   type        = string
+  default     = ""
 }
 
 variable "destiny_demonstrator_ui_app_name" {
