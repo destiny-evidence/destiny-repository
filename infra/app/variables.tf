@@ -56,9 +56,8 @@ variable "external_directory_tenant_id" {
 }
 
 variable "azure_login_url" {
-  description = "Azure login URL for JWT token validation. Examples: https://login.microsoftonline.com, https://tenantName.ciamlogin.com"
+  description = "Azure login URL for JWT token validation. Examples: https://login.microsoftonline.com/tenantId, https://tenantName.ciamlogin.com/tenantId"
   type        = string
-  default     = "https://login.microsoftonline.com"
 }
 
 variable "budget_code" {
@@ -132,7 +131,6 @@ variable "developers_group_id" {
 variable "external_directory_developers_group_id" {
   type        = string
   description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs. Required when external_directory_enabled is true."
-  default     = ""
 }
 
 variable "external_directory_client_id" {
