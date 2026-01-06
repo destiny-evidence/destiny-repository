@@ -31,7 +31,6 @@ class CLIAuth(httpx.Auth):
             access_token = get_token(
                 cli_client_id=settings.cli_client_id,
                 azure_login_url=str(settings.azure_login_url),
-                azure_tenant_id=settings.azure_tenant_id,
                 azure_application_id=settings.azure_application_id,
             )
 
