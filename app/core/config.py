@@ -210,6 +210,11 @@ class Environment(StrEnum):
     LOCAL = auto()
     TEST = auto()
 
+    @classmethod
+    def local_envs(cls) -> set["Environment"]:
+        """Get environment values that are for local development."""
+        return {cls.LOCAL, cls.TEST}
+
 
 class LogLevel(StrEnum):
     """Log level enum."""
@@ -426,7 +431,7 @@ class Settings(BaseSettings):
     @property
     def running_locally(self) -> bool:
         """Return True if the app is running locally."""
-        return self.env in (Environment.LOCAL, Environment.TEST)
+        return self.env in Environment.local_envs()
 
     @property
     def default_blob_location(self) -> str:
