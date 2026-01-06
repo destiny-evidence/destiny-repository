@@ -53,7 +53,6 @@ variable "external_directory_enabled" {
 variable "external_directory_tenant_id" {
   description = "ID of the external directory tenant for the Azure AD provider. Required when external_directory_enabled is true."
   type        = string
-  default     = ""
 }
 
 variable "azure_login_url" {
@@ -139,7 +138,6 @@ variable "external_directory_developers_group_id" {
 variable "external_directory_client_id" {
   description = "Client ID of the external directory application. Required when external_directory_enabled is true."
   type        = string
-  default     = ""
 }
 
 variable "ui_users_group_id" {
