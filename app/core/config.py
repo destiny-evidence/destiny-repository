@@ -280,8 +280,7 @@ class Settings(BaseSettings):
     max_lookup_reference_query_length: int = Field(
         default=100,
         description=(
-            "Maximum number of identifiers to allow in a single reference lookup "
-            "query."
+            "Maximum number of identifiers to allow in a single reference lookup query."
         ),
     )
 
@@ -451,7 +450,6 @@ class Settings(BaseSettings):
 
     @property
     def trace_repr(self) -> str:
-        # ruff: noqa: E501
         """Get a string representation of the config for tracing."""
         return (
             f"feature_flags={self.feature_flags.model_dump_json()},"

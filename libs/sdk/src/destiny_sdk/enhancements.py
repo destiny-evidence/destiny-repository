@@ -8,6 +8,7 @@ from typing import Annotated, Any, Literal, Self
 from pydantic import UUID4, BaseModel, Field, HttpUrl, model_validator
 
 from destiny_sdk.core import _JsonlFileInputMixIn
+from destiny_sdk.identifiers import Identifier
 from destiny_sdk.visibility import Visibility
 
 
@@ -26,6 +27,8 @@ class EnhancementType(StrEnum):
     """A free-form enhancement for tagging with labels."""
     LOCATION = auto()
     """Locations where the reference can be found."""
+    REFERENCE_ASSOCIATION = auto()
+    """Associations to other references."""
     RAW = auto()
     """A free form enhancement for arbitrary/unstructured data."""
     FULL_TEXT = auto()
@@ -56,7 +59,11 @@ class Authorship(BaseModel):
     for our purposes.
     """
 
-    display_name: str = Field(description="The display name of the author.")
+    display_name: str = Field(
+        description="The display name of the author. "
+        "Expected format FIRSTNAME <MIDDLENAME> LASTNAME. "
+        "Providing display_name in an unexpected format will affect search performance."
+    )
     orcid: str | None = Field(default=None, description="The ORCid of the author.")
     position: AuthorPosition = Field(
         description="The position of the author within the list of authors."
@@ -320,6 +327,43 @@ class LocationEnhancement(BaseModel):
     )
 
 
+class ReferenceAssociationType(StrEnum):
+    """
+    The type of association between references.
+
+    Direction is important: "this reference <association_type> associated reference".
+    """
+
+    CITES = auto()
+    """This reference cites the related reference."""
+    IS_CITED_BY = auto()
+    """This reference is cited by the related reference."""
+    IS_SIMILAR_TO = auto()
+    """This reference is similar to the related reference."""
+
+
+class ReferenceAssociationEnhancement(BaseModel):
+    """An enhancement for storing associations between references."""
+
+    enhancement_type: Literal[EnhancementType.REFERENCE_ASSOCIATION] = (
+        EnhancementType.REFERENCE_ASSOCIATION
+    )
+    associated_reference_ids: list[Identifier] = Field(
+        min_length=1,
+        description=(
+            "A list of Identifiers which are associated to this reference. "
+            "These can either be ExternalIdentifiers or resolved repository UUID4s."
+        ),
+    )
+    association_type: ReferenceAssociationType = Field(
+        description=(
+            "The type of association between this reference and the associated ones. "
+            "Direction is important: "
+            '"this reference <association_type> associated reference".'
+        )
+    )
+
+
 class RawEnhancement(BaseModel):
     """
     An enhancement for storing raw/arbitrary/unstructured data.
@@ -377,6 +421,7 @@ EnhancementContent = Annotated[
     | AbstractContentEnhancement
     | AnnotationEnhancement
     | LocationEnhancement
+    | ReferenceAssociationEnhancement
     | RawEnhancement,
     Field(discriminator="enhancement_type"),
 ]
