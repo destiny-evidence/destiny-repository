@@ -150,7 +150,6 @@ variable "ui_users_group_id" {
 variable "external_directory_ui_users_group_id" {
   type        = string
   description = "Id of a group to assign to UI-relevant API roles on destiny repository. Required when external_directory_enabled is true."
-  default     = ""
 }
 
 variable "db_crud_group_id" {
@@ -213,7 +212,6 @@ variable "open_alex_incremental_updater_client_id" {
 variable "open_alex_incremental_updater_external_client_id" {
   description = "The client id of the open alex incrememtal updater application in the external tenant. Required when external_directory_enabled is true."
   type        = string
-  default     = ""
 }
 
 variable "destiny_demonstrator_ui_app_name" {
