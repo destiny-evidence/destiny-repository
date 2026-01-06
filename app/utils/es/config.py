@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     @property
     def running_locally(self) -> bool:
         """Return True if the migration is running locally."""
-        return self.env in (Environment.LOCAL, Environment.TEST)
+        return self.env in Environment.local_envs()
 
 
 @lru_cache(maxsize=1)
