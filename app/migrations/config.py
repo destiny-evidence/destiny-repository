@@ -1,14 +1,13 @@
 """Alembic config parsing and model."""
 
-import tomllib
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.config import (
+    TOML,
     DatabaseConfig,
     Environment,
     FeatureFlags,
@@ -24,7 +23,7 @@ class Settings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
-    project_root: Path = Path(__file__).joinpath("../../..").resolve()
+    toml: TOML = TOML(toml_path=Path(__file__).joinpath("../../..").resolve())
 
     feature_flags: FeatureFlags = FeatureFlags()
 
@@ -41,16 +40,6 @@ class Settings(BaseSettings):
         default=LogLevel.INFO,
         description="The log level for the application.",
     )
-
-    @property
-    def pyproject_toml(self) -> dict[str, Any]:
-        """Get the contents of pyproject.toml."""
-        return tomllib.load((self.project_root / "pyproject.toml").open("rb"))
-
-    @property
-    def app_version(self) -> str:
-        """Get the application version from pyproject.toml."""
-        return self.pyproject_toml["project"]["version"]
 
     @property
     def trace_repr(self) -> str:

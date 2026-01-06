@@ -239,6 +239,27 @@ class UploadFile(StrEnum):
     ROBOT_ENHANCEMENT_REFERENCE_DATA = auto()
 
 
+class TOML(BaseModel):
+    """Information extracted from a pyproject.toml file."""
+
+    toml_path: Path = Field(
+        description=(
+            "Path to the directroy where the pyproject.toml file"
+            "is located from the settings file."
+        )
+    )
+
+    @property
+    def pyproject_toml(self) -> dict[str, Any]:
+        """Get the contents of pyproject.toml."""
+        return tomllib.load((self.toml_path / "pyproject.toml").open("rb"))
+
+    @property
+    def app_version(self) -> str:
+        """Get the application version from pyproject.toml."""
+        return self.pyproject_toml["project"]["version"]
+
+
 class FeatureFlags(BaseModel):
     """Feature flags for the application."""
 
@@ -251,6 +272,7 @@ class Settings(BaseSettings):
     )
 
     project_root: Path = Path(__file__).joinpath("../../..").resolve()
+    toml: TOML = TOML(toml_path=project_root)
 
     feature_flags: FeatureFlags = FeatureFlags()
 
@@ -437,16 +459,6 @@ class Settings(BaseSettings):
             msg = "Azure Blob Storage configuration is not given."
             raise ValueError(msg)
         return self.azure_blob_config.container
-
-    @property
-    def pyproject_toml(self) -> dict[str, Any]:
-        """Get the contents of pyproject.toml."""
-        return tomllib.load((self.project_root / "pyproject.toml").open("rb"))
-
-    @property
-    def app_version(self) -> str:
-        """Get the application version from pyproject.toml."""
-        return self.pyproject_toml["project"]["version"]
 
     @property
     def trace_repr(self) -> str:
