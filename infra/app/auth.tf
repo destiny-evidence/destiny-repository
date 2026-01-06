@@ -21,6 +21,8 @@ resource "azuread_application" "destiny_repository" {
   sign_in_audience = "AzureADMyOrg"
 
   api {
+    requested_access_token_version = 2
+
     oauth2_permission_scope {
       admin_consent_description  = "Allow the app to administer the system as the signed-in user"
       admin_consent_display_name = "Administrator as user"
