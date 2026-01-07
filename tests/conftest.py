@@ -117,12 +117,6 @@ def fake_application_id() -> str:
 
 
 @pytest.fixture
-def fake_tenant_id() -> str:
-    """Return a fake tenant id for testing."""
-    return "test_tenant_id"
-
-
-@pytest.fixture
 def generate_fake_token(
     fake_application_id: str,
 ) -> Callable[[dict | None, AuthScope | None, AuthRole | None], str]:

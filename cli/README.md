@@ -14,7 +14,7 @@ Environments`local` and `test` environment will skip authentication, expecting t
 
 You can override this by setting `DESTINY_REPOSITORY_URL` in the `.env.<ENVIRONMENT>` file.
 
-Use dummy values for `AZURE_TENANT_ID`, `AZURE_APPLICATION_ID`, and `CLI_CLIENT_ID`
+Use dummy values for `AZURE_LOGIN_URL`, `AZURE_APPLICATION_ID`, and `CLI_CLIENT_ID`
 
 ## Commands
 
