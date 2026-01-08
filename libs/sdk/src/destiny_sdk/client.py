@@ -479,6 +479,7 @@ class OAuthClient:
         self,
         base_url: HttpUrl | str,
         auth: httpx.Auth | None = None,
+        timeout: int = 10,
     ) -> None:
         """
         Initialize the client.
@@ -490,6 +491,8 @@ class OAuthClient:
             instance of ``OAuthMiddleware``, unless you need to create a custom auth
             class.
         :type auth: httpx.Auth | None
+        :param timeout: The timeout for requests, in seconds. Defaults to 10 seconds.
+        :type timeout: int
         """
         self._client = httpx.Client(
             base_url=str(base_url).removesuffix("/").removesuffix("/v1") + "/v1",
@@ -497,6 +500,7 @@ class OAuthClient:
                 "Content-Type": "application/json",
                 "User-Agent": user_agent,
             },
+            timeout=timeout,
         )
 
         if auth:
@@ -529,6 +533,7 @@ class OAuthClient:
         annotations: list[str | AnnotationFilter] | None = None,
         sort: str | None = None,
         page: int = 1,
+        timeout: int | None = None,
     ) -> ReferenceSearchResult:
         """
         Send a search request to the Destiny Repository API.
@@ -547,6 +552,9 @@ class OAuthClient:
         :type sort: str | None
         :param page: The page number of results to retrieve.
         :type page: int
+        :param timeout: The timeout for the request, in seconds. If provided, this will override
+        the client timeout.
+        :type timeout: int | None
         :return: The response from the API.
         :rtype: libs.sdk.src.destiny_sdk.references.ReferenceSearchResult
         """  # noqa: E501
@@ -562,6 +570,7 @@ class OAuthClient:
         response = self._client.get(
             "/references/search/",
             params=params,
+            timeout=timeout or httpx.USE_CLIENT_DEFAULT,
         )
         self._raise_for_status(response)
         return ReferenceSearchResult.model_validate(response.json())
@@ -569,6 +578,7 @@ class OAuthClient:
     def lookup(
         self,
         identifiers: list[str | IdentifierLookup],
+        timeout: int | None = None,
     ) -> list[Reference]:
         """
         Lookup references by identifiers.
@@ -577,6 +587,9 @@ class OAuthClient:
 
         :param identifiers: The identifiers to look up.
         :type identifiers: list[str | libs.sdk.src.destiny_sdk.identifiers.IdentifierLookup]
+        :param timeout: The timeout for the request, in seconds. If provided, this will override
+        the client timeout.
+        :type timeout: int | None
         :return: The list of references matching the identifiers.
         :rtype: list[libs.sdk.src.destiny_sdk.references.Reference]
         """  # noqa: E501
@@ -585,6 +598,7 @@ class OAuthClient:
             params={
                 "identifier": ",".join([str(identifier) for identifier in identifiers])
             },
+            timeout=timeout or httpx.USE_CLIENT_DEFAULT,
         )
         self._raise_for_status(response)
         return TypeAdapter(list[Reference]).validate_python(response.json())
