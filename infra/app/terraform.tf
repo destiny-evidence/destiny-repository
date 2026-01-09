@@ -55,6 +55,12 @@ provider "azurerm" {
 provider "azuread" {
 }
 
+provider "azuread" {
+  tenant_id = var.external_directory_tenant_id
+  client_id = var.external_directory_client_id
+  alias     = "external_directory"
+}
+
 provider "azapi" {
 }
 

@@ -263,9 +263,10 @@ class AzureJwtAuth(AuthMethod):
 
         """
         self.tenant_id = tenant_id
-        self.api_audience = f"api://{application_id}"
+        self.api_audience = application_id
         self.scope = scope
         self.role = role
+        self.login_url = settings.azure_login_url.rstrip("/")
         self.cache: TTLCache = TTLCache(maxsize=1, ttl=cache_ttl)
 
     async def verify_token(self, token: str) -> dict[str, Any]:
@@ -302,21 +303,29 @@ class AzureJwtAuth(AuthMethod):
 
         if rsa_key:
             try:
+                expected_issuer = f"{self.login_url}/v2.0"
                 payload = jwt.decode(
                     token,
                     rsa_key,
                     algorithms=["RS256"],
                     audience=self.api_audience,
-                    issuer=f"https://sts.windows.net/{self.tenant_id}/",
+                    issuer=expected_issuer,
                 )
             except exceptions.ExpiredSignatureError as exc:
                 raise AuthError(
                     status_code=status.HTTP_401_UNAUTHORIZED, detail="Token is expired."
                 ) from exc
             except exceptions.JWTClaimsError as exc:
+                unverified = jwt.get_unverified_claims(token)
+                token_aud = unverified.get("aud")
+                token_iss = unverified.get("iss")
                 raise AuthError(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Incorrect claims, please check the audience and issuer.",
+                    detail=(
+                        f"Incorrect claims. "
+                        f"Expected aud={self.api_audience}, got={token_aud}. "
+                        f"Expected iss={expected_issuer}, got={token_iss}"
+                    ),
                 ) from exc
             except Exception as exc:
                 if cached_jwks:
@@ -335,9 +344,7 @@ class AzureJwtAuth(AuthMethod):
 
     async def _get_microsoft_keys(self) -> Any:  # noqa: ANN401
         async with AsyncClient() as client:
-            response = await client.get(
-                f"https://login.microsoftonline.com/{self.tenant_id}/discovery/v2.0/keys"
-            )
+            response = await client.get(f"{self.login_url}/discovery/v2.0/keys")
             return response.json()
 
     def _require_scope_or_role(self, verified_claims: dict[str, Any]) -> bool:

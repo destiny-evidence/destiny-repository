@@ -8,11 +8,11 @@ export default function AuthButton() {
 
   const handleLogin = async () => {
     const request = await getLoginRequest();
-    instance.loginRedirect(request);
+    await instance.loginRedirect(request);
   };
 
-  const handleLogout = () => {
-    instance.logoutRedirect();
+  const handleLogout = async () => {
+    await instance.logoutRedirect();
   };
 
   return accounts.length ? (
