@@ -213,32 +213,47 @@ async def pg_lifecycle(pg_sessionmanager: AsyncDatabaseSessionManager):
         await clean_tables(conn)
 
 
+def get_elasticsearch_url(elasticsearch: ElasticSearchContainer) -> str:
+    """Get the Elasticsearch URL from the container."""
+    return (
+        "http://"
+        f"{elasticsearch.get_container_host_ip()}"
+        f":{elasticsearch.get_exposed_port(9200)}"
+    )
+
+
 @pytest.fixture(scope="session")
 async def elasticsearch():
     """Elasticsearch container with default credentials."""
     logger.info("Creating Elasticsearch container...")
-    with ElasticSearchContainer(
-        "elasticsearch:9.1.4",
+    with (
         # If elasticsearch is failing to start, check the container logs. Exit code 137
         # means out of memory. Annoyingly, this either means:
         # - Docker daemon doesn't have enough memory allocated (mem_limit is too high)
         # - Elasticsearch doesn't have enough memory allocated (mem_limit is too low)
         # Fun!
-        mem_limit="2g",
-    ).with_name(f"{container_prefix}-elasticsearch") as elasticsearch:
+        ElasticSearchContainer(
+            "elasticsearch:9.0.2",
+            port=9200,
+            mem_limit="2g",
+        )
+        .with_name(f"{container_prefix}-elasticsearch")
+        .waiting_for(HttpWaitStrategy(port=9200).for_status_code(200)) as elasticsearch
+    ):
+        url = get_elasticsearch_url(elasticsearch)
         logger.info("Creating Elasticsearch indices...")
-        async with AsyncElasticsearch(elasticsearch.get_url()) as client:
+        async with AsyncElasticsearch(url) as client:
             await create_test_indices(client)
         logger.info("Elasticsearch container ready.")
         yield elasticsearch
-        async with AsyncElasticsearch(elasticsearch.get_url()) as client:
+        async with AsyncElasticsearch(url) as client:
             await delete_test_indices(client)
 
 
 @pytest.fixture
 async def es_client(elasticsearch: ElasticSearchContainer):
     """Elasticsearch client for use in tests."""
-    async with AsyncElasticsearch(elasticsearch.get_url()) as client:
+    async with AsyncElasticsearch(get_elasticsearch_url(elasticsearch)) as client:
         yield client
 
 
@@ -251,7 +266,7 @@ async def es_lifecycle(elasticsearch: ElasticSearchContainer):
     # Suppress the cleaning, it's very noisy
     token = context.attach(set_span_in_context(trace.INVALID_SPAN))
     try:
-        async with AsyncElasticsearch(elasticsearch.get_url()) as client:
+        async with AsyncElasticsearch(get_elasticsearch_url(elasticsearch)) as client:
             await clean_test_indices(client)
     finally:
         context.detach(token)
@@ -349,7 +364,7 @@ def _add_env(
             "ES_CONFIG",
             json.dumps(
                 {
-                    "ES_INSECURE_URL": elasticsearch.get_url().replace(
+                    "ES_INSECURE_URL": get_elasticsearch_url(elasticsearch).replace(
                         "localhost", host_name
                     )
                 }
