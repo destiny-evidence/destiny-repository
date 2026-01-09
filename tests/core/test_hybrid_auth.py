@@ -145,7 +145,7 @@ async def test_hmac_multi_client_authentication_robot_does_not_exist(
 ) -> None:
     """Test authentication fails when robot does not exist."""
     auth = destiny_sdk.client.HMACSigningAuth(
-        client_id=uuid.uuid4(), secret_key="nonsense"
+        client_id=uuid.uuid7(), secret_key="nonsense"
     )
 
     response = await client.get(

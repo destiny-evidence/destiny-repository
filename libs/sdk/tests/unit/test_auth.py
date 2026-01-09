@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, FastAPI, status
 from httpx import ASGITransport, AsyncClient
 
 TEST_SECRET_KEY = "dlfskdfhgk8ei346oiehslkdfrerikfglser934utofs"
-TEST_CLIENT_ID = uuid.uuid4()
+TEST_CLIENT_ID = uuid.uuid7()
 REQUEST_BODY = b'{"message": "info"}'
 
 

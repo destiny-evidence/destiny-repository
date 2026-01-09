@@ -50,7 +50,7 @@ class LoggerMiddleware(BaseHTTPMiddleware):
             path=request.url.path,
             method=request.method,
             client_host=request.client and request.client.host,
-            request_id=str(uuid.uuid4()),
+            request_id=str(uuid.uuid7()),
         )
 
         try:

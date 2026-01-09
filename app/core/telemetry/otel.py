@@ -54,7 +54,7 @@ def configure_otel(
     if config.api_key:
         headers["x-honeycomb-team"] = config.api_key
 
-    service_instance_id = str(uuid.uuid4())
+    service_instance_id = str(uuid.uuid7())
 
     ## Traces
     resource = Resource.create(

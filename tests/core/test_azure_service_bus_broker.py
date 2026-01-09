@@ -134,8 +134,8 @@ async def test_kick_success(
 
     :param broker: current broker.
     """
-    task_id = uuid.uuid4().hex
-    task_name = uuid.uuid4().hex
+    task_id = uuid.uuid7().hex
+    task_name = uuid.uuid7().hex
 
     sent = BrokerMessage(
         task_id=task_id,

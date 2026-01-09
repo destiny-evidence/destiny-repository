@@ -311,7 +311,7 @@ class TestIdentifierLookup:
 
     def test_parse_invalid_uuid(self):
         with pytest.raises(
-            ValueError, match="Must be UUIDv4 if no identifier type is specified"
+            ValueError, match="Must be UUID if no identifier type is specified"
         ):
             destiny_sdk.identifiers.IdentifierLookup.parse("not-a-uuid")
 

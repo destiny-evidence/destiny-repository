@@ -120,7 +120,7 @@ def duplicate_reference(
     automation_triggering_annotation_enhancement: Enhancement,
 ) -> Reference:
     """Get a slightly mutated canonical reference to be a duplicate."""
-    duplicate = canonical_reference.model_copy(deep=True, update={"id": uuid.uuid4()})
+    duplicate = canonical_reference.model_copy(deep=True, update={"id": uuid.uuid7()})
     assert duplicate.enhancements
     assert isinstance(
         duplicate.enhancements[0].content, BibliographicMetadataEnhancement
@@ -139,7 +139,7 @@ def non_duplicate_reference(
     canonical_reference: Reference,
 ) -> Reference:
     """Get a slightly mutated canonical reference to definitely not be a duplicate."""
-    duplicate = canonical_reference.model_copy(deep=True, update={"id": uuid.uuid4()})
+    duplicate = canonical_reference.model_copy(deep=True, update={"id": uuid.uuid7()})
     assert duplicate.enhancements
     assert isinstance(
         duplicate.enhancements[0].content, BibliographicMetadataEnhancement
@@ -153,7 +153,7 @@ def non_duplicate_reference(
 def exact_duplicate_reference(canonical_reference: Reference) -> Reference:
     """Get a reference that is a subset of the canonical."""
     exact_duplicate_reference = canonical_reference.model_copy(
-        deep=True, update={"id": uuid.uuid4()}
+        deep=True, update={"id": uuid.uuid7()}
     )
     assert exact_duplicate_reference.enhancements
 
@@ -424,7 +424,7 @@ async def test_canonical_becomes_duplicate(  # noqa: PLR0913
     pg_session.add(SQLReference.from_domain(duplicate_reference))
     pg_session.add(
         SQLReferenceDuplicateDecision(
-            id=(canonical_decision_id := uuid.uuid4()),
+            id=(canonical_decision_id := uuid.uuid7()),
             reference_id=duplicate_reference.id,
             duplicate_determination=DuplicateDetermination.CANONICAL,
             active_decision=True,
@@ -519,7 +519,7 @@ async def test_duplicate_becomes_canonical(  # noqa: PLR0913
     pg_session.add(SQLReference.from_domain(non_duplicate_reference))
     pg_session.add(
         SQLReferenceDuplicateDecision(
-            id=(non_canonical_decision_id := uuid.uuid4()),
+            id=(non_canonical_decision_id := uuid.uuid7()),
             reference_id=non_duplicate_reference.id,
             duplicate_determination=DuplicateDetermination.DUPLICATE,
             canonical_reference_id=canonical_reference_id,
@@ -593,7 +593,7 @@ async def test_duplicate_change(  # noqa: PLR0913
     pg_session.add(SQLReference.from_domain(duplicate_reference))
     pg_session.add(
         SQLReferenceDuplicateDecision(
-            id=(duplicate_decision_id := uuid.uuid4()),
+            id=(duplicate_decision_id := uuid.uuid7()),
             reference_id=duplicate_reference.id,
             duplicate_determination=DuplicateDetermination.DUPLICATE,
             active_decision=True,

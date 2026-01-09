@@ -66,7 +66,7 @@ def get_import_file_signed_url():
         content = "\n".join(r.to_jsonl() for r in sdk_reference_file_input).encode(
             "utf-8"
         )
-        name = f"{uuid.uuid4()}.jsonl"
+        name = f"{uuid.uuid7()}.jsonl"
         tempdir = tempfile.TemporaryDirectory()
         filepath = Path(tempdir.name) / name
         with Path.open(filepath, "wb") as f:

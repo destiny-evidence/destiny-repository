@@ -5,7 +5,7 @@ requires = ["hatchling"]
 [dependency-groups]
 dev = [
     "destiny-sdk",
-    "faker>=37.3.0,<38",
+    "faker>=40.1",
     "msal>=1.31.1,<2",
     "mypy>=1.14.1,<2",
     "opentelemetry-instrumentation-aio-pika>=0.60b1,<0.61",
@@ -54,7 +54,7 @@ dependencies = [
     "cachetools>=5.5.2,<6",
     "destiny-sdk",
     "elasticsearch[async]>=9.1.2,<9.2",
-    "fastapi>=0.128,<0.129",
+    "fastapi[standard]>=0.128,<0.129",
     "frozenlist==1.6.0",
     "greenlet>=3.1.1,<4",
     "minio>=7.2.15,<8",
@@ -86,6 +86,7 @@ version = "2.0.0"
 explicit_package_bases = true
 namespace_packages = true
 plugins = ["pydantic.mypy"]
+python_version = "3.14"
 
 [tool.pytest.ini_options]
 addopts = ["--color=yes", "--import-mode=importlib", "--verbose"]

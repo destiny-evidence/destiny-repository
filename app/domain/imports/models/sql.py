@@ -39,7 +39,7 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
 
     __tablename__ = "import_result"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid7)
     import_batch_id: Mapped[uuid.UUID] = mapped_column(
         UUID, ForeignKey("import_batch.id"), nullable=False
     )

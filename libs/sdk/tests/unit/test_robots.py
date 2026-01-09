@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 def test_provisioned_robot_valid():
     provisioned_robot = destiny_sdk.robots.ProvisionedRobot(
-        id=uuid.uuid4(),
+        id=uuid.uuid7(),
         name="Mr. Roboto",
         description="I have come to help you with your problems",
         owner="Styx",
