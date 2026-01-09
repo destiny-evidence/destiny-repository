@@ -1,0 +1,33 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.validators.ExternalIdentifierParseResult
+
+Result of an attempt to parse an external identifier.
+" alt="" coords="5,307,1020,391"/>
+<area shape="rect" id="node2" title="destiny_sdk.identifiers.DOIIdentifier
+
+An external identifier representing a DOI.
+" alt="" coords="1205,5,1589,89"/>
+<area shape="rect" id="node3" title="destiny_sdk.identifiers.ERICIdentifier
+
+An external identifier representing an ERIC Number.
+
+An ERIC Number is defined as a unqiue identifiying number preceeded by
+EJ (for a journal article) or ED (for a non&#45;journal document).
+" alt="" coords="1201,137,1594,221"/>
+<area shape="rect" id="node4" title="destiny_sdk.identifiers.OpenAlexIdentifier
+
+An external identifier representing an OpenAlex ID.
+" alt="" coords="1169,269,1625,353"/>
+<area shape="rect" id="node5" title="destiny_sdk.identifiers.OtherIdentifier
+
+An external identifier not otherwise defined by the repository.
+" alt="" coords="1164,402,1631,514"/>
+<area shape="rect" id="node6" title="destiny_sdk.identifiers.ProQuestIdentifier
+
+An external identifier representing a ProQuest ID.
+" alt="" coords="1170,563,1625,647"/>
+<area shape="rect" id="node7" title="destiny_sdk.identifiers.PubMedIdentifier
+
+An external identifier representing a PubMed ID.
+" alt="" coords="1193,695,1601,779"/>
+</map>
