@@ -83,7 +83,6 @@ def get_index_manager(
 def choose_auth_strategy_administrator() -> AuthMethod:
     """Choose administrator for our authorization strategy."""
     return choose_auth_strategy(
-        tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScope.ADMINISTRATOR,
         auth_role=AuthRole.ADMINISTRATOR,

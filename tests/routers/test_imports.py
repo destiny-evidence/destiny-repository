@@ -304,13 +304,10 @@ async def test_get_import_results(
 
 
 @pytest.mark.usefixtures("stubbed_jwks_response")
-async def test_auth_failure(
-    client: AsyncClient, fake_application_id: str, fake_tenant_id: str
-):
+async def test_auth_failure(client: AsyncClient, fake_application_id: str):
     """Test that we reject invalid tokens."""
     imports.settings.env = Environment.PRODUCTION
     imports.settings.azure_application_id = fake_application_id
-    imports.settings.azure_tenant_id = fake_tenant_id
     imports.import_auth.reset()
 
     import_params = {
@@ -338,12 +335,10 @@ async def test_auth_failure(
 async def test_missing_auth(
     client: AsyncClient,
     fake_application_id: str,
-    fake_tenant_id: str,
 ):
     """Test that we reject missing tokens."""
     imports.settings.env = Environment.PRODUCTION
     imports.settings.azure_application_id = fake_application_id
-    imports.settings.azure_tenant_id = fake_tenant_id
     imports.import_auth.reset()
 
     import_params = {

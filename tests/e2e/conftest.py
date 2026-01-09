@@ -359,7 +359,7 @@ def _add_env(
         .with_env("ENV", "test")
         .with_env("TESTS_USE_RABBITMQ", "true")
         .with_env("AZURE_APPLICATION_ID", "dummy")
-        .with_env("AZURE_TENANT_ID", "dummy")
+        .with_env("AZURE_LOGIN_URL", "https://login.microsoftonline.com/dummy")
     )
     if otel_config:
         container = container.with_env("OTEL_CONFIG", otel_config).with_env(
