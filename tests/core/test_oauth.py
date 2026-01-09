@@ -131,10 +131,8 @@ async def test_verify_token_incorrect_claims(
     with pytest.raises(HTTPException) as excinfo:
         await auth.verify_token(token)
     assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
-    assert (
-        excinfo.value.detail
-        == "Incorrect claims, please check the audience and issuer."
-    )
+    assert "Incorrect claims" in excinfo.value.detail
+    assert "aud=" in excinfo.value.detail
 
 
 async def test_verify_token_no_keys(

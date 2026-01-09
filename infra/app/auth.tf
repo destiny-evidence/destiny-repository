@@ -21,6 +21,8 @@ resource "azuread_application" "destiny_repository" {
   sign_in_audience = "AzureADMyOrg"
 
   api {
+    requested_access_token_version = 2
+
     oauth2_permission_scope {
       admin_consent_description  = "Allow the app to administer the system as the signed-in user"
       admin_consent_display_name = "Administrator as user"
@@ -231,7 +233,7 @@ resource "azuread_application_redirect_uris" "local_redirect" {
   application_id = azuread_application_registration.destiny_repository_auth.id
   type           = "PublicClient"
 
-  redirect_uris = var.local_redirect_urls
+  redirect_uris = local.redirect_uris
 }
 
 resource "azuread_application_redirect_uris" "ui_redirect" {
@@ -249,7 +251,7 @@ resource "azuread_application_redirect_uris" "ui_public_client_redirect" {
   application_id = azuread_application_registration.destiny_repository_auth_ui.id
   type           = "PublicClient"
 
-  redirect_uris = var.local_redirect_urls
+  redirect_uris = local.redirect_uris
 }
 
 # Openalex incremental updater role assignments
@@ -270,12 +272,14 @@ resource "azuread_application_api_access" "openalex_incremental_updater" {
 # DESTINY UI role assignments
 # Note: this is a separate app, not the inbuilt repository UI
 data "azurerm_user_assigned_identity" "destiny_demonstrator_ui" {
+  count               = var.environment == "development" ? 0 : 1
   name                = var.destiny_demonstrator_ui_app_name
   resource_group_name = "rg-${var.destiny_demonstrator_ui_app_name}-${var.environment}"
 }
 
 resource "azuread_app_role_assignment" "destiny_demonstrator_ui_to_reference_reader" {
+  count               = var.environment == "development" ? 0 : 1
   app_role_id         = azuread_application_app_role.reference_reader.role_id
-  principal_object_id = data.azurerm_user_assigned_identity.destiny_demonstrator_ui.principal_id
+  principal_object_id = data.azurerm_user_assigned_identity.destiny_demonstrator_ui[0].principal_id
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
 }

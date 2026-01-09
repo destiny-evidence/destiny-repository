@@ -11,7 +11,6 @@ settings = get_settings()
 def get_token(
     cli_client_id: str | None,
     azure_login_url: str,
-    azure_tenant_id: str,
     azure_application_id: str,
 ) -> str:
     """Fetch a token for the app from Azure."""
@@ -25,7 +24,7 @@ def get_token(
 
     app = PublicClientApplication(
         cli_client_id,
-        authority=f"{azure_login_url}{azure_tenant_id}",
+        authority=azure_login_url,
         client_credential=None,
     )
 
@@ -40,7 +39,6 @@ if __name__ == "__main__":
     result = get_token(
         cli_client_id=settings.cli_client_id,
         azure_login_url=str(settings.azure_login_url),
-        azure_tenant_id=settings.azure_tenant_id,
         azure_application_id=settings.azure_application_id,
     )
 

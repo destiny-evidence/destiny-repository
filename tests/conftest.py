@@ -125,7 +125,6 @@ def fake_tenant_id() -> str:
 @pytest.fixture
 def generate_fake_token(
     fake_application_id: str,
-    fake_tenant_id: str,
 ) -> Callable[[dict | None, AuthScope | None, AuthRole | None], str]:
     """Create a function that will return a fake token using the supplied params."""
 
@@ -140,8 +139,8 @@ def generate_fake_token(
             "sub": "test_subject",
             "iat": datetime.datetime.now(datetime.UTC),
             "exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=10),
-            "aud": f"api://{fake_application_id}",
-            "iss": f"https://sts.windows.net/{fake_tenant_id}/",
+            "aud": fake_application_id,
+            "iss": f"{settings.azure_login_url}/v2.0",
         }
 
         payload.update(user_payload)
@@ -163,9 +162,11 @@ def generate_fake_token(
 
 @pytest.fixture
 def stubbed_jwks_response(httpx_mock: HTTPXMock, fake_public_key: dict) -> None:
-    """Stub out the jwks respons to return the standard fake public key."""
+    """Stub out the jwks response to return the standard fake public key."""
+    # Escape the URL for use in regex
+    escaped_url = re.escape(settings.azure_login_url)
     httpx_mock.add_response(
-        url=re.compile(r"https://login.microsoftonline.com/"),
+        url=re.compile(rf"{escaped_url}/"),
         json={"keys": [fake_public_key]},
     )
 
