@@ -86,7 +86,6 @@ version = "2.0.0"
 explicit_package_bases = true
 namespace_packages = true
 plugins = ["pydantic.mypy"]
-python_version = "3.14"
 
 [tool.pytest.ini_options]
 addopts = ["--color=yes", "--import-mode=importlib", "--verbose"]
