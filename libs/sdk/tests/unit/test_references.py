@@ -89,7 +89,7 @@ def test_es_parsing():
 
 def test_jsonl_serialization():
     reference = destiny_sdk.references.Reference(
-        id=(_id := uuid.uuid4()),
+        id=(_id := uuid.uuid7()),
         enhancements=[
             destiny_sdk.enhancements.Enhancement(
                 reference_id=_id,

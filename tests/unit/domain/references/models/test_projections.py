@@ -158,7 +158,7 @@ def other_identifier():
 @pytest.fixture
 def reference_with_enhancements(bibliographic_enhancement, abstract_enhancement):
     """Create a reference with enhancements."""
-    ref_id = uuid.uuid4()
+    ref_id = uuid.uuid7()
 
     bibliographic_enhancement.reference_id = ref_id
     abstract_enhancement.reference_id = ref_id
@@ -176,7 +176,7 @@ def reference_with_annotations(
     taxonomy_annotation_enhancement,
 ):
     """Create a reference with annotation enhancements."""
-    ref_id = uuid.uuid4()
+    ref_id = uuid.uuid7()
 
     destiny_inclusion_annotation_enhancement.reference_id = ref_id
     taxonomy_annotation_enhancement.reference_id = ref_id
@@ -204,7 +204,7 @@ def complete_reference(
     taxonomy_annotation_enhancement,
 ):
     """Create a reference with both enhancements and identifiers."""
-    ref_id = uuid.uuid4()
+    ref_id = uuid.uuid7()
 
     # Update the identifier IDs to match
     doi_identifier.reference_id = ref_id
@@ -252,7 +252,7 @@ class TestReferenceSearchFieldsProjection:
         self, bibliographic_enhancement, sample_authorship
     ):
         """Test that we prioritise canonical enhancements"""
-        reference_id = uuid.uuid4()
+        reference_id = uuid.uuid7()
 
         canonical_biblography = EnhancementFactory.build(
             reference_id=reference_id,
@@ -275,7 +275,7 @@ class TestReferenceSearchFieldsProjection:
         self, bibliographic_enhancement, sample_authorship
     ):
         """Test that we prioritise the created date of the enhancements"""
-        reference_id = uuid.uuid4()
+        reference_id = uuid.uuid7()
 
         most_recent_bibliography = EnhancementFactory.build(
             # Created the day after the the other bibliographic enhancement
@@ -305,7 +305,7 @@ class TestReferenceSearchFieldsProjection:
         enhancement on the canonical reference, we still use the enhancement
         on the canonical reference.
         """
-        reference_id = uuid.uuid4()
+        reference_id = uuid.uuid7()
         bibliographic_enhancement.reference_id = reference_id
 
         most_recent_bibliography = EnhancementFactory.build(
@@ -350,7 +350,7 @@ class TestReferenceSearchFieldsProjection:
 
         This test also shuffles the enhancements before adding them to the reference.
         """
-        canonical_reference_id = uuid.uuid4()
+        canonical_reference_id = uuid.uuid7()
 
         # Make our two pre-generated enhancements canonical
         bibliographic_enhancement.reference_id = canonical_reference_id
@@ -502,7 +502,7 @@ class TestReferenceSearchFieldsProjection:
         )
 
         reference = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[
                 enhancement_with_title,
@@ -525,7 +525,7 @@ class TestReferenceSearchFieldsProjection:
 
         Also test that authors are returned with correct positions
         """
-        canonical_reference_id = uuid.uuid4()
+        canonical_reference_id = uuid.uuid7()
 
         authorship_with_whitespace = [
             AuthorshipFactory.build(
@@ -607,7 +607,7 @@ class TestReferenceSearchFieldsProjection:
 
     def test_get_from_reference_prioritises_annotations_by_scheme(self):
         """Test that we prioritise annotations by scheme, not by label."""
-        reference_id = uuid.uuid4()
+        reference_id = uuid.uuid7()
 
         annotation_enhancement_1 = EnhancementFactory.build(
             reference_id=reference_id,
@@ -656,7 +656,7 @@ class TestReferenceSearchFieldsProjection:
         # Can't use factories here as we're explicity setting missing values
         # And the post generation will replace them.
         reference_empty = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[],
             identifiers=[],
@@ -675,7 +675,7 @@ class TestReferenceSearchFieldsProjection:
         # Can't use factories here as we're explicity setting missing values
         # And the post generation will replace them.
         reference_none = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=None,
             identifiers=[],
@@ -756,27 +756,27 @@ class TestDeduplicatedReferenceProjection:
         """Test deduplication with duplicate references."""
         # Create duplicate reference
         duplicate_enhancement = Enhancement(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             source="duplicate_source",
             visibility=Visibility.PUBLIC,
             content=destiny_sdk.enhancements.BibliographicMetadataEnhancement(
                 enhancement_type=EnhancementType.BIBLIOGRAPHIC,
                 title="Duplicate Title",
             ),
-            reference_id=uuid.uuid4(),
+            reference_id=uuid.uuid7(),
         )
 
         duplicate_identifier = LinkedExternalIdentifier(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             identifier=destiny_sdk.identifiers.DOIIdentifier(
                 identifier="10.1000/duplicate",
                 identifier_type=ExternalIdentifierType.DOI,
             ),
-            reference_id=uuid.uuid4(),
+            reference_id=uuid.uuid7(),
         )
 
         duplicate_reference = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[duplicate_enhancement],
             identifiers=[duplicate_identifier],
@@ -813,7 +813,7 @@ class TestDeduplicatedReferenceProjection:
     def test_get_from_reference_none_enhancements_preserved(self):
         """Test that None enhancements are preserved (not preloaded)."""
         reference = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=None,  # Not preloaded
             identifiers=[],
@@ -827,7 +827,7 @@ class TestDeduplicatedReferenceProjection:
     def test_get_from_reference_none_identifiers_preserved(self):
         """Test that None identifiers are preserved (not preloaded)."""
         reference = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[],
             identifiers=None,  # Not preloaded
@@ -842,18 +842,18 @@ class TestDeduplicatedReferenceProjection:
         """Test deduplication with nested duplicate references."""
         # Create a nested duplicate
         nested_enhancement = Enhancement(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             source="nested_source",
             visibility=Visibility.PUBLIC,
             content=destiny_sdk.enhancements.BibliographicMetadataEnhancement(
                 enhancement_type=EnhancementType.BIBLIOGRAPHIC,
                 title="Nested Title",
             ),
-            reference_id=uuid.uuid4(),
+            reference_id=uuid.uuid7(),
         )
 
         nested_reference = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[nested_enhancement],
             identifiers=[],
@@ -862,18 +862,18 @@ class TestDeduplicatedReferenceProjection:
 
         # Create intermediate duplicate with nested duplicate
         intermediate_enhancement = Enhancement(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             source="intermediate_source",
             visibility=Visibility.PUBLIC,
             content=destiny_sdk.enhancements.BibliographicMetadataEnhancement(
                 enhancement_type=EnhancementType.BIBLIOGRAPHIC,
                 title="Intermediate Title",
             ),
-            reference_id=uuid.uuid4(),
+            reference_id=uuid.uuid7(),
         )
 
         intermediate_reference = Reference(
-            id=uuid.uuid4(),
+            id=uuid.uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[intermediate_enhancement],
             identifiers=[],

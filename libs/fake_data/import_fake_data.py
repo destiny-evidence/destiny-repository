@@ -133,7 +133,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Import fake data into the server.")
     parser.add_argument("filename", type=str, help="JSONL file to import")
     args = parser.parse_args()
-    callback_id = str(uuid.uuid4())
+    callback_id = str(uuid.uuid7())
 
     thread, httpd = start_server_thread(args.filename, callback_id)
     try:

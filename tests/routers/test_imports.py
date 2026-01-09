@@ -374,7 +374,7 @@ async def test_missing_import_record(
     session.add(valid_import)
     await session.commit()
 
-    response = await client.get(f"/v1/imports/records/{(_id:=uuid.uuid4())}/batches/")
+    response = await client.get(f"/v1/imports/records/{(_id:=uuid.uuid7())}/batches/")
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.json()["detail"] == f"ImportRecord with id {_id} does not exist."
 
@@ -397,7 +397,7 @@ async def test_deduplicate_references(
         "app.domain.references.service.queue_task_with_trace", mock_queue
     )
 
-    ref_ids = {uuid.uuid4(), uuid.uuid4(), uuid.uuid4()}
+    ref_ids = {uuid.uuid7(), uuid.uuid7(), uuid.uuid7()}
     response = await client.post(
         "/v1/references/duplicate-decisions/",
         json={"reference_ids": [str(r) for r in ref_ids]},

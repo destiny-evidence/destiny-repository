@@ -2,7 +2,7 @@
 
 from typing import Self
 
-from pydantic import UUID4, BaseModel, Field, TypeAdapter
+from pydantic import UUID4, UUID7, BaseModel, Field, TypeAdapter
 
 from destiny_sdk.core import SearchResultMixIn, _JsonlFileInputMixIn
 from destiny_sdk.enhancements import Enhancement, EnhancementFileInput
@@ -19,7 +19,7 @@ class Reference(_JsonlFileInputMixIn, BaseModel):
         default=Visibility.PUBLIC,
         description="The level of visibility of the reference",
     )
-    id: UUID4 = Field(
+    id: UUID4 | UUID7 = Field(
         description="The ID of the reference",
     )
     identifiers: list[ExternalIdentifier] | None = Field(

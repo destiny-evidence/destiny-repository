@@ -1,10 +1,9 @@
 """Models used by the `Import` domain."""
 
 import datetime
-import uuid
 from enum import StrEnum, auto
 
-from pydantic import Field, HttpUrl, PastDatetime
+from pydantic import UUID4, UUID7, Field, HttpUrl, PastDatetime
 
 from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
 
@@ -117,7 +116,7 @@ The URL at which the set of references for this batch are stored.
     status: ImportBatchStatus | None = Field(
         default=None, description="The status of the batch."
     )
-    import_record_id: uuid.UUID = Field(
+    import_record_id: UUID4 | UUID7 = Field(
         description="The ID of the parent import record."
     )
     import_record: ImportRecord | None = Field(
@@ -131,14 +130,16 @@ The URL at which the set of references for this batch are stored.
 class ImportResult(DomainBaseModel, SQLAttributeMixin):
     """Core import result model with database attributes included."""
 
-    import_batch_id: uuid.UUID = Field(description="The ID of the parent import batch.")
+    import_batch_id: UUID4 | UUID7 = Field(
+        description="The ID of the parent import batch."
+    )
     status: ImportResultStatus = Field(
         default=ImportResultStatus.CREATED, description="The status of the result."
     )
     import_batch: ImportBatch | None = Field(
         default=None, description="The parent import batch."
     )
-    reference_id: uuid.UUID | None = Field(
+    reference_id: UUID4 | UUID7 | None = Field(
         default=None, description="The ID of the created reference."
     )
     failure_details: str | None = Field(

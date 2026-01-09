@@ -11,7 +11,13 @@ from uuid import UUID
 
 import destiny_sdk
 from destiny_sdk.enhancements import EnhancementType
-from pydantic import UUID4, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    ValidationError,
+)
 
 from app.core.exceptions import ParseError
 from app.core.telemetry.logger import get_logger
@@ -155,11 +161,11 @@ class ReferenceCreateResult(BaseModel):
         default_factory=list,
         description="A list of errors encountered during the creation process",
     )
-    reference_id: UUID4 | None = Field(
+    reference_id: UUID | None = Field(
         default=None,
         description="The ID of the created reference, if created",
     )
-    duplicate_decision_id: UUID4 | None = Field(
+    duplicate_decision_id: UUID | None = Field(
         default=None,
         description="The ID of the pending duplicate decision, if required",
     )
@@ -314,11 +320,11 @@ def parse_identifier_lookup_from_string(
     """Parse an identifier lookup string into an IdentifierLookup object."""
     if delimiter not in identifier_lookup_string:
         try:
-            UUID4(identifier_lookup_string)
+            UUID(identifier_lookup_string)
         except ValueError as exc:
             msg = (
                 f"Invalid identifier lookup string: {identifier_lookup_string}. "
-                "Must be UUIDv4 if no identifier type is specified."
+                "Must be UUID if no identifier type is specified."
             )
             raise ParseError(msg) from exc
         return IdentifierLookup(

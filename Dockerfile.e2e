@@ -3,7 +3,14 @@
 # does as building via the Docker python SDK does not support buildkit,
 # which means we cannot mount the cache.
 
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
+
+# Slim doesn't come with gcc but it's needed for uncached package installs
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./

@@ -51,7 +51,7 @@ async def tmp_database(
     suffix: str = "", encoding: str = "utf8", template: str | None = None
 ) -> AsyncIterator[str]:
     """Context manager for creating new database and deleting it on exit."""
-    tmp_db_name = f"{uuid.uuid4().hex}.tests_base.{suffix}"
+    tmp_db_name = f"{uuid.uuid7().hex}.tests_base.{suffix}"
     await create_database_async(tmp_db_name, encoding, template)
     parsed_url = urlparse(get_settings().db_config.connection_string)
     query_params = parse_qs(parsed_url.query)

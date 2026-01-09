@@ -194,7 +194,7 @@ async def test_get_robot_robot_does_not_exist(
     client: AsyncClient,
 ) -> None:
     """Test returns 404 if the requested robot does not exist."""
-    response = await client.get(f"/v1/robots/{uuid.uuid4()}/")
+    response = await client.get(f"/v1/robots/{uuid.uuid7()}/")
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
@@ -221,7 +221,7 @@ async def test_cycle_secret_robot_does_not_exist(
     client: AsyncClient,
 ) -> None:
     """Test returns 404 if robot does not exist."""
-    response = await client.post(f"/v1/robots/{uuid.uuid4()}/secret/")
+    response = await client.post(f"/v1/robots/{uuid.uuid7()}/secret/")
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 

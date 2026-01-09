@@ -2,6 +2,7 @@
 """Factories for creating test domain models."""
 
 import random
+import uuid
 
 import factory
 from destiny_sdk.enhancements import (
@@ -65,9 +66,30 @@ class ERICNumberProvider(BaseProvider):
         return f"{prefix}{suffix}"
 
 
+class ORCIDProvider(BaseProvider):
+    """Provider for ORCID objects."""
+
+    def orcid(self) -> str:
+        """Generate a valid ORCID."""
+        return "-".join(
+            str(self.generator.random.randint(0, 9999)).zfill(4) for _ in range(4)
+        )
+
+
+class UUID7Provider(BaseProvider):
+    """Provider for UUID7 objects."""
+
+    def uuid7(self) -> uuid.UUID:
+        """Generate a valid UUID7."""
+        return uuid.uuid7()
+
+
 fake = Faker()
 fake.add_provider(ERICNumberProvider)
+fake.add_provider(UUID7Provider)
+fake.add_provider(ORCIDProvider)
 max_list_length = 3
+uuid7_factory = factory.LazyFunction(fake.uuid7)
 
 
 class DOIIdentifierFactory(factory.Factory):
@@ -131,7 +153,7 @@ class AuthorshipFactory(factory.Factory):
 
     display_name = factory.Faker("name")
     position = factory.Faker("enum", enum_cls=AuthorPosition)
-    orcid = factory.Faker("uuid4")
+    orcid = factory.LazyFunction(fake.orcid)
 
 
 class BibliographicMetadataEnhancementFactory(factory.Factory):
@@ -240,7 +262,7 @@ class ReferenceAssociationEnhancementFactory(factory.Factory):
     enhancement_type = EnhancementType.REFERENCE_ASSOCIATION
     associated_reference_ids = factory.LazyFunction(
         lambda: fake.random_elements(
-            [*ExternalIdentifierFactories, fake.uuid4()],
+            [*ExternalIdentifierFactories, fake.uuid7()],
             length=fake.pyint(1, max_list_length),
         )
     )
@@ -262,18 +284,18 @@ class LinkedExternalIdentifierFactory(factory.Factory):
     class Meta:
         model = LinkedExternalIdentifier
 
-    id = factory.Faker("uuid4")
+    id = uuid7_factory
     identifier = factory.LazyFunction(
         lambda: fake.random_element(ExternalIdentifierFactories)
     )
-    reference_id = factory.Faker("uuid4")
+    reference_id = uuid7_factory
 
 
 class EnhancementFactory(factory.Factory):
     class Meta:
         model = Enhancement
 
-    id = factory.Faker("uuid4")
+    id = uuid7_factory
     source = factory.Faker("company")
     visibility = Visibility.PUBLIC
     robot_version = factory.Faker("numerify", text="%!!.%!!.%!!")
@@ -290,14 +312,14 @@ class EnhancementFactory(factory.Factory):
             ]
         )
     )
-    reference_id = factory.Faker("uuid4")
+    reference_id = uuid7_factory
 
 
 class ReferenceFactory(factory.Factory):
     class Meta:
         model = Reference
 
-    id = factory.Faker("uuid4")
+    id = uuid7_factory
     visibility = factory.Faker("enum", enum_cls=Visibility)
 
     @factory.post_generation
@@ -325,7 +347,7 @@ class RobotFactory(factory.Factory):
     class Meta:
         model = Robot
 
-    id = factory.Faker("uuid4")
+    id = uuid7_factory
     description = factory.Faker("sentence")
     name = factory.Faker("name")
     owner = factory.Faker("company")
@@ -335,9 +357,9 @@ class PendingEnhancementFactory(factory.Factory):
     class Meta:
         model = PendingEnhancement
 
-    id = factory.Faker("uuid4")
-    reference_id = factory.Faker("uuid4")
-    robot_id = factory.Faker("uuid4")
+    id = uuid7_factory
+    reference_id = uuid7_factory
+    robot_id = uuid7_factory
     source = factory.Faker("word")
     status = PendingEnhancementStatus.PENDING
     expires_at = factory.LazyFunction(

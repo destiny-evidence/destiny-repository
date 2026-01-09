@@ -43,7 +43,7 @@ def base_url():
 
 @pytest.fixture
 def test_reference_id():
-    return uuid.uuid4()
+    return uuid.uuid7()
 
 
 @pytest.fixture
@@ -66,19 +66,19 @@ class TestRobotClient:
     ) -> None:
         """Test that robot enhancement batch result request is authorized."""
         fake_secret_key = "asdfhjgji94523q0uflsjf349wjilsfjd9q23"
-        fake_robot_id = uuid.uuid4()
+        fake_robot_id = uuid.uuid7()
         fake_destiny_repository_url = (
             "https://www.destiny-repository-lives-here.co.au/v1"
         )
 
         fake_batch_result = RobotEnhancementBatchResult(
-            request_id=uuid.uuid4(),
+            request_id=uuid.uuid7(),
             error=RobotError(message="Cannot process this batch"),
         )
 
         expected_response_body = RobotEnhancementBatchRead(
-            id=uuid.uuid4(),
-            robot_id=uuid.uuid4(),
+            id=uuid.uuid7(),
+            robot_id=uuid.uuid7(),
             error="Cannot process this batch",
         )
 

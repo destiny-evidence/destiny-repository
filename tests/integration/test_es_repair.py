@@ -290,7 +290,7 @@ async def test_repair_reference_index_with_rebuild(
     await index_manager.initialize_index()
 
     # Add sample data to SQL
-    reference_id = uuid.uuid4()
+    reference_id = uuid.uuid7()
     reference = SQLReference(
         id=reference_id,
         visibility=Visibility.PUBLIC,
@@ -348,7 +348,7 @@ async def test_repair_robot_automation_percolation_index_with_rebuild(
     await index_manager.initialize_index()
 
     # Add sample robot and robot automation to SQL
-    robot_id = uuid.uuid4()
+    robot_id = uuid.uuid7()
     robot = SQLRobot(
         id=robot_id,
         client_secret="test-secret",
@@ -360,7 +360,7 @@ async def test_repair_robot_automation_percolation_index_with_rebuild(
     await session.commit()
 
     # Add robot automation
-    automation_id = uuid.uuid4()
+    automation_id = uuid.uuid7()
     automation = SQLRobotAutomation(
         id=automation_id,
         robot_id=robot_id,

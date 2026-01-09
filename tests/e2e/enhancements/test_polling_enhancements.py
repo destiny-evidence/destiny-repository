@@ -40,7 +40,7 @@ def _create_client(repo_url: HttpUrl) -> RobotClient:
     return RobotClient(
         base_url=repo_url,
         secret_key="dummy_secret_key",
-        client_id=uuid.uuid4(),
+        client_id=uuid.uuid7(),
     )
 
 
