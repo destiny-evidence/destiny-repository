@@ -25,7 +25,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           version: "0.7.14"
-          enable-cache: false
+          enable-cache: true
           cache-dependency-glob: "uv.lock"
 
       - name: Install the project including the docs dependency
