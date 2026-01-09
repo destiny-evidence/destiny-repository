@@ -1,14 +1,12 @@
 """Config for ES Operations."""
 
-import tomllib
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.core.config import Environment, ESConfig, LogLevel, OTelConfig
+from app.core.config import TOML, Environment, ESConfig, LogLevel, OTelConfig
 
 
 class Settings(BaseSettings):
@@ -18,7 +16,7 @@ class Settings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
-    project_root: Path = Path(__file__).joinpath("../../../..").resolve()
+    toml: TOML = TOML(toml_path=Path(__file__).joinpath("../../../..").resolve())
 
     es_config: ESConfig
     otel_config: OTelConfig | None = None
@@ -35,17 +33,7 @@ class Settings(BaseSettings):
     @property
     def running_locally(self) -> bool:
         """Return True if the migration is running locally."""
-        return self.env in (Environment.LOCAL, Environment.TEST)
-
-    @property
-    def pyproject_toml(self) -> dict[str, Any]:
-        """Get the contents of pyproject.toml."""
-        return tomllib.load((self.project_root / "pyproject.toml").open("rb"))
-
-    @property
-    def app_version(self) -> str:
-        """Get the version from pyproject.toml."""
-        return self.pyproject_toml["project"]["version"]
+        return self.env in Environment.local_envs()
 
 
 @lru_cache(maxsize=1)
