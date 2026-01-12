@@ -1,0 +1,40 @@
+{
+  "case_id": "malformed_doi__phantom_unrecoverable",
+  "case_type": "MALFORMED_DOI_RECOVERABLE",
+  "severity": 2,
+  "status": "wontfix",
+  "summary": "DOI that fails validation even after cleanup and does not resolve via Crossref or doi.org. Represents ~1.1% of malformed DOIs - truly phantom/never-registered DOIs.",
+
+  "records": {
+    "incoming": {
+      "source": "crossref",
+      "source_key": "invalid",
+      "title": "Some Research Paper",
+      "year": 2023,
+      "doi_raw": "10.9999/fake.phantom.doi.2023",
+      "authors": ["Unknown A"]
+    }
+  },
+
+  "expected_relation": "UNSEARCHABLE",
+  "observed_relation": null,
+
+  "signals": {
+    "doi_valid_after_cleanup": false,
+    "crossref_resolution": false,
+    "doi_org_resolution": false
+  },
+
+  "decision_trace": {
+    "doi_gate": "failed_strict_and_permissive_validation",
+    "crossref_lookup": "404_not_found",
+    "doi_handle_lookup": "not_registered"
+  },
+
+  "mitigations": [
+    "strict_then_permissive_doi_cleanup",
+    "mark_as_unsearchable_or_require_human_review"
+  ],
+
+  "notes": "From PDF section 7.4: After testing 91 failed DOIs, only 1 was truly unresolvable (phantom DOI never registered). Rate: ~1.1% of the ~20k malformed DOIs (~220 DOIs), not of the entire corpus. These DOIs pass pattern matching but don't exist in any registry. Options: (1) Mark UNSEARCHABLE, (2) Queue for human review, (3) Attempt title-only dedup with low confidence threshold. Current approach: rely on ES+Jaccard fallback when DOI short-circuit fails."
+}

@@ -1,0 +1,53 @@
+{
+  "case_id": "malformed_doi__combined_cruft",
+  "case_type": "MALFORMED_DOI_RECOVERABLE",
+  "severity": 4,
+  "status": "triaged",
+  "summary": "DOI with multiple malformations: HTML entities + query params + fragments. Represents worst-case scenario but still 98.9% recoverable via staged cleanup.",
+
+  "records": {
+    "incoming": {
+      "source": "crossref",
+      "source_key": "10.1016/j.cell.2024.01.023",
+      "title": "CRISPR Gene Editing in Human Embryos: Ethical Considerations",
+      "year": 2024,
+      "doi_raw": "10.1016/j.cell.2024.01.023?via%3Dihub&amp;utm=source#article-metadata",
+      "authors": ["Zhang W", "Kumar S", "O'Brien T"]
+    },
+    "existing": {
+      "source": "openalex",
+      "source_key": "W4402345678",
+      "title": "CRISPR Gene Editing in Human Embryos: Ethical Considerations",
+      "year": 2024,
+      "doi_raw": "10.1016/j.cell.2024.01.023",
+      "doi_norm": "10.1016/j.cell.2024.01.023",
+      "authors": ["Zhang W", "Kumar S", "O'Brien T"]
+    }
+  },
+
+  "expected_relation": "DUPLICATE",
+  "observed_relation": "NOT_DUPLICATE",
+
+  "signals": {
+    "es_score": 172.3,
+    "title_jaccard": 0.92,
+    "author_count_incoming": 3,
+    "author_count_candidate": 3,
+    "year_delta": 0,
+    "doi_equal": false
+  },
+
+  "decision_trace": {
+    "candidate_query": "title_authors_v3",
+    "short_circuit": "doi_mismatch",
+    "doi_gate": "failed_validation",
+    "confidence": "HIGH"
+  },
+
+  "mitigations": [
+    "strict_then_permissive_doi_cleanup",
+    "doi_validation_robot_task"
+  ],
+
+  "notes": "From doi_validation.py cleanup pipeline: (1) Unescape HTML entities (&amp; -> &), (2) Strip query params (remove ?via%3Dihub&utm=source), (3) Strip fragments (remove #article-metadata), (4) Validate against pattern. Order matters: unescape first to handle cases like '&amp;utm=source'. PDF section 7.4 reports 98.9% recovery rate even for complex cases."
+}

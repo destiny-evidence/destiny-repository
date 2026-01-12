@@ -1,0 +1,53 @@
+{
+  "case_id": "malformed_doi__html_entities",
+  "case_type": "MALFORMED_DOI_RECOVERABLE",
+  "severity": 3,
+  "status": "triaged",
+  "summary": "DOI contains HTML entity encoding (&amp;, &gt;, &lt;) from scraped HTML, causing validation failure but recoverable via html.unescape(). Represents ~20-30% of malformed DOIs.",
+
+  "records": {
+    "incoming": {
+      "source": "crossref",
+      "source_key": "10.1234/example",
+      "title": "Climate Change and Agricultural Productivity",
+      "year": 2023,
+      "doi_raw": "10.1234/foo&amp;bar",
+      "authors": ["Chen X", "Li Y"]
+    },
+    "existing": {
+      "source": "openalex",
+      "source_key": "W3198765432",
+      "title": "Climate Change and Agricultural Productivity",
+      "year": 2023,
+      "doi_raw": "10.1234/foo&bar",
+      "doi_norm": "10.1234/foo&bar",
+      "authors": ["Chen X", "Li Y"]
+    }
+  },
+
+  "expected_relation": "DUPLICATE",
+  "observed_relation": "NOT_DUPLICATE",
+
+  "signals": {
+    "es_score": 165.2,
+    "title_jaccard": 1.0,
+    "author_count_incoming": 2,
+    "author_count_candidate": 2,
+    "year_delta": 0,
+    "doi_equal": false
+  },
+
+  "decision_trace": {
+    "candidate_query": "title_authors_v3",
+    "short_circuit": "doi_mismatch",
+    "doi_gate": "failed_validation",
+    "confidence": "HIGH"
+  },
+
+  "mitigations": [
+    "strict_then_permissive_doi_cleanup",
+    "doi_validation_robot_task"
+  ],
+
+  "notes": "From dedup_lab doi_validation.py: html.unescape() handles &amp;, &gt;, &lt;, &quot;, &#x03B1; (Greek alpha), and other HTML entities. Common when DOIs are scraped from HTML tables or reference lists without proper parsing."
+}

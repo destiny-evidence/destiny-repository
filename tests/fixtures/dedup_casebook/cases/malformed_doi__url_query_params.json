@@ -1,0 +1,53 @@
+{
+  "case_id": "malformed_doi__url_query_params",
+  "case_type": "MALFORMED_DOI_RECOVERABLE",
+  "severity": 3,
+  "status": "triaged",
+  "summary": "DOI contains URL query parameters (utm_campaign, journalcode, etc.) causing validation failure but is recoverable via cleanup. Represents ~40-50% of malformed DOIs in OpenAlex.",
+
+  "records": {
+    "incoming": {
+      "source": "crossref",
+      "source_key": "10.1021/acs.jproteome.4c00806.s002",
+      "title": "Supplementary Information for Proteomics Study",
+      "year": 2024,
+      "doi_raw": "10.1021/acs.jproteome.4c00806.s002?utm_campaign=email&utm_source=crossref",
+      "authors": ["Smith J", "Jones M"]
+    },
+    "existing": {
+      "source": "openalex",
+      "source_key": "W4401234567",
+      "title": "Supplementary Information for Proteomics Study",
+      "year": 2024,
+      "doi_raw": "10.1021/acs.jproteome.4c00806.s002",
+      "doi_norm": "10.1021/acs.jproteome.4c00806.s002",
+      "authors": ["Smith J", "Jones M"]
+    }
+  },
+
+  "expected_relation": "DUPLICATE",
+  "observed_relation": "NOT_DUPLICATE",
+
+  "signals": {
+    "es_score": 180.5,
+    "title_jaccard": 1.0,
+    "author_count_incoming": 2,
+    "author_count_candidate": 2,
+    "year_delta": 0,
+    "doi_equal": false
+  },
+
+  "decision_trace": {
+    "candidate_query": "title_authors_v3",
+    "short_circuit": "doi_mismatch",
+    "doi_gate": "failed_validation",
+    "confidence": "MEDIUM"
+  },
+
+  "mitigations": [
+    "strict_then_permissive_doi_cleanup",
+    "doi_validation_robot_task"
+  ],
+
+  "notes": "From PDF section 7.4: URL query parameters are the most common malformation (~40-50% of cases). Cleanup: strip everything after '?' character. After cleanup, 98.9% of malformed DOIs resolve successfully via Crossref. The incoming DOI should have matched the existing canonical after cleanup."
+}

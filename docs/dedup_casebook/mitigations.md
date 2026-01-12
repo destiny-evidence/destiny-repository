@@ -116,8 +116,41 @@ Detect and handle DOI suffixes indicating distinct documents:
 **Location**: `app/domain/references/deduplication/` or identifier normalization module
 
 Two-pass DOI normalization:
-1. Strict: exact format validation
-2. Permissive: strip URL encoding, fragments, entities
+1. **Stage 1 (fast path)**: Check if DOI already passes strict SDK pattern validation
+2. **Stage 2 (cleanup)**: Apply permissive cleanup and re-validate
+
+**Cleanup operations (in order)**:
+1. Unescape HTML entities (`&amp;` → `&`, `&gt;` → `>`, `&#x03B1;` → `α`)
+2. Strip URL query parameters (remove `?utm_campaign=...`, `?journalcode=...`)
+3. Strip URL fragments (remove `#article-info`, `#page=5`, preserve trailing `#` alone)
+4. Strip HTML tag remnants (e.g., `"&gt;10.1234/...&lt;/a&gt`)
+5. Strip escaped newlines (`\n`, `\\n`)
+6. Trim whitespace
+
+**Implementation**: See `/Users/jaybea/dedup_validation/dedup_lab/scripts/analysis/doi_validation.py` for reference implementation. Tested on 20k+ OpenAlex malformed DOIs with 98.9% recovery rate.
+
+**Affects**: `MALFORMED_DOI_RECOVERABLE`
+
+---
+
+### `doi_validation_robot_task`
+**Type**: `robot_task`
+**Status**: proposed
+**Location**: `app/domain/robots/tasks/` or background task queue
+
+When a DOI fails strict validation but passes cleanup:
+1. Document the malformed DOI and cleanup actions in a review queue
+2. Optionally: resolve DOI via doi.org or Crossref API to verify it's real
+3. Flag for human review if resolution fails (phantom DOI)
+
+**Implementation approach**:
+- Create `RobotTaskType.VALIDATE_DOI` task
+- Input: `{doi_raw, doi_cleaned, cleanup_actions, reference_id}`
+- Task attempts resolution via Crossref/doi.org
+- Output: `{valid: bool, resolution_url: str, metadata: dict}`
+- Updates reference with validation status
+
+**Success criteria**: Validates ~20k malformed DOIs from OpenAlex backlog, confirming 98.9% are real DOIs with correct metadata.
 
 **Affects**: `MALFORMED_DOI_RECOVERABLE`
 
@@ -131,6 +164,22 @@ Two-pass DOI normalization:
 Flag cases where same DOI points to different titles. Requires human review or rejection.
 
 **Affects**: `DOI_COLLISION_DANGEROUS`
+
+---
+
+### `mark_as_unsearchable_or_require_human_review`
+**Type**: `ingest_gate`
+**Status**: proposed
+**Location**: Ingestion quality gates
+
+For DOIs that fail both strict and permissive validation AND fail external resolution (Crossref/doi.org):
+1. Mark record as `UNSEARCHABLE` if DOI is only identifier
+2. Queue for human review if other metadata is strong
+3. Fallback to ES+Jaccard title-based dedup if title is meaningful
+
+**Policy decision needed**: What to do with phantom DOIs (pass pattern but not registered)?
+
+**Affects**: `MALFORMED_DOI_RECOVERABLE` (the 1.1% unrecoverable subset of the ~20k malformed DOIs, not the corpus)
 
 ---
 

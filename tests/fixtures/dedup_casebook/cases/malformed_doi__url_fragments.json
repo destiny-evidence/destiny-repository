@@ -1,0 +1,53 @@
+{
+  "case_id": "malformed_doi__url_fragments",
+  "case_type": "MALFORMED_DOI_RECOVERABLE",
+  "severity": 3,
+  "status": "triaged",
+  "summary": "DOI contains URL fragments (#article-xxx, #page=5, #sthash.xxx) from landing page URLs, causing validation failure. Represents ~15-20% of malformed DOIs.",
+
+  "records": {
+    "incoming": {
+      "source": "pubmed",
+      "source_key": "PMID38765432",
+      "title": "Machine Learning in Healthcare: A Systematic Review",
+      "year": 2024,
+      "doi_raw": "10.1038/s41598-024-12345-6#article-info",
+      "authors": ["Johnson R", "Williams P", "Davis K"]
+    },
+    "existing": {
+      "source": "openalex",
+      "source_key": "W4398765432",
+      "title": "Machine Learning in Healthcare: A Systematic Review",
+      "year": 2024,
+      "doi_raw": "10.1038/s41598-024-12345-6",
+      "doi_norm": "10.1038/s41598-024-12345-6",
+      "authors": ["Johnson R", "Williams P", "Davis K"]
+    }
+  },
+
+  "expected_relation": "DUPLICATE",
+  "observed_relation": "NOT_DUPLICATE",
+
+  "signals": {
+    "es_score": 195.7,
+    "title_jaccard": 1.0,
+    "author_count_incoming": 3,
+    "author_count_candidate": 3,
+    "year_delta": 0,
+    "doi_equal": false
+  },
+
+  "decision_trace": {
+    "candidate_query": "title_authors_v3",
+    "short_circuit": "doi_mismatch",
+    "doi_gate": "failed_validation",
+    "confidence": "HIGH"
+  },
+
+  "mitigations": [
+    "strict_then_permissive_doi_cleanup",
+    "doi_validation_robot_task"
+  ],
+
+  "notes": "From doi_validation.py: Fragments like #article-info, #page=5, #t=toc, #sthash.xxx are stripped UNLESS the fragment is a trailing # alone (which can be valid in old Wiley DOIs). Pattern: split on '#', check if fragment looks like URL navigation state, strip if so."
+}
