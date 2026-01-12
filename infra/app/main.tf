@@ -342,6 +342,10 @@ module "container_app_ui" {
       name  = "NEXT_PUBLIC_AZURE_APPLICATION_ID"
       value = azuread_application.destiny_repository.client_id
     },
+    {
+      name  = "AZURE_LOGIN_URL"
+      value = local.auth_login_url
+    },
   ]
 
   ingress = {
