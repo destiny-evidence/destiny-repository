@@ -328,11 +328,11 @@ module "container_app_ui" {
   env_vars = [
     {
       name  = "NEXT_PUBLIC_AZURE_CLIENT_ID"
-      value = azuread_application_registration.destiny_repository_auth_ui.client_id
+      value = var.external_directory_enabled ? azuread_application_registration.external_directory_destiny_repository_auth_ui.client_id : azuread_application_registration.destiny_repository_auth_ui.client_id
     },
     {
       name  = "NEXT_PUBLIC_AZURE_TENANT_ID"
-      value = var.azure_tenant_id
+      value = local.auth_tenant_id
     },
     {
       name  = "NEXT_PUBLIC_API_URL"
@@ -340,7 +340,7 @@ module "container_app_ui" {
     },
     {
       name  = "NEXT_PUBLIC_AZURE_APPLICATION_ID"
-      value = azuread_application.destiny_repository.client_id
+      value = local.auth_application_id
     },
     {
       name  = "AZURE_LOGIN_URL"
