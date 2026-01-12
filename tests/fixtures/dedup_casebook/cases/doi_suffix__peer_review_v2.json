@@ -1,0 +1,51 @@
+{
+  "case_id": "doi_suffix__peer_review_v2",
+  "case_type": "DOI_SUFFIX_PEER_REVIEW",
+  "severity": 3,
+  "status": "open",
+  "summary": "Crossref assigns separate DOIs to peer review materials with version/type suffixes - response vs review for same paper should not be marked as duplicates",
+
+  "records": {
+    "response": {
+      "source": "crossref",
+      "source_key": "10.1039/d4nj04926h/v2/response1",
+      "title": "Author response for manuscript d4nj04926h version 2",
+      "year": 2024,
+      "doi_raw": "10.1039/d4nj04926h/v2/response1",
+      "authors": ["Chen Y", "Liu X"],
+      "provenance": {
+        "ingest_batch": "2026-01-13-crossref-500k"
+      }
+    },
+    "review": {
+      "source": "crossref",
+      "source_key": "10.1039/d4nj04926h/v2/review2",
+      "title": "Reviewer 2 comments for manuscript d4nj04926h version 2",
+      "year": 2024,
+      "doi_raw": "10.1039/d4nj04926h/v2/review2",
+      "authors": [],
+      "provenance": {
+        "ingest_batch": "2026-01-13-crossref-500k"
+      }
+    }
+  },
+
+  "expected_relation": "NOT_DUPLICATE",
+  "observed_relation": "DUPLICATE",
+
+  "signals": {
+    "es_score": 95.0,
+    "title_jaccard": 0.88,
+    "doi_equal": false
+  },
+
+  "decision_trace": {
+    "confidence": "MEDIUM"
+  },
+
+  "mitigations": [
+    "doi_suffix_blacklist"
+  ],
+
+  "notes": "DOI suffix pattern: /v[0-9]+/(response|review|decision)[0-9]*. These are peer review artifacts from journals that implement open peer review. Titles share most content (manuscript ID, version). These are fundamentally different documents. Policy question: should we even import these DOIs? They're not relevant for evidence synthesis. If we do import them, they must be treated as NOT_DUPLICATE even with title similarity."
+}

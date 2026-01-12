@@ -1,0 +1,60 @@
+{
+  "case_id": "author_inflation__atlas_001",
+  "case_type": "AUTHOR_SCORE_INFLATION",
+  "severity": 5,
+  "status": "open",
+  "summary": "Large ATLAS collaboration author list (~2900 authors) inflated ES score to 2780.1 despite only 12% title Jaccard similarity, causing false positive merge with unrelated sausage microbiology paper",
+
+  "records": {
+    "incoming": {
+      "source": "crossref",
+      "source_key": "10.example/atlas-paper",
+      "title": "A continuous calibration of the ATLAS flavour-tagging classifiers using R=0.4 jets in ttbar events",
+      "year": 2020,
+      "doi_raw": "10.example/atlas-paper",
+      "authors": ["ATLAS Collaboration"],
+      "provenance": {
+        "ingest_batch": "2026-01-12-crossref-100k",
+        "retrieval": "crossref_api"
+      }
+    },
+    "candidate": {
+      "source": "openalex",
+      "source_key": "W2963166742",
+      "title": "Modeling the growth of natural microbiota in Frankfurt-type sausages manufactured with bacteriocin-producing protective cultures",
+      "year": 2019,
+      "doi_raw": null,
+      "authors": ["Smith J", "Müller K"],
+      "provenance": {
+        "ingest_batch": "2026-01-10-openalex-1m",
+        "retrieval": "openalex_dump"
+      }
+    }
+  },
+
+  "expected_relation": "NOT_DUPLICATE",
+  "observed_relation": "DUPLICATE",
+
+  "signals": {
+    "es_score": 2780.1,
+    "title_jaccard": 0.12,
+    "author_count_incoming": 2900,
+    "author_count_candidate": 2,
+    "year_delta": 1,
+    "doi_equal": false
+  },
+
+  "decision_trace": {
+    "candidate_query": "title_authors_v3",
+    "short_circuit": "high_es_score",
+    "doi_gate": "not_applicable",
+    "confidence": "HIGH"
+  },
+
+  "mitigations": [
+    "bounded_author_scoring",
+    "require_min_jaccard_even_when_es_high"
+  ],
+
+  "notes": "Classic ATLAS-style failure mode. Title overlap is minimal (some shared common words like 'the', 'of', 'in'). The massive author list dominated the ES score. Current threshold allows Jaccard >= 0.3 for HIGH confidence when ES is high, but 0.12 is far below even that permissive threshold - yet the system still merged them due to ES score dominance."
+}

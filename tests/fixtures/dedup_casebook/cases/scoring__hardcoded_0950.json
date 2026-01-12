@@ -1,0 +1,46 @@
+{
+  "case_id": "scoring__hardcoded_0950",
+  "case_type": "SCORING_HARDCODED_OUTPUT",
+  "severity": 3,
+  "status": "open",
+  "summary": "Scorer returns hardcoded combined_score=0.950 for all HIGH confidence matches, preventing distinction between 95% similar and 99.9% similar papers",
+
+  "records": {
+    "example_a": {
+      "source": "crossref",
+      "source_key": "10.example/paper-a",
+      "title": "Example paper for demonstrating hardcoded score issue",
+      "year": 2024,
+      "doi_raw": "10.example/paper-a",
+      "authors": ["Author A"]
+    },
+    "example_b": {
+      "source": "openalex",
+      "source_key": "W123456789",
+      "title": "Example paper for demonstrating hardcoded score issue",
+      "year": 2024,
+      "doi_raw": "10.example/paper-a",
+      "authors": ["Author A"]
+    }
+  },
+
+  "expected_relation": "DUPLICATE",
+  "observed_relation": "DUPLICATE",
+
+  "signals": {
+    "es_score": 250.0,
+    "title_jaccard": 0.99,
+    "doi_equal": true
+  },
+
+  "decision_trace": {
+    "confidence": "HIGH",
+    "gates_triggered": ["high_es_score_min_jaccard"]
+  },
+
+  "mitigations": [
+    "fix_hardcoded_score_0950"
+  ],
+
+  "notes": "Location: app/domain/references/deduplication/scoring/scorer.py line ~232. Current code: if es_score >= 100 and jaccard >= 0.3: return ScoringResult(combined_score=0.95, confidence=HIGH, ...). This means a perfect match (Jaccard=1.0, ES=250) gets the same score as a marginal match (Jaccard=0.31, ES=100.1). This reduces diagnosability - can't distinguish strong matches from weak matches in logs or analysis. Should return actual combined score (e.g., weighted average of normalized ES and Jaccard)."
+}

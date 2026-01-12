@@ -1,0 +1,60 @@
+{
+  "case_id": "doi_suffix__acs_supplement",
+  "case_type": "DOI_SUFFIX_SUPPLEMENT",
+  "severity": 4,
+  "status": "open",
+  "summary": "ACS publisher assigns separate DOIs to supplementary files with .s001, .s002 suffixes - supplement matched to main article as duplicate despite being distinct downloadable assets",
+
+  "records": {
+    "main_article": {
+      "source": "crossref",
+      "source_key": "10.1021/acs.jproteome.4c00806",
+      "title": "Proteomics Analysis of Novel Biomarkers in Colorectal Cancer",
+      "year": 2024,
+      "doi_raw": "10.1021/acs.jproteome.4c00806",
+      "authors": ["Johnson K", "Williams M", "Brown T"],
+      "container": {
+        "name": "Journal of Proteome Research"
+      },
+      "provenance": {
+        "ingest_batch": "2026-01-13-crossref-500k"
+      }
+    },
+    "supplement": {
+      "source": "crossref",
+      "source_key": "10.1021/acs.jproteome.4c00806.s002",
+      "title": "Proteomics Analysis of Novel Biomarkers in Colorectal Cancer",
+      "year": 2024,
+      "doi_raw": "10.1021/acs.jproteome.4c00806.s002",
+      "authors": ["Johnson K", "Williams M", "Brown T"],
+      "container": {
+        "name": "Journal of Proteome Research"
+      },
+      "provenance": {
+        "ingest_batch": "2026-01-13-crossref-500k"
+      }
+    }
+  },
+
+  "expected_relation": "NOT_DUPLICATE",
+  "observed_relation": "DUPLICATE",
+
+  "signals": {
+    "es_score": 180.0,
+    "title_jaccard": 1.0,
+    "author_count_incoming": 3,
+    "author_count_candidate": 3,
+    "year_delta": 0,
+    "doi_equal": false
+  },
+
+  "decision_trace": {
+    "confidence": "HIGH"
+  },
+
+  "mitigations": [
+    "doi_suffix_blacklist"
+  ],
+
+  "notes": "DOI suffix pattern: .s[0-9]{3,}. Main article and supplements have identical metadata (title, authors, year, journal) but are different objects. Supplement DOI contains main DOI as prefix. These are distinct downloadable assets - main article is the PDF, .s001 might be supplementary methods, .s002 might be data tables. Policy options: (1) filter supplement DOIs at ingestion, (2) treat as NOT_DUPLICATE but link to parent DOI, (3) store but mark as supplementary material type. For evidence synthesis, supplements are probably not primary evidence sources."
+}

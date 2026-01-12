@@ -1,0 +1,222 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://destiny-evidence.org/schemas/dedup-casebook/v1",
+  "title": "Deduplication Casebook Case",
+  "description": "A documented deduplication edge case, failure, or system issue",
+  "type": "object",
+  "required": ["case_id", "case_type", "severity", "status", "summary", "records", "expected_relation"],
+  "properties": {
+    "case_id": {
+      "type": "string",
+      "description": "Unique identifier, typically <category>__<slug>",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "case_type": {
+      "type": "string",
+      "description": "Classification from taxonomy",
+      "enum": [
+        "MALFORMED_DOI_RECOVERABLE",
+        "DOI_COLLISION_DANGEROUS",
+        "DOI_SUFFIX_SUPPLEMENT",
+        "DOI_SUFFIX_PEER_REVIEW",
+        "DOI_SUFFIX_VERSION",
+        "EXTERNAL_ID_INCORRECT_MAPPING",
+        "MISSING_IDENTIFIER_REQUIRED",
+        "TITLE_PUNCTUATION_ARTEFACTS",
+        "TITLE_ENCODING_NOISE",
+        "TITLE_TRANSLATION_VARIANT",
+        "TITLE_TRUNCATION",
+        "PREPRINT_VS_PUBLISHED_DRIFT",
+        "YEAR_DRIFT_SMALL",
+        "YEAR_DRIFT_ARXIV_GAP",
+        "MULTI_JOURNAL_PUBLICATION",
+        "PAPER_SERIES_PART_CONFUSION",
+        "COMMENT_RESPONSE_PAIR",
+        "ERRATUM_CORRIGENDUM_RETRACTION",
+        "PEER_REVIEW_ARTEFACT",
+        "SUPPLEMENTARY_MATERIAL",
+        "FRONTMATTER_BACKMATTER",
+        "AUTHOR_SCORE_INFLATION",
+        "GENERIC_TITLE_NO_METADATA",
+        "IDENTIFIER_LIKE_TITLE",
+        "MISSING_YEAR",
+        "MISSING_TITLE",
+        "INGESTION_STREAMING_TIMEOUT",
+        "SCORING_HARDCODED_OUTPUT",
+        "CANDIDATE_GENERATION_ERROR",
+        "THRESHOLD_CALIBRATION_NEEDED"
+      ]
+    },
+    "severity": {
+      "type": "integer",
+      "description": "Impact severity (1=informational, 5=false positive merge)",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "status": {
+      "type": "string",
+      "description": "Current case status",
+      "enum": ["open", "triaged", "fixed", "regression_tested", "wontfix"]
+    },
+    "summary": {
+      "type": "string",
+      "description": "1-2 sentence description of the case",
+      "minLength": 10,
+      "maxLength": 500
+    },
+    "records": {
+      "type": "object",
+      "description": "Record snapshots involved in this case",
+      "minProperties": 2,
+      "patternProperties": {
+        "^[a-z0-9_]+$": {
+          "type": "object",
+          "required": ["source", "title"],
+          "properties": {
+            "source": {
+              "type": "string",
+              "description": "Source system",
+              "enum": ["openalex", "pubmed", "crossref", "embase", "user", "other"]
+            },
+            "source_key": {
+              "type": "string",
+              "description": "Source-specific identifier (WID, PMID, DOI, etc.)"
+            },
+            "title": {
+              "type": "string",
+              "description": "Title as captured"
+            },
+            "year": {
+              "type": ["integer", "null"],
+              "description": "Publication year",
+              "minimum": 1000,
+              "maximum": 2100
+            },
+            "doi_raw": {
+              "type": ["string", "null"],
+              "description": "DOI as received (before normalization)"
+            },
+            "doi_norm": {
+              "type": ["string", "null"],
+              "description": "Normalized DOI"
+            },
+            "authors": {
+              "type": "array",
+              "description": "Author list (simplified)",
+              "items": {"type": "string"}
+            },
+            "container": {
+              "type": "object",
+              "description": "Journal/venue metadata",
+              "properties": {
+                "name": {"type": "string"},
+                "volume": {"type": "string"},
+                "issue": {"type": "string"},
+                "pages": {"type": "string"}
+              }
+            },
+            "provenance": {
+              "type": "object",
+              "description": "Where this record came from",
+              "properties": {
+                "ingest_batch": {"type": "string"},
+                "retrieval": {"type": "string"},
+                "retrieval_ts": {"type": "string", "format": "date-time"}
+              }
+            },
+            "extras": {
+              "type": "object",
+              "description": "Any other relevant metadata"
+            }
+          }
+        }
+      }
+    },
+    "expected_relation": {
+      "type": "string",
+      "description": "Ground truth: what should the relationship be?",
+      "enum": ["DUPLICATE", "NOT_DUPLICATE", "NEEDS_HUMAN", "UNSEARCHABLE"]
+    },
+    "observed_relation": {
+      "type": ["string", "null"],
+      "description": "What did the system decide?",
+      "enum": ["DUPLICATE", "NOT_DUPLICATE", "NEEDS_HUMAN", "UNSEARCHABLE", null]
+    },
+    "pairs": {
+      "type": "array",
+      "description": "Explicit pair assertions (for multi-record clusters)",
+      "items": {
+        "type": "object",
+        "required": ["left_ref", "right_ref", "expected_relation"],
+        "properties": {
+          "left_ref": {
+            "type": "string",
+            "description": "Key from 'records' object"
+          },
+          "right_ref": {
+            "type": "string",
+            "description": "Key from 'records' object"
+          },
+          "expected_relation": {
+            "type": "string",
+            "enum": ["DUPLICATE", "NOT_DUPLICATE", "NEEDS_HUMAN", "UNSEARCHABLE"]
+          },
+          "observed_relation": {
+            "type": ["string", "null"],
+            "enum": ["DUPLICATE", "NOT_DUPLICATE", "NEEDS_HUMAN", "UNSEARCHABLE", null]
+          }
+        }
+      }
+    },
+    "signals": {
+      "type": "object",
+      "description": "Computed features/scores that led to the decision",
+      "properties": {
+        "es_score": {"type": "number"},
+        "title_jaccard": {"type": "number", "minimum": 0, "maximum": 1},
+        "bigram_jaccard": {"type": "number", "minimum": 0, "maximum": 1},
+        "author_count_incoming": {"type": "integer"},
+        "author_count_candidate": {"type": "integer"},
+        "author_overlap": {"type": "number"},
+        "year_delta": {"type": "integer"},
+        "doi_equal": {"type": "boolean"},
+        "length_ratio": {"type": "number"}
+      },
+      "additionalProperties": true
+    },
+    "decision_trace": {
+      "type": "object",
+      "description": "How the system arrived at its decision",
+      "properties": {
+        "candidate_query": {"type": "string"},
+        "candidate_rank": {"type": "integer"},
+        "short_circuit": {"type": "string"},
+        "gates_triggered": {"type": "array", "items": {"type": "string"}},
+        "doi_gate": {"type": "string"},
+        "confidence": {"type": "string", "enum": ["LOW", "MEDIUM", "HIGH"]}
+      },
+      "additionalProperties": true
+    },
+    "mitigations": {
+      "type": "array",
+      "description": "Mitigation IDs from mitigations.md",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9_]+$"
+      }
+    },
+    "notes": {
+      "type": "string",
+      "description": "Free-form notes for future reference"
+    },
+    "created": {
+      "type": "string",
+      "description": "When this case was created",
+      "format": "date-time"
+    },
+    "created_by": {
+      "type": "string",
+      "description": "Who created this case"
+    }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "case_id": "comment_response__cisplatin_therapy",
+  "case_type": "COMMENT_RESPONSE_PAIR",
+  "severity": 4,
+  "status": "open",
+  "summary": "Comment and response papers share 95%+ title similarity but are distinct documents - one is a comment, the other is the response to that comment",
+
+  "records": {
+    "comment": {
+      "source": "crossref",
+      "source_key": "10.example/cisplatin-comment",
+      "title": "Re: Cisplatin-Based Therapy for Elderly Patients With Locally Advanced Head and Neck Squamous Cell Carcinoma",
+      "year": 2021,
+      "doi_raw": "10.example/cisplatin-comment",
+      "authors": ["Zhang L", "Wang H"],
+      "container": {
+        "name": "Journal of Clinical Oncology"
+      },
+      "provenance": {
+        "ingest_batch": "2026-01-12-crossref-100k"
+      }
+    },
+    "response": {
+      "source": "crossref",
+      "source_key": "10.example/cisplatin-response",
+      "title": "RESPONSE: Re: Cisplatin-Based Therapy for Elderly Patients With Locally Advanced Head and Neck Squamous Cell Carcinoma",
+      "year": 2021,
+      "doi_raw": "10.example/cisplatin-response",
+      "authors": ["Smith AB", "Jones CD"],
+      "container": {
+        "name": "Journal of Clinical Oncology"
+      },
+      "provenance": {
+        "ingest_batch": "2026-01-12-crossref-100k"
+      }
+    }
+  },
+
+  "expected_relation": "NOT_DUPLICATE",
+  "observed_relation": "DUPLICATE",
+
+  "signals": {
+    "es_score": 155.0,
+    "title_jaccard": 0.96,
+    "author_count_incoming": 2,
+    "author_count_candidate": 2,
+    "year_delta": 0,
+    "doi_equal": false
+  },
+
+  "decision_trace": {
+    "confidence": "HIGH"
+  },
+
+  "mitigations": [
+    "comment_response_keyword_detection"
+  ],
+
+  "notes": "Only difference is prefix 'RESPONSE:' (8 characters) vs rest of title (~100 characters). For citation graphs, these should be distinct. For evidence synthesis use case, unclear - need policy decision. Same journal, same year, different authors, different DOIs. Detection of 're:', 'response', 'comment' keywords should trigger different handling - either require DOI match or mark as NOT_DUPLICATE."
+}

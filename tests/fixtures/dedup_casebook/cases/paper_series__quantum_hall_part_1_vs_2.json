@@ -1,0 +1,57 @@
+{
+  "case_id": "paper_series__quantum_hall_part_1_vs_2",
+  "case_type": "PAPER_SERIES_PART_CONFUSION",
+  "severity": 5,
+  "status": "open",
+  "summary": "Multi-part paper series marked as duplicates: Part I (low-energy properties) vs Part II (microscopic theory) have 95% Jaccard similarity but are distinct papers",
+
+  "records": {
+    "part_1": {
+      "source": "crossref",
+      "source_key": "10.example/quantum-hall-part1",
+      "title": "Theory of quantum Hall Smectic Phase. I. Low-energy properties",
+      "year": 2020,
+      "doi_raw": "10.example/quantum-hall-part1",
+      "authors": ["Chen X", "Fisher DS", "Fradkin E"],
+      "provenance": {
+        "ingest_batch": "2026-01-12-crossref-100k"
+      }
+    },
+    "part_2": {
+      "source": "crossref",
+      "source_key": "10.example/quantum-hall-part2",
+      "title": "Theory of quantum Hall Smectic Phase. II. Microscopic theory",
+      "year": 2020,
+      "doi_raw": "10.example/quantum-hall-part2",
+      "authors": ["Chen X", "Fisher DS", "Fradkin E"],
+      "provenance": {
+        "ingest_batch": "2026-01-12-crossref-100k"
+      }
+    }
+  },
+
+  "expected_relation": "NOT_DUPLICATE",
+  "observed_relation": "DUPLICATE",
+
+  "signals": {
+    "es_score": 150.3,
+    "title_jaccard": 0.95,
+    "author_count_incoming": 3,
+    "author_count_candidate": 3,
+    "year_delta": 0,
+    "doi_equal": false
+  },
+
+  "decision_trace": {
+    "candidate_query": "title_authors_v3",
+    "confidence": "HIGH"
+  },
+
+  "mitigations": [
+    "numeric_token_boosting",
+    "bigram_jaccard_scoring",
+    "require_min_jaccard_even_when_es_high"
+  ],
+
+  "notes": "Only difference is Roman numeral (I vs II) and subtitle (Low-energy properties vs Microscopic theory). Unigram Jaccard can't distinguish because only 1-2 tokens differ out of ~20 total. Bigram Jaccard would help (Phase. I. vs Phase. II. are different bigrams). Numeric token boosting would also flag Roman numeral differences as significant."
+}
