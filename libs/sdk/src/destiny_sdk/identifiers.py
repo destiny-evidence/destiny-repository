@@ -1,8 +1,8 @@
 """Identifier classes for the Destiny SDK."""
 
-import uuid
 from enum import StrEnum, auto
 from typing import Annotated, Literal, Self
+from uuid import UUID
 
 from pydantic import UUID4, UUID7, BaseModel, Field, TypeAdapter, field_validator
 
@@ -211,7 +211,7 @@ class IdentifierLookup(BaseModel):
         """Parse an identifier string into an IdentifierLookup."""
         if delimiter not in identifier_lookup_string:
             try:
-                uuid.UUID(identifier_lookup_string)
+                UUID(identifier_lookup_string)
             except ValueError as exc:
                 msg = (
                     f"Invalid identifier lookup string: {identifier_lookup_string}. "
@@ -250,7 +250,7 @@ class IdentifierLookup(BaseModel):
     @classmethod
     def from_identifier(cls, identifier: Identifier) -> Self:
         """Create an IdentifierLookup from an ExternalIdentifier or UUID."""
-        if isinstance(identifier, uuid.UUID):
+        if isinstance(identifier, UUID):
             return cls(identifier=str(identifier), identifier_type=None)
         return cls(
             identifier=str(identifier.identifier),
@@ -261,7 +261,7 @@ class IdentifierLookup(BaseModel):
     def to_identifier(self) -> Identifier:
         """Convert into an ExternalIdentifier or UUID if it has no identifier_type."""
         if self.identifier_type is None:
-            return uuid.UUID(self.identifier)
+            return UUID(self.identifier)
         return ExternalIdentifierAdapter.validate_python(self.model_dump())
 
     def __repr__(self) -> str:

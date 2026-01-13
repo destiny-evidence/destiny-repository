@@ -1,9 +1,9 @@
 """Defines tests for the references router."""
 
 import datetime
-import uuid
 from collections.abc import AsyncGenerator
 from unittest.mock import ANY, AsyncMock, patch
+from uuid import UUID, uuid7
 
 import pytest
 from destiny_sdk.enhancements import EnhancementType
@@ -203,10 +203,10 @@ async def add_robot_enhancement_batch(
     return robot_enhancement_batch.to_domain()
 
 
-async def add_enhancement(session: AsyncSession, reference_id: uuid.UUID):
+async def add_enhancement(session: AsyncSession, reference_id: UUID):
     """Add a basic enhancement to a reference."""
     enhancement = SQLEnhancement(
-        id=uuid.uuid7(),
+        id=uuid7(),
         reference_id=reference_id,
         visibility=Visibility.PUBLIC,
         source="test_source",
@@ -240,8 +240,8 @@ async def test_get_reference_with_enhancements_happy_path(
 
     response_data = response.json()
 
-    assert uuid.UUID(response_data["id"]) == reference.id
-    assert uuid.UUID(response_data["enhancements"][0]["id"]) == enhancement.id
+    assert UUID(response_data["id"]) == reference.id
+    assert UUID(response_data["enhancements"][0]["id"]) == enhancement.id
 
 
 async def test_request_batch_enhancement_happy_path(
@@ -301,7 +301,7 @@ async def test_add_robot_automation_happy_path(
         assert found, "Expected 'robot_id' to be set in structlog contextvars"
         assert response.status_code == status.HTTP_201_CREATED
         response_data = response.json()
-    assert uuid.UUID(response_data["robot_id"]) == robot.id
+    assert UUID(response_data["robot_id"]) == robot.id
     assert response_data["query"] == robot_automation_create["query"]
 
 
@@ -311,7 +311,7 @@ async def test_add_robot_automation_missing_robot(
 ) -> None:
     """Test adding a robot automation with a missing robot."""
     robot_automation_create = {
-        "robot_id": str(uuid.uuid7()),
+        "robot_id": str(uuid7()),
         "query": {"match": {"robot_id": "some-robot-id"}},
     }
 
@@ -391,9 +391,9 @@ async def test_update_robot_automation_happy_path(
 
     assert response.status_code == status.HTTP_201_CREATED
     response_data = response.json()
-    assert uuid.UUID(response_data["robot_id"]) == robot.id
+    assert UUID(response_data["robot_id"]) == robot.id
     assert response_data["query"] == robot_automation_update["query"]
-    assert uuid.UUID(response_data["id"]) == uuid.UUID(automation_id)
+    assert UUID(response_data["id"]) == UUID(automation_id)
 
 
 async def test_update_robot_automation_nonexistent_automation(
@@ -403,7 +403,7 @@ async def test_update_robot_automation_nonexistent_automation(
 ) -> None:
     """Test updating a nonexistent robot automation."""
     robot = await add_robot(session)
-    fake_automation_id = uuid.uuid7()
+    fake_automation_id = uuid7()
 
     robot_automation_update = {
         "robot_id": str(robot.id),
@@ -440,7 +440,7 @@ async def test_update_robot_automation_missing_robot(
     automation_id = create_response.json()["id"]
 
     # Now try to update with a nonexistent robot
-    fake_robot_id = uuid.uuid7()
+    fake_robot_id = uuid7()
     robot_automation_update = {
         "robot_id": str(fake_robot_id),
         "query": {"match": {"name": "updated_query"}},
@@ -509,7 +509,7 @@ async def test_get_robot_automations_with_automations(
     assert automation_ids == expected_ids
 
     # Check robot IDs are correct
-    robot_ids = {uuid.UUID(automation["robot_id"]) for automation in response_data}
+    robot_ids = {UUID(automation["robot_id"]) for automation in response_data}
     expected_robot_ids = {robot.id, robot.id}
     assert robot_ids == expected_robot_ids
 
@@ -743,7 +743,7 @@ async def test_lookup_references_too_many_identifiers(
 ) -> None:
     """Test lookup_references with too many identifiers."""
     too_many_identifiers = [
-        str(uuid.uuid7())
+        str(uuid7())
         for _ in range(get_settings().max_lookup_reference_query_length + 1)
     ]
     response = await client.get(
@@ -773,7 +773,7 @@ async def test_lookup_references_invalid_identifier_format(
 
 async def test_get_robot_enhancement_batch_nonexistent_batch(client: AsyncClient):
     """Test getting a robot enhancement batch that does not exist."""
-    response = await client.get(f"/v1/robot-enhancement-batces/{uuid.uuid7()}/")
+    response = await client.get(f"/v1/robot-enhancement-batces/{uuid7()}/")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -791,7 +791,7 @@ async def test_robot_enhancement_batch_renew_lease(
         ReferenceService, "renew_robot_enhancement_batch_lease", mock_renew_lease
     )
 
-    _id = uuid.uuid7()
+    _id = uuid7()
     response = await client.patch(
         f"/v1/robot-enhancement-batches/{_id}/renew-lease/?lease={dt_iso}"
     )
@@ -818,7 +818,7 @@ async def test_robot_enhancement_batch_renew_lease_empty_response(
         ReferenceService, "renew_robot_enhancement_batch_lease", mock_renew_lease
     )
 
-    _id = uuid.uuid7()
+    _id = uuid7()
     response = await client.patch(
         f"/v1/robot-enhancement-batches/{_id}/renew-lease/?lease={dt_iso}"
     )

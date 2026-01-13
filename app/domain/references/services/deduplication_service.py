@@ -1,7 +1,7 @@
 """Service for managing reference duplicate detection."""
 
-import uuid
 from typing import Literal
+from uuid import UUID
 
 from opentelemetry import trace
 
@@ -105,11 +105,11 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
     async def register_duplicate_decision_for_reference(
         self,
-        reference_id: uuid.UUID,
-        enhancement_id: uuid.UUID | None = None,
+        reference_id: UUID,
+        enhancement_id: UUID | None = None,
         duplicate_determination: Literal[DuplicateDetermination.EXACT_DUPLICATE]
         | None = None,
-        canonical_reference_id: uuid.UUID | None = None,
+        canonical_reference_id: UUID | None = None,
     ) -> ReferenceDuplicateDecision:
         """
         Register a duplicate decision for a reference.
@@ -118,14 +118,14 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         :type reference: app.domain.references.models.models.Reference
         :param enhancement_id: The enhancement ID triggering with the duplicate
             decision, defaults to None
-        :type enhancement_id: uuid.UUID | None, optional
+        :type enhancement_id: UUID | None, optional
         :param duplicate_determination: Flag indicating if a reference was an exact
             duplicate and not imported, defaults to None
         :type duplicate_determination: Literal[DuplicateDetermination.EXACT_DUPLICATE]
             | None, optional
         :param canonical_reference_id: The canonical reference ID this reference is an
             exact duplicate of, defaults to None
-        :type canonical_reference_id: uuid.UUID | None, optional
+        :type canonical_reference_id: UUID | None, optional
         :return: The registered duplicate decision
         :rtype: ReferenceDuplicateDecision
         """

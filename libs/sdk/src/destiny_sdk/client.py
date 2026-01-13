@@ -2,8 +2,8 @@
 
 import sys
 import time
-import uuid
 from collections.abc import Generator
+from uuid import UUID
 
 import httpx
 from msal import (
@@ -36,7 +36,7 @@ class HMACSigningAuth(httpx.Auth):
 
     requires_request_body = True
 
-    def __init__(self, secret_key: str, client_id: uuid.UUID) -> None:
+    def __init__(self, secret_key: str, client_id: UUID) -> None:
         """
         Initialize the client.
 
@@ -74,9 +74,7 @@ class RobotClient:
     Current implementation only supports robot results.
     """
 
-    def __init__(
-        self, base_url: HttpUrl, secret_key: str, client_id: uuid.UUID
-    ) -> None:
+    def __init__(self, base_url: HttpUrl, secret_key: str, client_id: UUID) -> None:
         """
         Initialize the client.
 
@@ -85,7 +83,7 @@ class RobotClient:
         :param secret_key: The secret key for signing requests
         :type secret_key: str
         :param client_id: The client ID for signing requests
-        :type client_id: uuid.UUID
+        :type client_id: UUID
         """
         self.session = httpx.Client(
             base_url=str(base_url).removesuffix("/").removesuffix("/v1") + "/v1",
@@ -136,7 +134,7 @@ class RobotClient:
 
     def poll_robot_enhancement_batch(
         self,
-        robot_id: uuid.UUID,
+        robot_id: UUID,
         limit: int = 10,
         lease: str | None = None,
         timeout: int = 60,
@@ -147,7 +145,7 @@ class RobotClient:
         Signs the request with the client's secret key.
 
         :param robot_id: The ID of the robot to poll for
-        :type robot_id: uuid.UUID
+        :type robot_id: UUID
         :param limit: The maximum number of pending enhancements to return
         :type limit: int
         :param lease: The duration to lease the pending enhancements for,
@@ -174,7 +172,7 @@ class RobotClient:
         return RobotEnhancementBatch.model_validate(response.json())
 
     def renew_robot_enhancement_batch_lease(
-        self, robot_enhancement_batch_id: uuid.UUID, lease_duration: str | None = None
+        self, robot_enhancement_batch_id: UUID, lease_duration: str | None = None
     ) -> None:
         """
         Renew the lease for a robot enhancement batch.
@@ -182,7 +180,7 @@ class RobotClient:
         Signs the request with the client's secret key.
 
         :param robot_enhancement_batch_id: The ID of the robot enhancement batch
-        :type robot_enhancement_batch_id: uuid.UUID
+        :type robot_enhancement_batch_id: UUID
         :param lease_duration: The duration to lease the pending enhancements for,
             in ISO 8601 duration format eg PT10M. If not provided the repository will
             use a default lease duration.

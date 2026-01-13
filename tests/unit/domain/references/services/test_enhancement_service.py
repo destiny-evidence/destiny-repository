@@ -1,7 +1,7 @@
 import json
-import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID, uuid7
 
 import pytest
 
@@ -67,9 +67,9 @@ def create_empty_stream():
 def create_enhancement_request(reference_ids, status=EnhancementRequestStatus.RECEIVED):
     """Helper to create an EnhancementRequest with result_file."""
     return EnhancementRequest(
-        id=uuid.uuid7(),
+        id=uuid7(),
         reference_ids=reference_ids,
-        robot_id=uuid.uuid7(),
+        robot_id=uuid7(),
         request_status=status,
         result_file=BlobStorageFile(
             location="minio",
@@ -83,11 +83,11 @@ def create_enhancement_request(reference_ids, status=EnhancementRequestStatus.RE
 def create_pending_enhancement(reference_id, status=PendingEnhancementStatus.PENDING):
     """Helper to create a PendingEnhancement."""
     return PendingEnhancement(
-        id=uuid.uuid7(),
+        id=uuid7(),
         reference_id=reference_id,
-        robot_id=uuid.uuid7(),
-        enhancement_request_id=uuid.uuid7(),
-        robot_enhancement_batch_id=uuid.uuid7(),
+        robot_id=uuid7(),
+        enhancement_request_id=uuid7(),
+        robot_enhancement_batch_id=uuid7(),
         status=status,
     )
 
@@ -114,11 +114,11 @@ def create_processed_results():
 
 @pytest.mark.asyncio
 async def test_build_robot_request_happy_path(fake_uow, fake_repository):
-    references = [Reference(id=uuid.uuid7()) for _ in range(2)]
+    references = [Reference(id=uuid7()) for _ in range(2)]
     enhancement_request = EnhancementRequest(
-        id=uuid.uuid7(),
+        id=uuid7(),
         reference_ids=[r.id for r in references],
-        robot_id=uuid.uuid7(),
+        robot_id=uuid7(),
         request_status=EnhancementRequestStatus.RECEIVED,
     )
     uow = fake_uow(enhancement_requests=fake_repository([enhancement_request]))
@@ -140,7 +140,7 @@ async def test_build_robot_request_happy_path(fake_uow, fake_repository):
     assert str(result.result_storage_url) == "http://signed.url/"
 
 
-def make_enhancement_result_entry(reference_id: uuid.UUID, *, as_error: bool) -> str:
+def make_enhancement_result_entry(reference_id: UUID, *, as_error: bool) -> str:
     """
     Helper to create a EnhancementResultEntry jsonl line (Enhancement or
     LinkedRobotError) with correct annotation structure.
@@ -180,7 +180,7 @@ async def test_process_robot_enhancement_batch_result_happy_path():
     Test that process_robot_enhancement_batch_result yields expected messages and
     calls add_enhancement.
     """
-    reference_id = uuid.uuid7()
+    reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
 
@@ -226,8 +226,8 @@ async def test_process_robot_enhancement_batch_result_handles_both_entry_types()
     Test process_robot_enhancement_batch_result yields correct messages for both
     Enhancement and LinkedRobotError entries.
     """
-    reference_id_1 = uuid.uuid7()
-    reference_id_2 = uuid.uuid7()
+    reference_id_1 = uuid7()
+    reference_id_2 = uuid7()
 
     pending_enhancement_1 = create_pending_enhancement(reference_id_1)
     pending_enhancement_2 = create_pending_enhancement(reference_id_2)
@@ -276,8 +276,8 @@ async def test_process_robot_enhancement_batch_result_missing_reference_id():
     Test that process_robot_enhancement_batch_result yields a message for missing
     reference ids in the result file.
     """
-    reference_id_1 = uuid.uuid7()
-    reference_id_2 = uuid.uuid7()  # This one will be missing from the result file
+    reference_id_1 = uuid7()
+    reference_id_2 = uuid7()  # This one will be missing from the result file
 
     pending_enhancement_1 = create_pending_enhancement(reference_id_1)
     pending_enhancement_2 = create_pending_enhancement(reference_id_2)
@@ -327,8 +327,8 @@ async def test_process_robot_enhancement_batch_result_surplus_reference_id(fake_
     Test that process_robot_enhancement_batch_result handles surplus reference ids in
     the result file by ignoring them.
     """
-    reference_id_1 = uuid.uuid7()
-    surplus_reference_id = uuid.uuid7()
+    reference_id_1 = uuid7()
+    surplus_reference_id = uuid7()
 
     pending_enhancement = create_pending_enhancement(reference_id_1)
     result_file = create_result_file()
@@ -381,7 +381,7 @@ async def test_process_robot_enhancement_batch_result_parse_failure(fake_uow):
     Test that process_robot_enhancement_batch_result yields a parse failure for
     malformed JSON.
     """
-    reference_id = uuid.uuid7()
+    reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
 
@@ -424,7 +424,7 @@ async def test_process_robot_enhancement_batch_result_raw_enhancement(fake_uow):
     Test that process_robot_enhancement_batch_result returns a robot error
     if the enhancement type is a raw enhancement.
     """
-    reference_id = uuid.uuid7()
+    reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
 
@@ -482,7 +482,7 @@ async def test_process_robot_enhancement_batch_result_add_enhancement_fails(fake
     Test that process_robot_enhancement_batch_result yields error if add_enhancement
     returns False.
     """
-    reference_id = uuid.uuid7()
+    reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
 
@@ -526,7 +526,7 @@ async def test_process_robot_enhancement_batch_result_empty_result_file():
     Test that process_robot_enhancement_batch_result yields missing reference messages
     if result file is empty.
     """
-    reference_id = uuid.uuid7()
+    reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
 
@@ -564,7 +564,7 @@ async def test_process_robot_enhancement_batch_result_duplicate_reference_ids():
     Test that process_robot_enhancement_batch_result processes duplicate reference ids
     in the result file.
     """
-    reference_id = uuid.uuid7()
+    reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
 
@@ -619,9 +619,9 @@ async def test_process_robot_enhancement_batch_result_multiple_pending_enhanceme
     Test that process_robot_enhancement_batch_result correctly categorizes
     multiple pending enhancements with mixed success/failure.
     """
-    reference_id_1 = uuid.uuid7()
-    reference_id_2 = uuid.uuid7()
-    reference_id_3 = uuid.uuid7()  # This one will fail
+    reference_id_1 = uuid7()
+    reference_id_2 = uuid7()
+    reference_id_3 = uuid7()  # This one will fail
 
     pending_enhancement_1 = create_pending_enhancement(reference_id_1)
     pending_enhancement_2 = create_pending_enhancement(reference_id_2)
@@ -677,7 +677,7 @@ async def test_process_robot_enhancement_batch_result_multiple_pending_enhanceme
 @pytest.mark.asyncio
 async def test_process_robot_enhancement_batch_result_discarded_enhancements():
     "Test discarding of pending enhancements."
-    reference_id = uuid.uuid7()
+    reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
 

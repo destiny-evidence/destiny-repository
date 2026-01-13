@@ -5,8 +5,8 @@ Successful authentication is via HMAC on a registered robot,
 or a successful JWT authentication.
 """
 
-import uuid
 from collections.abc import AsyncGenerator, Callable
+from uuid import uuid7
 
 import destiny_sdk
 import pytest
@@ -144,9 +144,7 @@ async def test_hmac_multi_client_authentication_robot_does_not_exist(
     enhancement_request: SQLEnhancementRequest,
 ) -> None:
     """Test authentication fails when robot does not exist."""
-    auth = destiny_sdk.client.HMACSigningAuth(
-        client_id=uuid.uuid7(), secret_key="nonsense"
-    )
+    auth = destiny_sdk.client.HMACSigningAuth(client_id=uuid7(), secret_key="nonsense")
 
     response = await client.get(
         f"/v1/enhancement-requests/{enhancement_request.id}/",
