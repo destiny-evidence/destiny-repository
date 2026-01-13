@@ -1052,6 +1052,164 @@ async def test_expire_and_replace_stale_pending_enhancements_with_expired(
 
 
 @pytest.mark.asyncio
+async def test_process_reference_duplicate_decision_non_terminal_state(
+    fake_repository, fake_uow
+):
+    """
+    Test that non-terminal states skip map_duplicate_decision.
+
+    When determine_canonical_from_candidates returns UNRESOLVED (a non-terminal state),
+    the method should not call map_duplicate_decision, which would raise an error.
+    """
+    reference_id = uuid.uuid4()
+    decision_id = uuid.uuid4()
+
+    # Create a decision that will end up as UNRESOLVED
+    decision = ReferenceDuplicateDecision(
+        id=decision_id,
+        reference_id=reference_id,
+        duplicate_determination=DuplicateDetermination.PENDING,
+    )
+
+    # Decision after nominate_candidate_canonicals
+    decision_after_nominate = ReferenceDuplicateDecision(
+        id=decision_id,
+        reference_id=reference_id,
+        duplicate_determination=DuplicateDetermination.PENDING,
+    )
+
+    # Decision after determine_canonical_from_candidates - returns UNRESOLVED (non-terminal)
+    decision_unresolved = ReferenceDuplicateDecision(
+        id=decision_id,
+        reference_id=reference_id,
+        duplicate_determination=DuplicateDetermination.UNRESOLVED,
+    )
+
+    uow = fake_uow()
+    es_uow = fake_uow()
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, es_uow
+    )
+
+    with (
+        patch.object(
+            service._deduplication_service,  # noqa: SLF001
+            "shortcut_deduplication_using_identifiers",
+            AsyncMock(return_value=None),
+        ),
+        patch.object(
+            service._deduplication_service,  # noqa: SLF001
+            "nominate_candidate_canonicals",
+            AsyncMock(return_value=decision_after_nominate),
+        ),
+        patch.object(
+            service._deduplication_service,  # noqa: SLF001
+            "determine_canonical_from_candidates",
+            AsyncMock(return_value=decision_unresolved),
+        ),
+        patch.object(
+            service._deduplication_service,  # noqa: SLF001
+            "map_duplicate_decision",
+            AsyncMock(),
+        ) as mock_map,
+        patch.object(
+            service,
+            "apply_reference_duplicate_decision_side_effects",
+            AsyncMock(),
+        ) as mock_side_effects,
+    ):
+        # This should NOT raise "Only terminal duplicate determinations can be mapped"
+        await service.process_reference_duplicate_decision(decision)
+
+        # map_duplicate_decision should NOT be called for non-terminal states
+        mock_map.assert_not_awaited()
+
+        # Side effects should also NOT be called for non-terminal states
+        mock_side_effects.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_process_reference_duplicate_decision_terminal_state(
+    fake_repository, fake_uow
+):
+    """
+    Test that terminal states DO call map_duplicate_decision and side effects.
+
+    When determine_canonical_from_candidates returns CANONICAL (a terminal state),
+    the method should call map_duplicate_decision and apply side effects.
+    """
+    reference_id = uuid.uuid4()
+    decision_id = uuid.uuid4()
+
+    decision = ReferenceDuplicateDecision(
+        id=decision_id,
+        reference_id=reference_id,
+        duplicate_determination=DuplicateDetermination.PENDING,
+    )
+
+    decision_after_nominate = ReferenceDuplicateDecision(
+        id=decision_id,
+        reference_id=reference_id,
+        duplicate_determination=DuplicateDetermination.PENDING,
+    )
+
+    # Decision after determine_canonical_from_candidates - returns CANONICAL (terminal)
+    decision_canonical = ReferenceDuplicateDecision(
+        id=decision_id,
+        reference_id=reference_id,
+        duplicate_determination=DuplicateDetermination.CANONICAL,
+    )
+
+    # Decision after map
+    decision_mapped = ReferenceDuplicateDecision(
+        id=decision_id,
+        reference_id=reference_id,
+        duplicate_determination=DuplicateDetermination.CANONICAL,
+    )
+
+    uow = fake_uow()
+    es_uow = fake_uow()
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, es_uow
+    )
+
+    with (
+        patch.object(
+            service._deduplication_service,  # noqa: SLF001
+            "shortcut_deduplication_using_identifiers",
+            AsyncMock(return_value=None),
+        ),
+        patch.object(
+            service._deduplication_service,  # noqa: SLF001
+            "nominate_candidate_canonicals",
+            AsyncMock(return_value=decision_after_nominate),
+        ),
+        patch.object(
+            service._deduplication_service,  # noqa: SLF001
+            "determine_canonical_from_candidates",
+            AsyncMock(return_value=decision_canonical),
+        ),
+        patch.object(
+            service._deduplication_service,  # noqa: SLF001
+            "map_duplicate_decision",
+            AsyncMock(return_value=(decision_mapped, True)),
+        ) as mock_map,
+        patch.object(
+            service,
+            "apply_reference_duplicate_decision_side_effects",
+            AsyncMock(),
+        ) as mock_side_effects,
+    ):
+        await service.process_reference_duplicate_decision(decision)
+
+        # map_duplicate_decision SHOULD be called for terminal states
+        mock_map.assert_awaited_once_with(decision_canonical)
+
+        # Side effects SHOULD be called for terminal states
+        mock_side_effects.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_expire_and_replace_stale_pending_enhancements_at_retry_limit(
     fake_repository, fake_uow, test_robot, caplog
 ):

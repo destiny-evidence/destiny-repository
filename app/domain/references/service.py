@@ -1050,17 +1050,23 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
         )
 
-        (
-            reference_duplicate_decision,
-            decision_changed,
-        ) = await self._deduplication_service.map_duplicate_decision(
-            reference_duplicate_decision
-        )
+        # Only map terminal decisions (DUPLICATE, CANONICAL, etc.)
+        # Non-terminal states like UNRESOLVED skip mapping and side effects
+        if (
+            reference_duplicate_decision.duplicate_determination
+            in DuplicateDetermination.get_terminal_states()
+        ):
+            (
+                reference_duplicate_decision,
+                decision_changed,
+            ) = await self._deduplication_service.map_duplicate_decision(
+                reference_duplicate_decision
+            )
 
-        await self.apply_reference_duplicate_decision_side_effects(
-            reference_duplicate_decision,
-            decision_changed=decision_changed,
-        )
+            await self.apply_reference_duplicate_decision_side_effects(
+                reference_duplicate_decision,
+                decision_changed=decision_changed,
+            )
 
     @sql_unit_of_work
     async def get_pending_enhancements_for_robot(

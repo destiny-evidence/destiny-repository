@@ -135,13 +135,14 @@ class ESConfig(BaseModel):
     def validate_authentication(self) -> Self:
         """Validate the Elasticsearch authentication method."""
         has_api_key = all([self.cloud_id, self.api_key])
-        has_user_pass = any((self.es_url, self.es_user, self.es_pass, self.es_ca_path))
+        # Traditional auth requires es_url and ca_path (es_user/es_pass allowed with insecure)
+        has_traditional = any((self.es_url, self.es_ca_path))
 
         # count how many auth methods are provided
         auth_methods = sum(
             [
                 has_api_key,
-                has_user_pass,
+                has_traditional,
                 bool(self.es_insecure_url),
             ]
         )
@@ -150,7 +151,8 @@ class ESConfig(BaseModel):
             msg = (
                 "Exactly one of the following authentication methods must be provided: "
                 "API key (cloud_id, api_key), traditional auth (es_url, es_user, "
-                "es_pass, es_ca_path), or insecure URL (es_insecure_url)."
+                "es_pass, es_ca_path), or insecure URL (es_insecure_url with optional "
+                "es_user/es_pass)."
             )
             raise ValueError(msg)
 
@@ -328,6 +330,179 @@ class FeatureFlags(BaseModel):
     """Feature flags for the application."""
 
 
+class DedupScoringConfig(BaseModel):
+    """Configuration for deduplication scoring."""
+
+    # Scoring method (rapidfuzz is most accurate)
+    method: Literal[
+        "rapidfuzz",
+        "token_jaccard",
+        "bloom_jaccard",
+        "hybrid_simhash_gate",
+        "two_stage",
+    ] = Field(
+        default="two_stage",
+        description="Scoring method. 'two_stage' balances speed and accuracy.",
+    )
+
+    # Component weights
+    title_weight: float = Field(default=0.4, ge=0, le=1)
+    author_weight: float = Field(default=0.3, ge=0, le=1)
+    year_weight: float = Field(default=0.1, ge=0, le=1)
+    identifier_weight: float = Field(default=0.2, ge=0, le=1)
+
+    # Decision thresholds
+    duplicate_threshold: float = Field(
+        default=0.85,
+        ge=0,
+        le=1,
+        description="Score above which a pair is marked DUPLICATE",
+    )
+    canonical_threshold: float = Field(
+        default=0.5,
+        ge=0,
+        le=1,
+        description="Score below which a pair is marked CANONICAL (no match)",
+    )
+
+    # Two-stage settings
+    two_stage_top_k: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Top K candidates to refine with RapidFuzz",
+    )
+
+    # ES+Jaccard thresholds (from dedup_lab benchmarks)
+    es_high_score_threshold: float = Field(
+        default=100.0,
+        ge=0,
+        description="ES score threshold for high confidence (requires min Jaccard)",
+    )
+    high_score_min_jaccard: float = Field(
+        default=0.3,
+        ge=0,
+        le=1,
+        description="Minimum Jaccard for high ES scores. Prevents false positives "
+        "from papers with large author lists.",
+    )
+    es_min_score_threshold: float = Field(
+        default=50.0,
+        ge=0,
+        description="Min ES score to consider for Jaccard verification",
+    )
+    jaccard_threshold: float = Field(
+        default=0.6,
+        ge=0,
+        le=1,
+        description="Minimum title Jaccard similarity for acceptance",
+    )
+
+    # Short title fallback thresholds
+    short_title_max_tokens: int = Field(
+        default=2,
+        ge=1,
+        description="Max tokens to trigger short title fallback",
+    )
+    short_title_min_es_score: float = Field(
+        default=20.0,
+        ge=0,
+        description="Min ES score for short title fallback",
+    )
+    short_title_min_jaccard: float = Field(
+        default=0.99,
+        ge=0,
+        le=1,
+        description="Min Jaccard for short title fallback (near-exact)",
+    )
+
+    # Identifier short-circuit settings
+    doi_shortcut_enabled: bool = Field(
+        default=True,
+        description="Enable DOI-based shortcut for duplicate detection",
+    )
+    doi_shortcut_safety_gate: bool = Field(
+        default=True,
+        description="Require corroborating evidence for DOI matches",
+    )
+    doi_safety_min_title_tokens: int = Field(
+        default=6,
+        ge=1,
+        description="Min title tokens for DOI safety gate",
+    )
+
+    # ES query author matching limits (prevents score inflation from large author lists)
+    max_author_clauses: int = Field(
+        default=25,
+        ge=1,
+        le=100,
+        description="Max author should clauses in ES query. Caps explosion from papers "
+        "with thousands of authors (e.g., CERN collaborations with 2900+ authors).",
+    )
+    min_author_token_length: int = Field(
+        default=2,
+        ge=1,
+        le=5,
+        description="Min author token length in ES query. Filters initials.",
+    )
+
+    @property
+    def high_confidence_threshold(self) -> float:
+        """Alias for duplicate_threshold (ScoringConfigProtocol compatibility)."""
+        return self.duplicate_threshold
+
+    @property
+    def low_confidence_threshold(self) -> float:
+        """Alias for canonical_threshold (ScoringConfigProtocol compatibility)."""
+        return self.canonical_threshold
+
+
+class IngestionQualityGateConfig(BaseModel):
+    """
+    Configuration for reference ingestion quality gates.
+
+    These gates filter out low-quality records during ingestion from any source.
+    Records must have sufficient metadata for reliable deduplication and search.
+    """
+
+    enabled: bool = Field(
+        default=True,
+        description="Enable quality gates during ingestion",
+    )
+
+    # Title quality requirements
+    min_title_tokens: int = Field(
+        default=4,
+        ge=1,
+        description="Min title tokens for records without DOI",
+    )
+    generic_titles: frozenset[str] = Field(
+        default=frozenset(
+            {
+                "occurrence download",
+                "untitled",
+                "abstract",
+                "abstracts",
+            }
+        ),
+        description="Titles considered generic (case-insensitive)",
+    )
+
+    # Required fields
+    require_year: bool = Field(
+        default=True,
+        description="Require publication_year for all records",
+    )
+
+    # DOI can compensate for weak title
+    doi_bypasses_title_check: bool = Field(
+        default=True,
+        description="Records with DOI bypass title quality checks",
+    )
+
+    model_config = {"arbitrary_types_allowed": True}
+
+
 class Settings(BaseSettings):
     """Settings model for API."""
 
@@ -339,6 +514,10 @@ class Settings(BaseSettings):
     toml: TOML = TOML(toml_path=project_root)
 
     feature_flags: FeatureFlags = FeatureFlags()
+    dedup_scoring: DedupScoringConfig = Field(default_factory=DedupScoringConfig)
+    ingestion_quality_gate: IngestionQualityGateConfig = Field(
+        default_factory=IngestionQualityGateConfig
+    )
 
     db_config: DatabaseConfig
     es_config: ESConfig
@@ -480,11 +659,17 @@ class Settings(BaseSettings):
     )
 
     trusted_unique_identifier_types: set[ExternalIdentifierType] = Field(
-        default_factory=set,
+        default_factory=lambda: {
+            ExternalIdentifierType.OPEN_ALEX,
+            ExternalIdentifierType.DOI,
+        },
         description=(
             "Set of external identifier types that are considered trusted unique "
             "identifiers for references. These are used to shortcut deduplication. "
-            "If empty, shortcutting is essentially feature-flagged off."
+            "OpenAlex IDs are globally unique. DOI matching requires corroborating "
+            "metadata (year + authors or substantial title) via the safety gate in "
+            "PairScorer to prevent false positives from DOI collisions (0.012% "
+            "dangerous rate without gate). If empty, shortcutting is disabled."
         ),
     )
 

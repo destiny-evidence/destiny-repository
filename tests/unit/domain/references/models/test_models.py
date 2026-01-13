@@ -116,7 +116,12 @@ async def test_enhancement_unserializable_failure(
 
 
 async def test_canonical_search_fields_searchable():
-    """Test that a canonical search fields model is searchable with everything set"""
+    """Test that a canonical search fields model is searchable when title present.
+
+    Note: is_searchable only requires title. Year and authors are optional because
+    the two-pass search in ReferenceESRepository handles missing metadata via
+    relaxed fallback queries.
+    """
     search_fields = CandidateCanonicalSearchFields(
         title="Kiss from a Rose",
         authors=["Seal Henry Olusegun Olumide Adeola Samuel"],
@@ -125,7 +130,14 @@ async def test_canonical_search_fields_searchable():
 
     assert search_fields.is_searchable
 
-    # set publication year to None
+    # Still searchable with publication year set to None (only title required)
     search_fields.publication_year = None
+    assert search_fields.is_searchable
 
+    # Still searchable with authors set to None (only title required)
+    search_fields.authors = None
+    assert search_fields.is_searchable
+
+    # Not searchable when title is None
+    search_fields.title = None
     assert not search_fields.is_searchable
