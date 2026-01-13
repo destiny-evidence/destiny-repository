@@ -51,7 +51,7 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
         ),
         nullable=False,
     )
-    reference_id: Mapped[UUID | None] = mapped_column(UUID)
+    reference_id: Mapped[UUID | None] = mapped_column(SQL_UUID)
     failure_details: Mapped[str | None] = mapped_column(String)
 
     import_batch: Mapped["ImportBatch"] = relationship(

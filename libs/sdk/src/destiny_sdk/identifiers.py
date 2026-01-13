@@ -1,10 +1,12 @@
 """Identifier classes for the Destiny SDK."""
 
+import uuid
 from enum import StrEnum, auto
 from typing import Annotated, Literal, Self
-from uuid import UUID
 
-from pydantic import UUID4, UUID7, BaseModel, Field, TypeAdapter, field_validator
+from pydantic import BaseModel, Field, TypeAdapter, field_validator
+
+from .core import UUID
 
 
 class ExternalIdentifierType(StrEnum):
@@ -166,7 +168,7 @@ ExternalIdentifier = Annotated[
 ]
 
 #: Any identifier including external identifiers and repository UUID4s.
-Identifier = Annotated[ExternalIdentifier | UUID4 | UUID7, Field()]
+Identifier = Annotated[ExternalIdentifier | UUID, Field()]
 
 ExternalIdentifierAdapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
     ExternalIdentifier
@@ -180,7 +182,7 @@ class LinkedExternalIdentifier(BaseModel):
         description="The identifier of the reference.",
         discriminator="identifier_type",
     )
-    reference_id: UUID4 | UUID7 = Field(
+    reference_id: UUID = Field(
         description="The ID of the reference this identifier identifies."
     )
 
@@ -211,7 +213,7 @@ class IdentifierLookup(BaseModel):
         """Parse an identifier string into an IdentifierLookup."""
         if delimiter not in identifier_lookup_string:
             try:
-                UUID(identifier_lookup_string)
+                TypeAdapter(UUID).validate_python(identifier_lookup_string)
             except ValueError as exc:
                 msg = (
                     f"Invalid identifier lookup string: {identifier_lookup_string}. "
@@ -250,7 +252,9 @@ class IdentifierLookup(BaseModel):
     @classmethod
     def from_identifier(cls, identifier: Identifier) -> Self:
         """Create an IdentifierLookup from an ExternalIdentifier or UUID."""
-        if isinstance(identifier, UUID):
+        # Use stdlib uuid here as we can't use Annotated types in isinstance checks
+        # The UUID versions is already validated per `identifier`
+        if isinstance(identifier, uuid.UUID):
             return cls(identifier=str(identifier), identifier_type=None)
         return cls(
             identifier=str(identifier.identifier),
@@ -261,7 +265,7 @@ class IdentifierLookup(BaseModel):
     def to_identifier(self) -> Identifier:
         """Convert into an ExternalIdentifier or UUID if it has no identifier_type."""
         if self.identifier_type is None:
-            return UUID(self.identifier)
+            return TypeAdapter(UUID).validate_python(self.identifier)
         return ExternalIdentifierAdapter.validate_python(self.model_dump())
 
     def __repr__(self) -> str:

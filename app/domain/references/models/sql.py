@@ -299,7 +299,9 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         nullable=False,
     )
     robot_version: Mapped[str] = mapped_column(String, nullable=True)
-    derived_from: Mapped[list[UUID] | None] = mapped_column(ARRAY(UUID), nullable=True)
+    derived_from: Mapped[list[UUID] | None] = mapped_column(
+        ARRAY(SQL_UUID), nullable=True
+    )
     content: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
     reference: Mapped["Reference"] = relationship(
@@ -361,7 +363,7 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
 
     __tablename__ = "enhancement_request"
 
-    reference_ids: Mapped[list[UUID]] = mapped_column(ARRAY(UUID), nullable=False)
+    reference_ids: Mapped[list[UUID]] = mapped_column(ARRAY(SQL_UUID), nullable=False)
 
     robot_id: Mapped[UUID] = mapped_column(SQL_UUID, nullable=False)
 
@@ -503,11 +505,11 @@ class ReferenceDuplicateDecision(
     # imported, for instance an exact duplicate.
     reference_id: Mapped[UUID] = mapped_column(SQL_UUID, nullable=False)
     enhancement_id: Mapped[UUID | None] = mapped_column(
-        UUID, ForeignKey("enhancement.id"), nullable=True
+        SQL_UUID, ForeignKey("enhancement.id"), nullable=True
     )
     active_decision: Mapped[bool] = mapped_column(nullable=False, default=True)
     candidate_canonical_ids: Mapped[list[UUID]] = mapped_column(
-        ARRAY(UUID), nullable=True
+        ARRAY(SQL_UUID), nullable=True
     )
     duplicate_determination: Mapped[DuplicateDetermination] = mapped_column(
         ENUM(
@@ -516,7 +518,7 @@ class ReferenceDuplicateDecision(
         )
     )
     canonical_reference_id: Mapped[UUID | None] = mapped_column(
-        UUID,
+        SQL_UUID,
         ForeignKey("reference.id"),
         nullable=True,
     )
@@ -597,12 +599,12 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
         SQL_UUID, ForeignKey("robot.id"), nullable=False
     )
     enhancement_request_id: Mapped[UUID | None] = mapped_column(
-        UUID,
+        SQL_UUID,
         ForeignKey("enhancement_request.id"),
         nullable=True,
     )
     robot_enhancement_batch_id: Mapped[UUID | None] = mapped_column(
-        UUID, ForeignKey("robot_enhancement_batch.id"), nullable=True
+        SQL_UUID, ForeignKey("robot_enhancement_batch.id"), nullable=True
     )
     status: Mapped[PendingEnhancementStatus] = mapped_column(
         String,
@@ -612,7 +614,7 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
     source: Mapped[str | None] = mapped_column(String, nullable=True)
     expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))
     retry_of: Mapped[UUID | None] = mapped_column(
-        UUID, ForeignKey("pending_enhancement.id"), nullable=True
+        SQL_UUID, ForeignKey("pending_enhancement.id"), nullable=True
     )
 
     robot_enhancement_batch: Mapped["RobotEnhancementBatch"] = relationship(

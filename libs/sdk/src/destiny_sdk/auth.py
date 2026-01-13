@@ -4,10 +4,11 @@ import hashlib
 import hmac
 import time
 from typing import Protocol, Self
-from uuid import UUID
 
 from fastapi import HTTPException, Request, status
 from pydantic import BaseModel
+
+from destiny_sdk.core import UUID
 
 FIVE_MINUTES = 60 * 5
 

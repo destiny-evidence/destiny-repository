@@ -5,9 +5,9 @@ import json
 from enum import StrEnum, auto
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import UUID4, UUID7, BaseModel, Field, HttpUrl, model_validator
+from pydantic import BaseModel, Field, HttpUrl, model_validator
 
-from destiny_sdk.core import _JsonlFileInputMixIn
+from destiny_sdk.core import UUID, _JsonlFileInputMixIn
 from destiny_sdk.identifiers import Identifier
 from destiny_sdk.visibility import Visibility
 
@@ -430,7 +430,7 @@ EnhancementContent = Annotated[
 class Enhancement(_JsonlFileInputMixIn, BaseModel):
     """Core enhancement class."""
 
-    id: UUID4 | UUID7 | None = Field(
+    id: UUID | None = Field(
         default=None,
         description=(
             "The ID of the enhancement. "
@@ -438,7 +438,7 @@ class Enhancement(_JsonlFileInputMixIn, BaseModel):
         ),
     )
 
-    reference_id: UUID4 | UUID7 = Field(
+    reference_id: UUID = Field(
         description="The ID of the reference this enhancement is associated with."
     )
     source: str = Field(
@@ -451,7 +451,7 @@ class Enhancement(_JsonlFileInputMixIn, BaseModel):
         default=None,
         description="The version of the robot that generated the content.",
     )
-    derived_from: list[UUID4 | UUID7] | None = Field(
+    derived_from: list[UUID] | None = Field(
         default=None,
         description="List of enhancement IDs that this enhancement was derived from.",
     )

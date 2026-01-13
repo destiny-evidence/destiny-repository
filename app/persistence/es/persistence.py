@@ -2,13 +2,14 @@
 
 from abc import abstractmethod
 from typing import Generic, Literal, Self, get_args, get_origin
+from uuid import UUID
 
 from elasticsearch.dsl import AsyncDocument, InnerDoc
 from elasticsearch.dsl.document_base import InstrumentedField
 from elasticsearch.dsl.field import Nested
 from elasticsearch.dsl.response import Hit
 from elasticsearch.dsl.utils import AttrList
-from pydantic import UUID4, UUID7, BaseModel, Field
+from pydantic import BaseModel, Field
 
 from app.domain.base import (
     SQLAttributeMixin,  # noqa: F401, required for Pydantic generic construction
@@ -141,7 +142,7 @@ def nested_hit_to_document(  # noqa: PLR0912
 class ESScoreResult(BaseModel):
     """Simple class for id<->score mapping in Elasticsearch search results."""
 
-    id: UUID4 | UUID7
+    id: UUID
     score: float
 
 

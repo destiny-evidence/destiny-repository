@@ -3,7 +3,6 @@
 import sys
 import time
 from collections.abc import Generator
-from uuid import UUID
 
 import httpx
 from msal import (
@@ -15,7 +14,7 @@ from msal import (
 from pydantic import HttpUrl, TypeAdapter
 
 from destiny_sdk.auth import create_signature
-from destiny_sdk.core import sdk_version
+from destiny_sdk.core import UUID, sdk_version
 from destiny_sdk.identifiers import IdentifierLookup
 from destiny_sdk.references import Reference, ReferenceSearchResult
 from destiny_sdk.robots import (
