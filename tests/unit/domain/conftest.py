@@ -1,4 +1,3 @@
-import uuid
 from uuid import UUID, uuid7
 
 import pytest
@@ -347,7 +346,7 @@ def pending_enhancement_factory(session, created_reference, created_robot):
         status: PendingEnhancementStatus = PendingEnhancementStatus.PENDING,
         expires_at=None,
         source: str = "test",
-        retry_of: uuid.UUID | None = None,
+        retry_of: UUID | None = None,
         **kwargs,
     ) -> PendingEnhancement:
         pending_enhancement = PendingEnhancementFactory.build(

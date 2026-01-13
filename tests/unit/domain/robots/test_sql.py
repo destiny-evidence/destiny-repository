@@ -1,5 +1,5 @@
 # Dummy domain object for testing conversion
-import uuid
+from uuid import uuid7
 
 import pytest
 from pydantic import SecretStr
@@ -18,7 +18,7 @@ class DummyDomainRobot:
 
 @pytest.mark.asyncio
 async def test_robot_to_and_from_domain():
-    robot_id = uuid.uuid7()
+    robot_id = uuid7()
     dummy_robot = DummyDomainRobot(
         id=robot_id,
         client_secret=SecretStr("dlkfsdflglsfglfkglsdkgfds"),

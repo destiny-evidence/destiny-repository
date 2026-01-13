@@ -1,7 +1,7 @@
 """Test Alembic migration from 1d8078bc0a95 to 41a6980bb04e."""
 
 import datetime
-import uuid
+from uuid import uuid7
 
 import pytest
 import pytest_asyncio
@@ -50,7 +50,7 @@ async def test_migrate_1d80_to_41a69(db_at_migration: str) -> None:
                 "(:id, :visibility, :created_at, :updated_at)"
             ),
             {
-                "id": (ref_id := str(uuid.uuid7())),
+                "id": (ref_id := str(uuid7())),
                 "visibility": "public",
                 "created_at": now,
                 "updated_at": now,
@@ -63,7 +63,7 @@ async def test_migrate_1d80_to_41a69(db_at_migration: str) -> None:
                 "VALUES (:id, :name, :desc, :owner, :secret, :created_at, :updated_at)"
             ),
             {
-                "id": (rob_id := str(uuid.uuid7())),
+                "id": (rob_id := str(uuid7())),
                 "name": "Test Robot",
                 "desc": "desc",
                 "owner": "owner@example.com",
@@ -84,7 +84,7 @@ async def test_migrate_1d80_to_41a69(db_at_migration: str) -> None:
                 ":created_at, :updated_at)"
             ),
             {
-                "id": (pe_id := uuid.uuid7()),
+                "id": (pe_id := uuid7()),
                 "reference_id": ref_id,
                 "robot_id": rob_id,
                 "status": "ACCEPTED",
@@ -139,7 +139,7 @@ async def test_migrate_41a69_to_1a717(db_at_migration: str) -> None:
                 "VALUES (:id, :visibility, :created_at, :updated_at)"
             ),
             {
-                "id": (ref_id := str(uuid.uuid7())),
+                "id": (ref_id := str(uuid7())),
                 "visibility": "public",
                 "created_at": now,
                 "updated_at": now,
@@ -155,7 +155,7 @@ async def test_migrate_41a69_to_1a717(db_at_migration: str) -> None:
                 ":identifier, :created_at, :updated_at)"
             ),
             {
-                "id": (id_id := str(uuid.uuid7())),
+                "id": (id_id := str(uuid7())),
                 "reference_id": ref_id,
                 "identifier": "10.1234/sampledoi",
                 "identifier_type": ExternalIdentifierType.DOI,
@@ -174,7 +174,7 @@ async def test_migrate_41a69_to_1a717(db_at_migration: str) -> None:
                 ":content, :created_at, :updated_at)"
             ),
             {
-                "id": (enh_id := str(uuid.uuid7())),
+                "id": (enh_id := str(uuid7())),
                 "visibility": "public",
                 "source": "test_source",
                 "reference_id": ref_id,

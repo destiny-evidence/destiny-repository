@@ -4,7 +4,6 @@ from typing import Annotated
 
 import destiny_sdk
 from fastapi import APIRouter, Depends, Path, status
-from pydantic import UUID4, UUID7
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
@@ -77,7 +76,7 @@ router = APIRouter(
 
 @router.put(path="/{robot_id}/", status_code=status.HTTP_200_OK)
 async def update_robot(
-    robot_id: Annotated[UUID4 | UUID7, Path(description="The id of the robot.")],
+    robot_id: Annotated[destiny_sdk.UUID, Path(description="The id of the robot.")],
     robot_update: destiny_sdk.robots.RobotIn,
     robot_service: Annotated[RobotService, Depends(robot_service)],
     anti_corruption_service: Annotated[
@@ -106,7 +105,7 @@ async def register_robot(
 
 @router.get(path="/{robot_id}/", status_code=status.HTTP_200_OK)
 async def get_robot(
-    robot_id: Annotated[UUID4 | UUID7, Path(description="The id of the robot.")],
+    robot_id: Annotated[destiny_sdk.UUID, Path(description="The id of the robot.")],
     robot_service: Annotated[RobotService, Depends(robot_service)],
     anti_corruption_service: Annotated[
         RobotAntiCorruptionService, Depends(robot_anti_corruption_service)
@@ -131,7 +130,7 @@ async def get_all_robots(
 
 @router.post(path="/{robot_id}/secret/", status_code=status.HTTP_201_CREATED)
 async def cycle_robot_secret(
-    robot_id: Annotated[UUID4 | UUID7, Path(description="The id of the robot.")],
+    robot_id: Annotated[destiny_sdk.UUID, Path(description="The id of the robot.")],
     robot_service: Annotated[RobotService, Depends(robot_service)],
     anti_corruption_service: Annotated[
         RobotAntiCorruptionService, Depends(robot_anti_corruption_service)

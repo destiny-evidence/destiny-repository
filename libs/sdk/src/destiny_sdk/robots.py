@@ -3,9 +3,9 @@
 from enum import StrEnum, auto
 from typing import Annotated, Any
 
-from pydantic import UUID4, UUID7, BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
-from destiny_sdk.core import _JsonlFileInputMixIn
+from destiny_sdk.core import UUID, _JsonlFileInputMixIn
 from destiny_sdk.enhancements import Enhancement
 
 
@@ -30,7 +30,7 @@ class LinkedRobotError(_JsonlFileInputMixIn, RobotError):
     id is derived from the request id.
     """
 
-    reference_id: UUID4 | UUID7 = Field(
+    reference_id: UUID = Field(
         description="The ID of the reference which caused the error."
     )
 
@@ -38,7 +38,7 @@ class LinkedRobotError(_JsonlFileInputMixIn, RobotError):
 class RobotResult(BaseModel):
     """Used to indicate to the repository that the robot has finished processing."""
 
-    request_id: UUID4 | UUID7
+    request_id: UUID
     error: RobotError | None = Field(
         default=None,
         description="""
@@ -55,7 +55,7 @@ None, the repository will assume that the result file is ready for processing.
 class RobotEnhancementBatchResult(BaseModel):
     """Used to indicate that the robot has finished processing a batch."""
 
-    request_id: UUID4 | UUID7
+    request_id: UUID
     error: RobotError | None = Field(
         default=None,
         description="""
@@ -72,7 +72,7 @@ None, the repository will assume that the result file is ready for processing.
 class RobotResultValidationEntry(_JsonlFileInputMixIn, BaseModel):
     """A single entry in the validation result file for a batch enhancement request."""
 
-    reference_id: UUID4 | UUID7 | None = Field(
+    reference_id: UUID | None = Field(
         default=None,
         description=(
             "The ID of the reference which was enhanced. "
@@ -99,7 +99,7 @@ EnhancementResultEntry = Annotated[
 class RobotRequest(BaseModel):
     """A batch enhancement request from the repo to a robot."""
 
-    id: UUID4 | UUID7
+    id: UUID
     reference_storage_url: HttpUrl = Field(
         description="""
 The URL at which the set of references are stored. The file is a jsonl
@@ -130,7 +130,7 @@ If the URL expires, a new one can be generated using
 class RobotEnhancementBatch(BaseModel):
     """A robot enhancement batch from the repo to a robot."""
 
-    id: UUID4 | UUID7
+    id: UUID
     reference_storage_url: HttpUrl = Field(
         description="""
 The URL at which the set of references are stored. The file is a jsonl
@@ -190,10 +190,10 @@ class _EnhancementRequestBase(BaseModel):
     A enhancement request is a request to create one or more enhancements.
     """
 
-    robot_id: UUID4 | UUID7 = Field(
+    robot_id: UUID = Field(
         description="The robot to be used to create the enhancements."
     )
-    reference_ids: list[UUID4 | UUID7] = Field(
+    reference_ids: list[UUID] = Field(
         description="The IDs of the references to be enhanced."
     )
     source: str | None = Field(
@@ -209,7 +209,7 @@ class EnhancementRequestIn(_EnhancementRequestBase):
 class EnhancementRequestRead(_EnhancementRequestBase):
     """Core batch enhancement request class."""
 
-    id: UUID4 | UUID7
+    id: UUID
     request_status: EnhancementRequestStatus = Field(
         description="The status of the request to create enhancements",
     )
@@ -264,7 +264,7 @@ class _RobotEnhancementBatchBase(BaseModel):
     for processing.
     """
 
-    robot_id: UUID4 | UUID7 = Field(
+    robot_id: UUID = Field(
         description="The robot to be used to create the enhancements."
     )
     source: str | None = Field(
@@ -276,7 +276,7 @@ class _RobotEnhancementBatchBase(BaseModel):
 class RobotEnhancementBatchRead(_RobotEnhancementBatchBase):
     """Core robot enhancement batch class."""
 
-    id: UUID4 | UUID7
+    id: UUID
     reference_data_url: HttpUrl | None = Field(
         default=None,
         description="""
@@ -343,7 +343,7 @@ class RobotIn(_RobotBase):
 class Robot(_RobotBase):
     """Then model for a registered robot."""
 
-    id: UUID4 | UUID7 = Field(
+    id: UUID = Field(
         description="The id of the robot provided by destiny repository. "
         "Used as the client_id when sending HMAC authenticated requests."
     )
@@ -366,7 +366,7 @@ class ProvisionedRobot(Robot):
 class _RobotAutomationBase(BaseModel):
     """Base Robot Automation class."""
 
-    robot_id: UUID4 | UUID7 = Field(
+    robot_id: UUID = Field(
         description="The ID of the robot that will be used to enhance the reference."
     )
     query: dict[str, Any] = Field(
@@ -394,6 +394,6 @@ class RobotAutomation(_RobotAutomationBase):
     is sent to the specified robot to perform the enhancement.
     """
 
-    id: UUID4 | UUID7 = Field(
+    id: UUID = Field(
         description="The ID of the robot automation.",
     )

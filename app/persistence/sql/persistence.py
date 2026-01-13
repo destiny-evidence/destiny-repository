@@ -1,13 +1,14 @@
 """Objects used to interface with SQL implementations."""
 
 import datetime
-import uuid
 from abc import abstractmethod
 from enum import StrEnum, auto
 from typing import Generic, Self
+from uuid import UUID, uuid7
 
 from pydantic import BaseModel, Field
-from sqlalchemy import UUID, DateTime
+from sqlalchemy import UUID as SQL_UUID
+from sqlalchemy import DateTime
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -33,7 +34,7 @@ class GenericSQLPersistence(
     """
 
     __abstract__ = True
-    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid7)
+    id: Mapped[UUID] = mapped_column(SQL_UUID, primary_key=True, default=uuid7)
 
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),

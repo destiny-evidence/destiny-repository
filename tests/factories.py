@@ -2,7 +2,7 @@
 """Factories for creating test domain models."""
 
 import random
-import uuid
+from uuid import UUID, uuid7
 
 import factory
 from destiny_sdk.enhancements import (
@@ -79,9 +79,9 @@ class ORCIDProvider(BaseProvider):
 class UUID7Provider(BaseProvider):
     """Provider for UUID7 objects."""
 
-    def uuid7(self) -> uuid.UUID:
+    def uuid7(self) -> UUID:
         """Generate a valid UUID7."""
-        return uuid.uuid7()
+        return uuid7()
 
 
 fake = Faker()

@@ -1,7 +1,7 @@
 import datetime
 import itertools
-import uuid
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid7
 
 import pytest
 from destiny_sdk.enhancements import Authorship
@@ -63,7 +63,7 @@ async def test_find_exact_duplicate_happy_path(
     reference, anti_corruption_service, fake_uow, fake_repository
 ):
     candidate = reference.model_copy(
-        update={"id": uuid.uuid7()},
+        update={"id": uuid7()},
     )
     repo = fake_repository([candidate])
     uow = fake_uow(references=repo)
@@ -82,7 +82,7 @@ async def test_find_exact_duplicate_happy_path(
 async def test_find_exact_duplicate_no_identifiers(
     anti_corruption_service, fake_uow, fake_repository
 ):
-    ref = Reference(id=uuid.uuid7(), identifiers=None)
+    ref = Reference(id=uuid7(), identifiers=None)
     uow = fake_uow(references=fake_repository())
     service = DeduplicationService(anti_corruption_service, uow, fake_uow())
     with pytest.raises(DeduplicationValueError):
@@ -94,7 +94,7 @@ async def test_find_exact_duplicate_only_other_identifier(
     anti_corruption_service, fake_uow, fake_repository
 ):
     ref = Reference(
-        id=uuid.uuid7(),
+        id=uuid7(),
         identifiers=[
             LinkedExternalIdentifier(
                 identifier=OtherIdentifier(
@@ -102,7 +102,7 @@ async def test_find_exact_duplicate_only_other_identifier(
                     identifier_type=ExternalIdentifierType.OTHER,
                     other_identifier_name="other_name",
                 ),
-                reference_id=uuid.uuid7(),
+                reference_id=uuid7(),
             )
         ],
     )
@@ -197,7 +197,7 @@ async def test_nominate_candidate_canonicals_candidates_not_found(
 
     # Patch service.es_uow to mock search_for_candidate_canonicals
     service.es_uow = MagicMock()
-    candidate_result = [MagicMock(id=uuid.uuid7())]
+    candidate_result = [MagicMock(id=uuid7())]
     service.es_uow.references.search_for_candidate_canonicals = AsyncMock(
         return_value=candidate_result
     )
@@ -226,7 +226,7 @@ async def test_nominate_candidate_canonicals_candidates_found(
 
     # Patch service.es_uow to mock search_for_candidate_duplicates
     service.es_uow = MagicMock()
-    candidate_result = [MagicMock(id=uuid.uuid7())]
+    candidate_result = [MagicMock(id=uuid7())]
     service.es_uow.references.search_for_candidate_canonicals = AsyncMock(
         return_value=candidate_result
     )
@@ -269,10 +269,10 @@ async def test_determine_and_map_duplicate_happy_path(
 ):
     # Setup reference and decision
     reference = MagicMock(spec=Reference)
-    reference.id = uuid.uuid7()
+    reference.id = uuid7()
     reference.duplicate_decision = None
 
-    candidate_id = uuid.uuid7()
+    candidate_id = uuid7()
     decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         candidate_canonical_ids=[candidate_id],
@@ -306,11 +306,11 @@ async def test_determine_and_map_duplicate_no_change(
 ):
     # Setup reference and decision
     reference = MagicMock(spec=Reference)
-    reference.id = uuid.uuid7()
+    reference.id = uuid7()
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.DUPLICATE,
-        canonical_reference_id=uuid.uuid7(),
+        canonical_reference_id=uuid7(),
         active_decision=True,
     )
     reference.duplicate_decision = active_decision
@@ -347,7 +347,7 @@ async def test_determine_no_op_terminal(
     fake_uow, fake_repository, anti_corruption_service
 ):
     reference = MagicMock(spec=Reference)
-    reference.id = uuid.uuid7()
+    reference.id = uuid7()
     reference.duplicate_decision = None
 
     decision = ReferenceDuplicateDecision(
@@ -375,11 +375,11 @@ async def test_determine_and_map_duplicate_decoupled_canonical_change(
 ):
     # Setup reference and active decision (was DUPLICATE, now CANONICAL)
     reference = MagicMock(spec=Reference)
-    reference.id = uuid.uuid7()
+    reference.id = uuid7()
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.DUPLICATE,
-        canonical_reference_id=uuid.uuid7(),
+        canonical_reference_id=uuid7(),
         active_decision=True,
     )
     reference.duplicate_decision = active_decision
@@ -420,9 +420,9 @@ async def test_determine_and_map_duplicate_decoupled_different_canonical(
 ):
     # Setup reference and active decision (was DUPLICATE of A, now DUPLICATE of B)
     reference = MagicMock(spec=Reference)
-    reference.id = uuid.uuid7()
-    canonical_a = uuid.uuid7()
-    canonical_b = uuid.uuid7()
+    reference.id = uuid7()
+    canonical_a = uuid7()
+    canonical_b = uuid7()
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.DUPLICATE,
@@ -462,7 +462,7 @@ async def test_determine_and_map_duplicate_decoupled_chain_length(
 ):
     # Setup reference with canonical chain length 2 using real Reference objects
     canonical_reference = Reference(
-        id=uuid.uuid7(),
+        id=uuid7(),
         identifiers=[],
         enhancements=[],
         duplicate_decision=None,
@@ -470,14 +470,14 @@ async def test_determine_and_map_duplicate_decoupled_chain_length(
     )
 
     reference = Reference(
-        id=uuid.uuid7(),
+        id=uuid7(),
         identifiers=[],
         enhancements=[],
         duplicate_decision=None,
         canonical_reference=canonical_reference,
     )
 
-    candidate_id = uuid.uuid7()
+    candidate_id = uuid7()
     decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         candidate_canonical_ids=[candidate_id],
@@ -509,7 +509,7 @@ async def test_determine_and_map_duplicate_now_duplicate(
 ):
     # Setup reference and active decision (was CANONICAL, now DUPLICATE)
     reference = MagicMock(spec=Reference)
-    reference.id = uuid.uuid7()
+    reference.id = uuid7()
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.CANONICAL,
@@ -518,7 +518,7 @@ async def test_determine_and_map_duplicate_now_duplicate(
     )
     reference.duplicate_decision = active_decision
 
-    candidate_id = uuid.uuid7()
+    candidate_id = uuid7()
     decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         candidate_canonical_ids=[candidate_id],

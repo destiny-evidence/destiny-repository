@@ -1,7 +1,7 @@
 """Tests client authentication"""
 
 import time
-import uuid
+from uuid import UUID, uuid7
 
 import httpx
 import pytest
@@ -43,7 +43,7 @@ def base_url():
 
 @pytest.fixture
 def test_reference_id():
-    return uuid.uuid7()
+    return uuid7()
 
 
 @pytest.fixture
@@ -66,19 +66,19 @@ class TestRobotClient:
     ) -> None:
         """Test that robot enhancement batch result request is authorized."""
         fake_secret_key = "asdfhjgji94523q0uflsjf349wjilsfjd9q23"
-        fake_robot_id = uuid.uuid7()
+        fake_robot_id = uuid7()
         fake_destiny_repository_url = (
             "https://www.destiny-repository-lives-here.co.au/v1"
         )
 
         fake_batch_result = RobotEnhancementBatchResult(
-            request_id=uuid.uuid7(),
+            request_id=uuid7(),
             error=RobotError(message="Cannot process this batch"),
         )
 
         expected_response_body = RobotEnhancementBatchRead(
-            id=uuid.uuid7(),
-            robot_id=uuid.uuid7(),
+            id=uuid7(),
+            robot_id=uuid7(),
             error="Cannot process this batch",
         )
 
@@ -126,7 +126,7 @@ class TestOAuthClient:
         httpx_mock: HTTPXMock,
         oauth_client: OAuthClient,
         base_url: str,
-        test_reference_id: uuid.UUID,
+        test_reference_id: UUID,
         mock_reference_response: dict,
     ) -> None:
         """Test that search works without authentication."""
@@ -199,7 +199,7 @@ class TestOAuthClient:
         httpx_mock: HTTPXMock,
         oauth_client: OAuthClient,
         base_url: str,
-        test_reference_id: uuid.UUID,
+        test_reference_id: UUID,
     ) -> None:
         """Test lookup references by identifiers."""
         httpx_mock.add_response(

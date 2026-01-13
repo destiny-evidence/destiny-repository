@@ -1,10 +1,10 @@
 """Test polling pending enhancements."""
 
 import asyncio
-import uuid
 from collections.abc import Awaitable, Callable
 from secrets import choice
 from typing import TYPE_CHECKING
+from uuid import UUID, uuid7
 
 import httpx
 import pytest
@@ -40,7 +40,7 @@ def _create_client(repo_url: HttpUrl) -> RobotClient:
     return RobotClient(
         base_url=repo_url,
         secret_key="dummy_secret_key",
-        client_id=uuid.uuid7(),
+        client_id=uuid7(),
     )
 
 
@@ -76,7 +76,7 @@ async def _poll_robot_batches(  # noqa: PLR0913
 
     for _ in range(count):
         result = client.poll_robot_enhancement_batch(
-            robot_id=uuid.UUID(robot_id), limit=2, lease=lease
+            robot_id=UUID(robot_id), limit=2, lease=lease
         )
         assert result is not None
 
@@ -180,7 +180,7 @@ async def test_polling_pending_enhancements(
     destiny_client_v1: httpx.AsyncClient,
     robot: Robot,
     minio_proxy_client: httpx.AsyncClient,
-    add_references: Callable[[int], Awaitable[set[uuid.UUID]]],
+    add_references: Callable[[int], Awaitable[set[UUID]]],
 ):
     """Test the happy path for a robot polling for pending enhancements."""
     reference_ids = [str(reference_id) for reference_id in await add_references(4)]
@@ -238,7 +238,7 @@ async def test_cannot_submit_expired_enhancement_results(
     robot: Robot,
     minio_proxy_client: httpx.AsyncClient,
     worker: DockerContainer,
-    add_references: Callable[[int], Awaitable[set[uuid.UUID]]],
+    add_references: Callable[[int], Awaitable[set[UUID]]],
 ):
     """Test that robots cannot submit results after pending enhancements expire."""
     reference_ids = [str(reference_id) for reference_id in await add_references(2)]
@@ -279,7 +279,7 @@ async def test_can_submit_results_after_renewing_lease(
     robot: Robot,
     minio_proxy_client: httpx.AsyncClient,
     worker: DockerContainer,
-    add_references: Callable[[int], Awaitable[set[uuid.UUID]]],
+    add_references: Callable[[int], Awaitable[set[UUID]]],
 ):
     """Test that robots can submit results if they renew the lease before expiry."""
     reference_ids = [str(reference_id) for reference_id in await add_references(2)]

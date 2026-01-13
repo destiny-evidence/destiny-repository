@@ -1,8 +1,8 @@
 """Generic repositories define expected functionality."""
 
-import uuid
 from abc import ABC, abstractmethod
 from typing import Any, Generic
+from uuid import UUID
 
 from opentelemetry import trace
 
@@ -26,13 +26,13 @@ class GenericAsyncRepository(
     @abstractmethod
     @trace_repository_method(tracer)
     async def get_by_pk(
-        self, pk: uuid.UUID, preload: list[Any] | None = None
+        self, pk: UUID, preload: list[Any] | None = None
     ) -> GenericDomainModelType:
         """
         Get a record using its primary key.
 
         Args:
-        - pk (uuid.UUID): The primary key to use to look up the record.
+        - pk (UUID): The primary key to use to look up the record.
         - preload (list[Any]): A list of attributes to preload.
 
         """

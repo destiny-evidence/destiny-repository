@@ -4,10 +4,11 @@ import hashlib
 import hmac
 import time
 from typing import Protocol, Self
-from uuid import UUID
 
 from fastapi import HTTPException, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
+
+from destiny_sdk.core import UUID
 
 FIVE_MINUTES = 60 * 5
 
@@ -108,11 +109,11 @@ class HMACAuthorizationHeaders(BaseModel):
             )
 
         try:
-            UUID(client_id)
+            TypeAdapter(UUID).validate_python(client_id)
         except (ValueError, TypeError) as exc:
             raise AuthException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid format for client id, expected UUID.",
+                detail="Invalid format for client id, expected UUIDv4 or UUIDv7.",
             ) from exc
 
         timestamp = request.headers.get("X-Request-Timestamp")

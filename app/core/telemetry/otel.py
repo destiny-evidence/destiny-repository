@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import uuid
 from typing import TYPE_CHECKING
+from uuid import uuid7
 
 from opentelemetry import metrics, trace
 from opentelemetry._logs import set_logger_provider
@@ -54,7 +54,7 @@ def configure_otel(
     if config.api_key:
         headers["x-honeycomb-team"] = config.api_key
 
-    service_instance_id = str(uuid.uuid7())
+    service_instance_id = str(uuid7())
 
     ## Traces
     resource = Resource.create(

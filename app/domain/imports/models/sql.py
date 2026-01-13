@@ -1,12 +1,14 @@
 """Objects used to interface with SQL implementations."""
 
 import datetime
-import uuid
 from typing import Self
+from uuid import UUID
 
 from pydantic import HttpUrl
 from sqlalchemy import (
-    UUID,
+    UUID as SQL_UUID,
+)
+from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
@@ -39,9 +41,8 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
 
     __tablename__ = "import_result"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid7)
-    import_batch_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("import_batch.id"), nullable=False
+    import_batch_id: Mapped[UUID] = mapped_column(
+        SQL_UUID, ForeignKey("import_batch.id"), nullable=False
     )
     status: Mapped[ImportResultStatus] = mapped_column(
         ENUM(
@@ -50,7 +51,7 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
         ),
         nullable=False,
     )
-    reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
+    reference_id: Mapped[UUID | None] = mapped_column(SQL_UUID)
     failure_details: Mapped[str | None] = mapped_column(String)
 
     import_batch: Mapped["ImportBatch"] = relationship(
@@ -99,8 +100,8 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
 
     __tablename__ = "import_batch"
 
-    import_record_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("import_record.id"), nullable=False
+    import_record_id: Mapped[UUID] = mapped_column(
+        SQL_UUID, ForeignKey("import_record.id"), nullable=False
     )
 
     storage_url: Mapped[str] = mapped_column(String, nullable=False)

@@ -1,7 +1,7 @@
 """Middleware for the repository API."""
 
-import uuid
 from collections.abc import Awaitable, Callable
+from uuid import uuid7
 
 from fastapi import status
 from starlette.applications import Starlette
@@ -50,7 +50,7 @@ class LoggerMiddleware(BaseHTTPMiddleware):
             path=request.url.path,
             method=request.method,
             client_host=request.client and request.client.host,
-            request_id=str(uuid.uuid7()),
+            request_id=str(uuid7()),
         )
 
         try:

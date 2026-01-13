@@ -2,8 +2,8 @@
 
 import datetime
 import json
-import uuid
 from unittest.mock import AsyncMock, Mock, patch
+from uuid import uuid7
 
 import pytest
 from destiny_sdk.enhancements import BibliographicMetadataEnhancement
@@ -50,7 +50,7 @@ def test_robot():
 
 @pytest.mark.asyncio
 async def test_get_reference_happy_path(fake_repository, fake_uow):
-    dummy_id = uuid.uuid7()
+    dummy_id = uuid7()
     dummy_reference = Reference(id=dummy_id)
     repo = fake_repository(init_entries=[dummy_reference])
     uow = fake_uow(references=repo)
@@ -68,14 +68,14 @@ async def test_get_reference_not_found(fake_repository, fake_uow):
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
-    dummy_id = uuid.uuid7()
+    dummy_id = uuid7()
     with pytest.raises(SQLNotFoundError):
         await service.get_reference(dummy_id)
 
 
 @pytest.mark.asyncio
 async def test_add_identifier_happy_path(fake_repository, fake_uow):
-    dummy_id = uuid.uuid7()
+    dummy_id = uuid7()
     dummy_reference = Reference(id=dummy_id)
     repo_refs = fake_repository(init_entries=[dummy_reference])
     repo_ids = fake_repository()
@@ -99,7 +99,7 @@ async def test_add_identifier_reference_not_found(fake_repository, fake_uow):
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
-    dummy_id = uuid.uuid7()
+    dummy_id = uuid7()
     fake_identifier_create = ExternalIdentifierAdapter.validate_python(
         {"identifier": "W1234", "identifier_type": "open_alex"}
     )
@@ -111,7 +111,7 @@ async def test_add_identifier_reference_not_found(fake_repository, fake_uow):
 async def test_add_enhancement_happy_path(
     fake_repository, fake_uow, fake_enhancement_data
 ):
-    dummy_reference = Reference(id=uuid.uuid7())
+    dummy_reference = Reference(id=uuid7())
     repo_refs = fake_repository(init_entries=[dummy_reference])
     uow = fake_uow(references=repo_refs)
     service = ReferenceService(
@@ -140,7 +140,7 @@ async def test_add_enhancement_reference_does_not_exist(
     )
 
     enhancement_to_add = Enhancement(
-        reference_id=uuid.uuid7(),  # Doesn't exist
+        reference_id=uuid7(),  # Doesn't exist
         **fake_enhancement_data,
     )
 
@@ -152,7 +152,7 @@ async def test_add_enhancement_reference_does_not_exist(
 async def test_add_enhancement_derived_from_does_not_exist(
     fake_repository, fake_uow, fake_enhancement_data
 ):
-    dummy_reference = Reference(id=uuid.uuid7())
+    dummy_reference = Reference(id=uuid7())
     repo_refs = fake_repository(init_entries=[dummy_reference])
     uow = fake_uow(references=repo_refs, enhancements=fake_repository())
     service = ReferenceService(
@@ -161,7 +161,7 @@ async def test_add_enhancement_derived_from_does_not_exist(
 
     enhancement_to_add = Enhancement(
         reference_id=dummy_reference.id,
-        derived_from=[uuid.uuid7()],
+        derived_from=[uuid7()],
         **fake_enhancement_data,
     )
 
@@ -173,11 +173,11 @@ async def test_add_enhancement_derived_from_does_not_exist(
 async def test_add_enhancement_derived_from_enhancement_for_different_reference(
     fake_repository, fake_uow, fake_enhancement_data
 ):
-    dummy_reference = Reference(id=uuid.uuid7())
+    dummy_reference = Reference(id=uuid7())
     repo_refs = fake_repository(init_entries=[dummy_reference])
 
     dummy_parent_enhancement = Enhancement(
-        reference_id=uuid.uuid7(),  # Not the reference we'll enhance
+        reference_id=uuid7(),  # Not the reference we'll enhance
         **fake_enhancement_data,
     )
 
@@ -201,9 +201,9 @@ async def test_add_enhancement_derived_from_enhancement_for_different_reference(
 async def test_add_enhancement_derived_from_enhancement_for_duplicate_reference(
     fake_repository, fake_uow, fake_enhancement_data
 ):
-    dup_ref_id = uuid.uuid7()
+    dup_ref_id = uuid7()
     dummy_reference = Reference(
-        id=uuid.uuid7(), duplicate_references=[Reference(id=dup_ref_id)]
+        id=uuid7(), duplicate_references=[Reference(id=dup_ref_id)]
     )
     repo_refs = fake_repository(init_entries=[dummy_reference])
 
@@ -232,7 +232,7 @@ async def test_add_enhancement_derived_from_enhancement_for_duplicate_reference(
 async def test_add_enhancement_duplicate_enhancement(
     fake_repository, fake_uow, fake_enhancement_data
 ):
-    dummy_reference = Reference(id=uuid.uuid7())
+    dummy_reference = Reference(id=uuid7())
     repo_refs = fake_repository(init_entries=[dummy_reference])
     uow = fake_uow(references=repo_refs)
     service = ReferenceService(
@@ -256,9 +256,9 @@ async def test_register_reference_enhancement_request(fake_repository, fake_uow)
     """
     Test the happy path for registering an enhancement request.
     """
-    reference_ids = [uuid.uuid7(), uuid.uuid7()]
-    robot_id = uuid.uuid7()
-    request_id = uuid.uuid7()
+    reference_ids = [uuid7(), uuid7()]
+    robot_id = uuid7()
+    request_id = uuid7()
     enhancement_request = EnhancementRequest(
         id=request_id,
         reference_ids=reference_ids,
@@ -306,11 +306,11 @@ async def test_register_reference_enhancement_request_missing_pk(
     """
     Test registering an enhancement request with a missing reference ID.
     """
-    reference_ids = [uuid.uuid7(), uuid.uuid7()]
-    missing_reference_id = uuid.uuid7()
-    robot_id = uuid.uuid7()
+    reference_ids = [uuid7(), uuid7()]
+    missing_reference_id = uuid7()
+    robot_id = uuid7()
     enhancement_request = EnhancementRequest(
-        id=uuid.uuid7(),
+        id=uuid7(),
         reference_ids=[*reference_ids, missing_reference_id],
         robot_id=robot_id,
         enhancement_parameters={"param": "value"},
@@ -411,8 +411,8 @@ async def test_detect_robot_automations(
     fake_repository, fake_uow, fake_enhancement_data
 ):
     """Test the detection of robot automations for references."""
-    reference_id = uuid.uuid7()
-    robot_id = uuid.uuid7()
+    reference_id = uuid7()
+    robot_id = uuid7()
 
     enhancement = Enhancement(reference_id=reference_id, **fake_enhancement_data)
     reference = Reference(
@@ -422,7 +422,7 @@ async def test_detect_robot_automations(
         duplicate_references=[],
     )
     reference_2 = Reference(
-        id=uuid.uuid7(),
+        id=uuid7(),
         visibility="public",
         enhancements=[enhancement],
     )
@@ -471,7 +471,7 @@ async def test_detect_robot_automations(
 
 @pytest.fixture
 def canonical_reference():
-    canonical_id = uuid.uuid7()
+    canonical_id = uuid7()
     content = BibliographicMetadataEnhancement(
         title="Test Title",
         authorship=[],
@@ -479,7 +479,7 @@ def canonical_reference():
         publication_date=None,
     )
     enhancement = Enhancement(
-        id=uuid.uuid7(),
+        id=uuid7(),
         reference_id=canonical_id,
         source="unit-test",
         visibility="public",
@@ -503,7 +503,7 @@ def canonical_reference():
 @pytest.fixture
 def get_duplicate_reference():
     def _make(canonical_id):
-        duplicate_id = uuid.uuid7()
+        duplicate_id = uuid7()
         return Reference(
             id=duplicate_id,
             visibility="public",
@@ -645,8 +645,8 @@ async def test_get_canonical_reference_with_implied_changeset(
     fake_uow, fake_repository
 ):
     """Test getting canonical reference and implied changeset."""
-    duplicate_id = uuid.uuid7()
-    canonical_id = uuid.uuid7()
+    duplicate_id = uuid7()
+    canonical_id = uuid7()
     duplicate_reference = Reference(
         id=duplicate_id,
         visibility="public",
@@ -680,9 +680,9 @@ async def test_get_canonical_reference_with_implied_changeset(
 
 async def test_get_reference_changesets_from_enhancements(fake_uow, fake_repository):
     """Test getting reference changesets from enhancements."""
-    reference_1_id, reference_2_id = uuid.uuid7(), uuid.uuid7()
+    reference_1_id, reference_2_id = uuid7(), uuid7()
     enhancement_1 = Enhancement(
-        id=uuid.uuid7(),
+        id=uuid7(),
         reference_id=reference_1_id,
         source="unit-test",
         visibility="public",
@@ -696,7 +696,7 @@ async def test_get_reference_changesets_from_enhancements(fake_uow, fake_reposit
         ),
     )
     enhancement_2 = Enhancement(
-        id=uuid.uuid7(),
+        id=uuid7(),
         reference_id=reference_2_id,
         source="unit-test",
         visibility="public",
@@ -757,12 +757,12 @@ async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_ro
         path="robot_enhancement_batch_reference_data",
     )
 
-    references = [Reference(id=uuid.uuid7()) for _ in range(3)]
+    references = [Reference(id=uuid7()) for _ in range(3)]
     pending_enhancements = [
         PendingEnhancement(
             reference_id=ref.id,
             robot_id=test_robot.id,
-            enhancement_request_id=uuid.uuid7(),
+            enhancement_request_id=uuid7(),
         )
         for ref in references
     ]
@@ -772,7 +772,7 @@ async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_ro
         PendingEnhancement(
             reference_id=references[0].id,
             robot_id=test_robot.id,
-            enhancement_request_id=uuid.uuid7(),
+            enhancement_request_id=uuid7(),
         )
     )
 
@@ -861,11 +861,11 @@ async def test_renew_robot_enhancement_batch_lease(
     enhancement_repo = fake_repository(
         init_entries=[
             PendingEnhancement(
-                id=uuid.uuid7(),
+                id=uuid7(),
                 robot_enhancement_batch_id=robot_enhancement_batch.id,
-                reference_id=uuid.uuid7(),
+                reference_id=uuid7(),
                 robot_id=test_robot.id,
-                enhancement_request_id=uuid.uuid7(),
+                enhancement_request_id=uuid7(),
                 status=PendingEnhancementStatus.PROCESSING,
                 expires_at=initial_expiry,
             )
@@ -903,8 +903,8 @@ async def test_expire_and_replace_stale_pending_enhancements_no_expired(
     future_expiry = utc_now() + datetime.timedelta(hours=1)
     pending_enhancements = [
         PendingEnhancement(
-            id=uuid.uuid7(),
-            reference_id=uuid.uuid7(),
+            id=uuid7(),
+            reference_id=uuid7(),
             robot_id=test_robot.id,
             source="test-source",
             status=PendingEnhancementStatus.PROCESSING,
@@ -949,11 +949,11 @@ async def test_expire_and_replace_stale_pending_enhancements_with_expired(
     """Test expiring and creating retries for expired pending enhancements."""
     # Create expired pending enhancements (PROCESSING status, past expiry)
     past_expiry = utc_now() - datetime.timedelta(minutes=5)
-    enhancement_request_id = uuid.uuid7()
+    enhancement_request_id = uuid7()
     expired_enhancements = [
         PendingEnhancement(
-            id=uuid.uuid7(),
-            reference_id=uuid.uuid7(),
+            id=uuid7(),
+            reference_id=uuid7(),
             robot_id=test_robot.id,
             enhancement_request_id=enhancement_request_id,
             source="test-source",
@@ -966,8 +966,8 @@ async def test_expire_and_replace_stale_pending_enhancements_with_expired(
     # Add a non-expired one that should be ignored
     future_expiry = utc_now() + datetime.timedelta(hours=1)
     non_expired = PendingEnhancement(
-        id=uuid.uuid7(),
-        reference_id=uuid.uuid7(),
+        id=uuid7(),
+        reference_id=uuid7(),
         robot_id=test_robot.id,
         source="test-source",
         status=PendingEnhancementStatus.PROCESSING,
@@ -976,8 +976,8 @@ async def test_expire_and_replace_stale_pending_enhancements_with_expired(
 
     # Add a PENDING one that's past expiry (should be ignored - only PROCESSING expire)
     pending_past_expiry = PendingEnhancement(
-        id=uuid.uuid7(),
-        reference_id=uuid.uuid7(),
+        id=uuid7(),
+        reference_id=uuid7(),
         robot_id=test_robot.id,
         source="test-source",
         status=PendingEnhancementStatus.PENDING,
@@ -1059,8 +1059,8 @@ async def test_expire_and_replace_stale_pending_enhancements_at_retry_limit(
     past_expiry = utc_now() - datetime.timedelta(minutes=5)
 
     expired_low_depth = PendingEnhancement(
-        id=uuid.uuid7(),
-        reference_id=uuid.uuid7(),
+        id=uuid7(),
+        reference_id=uuid7(),
         robot_id=test_robot.id,
         source="test-source",
         status=PendingEnhancementStatus.PROCESSING,
@@ -1068,8 +1068,8 @@ async def test_expire_and_replace_stale_pending_enhancements_at_retry_limit(
     )
 
     expired_at_limit = PendingEnhancement(
-        id=uuid.uuid7(),
-        reference_id=uuid.uuid7(),
+        id=uuid7(),
+        reference_id=uuid7(),
         robot_id=test_robot.id,
         source="test-source",
         status=PendingEnhancementStatus.PROCESSING,
@@ -1077,8 +1077,8 @@ async def test_expire_and_replace_stale_pending_enhancements_at_retry_limit(
     )
 
     expired_over_limit = PendingEnhancement(
-        id=uuid.uuid7(),
-        reference_id=uuid.uuid7(),
+        id=uuid7(),
+        reference_id=uuid7(),
         robot_id=test_robot.id,
         source="test-source",
         status=PendingEnhancementStatus.PROCESSING,

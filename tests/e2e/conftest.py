@@ -4,8 +4,8 @@ import contextlib
 import json
 import os
 import pathlib
-import uuid
 from collections.abc import AsyncIterator
+from uuid import UUID
 
 import httpx
 import pytest
@@ -564,7 +564,7 @@ async def robot(destiny_client_v1: httpx.AsyncClient) -> Robot:
 async def add_references(pg_session: AsyncSession):
     """Create some references."""
 
-    async def _make(n: int) -> set[uuid.UUID]:
+    async def _make(n: int) -> set[UUID]:
         references = [ReferenceFactory.build() for _ in range(n)]
         for reference in references:
             sql_reference = SQLReference.from_domain(reference)

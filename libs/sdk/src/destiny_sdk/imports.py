@@ -4,13 +4,13 @@ import datetime
 from enum import StrEnum, auto
 
 from pydantic import (
-    UUID4,
-    UUID7,
     BaseModel,
     Field,
     HttpUrl,
     PastDatetime,
 )
+
+from .core import UUID
 
 
 class ImportRecordStatus(StrEnum):
@@ -109,7 +109,7 @@ class ImportRecordIn(_ImportRecordBase):
 class ImportRecordRead(_ImportRecordBase):
     """Core import record class."""
 
-    id: UUID4 | UUID7 = Field(
+    id: UUID = Field(
         description="The ID of the import record",
     )
     status: ImportRecordStatus = Field(
@@ -141,13 +141,13 @@ class ImportBatchIn(_ImportBatchBase):
 class ImportBatchRead(_ImportBatchBase):
     """Core import batch class."""
 
-    id: UUID4 | UUID7 = Field(
+    id: UUID = Field(
         description="The ID of the import batch",
     )
     status: ImportBatchStatus = Field(
         default=ImportBatchStatus.CREATED, description="The status of the batch."
     )
-    import_record_id: UUID4 | UUID7 = Field(
+    import_record_id: UUID = Field(
         description="The ID of the import record this batch is associated with"
     )
     import_record: ImportRecordRead | None = Field(
@@ -161,15 +161,13 @@ class ImportBatchRead(_ImportBatchBase):
 class ImportBatchSummary(_ImportBatchBase):
     """A view for an import batch that includes a summary of its results."""
 
-    id: UUID4 | UUID7 = Field(
+    id: UUID = Field(
         description="""
 The identifier of the batch.
 """,
     )
 
-    import_batch_id: UUID4 | UUID7 = Field(
-        description="The ID of the batch being summarised"
-    )
+    import_batch_id: UUID = Field(description="The ID of the batch being summarised")
 
     import_batch_status: ImportBatchStatus = Field(
         description="The status of the batch being summarised"
@@ -190,8 +188,8 @@ The identifier of the batch.
 class ImportResultRead(BaseModel):
     """Core import result class."""
 
-    id: UUID4 | UUID7 = Field(description="The ID of the import result.")
-    reference_id: UUID4 | UUID7 | None = Field(
+    id: UUID = Field(description="The ID of the import result.")
+    reference_id: UUID | None = Field(
         default=None,
         description="The ID of the reference created by this import result.",
     )
