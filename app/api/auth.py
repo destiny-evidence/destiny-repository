@@ -245,7 +245,6 @@ class AzureJwtAuth(AuthMethod):
 
     def __init__(
         self,
-        tenant_id: str,
         application_id: str,
         scope: StrEnum | None = None,
         role: StrEnum | None = None,
@@ -255,14 +254,12 @@ class AzureJwtAuth(AuthMethod):
         Initialize the dependency.
 
         Args:
-        tenant_id (str): The Azure AD tenant ID
         application_id (str): The Azure AD application ID
         scope (AuthScopes): The authorization scope for delegated (user) tokens
         role (AuthRoles): The authorization role for application tokens
         cache_ttl (int): Time to live for cache entries, defaults to 24 hours.
 
         """
-        self.tenant_id = tenant_id
         self.api_audience = application_id
         self.scope = scope
         self.role = role
@@ -432,7 +429,6 @@ class SuccessAuth(AuthMethod):
 
 
 def choose_auth_strategy(
-    tenant_id: str,
     application_id: str,
     auth_scope: AuthScope | None = None,
     auth_role: AuthRole | None = None,
@@ -444,7 +440,6 @@ def choose_auth_strategy(
         return SuccessAuth()
 
     return AzureJwtAuth(
-        tenant_id=tenant_id,
         application_id=application_id,
         scope=auth_scope,
         role=auth_role,
@@ -596,7 +591,6 @@ class HybridAuth(AuthMethod):
 
 
 def choose_hybrid_auth_strategy(  # noqa: PLR0913
-    tenant_id: str,
     application_id: str,
     jwt_scope: AuthScope | None,
     jwt_role: AuthRole | None,
@@ -608,7 +602,6 @@ def choose_hybrid_auth_strategy(  # noqa: PLR0913
     """
     Create a hybrid auth dependency function.
 
-    :param tenant_id: Azure tenant ID for JWT validation
     :param application_id: Azure application ID for JWT validation
     :param jwt_scope: The required JWT scope/role
     :param get_client_secret: Function to get HMAC client secrets
@@ -620,7 +613,6 @@ def choose_hybrid_auth_strategy(  # noqa: PLR0913
 
     return HybridAuth(
         jwt_auth=AzureJwtAuth(
-            tenant_id=tenant_id,
             application_id=application_id,
             scope=jwt_scope,
             role=jwt_role,

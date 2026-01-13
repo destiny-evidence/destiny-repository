@@ -136,7 +136,6 @@ def robot_service(
 def choose_auth_strategy_reference_reader() -> AuthMethod:
     """Choose reader scope auth strategy for our authorization."""
     return choose_auth_strategy(
-        tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScope.REFERENCE_READER,
         auth_role=AuthRole.REFERENCE_READER,
@@ -147,7 +146,6 @@ def choose_auth_strategy_reference_reader() -> AuthMethod:
 def choose_auth_strategy_reference_deduplicator() -> AuthMethod:
     """Choose reader scope auth strategy for our authorization."""
     return choose_auth_strategy(
-        tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScope.REFERENCE_DEDUPLICATOR,
         auth_role=AuthRole.REFERENCE_DEDUPLICATOR,
@@ -165,7 +163,6 @@ async def enhancement_request_hybrid_auth(
 ) -> bool:
     """Choose enhancement request writer scope auth strategy for our authorization."""
     return await choose_hybrid_auth_strategy(
-        tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         jwt_scope=AuthScope.ENHANCEMENT_REQUEST_WRITER,
         jwt_role=AuthRole.ENHANCEMENT_REQUEST_WRITER,

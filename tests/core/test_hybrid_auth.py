@@ -112,7 +112,6 @@ def configured_jwt_auth(fake_application_id: str):
     """Configure JWT auth settings for testing."""
     auth_settings.env = Environment.PRODUCTION
     auth_settings.azure_application_id = fake_application_id
-    auth_settings.azure_tenant_id = "test_tenant_id"
     yield
     auth_settings.__init__()  # type: ignore[call-args, misc]
 
