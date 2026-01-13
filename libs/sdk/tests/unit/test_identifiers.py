@@ -30,6 +30,26 @@ def test_doi_url_removed():
     assert obj.identifier == "10.1000/xyz123"
 
 
+@pytest.mark.parametrize(
+    "valid_doi",
+    [
+        # Valid DOIs with special chars (extended pattern)
+        "10.18730/jxe2=",
+        "10.18730/19szs*",
+        "10.5325/critphilrace.8.1\u20132.0237",  # en-dash
+        "10.1000/xyz#section",  # hash
+        "10.1000/caf\u00e9",  # accented char
+    ],
+)
+def test_doi_extended_pattern(valid_doi: str):
+    """Test that extended DOI pattern accepts valid special characters."""
+    obj = destiny_sdk.identifiers.DOIIdentifier(
+        identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.DOI,
+        identifier=valid_doi,
+    )
+    assert obj.identifier == valid_doi
+
+
 def test_valid_eric_identifier():
     obj = destiny_sdk.identifiers.ERICIdentifier(
         identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.ERIC,

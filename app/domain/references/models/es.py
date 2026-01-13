@@ -1,7 +1,7 @@
 """Objects used to interface with Elasticsearch implementations."""
 
 import datetime
-from typing import Any, Self
+from typing import Any, ClassVar, Self
 from uuid import UUID
 
 from elasticsearch.dsl import (
@@ -228,13 +228,24 @@ class ReferenceSearchFieldsMixin(InnerDoc):
 
     Currently this holds fields for identifing candidate canonicals during deduplication
     and for searching references by query on title, authors, and abstracts.
+
+    Multi-fields for deduplication:
+    - title.content: Stopwords and short tokens removed (for candidate matching)
+    - authors.dedup: Single-letter tokens removed (prevents initial matching)
     """
 
     abstract: str | None = mapped_field(Text(required=False), default=None)
     """The abstract of the reference."""
 
     authors: list[str] | None = mapped_field(
-        Text(required=False),
+        Text(
+            required=False,
+            fields={
+                # Subfield for deduplication: filters single-letter initials
+                # Prevents "G. Aad" from matching on "G" across unrelated papers
+                "dedup": Text(analyzer="author_dedup"),
+            },
+        ),
         default=None,
     )
     """
@@ -245,6 +256,9 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     - First author
     - Middle authors in alphabetical order
     - Last author
+
+    Multi-fields:
+    - authors.dedup: Single-letter tokens filtered (for deduplication matching)
     """
 
     publication_year: int | None = mapped_field(
@@ -253,8 +267,23 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     )
     """The publication year of the reference."""
 
-    title: str | None = mapped_field(Text(required=False), default=None)
-    """The title of the reference."""
+    title: str | None = mapped_field(
+        Text(
+            required=False,
+            fields={
+                # Subfield for deduplication: stopwords and short tokens removed
+                # Prevents "a/of/the" from satisfying minimum_should_match
+                "content": Text(analyzer="title_content"),
+            },
+        ),
+        default=None,
+    )
+    """
+    The title of the reference.
+
+    Multi-fields:
+    - title.content: Stopwords/short tokens removed (for deduplication matching)
+    """
 
     annotations: list[str] | None = mapped_field(
         Keyword(required=False),
@@ -336,6 +365,43 @@ class ReferenceDocument(
         """Index metadata for the persistence model."""
 
         name = "reference"
+
+        # Custom analyzers for deduplication matching
+        # Prevent false positives from stopwords and single-letter initials
+        #
+        # Problem: ATLAS paper (2927 authors) matched sausages paper (ES=2780)
+        # 1. Title matched on stopwords only: "a/of/the" (30% threshold)
+        # 2. Single-letter initials (A, G, M, L) matched ~1000 times
+        #
+        # Solution:
+        # - title_content: Removes stopwords and tokens < 3 chars
+        # - author_dedup: Removes tokens < 2 chars (single-letter initials)
+        settings: ClassVar[dict[str, Any]] = {
+            "analysis": {
+                "filter": {
+                    # Remove tokens < 3 chars (removes "a", "of", etc.)
+                    "min_3_chars": {"type": "length", "min": 3},
+                    # Remove tokens < 2 chars (single-letter initials)
+                    "min_2_chars": {"type": "length", "min": 2},
+                    # Standard English stopwords
+                    "english_stopwords": {"type": "stop", "stopwords": "_english_"},
+                },
+                "analyzer": {
+                    # title.content: removes stopwords + short tokens
+                    # "A continuous calibration of the ATLAS" -> ["continuous", ...]
+                    "title_content": {
+                        "tokenizer": "standard",
+                        "filter": ["lowercase", "english_stopwords", "min_3_chars"],
+                    },
+                    # authors.dedup: removes single-letter tokens
+                    # "G. Aad" -> ["aad"], "Bruna L. G. Manzolli" -> ["bruna", ...]
+                    "author_dedup": {
+                        "tokenizer": "standard",
+                        "filter": ["lowercase", "min_2_chars"],
+                    },
+                },
+            }
+        }
 
     @classmethod
     def from_domain(cls, domain_obj: Reference) -> Self:

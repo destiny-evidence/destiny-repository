@@ -502,6 +502,9 @@ class ReferenceDuplicateDecision(
     candidate_canonical_ids: Mapped[list[uuid.UUID]] = mapped_column(
         ARRAY(UUID), nullable=True
     )
+    candidate_canonical_scores: Mapped[dict[str, float] | None] = mapped_column(
+        JSONB, nullable=True
+    )
     duplicate_determination: Mapped[DuplicateDetermination] = mapped_column(
         ENUM(
             *[status.value for status in DuplicateDetermination],
@@ -551,6 +554,7 @@ class ReferenceDuplicateDecision(
             enhancement_id=domain_obj.enhancement_id,
             active_decision=domain_obj.active_decision,
             candidate_canonical_ids=domain_obj.candidate_canonical_ids,
+            candidate_canonical_scores=domain_obj.candidate_canonical_scores,
             canonical_reference_id=domain_obj.canonical_reference_id,
             duplicate_determination=domain_obj.duplicate_determination,
             detail=domain_obj.detail,
@@ -567,6 +571,7 @@ class ReferenceDuplicateDecision(
             enhancement_id=self.enhancement_id,
             active_decision=self.active_decision,
             candidate_canonical_ids=self.candidate_canonical_ids,
+            candidate_canonical_scores=self.candidate_canonical_scores,
             canonical_reference_id=self.canonical_reference_id,
             duplicate_determination=self.duplicate_determination,
             detail=self.detail,

@@ -1,13 +1,20 @@
 """Service for managing reference duplicate detection."""
 
+import html
 import uuid
+from dataclasses import dataclass
 from typing import Literal
 
 from opentelemetry import trace
 
-from app.core.config import Environment, get_settings
+from app.core.config import get_settings
 from app.core.exceptions import DeduplicationValueError
 from app.core.telemetry.logger import get_logger
+from app.domain.references.deduplication.scoring import (
+    ConfidenceLevel,
+    PairScorer,
+    ReferenceDeduplicationView,
+)
 from app.domain.references.models.models import (
     DuplicateDetermination,
     ExternalIdentifierType,
@@ -16,9 +23,7 @@ from app.domain.references.models.models import (
     ReferenceDuplicateDecision,
     ReferenceDuplicateDeterminationResult,
 )
-from app.domain.references.models.projections import (
-    ReferenceSearchFieldsProjection,
-)
+from app.domain.references.models.projections import ReferenceSearchFieldsProjection
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -29,6 +34,81 @@ from app.persistence.sql.uow import AsyncSqlUnitOfWork
 logger = get_logger(__name__)
 settings = get_settings()
 tracer = trace.get_tracer(__name__)
+
+
+def _create_scorer() -> PairScorer:
+    """Create a PairScorer configured from application settings."""
+    # DedupScoringConfig satisfies ScoringConfigProtocol via property aliases
+    return PairScorer(settings.dedup_scoring)
+
+
+@dataclass
+class DOICleanupResult:
+    """Result of DOI cleanup attempt."""
+
+    original: str
+    cleaned: str
+    was_modified: bool
+    actions: list[str]
+
+
+def clean_doi(doi: str) -> DOICleanupResult:
+    """
+    Clean a DOI by removing URL cruft.
+
+    Returns the cleaned DOI and metadata about what was changed.
+    This does NOT modify the stored DOI - it's used to detect if a DOI
+    needs validation before being trusted.
+
+    Handles:
+    - HTML entity encoding (&amp; -> &)
+    - Query parameters (?utm=..., ?journalcode=...)
+    - Session IDs (;jsessionid=...)
+    - Tracking garbage (&magic=repec..., &prog=normal)
+    - URL path suffixes (/abstract, /full, /pdf)
+    """
+    actions: list[str] = []
+    cleaned = doi
+
+    # Step 1: Unescape HTML entities (&amp; -> &, etc.)
+    if "&" in cleaned:
+        unescaped = html.unescape(cleaned)
+        if unescaped != cleaned:
+            actions.append("unescape_html")
+            cleaned = unescaped
+
+    # Step 2: Strip query parameters
+    if "?" in cleaned:
+        actions.append("strip_query_params")
+        cleaned = cleaned.split("?")[0]
+
+    # Step 3: Strip session IDs
+    if ";jsessionid=" in cleaned:
+        actions.append("strip_jsessionid")
+        cleaned = cleaned.split(";jsessionid=")[0]
+
+    # Step 4: Strip tracking garbage after & (common patterns)
+    garbage_patterns = ["&magic=", "&prog=", "&utm"]
+    for pattern in garbage_patterns:
+        if pattern in cleaned:
+            actions.append(f"strip_{pattern[1:-1]}")
+            cleaned = cleaned.split(pattern)[0]
+
+    # Step 5: Strip URL path suffixes that aren't part of the DOI
+    path_suffixes = ["/abstract", "/full", "/pdf", "/epdf", "/summary"]
+    for suffix in path_suffixes:
+        if cleaned.endswith(suffix):
+            actions.append(f"strip_{suffix[1:]}")
+            cleaned = cleaned[: -len(suffix)]
+
+    cleaned = cleaned.strip()
+
+    return DOICleanupResult(
+        original=doi,
+        cleaned=cleaned,
+        was_modified=cleaned != doi,
+        actions=actions,
+    )
 
 
 class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
@@ -194,54 +274,123 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision = (
                 await self.sql_uow.reference_duplicate_decisions.update_by_pk(
                     reference_duplicate_decision.id,
-                    # This should simplify to CANONICAL only once the search strategy is
-                    # implemented and evaluated.
-                    duplicate_determination=DuplicateDetermination.CANONICAL
-                    if settings.env == Environment.TEST
-                    else DuplicateDetermination.UNSEARCHABLE,
+                    duplicate_determination=DuplicateDetermination.CANONICAL,
                 )
             )
         else:
-            # Is there a search result score that would be enough for us to mark as
-            # duplicate without proceeding to the next step?
+            # Store both candidate IDs and their ES scores for the scoring step
+            candidate_ids = [result.id for result in search_result]
+            candidate_scores = {
+                str(result.id): result.score for result in search_result
+            }
             reference_duplicate_decision = (
                 await self.sql_uow.reference_duplicate_decisions.update_by_pk(
                     reference_duplicate_decision.id,
-                    candidate_canonical_ids=[result.id for result in search_result],
+                    candidate_canonical_ids=candidate_ids,
+                    candidate_canonical_scores=candidate_scores,
                     duplicate_determination=DuplicateDetermination.NOMINATED,
                 )
             )
 
         return reference_duplicate_decision
 
-    async def __placeholder_duplicate_determinator(
+    async def _score_candidates(
         self, reference_duplicate_decision: ReferenceDuplicateDecision
     ) -> ReferenceDuplicateDeterminationResult:
         """
-        Implement a basic placeholder duplicate determinator.
+        Score candidate canonicals and determine duplicate status.
 
-        Temporary implementation: takes the first candidate as the duplicate.
-        This is the one with the highest score in the candidate nomination stage.
-        This completes the flow but should not be used in production.
+        Uses dedup_lab's PairScorer to compare the source reference against each
+        candidate canonical. Returns DUPLICATE if a high-confidence match is found,
+        CANONICAL if no candidates score above the threshold, or UNRESOLVED if
+        scores fall in the ambiguous middle range.
 
-        :param reference_duplicate_decision: The decision to determine duplicates for.
+        :param reference_duplicate_decision: The decision with candidate IDs to score.
         :type reference_duplicate_decision: ReferenceDuplicateDecision
-        :return: The result of the duplicate determination.
+        :return: The determination result with optional canonical reference.
         :rtype: ReferenceDuplicateDeterminationResult
         """
-        return (
-            ReferenceDuplicateDeterminationResult(
+        # Load the source reference with enhancements and identifiers
+        source_reference = await self.sql_uow.references.get_by_pk(
+            reference_duplicate_decision.reference_id,
+            preload=["enhancements", "identifiers"],
+        )
+
+        # Load all candidate references
+        candidate_ids = reference_duplicate_decision.candidate_canonical_ids
+        if not candidate_ids:
+            return ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.CANONICAL,
+                detail="No candidates to score.",
+            )
+
+        # Get ES scores from the decision (stored as string keys)
+        es_scores_str = reference_duplicate_decision.candidate_canonical_scores or {}
+        es_scores = {uuid.UUID(k): v for k, v in es_scores_str.items()}
+
+        candidates: list[Reference] = []
+        for cand_id in candidate_ids:
+            cand = await self.sql_uow.references.get_by_pk(
+                cand_id,
+                preload=["enhancements", "identifiers"],
+            )
+            candidates.append(cand)
+
+        # Convert to deduplication views for scoring
+        source_view = ReferenceDeduplicationView.from_reference(source_reference)
+        candidate_views = [
+            ReferenceDeduplicationView.from_reference(c) for c in candidates
+        ]
+
+        # Create scorer and score all candidates
+        scorer = _create_scorer()
+
+        # Use ES+Jaccard scoring with stored ES scores
+        scored_candidates = scorer.score_source_two_stage(
+            source_view,
+            candidate_views,
+            es_scores=es_scores,
+            top_k=settings.dedup_scoring.two_stage_top_k,
+        )
+
+        if not scored_candidates:
+            return ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.CANONICAL,
+                detail="No candidates after scoring.",
+            )
+
+        # Get the best match
+        best_candidate, best_score = scored_candidates[0]
+        best_reference_id = best_candidate.id
+
+        # Build detail string with top scores
+        top_scores = [
+            f"{cand.id}: {score.combined_score:.3f} ({score.confidence.value})"
+            for cand, score in scored_candidates[:3]
+        ]
+        detail = f"Top scores: {'; '.join(top_scores)}"
+
+        # Decision logic based on thresholds
+        score_str = f"score={best_score.combined_score:.3f}"
+        if best_score.confidence == ConfidenceLevel.HIGH:
+            # High confidence match - mark as duplicate
+            return ReferenceDuplicateDeterminationResult(
                 duplicate_determination=DuplicateDetermination.DUPLICATE,
-                canonical_reference_id=reference_duplicate_decision.candidate_canonical_ids[
-                    0
-                ],
+                canonical_reference_id=best_reference_id,
+                detail=f"High confidence match ({score_str}). {detail}",
             )
-            if settings.env == Environment.TEST
-            and reference_duplicate_decision.candidate_canonical_ids
-            else ReferenceDuplicateDeterminationResult(
-                duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
-                detail="Placeholder duplicate determinator used.",
+
+        if best_score.confidence == ConfidenceLevel.MEDIUM:
+            # Medium confidence - needs manual review
+            return ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.UNRESOLVED,
+                detail=f"Medium confidence match ({score_str}). {detail}",
             )
+
+        # Low confidence - no good match found, mark as canonical
+        return ReferenceDuplicateDeterminationResult(
+            duplicate_determination=DuplicateDetermination.CANONICAL,
+            detail=f"No high-confidence match (best={score_str}). {detail}",
         )
 
     async def determine_canonical_from_candidates(
@@ -249,6 +398,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
     ) -> ReferenceDuplicateDecision:
         """
         Determine a canonical reference from its candidates.
+
+        Uses the dedup_lab PairScorer to compare the source reference against
+        candidate canonicals and make a determination based on similarity scores.
 
         :param reference_duplicate_decision: The decision to determine duplicates for.
         :type reference_duplicate_decision: ReferenceDuplicateDecision
@@ -261,10 +413,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         ):
             return reference_duplicate_decision
 
-        duplicate_determination_result = (
-            await self.__placeholder_duplicate_determinator(
-                reference_duplicate_decision
-            )
+        duplicate_determination_result = await self._score_candidates(
+            reference_duplicate_decision
         )
 
         return await self.sql_uow.reference_duplicate_decisions.update_by_pk(
@@ -434,15 +584,99 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             for identifier in reference.identifiers
             if identifier.identifier.identifier_type in trusted_unique_identifier_types
         ]
+        if not trusted_identifiers:
+            return None
+
+        # Check if any DOI needs cleanup - if so, flag for robot validation
+        # DOIs with cruft (HTML entities, query params, etc.) should be validated
+        # via Crossref before being trusted for deduplication
+        for ti in trusted_identifiers:
+            if ti.identifier_type == ExternalIdentifierType.DOI:
+                cleanup_result = clean_doi(ti.identifier)
+                if cleanup_result.was_modified:
+                    return [
+                        await self.sql_uow.reference_duplicate_decisions.update_by_pk(
+                            reference_duplicate_decision.id,
+                            duplicate_determination=DuplicateDetermination.UNRESOLVED,
+                            detail=(
+                                f"DOI needs validation: original='{cleanup_result.original}' "
+                                f"cleaned='{cleanup_result.cleaned}' "
+                                f"actions={cleanup_result.actions}"
+                            ),
+                        )
+                    ]
+
+        # Check if ref has OpenAlex ID (globally unique, authoritative)
+        has_openalex_id = any(
+            ti.identifier_type == ExternalIdentifierType.OPEN_ALEX
+            for ti in trusted_identifiers
+        )
+
         candidates = await self.sql_uow.references.find_with_identifiers(
             trusted_identifiers,
-            preload=["duplicate_decision"],
+            preload=["duplicate_decision", "identifiers"],
             match="any",
         )
         candidates = [
             candidate for candidate in candidates if candidate.id != reference.id
         ]
+
+        # Check for conflicting trusted identifiers:
+        # If incoming ref has OpenAlex ID and candidates have DIFFERENT OpenAlex IDs,
+        # this indicates bad DOI metadata (multiple OpenAlex works sharing a DOI).
+        # Mark as UNRESOLVED for review rather than trusting the DOI.
+        if has_openalex_id and candidates:
+            incoming_openalex_ids = {
+                ti.identifier
+                for ti in trusted_identifiers
+                if ti.identifier_type == ExternalIdentifierType.OPEN_ALEX
+            }
+
+            for candidate in candidates:
+                if not candidate.identifiers:
+                    continue
+                candidate_openalex_ids = {
+                    ident.identifier.identifier
+                    for ident in candidate.identifiers
+                    if ident.identifier.identifier_type == ExternalIdentifierType.OPEN_ALEX
+                }
+                # If candidate has OpenAlex ID(s) that don't match incoming ref's
+                if candidate_openalex_ids and not (
+                    incoming_openalex_ids & candidate_openalex_ids
+                ):
+                    # Conflict: same DOI but different OpenAlex IDs
+                    # Get the conflicting DOIs for the detail message
+                    incoming_dois = {
+                        ti.identifier
+                        for ti in trusted_identifiers
+                        if ti.identifier_type == ExternalIdentifierType.DOI
+                    }
+                    return [
+                        await self.sql_uow.reference_duplicate_decisions.update_by_pk(
+                            reference_duplicate_decision.id,
+                            duplicate_determination=DuplicateDetermination.UNRESOLVED,
+                            detail=(
+                                f"Conflicting trusted identifiers: shared DOI(s) "
+                                f"{incoming_dois} but different OpenAlex IDs "
+                                f"(incoming: {incoming_openalex_ids}, "
+                                f"existing: {candidate_openalex_ids}). "
+                                "Likely malformed DOI in source data."
+                            ),
+                        )
+                    ]
+
         if not candidates:
+            # No existing ref with this identifier
+            if has_openalex_id:
+                # OpenAlex IDs are globally unique - mark as canonical immediately
+                # This prevents title-based dedup between different W IDs
+                updated_decision = await self.sql_uow.reference_duplicate_decisions.update_by_pk(
+                    reference_duplicate_decision.id,
+                    duplicate_determination=DuplicateDetermination.CANONICAL,
+                    detail="New OpenAlex record (W ID not in corpus)",
+                )
+                return [updated_decision]
+            # DOI-only refs fall through to title-based dedup
             return None
 
         canonical_ids, undeduplicated_ids = set(), set()

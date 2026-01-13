@@ -34,9 +34,14 @@ class ExternalIdentifierType(StrEnum):
 class DOIIdentifier(BaseModel):
     """An external identifier representing a DOI."""
 
+    # Pattern includes standard DOI characters plus:
+    # - =~*$ (valid suffix characters found in real DOIs)
+    # - \u2013\u2014 (en-dash, em-dash - often in page ranges)
+    # - \u00C0-\u017F (Latin Extended - accented characters in author names)
+    # - # (valid suffix, e.g., old Wiley DOIs)
     identifier: str = Field(
         description="The DOI of the reference.",
-        pattern=r"^10\.\d{4,9}/[-._;()/:a-zA-Z0-9%<>\[\]+&]+$",
+        pattern=r"^10\.\d{4,9}/[-._;()/:a-zA-Z0-9%<>\[\]+&=~*$#\u2013\u2014\u00C0-\u017F]+$",
     )
     identifier_type: Literal[ExternalIdentifierType.DOI] = Field(
         ExternalIdentifierType.DOI, description="The type of identifier used."
@@ -44,8 +49,13 @@ class DOIIdentifier(BaseModel):
 
     @field_validator("identifier", mode="before")
     @classmethod
-    def remove_doi_url(cls, value: str) -> str:
-        """Remove the URL part of the DOI if it exists."""
+    def strip_doi_url_prefix(cls, value: str) -> str:
+        """
+        Strip URL prefixes from DOI.
+
+        Only removes safe prefixes - does NOT clean HTML entities, query params,
+        or other cruft. DOIs needing cleanup should be flagged for review.
+        """
         return (
             value.removeprefix("http://")
             .removeprefix("https://")

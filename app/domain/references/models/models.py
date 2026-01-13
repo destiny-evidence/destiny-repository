@@ -471,8 +471,14 @@ class CandidateCanonicalSearchFields(ProjectedBaseModel):
 
     @property
     def is_searchable(self) -> bool:
-        """Whether the projection has the fields required to search for candidates."""
-        return all((self.publication_year, self.authors, self.title))
+        """
+        Whether the projection has the fields required to search for candidates.
+
+        Only title is strictly required - the two-pass search approach in
+        ReferenceESRepository.search_for_candidate_canonicals handles missing
+        year and authors via relaxed fallback queries.
+        """
+        return self.title is not None
 
 
 class ReferenceSearchFields(ProjectedBaseModel):
@@ -606,6 +612,10 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
     candidate_canonical_ids: list[UUID4] = Field(
         default_factory=list,
         description="A list of candidate canonical IDs for the reference.",
+    )
+    candidate_canonical_scores: dict[str, float] | None = Field(
+        default=None,
+        description="ES scores for each candidate canonical ID (ID as string key).",
     )
     duplicate_determination: DuplicateDetermination = Field(
         default=DuplicateDetermination.PENDING,

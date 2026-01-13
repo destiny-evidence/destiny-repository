@@ -22,11 +22,18 @@ class AsyncESClientManager:
         """Initialize the Elasticsearch client manager."""
         if self._client is None:
             if es_config.es_insecure_url:
+                kwargs: dict = {
+                    "retry_on_timeout": es_config.retry_on_timeout,
+                    "max_retries": es_config.max_retries,
+                    "request_timeout": es_config.timeout_seconds,
+                    "verify_certs": False,
+                    "ssl_show_warn": False,
+                }
+                if es_config.es_user and es_config.es_pass:
+                    kwargs["basic_auth"] = (es_config.es_user, es_config.es_pass)
                 self._client = AsyncElasticsearch(
                     str(es_config.es_insecure_url),
-                    retry_on_timeout=es_config.retry_on_timeout,
-                    max_retries=es_config.max_retries,
-                    request_timeout=es_config.timeout_seconds,
+                    **kwargs,
                 )
             elif es_config.uses_api_key:
                 self._client = AsyncElasticsearch(
