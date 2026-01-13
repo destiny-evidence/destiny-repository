@@ -336,6 +336,7 @@ class ReferenceDocument(
         """Index metadata for the persistence model."""
 
         name = "reference"
+        number_of_shards = 2
 
     @classmethod
     def from_domain(cls, domain_obj: Reference) -> Self:
