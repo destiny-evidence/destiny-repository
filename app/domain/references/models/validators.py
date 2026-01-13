@@ -12,6 +12,8 @@ from uuid import UUID
 import destiny_sdk
 from destiny_sdk.enhancements import EnhancementType
 from pydantic import (
+    UUID4,
+    UUID7,
     BaseModel,
     ConfigDict,
     Field,
@@ -161,11 +163,11 @@ class ReferenceCreateResult(BaseModel):
         default_factory=list,
         description="A list of errors encountered during the creation process",
     )
-    reference_id: UUID | None = Field(
+    reference_id: UUID4 | UUID7 | None = Field(
         default=None,
         description="The ID of the created reference, if created",
     )
-    duplicate_decision_id: UUID | None = Field(
+    duplicate_decision_id: UUID4 | UUID7 | None = Field(
         default=None,
         description="The ID of the pending duplicate decision, if required",
     )
