@@ -144,6 +144,16 @@ resource "azurerm_container_app_job" "database_migrator" {
     })
   }
 
+  secret {
+    name = "db-config"
+    value = jsonencode({
+      DB_FQDN = azurerm_postgresql_flexible_server.this.fqdn
+      DB_NAME = azurerm_postgresql_flexible_server_database.this.name
+      DB_USER = var.admin_login
+      DB_PASS = var.admin_password
+    })
+  }
+
   template {
     container {
       image   = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
@@ -166,6 +176,11 @@ resource "azurerm_container_app_job" "database_migrator" {
       env {
         name        = "OTEL_CONFIG"
         secret_name = "otel-config"
+      }
+
+      env {
+        name = "DB_CONFIG"
+        secret_name = "db-config"
       }
 
       env {
