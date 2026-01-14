@@ -493,8 +493,7 @@ async def test_determine_and_map_duplicate_decoupled_chain_length(
             reference_duplicate_decisions=dec_repo,
         ),
         fake_uow(),
-    )  # Patch settings.max_reference_duplicate_depth to 2
-    service.__class__.settings = MagicMock(max_reference_duplicate_depth=2)
+    )
 
     determined = await service.determine_canonical_from_candidates(decision)
     out_decision, decision_changed = await service.map_duplicate_decision(determined)

@@ -404,16 +404,6 @@ class Settings(BaseSettings):
         description="The log level for the application.",
     )
 
-    max_reference_duplicate_depth: Literal[2] = Field(
-        default=2,
-        description=(
-            "The maximum depth to which reference duplicates are propagated. A depth "
-            "of 2, as in the default, means only direct duplicates are allowed. Higher "
-            "values allow for duplicate chaining, at the significant cost of "
-            "performance and data model complexity."
-        ),
-    )
-
     cors_allow_origins: list[str] = Field(
         default_factory=list,
         description="List of allowed origins for CORS.",

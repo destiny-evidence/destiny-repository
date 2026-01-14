@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
 from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.config import get_settings
+from app.core.constants import MAX_REFERENCE_DUPLICATE_DEPTH
 from app.core.exceptions import SQLPreloadError
 from app.domain.references.models.models import (
     DuplicateDetermination,
@@ -51,8 +51,6 @@ from app.persistence.sql.persistence import (
     RelationshipInfo,
     RelationshipLoadType,
 )
-
-settings = get_settings()
 
 
 class Reference(GenericSQLPersistence[DomainReference]):
@@ -104,7 +102,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
         uselist=False,
         viewonly=True,
         info=RelationshipInfo(
-            max_recursion_depth=settings.max_reference_duplicate_depth - 1,
+            max_recursion_depth=MAX_REFERENCE_DUPLICATE_DEPTH - 1,
             load_type=RelationshipLoadType.SELECTIN,
             back_populates="duplicate_references",
         ).model_dump(),
@@ -118,7 +116,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
         "ReferenceDuplicateDecision.active_decision==True)",
         viewonly=True,
         info=RelationshipInfo(
-            max_recursion_depth=settings.max_reference_duplicate_depth - 1,
+            max_recursion_depth=MAX_REFERENCE_DUPLICATE_DEPTH - 1,
             load_type=RelationshipLoadType.SELECTIN,
             back_populates="canonical_reference",
         ).model_dump(),
