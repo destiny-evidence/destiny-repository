@@ -62,7 +62,7 @@ jobs:
         uses: docker/build-push-action@v5.1.0
         with:
           push: true
-          tags: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ steps.vars.outputs.sha_short }}, ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ vars.ENVIRONMENT_NAME }}
+          tags: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ steps.vars.outputs.sha_short }}
 
   build-ui:
     runs-on: ubuntu-latest
@@ -108,7 +108,7 @@ jobs:
           context: ./ui
           file: ./ui/Dockerfile
           push: true
-          tags: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}-ui:${{ steps.vars.outputs.sha_short }}, ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}-ui:${{ vars.ENVIRONMENT_NAME }}
+          tags: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}-ui:${{ steps.vars.outputs.sha_short }}
   deploy:
     runs-on: ubuntu-latest
     needs: build
@@ -157,7 +157,6 @@ jobs:
                 --resource-group ${{vars.RESOURCE_GROUP}} \
                 --image ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ needs.build.outputs.image_tag }}
             done
-
   deploy-ui:
     runs-on: ubuntu-latest
     needs: build-ui
@@ -177,3 +176,30 @@ jobs:
           resourceGroup: ${{vars.RESOURCE_GROUP}}
           containerAppEnvironment: ${{vars.CONTAINER_APP_ENV}}
           imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}-ui:${{ needs.build-ui.outputs.image_tag }}
+
+  migrate-database:
+    runs-on: ubuntu-latest
+    needs: [deploy, build]
+    environment: ${{ inputs.environment || 'staging' }}
+    steps:
+      - name: "Az CLI login"
+        uses: azure/login@v2.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Deploy built image to database migrator job
+        uses: Azure/cli@v2.0.0
+        with:
+          inlineScript: |
+            az containerapp job update \
+              --name "db-migrator-${{ vars.ENVIRONMENT_NAME }}" \
+              --resource-group ${{vars.RESOURCE_GROUP}} \
+              --image ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ needs.build.outputs.image_tag }}
+      - name: Trigger database migrations
+        uses: Azure/cli@v2.0.0
+        with:
+          inlineScript: |
+            az containerapp job start \
+              --name "db-migrator-${{ vars.ENVIRONMENT_NAME }}" \
+              --resource-group ${{vars.RESOURCE_GROUP}}
