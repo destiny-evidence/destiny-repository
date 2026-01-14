@@ -574,7 +574,7 @@ resource "ec_deployment" "cluster" {
     hot = {
       size = "2g"
       autoscaling = {
-        max_size          = "30g"
+        max_size          = "180g" # =6.15TB max storage
         max_size_resource = "memory"
       }
     }
@@ -582,7 +582,7 @@ resource "ec_deployment" "cluster" {
     warm = {
       size = "0g"
       autoscaling = {
-        max_size          = "30g"
+        max_size          = "30g" # =5.86TB max storage
         max_size_resource = "memory"
       }
     }
