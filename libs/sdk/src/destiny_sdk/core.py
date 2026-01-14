@@ -1,9 +1,9 @@
 """Core classes for the Destiny SDK, not exposed to package users."""
 
 from importlib.metadata import PackageNotFoundError, version
-from typing import Self
+from typing import Annotated, Self
 
-from pydantic import BaseModel, Field
+from pydantic import UUID4, UUID7, BaseModel, Field
 
 from destiny_sdk.search import SearchResultPage, SearchResultTotal
 
@@ -67,3 +67,9 @@ class SearchResultMixIn(BaseModel):
     page: SearchResultPage = Field(
         description="Information about the page of results.",
     )
+
+
+UUID = Annotated[
+    UUID4 | UUID7,
+    Field(description="A DESTINY UUID, which can be either UUID4 or UUID7."),
+]

@@ -1,7 +1,7 @@
 """Integration tests for SQL interface."""
 
 import datetime
-import uuid
+from uuid import uuid7
 
 import pytest
 from destiny_sdk.imports import ImportRecordStatus
@@ -61,12 +61,12 @@ async def test_enhancement_interface(
     """Test that enhancements are correctly persisted to the database."""
     reference = SQLReference.from_domain(
         Reference(
-            id=uuid.uuid4(),
+            id=uuid7(),
         )
     )
     session.add(reference)
     enhancement_in = Enhancement(
-        id=uuid.uuid4(),
+        id=uuid7(),
         source="dummy",
         reference_id=reference.id,
         visibility="public",
@@ -128,24 +128,24 @@ async def test_reference_get_with_duplicates(session: AsyncSession):
     dup_repo = ReferenceDuplicateDecisionSQLRepository(session=session)
 
     # 1. Create references
-    ref_a = Reference(id=uuid.uuid4(), visibility=Visibility.PUBLIC)
-    ref_b = Reference(id=uuid.uuid4(), visibility=Visibility.PUBLIC)
-    ref_c = Reference(id=uuid.uuid4(), visibility=Visibility.PUBLIC)
+    ref_a = Reference(id=uuid7(), visibility=Visibility.PUBLIC)
+    ref_b = Reference(id=uuid7(), visibility=Visibility.PUBLIC)
+    ref_c = Reference(id=uuid7(), visibility=Visibility.PUBLIC)
     a_is_canonical = ReferenceDuplicateDecision(
-        id=uuid.uuid4(),
+        id=uuid7(),
         duplicate_determination=DuplicateDetermination.CANONICAL,
         reference_id=ref_a.id,
         active_decision=True,
     )
     b_duplicates_a = ReferenceDuplicateDecision(
-        id=uuid.uuid4(),
+        id=uuid7(),
         duplicate_determination=DuplicateDetermination.DUPLICATE,
         reference_id=ref_b.id,
         active_decision=True,
         canonical_reference_id=ref_a.id,
     )
     c_duplicates_a = ReferenceDuplicateDecision(
-        id=uuid.uuid4(),
+        id=uuid7(),
         duplicate_determination=DuplicateDetermination.DUPLICATE,
         reference_id=ref_c.id,
         active_decision=True,
@@ -187,13 +187,13 @@ async def test_reference_get_with_duplicates(session: AsyncSession):
 
     # 4. Test with variants on duplicate decision(s)
     with pytest.raises(SQLIntegrityError):
-        await dup_repo.add(a_is_canonical.model_copy(update={"id": uuid.uuid4()}))
+        await dup_repo.add(a_is_canonical.model_copy(update={"id": uuid7()}))
     await session.rollback()
 
     await dup_repo.add(
         a_is_canonical.model_copy(
             update={
-                "id": uuid.uuid4(),
+                "id": uuid7(),
                 "active_decision": False,
                 "canonical_reference_id": ref_c.id,
                 "duplicate_determination": DuplicateDetermination.DUPLICATE,
@@ -261,7 +261,7 @@ async def test_import_batch_status_projection(
     expected_status: ImportBatchStatus,
 ):
     """Test ImportBatch status projection logic."""
-    record_id = uuid.uuid4()
+    record_id = uuid7()
     record = ImportRecord(
         id=record_id,
         searched_at=datetime.datetime.now(tz=datetime.UTC),
@@ -272,7 +272,7 @@ async def test_import_batch_status_projection(
         source_name="test",
     )
     session.add(record)
-    batch_id = uuid.uuid4()
+    batch_id = uuid7()
     batch = ImportBatch(
         id=batch_id,
         import_record_id=record_id,
@@ -281,7 +281,7 @@ async def test_import_batch_status_projection(
     session.add(batch)
     for status in result_statuses:
         result = ImportResult(
-            id=uuid.uuid4(),
+            id=uuid7(),
             import_batch_id=batch_id,
             status=status,
             reference_id=None,
@@ -375,13 +375,13 @@ async def test_enhancement_request_status_projection(
     # Create a reference first
     reference = SQLReference.from_domain(
         Reference(
-            id=uuid.uuid4(),
+            id=uuid7(),
         )
     )
     session.add(reference)
 
     # Create a robot first (required for foreign key constraint)
-    robot_id = uuid.uuid4()
+    robot_id = uuid7()
     robot = SQLRobot.from_domain(
         Robot(
             id=robot_id,
@@ -394,7 +394,7 @@ async def test_enhancement_request_status_projection(
     session.add(robot)
 
     # Create an enhancement request
-    request_id = uuid.uuid4()
+    request_id = uuid7()
     enhancement_request = SQLEnhancementRequest.from_domain(
         EnhancementRequest(
             id=request_id,
@@ -409,7 +409,7 @@ async def test_enhancement_request_status_projection(
     for status in pending_statuses:
         pending_enhancement = SQLPendingEnhancement.from_domain(
             PendingEnhancement(
-                id=uuid.uuid4(),
+                id=uuid7(),
                 reference_id=reference.id,
                 robot_id=robot_id,
                 enhancement_request_id=request_id,
@@ -437,7 +437,7 @@ async def test_multiple_import_batch_status_projection(
     session: AsyncSession,
 ):
     """Test ImportBatch status projection logic for multiple batches."""
-    record_id = uuid.uuid4()
+    record_id = uuid7()
     record = ImportRecord(
         id=record_id,
         searched_at=datetime.datetime.now(tz=datetime.UTC),
@@ -449,7 +449,7 @@ async def test_multiple_import_batch_status_projection(
     )
     session.add(record)
 
-    batch1_id = uuid.uuid4()
+    batch1_id = uuid7()
     batch1 = ImportBatch(
         id=batch1_id,
         import_record_id=record_id,
@@ -457,7 +457,7 @@ async def test_multiple_import_batch_status_projection(
     )
     session.add(batch1)
 
-    batch2_id = uuid.uuid4()
+    batch2_id = uuid7()
     batch2 = ImportBatch(
         id=batch2_id,
         import_record_id=record_id,
@@ -469,14 +469,14 @@ async def test_multiple_import_batch_status_projection(
     session.add_all(
         [
             ImportResult(
-                id=uuid.uuid4(),
+                id=uuid7(),
                 import_batch_id=batch1_id,
                 status=ImportResultStatus.COMPLETED,
                 reference_id=None,
                 failure_details=None,
             ),
             ImportResult(
-                id=uuid.uuid4(),
+                id=uuid7(),
                 import_batch_id=batch1_id,
                 status=ImportResultStatus.FAILED,
                 reference_id=None,
@@ -489,14 +489,14 @@ async def test_multiple_import_batch_status_projection(
     session.add_all(
         [
             ImportResult(
-                id=uuid.uuid4(),
+                id=uuid7(),
                 import_batch_id=batch2_id,
                 status=ImportResultStatus.STARTED,
                 reference_id=None,
                 failure_details=None,
             ),
             ImportResult(
-                id=uuid.uuid4(),
+                id=uuid7(),
                 import_batch_id=batch2_id,
                 status=ImportResultStatus.CREATED,
                 reference_id=None,
