@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 DESTINY Repository is a FastAPI-based backend service for managing scholarly research references for systematic reviews. It includes:
+
 - A REST API for reference management, imports, enhancements, and search
 - Background task processing via TaskIQ (RabbitMQ locally, Azure Service Bus in production)
 - PostgreSQL for primary storage with SQLAlchemy ORM
@@ -49,21 +50,27 @@ uv run alembic upgrade head
 ## Key Domain Concepts
 
 ### Reference Lifecycle
+
 A **Reference** is a scholarly work (paper, article, etc.). References flow through:
+
 1. **Import** - Ingested from external sources (OpenAlex, Crossref, user uploads)
 2. **Enhancement** - Enriched with metadata (bibliographic, abstracts, annotations)
 3. **Deduplication** - Matched against existing corpus to prevent duplicates
 4. **Indexing** - Added to Elasticsearch for search
 
 ### Enhancements
+
 Enhancements are layered metadata attached to references. Multiple enhancements of the same type stack, with **latest wins** for conflicting fields. Types:
+
 - `bibliographic` - Title, authors, publication year, DOI
 - `abstract` - Abstract text
 - `annotation` - Labels, scores, classifications
 - `location` - URLs, file locations
 
 ### Identifiers
+
 External identifiers link references to source systems:
+
 - **OpenAlex ID** (`W` prefix) - Globally unique, most trustworthy
 - **DOI** - Generally reliable but has edge cases (collisions, malformed)
 - **PMID** - PubMed identifier
@@ -77,7 +84,7 @@ The codebase generally follows Domain-Driven Design (DDD) principles.
 
 The codebase is organized under `app/domain/`:
 
-```
+```text
 app/domain/{domain_name}/
     routes.py      # FastAPI route handlers
     service.py     # Business logic and orchestration
@@ -95,6 +102,7 @@ Main domains: `references`, `imports`, `robots`
 ### Unit of Work Pattern
 
 Services use decorator-based unit of work patterns for transaction management:
+
 - `@sql_unit_of_work` - wraps method in SQL transaction
 - `@es_unit_of_work` - wraps method in Elasticsearch transaction
 
@@ -105,6 +113,7 @@ Each domain has an `anti_corruption_service.py` that handles translation between
 ### SDK (`libs/sdk/`)
 
 The SDK (`destiny-sdk`) is a separate package providing:
+
 - Pydantic models for API request/response validation
 - Client utilities for external consumers
 - Published to PyPI independently
@@ -122,6 +131,7 @@ PostgreSQL is the source of truth. The Elasticsearch index is derived and can be
 ### Background Tasks
 
 TaskIQ handles async job processing. Task definitions are in `app/domain/*/tasks.py`. The broker switches based on environment:
+
 - Local: RabbitMQ via `AioPikaBroker`
 - Production: Azure Service Bus via `AzureServiceBusBroker`
 - Test: `InMemoryBroker`
@@ -129,6 +139,7 @@ TaskIQ handles async job processing. Task definitions are in `app/domain/*/tasks
 ## Testing
 
 Tests are organized into:
+
 - `tests/unit/` - Unit tests with mocked dependencies
 - `tests/integration/` - Tests with real database connections
 - `tests/e2e/` - End-to-end tests using testcontainers
@@ -165,11 +176,13 @@ Key ruff ignores applied in tests: relaxed type hints, docstrings, and magic val
 ## Database Access
 
 Use the postgres MCP tool for ad-hoc queries:
-```
+
+```text
 mcp__postgres__query with SQL
 ```
 
 Useful queries:
+
 ```sql
 -- Check deduplication decision distribution
 SELECT duplicate_determination, COUNT(*) FROM reference_duplicate_decision WHERE active_decision GROUP BY 1;
@@ -181,6 +194,7 @@ SELECT * FROM reference_duplicate_decision WHERE duplicate_determination = 'unre
 ## Code Navigation
 
 Prefer LSP over grep for targeted lookups:
+
 - `documentSymbol` - Get all classes, methods, variables in a file with line numbers
 - `goToDefinition` - Jump to where a symbol is defined
 - `findReferences` - Find all usages of a symbol
@@ -191,6 +205,7 @@ For broader exploration (understanding a feature, finding related code), use the
 ## Key Files Reference
 
 When working on specific features, start here:
+
 - **Deduplication**: `app/domain/references/services/deduplication_service.py`
 - **Reference CRUD**: `app/domain/references/service.py`
 - **Imports**: `app/domain/imports/service.py`
