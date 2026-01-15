@@ -119,6 +119,14 @@ async def test_find_exact_duplicate_updated_enhancement(
     bibliography = BibliographicMetadataEnhancementFactory.build(title="A title")
     raw_enhancement = RawEnhancementFactory.build()
     ref = ReferenceFactory.build(
+        identifiers=[
+            # Ensure we have at least one non-other identifier
+            LinkedExternalIdentifierFactory.build(
+                identifier=OpenAlexIdentifierFactory.build()
+            ),
+            # Build another random one
+            LinkedExternalIdentifierFactory.build(),
+        ],
         enhancements=[
             EnhancementFactory.build(
                 content=bibliography,
