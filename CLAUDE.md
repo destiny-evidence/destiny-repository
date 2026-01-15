@@ -1,43 +1,46 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
+
+## Workflow Guidelines
+
+- When changes require validation, include testing and/or manual verification as final steps in task lists
+- Do not suggest commits or pushes; wait for the user to request them
+- Be concise and technically correct; avoid sugar-coating
 
 ## Project Overview
 
-DESTINY Repository is a FastAPI-based backend service for managing scholarly research references for systematic reviews. It includes:
+DESTINY Repository is a FastAPI-based backend for managing scholarly research references. It includes:
 
 - A REST API for reference management, imports, enhancements, and search
-- Background task processing via TaskIQ (RabbitMQ locally, Azure Service Bus in production)
+- Background task processing via TaskIQ
 - PostgreSQL for primary storage with SQLAlchemy ORM
 - Elasticsearch for search and percolation queries
 - MinIO/Azure Blob Storage for file storage
 - A separate SDK package (`destiny-sdk`) published to PyPI
+- A CLI for interacting with the API (`cli/`)
+- A Next.js UI for authentication and basic operations (`ui/`)
+- Sphinx documentation (`docs/`)
 
 ## Common Commands
 
 ```bash
+# Start full development stack (recommended)
+docker-compose up -d
+
 # Install dependencies
 uv sync
 
-# Run development server
+# Run development server (requires docker-compose services)
 uv run fastapi dev
-
-# Run taskiq worker for background tasks
-uv run taskiq worker app.tasks:broker --tasks-pattern 'app/**/tasks.py' --fs-discover --reload
 
 # Run all tests (excludes e2e by default)
 uv run pytest
 
-# Run a single test file
-uv run pytest tests/unit/domain/references/services/test_deduplication_service.py
-
-# Run a single test
-uv run pytest tests/unit/domain/references/services/test_deduplication_service.py::test_function_name
-
 # Run e2e tests (requires Docker)
 uv run pytest tests/e2e --log-cli-level info
 
-# Run linting/formatting (pre-commit hooks)
+# Run linting/formatting
 uv run pre-commit run --all-files
 
 # Generate database migration
@@ -53,46 +56,34 @@ uv run alembic upgrade head
 
 A **Reference** is a scholarly work (paper, article, etc.). References flow through:
 
-1. **Import** - Ingested from external sources (OpenAlex, Crossref, user uploads)
-2. **Enhancement** - Enriched with metadata (bibliographic, abstracts, annotations)
-3. **Deduplication** - Matched against existing corpus to prevent duplicates
+1. **Import** - Ingested from external sources
+2. **Enhancement** - Enriched with metadata
+3. **Deduplication** - Matched against existing corpus
 4. **Indexing** - Added to Elasticsearch for search
 
-### Enhancements
+### Types and Enums
 
-Enhancements are layered metadata attached to references. Multiple enhancements of the same type stack, with **latest wins** for conflicting fields. Types:
+When you need to understand or modify type definitions:
 
-- `bibliographic` - Title, authors, publication year, DOI
-- `abstract` - Abstract text
-- `annotation` - Labels, scores, classifications
-- `location` - URLs, file locations
-
-### Identifiers
-
-External identifiers link references to source systems:
-
-- **OpenAlex ID** (`W` prefix) - Globally unique, most trustworthy
-- **DOI** - Generally reliable but has edge cases (collisions, malformed)
-- **PMID** - PubMed identifier
-- **ERIC** - Education database identifier
+- Read `libs/sdk/src/destiny_sdk/enhancements.py:EnhancementType` for enhancement types
+- Read `libs/sdk/src/destiny_sdk/identifiers.py:ExternalIdentifierType` for identifier types
 
 ## Architecture
 
-The codebase generally follows Domain-Driven Design (DDD) principles.
+The codebase follows Domain-Driven Design (DDD) principles.
 
 ### Domain Structure
-
-The codebase is organized under `app/domain/`:
 
 ```text
 app/domain/{domain_name}/
     routes.py      # FastAPI route handlers
     service.py     # Business logic and orchestration
-    repository.py  # SQLAlchemy repository pattern
+    repository.py  # SQLAlchemy or Elasticsearch repository pattern
     tasks.py       # TaskIQ background tasks
     models/
         models.py      # Domain models (Pydantic)
         sql.py         # SQLAlchemy ORM models
+        es.py          # Elasticsearch document models
         projections.py # Derived/computed models
     services/      # Sub-services (anti-corruption, enhancement, etc.)
 ```
@@ -101,113 +92,61 @@ Main domains: `references`, `imports`, `robots`
 
 ### Unit of Work Pattern
 
-Services use decorator-based unit of work patterns for transaction management:
+Services use decorator-based unit of work patterns for transaction management. Every operation with a persistence implementation must be inside exactly one unit of work.
 
 - `@sql_unit_of_work` - wraps method in SQL transaction
 - `@es_unit_of_work` - wraps method in Elasticsearch transaction
 
 ### Anti-Corruption Layer
 
-Each domain has an `anti_corruption_service.py` that handles translation between SDK models and internal domain models, ensuring clean boundaries between external API contracts and internal representations.
+Each domain has an `anti_corruption_service.py` that translates between SDK models and internal domain models. This decouples the SDK from internal representations, allowing independent evolution.
 
 ### SDK (`libs/sdk/`)
 
-The SDK (`destiny-sdk`) is a separate package providing:
-
-- Pydantic models for API request/response validation
-- Client utilities for external consumers
-- Published to PyPI independently
-
-When modifying API contracts, update both SDK models and domain models.
+The SDK (`destiny-sdk`) provides Pydantic models for API contracts and client utilities. Published to PyPI independently.
 
 ### Persistence Layer
 
-PostgreSQL is the source of truth. The Elasticsearch index is derived and can be rebuilt from PostgreSQL.
+PostgreSQL is the source of truth. Elasticsearch is derived and can be rebuilt.
 
-- `app/persistence/sql/` - SQLAlchemy async session management and repositories
-- `app/persistence/es/` - Elasticsearch client and search operations
+- `app/persistence/sql/` - SQLAlchemy async session management
+- `app/persistence/es/` - Elasticsearch client and search
 - `app/persistence/blob/` - File storage (MinIO locally, Azure Blob in production)
 
-### Background Tasks
+## Topic-Specific Guidance
 
-TaskIQ handles async job processing. Task definitions are in `app/domain/*/tasks.py`. The broker switches based on environment:
+When working on user-facing features, consult the Sphinx documentation in `docs/`:
 
-- Local: RabbitMQ via `AioPikaBroker`
-- Production: Azure Service Bus via `AzureServiceBusBroker`
-- Test: `InMemoryBroker`
+- Read `docs/procedures/` for batch importing, deduplication, reference flow, robot automation, search, OAuth
+- Read `docs/codebase/` for architecture, models (references, imports, robots), persistence layers
+- Read `docs/sdk/` for client usage, schemas, robot-client, labs
+- Read `docs/cli/` for CLI usage and robot registration
 
-## Testing
+When changes affect user-facing behavior, update the relevant Sphinx docs to match.
 
-Tests are organized into:
+When working on implementation internals, read the relevant guide in `docs/claude/`:
 
-- `tests/unit/` - Unit tests with mocked dependencies
-- `tests/integration/` - Tests with real database connections
-- `tests/e2e/` - End-to-end tests using testcontainers
-- `libs/sdk/tests/` - SDK-specific tests
-
-E2E tests require Docker and are excluded from default pytest runs.
-
-## External Data Sources
-
-- **OpenAlex** - Primary bibliographic data source. W IDs are globally unique.
-- **Crossref** - DOI metadata. Watch for malformed DOIs and metadata quality issues.
-- **PubMed** - Medical/life sciences literature.
+- **Deduplication** (`deduplication.md`) - read when modifying duplicate detection, decision states, or canonical mapping
+- **Enhancements** (`enhancements.md`) - read when modifying enhancement projection, pending states, or type handling
+- **Imports** (`imports.md`) - read when modifying import batches, status transitions, or result handling
+- **Robots** (`robots.md`) - read when modifying robot authentication or enhancement batch processing
+- **Testing** (`testing.md`) - read when writing tests, using factories, or working with FakeRepository
 
 ## Code Style
 
 - Linting: Ruff with `lint.select = ["ALL"]` (strict)
-- Type checking: Pyright (preferred) or mypy with Pydantic plugin
+- Type checking: mypy with Pydantic plugin
 - Pre-commit hooks enforce formatting, linting, and dead code detection (vulture)
 
-Key ruff ignores applied in tests: relaxed type hints, docstrings, and magic values.
-
-## Development Practices
-
-- Prefer TDD: Write tests before implementing new functionality
-- When adding new fields: update domain model (`models.py`), SQL model (`sql.py`), and create migration
-- Use `uv run pyright <file>` to check types before committing
-
-### Common Gotchas
-
-- **active_decision**: Only one decision per reference can be active. Use partial unique index.
-- **Enhancement stacking**: Multiple enhancements layer; latest created_at wins for each field.
-- **Domain vs SQL models**: Domain models are Pydantic, SQL models are SQLAlchemy. Keep them in sync.
-
-## Database Access
-
-Use the postgres MCP tool for ad-hoc queries:
-
-```text
-mcp__postgres__query with SQL
-```
-
-Useful queries:
-
-```sql
--- Check deduplication decision distribution
-SELECT duplicate_determination, COUNT(*) FROM reference_duplicate_decision WHERE active_decision GROUP BY 1;
-
--- Find UNRESOLVED decisions needing review
-SELECT * FROM reference_duplicate_decision WHERE duplicate_determination = 'unresolved' AND active_decision LIMIT 10;
-```
-
-## Code Navigation
-
-Prefer LSP over grep for targeted lookups:
-
-- `documentSymbol` - Get all classes, methods, variables in a file with line numbers
-- `goToDefinition` - Jump to where a symbol is defined
-- `findReferences` - Find all usages of a symbol
-- `hover` - Get type information for a symbol
-
-For broader exploration (understanding a feature, finding related code), use the **Explore agent** which can search across multiple files and naming conventions.
+Run `uv run pre-commit run --all-files` before committing.
 
 ## Key Files Reference
 
-When working on specific features, start here:
+When modifying core functionality, start at these files:
 
-- **Deduplication**: `app/domain/references/services/deduplication_service.py`
+- **Deduplication logic**: `app/domain/references/services/deduplication_service.py`
 - **Reference CRUD**: `app/domain/references/service.py`
-- **Imports**: `app/domain/imports/service.py`
-- **Search**: `app/domain/references/repository.py` (ReferenceESRepository)
-- **Models**: `app/domain/references/models/models.py` (domain), `sql.py` (persistence)
+- **Import processing**: `app/domain/imports/service.py`
+- **Search operations**: `app/domain/references/repository.py` (ReferenceESRepository)
+- **Domain models**: `app/domain/references/models/models.py`
+- **SQL models**: `app/domain/references/models/sql.py`
