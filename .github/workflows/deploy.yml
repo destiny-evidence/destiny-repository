@@ -196,6 +196,7 @@ jobs:
               --name "db-migrator-${{ vars.ENVIRONMENT_NAME }}" \
               --resource-group ${{vars.RESOURCE_GROUP}} \
               --image ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ needs.build.outputs.image_tag }}
+              --command alembic upgrade head
       - name: Trigger database migrations
         uses: Azure/cli@v2.0.0
         with:
