@@ -45,6 +45,27 @@ jobs:
           resourceGroup: ${{vars.RESOURCE_GROUP}}
           containerAppEnvironment: ${{vars.CONTAINER_APP_ENV}}
           imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ steps.vars.outputs.sha_short }}
+      - name: Deploy built image to container app jobs
+        uses: Azure/cli@v2.0.0
+        with:
+          inlineScript: |
+            JOBS=$(az containerapp job list \
+              --resource-group ${{vars.RESOURCE_GROUP}} \
+              --query "[?tags.app=='${{vars.APP_NAME}}' && tags.environment=='production' && tags.\"job-type\"=='scheduled'].name" \
+              --output tsv)
+
+            if [ -z "$JOBS" ]; then
+              echo "No scheduled jobs found"
+              exit 0
+            fi
+
+            for JOB_NAME in $JOBS; do
+              echo "Updating job: $JOB_NAME"
+              az containerapp job update \
+                --name "$JOB_NAME" \
+                --resource-group ${{vars.RESOURCE_GROUP}} \
+                --image ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ steps.vars.outputs.sha_short }}
+            done
       - name: Deploy built UI image to UI container app
         uses: Azure/container-apps-deploy-action@v1
         with:
