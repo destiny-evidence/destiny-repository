@@ -44,14 +44,14 @@ Located in `tests/factories.py`. Uses `factory_boy` with `Faker`.
 
 ### Key Factories
 
-| Factory | Model | Notes |
-|---------|-------|-------|
-| `ReferenceFactory` | `Reference` | Creates reference with identifiers, enhancements |
-| `RobotFactory` | `Robot` | Creates robot with credentials |
-| `PendingEnhancementFactory` | `PendingEnhancement` | For testing enhancement processing |
-| `DOIIdentifierFactory` | `DOIIdentifier` | Uses Faker's doi provider |
-| `OpenAlexIdentifierFactory` | `OpenAlexIdentifier` | Generates W-prefixed IDs |
-| `BibliographicMetadataEnhancementFactory` | `BibliographicMetadataEnhancement` | Title, authors, year, etc. |
+| Factory                                   | Model                              | Notes                                            |
+| ----------------------------------------- | ---------------------------------- | ------------------------------------------------ |
+| `ReferenceFactory`                        | `Reference`                        | Creates reference with identifiers, enhancements |
+| `RobotFactory`                            | `Robot`                            | Creates robot with credentials                   |
+| `PendingEnhancementFactory`               | `PendingEnhancement`               | For testing enhancement processing               |
+| `DOIIdentifierFactory`                    | `DOIIdentifier`                    | Uses Faker's doi provider                        |
+| `OpenAlexIdentifierFactory`               | `OpenAlexIdentifier`               | Generates W-prefixed IDs                         |
+| `BibliographicMetadataEnhancementFactory` | `BibliographicMetadataEnhancement` | Title, authors, year, etc.                       |
 
 ### Usage Example
 

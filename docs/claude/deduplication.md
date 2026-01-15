@@ -27,12 +27,12 @@ A **canonical** reference is the authoritative version. **Duplicates** point to 
 
 ## Key Methods
 
-| Method | Purpose |
-|--------|---------|
-| `find_exact_duplicate()` | Pre-import check for references with identical identifiers |
-| `shortcut_deduplication_using_identifiers()` | Fast-path using trusted identifiers (OpenAlex, DOI) |
-| `nominate_candidate_canonicals()` | Search-based candidate finding |
-| `map_duplicate_decision()` | Applies persistence changes from decisions |
+| Method                                       | Purpose                                                    |
+| -------------------------------------------- | ---------------------------------------------------------- |
+| `find_exact_duplicate()`                     | Pre-import check for references with identical identifiers |
+| `shortcut_deduplication_using_identifiers()` | Fast-path using trusted identifiers (OpenAlex, DOI)        |
+| `nominate_candidate_canonicals()`            | Search-based candidate finding                             |
+| `map_duplicate_decision()`                   | Applies persistence changes from decisions                 |
 
 ## Common Gotchas
 
