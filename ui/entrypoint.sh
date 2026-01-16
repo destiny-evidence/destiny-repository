@@ -6,7 +6,11 @@ cat > /app/public/runtime-config.json <<EOF
   "NEXT_PUBLIC_AZURE_APPLICATION_ID":"${NEXT_PUBLIC_AZURE_APPLICATION_ID}",
   "NEXT_PUBLIC_API_URL":"${NEXT_PUBLIC_API_URL}",
   "AZURE_LOGIN_URL":"${AZURE_LOGIN_URL}",
-  "ENV":"${ENV}"
+  "ENV":"${ENV}",
+  "AUTH_PROVIDER": "keycloak",
+  "KEYCLOAK_URL": "http://localhost:8080",
+  "KEYCLOAK_REALM": "destiny",
+  "KEYCLOAK_CLIENT_ID": "destiny-auth-client"
 }
 EOF
 exec "$@"

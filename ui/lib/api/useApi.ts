@@ -1,55 +1,63 @@
-// React hook for Destiny Repository API access
+// React hook for Destiny Repository API access - supports Azure AD and Keycloak
 
-import React from "react";
+import { createContext, useContext } from "react";
 import { useMsal } from "@azure/msal-react";
-import { getLoginRequest } from "../msalConfig";
+import { useAuth } from "react-oidc-context";
+import { InteractionStatus } from "@azure/msal-browser";
+import { getMsalLoginRequest, AuthProvider } from "../authConfig";
 import { apiGet, ApiResult } from "./client";
 import { ReferenceLookupResult, SearchParams, SearchResult } from "./types";
-import { getRuntimeConfig } from "../runtimeConfig";
-import { InteractionStatus } from "@azure/msal-browser";
 
-export function useApi() {
-  const { instance, accounts, inProgress } = useMsal();
+/**
+ * Context to provide the auth provider from layout.
+ */
+export const AuthProviderContext = createContext<AuthProvider>("local");
 
-  const [env, setEnv] = React.useState<string | undefined>(undefined);
+/**
+ * Hook for Azure AD (MSAL) authentication.
+ * Called unconditionally but only uses MSAL when enabled.
+ */
+function useAzureAuth(enabled: boolean) {
+  // useMsal must be called unconditionally to maintain hook order.
+  // When not in MSAL context, it returns safe defaults.
+  let instance: ReturnType<typeof useMsal>["instance"] | null = null;
+  let accounts: ReturnType<typeof useMsal>["accounts"] = [];
+  let inProgress: ReturnType<typeof useMsal>["inProgress"] =
+    InteractionStatus.None;
 
-  React.useEffect(() => {
-    (async () => {
-      try {
-        const cfg = await getRuntimeConfig();
-        setEnv(cfg["ENV"]);
-      } catch (e) {
-        console.warn("Failed to load runtime config", e);
-      }
-    })();
-  }, []);
+  try {
+    const msal = useMsal();
+    instance = msal.instance;
+    accounts = msal.accounts;
+    inProgress = msal.inProgress;
+  } catch {
+    // Not in MSAL context - use defaults
+  }
 
-  const isLocal = env === "local";
-  const isLoggedIn = isLocal || (accounts?.length ?? 0) > 0;
+  const isLoggedIn = enabled && (accounts?.length ?? 0) > 0;
   const isLoginProcessing =
-    inProgress === InteractionStatus.Login ||
-    inProgress === InteractionStatus.AcquireToken ||
-    inProgress === InteractionStatus.HandleRedirect ||
-    inProgress === InteractionStatus.SsoSilent;
+    enabled &&
+    (inProgress === InteractionStatus.Login ||
+      inProgress === InteractionStatus.AcquireToken ||
+      inProgress === InteractionStatus.HandleRedirect ||
+      inProgress === InteractionStatus.SsoSilent);
 
   async function getToken(): Promise<string | undefined> {
-    if (!isLoggedIn || isLocal) return undefined;
-    if (!accounts || accounts.length === 0) return undefined;
+    if (!enabled || !instance || !accounts || accounts.length === 0)
+      return undefined;
 
     try {
-      const request = await getLoginRequest();
+      const request = await getMsalLoginRequest();
       const resp = await instance.acquireTokenSilent({
         ...request,
         account: accounts[0],
       });
       return resp?.accessToken;
-    } catch (err: any) {
-      console.warn(
-        "acquireTokenSilent failed, starting redirect:",
-        err?.message,
-      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.warn("acquireTokenSilent failed, starting redirect:", message);
       try {
-        const request = await getLoginRequest();
+        const request = await getMsalLoginRequest();
         instance.acquireTokenRedirect({
           ...request,
           account: accounts[0],
@@ -60,6 +68,74 @@ export function useApi() {
       return undefined;
     }
   }
+
+  return { getToken, isLoggedIn, isLoginProcessing };
+}
+
+/**
+ * Hook for Keycloak (OIDC) authentication.
+ * Called unconditionally but only uses OIDC when enabled.
+ */
+function useKeycloakAuth(enabled: boolean) {
+  // useAuth must be called unconditionally to maintain hook order.
+  // When not in OIDC context, it throws - we catch and use defaults.
+  let auth: ReturnType<typeof useAuth> | null = null;
+
+  try {
+    auth = useAuth();
+  } catch {
+    // Not in OIDC context - use defaults
+  }
+
+  const isLoggedIn = enabled && (auth?.isAuthenticated ?? false);
+  const isLoginProcessing = enabled && (auth?.isLoading ?? false);
+
+  async function getToken(): Promise<string | undefined> {
+    if (!enabled || !auth?.isAuthenticated || !auth.user) return undefined;
+    return auth.user.access_token;
+  }
+
+  return { getToken, isLoggedIn, isLoginProcessing };
+}
+
+/**
+ * Hook for local development (no auth).
+ */
+function useLocalAuth() {
+  return {
+    getToken: async () => undefined,
+    isLoggedIn: true, // Always "logged in" locally
+    isLoginProcessing: false,
+  };
+}
+
+export function useApi() {
+  // Get provider from context - this is set synchronously by layout after initialization
+  const provider = useContext(AuthProviderContext);
+
+  const isLocal = provider === "local";
+
+  // Always call hooks unconditionally based on provider from context.
+  // The layout ensures children only render when inside the correct provider context.
+  const azureAuth = useAzureAuth(provider === "azure");
+  const keycloakAuth = useKeycloakAuth(provider === "keycloak");
+  const localAuth = useLocalAuth();
+
+  // Select the appropriate auth based on provider
+  const auth =
+    provider === "azure"
+      ? azureAuth
+      : provider === "keycloak"
+        ? keycloakAuth
+        : localAuth;
+
+  async function getToken(): Promise<string | undefined> {
+    if (isLocal) return undefined;
+    return auth.getToken();
+  }
+
+  const isLoggedIn = isLocal || auth.isLoggedIn;
+  const isLoginProcessing = auth.isLoginProcessing;
 
   async function fetchReferences(
     identifiers: string[],
@@ -72,7 +148,7 @@ export function useApi() {
       urlParams.set("identifier", identifiers.join(","));
 
       const path = `/references/?${urlParams.toString()}`;
-      const result: ApiResult<any> = await apiGet(path, token);
+      const result: ApiResult<unknown> = await apiGet(path, token);
 
       const dataArr = Array.isArray(result.data) ? result.data : [];
       if (dataArr.length === 0 && !result.error) {
@@ -86,10 +162,11 @@ export function useApi() {
         data: dataArr,
         error: result.error,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
       return {
         data: undefined,
-        error: { type: "generic", detail: err?.message ?? "Unknown error" },
+        error: { type: "generic", detail: message },
       };
     }
   }
@@ -116,7 +193,7 @@ export function useApi() {
       }
 
       const path = `/references/search/?${urlParams.toString()}`;
-      const result: ApiResult<any> = await apiGet(path, token);
+      const result: ApiResult<SearchResult["data"]> = await apiGet(path, token);
 
       if (result.error) {
         return {
@@ -136,10 +213,11 @@ export function useApi() {
         data: result.data,
         error: null,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
       return {
         data: undefined,
-        error: { type: "generic", detail: err?.message ?? "Unknown error" },
+        error: { type: "generic", detail: message },
       };
     }
   }
