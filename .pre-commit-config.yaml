@@ -56,3 +56,4 @@ repos:
     rev: v1.105.0
     hooks:
       - id: terraform_tflint
+      - id: terraform_fmt
