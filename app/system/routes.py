@@ -87,7 +87,7 @@ def choose_auth_strategy_administrator() -> AuthMethod:
         application_id=settings.azure_application_id,
         auth_scope=AuthScope.ADMINISTRATOR,
         auth_role=AuthRole.ADMINISTRATOR,
-        bypass_auth=settings.running_locally,
+        bypass_auth=settings.should_bypass_auth,
     )
 
 
