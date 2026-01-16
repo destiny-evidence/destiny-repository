@@ -1,0 +1,9 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.CandidateCanonicalSearchFields
+
+Fields used for candidate canonical selection.
+
+The search implementation lives at
+:attr:`app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals`.
+" alt="" coords="5,5,271,117"/>
+</map>
