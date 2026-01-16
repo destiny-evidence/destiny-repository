@@ -253,6 +253,12 @@ variable "elasticsearch_index_migrator_timeout" {
   default     = 28800 # 8 hour timeout
 }
 
+variable "database_migrator_timeout" {
+  description = "How long to wait for a database migration to complete when running a container app job in seconds"
+  type        = number
+  default     = 28800 # 8 hour timeout
+}
+
 
 variable "pypi_token" {
   description = "API token for PyPI"
