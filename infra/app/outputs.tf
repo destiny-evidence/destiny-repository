@@ -6,6 +6,6 @@ output "elasticsearch_password" {
 
 output "elasticsearch_security_api_key_read_only" {
   description = "The read-only API key for Elasticsearch."
-  value = elasticstack_elasticsearch_security_api_key.read_only.encoded
-  sensitive = true
+  value       = elasticstack_elasticsearch_security_api_key.read_only.encoded
+  sensitive   = true
 }
