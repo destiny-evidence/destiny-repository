@@ -26,6 +26,7 @@ async def index_manager(
             SimpleDoc,
             client,
             reindex_status_polling_interval=1,
+            number_of_shards=2,
         )
 
         yield index_manager
@@ -44,6 +45,7 @@ async def test_initialise_es_index_happy_path(index_manager: IndexManager):
 
     # Check we've created a versioned index
     versioned_index_name = await index_manager.get_current_index_name()
+    assert versioned_index_name
     versioned_index_exists = await index_manager.client.indices.exists(
         index=versioned_index_name
     )
@@ -59,6 +61,12 @@ async def test_initialise_es_index_happy_path(index_manager: IndexManager):
     # Assert that the current version is 1
     current_version = await index_manager.get_current_version()
     assert current_version == 1
+
+    # Assert that the index has the correct number of shards
+    assert (
+        await index_manager.get_current_number_of_shards()
+        == index_manager.number_of_shards
+    )
 
 
 async def test_initialise_es_index_is_idempotent(index_manager: IndexManager):
@@ -93,7 +101,6 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
     """Test that we can migrate an index."""
     # Initialise the index
     await index_manager.initialize_index()
-
     # Add documents to index so we can check for them after migrating
     dummy_docs = [
         SimpleDoc.from_domain(DomainSimpleDoc(content=f"test document {i}"))
@@ -155,6 +162,33 @@ async def test_we_can_migrate_an_index_with_a_random_name(index_manager: IndexMa
     current_index_name = await index_manager.get_current_index_name()
     assert current_index_name
     assert current_index_name == f"{index_manager.alias_name}_v1"
+
+
+async def test_migrate_es_index_updates_shards(index_manager: IndexManager):
+    """Test that we can migrate an index and update the number of shards."""
+    # Initialise the index
+    await index_manager.initialize_index()
+
+    # Migrate with different number of shards
+    new_number_of_shards = 4
+    index_manager.number_of_shards = new_number_of_shards
+    await index_manager.migrate()
+
+    # Verify the new index has the correct number of shards
+    assert await index_manager.get_current_number_of_shards() == new_number_of_shards
+
+
+async def test_migrate_es_index_inherits_shards(index_manager: IndexManager):
+    """Test that we can migrate an index and update the number of shards."""
+    # Initialise the index
+    await index_manager.initialize_index()
+
+    # Migrate with no number of shards specified
+    index_manager.number_of_shards = None
+    await index_manager.migrate()
+
+    # Verify the new index has the correct number of shards
+    assert await index_manager.get_current_number_of_shards() == 2
 
 
 async def test_reindex_preserves_data_updated_in_source(index_manager: IndexManager):
