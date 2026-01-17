@@ -8,6 +8,121 @@ This file provides guidance to Claude Code when working with this repository.
 - Do not suggest commits or pushes; wait for the user to request them
 - Be concise and technically correct; avoid sugar-coating
 
+## Repository Navigation and Local Folder Docs
+
+This repository uses a lightweight "local docs" pattern to reduce thrash and speed up orientation:
+
+- `docs/repo-map.md` is the **root index** of the repository.
+- Each meaningful folder may contain a `.doc.md` that describes **what the folder is for**, the **key files**, and **how to work in it**.
+
+### Required Reading Order
+
+1. **At the start of any task**: read `docs/repo-map.md`.
+2. **Before modifying code in a folder**: read that folder's `.doc.md` (if it exists).
+3. **When exploring a folder you haven't touched yet**: read `.doc.md` first (if it exists) before scanning files.
+
+### Creating and Updating `.doc.md`
+
+#### When to Create
+
+If you are about to make **non-trivial** changes in a folder and `.doc.md` does not exist, create it using the template below.
+
+"Non-trivial" includes:
+
+- Adding/removing/renaming files or modules
+- Changing responsibilities, invariants, or data contracts
+- Adding/changing test entry points or run commands
+- Introducing new APIs, endpoints, CLI commands, pipelines, or workflows
+
+#### When to Update
+
+Update a folder's `.doc.md` **in the same commit** when your changes materially affect any of:
+
+- Folder purpose or responsibilities
+- Key entry points (main modules/classes/functions)
+- Public surfaces (APIs/CLI/jobs)
+- Invariants/assumptions (what must remain true)
+- How to run tests / local dev / debugging
+- Data contracts (schemas, record shapes, inputs/outputs)
+
+Do **not** update `.doc.md` for trivial edits that don't change structure or usage (e.g., small refactors, formatting, comments).
+
+#### Style Rules for `.doc.md`
+
+- Keep it concise and factual; prefer bullets.
+- Link to other `.doc.md` files and to code rather than duplicating detail.
+- Avoid long prose. Target < 200-300 lines where possible.
+- If something is uncertain, state it as a question/TODO rather than guessing.
+
+### Standard `.doc.md` Template
+
+Use this template when creating a new `.doc.md`:
+
+```markdown
+# <Folder name> (.doc.md)
+
+## Purpose
+
+- What this folder exists to do (1-3 bullets).
+- What it explicitly does **not** do (optional).
+
+## Responsibilities
+
+- Bullet list of responsibilities / concerns owned here.
+
+## Key Entry Points
+
+- `<file>` - what it is / why it matters
+- `<file>` - what it is / why it matters
+- Include only the handful of files someone should read first.
+
+## Important Invariants / Constraints
+
+- Constraints that must remain true (ordering, idempotency, performance expectations, naming rules, etc.).
+- Data assumptions (required fields, normalization rules, canonical forms).
+
+## Public Surface Area
+
+- APIs/endpoints exported from this folder
+- CLI commands or job entry points
+- Events/messages produced/consumed
+- Config keys used here
+
+## Typical Workflows
+
+- "To do X..." steps (short). Prefer linking to code/tests over prose.
+
+## Testing
+
+- How to run unit tests relevant to this folder
+- How to run integration/contract tests (if any)
+- Fixtures or local dependencies (db, services) needed
+
+## Debugging Notes
+
+- Common failure modes and where to look (logs, key functions)
+- Useful commands or flags (short)
+
+## Related Docs
+
+- Links:
+  - `../path/to/.doc.md` - what to read it for
+  - `docs/repo-map.md` - repo-wide map
+  - Other relevant docs (design docs, ADRs, runbooks)
+
+## TODO / Open Questions
+
+- Short list of known gaps or questions (optional)
+```
+
+### Working Agreement
+
+When a task spans multiple folders:
+
+- Read each folder's `.doc.md` before modifying it.
+- Update only the `.doc.md` files materially impacted by the change.
+- Prefer adding links across docs rather than duplicating content.
+
 ## Project Overview
 
 DESTINY Repository is a FastAPI-based backend for managing scholarly research references. It includes:
@@ -112,6 +227,8 @@ PostgreSQL is the source of truth. Elasticsearch is derived and can be rebuilt.
 - `app/persistence/sql/` - SQLAlchemy async session management
 - `app/persistence/es/` - Elasticsearch client and search
 - `app/persistence/blob/` - File storage (MinIO locally, Azure Blob in production)
+
+For database queries, prefer SQLAlchemy over raw psql - see `app/persistence/.doc.md` for session setup and ad-hoc query patterns.
 
 ## Topic-Specific Guidance
 
