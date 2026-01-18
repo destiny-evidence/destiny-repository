@@ -19,6 +19,8 @@ jobs:
           path: ~/.cache/pre-commit
           key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
 
+      # Note that the maximum token lifetime is 90 days
+      # So this will need rotating periodically.
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
