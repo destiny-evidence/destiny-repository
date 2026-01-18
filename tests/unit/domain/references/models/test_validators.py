@@ -6,6 +6,8 @@ from app.core.exceptions import ParseError
 from app.domain.references.models.models import ExternalIdentifierType
 from app.domain.references.models.validators import (
     ExternalIdentifierParseResult,
+    clean_doi,
+    is_doi_safe_for_dedup,
     parse_identifier_lookup_from_string,
 )
 
@@ -122,13 +124,20 @@ class TestExternalIdentifierParseResultDOICleanup:
         assert result.external_identifier.identifier == "10.1234/example&test"
         assert result.error is None
 
-    def test_clean_doi_strips_path_suffix(self):
-        """Test that path suffixes like /pdf are stripped from DOIs on import."""
+    def test_clean_doi_strips_path_suffix_when_invalid(self):
+        """Test that path suffixes like /pdf are stripped only when DOI is invalid.
+
+        With repair-on-failure approach: if SDK accepts the DOI as-is, we don't
+        modify it. We only strip /pdf if the original fails validation and
+        the cleaned version passes.
+        """
+        # SDK accepts "10.1234/example/pdf" as valid, so we don't strip it
         raw = {"identifier": "10.1234/example/pdf", "identifier_type": "doi"}
         result = ExternalIdentifierParseResult.from_raw(raw, 1)
 
         assert result.external_identifier is not None
-        assert result.external_identifier.identifier == "10.1234/example"
+        # DOI is accepted as-is since SDK considers it valid
+        assert result.external_identifier.identifier == "10.1234/example/pdf"
         assert result.error is None
 
     def test_skip_unsafe_doi_funder(self):
@@ -179,3 +188,197 @@ class TestExternalIdentifierParseResultDOICleanup:
         # Should strip prefix, query params
         assert result.external_identifier.identifier == "10.1234/example"
         assert result.error is None
+
+
+class TestExternalIdentifierParseResultRegressions:
+    """Regression tests for DOI validation edge cases and bug fixes."""
+
+    # --- Non-string identifier handling (no crash) ---
+
+    def test_non_string_identifier_integer_no_crash(self):
+        """Non-string identifier (int) returns error, not crash."""
+        raw = {"identifier": 123, "identifier_type": "doi"}
+        result = ExternalIdentifierParseResult.from_raw(raw, 1)
+
+        assert result.external_identifier is None
+        assert result.error is not None
+        assert "Identifier 1" in result.error
+
+    def test_non_string_identifier_none_no_crash(self):
+        """Non-string identifier (None) returns error, not crash."""
+        raw = {"identifier": None, "identifier_type": "doi"}
+        result = ExternalIdentifierParseResult.from_raw(raw, 1)
+
+        assert result.external_identifier is None
+        assert result.error is not None
+
+    def test_non_string_identifier_dict_no_crash(self):
+        """Non-string identifier (dict) returns error, not crash."""
+        raw = {"identifier": {"nested": "value"}, "identifier_type": "doi"}
+        result = ExternalIdentifierParseResult.from_raw(raw, 1)
+
+        assert result.external_identifier is None
+        assert result.error is not None
+
+    def test_non_string_identifier_list_no_crash(self):
+        """Non-string identifier (list) returns error, not crash."""
+        raw = {"identifier": ["10.1234/test"], "identifier_type": "doi"}
+        result = ExternalIdentifierParseResult.from_raw(raw, 1)
+
+        assert result.external_identifier is None
+        assert result.error is not None
+
+    # --- Percent-encoded DOIs should NOT be truncated ---
+
+    def test_percent_encoded_query_not_truncated(self):
+        """DOI with %3F (encoded ?) should NOT be truncated."""
+        # %3F decodes to '?' - but it's part of the DOI, not a query param
+        raw = {"identifier": "10.1234/test%3Fquery", "identifier_type": "doi"}
+        result = ExternalIdentifierParseResult.from_raw(raw, 1)
+
+        # The DOI should include the decoded '?' as part of the identifier
+        # because we strip query params BEFORE URL-decoding
+        assert result.external_identifier is not None
+        assert "test" in result.external_identifier.identifier
+        # Should NOT be truncated to just "10.1234/test"
+        assert result.external_identifier.identifier != "10.1234/test"
+
+    def test_percent_encoded_fragment_not_truncated(self):
+        """DOI with %23 (encoded #) should NOT be truncated."""
+        # %23 decodes to '#' - but it's part of the DOI, not a fragment
+        raw = {"identifier": "10.1234/test%23section", "identifier_type": "doi"}
+        result = ExternalIdentifierParseResult.from_raw(raw, 1)
+
+        assert result.external_identifier is not None
+        assert "test" in result.external_identifier.identifier
+        # Should NOT be truncated to just "10.1234/test"
+        assert result.external_identifier.identifier != "10.1234/test"
+
+    # --- Valid DOIs should NOT be over-aggressively modified ---
+
+    def test_valid_doi_with_pdf_suffix_unchanged_if_sdk_accepts(self):
+        """Valid DOI with /pdf suffix should NOT be rewritten if SDK accepts it."""
+        # If the SDK accepts "10.1234/journal/pdf" as a valid DOI,
+        # we shouldn't strip the /pdf suffix
+        raw = {"identifier": "10.1234/journal/pdf", "identifier_type": "doi"}
+        result = ExternalIdentifierParseResult.from_raw(raw, 1)
+
+        # If SDK rejects it, cleanup will be attempted
+        # If SDK accepts it, it should pass through unchanged
+        if result.external_identifier is not None:
+            # SDK accepted it - verify we didn't strip /pdf
+            assert result.external_identifier.identifier == "10.1234/journal/pdf"
+
+    def test_valid_percent_encoded_doi_not_rejected(self):
+        """Valid DOI with %2F (encoded /) should NOT be rejected as template."""
+        # %2F is a valid percent encoding (decodes to '/'), not a template placeholder
+        raw = {"identifier": "10.1234/test%2Fslash", "identifier_type": "doi"}
+        result = ExternalIdentifierParseResult.from_raw(raw, 1)
+
+        # Should NOT be rejected as unsafe
+        assert result.external_identifier is not None
+        assert result.error is None
+
+    # --- Unsafe DOI handling ---
+
+    def test_funder_doi_still_rejected(self):
+        """Funder DOIs (10.13039/*) should still be rejected."""
+        raw = {"identifier": "10.13039/501100000780", "identifier_type": "doi"}
+        result = ExternalIdentifierParseResult.from_raw(raw, 1)
+
+        assert result.external_identifier is None
+        assert result.error is not None
+        assert "unsafe DOI" in result.error
+
+    def test_template_doi_with_invalid_escape_rejected(self):
+        """Template DOIs with invalid percent escapes should be rejected."""
+        raw = {"identifier": "10.5007/%x", "identifier_type": "doi"}
+        result = ExternalIdentifierParseResult.from_raw(raw, 1)
+
+        assert result.external_identifier is None
+        assert result.error is not None
+        assert "unsafe DOI" in result.error
+
+    def test_template_doi_with_double_percent_rejected(self):
+        """Template DOIs with %% should be rejected."""
+        raw = {"identifier": "10.5007/%%", "identifier_type": "doi"}
+        result = ExternalIdentifierParseResult.from_raw(raw, 1)
+
+        assert result.external_identifier is None
+        assert result.error is not None
+        assert "unsafe DOI" in result.error
+
+
+class TestCleanDOI:
+    """Direct tests for clean_doi() function."""
+
+    def test_clean_doi_preserves_encoded_query_marker(self):
+        """clean_doi() should preserve %3F when it appears in DOI body."""
+        result = clean_doi("10.1234/test%3Fencoded")
+        # %3F should be decoded to '?' AFTER we've determined there's no real query
+        assert result.cleaned == "10.1234/test?encoded"
+
+    def test_clean_doi_preserves_encoded_fragment_marker(self):
+        """clean_doi() should preserve %23 when it appears in DOI body."""
+        result = clean_doi("10.1234/test%23encoded")
+        # %23 should be decoded to '#' AFTER we've determined there's no real fragment
+        assert result.cleaned == "10.1234/test#encoded"
+
+    def test_clean_doi_strips_real_query_before_decoding(self):
+        """clean_doi() should strip real query params before URL-decoding."""
+        result = clean_doi("10.1234/test?utm_source=twitter")
+        assert result.cleaned == "10.1234/test"
+        assert "strip_query_params" in result.actions
+
+    def test_clean_doi_strips_real_fragment_before_decoding(self):
+        """clean_doi() should strip real fragments before URL-decoding."""
+        result = clean_doi("10.1234/test#section")
+        assert result.cleaned == "10.1234/test"
+        assert "strip_fragment" in result.actions
+
+
+class TestIsDOISafeForDedup:
+    """Direct tests for is_doi_safe_for_dedup() function."""
+
+    def test_valid_doi_is_safe(self):
+        """Normal DOI should be safe."""
+        is_safe, reason = is_doi_safe_for_dedup("10.1234/example")
+        assert is_safe is True
+        assert reason is None
+
+    def test_funder_doi_is_unsafe(self):
+        """Funder DOI should be unsafe."""
+        is_safe, reason = is_doi_safe_for_dedup("10.13039/501100000780")
+        assert is_safe is False
+        assert reason == "funder_doi:10.13039/"
+
+    def test_template_doi_with_invalid_escape_is_unsafe(self):
+        """DOI with invalid percent escape should be unsafe."""
+        is_safe, reason = is_doi_safe_for_dedup("10.5007/%x")
+        assert is_safe is False
+        assert reason == "template_doi"
+
+    def test_doi_with_valid_percent_encoding_is_safe(self):
+        """DOI with valid %XX encoding should be safe."""
+        # %2F decodes to '/' - this is valid percent encoding
+        is_safe, reason = is_doi_safe_for_dedup("10.1234/test%2Fslash")
+        assert is_safe is True
+        assert reason is None
+
+    def test_doi_with_percent_sign_followed_by_hex_is_safe(self):
+        """DOI with %XX (valid hex) should be safe."""
+        is_safe, reason = is_doi_safe_for_dedup("10.1234/test%3A")  # %3A = ':'
+        assert is_safe is True
+        assert reason is None
+
+    def test_doi_with_percent_not_followed_by_hex_is_unsafe(self):
+        """DOI with % not followed by valid hex should be unsafe."""
+        is_safe, reason = is_doi_safe_for_dedup("10.1234/test%G0")  # G is not hex
+        assert is_safe is False
+        assert reason == "template_doi"
+
+    def test_doi_with_trailing_percent_is_unsafe(self):
+        """DOI with trailing % should be unsafe."""
+        is_safe, reason = is_doi_safe_for_dedup("10.1234/test%")
+        assert is_safe is False
+        assert reason == "template_doi"
