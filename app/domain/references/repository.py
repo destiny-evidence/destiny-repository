@@ -1,7 +1,6 @@
 """Repositories for references and associated models."""
 
 import datetime
-import math
 import re
 from abc import ABC
 from collections.abc import Sequence
@@ -240,54 +239,13 @@ class ReferenceSQLRepository(
 #
 # These helpers address the "ATLAS/sausages" false positive problem where:
 # - An ATLAS physics paper (2927 authors) was matched to a food science paper
-# - ES score reached 2780 due to stopword title matches + author initial matching
+# - ES score reached 2780 due to author initial matching summing up
 #
 # Solution layers:
-# 1. Title matching calculates MSM based on content tokens (excludes stopwords)
-# 2. Authors use dis_max (caps contribution to best match, not sum of 2927)
-# 3. Collaboration papers (>50 authors) skip individual author matching
-# 4. Query-side token filtering for minimum_should_match calculation
+# 1. Authors use dis_max (caps contribution to best match, not sum of 2927)
+# 2. Collaboration papers (>50 authors) skip individual author matching
 
 _TOKEN_PATTERN = re.compile(r"\b[a-zA-Z]+\b")
-
-# English stopwords (matches ES _english_ stopwords list)
-_STOPWORDS = frozenset(
-    [
-        "a",
-        "an",
-        "and",
-        "are",
-        "as",
-        "at",
-        "be",
-        "but",
-        "by",
-        "for",
-        "if",
-        "in",
-        "into",
-        "is",
-        "it",
-        "no",
-        "not",
-        "of",
-        "on",
-        "or",
-        "such",
-        "that",
-        "the",
-        "their",
-        "then",
-        "there",
-        "these",
-        "they",
-        "this",
-        "to",
-        "was",
-        "will",
-        "with",
-    ]
-)
 
 # Keywords indicating collaboration/consortium authorship
 _COLLABORATION_KEYWORDS = frozenset(
@@ -300,28 +258,6 @@ _COLLABORATION_KEYWORDS = frozenset(
         "project",
     ]
 )
-
-
-def _count_content_tokens(text: str, min_length: int = 3) -> int:
-    """
-    Count content tokens (excluding stopwords and short tokens).
-
-    Used to compute minimum_should_match for title field queries.
-
-    Args:
-        text: Text to tokenize.
-        min_length: Minimum token length (default 3, matching ES analyzer).
-
-    Returns:
-        Number of content tokens.
-
-    Example:
-        >>> _count_content_tokens("A continuous calibration of the ATLAS")
-        3  # ["continuous", "calibration", "atlas"]
-
-    """
-    tokens = _TOKEN_PATTERN.findall(text.lower())
-    return sum(1 for t in tokens if len(t) >= min_length and t not in _STOPWORDS)
 
 
 def _is_collaboration_paper(authors: list[str], threshold: int = 50) -> bool:
@@ -463,8 +399,8 @@ class ReferenceESRepository(
         """
         Execute strict candidate search with tight year filter.
 
-        Uses title field with content-token-based MSM (stopwords excluded from
-        count) and dis_max for authors (bounded score contribution).
+        Uses 50% minimum_should_match for title with dis_max for authors
+        (bounded score contribution).
         """
         settings = get_settings()
         config = settings.dedup_scoring
@@ -483,13 +419,6 @@ class ReferenceESRepository(
                     },
                 )
             )
-
-        # Calculate MSM based on content tokens (excludes stopwords/short tokens)
-        # This prevents "a", "of", "the" from satisfying the title match threshold
-        title = search_fields.title or ""
-        content_token_count = _count_content_tokens(title)
-        # Require 50% of content tokens, minimum 2 tokens
-        title_msm = max(2, math.floor(0.5 * content_token_count))
 
         # Build author dis_max query (bounded contribution, no single-letter initials)
         # Returns None for collaboration papers (>50 authors)
@@ -516,7 +445,7 @@ class ReferenceESRepository(
                                 "fuzziness": "AUTO",
                                 "boost": 2.0,
                                 "operator": "or",
-                                "minimum_should_match": title_msm,
+                                "minimum_should_match": "50%",
                             },
                         )
                     ],
@@ -547,8 +476,8 @@ class ReferenceESRepository(
         """
         Execute relaxed candidate search with optional year filter.
 
-        Uses title field with content-token-based MSM (stopwords excluded from
-        count) and dis_max for authors (bounded score contribution).
+        Uses 30% minimum_should_match for title with dis_max for authors
+        (bounded score contribution).
         """
         settings = get_settings()
         config = settings.dedup_scoring
@@ -575,13 +504,6 @@ class ReferenceESRepository(
             year_should_clauses.append(
                 Q("bool", must_not=[Q("exists", field="publication_year")])
             )
-
-        # Calculate MSM based on content tokens (excludes stopwords/short tokens)
-        # This prevents "a", "of", "the" from satisfying the title match threshold
-        title = search_fields.title or ""
-        content_token_count = _count_content_tokens(title)
-        # Require 30% of content tokens, minimum 1 token (relaxed)
-        title_msm = max(1, math.floor(0.3 * content_token_count))
 
         # Build author dis_max query (bounded contribution, no single-letter initials)
         # Returns None for collaboration papers (>50 authors)
@@ -610,7 +532,7 @@ class ReferenceESRepository(
                                 "fuzziness": "AUTO",
                                 "boost": 2.0,
                                 "operator": "or",
-                                "minimum_should_match": title_msm,
+                                "minimum_should_match": "30%",
                             },
                         )
                     ],
