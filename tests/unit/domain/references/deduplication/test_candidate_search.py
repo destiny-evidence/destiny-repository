@@ -6,65 +6,8 @@ bounded author contributions and detect collaboration papers.
 
 from app.domain.references.repository import (
     _build_author_dis_max_query,
-    _count_content_tokens,
     _is_collaboration_paper,
 )
-
-
-class TestCountContentTokens:
-    """Tests for _count_content_tokens function."""
-
-    def test_empty_string(self):
-        """Empty string returns 0."""
-        assert _count_content_tokens("") == 0
-
-    def test_only_stopwords(self):
-        """String with only stopwords returns 0."""
-        assert _count_content_tokens("a the of and") == 0
-
-    def test_only_short_tokens(self):
-        """Tokens shorter than min_length are excluded."""
-        assert _count_content_tokens("a ab cd") == 0
-        # With min_length=2, 'ab' and 'cd' would count
-        assert _count_content_tokens("ab cd", min_length=2) == 2
-
-    def test_mixed_content(self):
-        """Mix of stopwords, short tokens, and content tokens."""
-        # "A continuous calibration of the ATLAS"
-        # stopwords: a, of, the
-        # short tokens: (none after stopword removal)
-        # content tokens: continuous, calibration, atlas
-        result = _count_content_tokens("A continuous calibration of the ATLAS")
-        assert result == 3
-
-    def test_scientific_title(self):
-        """Scientific paper title with various tokens."""
-        title = "The impact of climate change on coastal ecosystems"
-        # Stopwords: the, of, on
-        # Content: impact, climate, change, coastal, ecosystems
-        result = _count_content_tokens(title)
-        assert result == 5
-
-    def test_case_insensitive(self):
-        """Token counting is case-insensitive."""
-        assert _count_content_tokens("THE Impact") == _count_content_tokens(
-            "the impact"
-        )
-
-    def test_numbers_included(self):
-        """Numbers >= min_length are counted as content tokens."""
-        # "COVID-19" splits to "covid" and "19"
-        result = _count_content_tokens("COVID-19 pandemic effects")
-        # covid (5), pandemic (8), effects (7) are content
-        # 19 (2 chars) excluded by default min_length=3
-        assert result == 3
-
-    def test_custom_min_length(self):
-        """Custom min_length parameter works."""
-        # With default min_length=3, "ab" excluded
-        assert _count_content_tokens("ab testing") == 1  # only "testing"
-        # With min_length=2, "ab" included
-        assert _count_content_tokens("ab testing", min_length=2) == 2
 
 
 class TestIsCollaborationPaper:
