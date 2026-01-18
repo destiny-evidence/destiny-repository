@@ -355,7 +355,7 @@ def _build_author_dis_max_query(
     max_clauses: int,
     min_token_length: int,
     tie_breaker: float = 0.1,
-) -> Q | None:
+) -> "Q | None":
     """
     Build dis_max query for author matching with bounded contribution.
 
