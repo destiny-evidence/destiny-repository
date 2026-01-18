@@ -63,35 +63,40 @@ _DOI_PREFIXES = (
 # - 10.13039: Crossref Funder Registry DOIs (assigned to funders, not papers)
 _UNSAFE_DOI_PREFIXES = ("10.13039/",)
 
+# Pattern for invalid percent escapes (not valid %XX hex)
+# Valid: %2F, %3A, etc. Invalid: %x, %s, %%, %X (single char)
+_INVALID_PERCENT_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
+
 
 def is_doi_safe_for_dedup(doi: str) -> tuple[bool, str | None]:
     """
     Check if a DOI is safe to use for deduplication.
 
+    Expects an already-cleaned DOI. Caller is responsible for cleaning.
     Returns (True, None) if safe, (False, reason) if unsafe.
 
     Unsafe DOIs include:
     - Funder DOIs (10.13039/*): Assigned to funding organizations, not papers.
       Many papers incorrectly have these as their DOI, causing mass collisions.
-    - Template DOIs (containing %): Unresolved placeholder DOIs from broken
-      publishing systems, shared by hundreds of unrelated papers.
-    """
-    # Clean the DOI first
-    cleaned = clean_doi(doi).cleaned
+    - Template DOIs (with invalid percent escapes like %x, %s): Unresolved
+      placeholder DOIs from broken publishing systems.
 
+    Note: Valid percent-encoded DOIs (e.g., 10.1234/test%2Fslash) are allowed.
+    Only invalid escapes (not %XX hex) indicate template placeholders.
+    """
     # Check for funder DOIs
     for prefix in _UNSAFE_DOI_PREFIXES:
-        if cleaned.startswith(prefix):
+        if doi.startswith(prefix):
             return False, f"funder_doi:{prefix}"
 
-    # Check for template/placeholder DOIs (contain unresolved % placeholders)
-    if "%" in cleaned:
+    # Check for invalid percent escapes (template placeholders like %x, %s)
+    if _INVALID_PERCENT_ESCAPE.search(doi):
         return False, "template_doi"
 
     return True, None
 
 
-def clean_doi(doi: str) -> DOICleanupResult:  # noqa: PLR0912
+def clean_doi(doi: str) -> DOICleanupResult:  # noqa: PLR0912, PLR0915
     """
     Clean a DOI by removing URL cruft (prefixes, query params, encoding, etc.).
 
@@ -102,6 +107,9 @@ def clean_doi(doi: str) -> DOICleanupResult:  # noqa: PLR0912
     - 10.1234%2Fabc (percent-encoded)
     - 10.1234/abc#section (fragments)
     - 10.1234/abc). (trailing punctuation)
+
+    IMPORTANT: Fragment/query stripping happens BEFORE URL-decoding to prevent
+    encoded characters (%3F, %23) from being decoded and then stripped.
     """
     actions: list[str] = []
     cleaned = doi.strip()
@@ -122,18 +130,12 @@ def clean_doi(doi: str) -> DOICleanupResult:  # noqa: PLR0912
             lower = cleaned.lower()
             break
 
-    # URL-decode percent-encoded characters
-    decoded = unquote(cleaned)
-    if decoded != cleaned:
-        actions.append("url_decode")
-        cleaned = decoded
-
-    # Strip fragment (#section)
+    # Strip fragment (#section) - BEFORE URL-decoding to preserve %23
     if "#" in cleaned:
         actions.append("strip_fragment")
         cleaned = cleaned.split("#", 1)[0]
 
-    # Strip query parameters
+    # Strip query parameters - BEFORE URL-decoding to preserve %3F
     if "?" in cleaned:
         actions.append("strip_query_params")
         cleaned = cleaned.split("?", 1)[0]
@@ -143,6 +145,12 @@ def clean_doi(doi: str) -> DOICleanupResult:  # noqa: PLR0912
     if len(parts) > 1:
         actions.append("strip_jsessionid")
         cleaned = parts[0]
+
+    # URL-decode percent-encoded characters - AFTER stripping query/fragment
+    decoded = unquote(cleaned)
+    if decoded != cleaned:
+        actions.append("url_decode")
+        cleaned = decoded
 
     # Strip tracking garbage
     for pattern, action_name in [
@@ -172,9 +180,13 @@ def clean_doi(doi: str) -> DOICleanupResult:  # noqa: PLR0912
     original_len = len(cleaned)
     # First strip obviously trailing punct that's never valid in DOIs
     cleaned = cleaned.rstrip(".,;]\"'")
-    # Only strip trailing ) if there are more ) than ( (unbalanced)
-    while cleaned.endswith(")") and cleaned.count(")") > cleaned.count("("):
+    # Single-pass parentheses balancing (avoid O(n²) repeated .count() calls)
+    open_count = cleaned.count("(")
+    close_count = cleaned.count(")")
+    excess_close = close_count - open_count
+    while excess_close > 0 and cleaned.endswith(")"):
         cleaned = cleaned[:-1]
+        excess_close -= 1
     if len(cleaned) < original_len:
         actions.append("strip_trailing_punct")
 
@@ -234,19 +246,17 @@ class ExternalIdentifierParseResult(BaseModel):
         and safety checks (rejecting funder DOIs and template DOIs that cause mass
         collisions during deduplication).
         """
-        # Preprocess DOIs before SDK validation
-        if (
-            isinstance(raw_identifier, dict)
-            and raw_identifier.get("identifier_type") == "doi"
-        ):
-            raw_identifier = cls._preprocess_doi(raw_identifier, entry_ref)
-            if raw_identifier is None:
-                # DOI was unsafe (funder/template) - skip this identifier
-                return cls(
-                    error=f"Identifier {entry_ref}: Skipped (unsafe DOI filtered)"
-                )
-
         try:
+            # Preprocess DOIs before SDK validation
+            if (
+                isinstance(raw_identifier, dict)
+                and raw_identifier.get("identifier_type") == "doi"
+            ):
+                raw_identifier = cls._preprocess_doi(raw_identifier, entry_ref)
+                if raw_identifier is None:
+                    # DOI was unsafe (funder/template) - skip this identifier
+                    return cls(error=f"Identifier {entry_ref}: Skipped (unsafe DOI)")
+
             identifier: ExternalIdentifier = ExternalIdentifierAdapter.validate_python(
                 raw_identifier
             )
@@ -280,49 +290,82 @@ Error:
             )
 
     @classmethod
-    def _preprocess_doi(cls, raw_identifier: dict, entry_ref: int) -> dict | None:
+    def _preprocess_doi(  # noqa: PLR0911
+        cls, raw_identifier: dict, entry_ref: int
+    ) -> dict | None:
         """
         Clean and validate a DOI identifier before SDK parsing.
 
-        Returns the cleaned identifier dict, or None if the DOI should be skipped
-        (unsafe funder/template DOIs).
+        Uses a repair-on-failure approach:
+        1. Try SDK validation first - don't clean already-valid DOIs
+        2. If valid, check safety only
+        3. If invalid, try cleaning and retry validation
+        4. Only apply transforms if original fails AND cleaned passes
+
+        Returns the (possibly cleaned) identifier dict, or None if the DOI should
+        be skipped (unsafe funder/template DOIs).
         """
-        raw_doi = raw_identifier.get("identifier", "")
-        if not raw_doi:
+        raw_doi = raw_identifier.get("identifier")
+
+        # Type guard: let SDK validation handle non-string identifiers
+        if not isinstance(raw_doi, str) or not raw_doi:
             return raw_identifier
 
-        # Clean the DOI first (strip URL cruft, query params, etc.)
-        cleanup = clean_doi(raw_doi)
-        cleaned_doi = cleanup.cleaned
+        # Try validation first - don't clean already-valid DOIs
+        original_valid = False
+        try:
+            ExternalIdentifierAdapter.validate_python(raw_identifier)
+            original_valid = True
+        except (TypeError, ValueError):
+            pass  # Validation failed, try cleaning
 
-        # Check if unsafe (funder/template DOI) - skip entirely
-        is_safe, reason = is_doi_safe_for_dedup(cleaned_doi)
+        if original_valid:
+            # Already valid - just check safety
+            is_safe, reason = is_doi_safe_for_dedup(raw_doi)
+            if not is_safe:
+                logger.info(
+                    "Skipping unsafe DOI on import",
+                    doi=raw_doi[:256],
+                    reason=reason,
+                    entry_ref=entry_ref,
+                )
+                return None
+            return raw_identifier
+
+        # Clean and retry validation
+        cleanup = clean_doi(raw_doi)
+        if not cleanup.was_modified:
+            return raw_identifier  # Nothing to clean, let validation fail normally
+
+        cleaned_identifier = {**raw_identifier, "identifier": cleanup.cleaned}
+        cleaned_valid = False
+        try:
+            ExternalIdentifierAdapter.validate_python(cleaned_identifier)
+            cleaned_valid = True
+        except (TypeError, ValueError):
+            pass  # Cleaning didn't help
+
+        if not cleaned_valid:
+            return raw_identifier  # Let validation fail normally
+
+        # Cleaned version valid - check safety and use it
+        is_safe, reason = is_doi_safe_for_dedup(cleanup.cleaned)
         if not is_safe:
             logger.info(
                 "Skipping unsafe DOI on import",
-                extra={
-                    "original_doi": raw_doi,
-                    "cleaned_doi": cleaned_doi,
-                    "reason": reason,
-                    "entry_ref": entry_ref,
-                },
+                doi=raw_doi[:256],
+                reason=reason,
+                entry_ref=entry_ref,
             )
             return None
-
-        # Return cleaned DOI if modified
-        if cleanup.was_modified:
-            logger.debug(
-                "Cleaned DOI on import",
-                extra={
-                    "original": raw_doi,
-                    "cleaned": cleaned_doi,
-                    "actions": cleanup.actions,
-                    "entry_ref": entry_ref,
-                },
-            )
-            return {**raw_identifier, "identifier": cleaned_doi}
-
-        return raw_identifier
+        logger.debug(
+            "Cleaned DOI on import",
+            original=raw_doi[:256],
+            cleaned=cleanup.cleaned,
+            actions=cleanup.actions,
+            entry_ref=entry_ref,
+        )
+        return cleaned_identifier
 
 
 class EnhancementParseResult(BaseModel):
