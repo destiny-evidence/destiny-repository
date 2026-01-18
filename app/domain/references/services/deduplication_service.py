@@ -5,10 +5,15 @@ from typing import Literal
 
 from opentelemetry import trace
 
-from app.core.config import Environment, get_settings
+from app.core.config import get_settings
 from app.core.constants import MAX_REFERENCE_DUPLICATE_DEPTH
 from app.core.exceptions import DeduplicationValueError
 from app.core.telemetry.logger import get_logger
+from app.domain.references.deduplication.scoring import (
+    ConfidenceLevel,
+    PairScorer,
+    ReferenceDeduplicationView,
+)
 from app.domain.references.models.models import (
     DuplicateDetermination,
     ExternalIdentifierType,
@@ -17,9 +22,7 @@ from app.domain.references.models.models import (
     ReferenceDuplicateDecision,
     ReferenceDuplicateDeterminationResult,
 )
-from app.domain.references.models.projections import (
-    ReferenceSearchFieldsProjection,
-)
+from app.domain.references.models.projections import ReferenceSearchFieldsProjection
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -30,6 +33,12 @@ from app.persistence.sql.uow import AsyncSqlUnitOfWork
 logger = get_logger(__name__)
 settings = get_settings()
 tracer = trace.get_tracer(__name__)
+
+
+def _create_scorer() -> PairScorer:
+    """Create a PairScorer configured from application settings."""
+    # DedupScoringConfig satisfies ScoringConfigProtocol via property aliases
+    return PairScorer(settings.dedup_scoring)
 
 
 class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
@@ -195,54 +204,123 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision = (
                 await self.sql_uow.reference_duplicate_decisions.update_by_pk(
                     reference_duplicate_decision.id,
-                    # This should simplify to CANONICAL only once the search strategy is
-                    # implemented and evaluated.
-                    duplicate_determination=DuplicateDetermination.CANONICAL
-                    if settings.env == Environment.TEST
-                    else DuplicateDetermination.UNSEARCHABLE,
+                    duplicate_determination=DuplicateDetermination.CANONICAL,
                 )
             )
         else:
-            # Is there a search result score that would be enough for us to mark as
-            # duplicate without proceeding to the next step?
+            # Store both candidate IDs and their ES scores for the scoring step
+            candidate_ids = [result.id for result in search_result]
+            candidate_scores = {
+                str(result.id): result.score for result in search_result
+            }
             reference_duplicate_decision = (
                 await self.sql_uow.reference_duplicate_decisions.update_by_pk(
                     reference_duplicate_decision.id,
-                    candidate_canonical_ids=[result.id for result in search_result],
+                    candidate_canonical_ids=candidate_ids,
+                    candidate_canonical_scores=candidate_scores,
                     duplicate_determination=DuplicateDetermination.NOMINATED,
                 )
             )
 
         return reference_duplicate_decision
 
-    async def __placeholder_duplicate_determinator(
+    async def _score_candidates(
         self, reference_duplicate_decision: ReferenceDuplicateDecision
     ) -> ReferenceDuplicateDeterminationResult:
         """
-        Implement a basic placeholder duplicate determinator.
+        Score candidate canonicals and determine duplicate status.
 
-        Temporary implementation: takes the first candidate as the duplicate.
-        This is the one with the highest score in the candidate nomination stage.
-        This completes the flow but should not be used in production.
+        Uses dedup_lab's PairScorer to compare the source reference against each
+        candidate canonical. Returns DUPLICATE if a high-confidence match is found,
+        CANONICAL if no candidates score above the threshold, or UNRESOLVED if
+        scores fall in the ambiguous middle range.
 
-        :param reference_duplicate_decision: The decision to determine duplicates for.
+        :param reference_duplicate_decision: The decision with candidate IDs to score.
         :type reference_duplicate_decision: ReferenceDuplicateDecision
-        :return: The result of the duplicate determination.
+        :return: The determination result with optional canonical reference.
         :rtype: ReferenceDuplicateDeterminationResult
         """
-        return (
-            ReferenceDuplicateDeterminationResult(
+        # Load the source reference with enhancements and identifiers
+        source_reference = await self.sql_uow.references.get_by_pk(
+            reference_duplicate_decision.reference_id,
+            preload=["enhancements", "identifiers"],
+        )
+
+        # Load all candidate references
+        candidate_ids = reference_duplicate_decision.candidate_canonical_ids
+        if not candidate_ids:
+            return ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.CANONICAL,
+                detail="No candidates to score.",
+            )
+
+        # Get ES scores from the decision (stored as string keys)
+        es_scores_str = reference_duplicate_decision.candidate_canonical_scores or {}
+        es_scores = {uuid.UUID(k): v for k, v in es_scores_str.items()}
+
+        candidates: list[Reference] = []
+        for cand_id in candidate_ids:
+            cand = await self.sql_uow.references.get_by_pk(
+                cand_id,
+                preload=["enhancements", "identifiers"],
+            )
+            candidates.append(cand)
+
+        # Convert to deduplication views for scoring
+        source_view = ReferenceDeduplicationView.from_reference(source_reference)
+        candidate_views = [
+            ReferenceDeduplicationView.from_reference(c) for c in candidates
+        ]
+
+        # Create scorer and score all candidates
+        scorer = _create_scorer()
+
+        # Use ES+Jaccard scoring with stored ES scores
+        scored_candidates = scorer.score_source_two_stage(
+            source_view,
+            candidate_views,
+            es_scores=es_scores,
+            top_k=settings.dedup_scoring.two_stage_top_k,
+        )
+
+        if not scored_candidates:
+            return ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.CANONICAL,
+                detail="No candidates after scoring.",
+            )
+
+        # Get the best match
+        best_candidate, best_score = scored_candidates[0]
+        best_reference_id = best_candidate.id
+
+        # Build detail string with top scores
+        top_scores = [
+            f"{cand.id}: {score.combined_score:.3f} ({score.confidence.value})"
+            for cand, score in scored_candidates[:3]
+        ]
+        detail = f"Top scores: {'; '.join(top_scores)}"
+
+        # Decision logic based on thresholds
+        score_str = f"score={best_score.combined_score:.3f}"
+        if best_score.confidence == ConfidenceLevel.HIGH:
+            # High confidence match - mark as duplicate
+            return ReferenceDuplicateDeterminationResult(
                 duplicate_determination=DuplicateDetermination.DUPLICATE,
-                canonical_reference_id=reference_duplicate_decision.candidate_canonical_ids[
-                    0
-                ],
+                canonical_reference_id=best_reference_id,
+                detail=f"High confidence match ({score_str}). {detail}",
             )
-            if settings.env == Environment.TEST
-            and reference_duplicate_decision.candidate_canonical_ids
-            else ReferenceDuplicateDeterminationResult(
-                duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
-                detail="Placeholder duplicate determinator used.",
+
+        if best_score.confidence == ConfidenceLevel.MEDIUM:
+            # Medium confidence - needs manual review
+            return ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.UNRESOLVED,
+                detail=f"Medium confidence match ({score_str}). {detail}",
             )
+
+        # Low confidence - no good match found, mark as canonical
+        return ReferenceDuplicateDeterminationResult(
+            duplicate_determination=DuplicateDetermination.CANONICAL,
+            detail=f"No high-confidence match (best={score_str}). {detail}",
         )
 
     async def determine_canonical_from_candidates(
@@ -250,6 +328,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
     ) -> ReferenceDuplicateDecision:
         """
         Determine a canonical reference from its candidates.
+
+        Uses the dedup_lab PairScorer to compare the source reference against
+        candidate canonicals and make a determination based on similarity scores.
 
         :param reference_duplicate_decision: The decision to determine duplicates for.
         :type reference_duplicate_decision: ReferenceDuplicateDecision
@@ -262,10 +343,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         ):
             return reference_duplicate_decision
 
-        duplicate_determination_result = (
-            await self.__placeholder_duplicate_determinator(
-                reference_duplicate_decision
-            )
+        duplicate_determination_result = await self._score_candidates(
+            reference_duplicate_decision
         )
 
         return await self.sql_uow.reference_duplicate_decisions.update_by_pk(

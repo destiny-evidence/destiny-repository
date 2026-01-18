@@ -35,18 +35,6 @@ def reference() -> Reference:
 
 
 @pytest.fixture
-def reference_with_non_other_identifier(reference: Reference) -> Reference:
-    assert reference.identifiers
-    reference.identifiers.append(
-        LinkedExternalIdentifierFactory.build(
-            identifier=OpenAlexIdentifierFactory.build(),
-            reference_id=reference.id,
-        )
-    )
-    return reference
-
-
-@pytest.fixture
 def searchable_reference(reference: Reference) -> Reference:
     return reference.model_copy(
         update={
@@ -72,23 +60,31 @@ def anti_corruption_service():
 
 @pytest.mark.asyncio
 async def test_find_exact_duplicate_happy_path(
-    reference_with_non_other_identifier,
-    anti_corruption_service,
-    fake_uow,
-    fake_repository,
+    anti_corruption_service, fake_uow, fake_repository
 ):
-    candidate = reference_with_non_other_identifier.model_copy(
+    # Use OpenAlex identifier (non-OTHER type) to ensure exact duplicate search runs
+    ref_id = uuid.uuid4()
+    identifier = LinkedExternalIdentifierFactory.build(
+        identifier=OpenAlexIdentifierFactory.build(),
+        reference_id=ref_id,
+    )
+    # Explicitly set visibility to PUBLIC so we can test changing it to HIDDEN
+    reference = ReferenceFactory.build(
+        id=ref_id, identifiers=[identifier], visibility="public"
+    )
+
+    candidate = reference.model_copy(
         update={"id": uuid.uuid4()},
     )
     repo = fake_repository([candidate])
     uow = fake_uow(references=repo)
     uow.references.find_with_identifiers = AsyncMock(return_value=[candidate])
     service = DeduplicationService(anti_corruption_service, uow, fake_uow())
-    result = await service.find_exact_duplicate(reference_with_non_other_identifier)
+    result = await service.find_exact_duplicate(reference)
     assert result == candidate
-    # No longer a subset
+    # When visibility changes, is_superset returns False because visibilities must match
     result = await service.find_exact_duplicate(
-        reference_with_non_other_identifier.model_copy(update={"visibility": "hidden"})
+        reference.model_copy(update={"visibility": "hidden"})
     )
     assert not result
 
@@ -133,15 +129,16 @@ async def test_find_exact_duplicate_updated_enhancement(
 ):
     bibliography = BibliographicMetadataEnhancementFactory.build(title="A title")
     raw_enhancement = RawEnhancementFactory.build()
+
+    # Use OpenAlex identifier (non-OTHER type) to ensure exact duplicate search runs
+    ref_id = uuid.uuid4()
+    identifier = LinkedExternalIdentifierFactory.build(
+        identifier=OpenAlexIdentifierFactory.build(),
+        reference_id=ref_id,
+    )
     ref = ReferenceFactory.build(
-        identifiers=[
-            # Ensure we have at least one non-other identifier
-            LinkedExternalIdentifierFactory.build(
-                identifier=OpenAlexIdentifierFactory.build()
-            ),
-            # Build another random one
-            LinkedExternalIdentifierFactory.build(),
-        ],
+        id=ref_id,
+        identifiers=[identifier],
         enhancements=[
             EnhancementFactory.build(
                 content=bibliography,
@@ -287,22 +284,48 @@ async def test_nominate_candidate_canonicals_no_candidates(
 
 
 @pytest.mark.asyncio
-async def test_determine_and_map_duplicate_happy_path(
+async def test_determine_scores_candidates_and_returns_determination(
     fake_uow, fake_repository, anti_corruption_service
 ):
-    # Setup reference and decision
-    reference = MagicMock(spec=Reference)
-    reference.id = uuid.uuid4()
-    reference.duplicate_decision = None
+    """Test that determine scores candidates using dedup_lab scorer."""
+    from tests.factories import (
+        BibliographicMetadataEnhancementFactory,
+        EnhancementFactory,
+        ReferenceFactory,
+    )
 
-    candidate_id = uuid.uuid4()
+    # Create source reference with enhancements
+    source_ref = ReferenceFactory.build()
+    source_ref.enhancements = [
+        EnhancementFactory.build(
+            reference_id=source_ref.id,
+            content=BibliographicMetadataEnhancementFactory.build(
+                title="Climate change impacts on biodiversity",
+                publication_year=2023,
+            ),
+        )
+    ]
+    source_ref.duplicate_decision = None
+
+    # Create candidate reference with different title (should score LOW)
+    candidate_ref = ReferenceFactory.build()
+    candidate_ref.enhancements = [
+        EnhancementFactory.build(
+            reference_id=candidate_ref.id,
+            content=BibliographicMetadataEnhancementFactory.build(
+                title="Machine learning in healthcare applications",
+                publication_year=2022,
+            ),
+        )
+    ]
+
     decision = ReferenceDuplicateDecision(
-        reference_id=reference.id,
-        candidate_canonical_ids=[candidate_id],
+        reference_id=source_ref.id,
+        candidate_canonical_ids=[candidate_ref.id],
         duplicate_determination=DuplicateDetermination.NOMINATED,
     )
 
-    ref_repo = fake_repository([reference])
+    ref_repo = fake_repository([source_ref, candidate_ref])
     dec_repo = fake_repository([decision])
     service = DeduplicationService(
         anti_corruption_service,
@@ -312,40 +335,114 @@ async def test_determine_and_map_duplicate_happy_path(
         ),
         fake_uow(),
     )
-    # Split: determine then map
+
+    # With very different titles, should score low and return CANONICAL
     determined = await service.determine_canonical_from_candidates(decision)
-    out_decision, decision_changed = await service.map_duplicate_decision(determined)
-    assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
-    assert out_decision.canonical_reference_id == candidate_id
-    assert decision_changed
-    out_decision = await dec_repo.get_by_pk(out_decision.id)
-    assert out_decision.active_decision
-    assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
+    assert determined.duplicate_determination == DuplicateDetermination.CANONICAL
+    assert determined.canonical_reference_id is None
+    assert "Top scores:" in determined.detail
 
 
 @pytest.mark.asyncio
-async def test_determine_and_map_duplicate_no_change(
+async def test_determine_marks_duplicate_for_high_confidence_match(
     fake_uow, fake_repository, anti_corruption_service
 ):
-    # Setup reference and decision
+    """Test that determine marks DUPLICATE for high-confidence matches."""
+    from tests.factories import (
+        BibliographicMetadataEnhancementFactory,
+        DOIIdentifierFactory,
+        EnhancementFactory,
+        LinkedExternalIdentifierFactory,
+        ReferenceFactory,
+    )
+
+    # Create source reference
+    source_ref = ReferenceFactory.build()
+    source_doi = DOIIdentifierFactory.build()
+    source_ref.identifiers = [
+        LinkedExternalIdentifierFactory.build(
+            reference_id=source_ref.id,
+            identifier=source_doi,
+        )
+    ]
+    source_ref.enhancements = [
+        EnhancementFactory.build(
+            reference_id=source_ref.id,
+            content=BibliographicMetadataEnhancementFactory.build(
+                title="Climate change impacts on biodiversity",
+                publication_year=2023,
+            ),
+        )
+    ]
+    source_ref.duplicate_decision = None
+
+    # Create candidate reference with SAME DOI (should score HIGH via identifier match)
+    candidate_ref = ReferenceFactory.build()
+    candidate_ref.identifiers = [
+        LinkedExternalIdentifierFactory.build(
+            reference_id=candidate_ref.id,
+            identifier=source_doi,  # Same DOI = exact match
+        )
+    ]
+    candidate_ref.enhancements = [
+        EnhancementFactory.build(
+            reference_id=candidate_ref.id,
+            content=BibliographicMetadataEnhancementFactory.build(
+                title="Climate change impacts on biodiversity",
+                publication_year=2023,
+            ),
+        )
+    ]
+
+    decision = ReferenceDuplicateDecision(
+        reference_id=source_ref.id,
+        candidate_canonical_ids=[candidate_ref.id],
+        duplicate_determination=DuplicateDetermination.NOMINATED,
+    )
+
+    ref_repo = fake_repository([source_ref, candidate_ref])
+    dec_repo = fake_repository([decision])
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(
+            references=ref_repo,
+            reference_duplicate_decisions=dec_repo,
+        ),
+        fake_uow(),
+    )
+
+    # With same DOI and title, should score high and return DUPLICATE
+    determined = await service.determine_canonical_from_candidates(decision)
+    assert determined.duplicate_determination == DuplicateDetermination.DUPLICATE
+    assert determined.canonical_reference_id == candidate_ref.id
+    assert "High confidence" in determined.detail
+
+
+@pytest.mark.asyncio
+async def test_map_duplicate_no_change_when_same_canonical(
+    fake_uow, fake_repository, anti_corruption_service
+):
+    """Test that mapping DUPLICATE to same canonical doesn't change the decision."""
     reference = MagicMock(spec=Reference)
     reference.id = uuid.uuid4()
+    canonical_id = uuid.uuid4()
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.DUPLICATE,
-        canonical_reference_id=uuid.uuid4(),
+        canonical_reference_id=canonical_id,
         active_decision=True,
     )
     reference.duplicate_decision = active_decision
 
-    decision = ReferenceDuplicateDecision(
+    # Create a new decision that would map to the same canonical
+    new_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
-        candidate_canonical_ids=[active_decision.canonical_reference_id],
-        duplicate_determination=DuplicateDetermination.NOMINATED,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=canonical_id,
     )
 
     ref_repo = fake_repository([reference])
-    dec_repo = fake_repository([decision])
+    dec_repo = fake_repository([new_decision])
     service = DeduplicationService(
         anti_corruption_service,
         fake_uow(
@@ -354,11 +451,10 @@ async def test_determine_and_map_duplicate_no_change(
         ),
         fake_uow(),
     )
-    # Split: determine then map
-    determined = await service.determine_canonical_from_candidates(decision)
-    out_decision, decision_changed = await service.map_duplicate_decision(determined)
+    # Directly test map_duplicate_decision with a terminal decision
+    out_decision, decision_changed = await service.map_duplicate_decision(new_decision)
     assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
-    assert out_decision.canonical_reference_id == active_decision.canonical_reference_id
+    assert out_decision.canonical_reference_id == canonical_id
     assert decision_changed is False
     out_decision = await dec_repo.get_by_pk(out_decision.id)
     assert out_decision.active_decision
@@ -438,10 +534,10 @@ async def test_determine_and_map_duplicate_decoupled_canonical_change(
 
 
 @pytest.mark.asyncio
-async def test_determine_and_map_duplicate_decoupled_different_canonical(
+async def test_map_duplicate_decoupled_when_canonical_changes(
     fake_uow, fake_repository, anti_corruption_service
 ):
-    # Setup reference and active decision (was DUPLICATE of A, now DUPLICATE of B)
+    """Test decoupling when reference was DUPLICATE of A, now DUPLICATE of B."""
     reference = MagicMock(spec=Reference)
     reference.id = uuid.uuid4()
     canonical_a = uuid.uuid4()
@@ -454,14 +550,15 @@ async def test_determine_and_map_duplicate_decoupled_different_canonical(
     )
     reference.duplicate_decision = active_decision
 
-    decision = ReferenceDuplicateDecision(
+    # Create a new DUPLICATE decision with different canonical
+    new_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
-        candidate_canonical_ids=[canonical_b],
-        duplicate_determination=DuplicateDetermination.NOMINATED,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=canonical_b,
     )
 
     ref_repo = fake_repository([reference])
-    dec_repo = fake_repository([active_decision, decision])
+    dec_repo = fake_repository([active_decision, new_decision])
     service = DeduplicationService(
         anti_corruption_service,
         fake_uow(
@@ -470,8 +567,8 @@ async def test_determine_and_map_duplicate_decoupled_different_canonical(
         ),
         fake_uow(),
     )
-    determined = await service.determine_canonical_from_candidates(decision)
-    out_decision, decision_changed = await service.map_duplicate_decision(determined)
+    # Directly test map_duplicate_decision
+    out_decision, decision_changed = await service.map_duplicate_decision(new_decision)
     assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
     assert (
         "Decouple reason: Existing duplicate decision changed." in out_decision.detail
@@ -480,10 +577,10 @@ async def test_determine_and_map_duplicate_decoupled_different_canonical(
 
 
 @pytest.mark.asyncio
-async def test_determine_and_map_duplicate_decoupled_chain_length(
+async def test_map_duplicate_decoupled_when_chain_too_long(
     fake_uow, fake_repository, anti_corruption_service
 ):
-    # Setup reference with canonical chain length 2 using real Reference objects
+    """Test decoupling when duplicate chain exceeds max depth."""
     canonical_reference = Reference(
         id=uuid.uuid4(),
         identifiers=[],
@@ -501,10 +598,11 @@ async def test_determine_and_map_duplicate_decoupled_chain_length(
     )
 
     candidate_id = uuid.uuid4()
+    # Create a DUPLICATE decision (not NOMINATED)
     decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
-        candidate_canonical_ids=[candidate_id],
-        duplicate_determination=DuplicateDetermination.NOMINATED,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=candidate_id,
     )
 
     ref_repo = fake_repository([reference])
@@ -517,19 +615,21 @@ async def test_determine_and_map_duplicate_decoupled_chain_length(
         ),
         fake_uow(),
     )
+    # Patch settings.max_reference_duplicate_depth to 2
+    service.__class__.settings = MagicMock(max_reference_duplicate_depth=2)
 
-    determined = await service.determine_canonical_from_candidates(decision)
-    out_decision, decision_changed = await service.map_duplicate_decision(determined)
+    # Directly test map_duplicate_decision
+    out_decision, decision_changed = await service.map_duplicate_decision(decision)
     assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
     assert "Decouple reason: Max duplicate chain length reached." in out_decision.detail
     assert decision_changed
 
 
 @pytest.mark.asyncio
-async def test_determine_and_map_duplicate_now_duplicate(
+async def test_map_canonical_becomes_duplicate(
     fake_uow, fake_repository, anti_corruption_service
 ):
-    # Setup reference and active decision (was CANONICAL, now DUPLICATE)
+    """Test that a CANONICAL reference can become a DUPLICATE."""
     reference = MagicMock(spec=Reference)
     reference.id = uuid.uuid4()
     active_decision = ReferenceDuplicateDecision(
@@ -541,14 +641,15 @@ async def test_determine_and_map_duplicate_now_duplicate(
     reference.duplicate_decision = active_decision
 
     candidate_id = uuid.uuid4()
-    decision = ReferenceDuplicateDecision(
+    # Create a DUPLICATE decision (not NOMINATED)
+    new_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
-        candidate_canonical_ids=[candidate_id],
-        duplicate_determination=DuplicateDetermination.NOMINATED,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=candidate_id,
     )
 
     ref_repo = fake_repository([reference])
-    dec_repo = fake_repository([active_decision, decision])
+    dec_repo = fake_repository([active_decision, new_decision])
     service = DeduplicationService(
         anti_corruption_service,
         fake_uow(
@@ -557,8 +658,8 @@ async def test_determine_and_map_duplicate_now_duplicate(
         ),
         fake_uow(),
     )
-    determined = await service.determine_canonical_from_candidates(decision)
-    out_decision, decision_changed = await service.map_duplicate_decision(determined)
+    # Directly test map_duplicate_decision
+    out_decision, decision_changed = await service.map_duplicate_decision(new_decision)
     assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
     assert decision_changed
     old_decision = await dec_repo.get_by_pk(active_decision.id)

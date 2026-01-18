@@ -2,6 +2,7 @@
 
 import datetime
 import math
+import re
 from abc import ABC
 from collections.abc import Sequence
 from typing import Literal
@@ -25,6 +26,7 @@ from sqlalchemy import (
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.core.config import get_settings
 from app.core.telemetry.repository import trace_repository_method
 from app.domain.references.models.es import (
     ReferenceDocument,
@@ -232,6 +234,170 @@ class ReferenceSQLRepository(
         ]
 
 
+# =============================================================================
+# Deduplication Query Helpers
+# =============================================================================
+#
+# These helpers address the "ATLAS/sausages" false positive problem where:
+# - An ATLAS physics paper (2927 authors) was matched to a food science paper
+# - ES score reached 2780 due to stopword title matches + author initial matching
+#
+# Solution layers:
+# 1. Title matching uses title.content field (stopwords removed at index time)
+# 2. Authors use dis_max (caps contribution to best match, not sum of 2927)
+# 3. Collaboration papers (>50 authors) skip individual author matching
+# 4. Query-side token filtering as backup for non-reindexed data
+
+_TOKEN_PATTERN = re.compile(r"\b[a-zA-Z]+\b")
+
+# English stopwords (matches ES _english_ stopwords list)
+_STOPWORDS = frozenset(
+    [
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "but",
+        "by",
+        "for",
+        "if",
+        "in",
+        "into",
+        "is",
+        "it",
+        "no",
+        "not",
+        "of",
+        "on",
+        "or",
+        "such",
+        "that",
+        "the",
+        "their",
+        "then",
+        "there",
+        "these",
+        "they",
+        "this",
+        "to",
+        "was",
+        "will",
+        "with",
+    ]
+)
+
+# Keywords indicating collaboration/consortium authorship
+_COLLABORATION_KEYWORDS = frozenset(
+    [
+        "collaboration",
+        "consortium",
+        "group",
+        "team",
+        "working",
+        "project",
+    ]
+)
+
+
+def _count_content_tokens(text: str, min_length: int = 3) -> int:
+    """
+    Count content tokens (excluding stopwords and short tokens).
+
+    Used to compute minimum_should_match for title.content field queries.
+
+    Args:
+        text: Text to tokenize.
+        min_length: Minimum token length (default 3, matching ES analyzer).
+
+    Returns:
+        Number of content tokens.
+
+    Example:
+        >>> _count_content_tokens("A continuous calibration of the ATLAS")
+        3  # ["continuous", "calibration", "atlas"]
+
+    """
+    tokens = _TOKEN_PATTERN.findall(text.lower())
+    return sum(1 for t in tokens if len(t) >= min_length and t not in _STOPWORDS)
+
+
+def _is_collaboration_paper(authors: list[str], threshold: int = 50) -> bool:
+    """
+    Detect if paper is from a large collaboration (ATLAS, CMS, etc.).
+
+    For collaboration papers, individual author matching is skipped because:
+    - Authors are not discriminative (2927 authors won't help find duplicates)
+    - Single-letter initials cause massive false positive scores
+
+    Args:
+        authors: List of author names.
+        threshold: Author count threshold (default 50).
+
+    Returns:
+        True if paper appears to be from a collaboration.
+
+    """
+    if len(authors) > threshold:
+        return True
+    # Check first few authors for collaboration keywords
+    for author in authors[:5]:
+        author_lower = author.lower()
+        if any(kw in author_lower for kw in _COLLABORATION_KEYWORDS):
+            return True
+    return False
+
+
+def _build_author_dis_max_query(
+    authors: list[str],
+    max_clauses: int,
+    min_token_length: int,
+    tie_breaker: float = 0.1,
+) -> Q | None:
+    """
+    Build dis_max query for author matching with bounded contribution.
+
+    Unlike bool.should (which sums all matching clauses), dis_max takes
+    the max score + tie_breaker * sum(other scores). This prevents
+    2927 author clauses from exploding into a 2780 score.
+
+    Args:
+        authors: List of author names.
+        max_clauses: Maximum number of match queries to create.
+        min_token_length: Minimum token length (filters single-letter initials).
+        tie_breaker: dis_max tie_breaker (0.0-1.0, default 0.1).
+
+    Returns:
+        dis_max Q object, or None if no valid author queries.
+
+    Example:
+        With tie_breaker=0.1 and 3 matching authors scoring [10, 8, 5]:
+        - bool.should score: 10 + 8 + 5 = 23
+        - dis_max score: 10 + 0.1*(8 + 5) = 11.3
+
+    """
+    # Skip collaboration papers entirely
+    if _is_collaboration_paper(authors):
+        return None
+
+    queries = []
+    for author in authors[:max_clauses]:
+        # Extract tokens, filtering single-letter initials
+        tokens = _TOKEN_PATTERN.findall(author)
+        meaningful_tokens = [t for t in tokens if len(t) >= min_token_length]
+        if meaningful_tokens:
+            # Query the authors.dedup subfield (has analyzer that filters initials)
+            query_str = " ".join(meaningful_tokens)
+            queries.append(Q("match", **{"authors.dedup": query_str}))
+
+    if not queries:
+        return None
+
+    return Q("dis_max", queries=queries, tie_breaker=tie_breaker)
+
+
 class ReferenceESRepository(
     GenericAsyncESRepository[DomainReference, ReferenceDocument],
     ReferenceRepositoryBase,
@@ -255,16 +421,22 @@ class ReferenceESRepository(
         """
         Fuzzy match candidate fingerprints to existing references.
 
-        This is a high-recall search strategy.
+        This is a high-recall search strategy using a two-pass approach:
 
-        NOT TESTED/EVALUATED. Thrown together as a proof of concept, this must
-        be polished and evaluated before use.
-
-        The proof of concept does:
-
+        **Pass 1 (Strict):**
         - MUST: fuzzy match on title (requires 50% of terms to match)
         - SHOULD: partial match on authors list (requires 50% of authors to match)
         - FILTER: publication year within ±1 year range (non-scoring)
+        - FILTER: Only canonical references (at rest)
+
+        **Pass 2 (Relaxed) - only if Pass 1 returns no results:**
+        - MUST: fuzzy match on title (requires 30% of terms to match)
+        - SHOULD: partial match on authors list (no minimum)
+        - FILTER: publication year within ±2 year range OR missing year (optional)
+        - FILTER: Only canonical references (at rest)
+
+        This two-pass approach maximizes recall while keeping the strict query
+        fast for the common case where year and title match well.
 
         :param search_fields: The search fields of the potential duplicate.
         :type search_fields: CandidateCanonicalSearchFields
@@ -273,6 +445,63 @@ class ReferenceESRepository(
         :return: A list of search results with IDs and scores.
         :rtype: list[ESScoreResult]
         """
+        # Pass 1: Strict query
+        strict_results = await self._search_candidates_strict(
+            search_fields, reference_id
+        )
+        if strict_results:
+            return strict_results
+
+        # Pass 2: Relaxed query (only if strict found nothing)
+        return await self._search_candidates_relaxed(search_fields, reference_id)
+
+    async def _search_candidates_strict(
+        self,
+        search_fields: CandidateCanonicalSearchFields,
+        reference_id: UUID,
+    ) -> list[ESScoreResult]:
+        """
+        Execute strict candidate search with tight year filter.
+
+        Uses title.content field (stopwords removed) with content-token-based MSM
+        and dis_max for authors (bounded score contribution).
+        """
+        settings = get_settings()
+        config = settings.dedup_scoring
+
+        # Build year filter only if year is present
+        filters = [
+            Q("term", duplicate_determination=DuplicateDetermination.CANONICAL),
+        ]
+        if search_fields.publication_year:
+            filters.append(
+                Q(
+                    "range",
+                    publication_year={
+                        "gte": search_fields.publication_year - 1,
+                        "lte": search_fields.publication_year + 1,
+                    },
+                )
+            )
+
+        # Calculate MSM based on content tokens (excludes stopwords/short tokens)
+        # This prevents "a", "of", "the" from satisfying the title match threshold
+        title = search_fields.title or ""
+        content_token_count = _count_content_tokens(title)
+        # Require 50% of content tokens, minimum 2 tokens
+        title_msm = max(2, math.floor(0.5 * content_token_count))
+
+        # Build author dis_max query (bounded contribution, no single-letter initials)
+        # Returns None for collaboration papers (>50 authors)
+        author_query = _build_author_dis_max_query(
+            search_fields.authors,
+            max_clauses=config.max_author_clauses,
+            min_token_length=config.min_author_token_length,
+        )
+
+        # Build should clauses - author query contributes to score but isn't required
+        should_clauses = [author_query] if author_query else []
+
         search = (
             AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
             .query(
@@ -281,44 +510,117 @@ class ReferenceESRepository(
                     must=[
                         Q(
                             "match",
-                            title={
-                                "query": search_fields.title,
-                                "fuzziness": "AUTO",
-                                "boost": 2.0,
-                                "operator": "or",
-                                "minimum_should_match": "50%",
+                            # Use title.content field (stopwords/short tokens removed)
+                            **{
+                                "title.content": {
+                                    "query": search_fields.title,
+                                    "fuzziness": "AUTO",
+                                    "boost": 2.0,
+                                    "operator": "or",
+                                    "minimum_should_match": title_msm,
+                                }
                             },
                         )
                     ],
-                    should=[
-                        Q("match", authors=author) for author in search_fields.authors
-                    ],
-                    filter=[
-                        Q(
-                            "range",
-                            publication_year={
-                                "gte": search_fields.publication_year - 1,
-                                "lte": search_fields.publication_year + 1,
-                            },
-                        ),
-                        # This filter ensures we only match against references that are
-                        # "at rest". This avoids race conditions where reference B and C
-                        # are being deduplicated at the same time, perhaps creating
-                        # links B->A and C->B - in turn, creating a chain that we do
-                        # not control, which is a no-no.
-                        # Better handling will be needed in the future if/when we fully
-                        # implement chaining (which will require deliberate candidate
-                        # selection against duplicates as well as canonicals, probably
-                        # still "at rest" though).
-                        Q(
-                            "term",
-                            duplicate_determination=DuplicateDetermination.CANONICAL,
-                        ),
-                    ]
-                    if search_fields.publication_year
-                    else [],
+                    should=should_clauses,
+                    filter=filters,
                     must_not=[Q("ids", values=[reference_id])],
-                    minimum_should_match=math.floor(0.5 * len(search_fields.authors)),
+                )
+            )
+            .source(fields=False)
+        )
+
+        response = await search.execute()
+
+        return sorted(
+            [
+                ESScoreResult(id=hit.meta.id, score=hit.meta.score)
+                for hit in response.hits
+            ],
+            key=lambda result: result.score,
+            reverse=True,
+        )
+
+    async def _search_candidates_relaxed(
+        self,
+        search_fields: CandidateCanonicalSearchFields,
+        reference_id: UUID,
+    ) -> list[ESScoreResult]:
+        """
+        Execute relaxed candidate search with optional year filter.
+
+        Uses title.content field (stopwords removed) with content-token-based MSM
+        and dis_max for authors (bounded score contribution).
+        """
+        settings = get_settings()
+        config = settings.dedup_scoring
+
+        # Relaxed: wider year range OR missing year (should + min_should_match=0)
+        # Allows matching records with no year, or year ±2
+        filters = [
+            Q("term", duplicate_determination=DuplicateDetermination.CANONICAL),
+        ]
+
+        # Year is now a SHOULD with wider range, not a hard filter
+        year_should_clauses = []
+        if search_fields.publication_year:
+            year_should_clauses.append(
+                Q(
+                    "range",
+                    publication_year={
+                        "gte": search_fields.publication_year - 2,
+                        "lte": search_fields.publication_year + 2,
+                    },
+                )
+            )
+            # Also allow records with no year (missing year should not exclude)
+            year_should_clauses.append(
+                Q("bool", must_not=[Q("exists", field="publication_year")])
+            )
+
+        # Calculate MSM based on content tokens (excludes stopwords/short tokens)
+        # This prevents "a", "of", "the" from satisfying the title match threshold
+        title = search_fields.title or ""
+        content_token_count = _count_content_tokens(title)
+        # Require 30% of content tokens, minimum 1 token (relaxed)
+        title_msm = max(1, math.floor(0.3 * content_token_count))
+
+        # Build author dis_max query (bounded contribution, no single-letter initials)
+        # Returns None for collaboration papers (>50 authors)
+        author_query = _build_author_dis_max_query(
+            search_fields.authors,
+            max_clauses=config.max_author_clauses,
+            min_token_length=config.min_author_token_length,
+        )
+
+        # Build should clauses - author and year contribute to score but aren't required
+        should_clauses = year_should_clauses[:]
+        if author_query:
+            should_clauses.append(author_query)
+
+        search = (
+            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
+            .query(
+                Q(
+                    "bool",
+                    must=[
+                        Q(
+                            "match",
+                            # Use title.content field (stopwords/short tokens removed)
+                            **{
+                                "title.content": {
+                                    "query": search_fields.title,
+                                    "fuzziness": "AUTO",
+                                    "boost": 2.0,
+                                    "operator": "or",
+                                    "minimum_should_match": title_msm,
+                                }
+                            },
+                        )
+                    ],
+                    should=should_clauses,
+                    filter=filters,
+                    must_not=[Q("ids", values=[reference_id])],
                 )
             )
             .source(fields=False)
