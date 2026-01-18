@@ -243,10 +243,10 @@ class ReferenceSQLRepository(
 # - ES score reached 2780 due to stopword title matches + author initial matching
 #
 # Solution layers:
-# 1. Title matching uses title.content field (stopwords removed at index time)
+# 1. Title matching calculates MSM based on content tokens (excludes stopwords)
 # 2. Authors use dis_max (caps contribution to best match, not sum of 2927)
 # 3. Collaboration papers (>50 authors) skip individual author matching
-# 4. Query-side token filtering as backup for non-reindexed data
+# 4. Query-side token filtering for minimum_should_match calculation
 
 _TOKEN_PATTERN = re.compile(r"\b[a-zA-Z]+\b")
 
@@ -306,7 +306,7 @@ def _count_content_tokens(text: str, min_length: int = 3) -> int:
     """
     Count content tokens (excluding stopwords and short tokens).
 
-    Used to compute minimum_should_match for title.content field queries.
+    Used to compute minimum_should_match for title field queries.
 
     Args:
         text: Text to tokenize.
@@ -463,8 +463,8 @@ class ReferenceESRepository(
         """
         Execute strict candidate search with tight year filter.
 
-        Uses title.content field (stopwords removed) with content-token-based MSM
-        and dis_max for authors (bounded score contribution).
+        Uses title field with content-token-based MSM (stopwords excluded from
+        count) and dis_max for authors (bounded score contribution).
         """
         settings = get_settings()
         config = settings.dedup_scoring
@@ -510,15 +510,13 @@ class ReferenceESRepository(
                     must=[
                         Q(
                             "match",
-                            # Use title.content field (stopwords/short tokens removed)
-                            **{
-                                "title.content": {
-                                    "query": search_fields.title,
-                                    "fuzziness": "AUTO",
-                                    "boost": 2.0,
-                                    "operator": "or",
-                                    "minimum_should_match": title_msm,
-                                }
+                            # Match on title field
+                            title={
+                                "query": search_fields.title,
+                                "fuzziness": "AUTO",
+                                "boost": 2.0,
+                                "operator": "or",
+                                "minimum_should_match": title_msm,
                             },
                         )
                     ],
@@ -549,8 +547,8 @@ class ReferenceESRepository(
         """
         Execute relaxed candidate search with optional year filter.
 
-        Uses title.content field (stopwords removed) with content-token-based MSM
-        and dis_max for authors (bounded score contribution).
+        Uses title field with content-token-based MSM (stopwords excluded from
+        count) and dis_max for authors (bounded score contribution).
         """
         settings = get_settings()
         config = settings.dedup_scoring
@@ -606,15 +604,13 @@ class ReferenceESRepository(
                     must=[
                         Q(
                             "match",
-                            # Use title.content field (stopwords/short tokens removed)
-                            **{
-                                "title.content": {
-                                    "query": search_fields.title,
-                                    "fuzziness": "AUTO",
-                                    "boost": 2.0,
-                                    "operator": "or",
-                                    "minimum_should_match": title_msm,
-                                }
+                            # Match on title field
+                            title={
+                                "query": search_fields.title,
+                                "fuzziness": "AUTO",
+                                "boost": 2.0,
+                                "operator": "or",
+                                "minimum_should_match": title_msm,
                             },
                         )
                     ],
