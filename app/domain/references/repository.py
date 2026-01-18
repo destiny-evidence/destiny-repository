@@ -357,22 +357,12 @@ class ReferenceESRepository(
         """
         Fuzzy match candidate fingerprints to existing references.
 
-        This is a high-recall search strategy using a two-pass approach:
+        This is a high-recall search strategy:
 
-        **Pass 1 (Strict):**
         - MUST: fuzzy match on title (requires 50% of terms to match)
-        - SHOULD: partial match on authors list (requires 50% of authors to match)
+        - SHOULD: author matching using dis_max (bounded score contribution)
         - FILTER: publication year within ±1 year range (non-scoring)
         - FILTER: Only canonical references (at rest)
-
-        **Pass 2 (Relaxed) - only if Pass 1 returns no results:**
-        - MUST: fuzzy match on title (requires 30% of terms to match)
-        - SHOULD: partial match on authors list (no minimum)
-        - FILTER: publication year within ±2 year range OR missing year (optional)
-        - FILTER: Only canonical references (at rest)
-
-        This two-pass approach maximizes recall while keeping the strict query
-        fast for the common case where year and title match well.
 
         :param search_fields: The search fields of the potential duplicate.
         :type search_fields: CandidateCanonicalSearchFields
@@ -381,31 +371,10 @@ class ReferenceESRepository(
         :return: A list of search results with IDs and scores.
         :rtype: list[ESScoreResult]
         """
-        # Pass 1: Strict query
-        strict_results = await self._search_candidates_strict(
-            search_fields, reference_id
-        )
-        if strict_results:
-            return strict_results
-
-        # Pass 2: Relaxed query (only if strict found nothing)
-        return await self._search_candidates_relaxed(search_fields, reference_id)
-
-    async def _search_candidates_strict(
-        self,
-        search_fields: CandidateCanonicalSearchFields,
-        reference_id: UUID,
-    ) -> list[ESScoreResult]:
-        """
-        Execute strict candidate search with tight year filter.
-
-        Uses 50% minimum_should_match for title with dis_max for authors
-        (bounded score contribution).
-        """
         settings = get_settings()
         config = settings.dedup_scoring
 
-        # Build year filter only if year is present
+        # Build filters - year filter only if year is present
         filters = [
             Q("term", duplicate_determination=DuplicateDetermination.CANONICAL),
         ]
@@ -439,100 +408,12 @@ class ReferenceESRepository(
                     must=[
                         Q(
                             "match",
-                            # Match on title field
                             title={
                                 "query": search_fields.title,
                                 "fuzziness": "AUTO",
                                 "boost": 2.0,
                                 "operator": "or",
                                 "minimum_should_match": "50%",
-                            },
-                        )
-                    ],
-                    should=should_clauses,
-                    filter=filters,
-                    must_not=[Q("ids", values=[reference_id])],
-                )
-            )
-            .source(fields=False)
-        )
-
-        response = await search.execute()
-
-        return sorted(
-            [
-                ESScoreResult(id=hit.meta.id, score=hit.meta.score)
-                for hit in response.hits
-            ],
-            key=lambda result: result.score,
-            reverse=True,
-        )
-
-    async def _search_candidates_relaxed(
-        self,
-        search_fields: CandidateCanonicalSearchFields,
-        reference_id: UUID,
-    ) -> list[ESScoreResult]:
-        """
-        Execute relaxed candidate search with optional year filter.
-
-        Uses 30% minimum_should_match for title with dis_max for authors
-        (bounded score contribution).
-        """
-        settings = get_settings()
-        config = settings.dedup_scoring
-
-        # Relaxed: wider year range OR missing year (should + min_should_match=0)
-        # Allows matching records with no year, or year ±2
-        filters = [
-            Q("term", duplicate_determination=DuplicateDetermination.CANONICAL),
-        ]
-
-        # Year is now a SHOULD with wider range, not a hard filter
-        year_should_clauses = []
-        if search_fields.publication_year:
-            year_should_clauses.append(
-                Q(
-                    "range",
-                    publication_year={
-                        "gte": search_fields.publication_year - 2,
-                        "lte": search_fields.publication_year + 2,
-                    },
-                )
-            )
-            # Also allow records with no year (missing year should not exclude)
-            year_should_clauses.append(
-                Q("bool", must_not=[Q("exists", field="publication_year")])
-            )
-
-        # Build author dis_max query (bounded contribution, no single-letter initials)
-        # Returns None for collaboration papers (>50 authors)
-        author_query = _build_author_dis_max_query(
-            search_fields.authors,
-            max_clauses=config.max_author_clauses,
-            min_token_length=config.min_author_token_length,
-        )
-
-        # Build should clauses - author and year contribute to score but aren't required
-        should_clauses = year_should_clauses[:]
-        if author_query:
-            should_clauses.append(author_query)
-
-        search = (
-            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
-            .query(
-                Q(
-                    "bool",
-                    must=[
-                        Q(
-                            "match",
-                            # Match on title field
-                            title={
-                                "query": search_fields.title,
-                                "fuzziness": "AUTO",
-                                "boost": 2.0,
-                                "operator": "or",
-                                "minimum_should_match": "30%",
                             },
                         )
                     ],
