@@ -5,8 +5,12 @@ A validator differs from an anti-corruption service in that it returns
 information about the parsing process as well as the converted data.
 """
 
+import html
 import json
+import re
+from dataclasses import dataclass
 from typing import Self
+from urllib.parse import unquote
 from uuid import UUID
 
 import destiny_sdk
@@ -25,6 +29,174 @@ from app.domain.references.models.models import (
 from app.utils.types import JSON
 
 logger = get_logger(__name__)
+
+
+# =============================================================================
+# DOI Cleanup Utilities
+# =============================================================================
+
+
+@dataclass
+class DOICleanupResult:
+    """Result of DOI cleanup attempt."""
+
+    original: str
+    cleaned: str
+    was_modified: bool
+    actions: list[str]
+
+
+# Pattern to extract DOI from text (10.XXXX/... format)
+# Note: DOIs can contain <> characters (SICI-style DOIs) so we only exclude \s and "
+_DOI_PATTERN = re.compile(r"10\.[0-9]{4,9}/[^\s\"]+", re.IGNORECASE)
+
+# Common DOI URL prefixes to strip
+_DOI_PREFIXES = (
+    "doi:",
+    "https://doi.org/",
+    "http://doi.org/",
+    "https://dx.doi.org/",
+    "http://dx.doi.org/",
+)
+
+# DOI prefixes that are unsafe for deduplication (cause mass collisions)
+# - 10.13039: Crossref Funder Registry DOIs (assigned to funders, not papers)
+_UNSAFE_DOI_PREFIXES = ("10.13039/",)
+
+
+def is_doi_safe_for_dedup(doi: str) -> tuple[bool, str | None]:
+    """
+    Check if a DOI is safe to use for deduplication.
+
+    Returns (True, None) if safe, (False, reason) if unsafe.
+
+    Unsafe DOIs include:
+    - Funder DOIs (10.13039/*): Assigned to funding organizations, not papers.
+      Many papers incorrectly have these as their DOI, causing mass collisions.
+    - Template DOIs (containing %): Unresolved placeholder DOIs from broken
+      publishing systems, shared by hundreds of unrelated papers.
+    """
+    # Clean the DOI first
+    cleaned = clean_doi(doi).cleaned
+
+    # Check for funder DOIs
+    for prefix in _UNSAFE_DOI_PREFIXES:
+        if cleaned.startswith(prefix):
+            return False, f"funder_doi:{prefix}"
+
+    # Check for template/placeholder DOIs (contain unresolved % placeholders)
+    if "%" in cleaned:
+        return False, "template_doi"
+
+    return True, None
+
+
+def clean_doi(doi: str) -> DOICleanupResult:  # noqa: PLR0912
+    """
+    Clean a DOI by removing URL cruft (prefixes, query params, encoding, etc.).
+
+    Handles common DOI formats:
+    - doi:10.1234/abc
+    - https://doi.org/10.1234/abc
+    - 10.1234/abc?utm_source=...
+    - 10.1234%2Fabc (percent-encoded)
+    - 10.1234/abc#section (fragments)
+    - 10.1234/abc). (trailing punctuation)
+    """
+    actions: list[str] = []
+    cleaned = doi.strip()
+
+    # Unescape HTML entities first
+    if "&" in cleaned:
+        unescaped = html.unescape(cleaned)
+        if unescaped != cleaned:
+            actions.append("unescape_html")
+            cleaned = unescaped
+
+    # Strip DOI URL prefixes (doi:, https://doi.org/, etc.)
+    lower = cleaned.lower()
+    for prefix in _DOI_PREFIXES:
+        if lower.startswith(prefix):
+            actions.append("strip_prefix")
+            cleaned = cleaned[len(prefix) :].lstrip()
+            lower = cleaned.lower()
+            break
+
+    # URL-decode percent-encoded characters
+    decoded = unquote(cleaned)
+    if decoded != cleaned:
+        actions.append("url_decode")
+        cleaned = decoded
+
+    # Strip fragment (#section)
+    if "#" in cleaned:
+        actions.append("strip_fragment")
+        cleaned = cleaned.split("#", 1)[0]
+
+    # Strip query parameters
+    if "?" in cleaned:
+        actions.append("strip_query_params")
+        cleaned = cleaned.split("?", 1)[0]
+
+    # Strip session IDs (case-insensitive)
+    parts = re.split(r";jsessionid=", cleaned, flags=re.IGNORECASE, maxsplit=1)
+    if len(parts) > 1:
+        actions.append("strip_jsessionid")
+        cleaned = parts[0]
+
+    # Strip tracking garbage
+    for pattern, action_name in [
+        ("&magic=", "magic"),
+        ("&prog=", "prog"),
+        ("&utm", "utm"),
+    ]:
+        if pattern in cleaned:
+            actions.append(f"strip_{action_name}")
+            cleaned = cleaned.split(pattern)[0]
+
+    # Strip URL path suffixes
+    for suffix in ["/abstract", "/full", "/pdf", "/epdf", "/summary"]:
+        if cleaned.endswith(suffix):
+            actions.append(f"strip_{suffix[1:]}")
+            cleaned = cleaned[: -len(suffix)]
+
+    # Strip trailing HTML tags (from malformed source data)
+    # e.g., "10.1234/abc</p" or "10.1234/abc</div>\n</div>"
+    html_tag_match = re.search(r"</\w+.*$", cleaned)
+    if html_tag_match:
+        actions.append("strip_html_tags")
+        cleaned = cleaned[: html_tag_match.start()]
+
+    # Strip trailing punctuation (common from copy/paste)
+    # But preserve balanced parentheses - only strip ) if unbalanced
+    original_len = len(cleaned)
+    # First strip obviously trailing punct that's never valid in DOIs
+    cleaned = cleaned.rstrip(".,;]\"'")
+    # Only strip trailing ) if there are more ) than ( (unbalanced)
+    while cleaned.endswith(")") and cleaned.count(")") > cleaned.count("("):
+        cleaned = cleaned[:-1]
+    if len(cleaned) < original_len:
+        actions.append("strip_trailing_punct")
+
+    cleaned = cleaned.strip()
+
+    # If there's extra text around the DOI, try to extract just the DOI
+    match = _DOI_PATTERN.search(cleaned)
+    if match and match.group(0) != cleaned:
+        actions.append("extract_doi")
+        cleaned = match.group(0)
+
+    return DOICleanupResult(
+        original=doi,
+        cleaned=cleaned,
+        was_modified=cleaned != doi,
+        actions=actions,
+    )
+
+
+# =============================================================================
+# Validators
+# =============================================================================
 
 
 class ReferenceFileInputValidator(BaseModel):
@@ -55,7 +227,25 @@ class ExternalIdentifierParseResult(BaseModel):
 
     @classmethod
     def from_raw(cls, raw_identifier: JSON, entry_ref: int) -> Self:
-        """Parse an external identifier from raw JSON."""
+        """
+        Parse an external identifier from raw JSON.
+
+        For DOI identifiers, applies cleanup (removing URL cruft, query params, etc.)
+        and safety checks (rejecting funder DOIs and template DOIs that cause mass
+        collisions during deduplication).
+        """
+        # Preprocess DOIs before SDK validation
+        if (
+            isinstance(raw_identifier, dict)
+            and raw_identifier.get("identifier_type") == "doi"
+        ):
+            raw_identifier = cls._preprocess_doi(raw_identifier, entry_ref)
+            if raw_identifier is None:
+                # DOI was unsafe (funder/template) - skip this identifier
+                return cls(
+                    error=f"Identifier {entry_ref}: Skipped (unsafe DOI filtered)"
+                )
+
         try:
             identifier: ExternalIdentifier = ExternalIdentifierAdapter.validate_python(
                 raw_identifier
@@ -88,6 +278,51 @@ Error:
 {error}
 """
             )
+
+    @classmethod
+    def _preprocess_doi(cls, raw_identifier: dict, entry_ref: int) -> dict | None:
+        """
+        Clean and validate a DOI identifier before SDK parsing.
+
+        Returns the cleaned identifier dict, or None if the DOI should be skipped
+        (unsafe funder/template DOIs).
+        """
+        raw_doi = raw_identifier.get("identifier", "")
+        if not raw_doi:
+            return raw_identifier
+
+        # Clean the DOI first (strip URL cruft, query params, etc.)
+        cleanup = clean_doi(raw_doi)
+        cleaned_doi = cleanup.cleaned
+
+        # Check if unsafe (funder/template DOI) - skip entirely
+        is_safe, reason = is_doi_safe_for_dedup(cleaned_doi)
+        if not is_safe:
+            logger.info(
+                "Skipping unsafe DOI on import",
+                extra={
+                    "original_doi": raw_doi,
+                    "cleaned_doi": cleaned_doi,
+                    "reason": reason,
+                    "entry_ref": entry_ref,
+                },
+            )
+            return None
+
+        # Return cleaned DOI if modified
+        if cleanup.was_modified:
+            logger.debug(
+                "Cleaned DOI on import",
+                extra={
+                    "original": raw_doi,
+                    "cleaned": cleaned_doi,
+                    "actions": cleanup.actions,
+                    "entry_ref": entry_ref,
+                },
+            )
+            return {**raw_identifier, "identifier": cleaned_doi}
+
+        return raw_identifier
 
 
 class EnhancementParseResult(BaseModel):
