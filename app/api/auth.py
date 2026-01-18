@@ -119,7 +119,6 @@ class StrategyAuth(AuthMethod):
 
             def auth_strategy():
                 return AzureJwtAuth(
-                    tenant_id=settings.tenant_id,
                     application_id=settings.application_id,
                     scope=AuthScopes.READ,
                 )
@@ -169,7 +168,6 @@ class CachingStrategyAuth(StrategyAuth):
 
             def auth_strategy():
                 return AzureJwtAuth(
-                    tenant_id=settings.tenant_id,
                     application_id=settings.application_id,
                     scope=AuthScopes.READ,
                 )
@@ -228,7 +226,6 @@ class AzureJwtAuth(AuthMethod):
 
             def auth_strategy():
                 return AzureJwtAuth(
-                    tenant_id=settings.tenant_id,
                     application_id=settings.application_id,
                     scope=AuthScopes.READ,
                 )
@@ -545,7 +542,6 @@ class HybridAuth(AuthMethod):
             ) -> bool:
                 hybrid_auth = HybridAuth(
                     jwt_auth=AzureJwtAuth(
-                        tenant_id=settings.tenant_id,
                         application_id=settings.application_id,
                         scope=AuthScopes.READ,
                     ),

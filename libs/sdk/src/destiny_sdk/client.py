@@ -213,8 +213,8 @@ class OAuthMiddleware(httpx.Auth):
 
         auth = OAuthMiddleware(
             azure_client_id="client-id",
-            azure_application_id="login-url",
-            azure_tenant_id="tenant-id",
+            azure_application_id="application-id",
+            azure_login_url="login-url",
         )
 
     **Confidential Client Application (client credentials)**
@@ -260,11 +260,9 @@ class OAuthMiddleware(httpx.Auth):
         """
         Initialize the auth middleware.
 
-        :param tenant_id: The OAuth2 tenant ID.
-        :type tenant_id: str
-        :param client_id: The OAuth2 client ID.
-        :type client_id: str
-        :param application_id: The application ID for the Destiny API.
+        :param azure_client_id: The OAuth2 client ID.
+        :type azure_client_id: str
+        :param azure_application_id: The application ID for the Destiny API.
         :type application_id: str
         :param azure_login_url: The Azure login URL.
         :type azure_login_url: str
