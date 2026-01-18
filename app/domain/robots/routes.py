@@ -54,7 +54,6 @@ def robot_service(
 def choose_auth_strategy_robot_writer() -> AuthMethod:
     """Choose robot writer for our authorization strategy."""
     return choose_auth_strategy(
-        tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScope.ROBOT_WRITER,
         bypass_auth=settings.running_locally,
