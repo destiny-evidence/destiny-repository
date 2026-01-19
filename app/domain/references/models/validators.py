@@ -297,10 +297,11 @@ Error:
         Clean and validate a DOI identifier before SDK parsing.
 
         Uses a repair-on-failure approach:
-        1. Try SDK validation first - don't clean already-valid DOIs
-        2. If valid, check safety only
-        3. If invalid, try cleaning and retry validation
-        4. Only apply transforms if original fails AND cleaned passes
+        1. Always unescape HTML entities first (data corruption, not validity)
+        2. Try SDK validation - don't clean already-valid DOIs
+        3. If valid, check safety only
+        4. If invalid, try cleaning and retry validation
+        5. Only apply transforms if original fails AND cleaned passes
 
         Returns the (possibly cleaned) identifier dict, or None if the DOI should
         be skipped (unsafe funder/template DOIs).
@@ -310,6 +311,20 @@ Error:
         # Type guard: let SDK validation handle non-string identifiers
         if not isinstance(raw_doi, str) or not raw_doi:
             return raw_identifier
+
+        # Always unescape HTML entities first - this is data corruption, not validity.
+        # HTML entities like &amp; pass SDK validation but are encoding artifacts.
+        if "&" in raw_doi:
+            unescaped = html.unescape(raw_doi)
+            if unescaped != raw_doi:
+                logger.debug(
+                    "Unescaped HTML entities in DOI",
+                    original=raw_doi[:256],
+                    unescaped=unescaped[:256],
+                    entry_ref=entry_ref,
+                )
+                raw_doi = unescaped
+                raw_identifier = {**raw_identifier, "identifier": raw_doi}
 
         # Try validation first - don't clean already-valid DOIs
         original_valid = False
