@@ -42,10 +42,11 @@
 
 These DOI patterns cause mass collisions and must be skipped during DOI-based deduplication. References with these DOIs fall through to title-based deduplication instead.
 
-| Pattern                   |  Count | Issue                         |
-| ------------------------- | -----: | ----------------------------- |
-| Funder DOIs (10.13039/\*) |    297 | Crossref Funder Registry DOIs |
-| Template DOIs (contain %) | 16,405 | Unresolved placeholder DOIs   |
+| Pattern                   |      Count | Issue                                                      |
+| ------------------------- | ---------: | ---------------------------------------------------------- |
+| Funder DOIs (10.13039/\*) |        297 | Crossref Funder Registry DOIs                              |
+| Template DOIs (contain %) |     16,405 | Unresolved placeholder DOIs                                |
+| W-ID < 40M DOIs           | ~1,111,353 | [PMID/W-ID collision bug](#w-idpmid-doi-misassignment-bug) |
 
 **Why These DOIs Are Problematic:**
 
@@ -66,7 +67,7 @@ This means we cannot easily look up "correct" DOIs via PubMed/PMC crosswalk.
 
 **Remediation Strategy:**
 
-1. **Immediate**: Skip these DOIs during deduplication, fall through to title-based matching
+1. **At import time**: Filter these DOIs during ingestion. Records fall through to title-based deduplication.
 2. **Robot fix**: A robot can attempt to look up correct DOIs via Crossref/OpenAlex API using title/authors. With only ~16K affected records, this is feasible to run as a batch job
 
 ## Title Quality Analysis
@@ -148,6 +149,58 @@ These generic titles appear across many records and require careful handling dur
 | NULL or empty IDs   |     1 |
 | Non-standard format |     0 |
 | Duplicate W-IDs     |     0 |
+
+## W-ID/PMID DOI Misassignment Bug
+
+**Severity:** Critical
+**Affected Records:** ~1,111,353 (0.24% of corpus)
+**Status:** Proposed (not yet implemented)
+**Planned location:** OpenAlex import boundary (where W-ID is available)
+
+### Description
+
+Works with W-ID < 40,000,000 have DOIs incorrectly assigned from PubMed articles where PMID equals the W-ID numerically. This is a 100% mismatch rate - every DOI on these records is wrong.
+
+### Root Cause
+
+OpenAlex pipeline bug used W-ID as PMID lookup key:
+
+```text
+W{X} → "What's the DOI for PMID {X}?" → wrong DOI assigned
+```
+
+### Why 40M Threshold
+
+- PubMed IDs (PMIDs) cap at ~40 million
+- W-IDs above 40M cannot numerically match any PMID
+- Only low W-IDs (legacy records) are affected
+
+### Example
+
+| Field           | W1901568 (OpenAlex)             | PMID 1901568 (PubMed)             |
+| --------------- | ------------------------------- | --------------------------------- |
+| Title           | "Spanish archival records..."   | "Bacillus subtilis competence..." |
+| DOI in OpenAlex | 10.1128/jb.173.6.1867-1876.1991 | (correct for PubMed record)       |
+| Actual DOI      | None                            | 10.1128/jb.173.6.1867-1876.1991   |
+
+The Spanish archival work has the Bacillus subtilis paper's DOI because 1901568 = 1901568.
+
+### Verification
+
+- 53/53 sampled W-ID < 40M records with DOIs validated against Crossref
+- 100% mismatch rate (DOI belongs to different paper)
+- Reproducible: `uv run python -m tools.source_quality.analyze_work_ids`
+
+### Mitigation
+
+**At import time:** Discard DOI field for OpenAlex works where W-ID < 40,000,000.
+
+These records fall through to title-based deduplication instead of DOI-based shortcuts.
+
+### References
+
+- Source Quality Registry: `registry.yaml` (`openalex_wid_pmid_doi_bug`)
+- Casebook Taxonomy: `.casebook/docs/taxonomy.md` (`OPENALEX_WID_PMID_DOI_BUG`)
 
 ## Post-Ingestion Data Cleanup
 
