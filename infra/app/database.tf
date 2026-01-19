@@ -179,7 +179,7 @@ resource "azurerm_container_app_job" "database_migrator" {
       }
 
       env {
-        name = "DB_CONFIG"
+        name        = "DB_CONFIG"
         secret_name = "db-config"
       }
 
