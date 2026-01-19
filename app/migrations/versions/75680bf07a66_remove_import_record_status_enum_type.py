@@ -1,9 +1,9 @@
 """
-Remove enhancement_type enum
+Remove import record status enum type
 
-Revision ID: eb47e22ea5af
-Revises: 41a6980bb04e
-Create Date: 2025-11-19 21:25:51.203209+00:00
+Revision ID: 75680bf07a66
+Revises: 402a31ad663e
+Create Date: 2026-01-19 00:18:09.727334+00:00
 
 """
 from collections.abc import Sequence
@@ -14,19 +14,19 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = 'eb47e22ea5af'
-down_revision: Union[str, None] = '41a6980bb04e'
+revision: str = '75680bf07a66'
+down_revision: Union[str, None] = '402a31ad663e'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.alter_column('enhancement', 'enhancement_type', type_=sa.String(), existing_nullable=False)
-    op.execute("DROP TYPE IF EXISTS enhancement_type")
+    op.alter_column('import_record', 'status', type_=sa.String(), existing_nullable=False)
+    op.execute("DROP TYPE IF EXISTS import_record_status")
 
 
 def downgrade() -> None:
-    # Not safely downgradable. We can create the enum type, but can't
+    # Cannot be safely downgraded. We can create the enum type, but can't
     # apply it to the table without triggering the problem
     # we're trying to avoid. See also https://github.com/destiny-evidence/destiny-repository/pull/343#discussion_r2458931314
     pass
