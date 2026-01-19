@@ -1,13 +1,13 @@
 locals {
   database_migrator_name = "db-migrator-${var.environment}"
 
-  prod_db_storage_mb = 65536
+  prod_db_storage_mb = 131072
   dev_db_storage_mb  = 32768
 
   # IPOS tiers for postgresql flexible server
   # We use the default for our storage size as defined at
   # https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/postgresql_flexible_server#storage_tier-defaults-based-on-storage_mb
-  prod_db_storage_tier = "P6"
+  prod_db_storage_tier = "P10"
   dev_db_storage_tier  = "P4"
 }
 
