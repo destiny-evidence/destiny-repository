@@ -357,10 +357,7 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
     robot_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
 
     request_status: Mapped[EnhancementRequestStatus] = mapped_column(
-        ENUM(
-            *[status.value for status in EnhancementRequestStatus],
-            name="enhancement_request_status",
-        )
+        String, nullable=False
     )
 
     source: Mapped[str | None] = mapped_column(String, nullable=True)
