@@ -54,6 +54,8 @@ These DOI patterns cause mass collisions and must be skipped during DOI-based de
 
 2. **Template DOIs (containing %)** are unresolved URL-encoded placeholders from broken publishing systems (e.g., `10.5007/%x`, `10.1234/%DIFFKEY%`). These represent DOI templates that were never populated with actual identifiers. Multiple unrelated papers share the same template DOI, causing mass false-positive matches.
 
+3. **W-ID < 40M DOIs** are affected by an OpenAlex pipeline bug where legacy Work IDs were incorrectly used as PubMed ID lookup keys. Since W-ID 1901568 ≠ PMID 1901568, every DOI on these ~1.1M records belongs to a completely different paper. See [W-ID/PMID DOI Misassignment Bug](#w-idpmid-doi-misassignment-bug) for details.
+
 **Alternative Identifier Availability:**
 
 Query of OpenAlex data shows papers with funder/template DOIs rarely have alternative identifiers:
@@ -67,8 +69,11 @@ This means we cannot easily look up "correct" DOIs via PubMed/PMC crosswalk.
 
 **Remediation Strategy:**
 
-1. **At import time**: Filter these DOIs during ingestion. Records fall through to title-based deduplication.
-2. **Robot fix**: A robot can attempt to look up correct DOIs via Crossref/OpenAlex API using title/authors. With only ~16K affected records, this is feasible to run as a batch job
+1. **Funder DOIs**: Discard DOI if prefix is `10.13039/` (automated)
+2. **Template DOIs**: Discard DOI if it contains `%` (automated)
+3. **W-ID bug DOIs**: Check against pre-computed list of ~554K confirmed buggy W-IDs (see [W-ID/PMID DOI Misassignment Bug](#w-idpmid-doi-misassignment-bug))
+
+Records with discarded DOIs fall through to title-based deduplication. The OpenAlex W-ID remains available for matching against other OpenAlex imports.
 
 ## Title Quality Analysis
 
@@ -153,21 +158,27 @@ These generic titles appear across many records and require careful handling dur
 ## W-ID/PMID DOI Misassignment Bug
 
 **Severity:** Critical
-**Affected Records:** ~1,111,353 (0.24% of corpus)
-**Status:** Proposed (not yet implemented)
-**Planned location:** OpenAlex import boundary (where W-ID is available)
+**Affected Records:** ~553,674 confirmed buggy (of ~964K W-ID < 35M with DOIs)
+**Upper Bound:** W35,102,708 (last confirmed buggy W-ID)
+**Status:** Aspirational - requires pre-computed correction list
+**Origin:** Legacy MAG (Microsoft Academic Graph) records inherited by OpenAlex
 
 ### Description
 
-Works with W-ID < 40,000,000 have DOIs incorrectly assigned from PubMed articles where PMID equals the W-ID numerically. This is a 100% mismatch rate - every DOI on these records is wrong.
+Legacy MAG works with low W-IDs have DOIs incorrectly assigned from PubMed articles where PMID equals the W-ID numerically. These are early MAG records (created ~2016) that were corrupted during DOI enrichment.
 
 ### Root Cause
 
-OpenAlex pipeline bug used W-ID as PMID lookup key:
+OpenAlex DOI enrichment incorrectly used the numeric W-ID as a PubMed lookup key:
 
 ```text
-W{X} → "What's the DOI for PMID {X}?" → wrong DOI assigned
+W{X} (e.g., W1901568)
+  → Query PubMed: "What's the DOI for PMID {X}?"
+  → PubMed returns DOI for PMID 1901568 (a completely different paper)
+  → Wrong DOI assigned to W1901568
 ```
+
+**The telltale sign:** For affected records, the DOI resolves to a paper whose PMID equals the W-ID number.
 
 ### Why 40M Threshold
 
@@ -187,15 +198,41 @@ The Spanish archival work has the Bacillus subtilis paper's DOI because 1901568 
 
 ### Verification
 
-- 53/53 sampled W-ID < 40M records with DOIs validated against Crossref
-- 100% mismatch rate (DOI belongs to different paper)
+**Validated 2026-01-19:** Cross-referenced OpenAlex W-ID < 40M records against PubMed:
+
+1. Joined OpenAlex records (W-ID < 40M with DOIs) to PubMed where PMID = W-ID number
+2. Found DOI matches with completely different titles:
+   - W10563742: OA="A System Call Tracer for UNIX" → DOI points to PM="Nosocomial infections due to Stenotrophmonas"
+   - W10563622: OA="Spray Pyrolysis Deposition..." → DOI points to PM="Childhood-onset epilepsy..."
+3. OpenAlex `created_date` = 2016-06-24 for these records (early MAG era)
+
+**Conclusion:** These are legitimate early works that were corrupted by DOI enrichment, NOT W-IDs created from PMIDs. The works existed first; wrong DOIs were assigned later.
+
+- 15/30 sampled records had same DOI but completely different titles (50% visible mismatch rate)
 - Reproducible: `uv run python -m tools.source_quality.analyze_work_ids`
 
 ### Mitigation
 
-**At import time:** Discard DOI field for OpenAlex works where W-ID < 40,000,000.
+**Targeted approach (not blanket filter):** Pre-compute list of confirmed buggy W-IDs and filter only those at import time.
 
-These records fall through to title-based deduplication instead of DOI-based shortcuts.
+Why not blanket W-ID < 40M filter:
+
+- ~964K records have W-ID < 35M with DOIs
+- Only ~554K (57.5%) are confirmed buggy
+- ~410K (42.5%) may have legitimate DOIs from other sources
+
+**Pre-import step:** Generate correction list by joining OpenAlex to PubMed:
+
+```sql
+-- Confirmed buggy: OA DOI matches PubMed DOI for PMID = W-ID
+SELECT wid_num
+FROM openalex_works oa
+JOIN pubmed pm ON CAST(REPLACE(oa.id, 'W', '') AS VARCHAR) = pm.pmid
+WHERE oa.doi = pm.doi  -- DOI match = bug confirmed
+  AND CAST(REPLACE(oa.id, 'W', '') AS BIGINT) <= 35102708  -- Last confirmed buggy W-ID
+```
+
+**At import time:** Check against pre-computed set of ~554K buggy W-IDs.
 
 ### References
 
