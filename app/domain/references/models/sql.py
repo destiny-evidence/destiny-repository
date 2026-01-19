@@ -498,10 +498,7 @@ class ReferenceDuplicateDecision(
         ARRAY(UUID), nullable=True
     )
     duplicate_determination: Mapped[DuplicateDetermination] = mapped_column(
-        ENUM(
-            *[status.value for status in DuplicateDetermination],
-            name="duplicate_determination",
-        )
+        String, nullable=False
     )
     canonical_reference_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID,
