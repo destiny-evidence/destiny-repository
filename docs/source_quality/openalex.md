@@ -38,6 +38,39 @@
 | SICI-style DOIs (::aid-...>) |    328,893 |    0.1140% |
 | DOIs with parentheses        | 10,330,671 |    3.5819% |
 
+**SICI-style DOIs** use a legacy format from Wiley with `#` as a checksum character:
+
+```text
+10.1002/1096-8652(200007)64:3<210::aid-ajh13>3.0.co;2-#
+```
+
+This `#` is valid and must NOT be stripped.
+
+### Fragment Identifiers (#)
+
+OpenAlex contains two types of `#` in DOIs:
+
+**1. DataCite granular identifiers (valid - keep):**
+
+```text
+10.15475/dhz/kfn/1918/7/24#article-93781ded3680878c30a32ce9d62e8e0d
+10.15475/dhz/kfn/1915/11/27#page-6
+```
+
+These are sub-resource DOIs from DataCite (e.g., German historical newspapers with per-article/per-page DOIs). Identified by `is_xpac: True` in OpenAlex. The fragment points to a specific article or page within a larger work.
+
+**2. URL pollution fragments (invalid - strip):**
+
+```text
+10.1007/s00170-021-08362-y#article-info     ← Springer website anchor
+10.1186/s12888-020-02511-5#article-info     ← BMC website anchor
+10.1007/s11422-011-9339-1?null#page-1       ← query param + fragment
+```
+
+These are website navigation anchors accidentally included during DOI extraction. Common patterns: `#article-info`, `#references`, `#abstract`, `#supplementary`.
+
+**Cleanup rule:** Strip `#` fragments EXCEPT for known DataCite granular patterns (`#article-{hash}`, `#page-N` on DataCite prefixes).
+
 ### Unsafe DOIs for Deduplication
 
 These DOI patterns cause mass collisions and must be skipped during DOI-based deduplication. References with these DOIs fall through to title-based deduplication instead.
