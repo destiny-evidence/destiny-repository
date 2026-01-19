@@ -273,10 +273,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
     __tablename__ = "enhancement"
 
     visibility: Mapped[Visibility] = mapped_column(
-        ENUM(
-            *[status.value for status in Visibility],
-            name="visibility",
-        ),
+        String,
         nullable=False,
     )
     source: Mapped[str] = mapped_column(String, nullable=False)
