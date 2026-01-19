@@ -21,30 +21,7 @@ ImportRecord (one per import job)
 
 ## Status Enums
 
-See `app/domain/imports/models/models.py`:
-
-### ImportRecordStatus
-
-- **CREATED** - No processing started
-- **STARTED** - Processing in progress
-- **COMPLETED** - All batches processed
-
-### ImportBatchStatus
-
-- **CREATED** - No processing started
-- **STARTED** - Processing in progress
-- **FAILED** - Processing failed
-- **PARTIALLY_FAILED** - Some references failed
-- **COMPLETED** - All references processed
-
-### ImportResultStatus
-
-- **CREATED** - Not yet processed
-- **STARTED** - Currently processing
-- **COMPLETED** - Reference created successfully
-- **PARTIALLY_FAILED** - Reference created but some enhancements/identifiers failed
-- **FAILED** - Reference creation failed
-- **RETRYING** - Failed but being retried
+See `app/domain/imports/models/models.py` for `ImportRecordStatus`, `ImportBatchStatus`, and `ImportResultStatus` enums. Status names are self-explanatory (CREATED → STARTED → COMPLETED/FAILED).
 
 ## Deadlock Handling
 

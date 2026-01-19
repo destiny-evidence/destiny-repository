@@ -8,15 +8,7 @@ Enhancements are metadata layers attached to references. Multiple enhancements o
 
 ## Enhancement Types
 
-See `libs/sdk/src/destiny_sdk/enhancements.py:EnhancementType`:
-
-- **BIBLIOGRAPHIC** - Title, authors, publication year, DOI
-- **ABSTRACT** - Abstract text
-- **ANNOTATION** - Labels, scores, classifications (by scheme)
-- **LOCATION** - URLs, file locations
-- **REFERENCE_ASSOCIATION** - Links to other references
-- **RAW** - Arbitrary unstructured data
-- **FULL_TEXT** - Full text content (not yet implemented)
+See `libs/sdk/src/destiny_sdk/enhancements.py:EnhancementType` for the enum values. Each type corresponds to a different metadata category (bibliographic, abstract, annotations, etc.).
 
 ## Projection Logic
 
@@ -34,17 +26,7 @@ This means:
 
 ## Pending Enhancements
 
-`PendingEnhancement` tracks enhancement requests sent to robots. States in `app/domain/references/models/models.py:PendingEnhancementStatus`:
-
-- **PENDING** - Waiting to be processed
-- **PROCESSING** - Currently being processed by robot
-- **IMPORTING** - Being imported into the system
-- **INDEXING** - Being indexed in Elasticsearch
-- **INDEXING_FAILED** - Indexing failed
-- **COMPLETED** - Successfully processed
-- **FAILED** - Processing failed
-- **DISCARDED** - Skipped (exact duplicate)
-- **EXPIRED** - Lease expired during processing
+`PendingEnhancement` tracks enhancement requests sent to robots. See `app/domain/references/models/models.py:PendingEnhancementStatus` for states. The lifecycle is: PENDING → PROCESSING → IMPORTING → INDEXING → COMPLETED (with FAILED/EXPIRED/DISCARDED as terminal error states).
 
 ## Related Files
 

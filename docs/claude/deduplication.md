@@ -10,16 +10,12 @@ Deduplication ensures references aren't duplicated in the corpus. The main servi
 
 ### DuplicateDetermination States
 
-See `app/domain/references/models/models.py:DuplicateDetermination` for the enum. States include:
+See `app/domain/references/models/models.py:DuplicateDetermination` for the enum. Key concepts:
 
-- **PENDING** - Awaiting deduplication processing
-- **EXACT_DUPLICATE** - Reference has identical identifiers to an existing reference (skipped on import)
-- **CANONICAL** - This is the authoritative version
-- **DUPLICATE** - Confirmed duplicate of a canonical reference
-- **UNSEARCHABLE** - Cannot be searched for duplicates (no usable identifiers)
-- **NOMINATED** - Candidate duplicates found, awaiting confirmation
-- **UNRESOLVED** - Automatic resolution attempts unsuccessful
+- **CANONICAL** vs **DUPLICATE** - A canonical is the authoritative version; duplicates point to their canonical
+- **EXACT_DUPLICATE** - Skipped on import (identical identifiers to existing reference)
 - **DECOUPLED** - Requires manual review (multiple potential canonicals found, or chain too deep)
+- **UNSEARCHABLE** - No usable identifiers for deduplication lookup
 
 ### Canonical vs Duplicate
 
