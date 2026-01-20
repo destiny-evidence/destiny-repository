@@ -226,3 +226,48 @@ def test_parsing_raw_data_incorrectly_configured():
     """
     with pytest.raises(RuntimeError):
         EPPIParser(include_raw_data=True, source_export_date=datetime.now(tz=UTC))
+
+
+def test_parse_reference_with_all_enhancements():
+    """Test parse_reference correctly parses a single ref with all enhancement types."""
+    ref_data = {
+        "Title": "Test Article",
+        "Abstract": "This is a test abstract.",
+        "Year": "2023",
+        "Authors": "Smith, J.; Doe, A.",
+        "Publisher": "Test Publisher",
+        "DOI": "https://doi.org/10.1234/test.5678",
+    }
+
+    parser = EPPIParser(tags=["test-tag"])
+    reference = parser.parse_reference(
+        ref_data=ref_data,
+        source="test-source",
+        robot_version="test-robot-version",
+    )
+
+    assert reference.visibility == "public"
+    assert len(reference.identifiers) == 1
+    assert reference.identifiers[0].identifier_type == ExternalIdentifierType.DOI
+
+    assert len(reference.enhancements) == 3
+    assert reference.enhancements[0].source == "test-source"
+    assert reference.enhancements[0].robot_version == "test-robot-version"
+
+    enhancement_types = [e.content.enhancement_type for e in reference.enhancements]
+    assert EnhancementType.ABSTRACT in enhancement_types
+    assert EnhancementType.BIBLIOGRAPHIC in enhancement_types
+    assert EnhancementType.ANNOTATION in enhancement_types
+
+
+def test_parse_reference_minimal_data():
+    """Test that parse_reference works with minimal reference data."""
+    ref_data = {
+        "DOI": "https://doi.org/10.1234/test.5678",
+    }
+
+    parser = EPPIParser()
+    reference = parser.parse_reference(ref_data=ref_data)
+
+    assert len(reference.identifiers) == 1
+    assert len(reference.enhancements) == 0

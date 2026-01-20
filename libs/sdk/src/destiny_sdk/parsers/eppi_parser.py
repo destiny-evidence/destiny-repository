@@ -210,6 +210,107 @@ class EPPIParser:
             annotations=annotations,
         )
 
+    def parse_reference(
+        self,
+        ref_data: dict[str, Any],
+        raw_enhancement_metadata: dict[str, Any] | None = None,
+        source: str | None = None,
+        robot_version: str | None = None,
+    ) -> ReferenceFileInput:
+        """
+        Parse a single EPPI reference dict and return a ReferenceFileInput object.
+
+        Args:
+            ref_data (dict[str, Any]): Single reference data from EPPI export.
+            raw_enhancement_metadata (dict[str, Any] | None): Optional metadata.
+            source (str | None): Optional source string for deduplication/provenance.
+            robot_version (str | None): Optional robot version string for provenance.
+
+        Returns:
+            ReferenceFileInput: Parsed reference.
+
+        Raises:
+            ExternalIdentifierNotFoundError: If no valid external identifiers found.
+
+        """
+        parser_source = source if source is not None else self.parser_source
+
+        enhancement_contents = [
+            content
+            for content in [
+                self._parse_abstract_enhancement(ref_data),
+                self._parse_bibliographic_enhancement(ref_data),
+                self._create_annotation_enhancement(),
+            ]
+            if content
+        ]
+
+        if self.include_raw_data:
+            raw_enhancement = self._parse_raw_enhancement(
+                ref_to_import=ref_data,
+                raw_enhancement_metadata=raw_enhancement_metadata or {},
+            )
+
+            if raw_enhancement:
+                enhancement_contents.append(raw_enhancement)
+
+        enhancements = [
+            EnhancementFileInput(
+                source=parser_source,
+                visibility=Visibility.PUBLIC,
+                content=content,
+                robot_version=robot_version,
+            )
+            for content in enhancement_contents
+        ]
+
+        return ReferenceFileInput(
+            visibility=Visibility.PUBLIC,
+            identifiers=self._parse_identifiers(ref_to_import=ref_data),
+            enhancements=enhancements,
+        )
+
+    def parse_full_eppi_json(
+        self,
+        data: dict,
+        source: str | None = None,
+        robot_version: str | None = None,
+    ) -> tuple[list[ReferenceFileInput], list[dict]]:
+        """
+        Parse a full EPPI JSON (as dict), return a list of ReferenceFileInput objects.
+
+        Args:
+            data (dict): Parsed EPPI JSON export data.
+            source (str | None): Optional source string for deduplication/provenance.
+            robot_version (str | None): Optional robot version string for provenance.
+
+        Returns:
+            tuple[list[ReferenceFileInput], list[dict]]: Tuple of successfully parsed
+                references and failed reference data.
+
+        """
+        raw_enhancement_metadata = None
+        if self.include_raw_data:
+            codesets = [codeset.get("SetId") for codeset in data.get("CodeSets", [])]
+            raw_enhancement_metadata = {"codeset_ids": codesets}
+
+        references = []
+        failed_refs = []
+
+        for ref_to_import in data.get("References", []):
+            try:
+                reference = self.parse_reference(
+                    ref_data=ref_to_import,
+                    raw_enhancement_metadata=raw_enhancement_metadata,
+                    source=source,
+                    robot_version=robot_version,
+                )
+                references.append(reference)
+            except ExternalIdentifierNotFoundError:
+                failed_refs.append(ref_to_import)
+
+        return references, failed_refs
+
     def parse_data(
         self,
         data: dict,
@@ -218,6 +319,10 @@ class EPPIParser:
     ) -> tuple[list[ReferenceFileInput], list[dict]]:
         """
         Parse an EPPI JSON export dict and return a list of ReferenceFileInput objects.
+
+        NOTE: keeping for backwards compatibility.
+        @Adam-Hammo could consider adding deprecation flag, but not sure
+        how we want to do that in destiny.
 
         Args:
             data (dict): Parsed EPPI JSON export data.
@@ -229,56 +334,8 @@ class EPPIParser:
             list[ReferenceFileInput]: List of parsed references from the data.
 
         """
-        parser_source = source if source is not None else self.parser_source
-
-        if self.include_raw_data:
-            codesets = [codeset.get("SetId") for codeset in data.get("CodeSets", [])]
-            raw_enhancement_metadata = {"codeset_ids": codesets}
-
-        references = []
-        failed_refs = []
-        for ref_to_import in data.get("References", []):
-            try:
-                enhancement_contents = [
-                    content
-                    for content in [
-                        self._parse_abstract_enhancement(ref_to_import),
-                        self._parse_bibliographic_enhancement(ref_to_import),
-                        self._create_annotation_enhancement(),
-                    ]
-                    if content
-                ]
-
-                if self.include_raw_data:
-                    raw_enhancement = self._parse_raw_enhancement(
-                        ref_to_import=ref_to_import,
-                        raw_enhancement_metadata=raw_enhancement_metadata,
-                    )
-
-                    if raw_enhancement:
-                        enhancement_contents.append(raw_enhancement)
-
-                enhancements = [
-                    EnhancementFileInput(
-                        source=parser_source,
-                        visibility=Visibility.PUBLIC,
-                        content=content,
-                        robot_version=robot_version,
-                    )
-                    for content in enhancement_contents
-                ]
-
-                references.append(
-                    ReferenceFileInput(
-                        visibility=Visibility.PUBLIC,
-                        identifiers=self._parse_identifiers(
-                            ref_to_import=ref_to_import
-                        ),
-                        enhancements=enhancements,
-                    )
-                )
-
-            except ExternalIdentifierNotFoundError:
-                failed_refs.append(ref_to_import)
-
-        return references, failed_refs
+        return self.parse_full_eppi_json(
+            data=data,
+            source=source,
+            robot_version=robot_version,
+        )

@@ -5,7 +5,7 @@ import json
 from enum import StrEnum, auto
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import UUID4, BaseModel, Field, HttpUrl, model_validator
+from pydantic import UUID4, BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 from destiny_sdk.core import _JsonlFileInputMixIn
 from destiny_sdk.identifiers import Identifier
@@ -466,6 +466,9 @@ class Enhancement(_JsonlFileInputMixIn, BaseModel):
 
 class EnhancementFileInput(BaseModel):
     """Enhancement model used to marshall a file input to new references."""
+
+    model_config = ConfigDict(populate_by_name=True)
+    # (nik) adding this to handle the alias_generator.
 
     source: str = Field(
         description="The enhancement source for tracking provenance.",
