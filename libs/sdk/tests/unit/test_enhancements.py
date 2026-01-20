@@ -19,6 +19,10 @@ def test_bibliographic_metadata_enhancement_valid():
         publication_year=2020,
         publisher="Test Publisher",
         title="Test Title",
+        volume="42",
+        issue="7",
+        first_page="495",
+        last_page="512",
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
         id=uuid.uuid4(),
@@ -33,6 +37,25 @@ def test_bibliographic_metadata_enhancement_valid():
         enhancement.content.enhancement_type
         == destiny_sdk.enhancements.EnhancementType.BIBLIOGRAPHIC
     )
+    assert enhancement.content.volume == "42"
+    assert enhancement.content.issue == "7"
+    assert enhancement.content.first_page == "495"
+    assert enhancement.content.last_page == "512"
+
+
+def test_bibliographic_metadata_enhancement_non_numeric_biblio_fields():
+    """Test that non-numeric biblio fields are accepted (per OpenAlex spec)."""
+    bibliographic = destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+        title="Test Title",
+        volume="Spring",
+        issue="Special Issue",
+        first_page="A1",
+        last_page="A15",
+    )
+    assert bibliographic.volume == "Spring"
+    assert bibliographic.issue == "Special Issue"
+    assert bibliographic.first_page == "A1"
+    assert bibliographic.last_page == "A15"
 
 
 def test_abstract_content_enhancement_valid():

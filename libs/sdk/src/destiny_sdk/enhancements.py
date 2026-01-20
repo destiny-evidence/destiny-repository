@@ -111,6 +111,22 @@ other works have cited this work
         description="The name of the entity which published the version of record.",
     )
     title: str | None = Field(default=None, description="The title of the reference.")
+    volume: str | None = Field(
+        default=None,
+        description="The volume number of the journal/publication.",
+    )
+    issue: str | None = Field(
+        default=None,
+        description="The issue number of the journal/publication.",
+    )
+    first_page: str | None = Field(
+        default=None,
+        description="The first page number of the reference in the publication.",
+    )
+    last_page: str | None = Field(
+        default=None,
+        description="The last page number of the reference in the publication.",
+    )
 
     @property
     def fingerprint(self) -> str:

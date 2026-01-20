@@ -150,6 +150,12 @@ class BibliographicMetadataEnhancementFactory(factory.Factory):
     publication_date = factory.Faker("date_this_century")
     publisher = factory.Faker("company")
     title = factory.Faker("sentence", nb_words=6)
+    volume = factory.Faker("numerify", text="###")
+    issue = factory.Faker("numerify", text="##")
+    first_page = factory.Faker("numerify", text="###")
+    last_page = factory.LazyAttribute(
+        lambda o: str(int(o.first_page) + fake.pyint(min_value=1, max_value=30))
+    )
 
     @factory.post_generation
     def publication_year(self, create, extracted, **kwargs):  # noqa: ANN001, ANN003, ARG002
