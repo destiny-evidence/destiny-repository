@@ -698,9 +698,6 @@ dependencies = [
     { name = "httpx" },
     { name = "msal" },
     { name = "pydantic" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-httpx" },
     { name = "python-jose" },
 ]
 
@@ -711,9 +708,6 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1,<0.29" },
     { name = "msal", specifier = ">=1.34.0" },
     { name = "pydantic", specifier = ">=2.11.3,<3" },
-    { name = "pytest", specifier = ">=8.4.0,<9" },
-    { name = "pytest-asyncio", specifier = ">=1.0.0,<2" },
-    { name = "pytest-httpx", specifier = ">=0.35.0,<0.36" },
     { name = "python-jose", specifier = ">=3.4.0,<4" },
 ]
 provides-extras = ["labs"]
@@ -722,7 +716,10 @@ provides-extras = ["labs"]
 dev = [
     { name = "mypy", specifier = ">=1.15.0,<2" },
     { name = "pre-commit", specifier = ">=4.2.0,<5" },
+    { name = "pytest", specifier = ">=8.4.0,<9" },
+    { name = "pytest-asyncio", specifier = ">=1.0.0,<2" },
     { name = "pytest-env", specifier = ">=1.1.5,<2" },
+    { name = "pytest-httpx", specifier = ">=0.35.0,<0.36" },
     { name = "ruff", specifier = ">=0.11.5,<0.12" },
     { name = "uvloop", specifier = ">=0.21.0,<0.22" },
 ]
