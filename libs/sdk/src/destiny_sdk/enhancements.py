@@ -70,6 +70,32 @@ class Authorship(BaseModel):
     )
 
 
+class Biblio(BaseModel):
+    """
+    Bibliographic location information for journal articles.
+
+    Maps to OpenAlex's work.biblio object. All fields are strings to match
+    OpenAlex's format, which may include non-numeric values like "Spring" or "A1".
+    """
+
+    volume: str | None = Field(
+        default=None,
+        description="The volume number of the journal/publication.",
+    )
+    issue: str | None = Field(
+        default=None,
+        description="The issue number of the journal/publication.",
+    )
+    first_page: str | None = Field(
+        default=None,
+        description="The first page number of the reference in the publication.",
+    )
+    last_page: str | None = Field(
+        default=None,
+        description="The last page number of the reference in the publication.",
+    )
+
+
 class BibliographicMetadataEnhancement(BaseModel):
     """
     An enhancement which is made up of bibliographic metadata.
@@ -111,21 +137,9 @@ other works have cited this work
         description="The name of the entity which published the version of record.",
     )
     title: str | None = Field(default=None, description="The title of the reference.")
-    volume: str | None = Field(
+    biblio: Biblio | None = Field(
         default=None,
-        description="The volume number of the journal/publication.",
-    )
-    issue: str | None = Field(
-        default=None,
-        description="The issue number of the journal/publication.",
-    )
-    first_page: str | None = Field(
-        default=None,
-        description="The first page number of the reference in the publication.",
-    )
-    last_page: str | None = Field(
-        default=None,
-        description="The last page number of the reference in the publication.",
+        description="Bibliographic location info (volume, issue, pages).",
     )
 
     @property

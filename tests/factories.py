@@ -11,6 +11,7 @@ from destiny_sdk.enhancements import (
     AnnotationType,
     AuthorPosition,
     Authorship,
+    Biblio,
     BibliographicMetadataEnhancement,
     BooleanAnnotation,
     DriverVersion,
@@ -134,6 +135,18 @@ class AuthorshipFactory(factory.Factory):
     orcid = factory.Faker("uuid4")
 
 
+class BiblioFactory(factory.Factory):
+    class Meta:
+        model = Biblio
+
+    volume = factory.Faker("numerify", text="###")
+    issue = factory.Faker("numerify", text="##")
+    first_page = factory.Faker("numerify", text="###")
+    last_page = factory.LazyAttribute(
+        lambda o: str(int(o.first_page) + fake.pyint(min_value=1, max_value=30))
+    )
+
+
 class BibliographicMetadataEnhancementFactory(factory.Factory):
     class Meta:
         model = BibliographicMetadataEnhancement
@@ -150,12 +163,7 @@ class BibliographicMetadataEnhancementFactory(factory.Factory):
     publication_date = factory.Faker("date_this_century")
     publisher = factory.Faker("company")
     title = factory.Faker("sentence", nb_words=6)
-    volume = factory.Faker("numerify", text="###")
-    issue = factory.Faker("numerify", text="##")
-    first_page = factory.Faker("numerify", text="###")
-    last_page = factory.LazyAttribute(
-        lambda o: str(int(o.first_page) + fake.pyint(min_value=1, max_value=30))
-    )
+    biblio = factory.LazyFunction(lambda: BiblioFactory.build())
 
     @factory.post_generation
     def publication_year(self, create, extracted, **kwargs):  # noqa: ANN001, ANN003, ARG002

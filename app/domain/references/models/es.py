@@ -41,6 +41,10 @@ EXCLUDED_ENHANCEMENT_TYPES = {
     EnhancementType.REFERENCE_ASSOCIATION,
 }
 
+# Fields excluded from ES indexing. These are not useful for candidate generation
+# and are only needed for classification stage which uses PostgreSQL.
+EXCLUDED_ENHANCEMENT_CONTENT_FIELDS = {"biblio"}
+
 
 class ExternalIdentifierDocument(GenericNestedDocument):
     """Persistence model for external identifiers in Elasticsearch."""
@@ -144,6 +148,11 @@ class EnhancementDocument(GenericNestedDocument):
     @classmethod
     def from_domain(cls, domain_obj: Enhancement) -> Self:
         """Create a persistence model from a domain model."""
+        content_dict = {
+            k: v
+            for k, v in domain_obj.content.model_dump(mode="json").items()
+            if k not in EXCLUDED_ENHANCEMENT_CONTENT_FIELDS
+        }
         return cls(
             id=domain_obj.id,
             reference_id=domain_obj.reference_id,
@@ -151,9 +160,7 @@ class EnhancementDocument(GenericNestedDocument):
             source=domain_obj.source,
             robot_version=domain_obj.robot_version,
             created_at=domain_obj.created_at,
-            content=EnhancementContentDocument(
-                **domain_obj.content.model_dump(mode="json")
-            ),
+            content=EnhancementContentDocument(**content_dict),
         )
 
     def to_domain(self, reference_id: UUID) -> Enhancement:
