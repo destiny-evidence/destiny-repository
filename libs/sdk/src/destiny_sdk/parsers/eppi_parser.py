@@ -270,7 +270,7 @@ class EPPIParser:
             enhancements=enhancements,
         )
 
-    def parse_full_eppi_json(
+    def parse_full_eppi(
         self,
         data: dict,
         source: str | None = None,
@@ -334,7 +334,7 @@ class EPPIParser:
             list[ReferenceFileInput]: List of parsed references from the data.
 
         """
-        return self.parse_full_eppi_json(
+        return self.parse_full_eppi(
             data=data,
             source=source,
             robot_version=robot_version,
