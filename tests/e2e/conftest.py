@@ -16,7 +16,7 @@ from elasticsearch import AsyncElasticsearch
 from minio import Minio
 from opentelemetry import context, trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from opentelemetry.trace import set_span_in_context
+from opentelemetry.trace import Link, SpanContext, set_span_in_context
 from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 from testcontainers.core.container import DockerContainer
@@ -102,13 +102,33 @@ def trace_test_suite():
 
 @pytest.fixture(autouse=True)
 async def trace_test(request: pytest.FixtureRequest):
-    """Trace each test with OpenTelemetry."""
-    with tracer.start_as_current_span(f"Test: {request.node.name}") as span:
-        # Explicitly attach span to context for async execution
-        token = context.attach(set_span_in_context(span))
+    """
+    Trace each test with OpenTelemetry.
+
+    Creates two spans:
+    1. Runner span (child of suite) - shows when test was invoked in the runner
+    2. Execution span (independent trace) - linked back to runner span
+    """
+    test_name = request.node.name
+
+    # Runner span - child of suite, shows test timing in runner context
+    with tracer.start_as_current_span(f"Test: {test_name}") as runner_span:
+        # Extract context for linking the execution trace
+        runner_context = runner_span.get_span_context()
+        linked_context = SpanContext(
+            trace_id=runner_context.trace_id,
+            span_id=runner_context.span_id,
+            is_remote=False,
+        )
+        link = Link(linked_context)
+
+        # Execution span - independent trace with link to runner
+        exec_span = tracer.start_span(f"Test: {test_name}", links=[link])
+        token = context.attach(set_span_in_context(exec_span))
         try:
             yield
         finally:
+            exec_span.end()
             context.detach(token)
 
 
