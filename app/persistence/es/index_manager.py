@@ -13,7 +13,6 @@ from taskiq import AsyncTaskiqDecoratedTask
 from app.core.exceptions import NotFoundError
 from app.core.telemetry.attributes import (
     Attributes,
-    name_span,
     set_span_status,
     trace_attribute,
 )
@@ -117,7 +116,9 @@ class IndexManager:
             set_span_status(status=trace.StatusCode.ERROR, detail=msg)
             raise NotFoundError(msg)
 
-        name_span(f"Rebuild index - {current_index_name}")
+        trace_attribute(
+            attribute=Attributes.DB_COLLECTION_NAME, value=current_index_name
+        )
 
         await self.client.indices.delete_alias(
             index=current_index_name, name=self.alias_name
@@ -183,7 +184,7 @@ class IndexManager:
         if current_index is None:
             index_name = self._generate_index_name(1)
 
-            name_span(f"Initialize index {index_name}")
+            trace_attribute(attribute=Attributes.DB_COLLECTION_NAME, value=index_name)
 
             await self._create_index_with_mapping(index_name)
 
@@ -233,7 +234,9 @@ class IndexManager:
         new_version = current_version + 1
         destination_index = self._generate_index_name(new_version)
 
-        name_span(f"Migrate index {source_index} to {destination_index}")
+        trace_attribute(
+            attribute=Attributes.DB_COLLECTION_NAME, value=destination_index
+        )
 
         logger.info("Starting migration from %s to %s", source_index, destination_index)
 
@@ -259,7 +262,7 @@ class IndexManager:
         logger.info("Migration completed successfully to %s", destination_index)
         return destination_index
 
-    @tracer.start_as_current_span("Reindexing index")
+    @tracer.start_as_current_span("Reindex index")
     async def _reindex_data(self, source_index: str, dest_index: str) -> None:
         """
         Reindex data from source to destination index.
@@ -273,7 +276,8 @@ class IndexManager:
             attribute=Attributes.DB_COLLECTION_ALIAS_NAME, value=self.alias_name
         )
 
-        name_span(f"Reindex {source_index} to {dest_index}")
+        trace_attribute(attribute=Attributes.DB_COLLECTION_NAME, value=dest_index)
+
         logger.info("Reindexing from %s to %s", source_index, dest_index)
 
         # Get document count for progress tracking
@@ -412,7 +416,7 @@ class IndexManager:
             set_span_status(status=trace.StatusCode.ERROR, detail=msg)
             raise NotFoundError(msg)
 
-        name_span(f"Rollback index {current_index} to {target_index}")
+        trace_attribute(attribute=Attributes.DB_COLLECTION_NAME, value=target_index)
 
         await self._switch_alias(current_index, target_index)
 

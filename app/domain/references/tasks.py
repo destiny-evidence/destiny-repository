@@ -83,11 +83,9 @@ async def validate_and_import_robot_enhancement_batch_result(
 ) -> None:
     """Async logic for validating and importing a robot enhancement batch result."""
     logger.info("Processing robot enhancement batch result")
+    name_span("Import robot enhancement batch result")
     trace_attribute(
         Attributes.ROBOT_ENHANCEMENT_BATCH_ID, str(robot_enhancement_batch_id)
-    )
-    name_span(
-        f"Import robot enhancement batch result for batch {robot_enhancement_batch_id}"
     )
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
@@ -170,7 +168,8 @@ async def validate_and_import_robot_enhancement_batch_result(
 @broker.task
 async def repair_reference_index() -> None:
     """Async logic for repairing the reference index."""
-    name_span("Repair reference index")
+    name_span("Repair index")
+    trace_attribute(Attributes.DB_COLLECTION_ALIAS_NAME, "reference")
     logger.info("Repairing reference index")
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
@@ -186,7 +185,8 @@ async def repair_reference_index() -> None:
 @broker.task
 async def repair_robot_automation_percolation_index() -> None:
     """Async logic for repairing the robot automation percolation index."""
-    name_span("Repair robot automation percolation index")
+    name_span("Repair index")
+    trace_attribute(Attributes.DB_COLLECTION_ALIAS_NAME, "robot_automation_percolation")
     logger.info("Repairing robot automation percolation index")
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
@@ -205,11 +205,14 @@ async def process_reference_duplicate_decision(
     reference_duplicate_decision_id: UUID,
 ) -> None:
     """Task to process a reference duplicate decision."""
+    name_span("Process reference duplicate decision {reference_duplicate_decision_id}")
+    trace_attribute(
+        Attributes.REFERENCE_DUPLICATE_DECISION_ID, str(reference_duplicate_decision_id)
+    )
     logger.info(
         "Processing reference duplicate decision",
         reference_duplicate_decision_id=str(reference_duplicate_decision_id),
     )
-    name_span(f"Process reference duplicate decision {reference_duplicate_decision_id}")
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
         reference_anti_corruption_service = ReferenceAntiCorruptionService(
