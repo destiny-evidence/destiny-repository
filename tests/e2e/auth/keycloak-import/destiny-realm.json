@@ -1,14 +1,14 @@
 {
   "realm": "destiny",
   "enabled": true,
-  "displayName": "DESTINY Repository",
-  "sslRequired": "external",
+  "displayName": "DESTINY Repository (Test)",
+  "sslRequired": "none",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": true,
   "editUsernameAllowed": false,
-  "bruteForceProtected": true,
+  "bruteForceProtected": false,
   "accessTokenLifespan": 300,
   "accessTokenLifespanForImplicitFlow": 900,
   "ssoSessionIdleTimeout": 1800,
@@ -125,30 +125,18 @@
       "description": "Public client for all user authentication (UI, CLI, Postman, API testing tools)",
       "enabled": true,
       "publicClient": true,
-      "directAccessGrantsEnabled": false,
+      "directAccessGrantsEnabled": true,
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "protocol": "openid-connect",
-      "rootUrl": "http://localhost:3000",
+      "rootUrl": "",
       "baseUrl": "/",
-      "redirectUris": [
-        "http://localhost:3000/*",
-        "http://localhost:*",
-        "http://127.0.0.1:*",
-        "https://oauth.pstmn.io/v1/callback"
-      ],
-      "webOrigins": ["http://localhost:3000", "https://oauth.pstmn.io"],
-      "defaultClientScopes": [
-        "openid",
-        "profile",
-        "email",
-        "roles",
-        "web-origins",
-        "reference.reader.all"
-      ],
+      "redirectUris": ["*"],
+      "webOrigins": ["*"],
       "optionalClientScopes": [
         "administrator.all",
         "import.writer.all",
+        "reference.reader.all",
         "reference.deduplicator.all",
         "enhancement_request.writer.all",
         "robot.writer.all"
@@ -156,7 +144,7 @@
       "attributes": {
         "oauth2.device.authorization.grant.enabled": "true",
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:3000/*##http://localhost:*##http://127.0.0.1:*"
+        "post.logout.redirect.uris": "*"
       },
       "protocolMappers": [
         {

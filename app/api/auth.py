@@ -18,6 +18,8 @@ from typing import Annotated, Any, Protocol
 from uuid import UUID
 
 import destiny_sdk
+from authlib.jose import JsonWebKey, JsonWebToken
+from authlib.jose import errors as jose_errors
 from cachetools import TTLCache
 from fastapi import Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -407,6 +409,7 @@ class KeycloakJwtAuth(AuthMethod):
     AuthMethod for authorizing requests using JWTs issued by Keycloak.
 
     Similar to AzureJwtAuth but configured for Keycloak's OIDC endpoints.
+    Uses authlib.jose for JWT verification and JWKS handling.
 
     Example:
         .. code-block:: python
@@ -464,9 +467,14 @@ class KeycloakJwtAuth(AuthMethod):
             f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/certs"
         )
 
+        # Create JWT decoder with claims validation
+        self._jwt = JsonWebToken(["RS256"])
+
     async def verify_token(self, token: str) -> dict[str, Any]:
         """
         Verify the token using JWKS fetched from Keycloak.
+
+        Uses authlib.jose for JWT decoding and JWKS key matching.
 
         Args:
             token: The JWT to be verified
@@ -478,79 +486,53 @@ class KeycloakJwtAuth(AuthMethod):
             AuthError: If token verification fails
 
         """
-        try:
-            jwks = self.cache.get("jwks")
-            cached_jwks = bool(jwks)
-            if not jwks:
-                jwks = await self._get_keycloak_keys()
-                self.cache["jwks"] = jwks
+        jwks = self.cache.get("jwks")
+        cached_jwks = bool(jwks)
 
-            unverified_header = jwt.get_unverified_header(token)
-            rsa_key = {}
-            for key in jwks["keys"]:
-                if key["kid"] == unverified_header["kid"]:
-                    rsa_key = {
-                        "kty": key["kty"],
-                        "kid": key["kid"],
-                        "use": key["use"],
-                        "n": key["n"],
-                        "e": key["e"],
-                    }
-        except Exception as exc:
+        if not jwks:
+            jwks = await self._get_keycloak_keys()
+            self.cache["jwks"] = jwks
+
+        try:
+            claims = self._jwt.decode(
+                token,
+                jwks,
+                claims_options={
+                    "iss": {"essential": True, "value": self.issuer},
+                    "aud": {"essential": True, "value": self.client_id},
+                },
+            )
+            claims.validate()
+            return dict(claims)
+
+        except jose_errors.ExpiredTokenError as exc:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token is expired.",
+            ) from exc
+
+        except jose_errors.InvalidClaimError as exc:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid token claims: {exc}",
+            ) from exc
+
+        except jose_errors.JoseError as exc:
+            # If we had cached JWKS and verification failed,
+            # try refreshing the keys (key rotation)
+            if cached_jwks:
+                self.cache.pop("jwks", None)
+                return await self.verify_token(token)
             raise AuthError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Unable to parse authentication token.",
             ) from exc
 
-        if rsa_key:
-            try:
-                payload = jwt.decode(
-                    token,
-                    rsa_key,
-                    algorithms=["RS256"],
-                    audience=self.client_id,
-                    issuer=self.issuer,
-                )
-            except exceptions.ExpiredSignatureError as exc:
-                raise AuthError(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Token is expired.",
-                ) from exc
-            except exceptions.JWTClaimsError as exc:
-                unverified = jwt.get_unverified_claims(token)
-                token_aud = unverified.get("aud")
-                token_iss = unverified.get("iss")
-                raise AuthError(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=(
-                        f"Incorrect claims. "
-                        f"Expected aud={self.client_id}, got={token_aud}. "
-                        f"Expected iss={self.issuer}, got={token_iss}"
-                    ),
-                ) from exc
-            except Exception as exc:
-                # If we had cached JWKS and verification failed,
-                # try refreshing the keys
-                if cached_jwks:
-                    self.cache.pop("jwks", None)
-                    return await self.verify_token(token)
-                raise AuthError(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Unable to parse authentication token.",
-                ) from exc
-            else:
-                return payload
-
-        raise AuthError(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unable to find appropriate key.",
-        )
-
-    async def _get_keycloak_keys(self) -> Any:  # noqa: ANN401
-        """Fetch JWKS from Keycloak's OIDC endpoint."""
+    async def _get_keycloak_keys(self) -> JsonWebKey:
+        """Fetch and import JWKS from Keycloak's OIDC endpoint."""
         async with AsyncClient() as client:
             response = await client.get(self.jwks_uri)
-            return response.json()
+            return JsonWebKey.import_key_set(response.json())
 
     def _require_scope_or_role(self, verified_claims: dict[str, Any]) -> bool:
         """

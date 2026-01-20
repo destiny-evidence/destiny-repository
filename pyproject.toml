@@ -88,7 +88,7 @@ plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 addopts = ["--color=yes", "--import-mode=importlib", "--verbose"]
-env = ["ENV=test"]
+env = ["AUTH_PROVIDER=azure", "ENV=test"]
 filterwarnings = [
     # Can be removed when https://github.com/testcontainers/testcontainers-python/issues/874 is complete
     "ignore:^The @wait_container_is_ready decorator:DeprecationWarning",
