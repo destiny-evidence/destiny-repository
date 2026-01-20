@@ -89,7 +89,7 @@ def configure_otel(
             )
         )
     if not config.instrument_elasticsearch:
-        # Filter out auto-instrumented Elasticsearch spans
+        # Filter out auto-instrumented Elasticsearch spans and logs
         span_processor.add_condition(
             lambda span: (
                 span.instrumentation_scope.name == "elasticsearch-api"
@@ -97,6 +97,7 @@ def configure_otel(
                 else False
             )
         )
+        logger_configurer.disable_elastic_transport_logging()
     if not config.instrument_taskiq:
         # Filter out auto-instrumented TaskIQ spans
         span_processor.add_condition(

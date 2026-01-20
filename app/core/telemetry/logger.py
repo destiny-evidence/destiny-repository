@@ -116,6 +116,10 @@ class LoggerConfigurer:
         self._root_logger.addHandler(handler)
         self._root_logger.setLevel(getattr(logging, log_level.upper()))
 
+    def disable_elastic_transport_logging(self) -> None:
+        """Disable automatic elastic_transport logging."""
+        logging.getLogger("elastic_transport.transport").disabled = True
+
     def configure_otel_logger(self, handler: "LoggingHandler") -> None:
         """Configure the OpenTelemetry logger."""
         otel_render_processors = cast(
