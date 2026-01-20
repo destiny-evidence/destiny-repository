@@ -205,7 +205,7 @@ async def process_reference_duplicate_decision(
     reference_duplicate_decision_id: UUID,
 ) -> None:
     """Task to process a reference duplicate decision."""
-    name_span("Process reference duplicate decision {reference_duplicate_decision_id}")
+    name_span("Process reference duplicate decision")
     trace_attribute(
         Attributes.REFERENCE_DUPLICATE_DECISION_ID, str(reference_duplicate_decision_id)
     )

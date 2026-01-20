@@ -88,6 +88,25 @@ def configure_otel(
                 else False
             )
         )
+    if not config.instrument_elasticsearch:
+        # Filter out auto-instrumented Elasticsearch spans
+        span_processor.add_condition(
+            lambda span: (
+                span.instrumentation_scope.name == "elasticsearch-api"
+                if span.instrumentation_scope
+                else False
+            )
+        )
+    if not config.instrument_taskiq:
+        # Filter out auto-instrumented TaskIQ spans
+        span_processor.add_condition(
+            lambda span: (
+                span.instrumentation_scope.name
+                == "opentelemetry.instrumentation.aio_pika"
+                if span.instrumentation_scope
+                else False
+            )
+        )
 
     tracer_provider.add_span_processor(span_processor)
 
