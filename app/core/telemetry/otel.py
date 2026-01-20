@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from typing import TYPE_CHECKING
 
 from opentelemetry import metrics, trace
 from opentelemetry._logs import set_logger_provider
+from opentelemetry.context import Context
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -16,6 +18,7 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.trace import Link, Span, SpanContext
 
 from app.core.telemetry.attributes import Attributes
 from app.core.telemetry.logger import (
@@ -26,10 +29,49 @@ from app.core.telemetry.logger import (
 from app.core.telemetry.processors import FilteringBatchSpanProcessor
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from app.core.config import Environment, OTelConfig
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+
+
+@contextlib.contextmanager
+def decoupled_trace(name: str) -> Iterator[Span]:
+    """
+    Create a decoupled trace boundary with a parent span and linked child trace.
+
+    This creates two spans:
+    1. A parent span (child of current context) - marks when something was initiated
+    2. An independent child span - this is the root of a new trace, linked to the parent
+
+
+    :param name: The name of the span.
+    :type name: str
+    :rtype: Iterator[Span]
+
+    Example:
+        with tracer.start_as_current_span("E2E Test Suite"):
+            with decoupled_trace("Test: test_foo"):
+                # HTTP calls here are in independent trace, linked to runner
+                do_test()
+
+    """
+    with tracer.start_as_current_span(name) as parent_span:
+        parent_context = parent_span.get_span_context()
+        link = Link(
+            SpanContext(
+                trace_id=parent_context.trace_id,
+                span_id=parent_context.span_id,
+                is_remote=False,
+            )
+        )
+
+        with tracer.start_as_current_span(
+            name, context=Context(), links=[link]
+        ) as child_span:
+            yield child_span
 
 
 def configure_otel(

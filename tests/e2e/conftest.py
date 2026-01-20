@@ -16,7 +16,7 @@ from elasticsearch import AsyncElasticsearch
 from minio import Minio
 from opentelemetry import context, trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from opentelemetry.trace import Link, SpanContext, set_span_in_context
+from opentelemetry.trace import set_span_in_context
 from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 from testcontainers.core.container import DockerContainer
@@ -33,7 +33,7 @@ from testcontainers.rabbitmq import RabbitMqContainer
 
 from app.core.config import DatabaseConfig, Environment, LogLevel, OTelConfig
 from app.core.telemetry.logger import get_logger, logger_configurer
-from app.core.telemetry.otel import configure_otel
+from app.core.telemetry.otel import configure_otel, decoupled_trace
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.robots.models.models import Robot
 from app.persistence.sql.session import (
@@ -102,34 +102,9 @@ def trace_test_suite():
 
 @pytest.fixture(autouse=True)
 async def trace_test(request: pytest.FixtureRequest):
-    """
-    Trace each test with OpenTelemetry.
-
-    Creates two spans:
-    1. Runner span (child of suite) - shows when test was invoked in the runner
-    2. Execution span (independent trace) - linked back to runner span
-    """
-    test_name = request.node.name
-
-    # Runner span - child of suite, shows test timing in runner context
-    with tracer.start_as_current_span(f"Test: {test_name}") as runner_span:
-        # Extract context for linking the execution trace
-        runner_context = runner_span.get_span_context()
-        linked_context = SpanContext(
-            trace_id=runner_context.trace_id,
-            span_id=runner_context.span_id,
-            is_remote=False,
-        )
-        link = Link(linked_context)
-
-        # Execution span - independent trace with link to runner
-        exec_span = tracer.start_span(f"Test: {test_name}", links=[link])
-        token = context.attach(set_span_in_context(exec_span))
-        try:
-            yield
-        finally:
-            exec_span.end()
-            context.detach(token)
+    """Trace each test with OpenTelemetry using decoupled traces."""
+    with decoupled_trace(f"Test: {request.node.name}"):
+        yield
 
 
 ###########################
