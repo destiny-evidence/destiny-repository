@@ -103,7 +103,7 @@ def trace_test_suite():
 @pytest.fixture(autouse=True)
 async def trace_test(request: pytest.FixtureRequest):
     """Trace each test with OpenTelemetry using decoupled traces."""
-    with decoupled_trace(f"Test: {request.node.name}"):
+    with decoupled_trace(f"Test: {request.node.name}", create_parent=True):
         yield
 
 

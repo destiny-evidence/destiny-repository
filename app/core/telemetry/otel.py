@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import contextlib
 import uuid
-from typing import TYPE_CHECKING
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, cast
 
 from opentelemetry import metrics, trace
 from opentelemetry._logs import set_logger_provider
@@ -19,6 +20,7 @@ from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.trace import Link, Span, SpanContext
+from opentelemetry.util.types import AttributeValue
 
 from app.core.telemetry.attributes import Attributes
 from app.core.telemetry.logger import (
@@ -35,43 +37,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
-
-
-@contextlib.contextmanager
-def decoupled_trace(name: str) -> Iterator[Span]:
-    """
-    Create a decoupled trace boundary with a parent span and linked child trace.
-
-    This creates two spans:
-    1. A parent span (child of current context) - marks when something was initiated
-    2. An independent child span - this is the root of a new trace, linked to the parent
-
-
-    :param name: The name of the span.
-    :type name: str
-    :rtype: Iterator[Span]
-
-    Example:
-        with tracer.start_as_current_span("E2E Test Suite"):
-            with decoupled_trace("Test: test_foo"):
-                # HTTP calls here are in independent trace, linked to runner
-                do_test()
-
-    """
-    with tracer.start_as_current_span(name) as parent_span:
-        parent_context = parent_span.get_span_context()
-        link = Link(
-            SpanContext(
-                trace_id=parent_context.trace_id,
-                span_id=parent_context.span_id,
-                is_remote=False,
-            )
-        )
-
-        with tracer.start_as_current_span(
-            name, context=Context(), links=[link]
-        ) as child_span:
-            yield child_span
 
 
 def configure_otel(
@@ -184,3 +149,54 @@ def configure_otel(
     logger_configurer.configure_otel_logger(handler)
 
     logger.info("Opentelemetry configured", service_instance_id=service_instance_id)
+
+
+@contextlib.contextmanager
+def decoupled_trace(
+    name: str,
+    attributes: Mapping[Attributes, AttributeValue] | None = None,
+    *,
+    create_parent: bool = False,
+) -> Iterator[Span]:
+    """
+    Create a decoupled trace boundary with a parent span and linked child trace.
+
+    :param name: The name of the span.
+    :type name: str
+    :param attributes: Attributes to set on created spans.
+    :type attributes: dict[Attributes, AttributeValue] | None
+    :param create_parent: Whether to create a parent span. This allows you to see
+        the invokation of the decoupled trace in the parent trace - but beware of
+        O(n) span explosion if used in loops!
+    :type create_parent: bool
+    :rtype: Iterator[Span]
+
+    Example:
+        with tracer.start_as_current_span("Big Operation"):
+            with decoupled_trace("Small decoupled operation"):
+                do_work()
+
+    """
+    # Attributes is StrEnum so has str but we need to cast for mypy
+    _attributes = cast(Mapping[str, AttributeValue], attributes) if attributes else {}
+
+    def _create_child(link_context: SpanContext) -> Iterator[Span]:
+        link = Link(
+            SpanContext(
+                trace_id=link_context.trace_id,
+                span_id=link_context.span_id,
+                is_remote=False,
+            )
+        )
+        with tracer.start_as_current_span(
+            name, attributes=_attributes, context=Context(), links=[link]
+        ) as child_span:
+            yield child_span
+
+    if create_parent:
+        # Create parent span, then independent child linked to parent
+        with tracer.start_as_current_span(name, attributes=_attributes) as parent_span:
+            yield from _create_child(parent_span.get_span_context())
+    else:
+        # Just create independent child linked to current context
+        yield from _create_child(trace.get_current_span().get_span_context())
