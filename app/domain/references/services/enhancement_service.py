@@ -350,8 +350,9 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             else:
                 results.failed_pending_enhancement_ids.add(pending_enhancement.id)
 
-    async def process_robot_enhancement_batch_result(
+    async def process_robot_enhancement_batch_result(  # noqa: PLR0913
         self,
+        robot_enhancement_batch_id: UUID,
         blob_repository: BlobRepository,
         result_file: BlobStorageFile,
         pending_enhancements: list[PendingEnhancement],
@@ -382,7 +383,12 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                 async for line in file_stream:
                     with decoupled_trace(
                         "Import enhancement",
-                        attributes={Attributes.FILE_LINE_NO: line_no},
+                        attributes={
+                            Attributes.FILE_LINE_NO: line_no,
+                            Attributes.ROBOT_ENHANCEMENT_BATCH_ID: str(
+                                robot_enhancement_batch_id
+                            ),
+                        },
                     ):
                         if not line.strip():
                             continue
