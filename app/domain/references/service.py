@@ -1134,20 +1134,29 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return updated, expiry
 
     @sql_unit_of_work
+    async def add_pending_duplicate_decisions_for_reference_ids(
+        self,
+        reference_ids: ReferenceIds,
+    ) -> list[ReferenceDuplicateDecision]:
+        """Add a reference duplicate decision."""
+        return await self.sql_uow.reference_duplicate_decisions.add_bulk(
+            [
+                ReferenceDuplicateDecision(
+                    reference_id=reference_id,
+                    duplicate_determination=DuplicateDetermination.PENDING,
+                )
+                for reference_id in reference_ids.reference_ids
+            ]
+        )
+
     async def invoke_deduplication_for_references(
         self,
         reference_ids: ReferenceIds,
     ) -> None:
         """Invoke deduplication for a list of references."""
         reference_duplicate_decisions = (
-            await self.sql_uow.reference_duplicate_decisions.add_bulk(
-                [
-                    ReferenceDuplicateDecision(
-                        reference_id=reference_id,
-                        duplicate_determination=DuplicateDetermination.PENDING,
-                    )
-                    for reference_id in reference_ids.reference_ids
-                ]
+            await self.add_pending_duplicate_decisions_for_reference_ids(
+                reference_ids,
             )
         )
         for decision in reference_duplicate_decisions:
