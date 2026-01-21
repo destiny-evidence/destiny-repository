@@ -10,7 +10,7 @@ from opentelemetry import trace
 from app.core.config import get_settings
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
-from app.core.telemetry.otel import decoupled_trace
+from app.core.telemetry.otel import new_linked_trace
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
@@ -381,7 +381,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                 # Read the file stream and validate the content
                 line_no = 1
                 async for line in file_stream:
-                    with decoupled_trace(
+                    with new_linked_trace(
                         "Import enhancement",
                         attributes={
                             Attributes.FILE_LINE_NO: line_no,

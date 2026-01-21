@@ -33,7 +33,7 @@ from testcontainers.rabbitmq import RabbitMqContainer
 
 from app.core.config import DatabaseConfig, Environment, LogLevel, OTelConfig
 from app.core.telemetry.logger import get_logger, logger_configurer
-from app.core.telemetry.otel import configure_otel, decoupled_trace
+from app.core.telemetry.otel import configure_otel, new_linked_trace
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.robots.models.models import Robot
 from app.persistence.sql.session import (
@@ -103,7 +103,7 @@ def trace_test_suite():
 @pytest.fixture(autouse=True)
 async def trace_test(request: pytest.FixtureRequest):
     """Trace each test with OpenTelemetry using decoupled traces."""
-    with decoupled_trace(f"Test: {request.node.name}", create_parent=True):
+    with new_linked_trace(f"Test: {request.node.name}", create_parent=True):
         yield
 
 

@@ -104,7 +104,6 @@ def configure_otel(
                 else False
             )
         )
-        logger_configurer.disable_elastic_transport_logging()
     if not config.instrument_taskiq:
         # Filter out auto-instrumented TaskIQ spans
         span_processor.add_condition(
@@ -152,7 +151,7 @@ def configure_otel(
 
 
 @contextlib.contextmanager
-def decoupled_trace(
+def new_linked_trace(
     name: str,
     attributes: Mapping[Attributes, AttributeValue] | None = None,
     *,
@@ -173,7 +172,7 @@ def decoupled_trace(
 
     Example:
         with tracer.start_as_current_span("Big Operation"):
-            with decoupled_trace("Small decoupled operation"):
+            with new_linked_trace("Small decoupled operation"):
                 do_work()
 
     """

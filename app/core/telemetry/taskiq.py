@@ -65,27 +65,19 @@ async def queue_task_with_trace(
         # If OpenTelemetry is not enabled, just queue the task normally
         await task.kiq(*args, **kwargs)
         return
-    with tracer.start_as_current_span(
-        f"queue.{task.task_name}",
-        kind=SpanKind.PRODUCER,
-        attributes={
-            Attributes.MESSAGING_DESTINATION_NAME: task.task_name,
-            Attributes.MESSAGING_OPERATION: "send",
-            Attributes.MESSAGING_SYSTEM: "taskiq",
-        },
-    ) as span:
-        # Pass span context for linking (not propagation) so tasks
-        # create their own traces with independent sampling decisions
-        span_context = span.get_span_context()
-        trace_link = {
-            "trace_id": format(span_context.trace_id, "032x"),
-            "span_id": format(span_context.span_id, "016x"),
-        }
-        await task.kiq(
-            *args,
-            **kwargs,
-            trace_link=trace_link,
-        )
+
+    # Pass span context for linking (not propagation) so tasks
+    # create their own traces with independent sampling decisions
+    span_context = trace.get_current_span().get_span_context()
+    trace_link = {
+        "trace_id": format(span_context.trace_id, "032x"),
+        "span_id": format(span_context.span_id, "016x"),
+    }
+    await task.kiq(
+        *args,
+        **kwargs,
+        trace_link=trace_link,
+    )
 
 
 class TaskiqTracingMiddleware(TaskiqMiddleware):
@@ -149,7 +141,7 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
         # Start a new root span (no parent context) with link to producer
         # This creates an independent trace for tail-based sampling
         current_span = tracer.start_span(
-            f"execute.{message.task_name}",
+            f"execute.{message.task_name}",  # NB actual task will rename the span
             kind=SpanKind.CONSUMER,
             links=links,
             attributes={
