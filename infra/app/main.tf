@@ -145,6 +145,14 @@ locals {
         meter_endpoint = var.honeycombio_meter_endpoint
         log_endpoint   = var.honeycombio_log_endpoint
         api_key        = honeycombio_api_key.this.key
+        log_sample_config = {
+          notset_sample_rate   = var.otel_log_sample_rate_notset
+          debug_sample_rate    = var.otel_log_sample_rate_debug
+          info_sample_rate     = var.otel_log_sample_rate_info
+          warning_sample_rate  = var.otel_log_sample_rate_warning
+          error_sample_rate    = var.otel_log_sample_rate_error
+          critical_sample_rate = var.otel_log_sample_rate_critical
+        }
       })
     },
   ]

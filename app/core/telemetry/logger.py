@@ -10,7 +10,7 @@ from opentelemetry.sdk._logs import LoggingHandler
 from opentelemetry.util.types import AnyValue
 
 if TYPE_CHECKING:
-    from app.core.config import LogLevel
+    from app.core.config import LogLevel, LogSamplingConfig
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
@@ -56,43 +56,39 @@ class OTelAttributeFilter:
         return event_dict
 
 
-class LogLevelSampler:
+class LogLevelSamplingFilter(logging.Filter):
     """
-    Structlog processor that samples logs based on their log level.
+    Logging filter that samples logs based on their level.
 
-    This processor randomly drops logs based on configured sampling rates per level.
+    This filter randomly drops logs based on configured sampling rates per level.
     A rate of 1.0 means all logs pass through, 0.0 means all logs are dropped.
 
-    The global log level threshold takes precedence; this processor only further reduces
+    The global log level threshold takes precedence; this filter only further reduces
     the number of logs sent to OpenTelemetry.
     """
 
-    def __init__(self, sample_rates: dict["LogLevel", float]) -> None:
+    def __init__(self, sampling_config: "LogSamplingConfig") -> None:
         """
-        Initialize the sampler with per-level sampling rates.
+        Initialize the filter with per-level sampling rates.
 
         Args:
-            rates: A dictionary mapping log level names (lowercase) to sampling
+            sample_rates: A dictionary mapping log level names (lowercase) to sampling
                 rates between 0.0 and 1.0. Levels not specified default to 1.0.
 
         """
-        self._sample_rates = sample_rates
+        super().__init__()
+        self._sampling_config = sampling_config
 
-    def __call__(
-        self, _logger: object, _method_name: str, event_dict: structlog.typing.EventDict
-    ) -> structlog.typing.EventDict:
-        """Sample the log event based on its level."""
-        level = event_dict.get("level", "").lower()
-        rate = self._sample_rates.get(level, 1.0)
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Return True if the log should pass through, False to drop it."""
+        level = record.levelname.lower()
+        rate = self._sampling_config.get_rate(level)
 
-        if rate == 1.0:
-            return event_dict
         if rate == 0.0:
-            raise structlog.DropEvent
-        if random.random() >= rate:  # noqa: S311
-            raise structlog.DropEvent
-
-        return event_dict
+            return False
+        if rate == 1.0:
+            return True
+        return random.random() < rate  # noqa: S311
 
 
 class LoggerConfigurer:
@@ -169,13 +165,12 @@ class LoggerConfigurer:
         self._root_logger.setLevel(getattr(logging, log_level.upper()))
 
     def configure_otel_logger(
-        self, handler: LoggingHandler, log_sample_rates: dict["LogLevel", float]
+        self, handler: LoggingHandler, log_sampling_config: "LogSamplingConfig"
     ) -> None:
         """Configure the OpenTelemetry logger."""
         otel_render_processors = cast(
             list[structlog.types.Processor],
             [
-                LogLevelSampler(log_sample_rates),
                 # Remove timestamp in favour of OTel-generated one
                 OTelAttributeFilter("timestamp"),
                 structlog.processors.ExceptionRenderer(
@@ -190,6 +185,7 @@ class LoggerConfigurer:
             ],
         )
 
+        handler.addFilter(LogLevelSamplingFilter(log_sampling_config))
         handler.setFormatter(
             structlog.stdlib.ProcessorFormatter(
                 processors=[

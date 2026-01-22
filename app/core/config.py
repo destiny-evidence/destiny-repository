@@ -198,18 +198,28 @@ class LogLevel(StrEnum):
     CRITICAL = auto()
 
 
-fraction = Field(ge=0.0, le=1.0)
+optimistic_fraction = Field(default=1.0, ge=0.0, le=1.0)
+pessimistic_fraction = Field(default=0.0, ge=0.0, le=1.0)
 
 
 class LogSamplingConfig(BaseModel):
     """Log level sampling configuration."""
 
-    notset_sample_rate: float = fraction
-    debug_sample_rate: float = fraction
-    info_sample_rate: float = fraction
-    warning_sample_rate: float = fraction
-    error_sample_rate: float = fraction
-    critical_sample_rate: float = fraction
+    notset_sample_rate: float = pessimistic_fraction
+    debug_sample_rate: float = pessimistic_fraction
+    info_sample_rate: float = optimistic_fraction
+    warning_sample_rate: float = optimistic_fraction
+    error_sample_rate: float = optimistic_fraction
+    critical_sample_rate: float = optimistic_fraction
+
+    def get_rate(self, level: LogLevel | str) -> float:
+        """Get the sample rate for a given log level."""
+        if isinstance(level, str):
+            try:
+                level = LogLevel[level.upper()]
+            except KeyError:
+                return 1.0
+        return self.rates.get(level, 1.0)
 
     @property
     def rates(self) -> dict[LogLevel, float]:
@@ -238,14 +248,7 @@ class OTelConfig(BaseModel):
     instrument_sql: bool = False
 
     log_sample_config: LogSamplingConfig = Field(
-        default=LogSamplingConfig(
-            notset_sample_rate=0.0,
-            debug_sample_rate=0.0,
-            info_sample_rate=0.01,
-            warning_sample_rate=1.0,
-            error_sample_rate=1.0,
-            critical_sample_rate=1.0,
-        ),
+        default=LogSamplingConfig(),
         description="Log level sampling configuration. "
         "This applies only to OpenTelemetry logs.",
     )

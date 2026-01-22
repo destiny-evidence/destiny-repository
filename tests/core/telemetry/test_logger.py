@@ -1,66 +1,63 @@
 """Tests for the logger module."""
 
+import logging
 from unittest.mock import patch
 
-import pytest
-import structlog
-
-from app.core.config import LogLevel
-from app.core.telemetry.logger import LogLevelSampler, OTelAttributeFilter
+from app.core.config import LogSamplingConfig
+from app.core.telemetry.logger import LogLevelSamplingFilter, OTelAttributeFilter
 
 
-class TestLogLevelSampler:
-    """Tests for LogLevelSampler."""
+class TestLogLevelSamplingFilter:
+    """Tests for LogLevelSamplingFilter."""
+
+    def _make_record(self, level: int) -> logging.LogRecord:
+        """Create a LogRecord with the given level."""
+        return logging.LogRecord(
+            name="test",
+            level=level,
+            pathname="",
+            lineno=0,
+            msg="test message",
+            args=(),
+            exc_info=None,
+        )
 
     def test_rate_1_always_passes(self):
         """A rate of 1.0 should always pass through logs."""
-        sampler = LogLevelSampler({LogLevel.DEBUG: 1.0})
-        event_dict = {"level": "debug", "event": "test message"}
+        config = LogSamplingConfig(debug_sample_rate=1.0)
+        filter_ = LogLevelSamplingFilter(config)
+        record = self._make_record(logging.DEBUG)
 
-        result = sampler(None, "debug", event_dict)
-
-        assert result == event_dict
+        assert filter_.filter(record) is True
 
     def test_rate_0_always_drops(self):
         """A rate of 0.0 should always drop logs."""
-        sampler = LogLevelSampler({LogLevel.DEBUG: 0.0})
-        event_dict = {"level": "debug", "event": "test message"}
+        config = LogSamplingConfig(debug_sample_rate=0.0)
+        filter_ = LogLevelSamplingFilter(config)
+        record = self._make_record(logging.DEBUG)
 
-        with pytest.raises(structlog.DropEvent):
-            sampler(None, "debug", event_dict)
+        assert filter_.filter(record) is False
 
     def test_partial_rate_samples_randomly(self):
         """A partial rate should sample based on random value."""
-        sampler = LogLevelSampler({LogLevel.INFO: 0.5})
-        event_dict = {"level": "info", "event": "test message"}
+        config = LogSamplingConfig(info_sample_rate=0.5)
+        filter_ = LogLevelSamplingFilter(config)
+        record = self._make_record(logging.INFO)
 
         with patch("app.core.telemetry.logger.random.random", return_value=0.3):
-            result = sampler(None, "info", event_dict)
-            assert result == event_dict
+            assert filter_.filter(record) is True
 
-        with (
-            patch("app.core.telemetry.logger.random.random", return_value=0.7),
-            pytest.raises(structlog.DropEvent),
-        ):
-            sampler(None, "info", event_dict)
+        with patch("app.core.telemetry.logger.random.random", return_value=0.7):
+            assert filter_.filter(record) is False
 
-    def test_unspecified_level_defaults_to_1(self):
-        """Unspecified log levels should default to rate 1.0 (pass through)."""
-        sampler = LogLevelSampler({LogLevel.DEBUG: 0.0})
-        event_dict = {"level": "info", "event": "test message"}
+    def test_unspecified_level_uses_default(self):
+        """Unspecified log levels should use default rates."""
+        config = LogSamplingConfig(debug_sample_rate=0.0)
+        filter_ = LogLevelSamplingFilter(config)
+        # INFO defaults to 1.0
+        record = self._make_record(logging.INFO)
 
-        result = sampler(None, "info", event_dict)
-
-        assert result == event_dict
-
-    def test_missing_level_defaults_to_pass(self):
-        """Events without a level key should pass through."""
-        sampler = LogLevelSampler({LogLevel.DEBUG: 0.0})
-        event_dict = {"event": "test message"}
-
-        result = sampler(None, "debug", event_dict)
-
-        assert result == event_dict
+        assert filter_.filter(record) is True
 
 
 class TestOTelAttributeFilter:
