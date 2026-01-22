@@ -3,13 +3,14 @@
 import logging
 import random
 import sys
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import structlog
 from opentelemetry.sdk._logs import LoggingHandler
 from opentelemetry.util.types import AnyValue
 
-from app.core.config import LogLevel
+if TYPE_CHECKING:
+    from app.core.config import LogLevel
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
@@ -66,7 +67,7 @@ class LogLevelSampler:
     the number of logs sent to OpenTelemetry.
     """
 
-    def __init__(self, sample_rates: dict[LogLevel, float]) -> None:
+    def __init__(self, sample_rates: dict["LogLevel", float]) -> None:
         """
         Initialize the sampler with per-level sampling rates.
 
@@ -168,7 +169,7 @@ class LoggerConfigurer:
         self._root_logger.setLevel(getattr(logging, log_level.upper()))
 
     def configure_otel_logger(
-        self, handler: "LoggingHandler", log_sample_rates: dict[LogLevel, float]
+        self, handler: LoggingHandler, log_sample_rates: dict["LogLevel", float]
     ) -> None:
         """Configure the OpenTelemetry logger."""
         otel_render_processors = cast(
