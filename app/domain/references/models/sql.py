@@ -5,7 +5,7 @@ import uuid
 from typing import Any, Self
 
 from sqlalchemy import UUID, DateTime, ForeignKey, Index, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -64,10 +64,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
     __tablename__ = "reference"
 
     visibility: Mapped[Visibility] = mapped_column(
-        ENUM(
-            *[status.value for status in Visibility],
-            name="visibility",
-        ),
+        String,
         nullable=False,
     )
 
