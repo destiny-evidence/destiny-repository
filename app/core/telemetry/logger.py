@@ -35,26 +35,14 @@ class AttrFilteredLoggingHandler(LoggingHandler):
         return attributes
 
 
-class OTelAttributeFilter:
-    """Structlog processor that filters out attributes unnecessary for OpenTelemetry."""
-
-    def __init__(self, *drop_keys: str) -> None:
-        """
-        Initialize the filter with keys to drop.
-
-        Args:
-            drop_keys: Event dict keys to remove before sending to OTel.
-
-        """
-        self._drop_keys = drop_keys
-
-    def __call__(
-        self, _logger: object, _method_name: str, event_dict: structlog.typing.EventDict
-    ) -> structlog.typing.EventDict:
-        """Filter out the configured attributes from the event dict."""
-        for key in self._drop_keys:
-            event_dict.pop(key, None)
-        return event_dict
+def filter_otel_attributes(
+    _logger: object, _method_name: str, event_dict: structlog.typing.EventDict
+) -> structlog.typing.EventDict:
+    """Filter out attributes that are unnecessary for OpenTelemetry."""
+    # Remove timestamp from the event so we can aggregate event bodies
+    # otel will add its own timestamp to the event
+    event_dict.pop("timestamp", None)
+    return event_dict
 
 
 class ElasticTransportFilter(logging.Filter):
@@ -185,8 +173,7 @@ class LoggerConfigurer:
         otel_render_processors = cast(
             list[structlog.types.Processor],
             [
-                # Remove timestamp in favour of OTel-generated one
-                OTelAttributeFilter("timestamp"),
+                filter_otel_attributes,
                 structlog.processors.ExceptionRenderer(
                     exception_formatter=structlog.tracebacks.ExceptionDictTransformer()
                 ),

@@ -7,7 +7,7 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 
 from app.core.config import LogSamplingConfig
-from app.core.telemetry.logger import OrphanLogLevelSamplingFilter, OTelAttributeFilter
+from app.core.telemetry.logger import OrphanLogLevelSamplingFilter
 
 
 class TestOrphanLogLevelSamplingFilter:
@@ -77,36 +77,3 @@ class TestOrphanLogLevelSamplingFilter:
             assert trace.get_current_span().get_span_context().is_valid
             # Log should pass even with 0.0 sample rate
             assert filter_.filter(record) is True
-
-
-class TestOTelAttributeFilter:
-    """Tests for OTelAttributeFilter."""
-
-    def test_filters_specified_keys(self):
-        """Should remove specified keys from event dict."""
-        filter_proc = OTelAttributeFilter("timestamp", "extra")
-        event_dict = {"event": "test", "timestamp": "2024-01-01", "extra": "value"}
-
-        result = filter_proc(None, "info", event_dict)
-
-        assert "timestamp" not in result
-        assert "extra" not in result
-        assert result["event"] == "test"
-
-    def test_handles_missing_keys(self):
-        """Should not raise if keys to drop are missing."""
-        filter_proc = OTelAttributeFilter("timestamp", "nonexistent")
-        event_dict = {"event": "test"}
-
-        result = filter_proc(None, "info", event_dict)
-
-        assert result == {"event": "test"}
-
-    def test_no_keys_passes_through(self):
-        """With no keys specified, should pass through unchanged."""
-        filter_proc = OTelAttributeFilter()
-        event_dict = {"event": "test", "timestamp": "2024-01-01"}
-
-        result = filter_proc(None, "info", event_dict)
-
-        assert result == event_dict
