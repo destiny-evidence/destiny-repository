@@ -71,10 +71,8 @@ class OrphanLogLevelSamplingFilter(logging.Filter):
         """
         Initialize the filter with per-level sampling rates.
 
-        Args:
-            sample_rates: A dictionary mapping log level names (lowercase) to sampling
-                rates between 0.0 and 1.0. Levels not specified default to 1.0.
-
+        :param sampling_config: Configuration for log sampling rates.
+        :type sampling_config: LogSamplingConfig
         """
         super().__init__()
         self._sampling_config = sampling_config
