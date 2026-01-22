@@ -11,13 +11,13 @@ from destiny_sdk.enhancements import (
     AnnotationType,
     AuthorPosition,
     Authorship,
-    Biblio,
     BibliographicMetadataEnhancement,
     BooleanAnnotation,
     DriverVersion,
     EnhancementType,
     Location,
     LocationEnhancement,
+    Pagination,
     RawEnhancement,
     ReferenceAssociationEnhancement,
     ReferenceAssociationType,
@@ -135,9 +135,9 @@ class AuthorshipFactory(factory.Factory):
     orcid = factory.Faker("uuid4")
 
 
-class BiblioFactory(factory.Factory):
+class PaginationFactory(factory.Factory):
     class Meta:
-        model = Biblio
+        model = Pagination
 
     volume = factory.Faker("numerify", text="###")
     issue = factory.Faker("numerify", text="##")
@@ -163,7 +163,7 @@ class BibliographicMetadataEnhancementFactory(factory.Factory):
     publication_date = factory.Faker("date_this_century")
     publisher = factory.Faker("company")
     title = factory.Faker("sentence", nb_words=6)
-    biblio = factory.LazyFunction(lambda: BiblioFactory.build())
+    pagination = factory.LazyFunction(lambda: PaginationFactory.build())
 
     @factory.post_generation
     def publication_year(self, create, extracted, **kwargs):  # noqa: ANN001, ANN003, ARG002

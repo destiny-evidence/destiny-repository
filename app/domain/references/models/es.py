@@ -43,7 +43,7 @@ EXCLUDED_ENHANCEMENT_TYPES = {
 
 # Fields excluded from ES indexing. These are not useful for candidate generation
 # and are only needed for classification stage which uses PostgreSQL.
-EXCLUDED_ENHANCEMENT_CONTENT_FIELDS = {"biblio"}
+EXCLUDED_ENHANCEMENT_CONTENT_FIELDS = {"pagination"}
 
 
 class ExternalIdentifierDocument(GenericNestedDocument):

@@ -70,9 +70,9 @@ class Authorship(BaseModel):
     )
 
 
-class Biblio(BaseModel):
+class Pagination(BaseModel):
     """
-    Bibliographic location information for journal articles.
+    Pagination information for journal articles.
 
     Maps to OpenAlex's work.biblio object. All fields are strings to match
     OpenAlex's format, which may include non-numeric values like "Spring" or "A1".
@@ -137,9 +137,9 @@ other works have cited this work
         description="The name of the entity which published the version of record.",
     )
     title: str | None = Field(default=None, description="The title of the reference.")
-    biblio: Biblio | None = Field(
+    pagination: Pagination | None = Field(
         default=None,
-        description="Bibliographic location info (volume, issue, pages).",
+        description="Pagination info (volume, issue, pages).",
     )
 
     @property
