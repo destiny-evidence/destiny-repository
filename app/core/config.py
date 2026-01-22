@@ -246,11 +246,15 @@ class OTelConfig(BaseModel):
 
     # Flags to control low-level automatic instrumentation
     instrument_sql: bool = False
+    instrument_elasticsearch: bool = False
 
-    log_sample_config: LogSamplingConfig = Field(
+    orphan_log_sample_config: LogSamplingConfig = Field(
         default=LogSamplingConfig(),
-        description="Log level sampling configuration. "
-        "This applies only to OpenTelemetry logs.",
+        description=(
+            "Log level sampling configuration. "
+            "This applies only to OpenTelemetry logs, and only to logs that are not "
+            "a member of a trace."
+        ),
     )
 
 

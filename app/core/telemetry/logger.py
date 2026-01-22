@@ -6,6 +6,7 @@ import sys
 from typing import TYPE_CHECKING, cast
 
 import structlog
+from opentelemetry import trace
 from opentelemetry.sdk._logs import LoggingHandler
 from opentelemetry.util.types import AnyValue
 
@@ -56,9 +57,20 @@ class OTelAttributeFilter:
         return event_dict
 
 
-class LogLevelSamplingFilter(logging.Filter):
+class ElasticTransportFilter(logging.Filter):
+    """Filter out logs from the elastic_transport.transport logger."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Return True if the log should pass through, False to drop it."""
+        return record.name != "elastic_transport.transport"
+
+
+class OrphanLogLevelSamplingFilter(logging.Filter):
     """
-    Logging filter that samples logs based on their level.
+    Logging filter that samples orphan logs based on their level.
+
+    Orphan logs are those not associated with any trace/span. These are hence not
+    sampled by Refinery, so we apply our own head sampling here.
 
     This filter randomly drops logs based on configured sampling rates per level.
     A rate of 1.0 means all logs pass through, 0.0 means all logs are dropped.
@@ -81,8 +93,10 @@ class LogLevelSamplingFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Return True if the log should pass through, False to drop it."""
-        level = record.levelname.lower()
-        rate = self._sampling_config.get_rate(level)
+        if trace.get_current_span().get_span_context().is_valid:
+            return True
+
+        rate = self._sampling_config.get_rate(record.levelname)
 
         if rate == 0.0:
             return False
@@ -165,7 +179,7 @@ class LoggerConfigurer:
         self._root_logger.setLevel(getattr(logging, log_level.upper()))
 
     def configure_otel_logger(
-        self, handler: LoggingHandler, log_sampling_config: "LogSamplingConfig"
+        self, handler: LoggingHandler, orphan_log_sampling_config: "LogSamplingConfig"
     ) -> None:
         """Configure the OpenTelemetry logger."""
         otel_render_processors = cast(
@@ -185,7 +199,7 @@ class LoggerConfigurer:
             ],
         )
 
-        handler.addFilter(LogLevelSamplingFilter(log_sampling_config))
+        handler.addFilter(OrphanLogLevelSamplingFilter(orphan_log_sampling_config))
         handler.setFormatter(
             structlog.stdlib.ProcessorFormatter(
                 processors=[
