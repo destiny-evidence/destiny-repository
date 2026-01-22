@@ -187,6 +187,43 @@ class AzureBlobConfig(BaseModel):
         return f"https://{self.storage_account_name}.blob.core.windows.net"
 
 
+class LogLevel(StrEnum):
+    """Log level enum."""
+
+    NOTSET = auto()
+    DEBUG = auto()
+    INFO = auto()
+    WARNING = auto()
+    ERROR = auto()
+    CRITICAL = auto()
+
+
+fraction = Field(ge=0.0, le=1.0)
+
+
+class LogSamplingConfig(BaseModel):
+    """Log level sampling configuration."""
+
+    notset_sample_rate: float = fraction
+    debug_sample_rate: float = fraction
+    info_sample_rate: float = fraction
+    warning_sample_rate: float = fraction
+    error_sample_rate: float = fraction
+    critical_sample_rate: float = fraction
+
+    @property
+    def rates(self) -> dict[LogLevel, float]:
+        """Get a mapping of log levels to their sample rates."""
+        return {
+            LogLevel.NOTSET: self.notset_sample_rate,
+            LogLevel.DEBUG: self.debug_sample_rate,
+            LogLevel.INFO: self.info_sample_rate,
+            LogLevel.WARNING: self.warning_sample_rate,
+            LogLevel.ERROR: self.error_sample_rate,
+            LogLevel.CRITICAL: self.critical_sample_rate,
+        }
+
+
 class OTelConfig(BaseModel):
     """OpenTelemetry configuration."""
 
@@ -199,6 +236,19 @@ class OTelConfig(BaseModel):
 
     # Flags to control low-level automatic instrumentation
     instrument_sql: bool = False
+
+    log_sample_config: LogSamplingConfig = Field(
+        default=LogSamplingConfig(
+            notset_sample_rate=0.0,
+            debug_sample_rate=0.0,
+            info_sample_rate=0.01,
+            warning_sample_rate=1.0,
+            error_sample_rate=1.0,
+            critical_sample_rate=1.0,
+        ),
+        description="Log level sampling configuration. "
+        "This applies only to OpenTelemetry logs.",
+    )
 
 
 class Environment(StrEnum):
@@ -214,15 +264,6 @@ class Environment(StrEnum):
     def local_envs(cls) -> set["Environment"]:
         """Get environment values that are for local development."""
         return {cls.LOCAL, cls.TEST}
-
-
-class LogLevel(StrEnum):
-    """Log level enum."""
-
-    DEBUG = auto()
-    INFO = auto()
-    WARNING = auto()
-    ERROR = auto()
 
 
 class ESIndexingOperation(StrEnum):
@@ -400,7 +441,8 @@ class Settings(BaseSettings):
 
     log_level: LogLevel = Field(
         default=LogLevel.INFO,
-        description="The log level for the application.",
+        description="The log level for the application. "
+        "This applies to both opentelemetry and standard logging.",
     )
 
     cors_allow_origins: list[str] = Field(

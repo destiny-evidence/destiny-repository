@@ -119,6 +119,8 @@ def configure_otel(
     logger_provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
 
     handler = AttrFilteredLoggingHandler(logger_provider=logger_provider)
-    logger_configurer.configure_otel_logger(handler)
+    logger_configurer.configure_otel_logger(
+        handler, log_sample_rates=config.log_sample_config.rates
+    )
 
     logger.info("Opentelemetry configured", service_instance_id=service_instance_id)
