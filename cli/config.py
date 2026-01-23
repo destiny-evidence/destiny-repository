@@ -19,8 +19,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file_encoding="utf-8", extra="ignore")
 
-    azure_tenant_id: str
-    azure_login_url: HttpUrl = HttpUrl("https://login.microsoftonline.com")
+    azure_login_url: HttpUrl
     azure_application_id: str
     cli_client_id: str
     destiny_repository_url: HttpUrl = HttpUrl("http://127.0.0.1:8000")

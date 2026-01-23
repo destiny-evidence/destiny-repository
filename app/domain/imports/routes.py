@@ -68,7 +68,6 @@ async def validate_import_record(
 def choose_auth_strategy_imports() -> AuthMethod:
     """Choose import scope auth strategy for our imports authorization."""
     return choose_auth_strategy(
-        tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScope.IMPORT_WRITER,
         auth_role=AuthRole.IMPORT_WRITER,

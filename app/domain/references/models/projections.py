@@ -260,7 +260,8 @@ class DeduplicatedReferenceProjection(GenericProjection[Reference]):
             },
         )
 
-        # Allows for reference chaining if settings.max_reference_duplicate_length>2
+        # Allows for reference chaining if MAX_REFERENCE_DUPLCIATE_DEPTH is
+        # updated to >2
         duplicate_references = [
             DeduplicatedReferenceProjection.get_from_reference(reference)
             for reference in reference.duplicate_references
