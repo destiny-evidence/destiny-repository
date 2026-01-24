@@ -8,7 +8,13 @@ from pydantic import ValidationError
 
 
 def test_bibliographic_metadata_enhancement_valid():
-    # Create valid bibliographic content
+    # Create valid bibliographic content with pagination
+    pagination = destiny_sdk.enhancements.Pagination(
+        volume="42",
+        issue="7",
+        first_page="495",
+        last_page="512",
+    )
     bibliographic = destiny_sdk.enhancements.BibliographicMetadataEnhancement(
         enhancement_type=destiny_sdk.enhancements.EnhancementType.BIBLIOGRAPHIC,
         authorship=[],
@@ -19,6 +25,7 @@ def test_bibliographic_metadata_enhancement_valid():
         publication_year=2020,
         publisher="Test Publisher",
         title="Test Title",
+        pagination=pagination,
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
         id=uuid.uuid4(),
@@ -33,6 +40,27 @@ def test_bibliographic_metadata_enhancement_valid():
         enhancement.content.enhancement_type
         == destiny_sdk.enhancements.EnhancementType.BIBLIOGRAPHIC
     )
+    assert enhancement.content.pagination.volume == "42"
+    assert enhancement.content.pagination.issue == "7"
+    assert enhancement.content.pagination.first_page == "495"
+    assert enhancement.content.pagination.last_page == "512"
+
+
+def test_bibliographic_metadata_enhancement_non_numeric_pagination_fields():
+    """Test that non-numeric pagination fields are accepted (per OpenAlex spec)."""
+    bibliographic = destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+        title="Test Title",
+        pagination=destiny_sdk.enhancements.Pagination(
+            volume="Spring",
+            issue="Special Issue",
+            first_page="A1",
+            last_page="A15",
+        ),
+    )
+    assert bibliographic.pagination.volume == "Spring"
+    assert bibliographic.pagination.issue == "Special Issue"
+    assert bibliographic.pagination.first_page == "A1"
+    assert bibliographic.pagination.last_page == "A15"
 
 
 def test_abstract_content_enhancement_valid():

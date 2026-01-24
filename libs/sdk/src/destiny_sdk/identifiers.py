@@ -36,7 +36,7 @@ class DOIIdentifier(BaseModel):
 
     identifier: str = Field(
         description="The DOI of the reference.",
-        pattern=r"^10\.\d{4,9}/[-._;()/:a-zA-Z0-9%<>\[\]+&]+$",
+        pattern=r"^10\.\d{4,9}/[-._;()/:a-zA-Z0-9%<>\[\]+&=~*$#\u00C0-\u017F]+$",
     )
     identifier_type: Literal[ExternalIdentifierType.DOI] = Field(
         ExternalIdentifierType.DOI, description="The type of identifier used."
