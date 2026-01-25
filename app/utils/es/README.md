@@ -6,10 +6,10 @@ Logs from all processes are viewable in Honeycomb.
 
 ## Running on Azure
 
-Migrations are run via a `es-index-migrator-[ENV]` container app job which can be triggered manually with an image and command override.
+Migrations are run via a `es-index-migrator-[ENV]` container app job which can be triggered manually with a command override.
 
-- Note that you need to both save _AND THEN_ apply the configuration changes when inputting them into the UI.
-- Note that command needs to be seperated by commas at every space like `python, -m, app.utils.es.es_migration, --migrate, --alias, reference`
+- Note that you need to both save _AND THEN_ apply the command changes when inputting them into the UI.
+- Note that command needs to be separated by commas at every space like `python, -m, app.utils.es.es_migration, --migrate, --alias, reference`
 
 ## Migrate an index
 
