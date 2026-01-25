@@ -26,12 +26,17 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: .github
+
       - name: "Az CLI login"
         uses: azure/login@v2.1.0
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
       - name: Update scheduled container app jobs images
         uses: Azure/cli@v2.0.0
         with:
@@ -53,6 +58,7 @@ jobs:
                 --resource-group ${{vars.RESOURCE_GROUP}} \
                 --image ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ inputs.image-tag }}
             done
+
       - name: Update database migrator job image and command
         uses: Azure/cli@v2.0.0
         with:
@@ -62,6 +68,7 @@ jobs:
               --resource-group ${{vars.RESOURCE_GROUP}} \
               --image ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ inputs.image-tag }} \
               --command alembic upgrade head
+
       - name: Update elasticsearch index migrator job image and command
         uses: Azure/cli@v2.0.0
         with:
