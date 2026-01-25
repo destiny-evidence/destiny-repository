@@ -33,7 +33,8 @@ def test_doi_url_removed():
 @pytest.mark.parametrize(
     "doi",
     [
-        # DataCite GLIS characters: = ~ * $ #
+        # DataCite GLIS characters: = ~ * $
+        # Crossref/legacy: #
         "10.18730/9WQ$D",  # Dollar sign
         "10.18730/9WQ*D",  # Asterisk
         "10.18730/9WQ~D",  # Tilde
@@ -55,6 +56,52 @@ def test_valid_doi_with_special_characters(doi: str):
         identifier=doi,
     )
     assert obj.identifier == doi
+
+
+@pytest.mark.parametrize(
+    "doi",
+    [
+        "10.18730/abc,def",  # Comma
+        "10.18730/abc?def",  # Question mark
+        "10.18730/abc\u2013def",  # En-dash (U+2013)
+        "10.18730/abc\u2014def",  # Em-dash (U+2014)
+        "10.18730/abc\u00d7def",  # Multiplication sign (U+00D7)
+        "10.18730/abc\u00f7def",  # Division sign (U+00F7)
+        "10.18730/abc\u043cdef",  # Cyrillic small em (U+043C)
+    ],
+)
+def test_invalid_doi_characters(doi: str):
+    """Test that DOIs with invalid characters are rejected."""
+    with pytest.raises(ValidationError, match="String should match pattern"):
+        destiny_sdk.identifiers.DOIIdentifier(
+            identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.DOI,
+            identifier=doi,
+        )
+
+
+@pytest.mark.parametrize(
+    ("doi_input", "expected"),
+    [
+        # Unicode hyphen → ASCII hyphen
+        ("10.1000/abc\u2010def", "10.1000/abc-def"),
+        # NBSP stripped (leading/trailing)
+        ("\u00a010.1000/xyz123", "10.1000/xyz123"),
+        ("10.1000/xyz123\u00a0", "10.1000/xyz123"),
+        # Case-insensitive URL prefix stripping
+        ("HTTP://DOI.ORG/10.1000/xyz123", "10.1000/xyz123"),
+        ("HTTPS://DOI.ORG/10.1000/xyz123", "10.1000/xyz123"),
+        ("https://DX.DOI.ORG/10.1000/xyz123", "10.1000/xyz123"),
+        ("DOI:10.1000/xyz123", "10.1000/xyz123"),
+        ("doi: 10.1000/xyz123", "10.1000/xyz123"),
+    ],
+)
+def test_doi_canonicalization(doi_input: str, expected: str):
+    """Test DOI canonicalization: Unicode normalization and URL prefix stripping."""
+    obj = destiny_sdk.identifiers.DOIIdentifier(
+        identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.DOI,
+        identifier=doi_input,
+    )
+    assert obj.identifier == expected
 
 
 def test_valid_eric_identifier():

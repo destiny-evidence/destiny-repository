@@ -1,10 +1,16 @@
 """Identifier classes for the Destiny SDK."""
 
+import re
+import unicodedata
 import uuid
 from enum import StrEnum, auto
 from typing import Annotated, Literal, Self
 
 from pydantic import UUID4, BaseModel, Field, TypeAdapter, field_validator
+
+# Case-insensitive patterns for DOI URL prefix stripping
+_DOI_URL_PREFIX_RE = re.compile(r"^(?:https?://)?(?:dx\.)?doi\.org/", re.IGNORECASE)
+_DOI_SCHEME_RE = re.compile(r"^doi:\s*", re.IGNORECASE)
 
 
 class ExternalIdentifierType(StrEnum):
@@ -24,7 +30,7 @@ class ExternalIdentifierType(StrEnum):
     PM_ID = auto()
     """A PubMed ID which is a unique identifier for a document in PubMed."""
     PRO_QUEST = auto()
-    """A ProQuest ID which is a unqiue identifier for a document in ProQuest."""
+    """A ProQuest ID which is a unique identifier for a document in ProQuest."""
     OPEN_ALEX = auto()
     """An OpenAlex ID which is a unique identifier for a document in OpenAlex."""
     OTHER = auto()
@@ -35,8 +41,13 @@ class DOIIdentifier(BaseModel):
     """An external identifier representing a DOI."""
 
     identifier: str = Field(
-        description="The DOI of the reference.",
-        pattern=r"^10\.\d{4,9}/[-._;()/:a-zA-Z0-9%<>\[\]+&=~*$#\u00C0-\u017F]+$",
+        description=(
+            "The DOI of the reference. "
+            "Format: '10.<registrant>/<suffix>' where registrant is 4-9 digits "
+            "and suffix contains alphanumerics, punctuation (-._;()/:[]<>%+&=~*$#), "
+            "or accented Latin characters. Example: 10.1000/journal.pone.0001"
+        ),
+        pattern=r"^10\.\d{4,9}/[-._;()/:a-zA-Z0-9%<>\[\]+&=~*$#\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u017F]+$",
     )
     identifier_type: Literal[ExternalIdentifierType.DOI] = Field(
         ExternalIdentifierType.DOI, description="The type of identifier used."
@@ -44,23 +55,36 @@ class DOIIdentifier(BaseModel):
 
     @field_validator("identifier", mode="before")
     @classmethod
-    def remove_doi_url(cls, value: str) -> str:
-        """Remove the URL part of the DOI if it exists."""
-        return (
-            value.removeprefix("http://")
-            .removeprefix("https://")
-            .removeprefix("doi.org/")
-            .removeprefix("dx.doi.org/")
-            .removeprefix("doi:")
-            .strip()
-        )
+    def canonicalize_doi(cls, value: str) -> str:
+        """
+        Canonicalize DOI: strip URL prefixes and normalize Unicode.
+
+        - NFC Unicode normalization
+        - Replace NBSP (U+00A0) with space and strip
+        - Replace Unicode hyphen (U+2010) with ASCII hyphen
+        - Case-insensitive URL/scheme prefix stripping
+        """
+        # NFC normalization first
+        value = unicodedata.normalize("NFC", str(value))
+        # Replace NBSP with space, then strip
+        value = value.replace("\u00a0", " ").strip()
+        # Replace Unicode hyphen with ASCII hyphen
+        value = value.replace("\u2010", "-")
+        # Strip URL prefixes (case-insensitive)
+        value = _DOI_URL_PREFIX_RE.sub("", value)
+        value = _DOI_SCHEME_RE.sub("", value)
+        return value.strip()
 
 
 class ProQuestIdentifier(BaseModel):
     """An external identifier representing a ProQuest ID."""
 
     identifier: str = Field(
-        description="The ProQuest id of the reference", pattern=r"[0-9]+$"
+        description=(
+            "The ProQuest ID of the reference. "
+            "Format: numeric digits only. Example: 12345678"
+        ),
+        pattern=r"[0-9]+$",
     )
     identifier_type: Literal[ExternalIdentifierType.PRO_QUEST] = Field(
         ExternalIdentifierType.PRO_QUEST, description="The type of identifier used."
@@ -84,12 +108,16 @@ class ERICIdentifier(BaseModel):
     """
     An external identifier representing an ERIC Number.
 
-    An ERIC Number is defined as a unqiue identifiying number preceeded by
-    EJ (for a journal article) or ED (for a non-journal document).
+    An ERIC Number is defined as a unique identifying number preceded by
+    ED (for a non-journal document) or EJ (for a journal article).
     """
 
     identifier: str = Field(
-        description="The ERIC Number of the reference.", pattern=r"E[D|J][0-9]+$"
+        description=(
+            "The ERIC Number. "
+            "Format: 'ED' or 'EJ' followed by digits. Example: ED123456 or EJ789012"
+        ),
+        pattern=r"E[D|J][0-9]+$",
     )
     identifier_type: Literal[ExternalIdentifierType.ERIC] = Field(
         ExternalIdentifierType.ERIC, description="The type of identifier used."
@@ -112,7 +140,12 @@ class ERICIdentifier(BaseModel):
 class PubMedIdentifier(BaseModel):
     """An external identifier representing a PubMed ID."""
 
-    identifier: int = Field(description="The PubMed ID of the reference.")
+    identifier: int = Field(
+        description=(
+            "The PubMed ID (PMID) of the reference. "
+            "Format: positive integer. Example: 12345678"
+        ),
+    )
     identifier_type: Literal[ExternalIdentifierType.PM_ID] = Field(
         ExternalIdentifierType.PM_ID, description="The type of identifier used."
     )
@@ -122,7 +155,11 @@ class OpenAlexIdentifier(BaseModel):
     """An external identifier representing an OpenAlex ID."""
 
     identifier: str = Field(
-        description="The OpenAlex ID of the reference.", pattern=r"^W\d+$"
+        description=(
+            "The OpenAlex ID of the reference. "
+            "Format: 'W' followed by digits. Example: W2741809807"
+        ),
+        pattern=r"^W\d+$",
     )
     identifier_type: Literal[ExternalIdentifierType.OPEN_ALEX] = Field(
         ExternalIdentifierType.OPEN_ALEX, description="The type of identifier used."

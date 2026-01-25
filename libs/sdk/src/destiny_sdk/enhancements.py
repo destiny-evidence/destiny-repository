@@ -5,7 +5,7 @@ import json
 from enum import StrEnum, auto
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import UUID4, BaseModel, Field, HttpUrl, model_validator
+from pydantic import UUID4, BaseModel, Field, HttpUrl, field_validator, model_validator
 
 from destiny_sdk.core import _JsonlFileInputMixIn
 from destiny_sdk.identifiers import Identifier
@@ -95,6 +95,16 @@ class Pagination(BaseModel):
         description="The last page number of the reference in the publication.",
     )
 
+    @field_validator("volume", "issue", "first_page", "last_page", mode="before")
+    @classmethod
+    def normalize_pagination_string(cls, value: str | None) -> str | None:
+        """Normalize pagination strings: NBSP to space, strip, empty to None."""
+        if isinstance(value, str):
+            # Replace NBSP with space, then strip
+            value = value.replace("\u00a0", " ").strip()
+            return value if value else None
+        return value
+
 
 class BibliographicMetadataEnhancement(BaseModel):
     """
@@ -141,6 +151,23 @@ other works have cited this work
         default=None,
         description="Pagination info (volume, issue, pages).",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_biblio_alias(cls, values: dict) -> dict:
+        """
+        Accept OpenAlex-native 'biblio' as alias for 'pagination'.
+
+        This prevents silent data loss if any producer emits OpenAlex's
+        native shape instead of the canonical 'pagination' field.
+        """
+        if (
+            isinstance(values, dict)
+            and "pagination" not in values
+            and "biblio" in values
+        ):
+            values["pagination"] = values.pop("biblio")
+        return values
 
     @property
     def fingerprint(self) -> str:
