@@ -14,8 +14,6 @@ jobs:
     name: "Deploy Container"
     runs-on: ubuntu-latest
     environment: production
-    outputs:
-      image_tag: ${{ steps.vars.outputs.sha_short }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,9 +24,11 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
       - name: Set job env
         id: vars
         run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
       - name: Deploy built image to app container
         uses: Azure/container-apps-deploy-action@v1
         with:
@@ -37,6 +37,7 @@ jobs:
           resourceGroup: ${{vars.RESOURCE_GROUP}}
           containerAppEnvironment: ${{vars.CONTAINER_APP_ENV}}
           imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ steps.vars.outputs.sha_short }}
+
       - name: Deploy built image to tasks container
         uses: Azure/container-apps-deploy-action@v1
         with:
@@ -45,27 +46,13 @@ jobs:
           resourceGroup: ${{vars.RESOURCE_GROUP}}
           containerAppEnvironment: ${{vars.CONTAINER_APP_ENV}}
           imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ steps.vars.outputs.sha_short }}
+
       - name: Deploy built image to container app jobs
-        uses: Azure/cli@v2.0.0
+        uses: ./.github/workflows/jobs/deploy-to-container-app-jobs.yml
         with:
-          inlineScript: |
-            JOBS=$(az containerapp job list \
-              --resource-group ${{vars.RESOURCE_GROUP}} \
-              --query "[?tags.app=='${{vars.APP_NAME}}' && tags.environment=='production' && tags.\"job-type\"=='scheduled'].name" \
-              --output tsv)
+          environment: production
+          image-tag: ${{ steps.vars.outputs.sha_short }}
 
-            if [ -z "$JOBS" ]; then
-              echo "No scheduled jobs found"
-              exit 0
-            fi
-
-            for JOB_NAME in $JOBS; do
-              echo "Updating job: $JOB_NAME"
-              az containerapp job update \
-                --name "$JOB_NAME" \
-                --resource-group ${{vars.RESOURCE_GROUP}} \
-                --image ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ steps.vars.outputs.sha_short }}
-            done
       - name: Deploy built UI image to UI container app
         uses: Azure/container-apps-deploy-action@v1
         with:
@@ -86,15 +73,6 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - name: Deploy built image to database migrator job
-        uses: Azure/cli@v2.0.0
-        with:
-          inlineScript: |
-            az containerapp job update \
-              --name "db-migrator-${{ vars.ENVIRONMENT_NAME }}" \
-              --resource-group ${{vars.RESOURCE_GROUP}} \
-              --image ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ needs.deploy-production.outputs.image_tag }} \
-              --command alembic upgrade head
       - name: Trigger database migrations
         uses: Azure/cli@v2.0.0
         with:
