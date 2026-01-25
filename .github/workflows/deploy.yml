@@ -146,11 +146,12 @@ jobs:
           containerAppEnvironment: ${{vars.CONTAINER_APP_ENV}}
           imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ needs.build.outputs.image_tag }}
 
-      - name: Deploy built image to container app jobs
-        uses: ./.github/workflows/jobs/deploy-to-container-app-jobs.yml
-        with:
-          environment: ${{ inputs.environment || 'staging' }}
-          image-tag: ${{ needs.build.outputs.image_tag }}
+  deploy-to-container-app-jobs:
+    needs: build
+    uses: ./.github/workflows/deploy-to-container-app-jobs.yml
+    with:
+      environment: ${{ inputs.environment || 'staging' }}
+      image-tag: ${{ needs.build.outputs.image_tag }}
 
   deploy-ui:
     runs-on: ubuntu-latest
@@ -175,7 +176,7 @@ jobs:
 
   migrate-database:
     runs-on: ubuntu-latest
-    needs: [deploy, build]
+    needs: deploy-to-container-app-jobs
     environment: ${{ inputs.environment || 'staging' }}
     steps:
       - name: "Az CLI login"
