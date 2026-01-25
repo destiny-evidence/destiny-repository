@@ -26,10 +26,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     steps:
-      - uses: actions/checkout@v6
-        with:
-          sparse-checkout: .github
-
       - name: "Az CLI login"
         uses: azure/login@v2.1.0
         with:
