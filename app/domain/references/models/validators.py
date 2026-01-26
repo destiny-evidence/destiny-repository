@@ -183,20 +183,6 @@ class ReferenceCreateResult(BaseModel):
         except (json.JSONDecodeError, ValidationError) as exc:
             return cls(errors=[f"Entry {entry_ref}:", str(exc)])
 
-        # Log deprecation warning if any enhancement uses 'biblio' instead of
-        # 'pagination'. import_batch_id is available via trace attributes for
-        # correlation to the processor_name.
-        for enhancement in validated_input.enhancements:
-            if isinstance(enhancement, dict):
-                content = enhancement.get("content", {})
-                if isinstance(content, dict) and "biblio" in content:
-                    logger.warning(
-                        "Client sent 'biblio' field instead of 'pagination'. "
-                        "Please update to use 'pagination' field.",
-                        entry_ref=entry_ref,
-                    )
-                    break  # Only log once per reference
-
         identifier_results: list[ExternalIdentifierParseResult] = [
             ExternalIdentifierParseResult.from_raw(identifier, entry_ref)
             for entry_ref, identifier in enumerate(validated_input.identifiers, 1)

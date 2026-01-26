@@ -372,9 +372,6 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         # Track processed IDs for duplicate validation
         processed_reference_ids: set[UUID] = set()
 
-        # Track if we've logged the biblio deprecation warning for this batch
-        biblio_deprecation_logged = False
-
         async with blob_repository.stream_file_from_blob_storage(
             result_file,
         ) as file_stream:
@@ -387,16 +384,6 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                 ):
                     if not line.strip():
                         continue
-
-                    # Log deprecation warning if client uses 'biblio' instead of
-                    # 'pagination'. robot_id is bound to structlog context by the
-                    # calling task.
-                    if not biblio_deprecation_logged and '"biblio":' in line:
-                        logger.warning(
-                            "Client sent 'biblio' field instead of 'pagination'. "
-                            "Please update to use 'pagination' field.",
-                        )
-                        biblio_deprecation_logged = True
 
                     validated_result = EnhancementResultValidator.from_raw(
                         line, line_no, expected_reference_ids, processed_reference_ids
