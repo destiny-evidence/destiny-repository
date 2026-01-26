@@ -6,6 +6,7 @@ from typing import Literal
 from opentelemetry import trace
 
 from app.core.config import Environment, get_settings
+from app.core.constants import MAX_REFERENCE_DUPLICATE_DEPTH
 from app.core.exceptions import DeduplicationValueError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
@@ -333,8 +334,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         elif (
             # Reference forms a chain longer than allowed
             new_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
-            and reference.canonical_chain_length
-            == settings.max_reference_duplicate_depth
+            and reference.canonical_chain_length == MAX_REFERENCE_DUPLICATE_DEPTH
         ):
             # Raise for manual review
             new_decision.duplicate_determination = DuplicateDetermination.DECOUPLED

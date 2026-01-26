@@ -95,6 +95,12 @@ resource "azurerm_role_assignment" "gha-resource-group-reader" {
   principal_id         = azuread_service_principal.github_actions.object_id
 }
 
+resource "azurerm_role_assignment" "gha-db-migrator-contributor" {
+  role_definition_name = "Contributor"
+  scope                = azurerm_container_app_job.database_migrator.id
+  principal_id         = azuread_service_principal.github_actions.object_id
+}
+
 resource "azurerm_role_assignment" "gha-scheduled-jobs-contributor" {
   for_each             = azurerm_container_app_job.scheduled_jobs
   role_definition_name = "Contributor"

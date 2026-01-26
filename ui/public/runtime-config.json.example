@@ -5,7 +5,6 @@
     "ENV":"local",
     # Not needed for local dev, to verify auth fill out and use real values and set ENV!=local
     "NEXT_PUBLIC_AZURE_CLIENT_ID"="<replace-me>",
-    "NEXT_PUBLIC_AZURE_TENANT_ID="<replace-me>",
-    "NEXT_PUBLIC_AZURE_APPLICATION_ID"="<replace-me>"
-    "AZURE_LOGIN_URL"="<replace-me>"
+    "NEXT_PUBLIC_AZURE_APPLICATION_ID"="<replace-me>",
+    "NEXT_PUBLIC_AZURE_LOGIN_URL"="<replace-me>"
 }

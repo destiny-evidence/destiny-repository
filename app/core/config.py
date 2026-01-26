@@ -289,8 +289,7 @@ class Settings(BaseSettings):
     otel_enabled: bool = False
 
     azure_application_id: str
-    azure_login_url: str = "https://login.microsoftonline.com"
-    azure_tenant_id: str
+    azure_login_url: str
     message_broker_url: str | None = None
     message_broker_namespace: str | None = None
     message_broker_queue_name: str = "taskiq"
@@ -402,16 +401,6 @@ class Settings(BaseSettings):
     log_level: LogLevel = Field(
         default=LogLevel.INFO,
         description="The log level for the application.",
-    )
-
-    max_reference_duplicate_depth: Literal[2] = Field(
-        default=2,
-        description=(
-            "The maximum depth to which reference duplicates are propagated. A depth "
-            "of 2, as in the default, means only direct duplicates are allowed. Higher "
-            "values allow for duplicate chaining, at the significant cost of "
-            "performance and data model complexity."
-        ),
     )
 
     cors_allow_origins: list[str] = Field(

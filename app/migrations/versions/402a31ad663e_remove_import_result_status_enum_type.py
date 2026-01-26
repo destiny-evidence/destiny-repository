@@ -1,9 +1,9 @@
 """
-Remove enhancement_type enum
+Remove import result status enum type
 
-Revision ID: eb47e22ea5af
-Revises: 41a6980bb04e
-Create Date: 2025-11-19 21:25:51.203209+00:00
+Revision ID: 402a31ad663e
+Revises: 15a866774b9e
+Create Date: 2025-12-04 02:04:05.748840+00:00
 
 """
 from collections.abc import Sequence
@@ -14,15 +14,15 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = 'eb47e22ea5af'
-down_revision: Union[str, None] = '41a6980bb04e'
+revision: str = '402a31ad663e'
+down_revision: Union[str, None] = '15a866774b9e'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.alter_column('enhancement', 'enhancement_type', type_=sa.String(), existing_nullable=False)
-    op.execute("DROP TYPE IF EXISTS enhancement_type")
+    op.alter_column('import_result', 'status', type_=sa.String(), existing_nullable=False)
+    op.execute("DROP TYPE IF EXISTS import_result_status")
 
 
 def downgrade() -> None:
