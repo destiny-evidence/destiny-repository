@@ -232,11 +232,14 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     """
     Mixin to project Reference fields relevant to various search strategies.
 
-    Currently this holds fields for identifing candidate canonicals during deduplication
-    and for searching references by query on title, authors, and abstracts.
+    Currently this holds fields for identifying candidate canonicals during
+    deduplication and for searching references by query on title, authors,
+    and abstracts.
     """
 
-    abstract: str | None = mapped_field(Text(required=False), default=None)
+    abstract: str | None = mapped_field(
+        Text(required=False, index_phrases=True), default=None
+    )
     """The abstract of the reference."""
 
     authors: list[str] | None = mapped_field(
@@ -259,7 +262,9 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     )
     """The publication year of the reference."""
 
-    title: str | None = mapped_field(Text(required=False), default=None)
+    title: str | None = mapped_field(
+        Text(required=False, index_phrases=True), default=None
+    )
     """The title of the reference."""
 
     annotations: list[str] | None = mapped_field(
