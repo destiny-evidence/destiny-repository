@@ -152,23 +152,6 @@ other works have cited this work
         description="Pagination info (volume, issue, pages).",
     )
 
-    @model_validator(mode="before")
-    @classmethod
-    def accept_biblio_alias(cls, values: dict) -> dict:
-        """
-        Accept OpenAlex-native 'biblio' as alias for 'pagination'.
-
-        This prevents silent data loss if any producer emits OpenAlex's
-        native shape instead of the canonical 'pagination' field.
-        """
-        if (
-            isinstance(values, dict)
-            and "pagination" not in values
-            and "biblio" in values
-        ):
-            values["pagination"] = values.pop("biblio")
-        return values
-
     @property
     def fingerprint(self) -> str:
         """

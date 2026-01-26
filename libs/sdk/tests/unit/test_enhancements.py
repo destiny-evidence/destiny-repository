@@ -277,33 +277,3 @@ def test_pagination_nbsp_normalized():
     assert pagination.issue == "7"
     assert pagination.first_page is None
     assert pagination.last_page == "100"
-
-
-def test_accepts_openalex_biblio_shape():
-    """Test that OpenAlex-native 'biblio' is accepted as 'pagination'."""
-    data = {
-        "biblio": {
-            "volume": "495",
-            "issue": "7442",
-            "first_page": "437",
-            "last_page": "440",
-        }
-    }
-    m = destiny_sdk.enhancements.BibliographicMetadataEnhancement.model_validate(data)
-
-    assert m.pagination is not None
-    assert m.pagination.volume == "495"
-    assert m.pagination.issue == "7442"
-    assert m.pagination.first_page == "437"
-    assert m.pagination.last_page == "440"
-
-
-def test_pagination_takes_precedence_over_biblio():
-    """Test that explicit 'pagination' is not overwritten by 'biblio'."""
-    data = {
-        "pagination": {"volume": "1"},
-        "biblio": {"volume": "2"},
-    }
-    m = destiny_sdk.enhancements.BibliographicMetadataEnhancement.model_validate(data)
-
-    assert m.pagination.volume == "1"

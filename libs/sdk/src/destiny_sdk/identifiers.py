@@ -6,11 +6,19 @@ import uuid
 from enum import StrEnum, auto
 from typing import Annotated, Literal, Self
 
-from pydantic import UUID4, BaseModel, Field, TypeAdapter, field_validator
+from pydantic import UUID4, BaseModel, Field, PositiveInt, TypeAdapter, field_validator
 
 # Case-insensitive patterns for DOI URL prefix stripping
 _DOI_URL_PREFIX_RE = re.compile(r"^(?:https?://)?(?:dx\.)?doi\.org/", re.IGNORECASE)
 _DOI_SCHEME_RE = re.compile(r"^doi:\s*", re.IGNORECASE)
+
+# Translation table for DOI canonicalization (extensible for future characters)
+_DOI_CHAR_TRANSLATION = str.maketrans(
+    {
+        "\u00a0": " ",  # NBSP -> space
+        "\u2010": "-",  # Unicode hyphen -> ASCII hyphen
+    }
+)
 
 
 class ExternalIdentifierType(StrEnum):
@@ -44,10 +52,10 @@ class DOIIdentifier(BaseModel):
         description=(
             "The DOI of the reference. "
             "Format: '10.<registrant>/<suffix>' where registrant is 4-9 digits "
-            "and suffix contains alphanumerics, punctuation (-._;()/:[]<>%+&=~*$#), "
-            "or accented Latin characters. Example: 10.1000/journal.pone.0001"
+            "and suffix is any non-whitespace characters. "
+            "Examples: 10.1000/journal.pone.0001, 10.18730/9WQ$D, 10.1000/édition"
         ),
-        pattern=r"^10\.\d{4,9}/[-._;()/:a-zA-Z0-9%<>\[\]+&=~*$#\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u017F]+$",
+        pattern=r"^10\.\d{4,9}/\S+$",
     )
     identifier_type: Literal[ExternalIdentifierType.DOI] = Field(
         ExternalIdentifierType.DOI, description="The type of identifier used."
@@ -60,16 +68,13 @@ class DOIIdentifier(BaseModel):
         Canonicalize DOI: strip URL prefixes and normalize Unicode.
 
         - NFC Unicode normalization
-        - Replace NBSP (U+00A0) with space and strip
-        - Replace Unicode hyphen (U+2010) with ASCII hyphen
+        - Translate special characters (NBSP, Unicode hyphen) via translation table
         - Case-insensitive URL/scheme prefix stripping
         """
         # NFC normalization first
         value = unicodedata.normalize("NFC", str(value))
-        # Replace NBSP with space, then strip
-        value = value.replace("\u00a0", " ").strip()
-        # Replace Unicode hyphen with ASCII hyphen
-        value = value.replace("\u2010", "-")
+        # Translate special characters and strip
+        value = value.translate(_DOI_CHAR_TRANSLATION).strip()
         # Strip URL prefixes (case-insensitive)
         value = _DOI_URL_PREFIX_RE.sub("", value)
         value = _DOI_SCHEME_RE.sub("", value)
@@ -140,11 +145,8 @@ class ERICIdentifier(BaseModel):
 class PubMedIdentifier(BaseModel):
     """An external identifier representing a PubMed ID."""
 
-    identifier: int = Field(
-        description=(
-            "The PubMed ID (PMID) of the reference. "
-            "Format: positive integer. Example: 12345678"
-        ),
+    identifier: PositiveInt = Field(
+        description="The PubMed ID (PMID) of the reference. Example: 12345678",
     )
     identifier_type: Literal[ExternalIdentifierType.PM_ID] = Field(
         ExternalIdentifierType.PM_ID, description="The type of identifier used."

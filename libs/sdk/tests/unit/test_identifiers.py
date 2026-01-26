@@ -59,27 +59,6 @@ def test_valid_doi_with_special_characters(doi: str):
 
 
 @pytest.mark.parametrize(
-    "doi",
-    [
-        "10.18730/abc,def",  # Comma
-        "10.18730/abc?def",  # Question mark
-        "10.18730/abc\u2013def",  # En-dash (U+2013)
-        "10.18730/abc\u2014def",  # Em-dash (U+2014)
-        "10.18730/abc\u00d7def",  # Multiplication sign (U+00D7)
-        "10.18730/abc\u00f7def",  # Division sign (U+00F7)
-        "10.18730/abc\u043cdef",  # Cyrillic small em (U+043C)
-    ],
-)
-def test_invalid_doi_characters(doi: str):
-    """Test that DOIs with invalid characters are rejected."""
-    with pytest.raises(ValidationError, match="String should match pattern"):
-        destiny_sdk.identifiers.DOIIdentifier(
-            identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.DOI,
-            identifier=doi,
-        )
-
-
-@pytest.mark.parametrize(
     ("doi_input", "expected"),
     [
         # Unicode hyphen → ASCII hyphen
