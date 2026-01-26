@@ -22,7 +22,7 @@ class DomainSimpleDoc(SQLAttributeMixin):
 class SimpleDoc(GenericESPersistence):
     """Simple test document with basic fields."""
 
-    title: str = mapped_field(Text())
+    title: str = mapped_field(Text(index_phrases=True))
     year: int = mapped_field(Integer())
     content: str = mapped_field(Text())
 
