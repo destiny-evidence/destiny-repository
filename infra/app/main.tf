@@ -34,14 +34,6 @@ resource "azurerm_user_assigned_identity" "es_index_migrator" {
   resource_group_name = azurerm_resource_group.this.name
 }
 
-data "azuread_group" "db_crud_group" {
-  object_id = var.db_crud_group_id
-}
-
-data "azuread_group" "db_admin_group" {
-  object_id = var.db_admin_group_id
-}
-
 resource "azuread_group_member" "container_app_to_crud" {
   group_object_id  = var.db_crud_group_id
   member_object_id = azurerm_user_assigned_identity.container_apps_identity.principal_id
@@ -57,7 +49,6 @@ locals {
   # When external directory is enabled, use the external directory app and tenant
   # Otherwise, use the application tenant
   auth_application_id = var.external_directory_enabled ? azuread_application.external_directory_destiny_repository.client_id : azuread_application.destiny_repository.client_id
-  auth_tenant_id      = var.external_directory_enabled ? var.external_directory_tenant_id : var.azure_tenant_id
   auth_login_url      = var.external_directory_enabled ? var.azure_login_url : "https://login.microsoftonline.com/${var.azure_tenant_id}"
 
   env_vars = [
@@ -68,10 +59,6 @@ locals {
     {
       name  = "AZURE_APPLICATION_ID"
       value = local.auth_application_id
-    },
-    {
-      name  = "AZURE_TENANT_ID"
-      value = local.auth_tenant_id
     },
     {
       name  = "AZURE_LOGIN_URL"
@@ -140,15 +127,6 @@ locals {
 
 
   secrets = [
-    {
-      name = "db-config-init-container",
-      value = jsonencode({
-        DB_FQDN = azurerm_postgresql_flexible_server.this.fqdn
-        DB_NAME = azurerm_postgresql_flexible_server_database.this.name
-        DB_USER = var.admin_login
-        DB_PASS = var.admin_password
-      })
-    },
     {
       name  = "servicebus-connection-string"
       value = azurerm_servicebus_namespace.this.default_primary_connection_string
@@ -227,24 +205,6 @@ module "container_app" {
     }
   }
 
-  init_container = {
-    name    = "${local.name}-database-init"
-    image   = "${data.azurerm_container_registry.this.login_server}/destiny-repository:${var.environment}"
-    command = ["alembic", "upgrade", "head"]
-    cpu     = 0.5
-    memory  = "1Gi"
-
-    # Init containers don't support managed identities so this is our last bastion
-    # of passworded auth.
-    # https://github.com/microsoft/azure-container-apps/issues/807
-    env = concat(local.env_vars, [
-      {
-        name        = "DB_CONFIG",
-        secret_name = "db-config-init-container"
-      }
-    ])
-  }
-
   custom_scale_rules = [
     {
       name             = "cpu-scale-rule"
@@ -256,6 +216,7 @@ module "container_app" {
     }
   ]
 }
+
 
 module "container_app_tasks" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
@@ -328,11 +289,11 @@ module "container_app_ui" {
   env_vars = [
     {
       name  = "NEXT_PUBLIC_AZURE_CLIENT_ID"
-      value = azuread_application_registration.destiny_repository_auth_ui.client_id
+      value = var.external_directory_enabled ? azuread_application_registration.external_directory_destiny_repository_auth_ui.client_id : azuread_application_registration.destiny_repository_auth_ui.client_id
     },
     {
-      name  = "NEXT_PUBLIC_AZURE_TENANT_ID"
-      value = var.azure_tenant_id
+      name  = "NEXT_PUBLIC_AZURE_LOGIN_URL"
+      value = local.auth_login_url
     },
     {
       name  = "NEXT_PUBLIC_API_URL"
@@ -340,7 +301,7 @@ module "container_app_ui" {
     },
     {
       name  = "NEXT_PUBLIC_AZURE_APPLICATION_ID"
-      value = azuread_application.destiny_repository.client_id
+      value = local.auth_application_id
     },
   ]
 
@@ -354,80 +315,6 @@ module "container_app_ui" {
       percentage      = 100
     }
   }
-}
-
-
-
-resource "azurerm_postgresql_flexible_server" "this" {
-  name                          = "${local.name}-psqlflexibleserver"
-  resource_group_name           = azurerm_resource_group.this.name
-  location                      = azurerm_resource_group.this.location
-  version                       = "18"
-  delegated_subnet_id           = azurerm_subnet.db.id
-  private_dns_zone_id           = azurerm_private_dns_zone.db.id
-  public_network_access_enabled = false
-  administrator_login           = var.admin_login
-  administrator_password        = var.admin_password
-  zone                          = "1"
-  backup_retention_days         = local.is_production ? 35 : 7
-
-  dynamic "high_availability" {
-    for_each = local.is_production ? [1] : []
-    content {
-      mode = "ZoneRedundant"
-    }
-  }
-
-
-  storage_mb   = local.is_development ? local.dev_db_storage_mb : local.prod_db_storage_mb
-  storage_tier = local.is_development ? local.dev_db_storage_tier : local.prod_db_storage_tier
-
-  sku_name = "GP_Standard_D2ds_v4"
-
-  authentication {
-    password_auth_enabled         = true # required for init container, see https://covidence.atlassian.net/wiki/spaces/Platforms/pages/624033793/DESTINY+DB+Authentication
-    active_directory_auth_enabled = true
-    tenant_id                     = var.azure_tenant_id
-  }
-
-  depends_on = [azurerm_private_dns_zone_virtual_network_link.db]
-  tags       = local.minimum_resource_tags
-
-  # avoid migrating back to the primary availability zone after failover
-  lifecycle {
-    ignore_changes = [
-      zone,
-      high_availability[0].standby_availability_zone
-    ]
-  }
-}
-
-resource "azurerm_postgresql_flexible_server_database" "this" {
-  name      = "${local.name}-db"
-  server_id = azurerm_postgresql_flexible_server.this.id
-  collation = "en_US.utf8"
-  charset   = "UTF8"
-
-  # Avoid accidental database deletion
-  lifecycle {
-    prevent_destroy = true
-  }
-}
-
-resource "azurerm_user_assigned_identity" "pgadmin" {
-  location            = azurerm_resource_group.this.location
-  name                = data.azuread_group.db_admin_group.display_name
-  resource_group_name = azurerm_resource_group.this.name
-  tags                = local.minimum_resource_tags
-}
-
-resource "azurerm_postgresql_flexible_server_active_directory_administrator" "admin" {
-  server_name         = azurerm_postgresql_flexible_server.this.name
-  resource_group_name = azurerm_resource_group.this.name
-  tenant_id           = var.azure_tenant_id
-  object_id           = var.db_admin_group_id
-  principal_name      = data.azuread_group.db_admin_group.display_name
-  principal_type      = "Group"
 }
 
 resource "azurerm_servicebus_namespace" "this" {

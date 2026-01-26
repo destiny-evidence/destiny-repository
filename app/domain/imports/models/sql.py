@@ -14,7 +14,6 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.imports.models.models import (
@@ -44,10 +43,7 @@ class ImportResult(GenericSQLPersistence[DomainImportResult]):
         UUID, ForeignKey("import_batch.id"), nullable=False
     )
     status: Mapped[ImportResultStatus] = mapped_column(
-        ENUM(
-            *[status.value for status in ImportResultStatus],
-            name="import_result_status",
-        ),
+        String,
         nullable=False,
     )
     reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID)
@@ -169,13 +165,7 @@ class ImportRecord(GenericSQLPersistence[DomainImportRecord]):
     notes: Mapped[str | None] = mapped_column(String)
     expected_reference_count: Mapped[int] = mapped_column(Integer, nullable=False)
     source_name: Mapped[str] = mapped_column(String, nullable=False)
-    status: Mapped[ImportRecordStatus] = mapped_column(
-        ENUM(
-            *[status.value for status in ImportRecordStatus],
-            name="import_record_status",
-        ),
-        nullable=False,
-    )
+    status: Mapped[ImportRecordStatus] = mapped_column(String, nullable=False)
 
     batches: Mapped[list[ImportBatch]] = relationship(
         "ImportBatch", back_populates="import_record"

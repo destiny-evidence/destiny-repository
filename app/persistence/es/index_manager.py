@@ -6,7 +6,7 @@ from typing import Any
 
 import elasticsearch
 from elasticsearch import AsyncElasticsearch
-from elasticsearch.dsl import AsyncDocument
+from elasticsearch.dsl import AsyncDocument, AsyncIndex
 from opentelemetry import trace
 from taskiq import AsyncTaskiqDecoratedTask
 
@@ -43,6 +43,7 @@ class IndexManager:
         repair_task: AsyncTaskiqDecoratedTask[..., Coroutine[Any, Any, None]]
         | None = None,
         version_prefix: str = "v",
+        number_of_shards: int | None = None,
         reindex_status_polling_interval: int = 5 * 60,  # default to 5min
     ) -> None:
         """
@@ -54,6 +55,8 @@ class IndexManager:
             repair_task: Asynchronous task used to repair an index (defaults None)
             version_prefix: Prefix for version numbers in index names
             reindex_status_polling_interval: How often to check status of reindexing (defaults 5s)
+            number_of_shards: Number of shards to use when creating new indices. If None, defaults to
+                existing index's number of shards or 1 if no existing index found.
 
         """  # noqa: E501
         self.document_class = document_class
@@ -61,6 +64,7 @@ class IndexManager:
         self.repair_task = repair_task
         self.version_prefix = version_prefix
         self.reindex_status_polling_interval = reindex_status_polling_interval
+        self.number_of_shards = number_of_shards
 
         self.alias_name = document_class.Index.name
         self.otel_enabled = otel_enabled
@@ -99,6 +103,24 @@ class IndexManager:
             return indices[0] if indices else None
         except elasticsearch.NotFoundError:
             return None
+
+    async def get_current_number_of_shards(self) -> int | None:
+        """
+        Get the number of shards for the current index.
+
+        Returns:
+            Number of shards or None if no current index
+
+        """
+        current_index_name = await self.get_current_index_name()
+        if current_index_name is None:
+            return None
+
+        index_settings = await self.client.indices.get_settings(
+            index=current_index_name
+        )
+        settings = index_settings[current_index_name]["settings"]["index"]
+        return int(settings["number_of_shards"])
 
     @tracer.start_as_current_span("Rebuild index")
     async def rebuild_index(self) -> None:
@@ -158,11 +180,23 @@ class IndexManager:
         """
         Create a new index with the mapping from the document class.
 
+        If number_of_shards is not provided in the constructor, it is taken from the
+        existing index. If there is no existing index, it defaults to 1.
+
         Args:
             index_name: Name of the index to create
 
         """
-        await self.document_class.init(index=index_name, using=self.client)
+        index = AsyncIndex(name=index_name)
+        index.settings(
+            number_of_shards=(
+                self.number_of_shards
+                or (await self.get_current_number_of_shards())
+                or 1
+            )
+        )
+        index.document(self.document_class)
+        await index.create(using=self.client)
         logger.info("Created index: %s", index_name)
 
     @tracer.start_as_current_span("Initialize index")

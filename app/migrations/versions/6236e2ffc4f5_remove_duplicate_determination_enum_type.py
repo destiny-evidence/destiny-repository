@@ -1,9 +1,9 @@
 """
-Remove enhancement_type enum
+Remove duplicate determination enum type
 
-Revision ID: eb47e22ea5af
-Revises: 41a6980bb04e
-Create Date: 2025-11-19 21:25:51.203209+00:00
+Revision ID: 6236e2ffc4f5
+Revises: 7bb7cd39e022
+Create Date: 2026-01-19 01:09:17.233507+00:00
 
 """
 from collections.abc import Sequence
@@ -14,16 +14,20 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = 'eb47e22ea5af'
-down_revision: Union[str, None] = '41a6980bb04e'
+revision: str = '6236e2ffc4f5'
+down_revision: Union[str, None] = '7bb7cd39e022'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.alter_column('enhancement', 'enhancement_type', type_=sa.String(), existing_nullable=False)
-    op.execute("DROP TYPE IF EXISTS enhancement_type")
-
+    op.alter_column(
+        'reference_duplicate_decision',
+        'duplicate_determination',
+        type_=sa.String(),
+        existing_nullable=False
+    )
+    op.execute("DROP TYPE IF EXISTS duplicate_determination")
 
 def downgrade() -> None:
     # Not safely downgradable. We can create the enum type, but can't

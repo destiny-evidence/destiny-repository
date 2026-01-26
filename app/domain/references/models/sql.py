@@ -5,11 +5,11 @@ import uuid
 from typing import Any, Self
 
 from sqlalchemy import UUID, DateTime, ForeignKey, Index, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.config import get_settings
+from app.core.constants import MAX_REFERENCE_DUPLICATE_DEPTH
 from app.core.exceptions import SQLPreloadError
 from app.domain.references.models.models import (
     DuplicateDetermination,
@@ -52,8 +52,6 @@ from app.persistence.sql.persistence import (
     RelationshipLoadType,
 )
 
-settings = get_settings()
-
 
 class Reference(GenericSQLPersistence[DomainReference]):
     """
@@ -66,10 +64,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
     __tablename__ = "reference"
 
     visibility: Mapped[Visibility] = mapped_column(
-        ENUM(
-            *[status.value for status in Visibility],
-            name="visibility",
-        ),
+        String,
         nullable=False,
     )
 
@@ -104,7 +99,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
         uselist=False,
         viewonly=True,
         info=RelationshipInfo(
-            max_recursion_depth=settings.max_reference_duplicate_depth - 1,
+            max_recursion_depth=MAX_REFERENCE_DUPLICATE_DEPTH - 1,
             load_type=RelationshipLoadType.SELECTIN,
             back_populates="duplicate_references",
         ).model_dump(),
@@ -118,7 +113,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
         "ReferenceDuplicateDecision.active_decision==True)",
         viewonly=True,
         info=RelationshipInfo(
-            max_recursion_depth=settings.max_reference_duplicate_depth - 1,
+            max_recursion_depth=MAX_REFERENCE_DUPLICATE_DEPTH - 1,
             load_type=RelationshipLoadType.SELECTIN,
             back_populates="canonical_reference",
         ).model_dump(),
@@ -275,10 +270,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
     __tablename__ = "enhancement"
 
     visibility: Mapped[Visibility] = mapped_column(
-        ENUM(
-            *[status.value for status in Visibility],
-            name="visibility",
-        ),
+        String,
         nullable=False,
     )
     source: Mapped[str] = mapped_column(String, nullable=False)
@@ -359,10 +351,7 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
     robot_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
 
     request_status: Mapped[EnhancementRequestStatus] = mapped_column(
-        ENUM(
-            *[status.value for status in EnhancementRequestStatus],
-            name="enhancement_request_status",
-        )
+        String, nullable=False
     )
 
     source: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -503,10 +492,7 @@ class ReferenceDuplicateDecision(
         ARRAY(UUID), nullable=True
     )
     duplicate_determination: Mapped[DuplicateDetermination] = mapped_column(
-        ENUM(
-            *[status.value for status in DuplicateDetermination],
-            name="duplicate_determination",
-        )
+        String, nullable=False
     )
     canonical_reference_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID,

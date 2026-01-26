@@ -35,6 +35,18 @@ def reference() -> Reference:
 
 
 @pytest.fixture
+def reference_with_non_other_identifier(reference: Reference) -> Reference:
+    assert reference.identifiers
+    reference.identifiers.append(
+        LinkedExternalIdentifierFactory.build(
+            identifier=OpenAlexIdentifierFactory.build(),
+            reference_id=reference.id,
+        )
+    )
+    return reference
+
+
+@pytest.fixture
 def searchable_reference(reference: Reference) -> Reference:
     return reference.model_copy(
         update={
@@ -60,20 +72,23 @@ def anti_corruption_service():
 
 @pytest.mark.asyncio
 async def test_find_exact_duplicate_happy_path(
-    reference, anti_corruption_service, fake_uow, fake_repository
+    reference_with_non_other_identifier,
+    anti_corruption_service,
+    fake_uow,
+    fake_repository,
 ):
-    candidate = reference.model_copy(
+    candidate = reference_with_non_other_identifier.model_copy(
         update={"id": uuid.uuid4()},
     )
     repo = fake_repository([candidate])
     uow = fake_uow(references=repo)
     uow.references.find_with_identifiers = AsyncMock(return_value=[candidate])
     service = DeduplicationService(anti_corruption_service, uow, fake_uow())
-    result = await service.find_exact_duplicate(reference)
+    result = await service.find_exact_duplicate(reference_with_non_other_identifier)
     assert result == candidate
     # No longer a subset
     result = await service.find_exact_duplicate(
-        reference.model_copy(update={"visibility": "hidden"})
+        reference_with_non_other_identifier.model_copy(update={"visibility": "hidden"})
     )
     assert not result
 
@@ -119,6 +134,14 @@ async def test_find_exact_duplicate_updated_enhancement(
     bibliography = BibliographicMetadataEnhancementFactory.build(title="A title")
     raw_enhancement = RawEnhancementFactory.build()
     ref = ReferenceFactory.build(
+        identifiers=[
+            # Ensure we have at least one non-other identifier
+            LinkedExternalIdentifierFactory.build(
+                identifier=OpenAlexIdentifierFactory.build()
+            ),
+            # Build another random one
+            LinkedExternalIdentifierFactory.build(),
+        ],
         enhancements=[
             EnhancementFactory.build(
                 content=bibliography,
@@ -493,8 +516,7 @@ async def test_determine_and_map_duplicate_decoupled_chain_length(
             reference_duplicate_decisions=dec_repo,
         ),
         fake_uow(),
-    )  # Patch settings.max_reference_duplicate_depth to 2
-    service.__class__.settings = MagicMock(max_reference_duplicate_depth=2)
+    )
 
     determined = await service.determine_canonical_from_candidates(decision)
     out_decision, decision_changed = await service.map_duplicate_decision(determined)

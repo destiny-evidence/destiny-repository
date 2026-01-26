@@ -3,6 +3,10 @@
 import React, { useState } from "react";
 import JsonDisplay from "./JsonDisplay";
 
+// Encode DOI path segments for use in URLs, preserving "/" separators
+const encodeDoiPath = (doi: string): string =>
+  doi.split("/").map(encodeURIComponent).join("/");
+
 interface ReferenceDisplayProps {
   result: any;
   isCollapsed: boolean;
@@ -147,7 +151,7 @@ function IdentifierDisplay({
                 <li key={idx}>
                   DOI:{" "}
                   <a
-                    href={`https://doi.org/${id.identifier}`}
+                    href={`https://doi.org/${encodeDoiPath(id.identifier)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={linkStyle}

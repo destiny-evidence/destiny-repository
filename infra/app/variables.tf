@@ -120,7 +120,7 @@ variable "queue_active_jobs_scaling_threshold" {
 }
 
 variable "created_by" {
-  description = "Who created this infrastrcuture. Required tag for resource groups"
+  description = "Who created this infrastructure. Required tag for resource groups"
   type        = string
 }
 
@@ -202,12 +202,12 @@ variable "region" {
 }
 
 variable "open_alex_incremental_updater_client_id" {
-  description = "The client id of the open alex incrememtal updater application"
+  description = "The client id of the open alex incremental updater application"
   type        = string
 }
 
 variable "open_alex_incremental_updater_external_client_id" {
-  description = "The client id of the open alex incrememtal updater application in the external tenant. Required when external_directory_enabled is true."
+  description = "The client id of the open alex incremental updater application in the external tenant. Required when external_directory_enabled is true."
   type        = string
 }
 
@@ -215,17 +215,6 @@ variable "destiny_demonstrator_ui_app_name" {
   description = "The name of the destiny demonstrator ui application"
   type        = string
   default     = "demonstrator-ui"
-}
-
-variable "elasticsearch_sku" {
-  description = "SKU for the Elasticsearch cluster"
-  type        = string
-  default     = "ess-consumption-2024_Monthly"
-}
-
-variable "elasticsearch_admin_email" {
-  description = "Email address for the Elasticsearch admin user"
-  type        = string
 }
 
 # elasticsearch is not available in all regions, see https://www.elastic.co/cloud/regions
@@ -253,19 +242,16 @@ variable "elasticsearch_index_migrator_timeout" {
   default     = 28800 # 8 hour timeout
 }
 
-
-variable "pypi_token" {
-  description = "API token for PyPI"
-  type        = string
-  sensitive   = true
+variable "database_migrator_timeout" {
+  description = "How long to wait for a database migration to complete when running a container app job in seconds"
+  type        = number
+  default     = 28800 # 8 hour timeout
 }
-
 
 variable "pypi_repository" {
   description = "PyPI repository to publish to, either 'pypi' or 'testpypi'"
   type        = string
 }
-
 
 variable "honeycombio_api_key_id" {
   description = "API key id for Honeycomb.io"
@@ -307,12 +293,6 @@ variable "telemetry_enabled" {
   description = "Whether telemetry is enabled for the application"
   type        = bool
   default     = true
-}
-
-variable "honeycomb_alert_slack_channel" {
-  description = "Slack channel for Honeycomb alerts"
-  type        = string
-  default     = "#destiny-alerts"
 }
 
 variable "feature_flags" {

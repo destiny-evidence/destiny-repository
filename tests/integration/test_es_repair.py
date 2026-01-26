@@ -416,7 +416,6 @@ async def test_repair_nonexistent_index(
 async def test_repair_auth_failure(
     client: AsyncClient,
     fake_application_id: str,
-    fake_tenant_id: str,
 ) -> None:
     """Test attempting to repair an index with missing and incorrect auth fails."""
     from app.core.config import Environment
@@ -424,7 +423,6 @@ async def test_repair_auth_failure(
     # Set up production environment and auth settings
     system_routes.settings.env = Environment.PRODUCTION
     system_routes.settings.azure_application_id = fake_application_id
-    system_routes.settings.azure_tenant_id = fake_tenant_id
     system_routes.system_utility_auth.reset()
 
     test_index_name = "test-index"
