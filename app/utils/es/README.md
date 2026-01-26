@@ -19,6 +19,12 @@ To migrate an index to a new index with updated mappings based on document class
 python -m app.utils.es.es_migration --migrate --alias reference
 ```
 
+If you want to change the number of shards, specify with the `-n` or `--number-of-shards` argument. If not specified, it will assume the shard count on the index the alias currently points to.
+
+```zsh
+python -m app.utils.es.es_migration --migrate --alias reference --number-of-shards 50
+```
+
 ## Rollback an index
 
 If a migration is incompatible with the application, you can roll back to the previous index using
