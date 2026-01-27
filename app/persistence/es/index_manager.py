@@ -6,14 +6,13 @@ from typing import Any
 
 import elasticsearch
 from elasticsearch import AsyncElasticsearch
-from elasticsearch.dsl import AsyncDocument
+from elasticsearch.dsl import AsyncDocument, AsyncIndex
 from opentelemetry import trace
 from taskiq import AsyncTaskiqDecoratedTask
 
 from app.core.exceptions import NotFoundError
 from app.core.telemetry.attributes import (
     Attributes,
-    name_span,
     set_span_status,
     trace_attribute,
 )
@@ -43,6 +42,7 @@ class IndexManager:
         repair_task: AsyncTaskiqDecoratedTask[..., Coroutine[Any, Any, None]]
         | None = None,
         version_prefix: str = "v",
+        number_of_shards: int | None = None,
         reindex_status_polling_interval: int = 5 * 60,  # default to 5min
     ) -> None:
         """
@@ -54,6 +54,8 @@ class IndexManager:
             repair_task: Asynchronous task used to repair an index (defaults None)
             version_prefix: Prefix for version numbers in index names
             reindex_status_polling_interval: How often to check status of reindexing (defaults 5s)
+            number_of_shards: Number of shards to use when creating new indices. If None, defaults to
+                existing index's number of shards or 1 if no existing index found.
 
         """  # noqa: E501
         self.document_class = document_class
@@ -61,6 +63,7 @@ class IndexManager:
         self.repair_task = repair_task
         self.version_prefix = version_prefix
         self.reindex_status_polling_interval = reindex_status_polling_interval
+        self.number_of_shards = number_of_shards
 
         self.alias_name = document_class.Index.name
         self.otel_enabled = otel_enabled
@@ -100,6 +103,24 @@ class IndexManager:
         except elasticsearch.NotFoundError:
             return None
 
+    async def get_current_number_of_shards(self) -> int | None:
+        """
+        Get the number of shards for the current index.
+
+        Returns:
+            Number of shards or None if no current index
+
+        """
+        current_index_name = await self.get_current_index_name()
+        if current_index_name is None:
+            return None
+
+        index_settings = await self.client.indices.get_settings(
+            index=current_index_name
+        )
+        settings = index_settings[current_index_name]["settings"]["index"]
+        return int(settings["number_of_shards"])
+
     @tracer.start_as_current_span("Rebuild index")
     async def rebuild_index(self) -> None:
         """
@@ -117,7 +138,9 @@ class IndexManager:
             set_span_status(status=trace.StatusCode.ERROR, detail=msg)
             raise NotFoundError(msg)
 
-        name_span(f"Rebuild index - {current_index_name}")
+        trace_attribute(
+            attribute=Attributes.DB_COLLECTION_NAME, value=current_index_name
+        )
 
         await self.client.indices.delete_alias(
             index=current_index_name, name=self.alias_name
@@ -158,11 +181,23 @@ class IndexManager:
         """
         Create a new index with the mapping from the document class.
 
+        If number_of_shards is not provided in the constructor, it is taken from the
+        existing index. If there is no existing index, it defaults to 1.
+
         Args:
             index_name: Name of the index to create
 
         """
-        await self.document_class.init(index=index_name, using=self.client)
+        index = AsyncIndex(name=index_name)
+        index.settings(
+            number_of_shards=(
+                self.number_of_shards
+                or (await self.get_current_number_of_shards())
+                or 1
+            )
+        )
+        index.document(self.document_class)
+        await index.create(using=self.client)
         logger.info("Created index: %s", index_name)
 
     @tracer.start_as_current_span("Initialize index")
@@ -183,7 +218,7 @@ class IndexManager:
         if current_index is None:
             index_name = self._generate_index_name(1)
 
-            name_span(f"Initialize index {index_name}")
+            trace_attribute(attribute=Attributes.DB_COLLECTION_NAME, value=index_name)
 
             await self._create_index_with_mapping(index_name)
 
@@ -233,7 +268,9 @@ class IndexManager:
         new_version = current_version + 1
         destination_index = self._generate_index_name(new_version)
 
-        name_span(f"Migrate index {source_index} to {destination_index}")
+        trace_attribute(
+            attribute=Attributes.DB_COLLECTION_NAME, value=destination_index
+        )
 
         logger.info("Starting migration from %s to %s", source_index, destination_index)
 
@@ -259,7 +296,7 @@ class IndexManager:
         logger.info("Migration completed successfully to %s", destination_index)
         return destination_index
 
-    @tracer.start_as_current_span("Reindexing index")
+    @tracer.start_as_current_span("Reindex index")
     async def _reindex_data(self, source_index: str, dest_index: str) -> None:
         """
         Reindex data from source to destination index.
@@ -273,7 +310,8 @@ class IndexManager:
             attribute=Attributes.DB_COLLECTION_ALIAS_NAME, value=self.alias_name
         )
 
-        name_span(f"Reindex {source_index} to {dest_index}")
+        trace_attribute(attribute=Attributes.DB_COLLECTION_NAME, value=dest_index)
+
         logger.info("Reindexing from %s to %s", source_index, dest_index)
 
         # Get document count for progress tracking
@@ -412,7 +450,7 @@ class IndexManager:
             set_span_status(status=trace.StatusCode.ERROR, detail=msg)
             raise NotFoundError(msg)
 
-        name_span(f"Rollback index {current_index} to {target_index}")
+        trace_attribute(attribute=Attributes.DB_COLLECTION_NAME, value=target_index)
 
         await self._switch_alias(current_index, target_index)
 

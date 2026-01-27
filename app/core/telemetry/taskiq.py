@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import contextvars
 import importlib
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from opentelemetry import context, propagate, trace
-from opentelemetry.trace import Span, SpanKind
+from opentelemetry import context, trace
+from opentelemetry.trace import Link, Span, SpanContext, SpanKind
 from structlog.contextvars import bind_contextvars, clear_contextvars
 from taskiq import (
     AsyncTaskiqDecoratedTask,
@@ -18,9 +18,6 @@ from taskiq import (
 
 from app.core.telemetry.attributes import Attributes
 from app.core.telemetry.logger import get_logger
-
-if TYPE_CHECKING:
-    from opentelemetry.context import Context
 
 tracer = trace.get_tracer(__name__)
 logger = get_logger(__name__)
@@ -34,7 +31,7 @@ async def queue_task_with_trace(
     **kwargs: object,
 ) -> None:
     """
-    Wrap around taskiq queueing to inject OpenTelemetry trace context.
+    Wrap around taskiq queueing to pass OpenTelemetry trace link.
 
     :param task: The TaskIQ task to queue or a tuple of (module_path, task_name).
     :type task: AsyncTaskiqDecoratedTask | tuple[str, str]
@@ -45,8 +42,8 @@ async def queue_task_with_trace(
     :param kwargs: Keyword arguments for the task.
     :type kwargs: object
 
-    All tasks should be queued through this function to ensure
-    that the OpenTelemetry trace context is automatically injected.
+    All tasks should be queued through this function to ensure trace linking.
+    Tasks create their own traces with a link back to the producer span for correlation.
     """
     # Allow runtime string imports so services can queue tasks without circular imports
     if isinstance(task, tuple):
@@ -68,34 +65,27 @@ async def queue_task_with_trace(
         # If OpenTelemetry is not enabled, just queue the task normally
         await task.kiq(*args, **kwargs)
         return
-    with tracer.start_as_current_span(
-        f"queue.{task.task_name}",
-        kind=SpanKind.PRODUCER,
-        attributes={
-            Attributes.MESSAGING_DESTINATION_NAME: task.task_name,
-            Attributes.MESSAGING_OPERATION: "send",
-            Attributes.MESSAGING_SYSTEM: "taskiq",
-        },
-    ):
-        # Inject the current trace context into the message carrier
-        # for distributed tracing
-        carrier: dict[str, Any] = {}
-        propagate.inject(carrier)
-        # Queue the task with the trace context
-        await task.kiq(
-            *args,
-            **kwargs,
-            trace_context=carrier,
-        )
+
+    # Pass span context for linking (not propagation) so tasks
+    # create their own traces with independent sampling decisions
+    span_context = trace.get_current_span().get_span_context()
+    trace_link = {
+        "trace_id": format(span_context.trace_id, "032x"),
+        "span_id": format(span_context.span_id, "016x"),
+    }
+    await task.kiq(
+        *args,
+        **kwargs,
+        trace_link=trace_link,
+    )
 
 
 class TaskiqTracingMiddleware(TaskiqMiddleware):
     """
     Custom TaskIQ middleware for OpenTelemetry tracing.
 
-    This middleware automatically extracts trace context from incoming messages
-    and creates spans for task execution, providing seamless distributed tracing
-    across the task queue.
+    This middleware creates independent traces for each task execution with
+    links back to the producer span.
 
     Uses contextvars for thread-safe span and context management in concurrent
     task execution environments.
@@ -108,45 +98,52 @@ class TaskiqTracingMiddleware(TaskiqMiddleware):
         self._current_span: contextvars.ContextVar[Span | None] = (
             contextvars.ContextVar("taskiq_current_span", default=None)
         )
-        self._token: contextvars.ContextVar[context.Token[Context] | None] = (
+        self._token: contextvars.ContextVar[context.Token[context.Context] | None] = (
             contextvars.ContextVar("taskiq_context_token", default=None)
         )
 
     async def pre_execute(self, message: TaskiqMessage) -> TaskiqMessage:
         """
-        Extract trace context and start a span before task execution.
+        Extract trace link and start a new trace for task execution.
 
         Args:
             message: The incoming TaskIQ message
 
         Returns:
-            The message with trace context removed.
+            The message with trace link removed.
 
         """
-        # Extract trace context from message kwargs
-        carrier: dict[str, Any] = {}
+        # Extract trace link from message kwargs (for linking, not parenting)
+        links: list[Link] = []
         if (
             hasattr(message, "kwargs")
             and message.kwargs
-            and "trace_context" in message.kwargs
+            and "trace_link" in message.kwargs
         ):
-            carrier = message.kwargs.pop("trace_context", {})
+            trace_link = message.kwargs.pop("trace_link", {})
             bind_contextvars(**{k: str(v) for k, v in message.kwargs.items()})
+
+            if trace_link:
+                # Create a link to the producer span for trace correlation
+                linked_context = SpanContext(
+                    trace_id=int(trace_link["trace_id"], 16),
+                    span_id=int(trace_link["span_id"], 16),
+                    is_remote=True,
+                )
+                links.append(Link(linked_context))
 
         bind_contextvars(task_name=message.task_name)
         logger.debug(
-            "Received task with trace context",
-            carrier_keys=list(carrier.keys()),
+            "Received task with trace link",
+            has_link=len(links) > 0,
         )
 
-        # Let OpenTelemetry extract the context
-        ctx = propagate.extract(carrier)
-
-        # Start a new span for the task execution using the extracted context
+        # Start a new root span (no parent context) with link to producer
+        # This creates an independent trace for tail-based sampling
         current_span = tracer.start_span(
-            f"execute.{message.task_name}",
-            context=ctx,
+            f"execute.{message.task_name}",  # NB actual task will rename the span
             kind=SpanKind.CONSUMER,
+            links=links,
             attributes={
                 Attributes.MESSAGING_DESTINATION_NAME: message.task_name,
                 Attributes.MESSAGING_MESSAGE_ID: message.task_id,

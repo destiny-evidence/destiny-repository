@@ -6,7 +6,7 @@ import asyncio
 from elasticsearch import NotFoundError
 from opentelemetry import trace
 
-from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger, logger_configurer
 from app.core.telemetry.otel import configure_otel
 from app.domain.references.models.es import (
@@ -39,7 +39,7 @@ index_documents = {
 }
 
 
-async def run_migration(alias: str) -> None:
+async def run_migration(alias: str, number_of_shards: int | None) -> None:
     """Run elasticsearch index migrations."""
     es_config = settings.es_config
 
@@ -52,6 +52,7 @@ async def run_migration(alias: str) -> None:
                 client=client,
                 otel_enabled=settings.otel_enabled,
                 reindex_status_polling_interval=settings.reindex_status_polling_interval,
+                number_of_shards=number_of_shards,
             )
             await index_manager.migrate()
     except Exception:
@@ -94,7 +95,6 @@ async def delete_old_index(index_to_delete: str) -> None:
     trace_attribute(
         attribute=Attributes.DB_COLLECTION_ALIAS_NAME, value=index_to_delete
     )
-    name_span(name=f"Delete index {index_to_delete}")
     es_config = settings.es_config
 
     await es_manager.init(es_config)
@@ -165,6 +165,16 @@ def argument_parser() -> argparse.ArgumentParser:
         default=None,
     )
 
+    parser.add_argument(
+        "-n",
+        "--number-of-shards",
+        type=int,
+        help=(
+            "Number of shards to use when migrating an index. "
+            "Defaults to the previous index's number of shards if not specified."
+        ),
+    )
+
     return parser
 
 
@@ -209,6 +219,10 @@ def validate_args(args: argparse.Namespace) -> None:
         )
         raise RuntimeError(msg)
 
+    if args.number_of_shards and not args.migrate:
+        msg = "You can only specify number_of_shards when migrating an index."
+        raise RuntimeError(msg)
+
 
 if __name__ == "__main__":
     parser = argument_parser()
@@ -223,7 +237,9 @@ if __name__ == "__main__":
 
     if args.migrate:
         for alias in aliases:
-            asyncio.run(run_migration(alias=alias))
+            asyncio.run(
+                run_migration(alias=alias, number_of_shards=args.number_of_shards)
+            )
 
     elif args.rollback:
         for alias in aliases:

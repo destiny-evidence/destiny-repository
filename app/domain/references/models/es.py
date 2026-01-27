@@ -41,6 +41,10 @@ EXCLUDED_ENHANCEMENT_TYPES = {
     EnhancementType.REFERENCE_ASSOCIATION,
 }
 
+# Fields excluded from ES indexing. These are not useful for candidate generation
+# and are only needed for classification stage which uses PostgreSQL.
+EXCLUDED_ENHANCEMENT_CONTENT_FIELDS = {"pagination"}
+
 
 class ExternalIdentifierDocument(GenericNestedDocument):
     """Persistence model for external identifiers in Elasticsearch."""
@@ -152,7 +156,9 @@ class EnhancementDocument(GenericNestedDocument):
             robot_version=domain_obj.robot_version,
             created_at=domain_obj.created_at,
             content=EnhancementContentDocument(
-                **domain_obj.content.model_dump(mode="json")
+                **domain_obj.content.model_dump(
+                    mode="json", exclude=EXCLUDED_ENHANCEMENT_CONTENT_FIELDS
+                )
             ),
         )
 
