@@ -6,7 +6,7 @@ import asyncio
 from elasticsearch import NotFoundError
 from opentelemetry import trace
 
-from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger, logger_configurer
 from app.core.telemetry.otel import configure_otel
 from app.domain.references.models.es import (
@@ -95,7 +95,6 @@ async def delete_old_index(index_to_delete: str) -> None:
     trace_attribute(
         attribute=Attributes.DB_COLLECTION_ALIAS_NAME, value=index_to_delete
     )
-    name_span(name=f"Delete index {index_to_delete}")
     es_config = settings.es_config
 
     await es_manager.init(es_config)

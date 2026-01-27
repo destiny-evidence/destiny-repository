@@ -88,6 +88,7 @@ class Attributes(StrEnum):
     ROBOT_ENHANCEMENT_BATCH_ID = "app.robot_enhancement_batch.id"
     ROBOT_ID = "app.robot.id"
     ROBOT_AUTOMATION_ID = "app.robot_automation.id"
+    REFERENCE_DUPLICATE_DECISION_ID = "app.reference_duplicate_decision.id"
 
     # Other
     FILE_LINE_NO = "app.file.line_number"
