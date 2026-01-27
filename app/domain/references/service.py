@@ -711,6 +711,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         validation_result_file = await blob_repository.upload_file_to_blob_storage(
             content=FileStream(
                 generator=self._enhancement_service.process_robot_enhancement_batch_result(
+                    robot_enhancement_batch_id=robot_enhancement_batch.id,
                     blob_repository=blob_repository,
                     result_file=robot_enhancement_batch.result_file,
                     pending_enhancements=pending_enhancements,

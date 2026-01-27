@@ -4,47 +4,67 @@ import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
+from opentelemetry.trace import Link, SpanContext, SpanKind
 from taskiq import TaskiqMessage, TaskiqResult
 
 from app.core.telemetry.taskiq import TaskiqTracingMiddleware
 
 
 @pytest.mark.asyncio
-async def test_trace_context_propagation():
-    """Test that trace context is properly extracted and propagated."""
+async def test_trace_link_creates_independent_trace():
+    """Test that trace link creates a new trace with link to producer span."""
     middleware = TaskiqTracingMiddleware()
 
     with (
         patch("app.core.telemetry.taskiq.tracer") as mock_tracer,
-        patch("app.core.telemetry.taskiq.propagate") as mock_propagate,
         patch("app.core.telemetry.taskiq.context") as mock_context,
     ):
         mock_span = MagicMock()
         mock_tracer.start_span.return_value = mock_span
-        mock_ctx = MagicMock()
-        mock_propagate.extract.return_value = mock_ctx
         mock_token = MagicMock()
         mock_context.attach.return_value = mock_token
 
-        trace_context = {"traceparent": "00-trace123-span456-01"}
+        # Trace link format: hex-encoded trace_id and span_id
+        trace_link = {
+            "trace_id": "0" * 32,  # 128-bit trace ID as 32 hex chars
+            "span_id": "0" * 16,  # 64-bit span ID as 16 hex chars
+        }
         message = TaskiqMessage(
             task_id="test-task",
             task_name="test_task",
             args=(),
-            kwargs={"trace_context": trace_context, "other_arg": "value"},
+            kwargs={"trace_link": trace_link, "other_arg": "value"},
             labels={},
         )
 
         processed_message = await middleware.pre_execute(message)
 
-        mock_propagate.extract.assert_called_once_with(trace_context)
-
-        assert "trace_context" not in processed_message.kwargs
+        # trace_link should be removed from kwargs
+        assert "trace_link" not in processed_message.kwargs
         assert processed_message.kwargs["other_arg"] == "value"
 
+        # Verify start_span was called with links (not context)
         mock_tracer.start_span.assert_called_once()
         call_kwargs = mock_tracer.start_span.call_args.kwargs
-        assert call_kwargs["context"] is mock_ctx
+
+        # Should NOT have context (independent trace)
+        assert "context" not in call_kwargs
+
+        # Should have links to producer span
+        assert "links" in call_kwargs
+        links = call_kwargs["links"]
+        assert len(links) == 1
+        assert isinstance(links[0], Link)
+
+        # Verify the linked SpanContext
+        linked_ctx = links[0].context
+        assert isinstance(linked_ctx, SpanContext)
+        assert linked_ctx.trace_id == 0
+        assert linked_ctx.span_id == 0
+        assert linked_ctx.is_remote is True
+
+        # Verify span kind is CONSUMER
+        assert call_kwargs["kind"] == SpanKind.CONSUMER
 
         mock_context.attach.assert_called_once()
 
@@ -54,6 +74,36 @@ async def test_trace_context_propagation():
         await middleware.post_execute(message, result)
 
         mock_context.detach.assert_called_once_with(mock_token)
+
+
+@pytest.mark.asyncio
+async def test_no_trace_link_creates_unlinked_trace():
+    """Test that missing trace_link creates a trace with no links."""
+    middleware = TaskiqTracingMiddleware()
+
+    with (
+        patch("app.core.telemetry.taskiq.tracer") as mock_tracer,
+        patch("app.core.telemetry.taskiq.context") as mock_context,
+    ):
+        mock_span = MagicMock()
+        mock_tracer.start_span.return_value = mock_span
+        mock_context.attach.return_value = MagicMock()
+
+        message = TaskiqMessage(
+            task_id="test-task",
+            task_name="test_task",
+            args=(),
+            kwargs={"other_arg": "value"},
+            labels={},
+        )
+
+        await middleware.pre_execute(message)
+
+        mock_tracer.start_span.assert_called_once()
+        call_kwargs = mock_tracer.start_span.call_args.kwargs
+
+        # Should have empty links list
+        assert call_kwargs["links"] == []
 
 
 @pytest.mark.asyncio

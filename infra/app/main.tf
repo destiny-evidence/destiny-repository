@@ -141,10 +141,13 @@ locals {
     {
       name = "otel-config"
       value = jsonencode({
-        trace_endpoint = var.honeycombio_trace_endpoint
-        meter_endpoint = var.honeycombio_meter_endpoint
-        log_endpoint   = var.honeycombio_log_endpoint
-        api_key        = honeycombio_api_key.this.key
+        trace_endpoint           = var.honeycombio_trace_endpoint
+        meter_endpoint           = var.honeycombio_meter_endpoint
+        log_endpoint             = var.honeycombio_log_endpoint
+        api_key                  = honeycombio_api_key.this.key
+        instrument_sql           = var.otel_instrument_sql
+        instrument_elasticsearch = var.otel_instrument_elasticsearch
+        instrument_taskiq        = var.otel_instrument_taskiq
       })
     },
   ]
@@ -627,10 +630,13 @@ resource "azurerm_container_app_job" "es_index_migrator" {
   secret {
     name = "otel-config"
     value = jsonencode({
-      trace_endpoint = var.honeycombio_trace_endpoint
-      meter_endpoint = var.honeycombio_meter_endpoint
-      log_endpoint   = var.honeycombio_log_endpoint
-      api_key        = honeycombio_api_key.this.key
+      trace_endpoint           = var.honeycombio_trace_endpoint
+      meter_endpoint           = var.honeycombio_meter_endpoint
+      log_endpoint             = var.honeycombio_log_endpoint
+      api_key                  = honeycombio_api_key.this.key
+      instrument_sql           = var.otel_instrument_sql
+      instrument_elasticsearch = var.otel_instrument_elasticsearch
+      instrument_taskiq        = var.otel_instrument_taskiq
     })
   }
 

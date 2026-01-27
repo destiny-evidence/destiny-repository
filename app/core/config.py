@@ -198,7 +198,19 @@ class OTelConfig(BaseModel):
     timeout: int = 30
 
     # Flags to control low-level automatic instrumentation
-    instrument_sql: bool = False
+    instrument_sql: bool = Field(
+        default=False,
+        description="Whether to instrument SQL operations automatically.",
+    )
+    instrument_taskiq: bool = Field(
+        default=False,
+        description="Whether to instrument TaskIQ tasks automatically. "
+        "We have custom linking middleware in place already",
+    )
+    instrument_elasticsearch: bool = Field(
+        default=False,
+        description="Whether to instrument Elasticsearch operations automatically. ",
+    )
 
 
 class Environment(StrEnum):

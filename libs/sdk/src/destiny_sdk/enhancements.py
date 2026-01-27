@@ -5,7 +5,7 @@ import json
 from enum import StrEnum, auto
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, Field, HttpUrl, model_validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
 
 from destiny_sdk.core import UUID, _JsonlFileInputMixIn
 from destiny_sdk.identifiers import Identifier
@@ -70,6 +70,42 @@ class Authorship(BaseModel):
     )
 
 
+class Pagination(BaseModel):
+    """
+    Pagination information for journal articles.
+
+    Maps to OpenAlex's work.biblio object. All fields are strings to match
+    OpenAlex's format, which may include non-numeric values like "Spring" or "A1".
+    """
+
+    volume: str | None = Field(
+        default=None,
+        description="The volume number of the journal/publication.",
+    )
+    issue: str | None = Field(
+        default=None,
+        description="The issue number of the journal/publication.",
+    )
+    first_page: str | None = Field(
+        default=None,
+        description="The first page number of the reference in the publication.",
+    )
+    last_page: str | None = Field(
+        default=None,
+        description="The last page number of the reference in the publication.",
+    )
+
+    @field_validator("volume", "issue", "first_page", "last_page", mode="before")
+    @classmethod
+    def normalize_pagination_string(cls, value: str | None) -> str | None:
+        """Normalize pagination strings: NBSP to space, strip, empty to None."""
+        if isinstance(value, str):
+            # Replace NBSP with space, then strip
+            value = value.replace("\u00a0", " ").strip()
+            return value if value else None
+        return value
+
+
 class BibliographicMetadataEnhancement(BaseModel):
     """
     An enhancement which is made up of bibliographic metadata.
@@ -111,6 +147,10 @@ other works have cited this work
         description="The name of the entity which published the version of record.",
     )
     title: str | None = Field(default=None, description="The title of the reference.")
+    pagination: Pagination | None = Field(
+        default=None,
+        description="Pagination info (volume, issue, pages).",
+    )
 
     @property
     def fingerprint(self) -> str:

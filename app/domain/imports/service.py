@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.core.exceptions import SQLIntegrityError
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
+from app.core.telemetry.otel import new_linked_trace
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.imports.models.models import (
     ImportBatch,
@@ -230,23 +231,32 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                 response.raise_for_status()
                 line_number = 1
                 async for line in response.aiter_lines():
-                    trace_attribute(Attributes.FILE_LINE_NO, line_number)
-                    if line := line.strip():
-                        import_result = await self.register_result(
-                            ImportResult(
-                                import_batch_id=import_batch.id,
-                                status=ImportResultStatus.CREATED,
+                    with new_linked_trace(
+                        "Queue import reference task",
+                        attributes={
+                            Attributes.FILE_LINE_NO: line_number,
+                            Attributes.IMPORT_BATCH_ID: str(import_batch.id),
+                        },
+                    ):
+                        if line := line.strip():
+                            import_result = await self.register_result(
+                                ImportResult(
+                                    import_batch_id=import_batch.id,
+                                    status=ImportResultStatus.CREATED,
+                                )
                             )
-                        )
-                        await queue_task_with_trace(
-                            ("app.domain.imports.tasks", "import_reference"),
-                            import_result.id,
-                            line,
-                            line_number,
-                            settings.import_reference_retry_count,
-                            otel_enabled=settings.otel_enabled,
-                        )
-                        line_number += 1
+                            trace_attribute(
+                                Attributes.IMPORT_RESULT_ID, str(import_result.id)
+                            )
+                            await queue_task_with_trace(
+                                ("app.domain.imports.tasks", "import_reference"),
+                                import_result.id,
+                                line,
+                                line_number,
+                                settings.import_reference_retry_count,
+                                otel_enabled=settings.otel_enabled,
+                            )
+                            line_number += 1
 
     @sql_unit_of_work
     async def get_import_results(
