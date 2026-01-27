@@ -25,6 +25,7 @@ from opentelemetry.util.types import AttributeValue
 from app.core.telemetry.attributes import Attributes
 from app.core.telemetry.logger import (
     AttrFilteredLoggingHandler,
+    ElasticTransportFilter,
     get_logger,
     logger_configurer,
 )
@@ -145,7 +146,15 @@ def configure_otel(
     logger_provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
 
     handler = AttrFilteredLoggingHandler(logger_provider=logger_provider)
-    logger_configurer.configure_otel_logger(handler)
+    if not config.instrument_elasticsearch:
+        # Explicitly remove elastic transport logs - these come from spans that we
+        # filter out above, so we don't need the logs either in Honeycomb. They aren't
+        # filtered out by our normal orphaned log sampling as their trace_id and span_id
+        # exist, just are head-sampled-out.
+        handler.addFilter(ElasticTransportFilter())
+    logger_configurer.configure_otel_logger(
+        handler, orphan_log_sampling_config=config.orphan_log_sample_config
+    )
 
     logger.info("Opentelemetry configured", service_instance_id=service_instance_id)
 
