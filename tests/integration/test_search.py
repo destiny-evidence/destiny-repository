@@ -324,3 +324,119 @@ async def test_query_string_error_handling(
     """Test error handling for malformed queries."""
     response = await client.get("/v1/references/search/", params=params)
     assert response.status_code == expected_status
+
+
+@pytest.fixture
+async def cross_field_references(es_client: AsyncElasticsearch):
+    """
+    Create references to test cross-field searching behavior.
+
+    This fixture creates references where search terms are split across
+    title and abstract fields to test whether cross-field AND queries work.
+    """
+    references = [
+        # Reference 1: Terms split across fields
+        # "george" in title, "harrison" in abstract
+        ReferenceFactory.build(
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(
+                        title="George Studies in Modern Science",
+                        publication_year=2023,
+                    )
+                ),
+                EnhancementFactory.build(
+                    content=AbstractContentEnhancementFactory.build(
+                        abstract=(
+                            "This research was conducted by Harrison and colleagues."
+                        )
+                    )
+                ),
+            ]
+        ),
+        # Reference 2: Both terms in same field
+        # "george harrison" in title
+        ReferenceFactory.build(
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(
+                        title="George Harrison Biography",
+                        publication_year=2022,
+                    )
+                ),
+                EnhancementFactory.build(
+                    content=AbstractContentEnhancementFactory.build(
+                        abstract="A study of musical history and cultural impact."
+                    )
+                ),
+            ]
+        ),
+        # Reference 3: Only one term present - should not match AND query
+        ReferenceFactory.build(
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(
+                        title="George Washington Papers",
+                        publication_year=2021,
+                    )
+                ),
+                EnhancementFactory.build(
+                    content=AbstractContentEnhancementFactory.build(
+                        abstract="Historical documents and correspondence."
+                    )
+                ),
+            ]
+        ),
+    ]
+
+    es_repository = ReferenceESRepository(es_client)
+    for reference in references:
+        await es_repository.add(reference)
+    await es_client.indices.refresh(index="reference")
+    return references
+
+
+async def test_cross_field_and_query(
+    client: AsyncClient,
+    cross_field_references: list,  # noqa: ARG001
+) -> None:
+    """
+    Test that explicit AND in query matches when terms are split across fields.
+
+    When using explicit AND in the query string (e.g., "george AND harrison"),
+    Elasticsearch parses each term independently and searches across all fields.
+    This works because each term is searched with OR across fields, then AND
+    combines the term-level results:
+
+        (title:george OR abstract:george) AND (title:harrison OR abstract:harrison)
+    """
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "george AND harrison"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+
+    assert data["total"]["count"] == 2
+
+    titles = {ref["enhancements"][0]["content"]["title"] for ref in data["references"]}
+    assert titles == {"George Studies in Modern Science", "George Harrison Biography"}
+
+
+async def test_same_field_and_query(
+    client: AsyncClient,
+    cross_field_references: list,  # noqa: ARG001
+) -> None:
+    """Control test: AND query works when both terms are in the same field."""
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "title:(george AND harrison)"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+
+    assert data["total"]["count"] == 1
+    title = data["references"][0]["enhancements"][0]["content"]["title"]
+    assert "George Harrison" in title
