@@ -347,10 +347,12 @@ async def test_rebuild_index_maintains_shard_number(
 
     assert index_manager.number_of_shards is None
 
-    # Update the number of shards to 3 for index initialization
+    # Update the number of shards to 3
     index_manager.number_of_shards = 3
-    await index_manager.initialize_index()
+    await index_manager.migrate()
 
+    # Shard count is never actually set on the system router
+    # so set back to None
     index_manager.number_of_shards = None
 
     # Repair the index
