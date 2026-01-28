@@ -573,7 +573,7 @@ async def test_cross_field_idf_ranking_with_cross_fields_type(
 
     response = await search.execute()
 
-    # Note: cross_fields returns more results
+    # Note: cross_fields returns all documents as matches here
     # assert response.hits.total.value == 2  # noqa: ERA001
 
     first_result = response.hits[0].to_dict()
