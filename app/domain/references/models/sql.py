@@ -1,10 +1,19 @@
 """Objects used to interface with SQL implementations."""
 
 import datetime
-import uuid
 from typing import Any, Self
+from uuid import UUID
 
-from sqlalchemy import UUID, DateTime, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import (
+    UUID as SQL_UUID,
+)
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -192,8 +201,8 @@ class ExternalIdentifier(GenericSQLPersistence[DomainExternalIdentifier]):
 
     __tablename__ = "external_identifier"
 
-    reference_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("reference.id"), nullable=False
+    reference_id: Mapped[UUID] = mapped_column(
+        SQL_UUID, ForeignKey("reference.id"), nullable=False
     )
     identifier_type: Mapped[ExternalIdentifierType] = mapped_column(
         String,
@@ -274,16 +283,16 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         nullable=False,
     )
     source: Mapped[str] = mapped_column(String, nullable=False)
-    reference_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("reference.id"), nullable=False
+    reference_id: Mapped[UUID] = mapped_column(
+        SQL_UUID, ForeignKey("reference.id"), nullable=False
     )
     enhancement_type: Mapped[EnhancementType] = mapped_column(
         String,
         nullable=False,
     )
     robot_version: Mapped[str] = mapped_column(String, nullable=True)
-    derived_from: Mapped[list[uuid.UUID] | None] = mapped_column(
-        ARRAY(UUID), nullable=True
+    derived_from: Mapped[list[UUID] | None] = mapped_column(
+        ARRAY(SQL_UUID), nullable=True
     )
     content: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
@@ -346,9 +355,9 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
 
     __tablename__ = "enhancement_request"
 
-    reference_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(UUID), nullable=False)
+    reference_ids: Mapped[list[UUID]] = mapped_column(ARRAY(SQL_UUID), nullable=False)
 
-    robot_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
+    robot_id: Mapped[UUID] = mapped_column(SQL_UUID, nullable=False)
 
     request_status: Mapped[EnhancementRequestStatus] = mapped_column(
         String, nullable=False
@@ -439,8 +448,8 @@ class RobotAutomation(GenericSQLPersistence[DomainRobotAutomation]):
 
     __tablename__ = "robot_automation"
 
-    robot_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("robot.id"), nullable=False
+    robot_id: Mapped[UUID] = mapped_column(
+        SQL_UUID, ForeignKey("robot.id"), nullable=False
     )
 
     query: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -483,19 +492,19 @@ class ReferenceDuplicateDecision(
 
     # NB not foreign keys as can also refer to a reference that is not
     # imported, for instance an exact duplicate.
-    reference_id: Mapped[uuid.UUID] = mapped_column(UUID, nullable=False)
-    enhancement_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID, ForeignKey("enhancement.id"), nullable=True
+    reference_id: Mapped[UUID] = mapped_column(SQL_UUID, nullable=False)
+    enhancement_id: Mapped[UUID | None] = mapped_column(
+        SQL_UUID, ForeignKey("enhancement.id"), nullable=True
     )
     active_decision: Mapped[bool] = mapped_column(nullable=False, default=True)
-    candidate_canonical_ids: Mapped[list[uuid.UUID]] = mapped_column(
-        ARRAY(UUID), nullable=True
+    candidate_canonical_ids: Mapped[list[UUID]] = mapped_column(
+        ARRAY(SQL_UUID), nullable=True
     )
     duplicate_determination: Mapped[DuplicateDetermination] = mapped_column(
         String, nullable=False
     )
-    canonical_reference_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
+    canonical_reference_id: Mapped[UUID | None] = mapped_column(
+        SQL_UUID,
         ForeignKey("reference.id"),
         nullable=True,
     )
@@ -569,19 +578,19 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
 
     __tablename__ = "pending_enhancement"
 
-    reference_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("reference.id"), nullable=False
+    reference_id: Mapped[UUID] = mapped_column(
+        SQL_UUID, ForeignKey("reference.id"), nullable=False
     )
-    robot_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("robot.id"), nullable=False
+    robot_id: Mapped[UUID] = mapped_column(
+        SQL_UUID, ForeignKey("robot.id"), nullable=False
     )
-    enhancement_request_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID,
+    enhancement_request_id: Mapped[UUID | None] = mapped_column(
+        SQL_UUID,
         ForeignKey("enhancement_request.id"),
         nullable=True,
     )
-    robot_enhancement_batch_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID, ForeignKey("robot_enhancement_batch.id"), nullable=True
+    robot_enhancement_batch_id: Mapped[UUID | None] = mapped_column(
+        SQL_UUID, ForeignKey("robot_enhancement_batch.id"), nullable=True
     )
     status: Mapped[PendingEnhancementStatus] = mapped_column(
         String,
@@ -590,8 +599,8 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
     )
     source: Mapped[str | None] = mapped_column(String, nullable=True)
     expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))
-    retry_of: Mapped[uuid.UUID | None] = mapped_column(
-        UUID, ForeignKey("pending_enhancement.id"), nullable=True
+    retry_of: Mapped[UUID | None] = mapped_column(
+        SQL_UUID, ForeignKey("pending_enhancement.id"), nullable=True
     )
 
     robot_enhancement_batch: Mapped["RobotEnhancementBatch"] = relationship(
@@ -669,8 +678,8 @@ class RobotEnhancementBatch(GenericSQLPersistence[DomainRobotEnhancementBatch]):
 
     __tablename__ = "robot_enhancement_batch"
 
-    robot_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("robot.id"), nullable=False
+    robot_id: Mapped[UUID] = mapped_column(
+        SQL_UUID, ForeignKey("robot.id"), nullable=False
     )
     reference_data_file: Mapped[str | None] = mapped_column(String, nullable=True)
     result_file: Mapped[str | None] = mapped_column(String, nullable=True)

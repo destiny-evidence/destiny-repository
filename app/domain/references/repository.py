@@ -10,7 +10,6 @@ from uuid import UUID
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import AsyncSearch, Q
 from opentelemetry import trace
-from pydantic import UUID4
 from sqlalchemy import (
     CompoundSelect,
     Select,
@@ -416,7 +415,7 @@ class EnhancementRequestSQLRepository(
         )
 
     async def get_pending_enhancement_status_set(
-        self, enhancement_request_id: UUID4
+        self, enhancement_request_id: UUID
     ) -> set[PendingEnhancementStatus]:
         """
         Get current underlying statuses for an enhancement request.
@@ -436,7 +435,7 @@ class EnhancementRequestSQLRepository(
 
     async def get_by_pk(
         self,
-        pk: UUID4,
+        pk: UUID,
         preload: list[EnhancementRequestSQLPreloadable] | None = None,
     ) -> DomainEnhancementRequest:
         """Override to include derived enhancement request status."""
@@ -616,7 +615,7 @@ class PendingEnhancementSQLRepository(
         return await super().update_by_pk(pk, **kwargs)
 
     @trace_repository_method(tracer)
-    async def bulk_update(self, pks: list[UUID4], **kwargs: object) -> int:
+    async def bulk_update(self, pks: list[UUID], **kwargs: object) -> int:
         """
         Bulk update pending enhancements with status transition validation.
 

@@ -1,7 +1,7 @@
 """Unit tests for the ImportService class."""
 
-import uuid
 from unittest.mock import AsyncMock
+from uuid import uuid7
 
 import destiny_sdk
 import httpx
@@ -21,10 +21,10 @@ from app.domain.imports.services.anti_corruption_service import (
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 
-RECORD_ID = uuid.uuid4()
-REF_ID = uuid.uuid4()
-RESULT_ID = uuid.uuid4()
-BATCH_ID = uuid.uuid4()
+RECORD_ID = uuid7()
+REF_ID = uuid7()
+RESULT_ID = uuid7()
+BATCH_ID = uuid7()
 
 
 @pytest.fixture
@@ -184,12 +184,12 @@ async def test_distribute_import_batch_happy_path(monkeypatch, fake_uow):
     """Test distribute_import_batch happy path with multiple lines."""
 
     # Prepare a fake ImportBatch
-    batch_id = uuid.uuid4()
+    batch_id = uuid7()
     import_batch = ImportBatch(
         id=batch_id,
         storage_url="https://fake-storage-url.com",
         status=ImportBatchStatus.CREATED,
-        import_record_id=uuid.uuid4(),
+        import_record_id=uuid7(),
     )
 
     # Prepare lines to be returned by the HTTPX stream
@@ -271,7 +271,7 @@ async def test_get_import_batch_summary_batch_completed_no_failures(
     fake_repository, fake_uow, fake_import_batch
 ):
     fake_import_result_completed = ImportResult(
-        id=uuid.uuid4(),
+        id=uuid7(),
         import_batch_id=BATCH_ID,
         status=ImportResultStatus.COMPLETED,
         reference_id=REF_ID,
@@ -303,17 +303,17 @@ async def test_get_import_batch_summary_batch_completed_with_failures(
     fake_repository, fake_uow, fake_import_batch
 ):
     fake_import_result_failed = ImportResult(
-        id=uuid.uuid4(),
+        id=uuid7(),
         import_batch_id=BATCH_ID,
         status=ImportResultStatus.FAILED,
         failure_details="ded",
     )
 
     fake_import_result_partial_failed = ImportResult(
-        id=uuid.uuid4(),
+        id=uuid7(),
         import_batch_id=BATCH_ID,
         status=ImportResultStatus.PARTIALLY_FAILED,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid7(),
         failure_details="not ded, but close",
     )
 
@@ -343,16 +343,16 @@ async def test_get_import_batch_summary_batch_in_progress(
     fake_repository, fake_uow, fake_import_batch
 ):
     fake_import_result_failed = ImportResult(
-        id=uuid.uuid4(),
+        id=uuid7(),
         import_batch_id=BATCH_ID,
         status=ImportResultStatus.STARTED,
     )
 
     fake_import_result_partial_failed = ImportResult(
-        id=uuid.uuid4(),
+        id=uuid7(),
         import_batch_id=BATCH_ID,
         status=ImportResultStatus.COMPLETED,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid7(),
     )
 
     fake_batch = fake_import_batch(
