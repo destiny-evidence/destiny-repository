@@ -56,7 +56,7 @@ async def run_migration(alias: str, number_of_shards: int | None) -> None:
             )
             await index_manager.migrate()
     except Exception:
-        logger.exception("An unhandled exception occured")
+        logger.exception("An unhandled exception occurred")
     finally:
         await es_manager.close()
 
@@ -79,7 +79,7 @@ async def run_rollback(alias: str, target_index: str | None = None) -> None:
             else:
                 await index_manager.rollback()
     except Exception:
-        logger.exception("An unhandled exception occured")
+        logger.exception("An unhandled exception occurred")
     finally:
         await es_manager.close()
 
@@ -117,13 +117,13 @@ async def delete_old_index(index_to_delete: str) -> None:
             await client.indices.delete(index=index_to_delete)
             logger.info("Deleted old index: %s", index_to_delete)
     except Exception:
-        logger.exception("An unhandled exception occured")
+        logger.exception("An unhandled exception occurred")
     finally:
         await es_manager.close()
 
 
 def argument_parser() -> argparse.ArgumentParser:
-    """Create argument parser for migrating indicies."""
+    """Create argument parser for migrating indices."""
     parser = argparse.ArgumentParser(description="Migrate or roll back an ES index.")
 
     operation_group = parser.add_mutually_exclusive_group(required=True)
@@ -182,7 +182,7 @@ def validate_args(args: argparse.Namespace) -> None:
     """
     Enforce specific argument combinations, raising RuntimeError if violated.
 
-    Due to the mututally exclusive parsing group, we're guarenteed a single operation
+    Due to the mutually exclusive parsing group, we're guaranteed a single operation
     but we need to check that valid arguments have been passed:
 
     * Migrating an index requires an index alias, or all.
@@ -190,7 +190,7 @@ def validate_args(args: argparse.Namespace) -> None:
     * Deleting requires a target index name.
 
     We should be able to massively simplify this once we've migrated existing
-    indcies to the versioned pattern, as the checks become:
+    indices to the versioned pattern, as the checks become:
 
     * Migrating and Rolling back an index require an alias
     * Deleting requires a target index name.

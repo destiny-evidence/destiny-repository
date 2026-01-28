@@ -337,6 +337,45 @@ async def test_repair_reference_index_with_rebuild(
     )
 
 
+async def test_rebuild_index_maintains_shard_number(
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,
+) -> None:
+    """Test that repairing an index maintains the number of shards."""
+    # Ensure index exists first with specific shard count
+    index_manager = system_routes.reference_index_manager(es_client)
+
+    assert index_manager.number_of_shards is None
+
+    # Update the number of shards to 3
+    index_manager.number_of_shards = 3
+    await index_manager.migrate()
+
+    # Shard count is never actually set on the system router
+    # so set back to None
+    index_manager.number_of_shards = None
+
+    # Repair the index
+    response = await client.post(
+        f"/system/indices/{index_manager.alias_name}/repair/",
+        params={"rebuild": True},
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+
+    # Wait for the task to complete
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+
+    # Verify the number of shards remains the same
+    index_name = await index_manager.get_current_index_name()
+    index_settings = await es_client.indices.get_settings(index=index_name)
+    actual_shard_count = int(
+        index_settings[index_name]["settings"]["index"]["number_of_shards"]
+    )
+    assert actual_shard_count == 3
+
+
 async def test_repair_robot_automation_percolation_index_with_rebuild(
     client: AsyncClient,
     es_client: AsyncElasticsearch,
