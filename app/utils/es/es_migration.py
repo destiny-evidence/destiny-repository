@@ -52,9 +52,8 @@ async def run_migration(alias: str, number_of_shards: int | None) -> None:
                 client=client,
                 otel_enabled=settings.otel_enabled,
                 reindex_status_polling_interval=settings.reindex_status_polling_interval,
-                number_of_shards=number_of_shards,
             )
-            await index_manager.migrate()
+            await index_manager.migrate(number_of_shards=number_of_shards)
     except Exception:
         logger.exception("An unhandled exception occurred")
     finally:
@@ -173,6 +172,7 @@ def argument_parser() -> argparse.ArgumentParser:
             "Number of shards to use when migrating an index. "
             "Defaults to the previous index's number of shards if not specified."
         ),
+        default=None,
     )
 
     return parser

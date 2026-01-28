@@ -33,7 +33,7 @@ class IndexManager:
     migrations by creating new indices and switching the alias atomically.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         document_class: type[AsyncDocument],
         client: AsyncElasticsearch,
@@ -41,8 +41,6 @@ class IndexManager:
         otel_enabled: bool = False,
         repair_task: AsyncTaskiqDecoratedTask[..., Coroutine[Any, Any, None]]
         | None = None,
-        version_prefix: str = "v",
-        number_of_shards: int | None = None,
         reindex_status_polling_interval: int = 5 * 60,  # default to 5min
     ) -> None:
         """
@@ -54,19 +52,17 @@ class IndexManager:
             repair_task: Asynchronous task used to repair an index (defaults None)
             version_prefix: Prefix for version numbers in index names
             reindex_status_polling_interval: How often to check status of reindexing (defaults 5s)
-            number_of_shards: Number of shards to use when creating new indices. If None, defaults to
-                existing index's number of shards or 1 if no existing index found.
 
         """  # noqa: E501
         self.document_class = document_class
         self.client = client
         self.repair_task = repair_task
-        self.version_prefix = version_prefix
         self.reindex_status_polling_interval = reindex_status_polling_interval
-        self.number_of_shards = number_of_shards
 
         self.alias_name = document_class.Index.name
         self.otel_enabled = otel_enabled
+
+        self.version_prefix = "v"
 
     async def get_current_version(self, index_name: str | None = None) -> int | None:
         """
@@ -185,7 +181,7 @@ class IndexManager:
         return f"{self.alias_name}_{self.version_prefix}{version}"
 
     async def _create_index_with_mapping(
-        self, index_name: str, settings: dict | None = None
+        self, index_name: str, settings: dict[str, Any]
     ) -> None:
         """
         Create a new index with the mapping from the document class.
@@ -195,27 +191,26 @@ class IndexManager:
 
         Args:
             index_name: Name of the index to create
+            settings: Additional settings for the index. At minimum should include
+                number_of_shards.
 
         """
         index = AsyncIndex(name=index_name)
 
-        number_of_shards = (
-            self.number_of_shards
-            or (settings.get("number_of_shards") if settings else None)
-            or (await self.get_current_number_of_shards())
-            or 1
-        )
-
-        index.settings(number_of_shards=number_of_shards)
+        index.settings(number_of_shards=settings.get("number_of_shards"))
 
         index.document(self.document_class)
         await index.create(using=self.client)
         logger.info("Created index: %s", index_name)
 
     @tracer.start_as_current_span("Initialize index")
-    async def initialize_index(self) -> str:
+    async def initialize_index(self, number_of_shards: int = 1) -> str:
         """
         Initialize the index with version 1 if it doesn't exist.
+
+        Args:
+            number_of_shards: Number of shards to use when creating new indices.
+            defaults to 1.
 
         Returns:
             The name of the active index
@@ -232,7 +227,9 @@ class IndexManager:
 
             trace_attribute(attribute=Attributes.DB_COLLECTION_NAME, value=index_name)
 
-            await self._create_index_with_mapping(index_name)
+            await self._create_index_with_mapping(
+                index_name, settings={"number_of_shards": number_of_shards}
+            )
 
             await self.client.indices.put_alias(index=index_name, name=self.alias_name)
 
@@ -250,9 +247,14 @@ class IndexManager:
         return current_index
 
     @tracer.start_as_current_span("Migrate index")
-    async def migrate(self) -> str | None:
+    async def migrate(self, number_of_shards: int | None = None) -> str | None:
         """
         Migrate to a new index version.
+
+        Args:
+            number_of_shards: Number of shards to use on the migrated index.
+            If None, defaults to existing index's number of shards
+            or 1 if no existing index found.
 
         Returns:
             New index name if migration occurred, None otherwise
@@ -265,8 +267,10 @@ class IndexManager:
         source_index = await self.get_current_index_name()
 
         if source_index is None:
-            logger.info("No existing index for %s, initialising", self.alias_name)
-            return await self.initialize_index()
+            logger.info("No existing index for %s, initializing", self.alias_name)
+            return await self.initialize_index(
+                number_of_shards=number_of_shards if number_of_shards else 1
+            )
 
         # Currently required for backwards compatibility with our
         # existing index names.
@@ -280,6 +284,9 @@ class IndexManager:
         new_version = current_version + 1
         destination_index = self._generate_index_name(new_version)
 
+        if not number_of_shards:
+            number_of_shards = await self.get_current_number_of_shards()
+
         trace_attribute(
             attribute=Attributes.DB_COLLECTION_NAME, value=destination_index
         )
@@ -287,7 +294,10 @@ class IndexManager:
         logger.info("Starting migration from %s to %s", source_index, destination_index)
 
         # Create the destination index
-        await self._create_index_with_mapping(index_name=destination_index)
+        await self._create_index_with_mapping(
+            index_name=destination_index,
+            settings={"number_of_shards": number_of_shards},
+        )
 
         # Reindex data
         await self._reindex_data(
@@ -417,7 +427,7 @@ class IndexManager:
 
         Args:
             target_version: Version to rollback to (defaults to current - 1) OR
-            target_index: for backwards compatibilitiy until all indices are renamed.
+            target_index: for backwards compatibility until all indices are renamed.
 
         Returns:
             The index name that was rolled back to
