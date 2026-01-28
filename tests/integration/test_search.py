@@ -324,3 +324,258 @@ async def test_query_string_error_handling(
     """Test error handling for malformed queries."""
     response = await client.get("/v1/references/search/", params=params)
     assert response.status_code == expected_status
+
+
+@pytest.fixture
+async def cross_field_references(es_client: AsyncElasticsearch):
+    """Create references with search terms split across title and abstract fields."""
+    references = [
+        # "george" in title, "harrison" in abstract
+        ReferenceFactory.build(
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(
+                        title="George Studies in Modern Science",
+                        publication_year=2023,
+                    )
+                ),
+                EnhancementFactory.build(
+                    content=AbstractContentEnhancementFactory.build(
+                        abstract=(
+                            "This research was conducted by Harrison and colleagues."
+                        )
+                    )
+                ),
+            ]
+        ),
+        # Both terms in title
+        ReferenceFactory.build(
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(
+                        title="George Harrison Biography",
+                        publication_year=2022,
+                    )
+                ),
+                EnhancementFactory.build(
+                    content=AbstractContentEnhancementFactory.build(
+                        abstract="A study of musical history and cultural impact."
+                    )
+                ),
+            ]
+        ),
+        # Only "george" present (should not match AND query)
+        ReferenceFactory.build(
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(
+                        title="George Washington Papers",
+                        publication_year=2021,
+                    )
+                ),
+                EnhancementFactory.build(
+                    content=AbstractContentEnhancementFactory.build(
+                        abstract="Historical documents and correspondence."
+                    )
+                ),
+            ]
+        ),
+    ]
+
+    es_repository = ReferenceESRepository(es_client)
+    for reference in references:
+        await es_repository.add(reference)
+    await es_client.indices.refresh(index="reference")
+    return references
+
+
+async def test_cross_field_and_query(
+    client: AsyncClient,
+    cross_field_references: list,  # noqa: ARG001
+) -> None:
+    """
+    Test that explicit AND matches terms split across fields.
+
+    Query "george AND harrison" expands to:
+        (title:george OR abstract:george) AND (title:harrison OR abstract:harrison)
+    """
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "george AND harrison"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+
+    assert data["total"]["count"] == 2
+
+    titles = {ref["enhancements"][0]["content"]["title"] for ref in data["references"]}
+    assert titles == {"George Studies in Modern Science", "George Harrison Biography"}
+
+
+async def test_same_field_and_query(
+    client: AsyncClient,
+    cross_field_references: list,  # noqa: ARG001
+) -> None:
+    """Control test: AND query works when both terms are in the same field."""
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "title:(george AND harrison)"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+
+    assert data["total"]["count"] == 1
+    title = data["references"][0]["enhancements"][0]["content"]["title"]
+    assert "George Harrison" in title
+
+
+@pytest.fixture
+async def cross_field_idf_references(es_client: AsyncElasticsearch):
+    """
+    Create references to test cross_fields scoring behavior.
+
+    Query: "climate change AND health"
+
+    Document A (relevant): "health" in title, "climate change" in abstract
+    Document B (irrelevant): all terms in abstract and health in title
+
+    best_fields scores each field separately, so Document B ranks higher
+    (all terms in one field).
+
+    cross_fields treats title + abstract as one combined field, so
+    Document A ranks higher.
+
+    See: https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-multi-match-query.html#type-cross-fields
+    """
+    references = [
+        # Document A: Relevant - terms split across title and abstract
+        ReferenceFactory.build(
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(
+                        title="Environmental Impacts on Health Review",
+                        publication_year=2023,
+                    )
+                ),
+                EnhancementFactory.build(
+                    content=AbstractContentEnhancementFactory.build(
+                        abstract=(
+                            "This review examines how climate change affects "
+                            "human wellbeing outcomes across different regions."
+                        )
+                    )
+                ),
+            ]
+        ),
+        # Document B: Irrelevant - all terms in abstract, health in title
+        ReferenceFactory.build(
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(
+                        title="Public Health Report 2022",
+                        publication_year=2022,
+                    )
+                ),
+                EnhancementFactory.build(
+                    content=AbstractContentEnhancementFactory.build(
+                        abstract=(
+                            "The change in funding allocation reflects the new "
+                            "climate of fiscal responsibility in health systems."
+                        )
+                    )
+                ),
+            ]
+        ),
+        # Additional papers make "health" common in abstracts but rare in titles.
+        # This imbalance affects IDF scoring.
+        *[
+            ReferenceFactory.build(
+                enhancements=[
+                    EnhancementFactory.build(
+                        content=BibliographicMetadataEnhancementFactory.build(
+                            title=f"Research Study {i}",
+                            publication_year=2020,
+                        )
+                    ),
+                    EnhancementFactory.build(
+                        content=AbstractContentEnhancementFactory.build(
+                            abstract=(
+                                f"We observed change in patient health outcomes {i}."
+                            )
+                        )
+                    ),
+                ]
+            )
+            for i in range(10)
+        ],
+    ]
+
+    es_repository = ReferenceESRepository(es_client)
+    for reference in references:
+        await es_repository.add(reference)
+    await es_client.indices.refresh(index="reference")
+    return references
+
+
+@pytest.mark.xfail(
+    reason=(
+        "best_fields prefers documents with all terms in the same field. "
+        "Document B (all terms in abstract) ranks higher than Document A "
+        "(terms split across title and abstract)."
+    )
+)
+async def test_cross_field_idf_ranking(
+    client: AsyncClient,
+    cross_field_idf_references: list,  # noqa: ARG001
+) -> None:
+    """
+    Test that the relevant document ranks first.
+
+    Asserts the relevant document (terms split across fields) ranks above
+    the irrelevant document (all terms in one field).
+    """
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "climate change AND health"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+
+    assert data["total"]["count"] == 2
+
+    first_result_title = data["references"][0]["enhancements"][0]["content"]["title"]
+    assert first_result_title == "Environmental Impacts on Health Review"
+
+
+async def test_cross_field_idf_ranking_with_cross_fields_type(
+    es_client: AsyncElasticsearch,
+    cross_field_idf_references: list,  # noqa: ARG001
+) -> None:
+    """
+    Test that cross_fields type ranks split-field matches higher.
+
+    Uses QueryString with type='cross_fields' directly to show that treating
+    fields as one combined field improves ranking for the relevant document.
+    """
+    from elasticsearch.dsl import AsyncSearch
+    from elasticsearch.dsl.query import QueryString
+
+    search = AsyncSearch(using=es_client, index="reference").query(
+        QueryString(
+            query="climate change AND health",
+            fields=["title", "abstract"],
+            type="cross_fields",
+        )
+    )
+
+    response = await search.execute()
+
+    # Note: cross_fields returns all documents as matches here
+    # assert response.hits.total.value == 2  # noqa: ERA001
+
+    first_result = response.hits[0].to_dict()
+    first_title = first_result["enhancements"][0]["content"]["title"]
+    assert first_title == "Environmental Impacts on Health Review"
