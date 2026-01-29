@@ -138,8 +138,10 @@ class IndexManager:
             attribute=Attributes.DB_COLLECTION_NAME, value=current_index_name
         )
 
-        index_settings = await self._get_reusable_index_settings(
-            index_name=current_index_name
+        # Apply exactly the same settings as the current index
+        index_settings = await self._get_settings_with_changeset(
+            index_name=current_index_name,
+            settings_changeset={},
         )
 
         await self.client.indices.delete_alias(
@@ -186,13 +188,10 @@ class IndexManager:
         """
         Create a new index with the mapping from the document class.
 
-        If number_of_shards is not provided in the constructor, it is taken from the
-        existing index. If there is no existing index, it defaults to 1.
-
         Args:
             index_name: Name of the index to create
-            settings: Additional settings for the index. At minimum should include
-                number_of_shards.
+            settings: Settings for the index.
+            Will use elasticsearch defaults if empty dictionary.
 
         """
         index = AsyncIndex(name=index_name)
@@ -204,13 +203,13 @@ class IndexManager:
         logger.info("Created index: %s", index_name)
 
     @tracer.start_as_current_span("Initialize index")
-    async def initialize_index(self, number_of_shards: int = 1) -> str:
+    async def initialize_index(self, settings: dict[str, Any] | None = None) -> str:
         """
         Initialize the index with version 1 if it doesn't exist.
 
         Args:
-            number_of_shards: Number of shards to use when creating new indices.
-            defaults to 1.
+            settings: Settings for the index.
+            An empty dict will use elasticsearch defaults, as will None.
 
         Returns:
             The name of the active index
@@ -228,7 +227,7 @@ class IndexManager:
             trace_attribute(attribute=Attributes.DB_COLLECTION_NAME, value=index_name)
 
             await self._create_index_with_mapping(
-                index_name, settings={"number_of_shards": number_of_shards}
+                index_name, settings=settings if settings is not None else {}
             )
 
             await self.client.indices.put_alias(index=index_name, name=self.alias_name)
@@ -247,14 +246,15 @@ class IndexManager:
         return current_index
 
     @tracer.start_as_current_span("Migrate index")
-    async def migrate(self, number_of_shards: int | None = None) -> str | None:
+    async def migrate(
+        self, settings_changeset: dict[str, Any] | None = None
+    ) -> str | None:
         """
         Migrate to a new index version.
 
         Args:
-            number_of_shards: Number of shards to use on the migrated index.
-            If None, defaults to existing index's number of shards
-            or 1 if no existing index found.
+            settings_changeset: Settings changes for the migrated index.
+            If None, defaults to existing index's settings.
 
         Returns:
             New index name if migration occurred, None otherwise
@@ -268,9 +268,12 @@ class IndexManager:
 
         if source_index is None:
             logger.info("No existing index for %s, initializing", self.alias_name)
-            return await self.initialize_index(
-                number_of_shards=number_of_shards if number_of_shards else 1
-            )
+            return await self.initialize_index(settings=settings_changeset or {})
+
+        index_settings = await self._get_settings_with_changeset(
+            index_name=source_index,
+            settings_changeset=settings_changeset or {},
+        )
 
         # Currently required for backwards compatibility with our
         # existing index names.
@@ -283,13 +286,6 @@ class IndexManager:
 
         new_version = current_version + 1
         destination_index = self._generate_index_name(new_version)
-
-        index_settings = await self._get_reusable_index_settings(
-            index_name=source_index
-        )
-
-        if number_of_shards:
-            index_settings["number_of_shards"] = number_of_shards
 
         trace_attribute(
             attribute=Attributes.DB_COLLECTION_NAME, value=destination_index
@@ -482,6 +478,24 @@ class IndexManager:
 
         logger.info("Rolled back from %s to %s", current_index, target_index)
         return target_index
+
+    async def _get_settings_with_changeset(
+        self, index_name: str, settings_changeset: dict[str, Any]
+    ) -> dict[str, Any]:
+        """
+        Get index settings that differ from the defaults.
+
+        Args:
+            current_settings: Current index settings
+            settings_changeset: Changeset to apply to current settings
+
+        Returns:
+            Index settings with changes applied.
+
+        """
+        current_settings = await self._get_reusable_index_settings(index_name)
+        current_settings.update(settings_changeset)
+        return current_settings
 
     async def _get_reusable_index_settings(self, index_name: str) -> dict[str, Any]:
         """
