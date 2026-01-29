@@ -284,8 +284,12 @@ class IndexManager:
         new_version = current_version + 1
         destination_index = self._generate_index_name(new_version)
 
-        if not number_of_shards:
-            number_of_shards = await self.get_current_number_of_shards()
+        index_settings = await self._get_reusable_index_settings(
+            index_name=source_index
+        )
+
+        if number_of_shards:
+            index_settings["number_of_shards"] = number_of_shards
 
         trace_attribute(
             attribute=Attributes.DB_COLLECTION_NAME, value=destination_index
@@ -296,7 +300,7 @@ class IndexManager:
         # Create the destination index
         await self._create_index_with_mapping(
             index_name=destination_index,
-            settings={"number_of_shards": number_of_shards},
+            settings=index_settings,
         )
 
         # Reindex data
