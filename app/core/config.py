@@ -381,6 +381,14 @@ class Settings(BaseSettings):
         description=("Override the default Elasticsearch indexing chunk size."),
     )
 
+    es_reference_repair_chunk_size: int = Field(
+        default=10_000,
+        description=(
+            "Number of reference records to process in a single distributed task "
+            "when repairing or rebuilding the reference index in Elasticsearch."
+        ),
+    )
+
     default_es_percolation_chunk_size: int = Field(
         default=1000,
         description=(

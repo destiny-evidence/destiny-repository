@@ -10,6 +10,7 @@ from structlog.contextvars import bound_contextvars
 from app.core.config import Environment, get_settings
 from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
 from app.core.telemetry.logger import get_logger
+from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     DuplicateDetermination,
     PendingEnhancementStatus,
@@ -170,7 +171,7 @@ async def repair_reference_index() -> None:
     """Async logic for repairing the reference index."""
     name_span("Repair index")
     trace_attribute(Attributes.DB_COLLECTION_ALIAS_NAME, "reference")
-    logger.info("Repairing reference index")
+    logger.info("Distributing reference index repair tasks")
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
         reference_anti_corruption_service = ReferenceAntiCorruptionService(
@@ -179,7 +180,41 @@ async def repair_reference_index() -> None:
         reference_service = await get_reference_service(
             reference_anti_corruption_service, sql_uow, es_uow
         )
-        await reference_service.repopulate_reference_index()
+        partitions = await reference_service.get_reference_id_partition_boundaries(
+            partition_size=settings.es_reference_repair_chunk_size
+        )
+        for min_id, max_id in partitions:
+            await queue_task_with_trace(
+                repair_reference_index_for_chunk,
+                min_id,
+                max_id,
+                otel_enabled=settings.otel_enabled,
+            )
+
+
+@broker.task
+async def repair_reference_index_for_chunk(min_id: UUID, max_id: UUID) -> None:
+    """Async logic for repairing a chunk of the reference index."""
+    name_span("Repair index chunk")
+    trace_attribute(Attributes.DB_COLLECTION_ALIAS_NAME, "reference")
+    logger.info(
+        "Repairing reference index chunk",
+        min_id=str(min_id),
+        max_id=str(max_id),
+    )
+    async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
+        blob_repository = await get_blob_repository()
+        reference_anti_corruption_service = ReferenceAntiCorruptionService(
+            blob_repository
+        )
+        reference_service = await get_reference_service(
+            reference_anti_corruption_service, sql_uow, es_uow
+        )
+        reference_ids = await reference_service.get_all_reference_ids(
+            min_id=min_id, max_id=max_id
+        )
+        trace_attribute(Attributes.DB_RECORD_COUNT, len(reference_ids))
+        await reference_service.index_references(reference_ids)
 
 
 @broker.task
