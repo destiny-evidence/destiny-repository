@@ -483,7 +483,7 @@ class IndexManager:
         self, index_name: str, settings_changeset: dict[str, Any]
     ) -> dict[str, Any]:
         """
-        Get index settings that differ from the defaults.
+        Apply settings from changeset that differ from the existing settings.
 
         Args:
             current_settings: Current index settings
@@ -494,8 +494,25 @@ class IndexManager:
 
         """
         current_settings = await self._get_reusable_index_settings(index_name)
-        current_settings.update(settings_changeset)
+        self._update_nested_settings(
+            current_settings=current_settings,
+            settings_changeset=settings_changeset,
+        )
         return current_settings
+
+    def _update_nested_settings(
+        self, current_settings: dict[str, Any], settings_changeset: dict[str, Any]
+    ) -> None:
+        """Recursively update nested settings dictionaries."""
+        for key, value in settings_changeset.items():
+            if (
+                key in current_settings
+                and isinstance(current_settings[key], dict)
+                and isinstance(value, dict)
+            ):
+                self._update_nested_settings(current_settings[key], value)
+            else:
+                current_settings[key] = value
 
     async def _get_reusable_index_settings(self, index_name: str) -> dict[str, Any]:
         """
