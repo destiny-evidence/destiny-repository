@@ -8,7 +8,12 @@ from opentelemetry import trace
 from structlog.contextvars import bound_contextvars
 
 from app.core.config import Environment, get_settings
-from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
+from app.core.telemetry.attributes import (
+    Attributes,
+    name_span,
+    sample_trace,
+    trace_attribute,
+)
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
@@ -183,17 +188,21 @@ async def repair_reference_index() -> None:
         partitions = await reference_service.get_reference_id_partition_boundaries(
             partition_size=settings.es_reference_repair_chunk_size
         )
-        for min_id, max_id in partitions:
+        for index, (min_id, max_id) in enumerate(partitions, start=1):
             await queue_task_with_trace(
                 repair_reference_index_for_chunk,
                 min_id,
                 max_id,
+                index,
+                len(partitions),
                 otel_enabled=settings.otel_enabled,
             )
 
 
 @broker.task
-async def repair_reference_index_for_chunk(min_id: UUID, max_id: UUID) -> None:
+async def repair_reference_index_for_chunk(
+    min_id: UUID, max_id: UUID, index: int, total: int
+) -> None:
     """Async logic for repairing a chunk of the reference index."""
     name_span("Repair index chunk")
     trace_attribute(Attributes.DB_COLLECTION_ALIAS_NAME, "reference")
@@ -201,7 +210,14 @@ async def repair_reference_index_for_chunk(min_id: UUID, max_id: UUID) -> None:
         "Repairing reference index chunk",
         min_id=str(min_id),
         max_id=str(max_id),
+        progress=f"{index:,}/{total:,}",
     )
+    if index == 0 or index == total - 1:
+        # Explicitly sample first and last chunks so we can monitor for completion
+        # and total duration. Note this isn't a perfect science, some chunks may
+        # retry and the queue may not be strictly FIFO.
+        sample_trace()
+
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
         reference_anti_corruption_service = ReferenceAntiCorruptionService(
