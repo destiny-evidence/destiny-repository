@@ -205,6 +205,7 @@ async def test_process_robot_enhancement_batch_result_happy_path():
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement],
@@ -256,6 +257,7 @@ async def test_process_robot_enhancement_batch_result_handles_both_entry_types()
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement_1.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement_1, pending_enhancement_2],
@@ -305,6 +307,7 @@ async def test_process_robot_enhancement_batch_result_missing_reference_id():
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement_1.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement_1, pending_enhancement_2],
@@ -357,6 +360,7 @@ async def test_process_robot_enhancement_batch_result_surplus_reference_id(fake_
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement],
@@ -401,6 +405,7 @@ async def test_process_robot_enhancement_batch_result_parse_failure(fake_uow):
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement],
@@ -461,6 +466,7 @@ async def test_process_robot_enhancement_batch_result_raw_enhancement(fake_uow):
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement],
@@ -506,6 +512,7 @@ async def test_process_robot_enhancement_batch_result_add_enhancement_fails(fake
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement],
@@ -544,6 +551,7 @@ async def test_process_robot_enhancement_batch_result_empty_result_file():
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement],
@@ -593,6 +601,7 @@ async def test_process_robot_enhancement_batch_result_duplicate_reference_ids():
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement],
@@ -652,6 +661,7 @@ async def test_process_robot_enhancement_batch_result_multiple_pending_enhanceme
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement_1.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement_1, pending_enhancement_2, pending_enhancement_3],
@@ -702,6 +712,7 @@ async def test_process_robot_enhancement_batch_result_discarded_enhancements():
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement],

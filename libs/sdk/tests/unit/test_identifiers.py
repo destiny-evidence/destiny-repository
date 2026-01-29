@@ -30,6 +30,59 @@ def test_doi_url_removed():
     assert obj.identifier == "10.1000/xyz123"
 
 
+@pytest.mark.parametrize(
+    "doi",
+    [
+        # DataCite GLIS characters: = ~ * $
+        # Crossref/legacy: #
+        "10.18730/9WQ$D",  # Dollar sign
+        "10.18730/9WQ*D",  # Asterisk
+        "10.18730/9WQ~D",  # Tilde
+        "10.18730/9WQ=D",  # Equals
+        "10.18730/9WQ#D",  # Hash
+        "10.18730/9WQ$~*=#D",  # Multiple special characters
+        # Latin Extended characters (accented letters)
+        "10.1000/journalÉdition",  # É (U+00C9)
+        "10.1000/café",  # é (U+00E9)
+        "10.1000/naïve",  # ï (U+00EF)
+        "10.1000/Müller",  # ü (U+00FC)
+        "10.1000/señor",  # ñ (U+00F1)
+    ],
+)
+def test_valid_doi_with_special_characters(doi: str):
+    """Test that DOIs with DataCite GLIS and Latin Extended characters are valid."""
+    obj = destiny_sdk.identifiers.DOIIdentifier(
+        identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.DOI,
+        identifier=doi,
+    )
+    assert obj.identifier == doi
+
+
+@pytest.mark.parametrize(
+    ("doi_input", "expected"),
+    [
+        # Unicode hyphen → ASCII hyphen
+        ("10.1000/abc\u2010def", "10.1000/abc-def"),
+        # NBSP stripped (leading/trailing)
+        ("\u00a010.1000/xyz123", "10.1000/xyz123"),
+        ("10.1000/xyz123\u00a0", "10.1000/xyz123"),
+        # Case-insensitive URL prefix stripping
+        ("HTTP://DOI.ORG/10.1000/xyz123", "10.1000/xyz123"),
+        ("HTTPS://DOI.ORG/10.1000/xyz123", "10.1000/xyz123"),
+        ("https://DX.DOI.ORG/10.1000/xyz123", "10.1000/xyz123"),
+        ("DOI:10.1000/xyz123", "10.1000/xyz123"),
+        ("doi: 10.1000/xyz123", "10.1000/xyz123"),
+    ],
+)
+def test_doi_canonicalization(doi_input: str, expected: str):
+    """Test DOI canonicalization: Unicode normalization and URL prefix stripping."""
+    obj = destiny_sdk.identifiers.DOIIdentifier(
+        identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.DOI,
+        identifier=doi_input,
+    )
+    assert obj.identifier == expected
+
+
 def test_valid_eric_identifier():
     obj = destiny_sdk.identifiers.ERICIdentifier(
         identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.ERIC,

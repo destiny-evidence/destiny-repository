@@ -289,6 +289,42 @@ variable "honeycombio_log_endpoint" {
   default     = "https://api.honeycomb.io/v1/logs"
 }
 
+variable "otel_orphan_log_sample_rate_notset" {
+  description = "OTel log sampling rate for NOTSET level (0.0 to 1.0)"
+  type        = number
+  default     = 0.0
+}
+
+variable "otel_orphan_log_sample_rate_debug" {
+  description = "OTel log sampling rate for DEBUG level (0.0 to 1.0)"
+  type        = number
+  default     = 0.0
+}
+
+variable "otel_orphan_log_sample_rate_info" {
+  description = "OTel log sampling rate for INFO level (0.0 to 1.0)"
+  type        = number
+  default     = 0.01
+}
+
+variable "otel_orphan_log_sample_rate_warning" {
+  description = "OTel log sampling rate for WARNING level (0.0 to 1.0)"
+  type        = number
+  default     = 1.0
+}
+
+variable "otel_orphan_log_sample_rate_error" {
+  description = "OTel log sampling rate for ERROR level (0.0 to 1.0)"
+  type        = number
+  default     = 1.0
+}
+
+variable "otel_orphan_log_sample_rate_critical" {
+  description = "OTel log sampling rate for CRITICAL level (0.0 to 1.0)"
+  type        = number
+  default     = 1.0
+}
+
 variable "telemetry_enabled" {
   description = "Whether telemetry is enabled for the application"
   type        = bool
@@ -330,4 +366,22 @@ variable "trusted_unique_identifier_types" {
   description = "External identifier types that are certain to be unique. Used for shortcutting deduplication."
   type        = list(string)
   default     = []
+}
+
+variable "otel_instrument_sql" {
+  description = "Whether to enable OpenTelemetry auto-instrumentation for SQL operations"
+  type        = bool
+  default     = false
+}
+
+variable "otel_instrument_elasticsearch" {
+  description = "Whether to enable OpenTelemetry auto-instrumentation for Elasticsearch operations"
+  type        = bool
+  default     = false
+}
+
+variable "otel_instrument_taskiq" {
+  description = "Whether to enable OpenTelemetry auto-instrumentation for TaskIQ operations"
+  type        = bool
+  default     = false
 }

@@ -18,7 +18,7 @@ jobs:
           - "3.12"
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Load .env.example into environment
         # This isn't actually used in the testing but helps in the setup

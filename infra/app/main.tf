@@ -141,10 +141,21 @@ locals {
     {
       name = "otel-config"
       value = jsonencode({
-        trace_endpoint = var.honeycombio_trace_endpoint
-        meter_endpoint = var.honeycombio_meter_endpoint
-        log_endpoint   = var.honeycombio_log_endpoint
-        api_key        = honeycombio_api_key.this.key
+        trace_endpoint           = var.honeycombio_trace_endpoint
+        meter_endpoint           = var.honeycombio_meter_endpoint
+        log_endpoint             = var.honeycombio_log_endpoint
+        api_key                  = honeycombio_api_key.this.key
+        instrument_sql           = var.otel_instrument_sql
+        instrument_elasticsearch = var.otel_instrument_elasticsearch
+        instrument_taskiq        = var.otel_instrument_taskiq
+        orphan_log_sample_config = {
+          notset_sample_rate   = var.otel_orphan_log_sample_rate_notset
+          debug_sample_rate    = var.otel_orphan_log_sample_rate_debug
+          info_sample_rate     = var.otel_orphan_log_sample_rate_info
+          warning_sample_rate  = var.otel_orphan_log_sample_rate_warning
+          error_sample_rate    = var.otel_orphan_log_sample_rate_error
+          critical_sample_rate = var.otel_orphan_log_sample_rate_critical
+        }
       })
     },
   ]
@@ -627,10 +638,13 @@ resource "azurerm_container_app_job" "es_index_migrator" {
   secret {
     name = "otel-config"
     value = jsonencode({
-      trace_endpoint = var.honeycombio_trace_endpoint
-      meter_endpoint = var.honeycombio_meter_endpoint
-      log_endpoint   = var.honeycombio_log_endpoint
-      api_key        = honeycombio_api_key.this.key
+      trace_endpoint           = var.honeycombio_trace_endpoint
+      meter_endpoint           = var.honeycombio_meter_endpoint
+      log_endpoint             = var.honeycombio_log_endpoint
+      api_key                  = honeycombio_api_key.this.key
+      instrument_sql           = var.otel_instrument_sql
+      instrument_elasticsearch = var.otel_instrument_elasticsearch
+      instrument_taskiq        = var.otel_instrument_taskiq
     })
   }
 

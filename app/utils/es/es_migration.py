@@ -6,7 +6,7 @@ import asyncio
 from elasticsearch import NotFoundError
 from opentelemetry import trace
 
-from app.core.telemetry.attributes import Attributes, name_span, trace_attribute
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger, logger_configurer
 from app.core.telemetry.otel import configure_otel
 from app.domain.references.models.es import (
@@ -39,7 +39,7 @@ index_documents = {
 }
 
 
-async def run_migration(alias: str) -> None:
+async def run_migration(alias: str, number_of_shards: int | None) -> None:
     """Run elasticsearch index migrations."""
     es_config = settings.es_config
 
@@ -52,10 +52,11 @@ async def run_migration(alias: str) -> None:
                 client=client,
                 otel_enabled=settings.otel_enabled,
                 reindex_status_polling_interval=settings.reindex_status_polling_interval,
+                number_of_shards=number_of_shards,
             )
             await index_manager.migrate()
     except Exception:
-        logger.exception("An unhandled exception occured")
+        logger.exception("An unhandled exception occurred")
     finally:
         await es_manager.close()
 
@@ -78,7 +79,7 @@ async def run_rollback(alias: str, target_index: str | None = None) -> None:
             else:
                 await index_manager.rollback()
     except Exception:
-        logger.exception("An unhandled exception occured")
+        logger.exception("An unhandled exception occurred")
     finally:
         await es_manager.close()
 
@@ -94,7 +95,6 @@ async def delete_old_index(index_to_delete: str) -> None:
     trace_attribute(
         attribute=Attributes.DB_COLLECTION_ALIAS_NAME, value=index_to_delete
     )
-    name_span(name=f"Delete index {index_to_delete}")
     es_config = settings.es_config
 
     await es_manager.init(es_config)
@@ -117,13 +117,13 @@ async def delete_old_index(index_to_delete: str) -> None:
             await client.indices.delete(index=index_to_delete)
             logger.info("Deleted old index: %s", index_to_delete)
     except Exception:
-        logger.exception("An unhandled exception occured")
+        logger.exception("An unhandled exception occurred")
     finally:
         await es_manager.close()
 
 
 def argument_parser() -> argparse.ArgumentParser:
-    """Create argument parser for migrating indicies."""
+    """Create argument parser for migrating indices."""
     parser = argparse.ArgumentParser(description="Migrate or roll back an ES index.")
 
     operation_group = parser.add_mutually_exclusive_group(required=True)
@@ -165,6 +165,16 @@ def argument_parser() -> argparse.ArgumentParser:
         default=None,
     )
 
+    parser.add_argument(
+        "-n",
+        "--number-of-shards",
+        type=int,
+        help=(
+            "Number of shards to use when migrating an index. "
+            "Defaults to the previous index's number of shards if not specified."
+        ),
+    )
+
     return parser
 
 
@@ -172,7 +182,7 @@ def validate_args(args: argparse.Namespace) -> None:
     """
     Enforce specific argument combinations, raising RuntimeError if violated.
 
-    Due to the mututally exclusive parsing group, we're guarenteed a single operation
+    Due to the mutually exclusive parsing group, we're guaranteed a single operation
     but we need to check that valid arguments have been passed:
 
     * Migrating an index requires an index alias, or all.
@@ -180,7 +190,7 @@ def validate_args(args: argparse.Namespace) -> None:
     * Deleting requires a target index name.
 
     We should be able to massively simplify this once we've migrated existing
-    indcies to the versioned pattern, as the checks become:
+    indices to the versioned pattern, as the checks become:
 
     * Migrating and Rolling back an index require an alias
     * Deleting requires a target index name.
@@ -209,6 +219,10 @@ def validate_args(args: argparse.Namespace) -> None:
         )
         raise RuntimeError(msg)
 
+    if args.number_of_shards and not args.migrate:
+        msg = "You can only specify number_of_shards when migrating an index."
+        raise RuntimeError(msg)
+
 
 if __name__ == "__main__":
     parser = argument_parser()
@@ -223,7 +237,9 @@ if __name__ == "__main__":
 
     if args.migrate:
         for alias in aliases:
-            asyncio.run(run_migration(alias=alias))
+            asyncio.run(
+                run_migration(alias=alias, number_of_shards=args.number_of_shards)
+            )
 
     elif args.rollback:
         for alias in aliases:

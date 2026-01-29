@@ -76,7 +76,7 @@ async def get_reference_service(
 @broker.task
 async def distribute_import_batch(import_batch_id: UUID4) -> None:
     """Async logic for processing an import batch."""
-    name_span(f"Distribute import batch {import_batch_id}")
+    name_span("Distribute import batch")
     trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_batch_id))
     async with get_sql_unit_of_work() as sql_uow:
         import_service = await get_import_service(sql_uow=sql_uow)
@@ -90,7 +90,8 @@ async def import_reference(
     import_result_id: UUID4, content: str, line_number: int, remaining_retries: int
 ) -> None:
     """Async logic for importing a reference."""
-    name_span(f"Import line {line_number}")
+    name_span("Import reference")
+    trace_attribute(Attributes.FILE_LINE_NO, line_number)
     trace_attribute(Attributes.IMPORT_RESULT_ID, str(import_result_id))
     trace_attribute(Attributes.MESSAGING_RETRIES_REMAINING, remaining_retries)
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:

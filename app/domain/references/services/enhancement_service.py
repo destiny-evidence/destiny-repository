@@ -10,6 +10,7 @@ from opentelemetry import trace
 from app.core.config import get_settings
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
+from app.core.telemetry.otel import new_linked_trace
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
@@ -349,8 +350,9 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             else:
                 results.failed_pending_enhancement_ids.add(pending_enhancement.id)
 
-    async def process_robot_enhancement_batch_result(
+    async def process_robot_enhancement_batch_result(  # noqa: PLR0913
         self,
+        robot_enhancement_batch_id: UUID,
         blob_repository: BlobRepository,
         result_file: BlobStorageFile,
         pending_enhancements: list[PendingEnhancement],
@@ -372,57 +374,66 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         # Track processed IDs for duplicate validation
         processed_reference_ids: set[UUID] = set()
 
-        async with blob_repository.stream_file_from_blob_storage(
-            result_file,
-        ) as file_stream:
-            # Read the file stream and validate the content
-            line_no = 1
-            async for line in file_stream:
-                with tracer.start_as_current_span(
-                    "Import enhancement",
-                    attributes={Attributes.FILE_LINE_NO: line_no},
-                ):
-                    if not line.strip():
-                        continue
+        with tracer.start_as_current_span("Ingest robot enhancement batch result file"):
+            async with blob_repository.stream_file_from_blob_storage(
+                result_file,
+            ) as file_stream:
+                # Read the file stream and validate the content
+                line_no = 1
+                async for line in file_stream:
+                    with new_linked_trace(
+                        "Import enhancement",
+                        attributes={
+                            Attributes.FILE_LINE_NO: line_no,
+                            Attributes.ROBOT_ENHANCEMENT_BATCH_ID: str(
+                                robot_enhancement_batch_id
+                            ),
+                        },
+                    ):
+                        if not line.strip():
+                            continue
 
-                    validated_result = EnhancementResultValidator.from_raw(
-                        line, line_no, expected_reference_ids, processed_reference_ids
-                    )
-                    line_no += 1
-
-                    # Process the validated result line
-                    result_entry = ""
-                    if validated_result.robot_error:
-                        # Track processed IDs here for clarity
-                        ref_id = validated_result.robot_error.reference_id
-                        if ref_id in expected_reference_ids:
-                            processed_reference_ids.add(ref_id)
-                        result_entry = await self._process_robot_error_line(
-                            validated_result.robot_error,
-                            attempted_reference_ids,
-                        )
-                    elif validated_result.parse_failure:
-                        result_entry = await self._process_parse_failure_line(
-                            validated_result.parse_failure,
+                        validated_result = EnhancementResultValidator.from_raw(
+                            line,
                             line_no,
+                            expected_reference_ids,
+                            processed_reference_ids,
                         )
-                    elif validated_result.enhancement_to_add:
-                        # Track processed IDs here for clarity
-                        processed_reference_ids.add(
-                            validated_result.enhancement_to_add.reference_id
-                        )
-                        result_entry = await self._process_enhancement_line(
-                            validated_result.enhancement_to_add,
-                            add_enhancement,
-                            line_no,
-                            attempted_reference_ids,
-                            results,
-                            successful_reference_ids,
-                            discarded_enhancement_reference_ids,
-                        )
+                        line_no += 1
 
-                    if result_entry:  # Only yield non-empty results
-                        yield result_entry
+                        # Process the validated result line
+                        result_entry = ""
+                        if validated_result.robot_error:
+                            # Track processed IDs here for clarity
+                            ref_id = validated_result.robot_error.reference_id
+                            if ref_id in expected_reference_ids:
+                                processed_reference_ids.add(ref_id)
+                            result_entry = await self._process_robot_error_line(
+                                validated_result.robot_error,
+                                attempted_reference_ids,
+                            )
+                        elif validated_result.parse_failure:
+                            result_entry = await self._process_parse_failure_line(
+                                validated_result.parse_failure,
+                                line_no,
+                            )
+                        elif validated_result.enhancement_to_add:
+                            # Track processed IDs here for clarity
+                            processed_reference_ids.add(
+                                validated_result.enhancement_to_add.reference_id
+                            )
+                            result_entry = await self._process_enhancement_line(
+                                validated_result.enhancement_to_add,
+                                add_enhancement,
+                                line_no,
+                                attempted_reference_ids,
+                                results,
+                                successful_reference_ids,
+                                discarded_enhancement_reference_ids,
+                            )
+
+                        if result_entry:  # Only yield non-empty results
+                            yield result_entry
 
         # Generate entries for missing references
         if missing_reference_ids := (expected_reference_ids - attempted_reference_ids):
