@@ -1,5 +1,6 @@
 """Tests ES repair functionality (and inherently the link between SQL and ES)."""
 
+import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 
@@ -40,6 +41,14 @@ from tests.factories import (
 )
 
 
+async def wait_for_all_tasks() -> None:
+    """Wait for all tasks to complete."""
+    assert isinstance(broker, InMemoryBroker)
+    # Gives time for chained tasks to be scheduled (eg repairing)
+    await asyncio.sleep(0.5)
+    await broker.wait_all()
+
+
 async def sub_test_reference_index_initial_rebuild(
     client: AsyncClient,
     es_client: AsyncElasticsearch,
@@ -60,9 +69,7 @@ async def sub_test_reference_index_initial_rebuild(
     assert "Repair task for index" in response_data["message"]
     assert index_name in response_data["message"]
 
-    # Wait for the task to complete
-    assert isinstance(broker, InMemoryBroker)
-    await broker.wait_all()
+    await wait_for_all_tasks()
 
     # Verify index still exists after rebuild
     exists = await es_client.indices.exists(index=index_name)
@@ -117,9 +124,7 @@ async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
     assert "Repair task for index" in response_data["message"]
     assert index_name in response_data["message"]
 
-    # Wait for the task to complete
-    assert isinstance(broker, InMemoryBroker)
-    await broker.wait_all()
+    await wait_for_all_tasks()
 
     # Verify the updated data is reflected in Elasticsearch
     await es_client.indices.refresh(index=index_name)
@@ -159,9 +164,7 @@ async def sub_test_robot_automation_initial_rebuild(
     assert "Repair task for index" in response_data["message"]
     assert index_manager.alias_name in response_data["message"]
 
-    # Wait for the task to complete
-    assert isinstance(broker, InMemoryBroker)
-    await broker.wait_all()
+    await wait_for_all_tasks()
 
     # Verify index still exists after rebuild
     index_name = await index_manager.get_current_index_name()
@@ -225,9 +228,7 @@ async def sub_test_robot_automation_update_without_rebuild(  # noqa: PLR0913
     assert "Repair task for index" in response_data["message"]
     assert index_name in response_data["message"]
 
-    # Wait for the task to complete
-    assert isinstance(broker, InMemoryBroker)
-    await broker.wait_all()
+    await wait_for_all_tasks()
 
     # Verify the updated robot automation is reflected in Elasticsearch
     await es_client.indices.refresh(index=index_name)
@@ -363,9 +364,7 @@ async def test_rebuild_index_maintains_shard_number(
 
     assert response.status_code == status.HTTP_202_ACCEPTED
 
-    # Wait for the task to complete
-    assert isinstance(broker, InMemoryBroker)
-    await broker.wait_all()
+    await wait_for_all_tasks()
 
     # Verify the number of shards remains the same
     index_name = await index_manager.get_current_index_name()
