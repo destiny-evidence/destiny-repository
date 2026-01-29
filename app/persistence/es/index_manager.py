@@ -142,6 +142,10 @@ class IndexManager:
             attribute=Attributes.DB_COLLECTION_NAME, value=current_index_name
         )
 
+        index_settings = await self.client.indices.get_settings(
+            index=current_index_name
+        )
+
         await self.client.indices.delete_alias(
             index=current_index_name, name=self.alias_name
         )
@@ -150,7 +154,10 @@ class IndexManager:
         await self._delete_index_safely(index_name=current_index_name)
 
         logger.info("Recreating index", index=current_index_name)
-        await self._create_index_with_mapping(current_index_name)
+        await self._create_index_with_mapping(
+            current_index_name,
+            settings=index_settings[current_index_name]["settings"]["index"],
+        )
 
         await self.client.indices.put_alias(
             index=current_index_name, name=self.alias_name
@@ -177,7 +184,9 @@ class IndexManager:
         """Generate a versioned index name."""
         return f"{self.alias_name}_{self.version_prefix}{version}"
 
-    async def _create_index_with_mapping(self, index_name: str) -> None:
+    async def _create_index_with_mapping(
+        self, index_name: str, settings: dict | None = None
+    ) -> None:
         """
         Create a new index with the mapping from the document class.
 
@@ -189,13 +198,16 @@ class IndexManager:
 
         """
         index = AsyncIndex(name=index_name)
-        index.settings(
-            number_of_shards=(
-                self.number_of_shards
-                or (await self.get_current_number_of_shards())
-                or 1
-            )
+
+        number_of_shards = (
+            self.number_of_shards
+            or (settings.get("number_of_shards") if settings else None)
+            or (await self.get_current_number_of_shards())
+            or 1
         )
+
+        index.settings(number_of_shards=number_of_shards)
+
         index.document(self.document_class)
         await index.create(using=self.client)
         logger.info("Created index: %s", index_name)
