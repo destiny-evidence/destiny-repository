@@ -5,6 +5,7 @@ from collections.abc import Coroutine
 from typing import Any
 
 import elasticsearch
+from deepmerge import always_merger
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import AsyncDocument, AsyncIndex
 from opentelemetry import trace
@@ -494,25 +495,7 @@ class IndexManager:
 
         """
         current_settings = await self._get_reusable_index_settings(index_name)
-        self._update_nested_settings(
-            current_settings=current_settings,
-            settings_changeset=settings_changeset,
-        )
-        return current_settings
-
-    def _update_nested_settings(
-        self, current_settings: dict[str, Any], settings_changeset: dict[str, Any]
-    ) -> None:
-        """Recursively update nested settings dictionaries."""
-        for key, value in settings_changeset.items():
-            if (
-                key in current_settings
-                and isinstance(current_settings[key], dict)
-                and isinstance(value, dict)
-            ):
-                self._update_nested_settings(current_settings[key], value)
-            else:
-                current_settings[key] = value
+        return always_merger.merge(current_settings, settings_changeset)
 
     async def _get_reusable_index_settings(self, index_name: str) -> dict[str, Any]:
         """
