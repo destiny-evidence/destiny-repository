@@ -1,4 +1,4 @@
-import uuid
+from uuid import UUID, uuid7
 
 import destiny_sdk
 
@@ -75,21 +75,19 @@ def test_es_parsing():
     }
 
     reference = destiny_sdk.references.Reference.from_es(es_reference)
-    assert reference.id == uuid.UUID("7c54f72e-8833-484f-9000-4f403b13a243")
+    assert reference.id == UUID("7c54f72e-8833-484f-9000-4f403b13a243")
     assert reference.visibility == destiny_sdk.visibility.Visibility.PUBLIC
     assert len(reference.identifiers) == 3
     assert len(reference.enhancements) == 3
-    assert reference.enhancements[0].reference_id == uuid.UUID(
+    assert reference.enhancements[0].reference_id == UUID(
         "7c54f72e-8833-484f-9000-4f403b13a243"
     )
-    assert reference.enhancements[0].id == uuid.UUID(
-        "52f3fc92-db0b-4e65-a18c-31d091242c3a"
-    )
+    assert reference.enhancements[0].id == UUID("52f3fc92-db0b-4e65-a18c-31d091242c3a")
 
 
 def test_jsonl_serialization():
     reference = destiny_sdk.references.Reference(
-        id=(_id := uuid.uuid4()),
+        id=(_id := uuid7()),
         enhancements=[
             destiny_sdk.enhancements.Enhancement(
                 reference_id=_id,

@@ -11,8 +11,10 @@ from . import (
     search,
     visibility,
 )
+from .core import UUID
 
 __all__ = [
+    "UUID",
     "auth",
     "client",
     "enhancements",

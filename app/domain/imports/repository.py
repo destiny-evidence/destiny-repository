@@ -1,10 +1,10 @@
 """Repositories for imports and associated models."""
 
-import uuid
 from abc import ABC
 from collections import defaultdict
 from collections.abc import Collection
 from typing import Literal
+from uuid import UUID
 
 from opentelemetry import trace
 from sqlalchemy import select
@@ -75,7 +75,7 @@ class ImportRecordSQLRepository(
 
     async def get_by_pk(
         self,
-        pk: uuid.UUID,
+        pk: UUID,
         preload: list[_import_record_sql_preloadable] | None = None,
     ) -> DomainImportRecord:
         """Override to include batch statuses if requested."""
@@ -124,8 +124,8 @@ class ImportBatchSQLRepository(
         self.results = results_repo
 
     async def get_import_result_status_sets(
-        self, import_batch_ids: Collection[uuid.UUID]
-    ) -> dict[uuid.UUID, set[ImportResultStatus]]:
+        self, import_batch_ids: Collection[UUID]
+    ) -> dict[UUID, set[ImportResultStatus]]:
         """
         Get current underlying statuses for multiple import batches.
 
@@ -151,7 +151,7 @@ class ImportBatchSQLRepository(
         return status_sets
 
     async def get_import_result_status_set(
-        self, import_batch_id: uuid.UUID
+        self, import_batch_id: UUID
     ) -> set[ImportResultStatus]:
         """
         Get current underlying statuses for an import batch.
@@ -169,7 +169,7 @@ class ImportBatchSQLRepository(
 
     async def get_by_pk(
         self,
-        pk: uuid.UUID,
+        pk: UUID,
         preload: list[_import_batch_sql_preloadable] | None = None,
     ) -> DomainImportBatch:
         """Override to include derived batch status."""
@@ -203,7 +203,7 @@ class ImportResultSQLRepository(
     @trace_repository_method(tracer)
     async def get_by_filter(
         self,
-        import_batch_id: uuid.UUID | None = None,
+        import_batch_id: UUID | None = None,
         status: ImportResultStatus | None = None,
     ) -> list[DomainImportResult]:
         """Get a list of import results based on the provided filters."""
