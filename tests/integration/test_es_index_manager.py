@@ -107,7 +107,9 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
     await index_manager.initialize_index(
         settings={
             "number_of_shards": 2,
-            "search": {"slowlog": {"threshold": {"query": {"warn": "20s"}}}},
+            "search": {
+                "slowlog": {"threshold": {"query": {"warn": "20s", "debug": "5s"}}}
+            },
         }
     )
 
@@ -131,7 +133,11 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
     old_version = await index_manager.get_current_version()
     assert old_version
 
-    await index_manager.migrate()
+    await index_manager.migrate(
+        settings_changeset={
+            "search": {"slowlog": {"threshold": {"query": {"warn": "10s"}}}}
+        }
+    )
 
     # Verify the old index has not been deleted
     old_index_exists = await index_manager.client.indices.exists(index=old_index_name)
@@ -155,10 +161,18 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
     # Verify there are ten documents in the new index
     assert (await index_manager.client.count(index=new_index_name))["count"] == 10
 
-    # Verify the slowlog warn threshold has been set to 20s
-    assert (await index_manager.client.indices.get_settings(index=new_index_name))[
-        new_index_name
-    ]["settings"]["index"]["search"]["slowlog"]["threshold"]["query"]["warn"] == "20s"
+    index_settings = (
+        await index_manager.client.indices.get_settings(index=new_index_name)
+    )[new_index_name]["settings"]["index"]
+
+    # Verify the slowlog warn threshold has been set to 10s
+    assert index_settings["search"]["slowlog"]["threshold"]["query"]["warn"] == "10s"
+
+    # Verify the slowlog debug threshold has been preserved as 5s
+    assert index_settings["search"]["slowlog"]["threshold"]["query"]["debug"] == "5s"
+
+    # Verify the number of shards is still 2
+    assert await index_manager.get_current_number_of_shards() == 2
 
 
 async def test_we_can_migrate_an_index_with_a_random_name(index_manager: IndexManager):
