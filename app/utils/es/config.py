@@ -57,7 +57,10 @@ class Settings(BaseSettings):
 
     reindex_status_polling_interval: int = 5 * 60  # 5min
 
-    slowlog_thresholds: SlowlogThresholds
+    slowlog_thresholds: SlowlogThresholds = Field(
+        default_factory=SlowlogThresholds,
+        description="Settings for elasticsearch slowlog thresholds.",
+    )
 
     @property
     def running_locally(self) -> bool:
