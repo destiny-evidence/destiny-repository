@@ -138,8 +138,8 @@ class IndexManager:
             attribute=Attributes.DB_COLLECTION_NAME, value=current_index_name
         )
 
-        index_settings = await self.client.indices.get_settings(
-            index=current_index_name
+        index_settings = await self._get_reusable_index_settings(
+            index_name=current_index_name
         )
 
         await self.client.indices.delete_alias(
@@ -152,7 +152,7 @@ class IndexManager:
         logger.info("Recreating index", index=current_index_name)
         await self._create_index_with_mapping(
             current_index_name,
-            settings=index_settings[current_index_name]["settings"]["index"],
+            settings=index_settings,
         )
 
         await self.client.indices.put_alias(
@@ -197,7 +197,7 @@ class IndexManager:
         """
         index = AsyncIndex(name=index_name)
 
-        index.settings(number_of_shards=settings.get("number_of_shards"))
+        index.settings(**settings)
 
         index.document(self.document_class)
         await index.create(using=self.client)
@@ -478,3 +478,37 @@ class IndexManager:
 
         logger.info("Rolled back from %s to %s", current_index, target_index)
         return target_index
+
+    async def _get_reusable_index_settings(self, index_name: str) -> dict[str, Any]:
+        """
+        Get index settings that can be used to create a new index.
+
+        This removes non-reusable settings like creation date which are
+        returned in the index settings API.
+
+        Returns:
+            A dictionary of index settings that can be reused to create a new index.
+
+        """
+        non_reusable_index_settings = [
+            "creation_date",
+            "uuid",
+            "version",
+            "provided_name",
+            "routing",
+            "blocks",
+        ]
+
+        source_settings = await self.client.indices.get_settings(index=index_name)
+
+        if not source_settings or index_name not in source_settings:
+            msg = f"Could not retrieve settings for index {index_name}"
+            set_span_status(status=trace.StatusCode.ERROR, detail=msg)
+            raise NotFoundError(msg)
+
+        index_settings = source_settings[index_name]["settings"]["index"]
+        return {
+            setting: value
+            for setting, value in index_settings.items()
+            if setting not in non_reusable_index_settings
+        }
