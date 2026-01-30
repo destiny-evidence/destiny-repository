@@ -2,7 +2,6 @@
 
 import argparse
 import asyncio
-from typing import Any
 
 from elasticsearch import NotFoundError
 from opentelemetry import trace
@@ -16,7 +15,6 @@ from app.domain.references.models.es import (
 )
 from app.persistence.es.client import es_manager
 from app.persistence.es.index_manager import IndexManager
-from app.utils.es.config import SlowlogThresholds
 from app.utils.es.config import get_settings as get_es_migration_settings
 
 settings = get_es_migration_settings()
@@ -41,31 +39,6 @@ index_documents = {
 }
 
 
-def get_index_settings_changeset(
-    number_of_shards: int | None, slowlog_thresholds: SlowlogThresholds
-) -> dict | None:
-    """Create index settings changeset for migration."""
-    settings: dict[str, Any] = {
-        "search": {
-            "slowlog": {
-                "threshold": {
-                    "query": {
-                        "warn": slowlog_thresholds.warn,
-                        "info": slowlog_thresholds.info,
-                        "debug": slowlog_thresholds.debug,
-                        "trace": slowlog_thresholds.trace,
-                    }
-                }
-            }
-        }
-    }
-
-    if number_of_shards:
-        settings["number_of_shards"] = number_of_shards
-
-    return settings
-
-
 async def run_migration(alias: str, number_of_shards: int | None) -> None:
     """Run elasticsearch index migrations."""
     es_config = settings.es_config
@@ -79,13 +52,9 @@ async def run_migration(alias: str, number_of_shards: int | None) -> None:
                 client=client,
                 otel_enabled=settings.otel_enabled,
                 reindex_status_polling_interval=settings.reindex_status_polling_interval,
+                number_of_shards=number_of_shards,
             )
-
-            index_settings_changeset = get_index_settings_changeset(
-                number_of_shards, settings.slowlog_thresholds
-            )
-
-            await index_manager.migrate(settings_changeset=index_settings_changeset)
+            await index_manager.migrate()
     except Exception:
         logger.exception("An unhandled exception occurred")
     finally:
@@ -204,7 +173,6 @@ def argument_parser() -> argparse.ArgumentParser:
             "Number of shards to use when migrating an index. "
             "Defaults to the previous index's number of shards if not specified."
         ),
-        default=None,
     )
 
     return parser
