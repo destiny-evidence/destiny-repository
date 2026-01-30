@@ -9,6 +9,33 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from app.core.config import TOML, Environment, ESConfig, LogLevel, OTelConfig
 
 
+class SlowlogThresholds(BaseSettings):
+    """
+    Settings model for ES slowlog thresholds.
+
+    https://www.elastic.co/docs/reference/elasticsearch/index-settings/slow-log
+    """
+
+    model_config = SettingsConfigDict(extra="ignore")
+
+    warn: str = Field(
+        default="20s",
+        description="Threshold for warning level slowlogs.",
+    )
+    info: str = Field(
+        default="10s",
+        description="Threshold for info level slowlogs.",
+    )
+    debug: str = Field(
+        default="5s",
+        description="Threshold for debug level slowlogs.",
+    )
+    trace: str = Field(
+        default="2500ms",
+        description="Threshold for trace level slowlogs.",
+    )
+
+
 class Settings(BaseSettings):
     """Settings model for ES operations."""
 
@@ -29,6 +56,11 @@ class Settings(BaseSettings):
     )
 
     reindex_status_polling_interval: int = 5 * 60  # 5min
+
+    slowlog_thresholds: SlowlogThresholds = Field(
+        default_factory=SlowlogThresholds,
+        description="Settings for elasticsearch slowlog thresholds.",
+    )
 
     @property
     def running_locally(self) -> bool:

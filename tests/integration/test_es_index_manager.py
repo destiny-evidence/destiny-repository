@@ -26,7 +26,6 @@ async def index_manager(
             SimpleDoc,
             client,
             reindex_status_polling_interval=1,
-            number_of_shards=2,
         )
 
         yield index_manager
@@ -35,13 +34,18 @@ async def index_manager(
 
 
 async def test_initialise_es_index_happy_path(index_manager: IndexManager):
-    """Test that we can initalise an index for a GenericESPersistence."""
+    """Test that we can initialise an index for a GenericESPersistence."""
     # Assert that the index does not exist
     index_exists = await index_manager.client.indices.exists(index=SimpleDoc.Index.name)
     assert not index_exists
 
     # Initialise the index
-    await index_manager.initialize_index()
+    await index_manager.initialize_index(
+        settings={
+            "number_of_shards": 2,
+            "search": {"slowlog": {"threshold": {"query": {"warn": "20s"}}}},
+        }
+    )
 
     # Check we've created a versioned index
     versioned_index_name = await index_manager.get_current_index_name()
@@ -63,14 +67,11 @@ async def test_initialise_es_index_happy_path(index_manager: IndexManager):
     assert current_version == 1
 
     # Assert that the index has the correct number of shards
-    assert (
-        await index_manager.get_current_number_of_shards()
-        == index_manager.number_of_shards
-    )
+    assert await index_manager.get_current_number_of_shards() == 2
 
 
 async def test_initialise_es_index_is_idempotent(index_manager: IndexManager):
-    """Make sure that subsequent intialisation calls have no impact."""
+    """Make sure that subsequent initialization calls have no impact."""
     await index_manager.initialize_index()
 
     # Get the current index name so we can verify it doesn't change
@@ -85,8 +86,8 @@ async def test_initialise_es_index_is_idempotent(index_manager: IndexManager):
     # Refresh the index to ensure document available
     await index_manager.client.indices.refresh(index=index_name)
 
-    # Call the initialisation again
-    await index_manager.initialize_index()
+    # Call the initialization again
+    await index_manager.initialize_index(settings={"number_of_shards": 2})
 
     # Verify the current index name has not changed
     new_index_name = await index_manager.get_current_index_name()
@@ -96,11 +97,22 @@ async def test_initialise_es_index_is_idempotent(index_manager: IndexManager):
     count = await index_manager.client.count(index=index_manager.alias_name)
     assert count["count"] == 1
 
+    # Assert shard count has not changed
+    assert await index_manager.get_current_number_of_shards() == 1
+
 
 async def test_migrate_es_index_happy_path(index_manager: IndexManager):
-    """Test that we can migrate an index."""
+    """Test that we can migrate an index and that settings are persisted."""
     # Initialise the index
-    await index_manager.initialize_index()
+    await index_manager.initialize_index(
+        settings={
+            "number_of_shards": 2,
+            "search": {
+                "slowlog": {"threshold": {"query": {"warn": "20s", "debug": "5s"}}}
+            },
+        }
+    )
+
     # Add documents to index so we can check for them after migrating
     dummy_docs = [
         SimpleDoc.from_domain(DomainSimpleDoc(content=f"test document {i}"))
@@ -121,7 +133,11 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
     old_version = await index_manager.get_current_version()
     assert old_version
 
-    await index_manager.migrate()
+    await index_manager.migrate(
+        settings_changeset={
+            "search": {"slowlog": {"threshold": {"query": {"warn": "10s"}}}}
+        }
+    )
 
     # Verify the old index has not been deleted
     old_index_exists = await index_manager.client.indices.exists(index=old_index_name)
@@ -145,12 +161,25 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
     # Verify there are ten documents in the new index
     assert (await index_manager.client.count(index=new_index_name))["count"] == 10
 
+    index_settings = (
+        await index_manager.client.indices.get_settings(index=new_index_name)
+    )[new_index_name]["settings"]["index"]
+
+    # Verify the slowlog warn threshold has been set to 10s
+    assert index_settings["search"]["slowlog"]["threshold"]["query"]["warn"] == "10s"
+
+    # Verify the slowlog debug threshold has been preserved as 5s
+    assert index_settings["search"]["slowlog"]["threshold"]["query"]["debug"] == "5s"
+
+    # Verify the number of shards is still 2
+    assert await index_manager.get_current_number_of_shards() == 2
+
 
 async def test_we_can_migrate_an_index_with_a_random_name(index_manager: IndexManager):
     """Test we can migrate if alias points to non-versioned index name."""
     non_versioned_index_name = f"{SimpleDoc.Index.name}_forever"
 
-    # Create non_versioned index and apply alias index manager will recognise
+    # Create non_versioned index and apply alias index manager will recognize
     await SimpleDoc.init(index=non_versioned_index_name, using=index_manager.client)
     await index_manager.client.indices.put_alias(
         index=non_versioned_index_name, name=SimpleDoc.Index.name
@@ -171,8 +200,9 @@ async def test_migrate_es_index_updates_shards(index_manager: IndexManager):
 
     # Migrate with different number of shards
     new_number_of_shards = 4
-    index_manager.number_of_shards = new_number_of_shards
-    await index_manager.migrate()
+    await index_manager.migrate(
+        settings_changeset={"number_of_shards": new_number_of_shards}
+    )
 
     # Verify the new index has the correct number of shards
     assert await index_manager.get_current_number_of_shards() == new_number_of_shards
@@ -181,10 +211,9 @@ async def test_migrate_es_index_updates_shards(index_manager: IndexManager):
 async def test_migrate_es_index_inherits_shards(index_manager: IndexManager):
     """Test that we can migrate an index and update the number of shards."""
     # Initialise the index
-    await index_manager.initialize_index()
+    await index_manager.initialize_index(settings={"number_of_shards": 2})
 
     # Migrate with no number of shards specified
-    index_manager.number_of_shards = None
     await index_manager.migrate()
 
     # Verify the new index has the correct number of shards
@@ -199,7 +228,7 @@ async def test_reindex_preserves_data_updated_in_source(index_manager: IndexMana
     to confirm we can successfully reindex.
 
     This tests some internals of the index manager and verifies elasticsearch
-    behaviour.
+    behavior.
     """
     await index_manager.initialize_index()
 
@@ -244,7 +273,7 @@ async def test_reindex_preserves_data_updated_in_source(index_manager: IndexMana
         index=src_index_name, using=index_manager.client, validate=True
     )
 
-    # Refresh the index to ensure udpated document available
+    # Refresh the index to ensure updated document available
     await index_manager.client.indices.refresh(index=src_index_name)
 
     # reindex
@@ -252,7 +281,7 @@ async def test_reindex_preserves_data_updated_in_source(index_manager: IndexMana
         source_index=src_index_name, dest_index=dest_index_name
     )
 
-    # Assert that docuemnt in destination index with version 2
+    # Assert that document in destination index with version 2
     doc_from_index = await index_manager.client.get(
         index=index_manager.alias_name, id=dummy_document_src.meta.id
     )
@@ -275,10 +304,10 @@ async def test_reindex_succeeds_on_version_clash(index_manager: IndexManager):
       it is added as part of the second reindex, and the document is different.
 
     In this case, we want to preserve the document in the destination index,
-    as this will have been the most recently udpated.
+    as this will have been the most recently updated.
 
     This tests some internals of the index manager and verifies elasticsearch
-    behaviour.
+    behavior.
     """
     await index_manager.initialize_index()
 
