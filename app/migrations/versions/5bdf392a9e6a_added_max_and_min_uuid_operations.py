@@ -21,6 +21,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Postgresql doesn't ship with min/max aggregate functions for uuid types by default,
+    # so we need to create our own.
+    # Fortunately, postgresql does ship with comparison operators for uuid types...
+
     op.execute("""
         CREATE OR REPLACE FUNCTION uuid_smaller(uuid, uuid) RETURNS uuid AS $$
             SELECT CASE

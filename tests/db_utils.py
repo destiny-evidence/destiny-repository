@@ -3,15 +3,20 @@
 import contextlib
 import uuid
 from collections.abc import AsyncIterator
+from typing import Literal, Self
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import sqlalchemy as sa
 from alembic.config import Config as AlembicConfig
-from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
+from sqlalchemy import String
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, create_async_engine
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy_utils.functions.orm import quote
 
 from app.core.config import get_settings
-from app.persistence.sql.persistence import Base
+from app.domain.base import DomainBaseModel, SQLAttributeMixin
+from app.persistence.sql.persistence import Base, GenericSQLPersistence
+from app.persistence.sql.repository import GenericAsyncSqlRepository
 
 settings = get_settings()
 
@@ -126,3 +131,36 @@ async def clean_tables(conn: AsyncConnection) -> None:
     for table in reversed(Base.metadata.sorted_tables):
         await conn.execute(table.delete())
     await conn.commit()
+
+
+class SimpleDomainModel(DomainBaseModel, SQLAttributeMixin):
+    """Simple domain model for testing."""
+
+    name: str = "test"
+
+
+class SimpleSQLModel(GenericSQLPersistence[SimpleDomainModel]):
+    """Simple SQL persistence model for testing."""
+
+    __tablename__ = "simple_test_model"
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False, default="test")
+
+    @classmethod
+    def from_domain(cls, domain_obj: SimpleDomainModel) -> Self:
+        """Create from domain model."""
+        return cls(id=domain_obj.id, name=domain_obj.name)
+
+    def to_domain(self, preload: list | None = None) -> SimpleDomainModel:  # noqa: ARG002
+        """Convert to domain model."""
+        return SimpleDomainModel(id=self.id, name=self.name)
+
+
+class SimpleRepository(
+    GenericAsyncSqlRepository[SimpleDomainModel, SimpleSQLModel, Literal["__none__"]]
+):
+    """Simple repository for testing base repository methods."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Initialize with just session, using default domain/persistence classes."""
+        super().__init__(session, SimpleDomainModel, SimpleSQLModel)
