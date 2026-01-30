@@ -15,6 +15,7 @@ from app.core.telemetry.attributes import (
     trace_attribute,
 )
 from app.core.telemetry.logger import get_logger
+from app.core.telemetry.otel import new_linked_trace
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     DuplicateDetermination,
@@ -189,14 +190,18 @@ async def repair_reference_index() -> None:
             partition_size=settings.es_reference_repair_chunk_size
         )
         for index, (min_id, max_id) in enumerate(partitions, start=1):
-            await queue_task_with_trace(
-                repair_reference_index_for_chunk,
-                min_id,
-                max_id,
-                index,
-                len(partitions),
-                otel_enabled=settings.otel_enabled,
-            )
+            with new_linked_trace(
+                "Queue repair index chunk task",
+                attributes={Attributes.DB_COLLECTION_ALIAS_NAME: "reference"},
+            ):
+                await queue_task_with_trace(
+                    repair_reference_index_for_chunk,
+                    min_id,
+                    max_id,
+                    index,
+                    len(partitions),
+                    otel_enabled=settings.otel_enabled,
+                )
 
 
 @broker.task
