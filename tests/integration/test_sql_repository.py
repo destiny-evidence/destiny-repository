@@ -3,18 +3,12 @@
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tests.db_utils import (
-    SimpleRepository,
-    SimpleSQLModel,
-)
+from tests.db_utils import SimpleRepository, SimpleSQLModel
 
 
 @pytest.fixture
-async def repository(session: AsyncSession) -> SimpleRepository:
+def repository(session: AsyncSession) -> SimpleRepository:
     """Create a simple repository for testing."""
-    conn = await session.connection()
-    await conn.run_sync(SimpleSQLModel.__table__.create, checkfirst=True)
-    await session.commit()
     return SimpleRepository(session)
 
 
