@@ -50,6 +50,27 @@ class AuthorPosition(StrEnum):
     """The last author."""
 
 
+class PublicationVenueType(StrEnum):
+    """
+    Type of publication venue.
+
+    Aligns with OpenAlex source types.
+    """
+
+    JOURNAL = auto()
+    """A journal publication."""
+    REPOSITORY = auto()
+    """A repository (includes preprint servers like arXiv, bioRxiv)."""
+    CONFERENCE = auto()
+    """A conference proceeding."""
+    EBOOK_PLATFORM = auto()
+    """An ebook platform."""
+    BOOK_SERIES = auto()
+    """A book series."""
+    OTHER = auto()
+    """Other venue type."""
+
+
 class Authorship(BaseModel):
     """
     Represents a single author and their association with a reference.
@@ -106,6 +127,35 @@ class Pagination(BaseModel):
         return value
 
 
+class PublicationVenue(BaseModel):
+    """A publication venue (journal, repository, conference, etc.)."""
+
+    display_name: str | None = Field(
+        default=None,
+        description=(
+            "The display name of the venue (journal name, repository name, etc.)"
+        ),
+    )
+    venue_type: PublicationVenueType | None = Field(
+        default=None,
+        description="The type of venue: journal, repository, book, conference, etc.",
+    )
+    issn: list[str] | None = Field(
+        default=None,
+        description="List of ISSNs associated with this venue (print and electronic)",
+    )
+    issn_l: str | None = Field(
+        default=None,
+        description=(
+            "The linking ISSN - a canonical ISSN for the venue across format changes"
+        ),
+    )
+    host_organization_name: str | None = Field(
+        default=None,
+        description="Display name of the host organization (publisher)",
+    )
+
+
 class BibliographicMetadataEnhancement(BaseModel):
     """
     An enhancement which is made up of bibliographic metadata.
@@ -150,6 +200,10 @@ other works have cited this work
     pagination: Pagination | None = Field(
         default=None,
         description="Pagination info (volume, issue, pages).",
+    )
+    publication_venue: PublicationVenue | None = Field(
+        default=None,
+        description="Publication venue information (journal, repository, etc.).",
     )
 
     @property

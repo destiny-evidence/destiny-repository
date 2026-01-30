@@ -63,6 +63,27 @@ def test_bibliographic_metadata_enhancement_non_numeric_pagination_fields():
     assert bibliographic.pagination.last_page == "A15"
 
 
+def test_bibliographic_metadata_enhancement_with_publication_venue():
+    """Test BibliographicMetadataEnhancement with publication_venue field."""
+    venue = destiny_sdk.enhancements.PublicationVenue(
+        display_name="Science",
+        venue_type=destiny_sdk.enhancements.PublicationVenueType.JOURNAL,
+        issn=["0036-8075"],
+        issn_l="0036-8075",
+        host_organization_name="AAAS",
+    )
+    bibliographic = destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+        title="Test Article",
+        publication_venue=venue,
+    )
+    assert bibliographic.publication_venue is not None
+    assert bibliographic.publication_venue.display_name == "Science"
+    assert (
+        bibliographic.publication_venue.venue_type
+        == destiny_sdk.enhancements.PublicationVenueType.JOURNAL
+    )
+
+
 def test_abstract_content_enhancement_valid():
     # Create valid abstract content
     abstract_content = destiny_sdk.enhancements.AbstractContentEnhancement(
