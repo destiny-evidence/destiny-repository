@@ -129,7 +129,12 @@ async def clean_tables(conn: AsyncConnection) -> None:
     # https://www.lob.com/blog/truncate-vs-delete-efficiently-clearing-data-from-a-postgres-table
     # BUT DELETE FROM query does not reset any AUTO_INCREMENT counters
     for table in reversed(Base.metadata.sorted_tables):
-        await conn.execute(table.delete())
+        # Check if table exists (handles test-only tables like simple_test_model)
+        exists = await conn.run_sync(
+            lambda sync_conn, table=table: sa.inspect(sync_conn).has_table(table.name)
+        )
+        if exists:
+            await conn.execute(table.delete())
     await conn.commit()
 
 
