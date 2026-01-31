@@ -850,14 +850,26 @@ class TestShortcutDeduplication:
             "with trusted identifier(s)"
         )
 
-    async def test_shortcut_deduplication_case_e(
+    async def test_shortcut_marks_canonical_when_trusted_identifier_has_no_matches(
         self,
         trusted_identifier: LinkedExternalIdentifier,
         anti_corruption_service: ReferenceAntiCorruptionService,
         fake_uow,
         fake_repository,
     ):
-        """Various scenarios that should not shortcut deduplication."""
+        """
+        Trusted identifiers with no matches should mark CANONICAL immediately.
+
+        Justification for skipping ES deduplication:
+        - Trusted identifiers (e.g., OpenAlex W-ID) are unique within source
+        - No matching references means the reference is definitively unique
+        - ES fuzzy matching would be redundant and could create false
+          duplicate relationships based on similar titles/authors when we
+          already have certainty from the identifier
+
+        Previously this would return None (fall through to ES). Now it marks
+        as CANONICAL immediately, avoiding unnecessary ES queries.
+        """
         incoming: Reference = ReferenceFactory.build()
         assert incoming.identifiers
         incoming.identifiers.append(trusted_identifier)
@@ -876,21 +888,84 @@ class TestShortcutDeduplication:
         )
         uow.references.find_with_identifiers = AsyncMock(return_value=[])
 
-        # No trusted identifiers
-        assert not await service.shortcut_deduplication_using_identifiers(
-            decision,
-            trusted_unique_identifier_types=set(),
-        )
-
-        # No matching references found
-        assert not await service.shortcut_deduplication_using_identifiers(
+        results = await service.shortcut_deduplication_using_identifiers(
             decision,
             trusted_unique_identifier_types={ExternalIdentifierType.OPEN_ALEX},
         )
 
-        # Not a pending duplicate decision
-        decision.active_decision = True
-        decision.duplicate_determination = DuplicateDetermination.DUPLICATE
+        # Key assertion: we get a result instead of None (fall through case)
+        assert results is not None, (
+            "Trusted identifier with no matches should shortcut to CANONICAL, "
+            "not fall through to ES deduplication"
+        )
+        assert len(results) == 1
+        assert results[0].duplicate_determination == DuplicateDetermination.CANONICAL
+        assert results[0].detail == (
+            "New reference with trusted identifier(s), no existing matches"
+        )
+
+    async def test_shortcut_deduplication_case_e_no_trusted_identifiers(
+        self,
+        trusted_identifier: LinkedExternalIdentifier,
+        anti_corruption_service: ReferenceAntiCorruptionService,
+        fake_uow,
+        fake_repository,
+    ):
+        """Falls through to ES when no trusted identifier types are provided."""
+        incoming: Reference = ReferenceFactory.build()
+        assert incoming.identifiers
+        incoming.identifiers.append(trusted_identifier)
+
+        repo = fake_repository([incoming])
+        decision = ReferenceDuplicateDecision(
+            reference_id=incoming.id,
+            duplicate_determination=DuplicateDetermination.PENDING,
+        )
+        duplicate_repo = fake_repository([decision])
+        uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
+        service = DeduplicationService(
+            anti_corruption_service,
+            uow,
+            fake_uow(),
+        )
+        uow.references.find_with_identifiers = AsyncMock(return_value=[])
+
+        # No trusted identifiers provided - falls through to ES deduplication
+        result = await service.shortcut_deduplication_using_identifiers(
+            decision,
+            trusted_unique_identifier_types=set(),
+        )
+        assert (
+            result is None
+        ), "Should fall through to ES when no trusted types provided"
+
+    async def test_shortcut_deduplication_rejects_non_pending(
+        self,
+        trusted_identifier: LinkedExternalIdentifier,
+        anti_corruption_service: ReferenceAntiCorruptionService,
+        fake_uow,
+        fake_repository,
+    ):
+        """Rejects shortcut on non-pending duplicate decisions."""
+        incoming: Reference = ReferenceFactory.build()
+        assert incoming.identifiers
+        incoming.identifiers.append(trusted_identifier)
+
+        repo = fake_repository([incoming])
+        decision = ReferenceDuplicateDecision(
+            reference_id=incoming.id,
+            duplicate_determination=DuplicateDetermination.DUPLICATE,
+            canonical_reference_id=uuid.uuid4(),
+            active_decision=True,
+        )
+        duplicate_repo = fake_repository([decision])
+        uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
+        service = DeduplicationService(
+            anti_corruption_service,
+            uow,
+            fake_uow(),
+        )
+
         with pytest.raises(DeduplicationValueError):
             await service.shortcut_deduplication_using_identifiers(
                 decision,

@@ -366,7 +366,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
         return new_decision, decision_changed
 
-    async def shortcut_deduplication_using_identifiers(
+    async def shortcut_deduplication_using_identifiers(  # noqa: PLR0912
         self,
         reference_duplicate_decision: ReferenceDuplicateDecision,
         trusted_unique_identifier_types: set[ExternalIdentifierType],
@@ -443,7 +443,22 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             candidate for candidate in candidates if candidate.id != reference.id
         ]
         if not candidates:
-            return None
+            if not trusted_identifiers:
+                # No trusted identifiers to shortcut with, fall through to ES
+                return None
+            # Has trusted identifiers but no existing matches - new unique reference
+            # Skip ES deduplication entirely since the trusted identifier guarantees
+            # uniqueness within its source (e.g., OpenAlex W-ID)
+            reference_duplicate_decision.duplicate_determination = (
+                DuplicateDetermination.CANONICAL
+            )
+            reference_duplicate_decision.detail = (
+                "New reference with trusted identifier(s), no existing matches"
+            )
+            reference_duplicate_decision, _ = await self.map_duplicate_decision(
+                reference_duplicate_decision
+            )
+            return [reference_duplicate_decision]
 
         canonical_ids, undeduplicated_ids = set(), set()
         for candidate in candidates:
