@@ -102,16 +102,9 @@ async def test_initialise_es_index_is_idempotent(index_manager: IndexManager):
 
 
 async def test_migrate_es_index_happy_path(index_manager: IndexManager):
-    """Test that we can migrate an index and that settings are persisted."""
+    """Test that we can migrate an index."""
     # Initialise the index
-    await index_manager.initialize_index(
-        settings={
-            "number_of_shards": 2,
-            "search": {
-                "slowlog": {"threshold": {"query": {"warn": "20s", "debug": "5s"}}}
-            },
-        }
-    )
+    await index_manager.initialize_index()
 
     # Add documents to index so we can check for them after migrating
     dummy_docs = [
@@ -133,11 +126,7 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
     old_version = await index_manager.get_current_version()
     assert old_version
 
-    await index_manager.migrate(
-        settings_changeset={
-            "search": {"slowlog": {"threshold": {"query": {"warn": "10s"}}}}
-        }
-    )
+    await index_manager.migrate()
 
     # Verify the old index has not been deleted
     old_index_exists = await index_manager.client.indices.exists(index=old_index_name)
@@ -161,19 +150,6 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
     # Verify there are ten documents in the new index
     assert (await index_manager.client.count(index=new_index_name))["count"] == 10
 
-    index_settings = (
-        await index_manager.client.indices.get_settings(index=new_index_name)
-    )[new_index_name]["settings"]["index"]
-
-    # Verify the slowlog warn threshold has been set to 10s
-    assert index_settings["search"]["slowlog"]["threshold"]["query"]["warn"] == "10s"
-
-    # Verify the slowlog debug threshold has been preserved as 5s
-    assert index_settings["search"]["slowlog"]["threshold"]["query"]["debug"] == "5s"
-
-    # Verify the number of shards is still 2
-    assert await index_manager.get_current_number_of_shards() == 2
-
 
 async def test_we_can_migrate_an_index_with_a_random_name(index_manager: IndexManager):
     """Test we can migrate if alias points to non-versioned index name."""
@@ -193,31 +169,86 @@ async def test_we_can_migrate_an_index_with_a_random_name(index_manager: IndexMa
     assert current_index_name == f"{index_manager.alias_name}_v1"
 
 
-async def test_migrate_es_index_updates_shards(index_manager: IndexManager):
-    """Test that we can migrate an index and update the number of shards."""
+async def test_migrate_es_index_settings_merge(index_manager: IndexManager):
+    """Test that we can migrate an index and that settings are merged correctly."""
     # Initialise the index
-    await index_manager.initialize_index()
-
-    # Migrate with different number of shards
-    new_number_of_shards = 4
-    await index_manager.migrate(
-        settings_changeset={"number_of_shards": new_number_of_shards}
+    await index_manager.initialize_index(
+        settings={
+            "number_of_shards": 2,
+            "search": {
+                "slowlog": {"threshold": {"query": {"warn": "20s", "debug": "5s"}}}
+            },
+            "analysis": {
+                "analyzer": {
+                    "my_analyzer": {
+                        "tokenizer": "standard",
+                        "filter": ["lowercase", "stop"],
+                    }
+                }
+            },
+        }
     )
 
-    # Verify the new index has the correct number of shards
-    assert await index_manager.get_current_number_of_shards() == new_number_of_shards
+    # Migrate with a settings changeset that updates some settings
+    await index_manager.migrate(
+        settings_changeset={
+            "search": {"slowlog": {"threshold": {"query": {"warn": "10s"}}}},
+            "analysis": {
+                "analyzer": {
+                    "my_analyzer": {"tokenizer": "standard", "filter": ["snowball"]}
+                }
+            },
+        }
+    )
+
+    index_settings = (
+        await index_manager.client.indices.get_settings(
+            index=await index_manager.get_current_index_name()
+        )
+    )[await index_manager.get_current_index_name()]["settings"]["index"]
+
+    # Verify the slowlog warn threshold has been updated to 10s
+    assert index_settings["search"]["slowlog"]["threshold"]["query"]["warn"] == "10s"
+
+    # Verify the slowlog debug threshold has been preserved as 5s
+    assert index_settings["search"]["slowlog"]["threshold"]["query"]["debug"] == "5s"
+
+    # Verify token filter has been updated to snowball
+    assert index_settings["analysis"]["analyzer"]["my_analyzer"]["filter"] == [
+        "snowball"
+    ]
+
+    # Verify number of shards is still two
+    assert int(index_settings["number_of_shards"]) == 2
 
 
-async def test_migrate_es_index_inherits_shards(index_manager: IndexManager):
-    """Test that we can migrate an index and update the number of shards."""
+async def test_migrate_es_index_can_remove_settings(index_manager: IndexManager):
+    """Test that we reset elasticsearch settings to defaults."""
     # Initialise the index
-    await index_manager.initialize_index(settings={"number_of_shards": 2})
+    await index_manager.initialize_index(
+        settings={
+            "search": {
+                "slowlog": {"threshold": {"query": {"warn": "20s", "debug": "5s"}}}
+            },
+        }
+    )
 
-    # Migrate with no number of shards specified
-    await index_manager.migrate()
+    # Migrate with a settings changeset that removes the debug slowlog settings
+    await index_manager.migrate(
+        settings_changeset={
+            "search": {"slowlog": {"threshold": {"query": {"debug": None}}}}
+        }
+    )
 
-    # Verify the new index has the correct number of shards
-    assert await index_manager.get_current_number_of_shards() == 2
+    index_settings = (
+        await index_manager.client.indices.get_settings(
+            index=await index_manager.get_current_index_name()
+        )
+    )[await index_manager.get_current_index_name()]["settings"]["index"]
+
+    assert (
+        index_settings["search"]["slowlog"]["threshold"]["query"].get("debug") is None
+    )
 
 
 async def test_reindex_preserves_data_updated_in_source(index_manager: IndexManager):

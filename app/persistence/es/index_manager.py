@@ -5,7 +5,6 @@ from collections.abc import Coroutine
 from typing import Any
 
 import elasticsearch
-from deepmerge import always_merger
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import AsyncDocument, AsyncIndex
 from opentelemetry import trace
@@ -140,7 +139,7 @@ class IndexManager:
         )
 
         # Apply exactly the same settings as the current index
-        index_settings = await self._get_settings_with_changeset(
+        index_settings = await self._get_updated_settings(
             index_name=current_index_name,
             settings_changeset={},
         )
@@ -271,7 +270,7 @@ class IndexManager:
             logger.info("No existing index for %s, initializing", self.alias_name)
             return await self.initialize_index(settings=settings_changeset or {})
 
-        index_settings = await self._get_settings_with_changeset(
+        index_settings = await self._get_updated_settings(
             index_name=source_index,
             settings_changeset=settings_changeset or {},
         )
@@ -480,7 +479,7 @@ class IndexManager:
         logger.info("Rolled back from %s to %s", current_index, target_index)
         return target_index
 
-    async def _get_settings_with_changeset(
+    async def _get_updated_settings(
         self, index_name: str, settings_changeset: dict[str, Any]
     ) -> dict[str, Any]:
         """
@@ -494,8 +493,23 @@ class IndexManager:
             Index settings with changes applied.
 
         """
-        current_settings = await self._get_reusable_index_settings(index_name)
-        return always_merger.merge(current_settings, settings_changeset)
+        index_settings = await self._get_reusable_index_settings(index_name)
+        self._update_nested_settings(index_settings, settings_changeset)
+        return index_settings
+
+    def _update_nested_settings(
+        self, current_settings: dict[str, Any], settings_changeset: dict[str, Any]
+    ) -> None:
+        """Recursively update nested settings dictionaries."""
+        for key, value in settings_changeset.items():
+            if (
+                key in current_settings
+                and isinstance(current_settings[key], dict)
+                and isinstance(value, dict)
+            ):
+                self._update_nested_settings(current_settings[key], value)
+            else:
+                current_settings[key] = value
 
     async def _get_reusable_index_settings(self, index_name: str) -> dict[str, Any]:
         """

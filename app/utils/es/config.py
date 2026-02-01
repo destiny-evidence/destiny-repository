@@ -18,19 +18,19 @@ class SlowlogThresholds(BaseSettings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    warn: str = Field(
+    warn: str | None = Field(
         default="20s",
         description="Threshold for warning level slowlogs.",
     )
-    info: str = Field(
+    info: str | None = Field(
         default="10s",
         description="Threshold for info level slowlogs.",
     )
-    debug: str = Field(
+    debug: str | None = Field(
         default="5s",
         description="Threshold for debug level slowlogs.",
     )
-    trace: str = Field(
+    trace: str | None = Field(
         default="2500ms",
         description="Threshold for trace level slowlogs.",
     )
