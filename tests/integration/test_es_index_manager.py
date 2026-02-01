@@ -1,6 +1,7 @@
 """Tests for the elasticsearch index manager."""
 
 from collections.abc import AsyncGenerator
+from typing import Any
 
 import pytest
 
@@ -67,7 +68,8 @@ async def test_initialise_es_index_happy_path(index_manager: IndexManager):
     assert current_version == 1
 
     # Assert that the index has the correct number of shards
-    assert await index_manager.get_current_number_of_shards() == 2
+    index_settings = await get_current_index_settings(index_manager)
+    assert int(index_settings["number_of_shards"]) == 2
 
 
 async def test_initialise_es_index_is_idempotent(index_manager: IndexManager):
@@ -98,7 +100,8 @@ async def test_initialise_es_index_is_idempotent(index_manager: IndexManager):
     assert count["count"] == 1
 
     # Assert shard count has not changed
-    assert await index_manager.get_current_number_of_shards() == 1
+    index_settings = await get_current_index_settings(index_manager)
+    assert int(index_settings["number_of_shards"]) == 1
 
 
 async def test_migrate_es_index_happy_path(index_manager: IndexManager):
@@ -201,11 +204,7 @@ async def test_migrate_es_index_settings_merge(index_manager: IndexManager):
         }
     )
 
-    index_settings = (
-        await index_manager.client.indices.get_settings(
-            index=await index_manager.get_current_index_name()
-        )
-    )[await index_manager.get_current_index_name()]["settings"]["index"]
+    index_settings = await get_current_index_settings(index_manager)
 
     # Verify the slowlog warn threshold has been updated to 10s
     assert index_settings["search"]["slowlog"]["threshold"]["query"]["warn"] == "10s"
@@ -240,11 +239,7 @@ async def test_migrate_es_index_can_remove_settings(index_manager: IndexManager)
         }
     )
 
-    index_settings = (
-        await index_manager.client.indices.get_settings(
-            index=await index_manager.get_current_index_name()
-        )
-    )[await index_manager.get_current_index_name()]["settings"]["index"]
+    index_settings = await get_current_index_settings(index_manager)
 
     assert (
         index_settings["search"]["slowlog"]["threshold"]["query"].get("debug") is None
@@ -542,3 +537,11 @@ async def test_we_do_not_roll_back_to_nonexistent_index(index_manager: IndexMana
         NotFoundError, match=f"Target index {SimpleDoc.Index.name}_v1 does not exist"
     ):
         await index_manager.rollback()
+
+
+async def get_current_index_settings(index_manager: IndexManager) -> dict[str, Any]:
+    """Get index settings."""
+    index_name = await index_manager.get_current_index_name()
+    return (await index_manager.client.indices.get_settings(index=index_name))[
+        index_name
+    ]["settings"]["index"]

@@ -99,24 +99,6 @@ class IndexManager:
         except elasticsearch.NotFoundError:
             return None
 
-    async def get_current_number_of_shards(self) -> int | None:
-        """
-        Get the number of shards for the current index.
-
-        Returns:
-            Number of shards or None if no current index
-
-        """
-        current_index_name = await self.get_current_index_name()
-        if current_index_name is None:
-            return None
-
-        index_settings = await self.client.indices.get_settings(
-            index=current_index_name
-        )
-        settings = index_settings[current_index_name]["settings"]["index"]
-        return int(settings["number_of_shards"])
-
     @tracer.start_as_current_span("Rebuild index")
     async def rebuild_index(self) -> None:
         """
