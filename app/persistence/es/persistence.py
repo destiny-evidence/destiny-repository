@@ -2,6 +2,7 @@
 
 from abc import abstractmethod
 from typing import Generic, Literal, Self, get_args, get_origin
+from uuid import UUID
 
 from elasticsearch.dsl import AsyncDocument, InnerDoc
 from elasticsearch.dsl.document_base import InstrumentedField
@@ -164,9 +165,9 @@ class ESSearchTotal(BaseModel):
 class ESSearchResult(BaseModel, Generic[GenericDomainModelType]):
     """Wrapping class for Elasticsearch search results."""
 
-    hits: list[GenericDomainModelType] = Field(
+    hits: list[UUID] = Field(
         default_factory=list,
-        description="The list of results returned from the search query.",
+        description="The list of object IDs returned from the search query.",
     )
     total: ESSearchTotal = Field(
         description="The total number of results matching the search query.",

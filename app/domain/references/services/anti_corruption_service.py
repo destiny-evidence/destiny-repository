@@ -321,7 +321,8 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
 
     def reference_search_result_to_sdk(
         self,
-        search_result: ESSearchResult[Reference],
+        search_result: ESSearchResult,
+        references: list[Reference],
     ) -> destiny_sdk.references.ReferenceSearchResult:
         """Convert the reference search result to the SDK model."""
         try:
@@ -335,7 +336,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     "number": search_result.page,
                 },
                 references=[
-                    self.reference_to_sdk(reference) for reference in search_result.hits
+                    self.reference_to_sdk(reference) for reference in references
                 ],
             )
         except ValidationError as exception:

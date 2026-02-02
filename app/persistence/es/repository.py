@@ -174,19 +174,17 @@ class GenericAsyncESRepository(
 
     def _parse_search_result(
         self, response: Response[Hit], page: int
-    ) -> ESSearchResult[GenericDomainModelType]:
+    ) -> ESSearchResult:
         """
         Parse an Elasticsearch search response into a search result.
 
         :param response: The Elasticsearch search response.
         :type response: Response[Hit]
         :return: The parsed search result.
-        :rtype: ESSearchResult[GenericDomainModelType]
+        :rtype: ESSearchResult
         """
         return ESSearchResult(
-            hits=[
-                self._persistence_cls.from_hit(hit).to_domain() for hit in response.hits
-            ],
+            hits=[hit.meta.id for hit in response.hits],
             # ES DSL typing on response.hits is incorrect
             total=ESSearchTotal(
                 value=response.hits.total.value,  # type: ignore[attr-defined]
@@ -203,7 +201,7 @@ class GenericAsyncESRepository(
         page_size: int = 20,
         fields: Sequence[str] | None = None,
         sort: list[str] | None = None,
-    ) -> ESSearchResult[GenericDomainModelType]:
+    ) -> ESSearchResult:
         """
         Search for records using a query string.
 
@@ -219,7 +217,7 @@ class GenericAsyncESRepository(
         :param sort: The sorting criteria for the search results.
         :type sort: list[str] | None
         :return: A list of matching records.
-        :rtype: ESSearchResult[GenericDomainModelType]
+        :rtype: ESSearchResult
         """
         trace_attribute(Attributes.DB_QUERY, query)
         search = (

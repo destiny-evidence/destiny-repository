@@ -875,3 +875,18 @@ class AnnotationFilter(BaseModel):
         ge=0.0,
         le=1.0,
     )
+
+
+class ReferenceSearchResult(BaseModel):
+    """Wrapping class for Elasticsearch search results."""
+
+    references: list[Reference] = Field(
+        default_factory=list,
+        description="The list of references returned from the search query.",
+    )
+    total: int = Field(
+        description="The total number of results matching the search query.",
+    )
+    page: int = Field(
+        description="The page number of the results.",
+    )

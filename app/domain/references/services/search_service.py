@@ -7,7 +7,6 @@ from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     AnnotationFilter,
     PublicationYearRange,
-    Reference,
 )
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -80,7 +79,7 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         annotations: list[AnnotationFilter] | None = None,
         publication_year_range: PublicationYearRange | None = None,
         sort: list[str] | None = None,
-    ) -> ESSearchResult[Reference]:
+    ) -> ESSearchResult:
         """Search for references matching the query string."""
         global_filters: list[str] = []
         if publication_year_range:
