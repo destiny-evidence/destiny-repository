@@ -162,6 +162,11 @@ variable "db_admin_group_id" {
 variable "environment" {
   description = "The name of the environment this stack is being deployed to"
   type        = string
+
+  validation {
+    condition     = contains(["development", "staging", "production"], var.environment)
+    error_message = "Environment must be one of: development, staging, production."
+  }
 }
 
 variable "github_app_id" {

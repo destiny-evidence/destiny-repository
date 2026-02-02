@@ -566,12 +566,11 @@ resource "elasticstack_elasticsearch_security_api_key" "read_only" {
 resource "elasticstack_elasticsearch_snapshot_lifecycle" "snapshots" {
   name = "snapshot-policy"
 
-  # Every 30 minutes for production, once a day at 01:30 AM otherwise
-  schedule   = local.is_production ? "0 */30 * * * ?" : "0 30 1 * * ?"
+  schedule   = local.env.es_snapshot_schedule
   repository = "found-snapshots" # Default Elastic Cloud repository
 
   expire_after = "30d"
-  min_count    = local.is_production ? 336 : 7 # 7 days worth
+  min_count    = local.env.es_snapshot_retention
 }
 
 resource "azurerm_role_assignment" "es_index_migrator_acr_access" {

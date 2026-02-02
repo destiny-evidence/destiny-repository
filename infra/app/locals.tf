@@ -7,8 +7,41 @@ locals {
     "reference*",
     "robot-automation-percolation*"
   ]
-  is_production  = var.environment == "production"
-  is_development = var.environment != "production" && var.environment != "staging"
+
+  environment_configs = {
+    development = {
+      db_storage_mb   = 32768 # 32GB
+      db_storage_tier = "P4"
+      db_backup_days  = 7
+      db_ha_enabled   = false
+
+      es_snapshot_schedule  = "0 30 1 * * ?" # Daily at 01:30
+      es_snapshot_retention = 7
+    }
+
+    staging = {
+      db_storage_mb   = 131072 # 128GB
+      db_storage_tier = "P10"
+      db_backup_days  = 7
+      db_ha_enabled   = false
+
+      es_snapshot_schedule  = "0 30 1 * * ?"
+      es_snapshot_retention = 7
+    }
+
+    production = {
+      db_storage_mb   = 131072 # 128GB
+      db_storage_tier = "P10"
+      db_backup_days  = 35
+      db_ha_enabled   = true
+
+      es_snapshot_schedule  = "0 */30 * * * ?" # Every 30 minutes
+      es_snapshot_retention = 336              # 7 days worth at 30min intervals
+    }
+  }
+
+  # Active environment configuration
+  env = local.environment_configs[var.environment]
 
   minimum_resource_tags = {
     # All these tags are required for UCL tenant compliance policies

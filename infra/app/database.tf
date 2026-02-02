@@ -1,14 +1,5 @@
 locals {
   database_migrator_name = "db-migrator-${var.environment}"
-
-  prod_db_storage_mb = 131072
-  dev_db_storage_mb  = 32768
-
-  # IPOS tiers for postgresql flexible server
-  # We use the default for our storage size as defined at
-  # https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/postgresql_flexible_server#storage_tier-defaults-based-on-storage_mb
-  prod_db_storage_tier = "P10"
-  dev_db_storage_tier  = "P4"
 }
 
 data "azuread_group" "db_crud_group" {
@@ -42,18 +33,17 @@ resource "azurerm_postgresql_flexible_server" "this" {
   administrator_login           = var.admin_login
   administrator_password        = var.admin_password
   zone                          = "1"
-  backup_retention_days         = local.is_production ? 35 : 7
+  backup_retention_days         = local.env.db_backup_days
 
   dynamic "high_availability" {
-    for_each = local.is_production ? [1] : []
+    for_each = local.env.db_ha_enabled ? [1] : []
     content {
       mode = "ZoneRedundant"
     }
   }
 
-
-  storage_mb   = local.is_development ? local.dev_db_storage_mb : local.prod_db_storage_mb
-  storage_tier = local.is_development ? local.dev_db_storage_tier : local.prod_db_storage_tier
+  storage_mb   = local.env.db_storage_mb
+  storage_tier = local.env.db_storage_tier
 
   sku_name = "GP_Standard_D2ds_v4"
 
