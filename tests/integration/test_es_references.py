@@ -319,7 +319,7 @@ async def test_es_repository_cycle(
 
     # Check flattened identifiers
     assert raw_es_reference["identifiers"] == {
-        "pm_id": "123",
+        "pmid": "123",
         "doi": "10.1000/xyz123",
         "eric": "ED3925083",
         "isbn": "978-3-16-148410-0",
