@@ -119,7 +119,7 @@ async def test_query_string_search_scenarios(
     if should_match:
         assert len(results.hits) == 1
         assert results.total.value == 1
-        assert str(results.hits[0].id) == test_doc
+        assert str(results.hits[0]) == test_doc
     else:
         assert len(results.hits) == 0
         assert results.total.value == 0
@@ -198,7 +198,7 @@ async def test_query_string_search_with_fields(
         fields=["title", "content"],
     )
     assert len(results.hits) == 1
-    assert str(results.hits[0].id) == doc_id
+    assert str(results.hits[0]) == doc_id
 
     # Search restricted to year field only - should first error
     # because it's not allowed to search text in a numeric field,
@@ -270,10 +270,9 @@ async def test_query_string_search_pagination(
     assert results_page_3.page == 3
 
     # Verify all documents are accounted for
-    all_returned_ids = {
-        hit.id
-        for hit in results_page_1.hits + results_page_2.hits + results_page_3.hits
-    }
+    all_returned_ids = set(
+        results_page_1.hits + results_page_2.hits + results_page_3.hits
+    )
     assert all_returned_ids == doc_ids
 
     # Test page 4 (empty)
@@ -310,9 +309,9 @@ async def test_query_string_search_sorting(
         sort=["year"],
     )
     assert len(results_asc.hits) == 3
-    assert str(results_asc.hits[0].id) == doc_2020
-    assert str(results_asc.hits[1].id) == doc_2021
-    assert str(results_asc.hits[2].id) == doc_2022
+    assert str(results_asc.hits[0]) == doc_2020
+    assert str(results_asc.hits[1]) == doc_2021
+    assert str(results_asc.hits[2]) == doc_2022
 
     # Test sorting by year descending
     results_desc = await simple_repository.search_with_query_string(
@@ -320,6 +319,6 @@ async def test_query_string_search_sorting(
         sort=["-year"],
     )
     assert len(results_desc.hits) == 3
-    assert str(results_desc.hits[0].id) == doc_2022
-    assert str(results_desc.hits[1].id) == doc_2021
-    assert str(results_desc.hits[2].id) == doc_2020
+    assert str(results_desc.hits[0]) == doc_2022
+    assert str(results_desc.hits[1]) == doc_2021
+    assert str(results_desc.hits[2]) == doc_2020

@@ -119,35 +119,35 @@ async def test_search_with_query_string_publication_year_filter(
         publication_year_range=PublicationYearRange(start=2022, end=2022),
     )
     assert len(results.hits) == 1
-    assert results.hits[0].id == ref_2022.id
+    assert results.hits[0] == ref_2022.id
 
     results = await search_service.search_with_query_string(
         query_string="Test Paper",
         publication_year_range=PublicationYearRange(start=2020, end=2023),
     )
     assert len(results.hits) == 2
-    assert {hit.id for hit in results.hits} == {ref_2020.id, ref_2022.id}
+    assert set(results.hits) == {ref_2020.id, ref_2022.id}
 
     results = await search_service.search_with_query_string(
         query_string="Dugong",
         publication_year_range=PublicationYearRange(start=2020, end=2023),
     )
     assert len(results.hits) == 1
-    assert {hit.id for hit in results.hits} == {ref_2022.id}
+    assert set(results.hits) == {ref_2022.id}
 
     results = await search_service.search_with_query_string(
         query_string="Test Paper",
         publication_year_range=PublicationYearRange(start=2021),
     )
     assert len(results.hits) == 2
-    assert {hit.id for hit in results.hits} == {ref_2022.id, ref_2024.id}
+    assert set(results.hits) == {ref_2022.id, ref_2024.id}
 
     results = await search_service.search_with_query_string(
         query_string="Test Paper",
         publication_year_range=PublicationYearRange(end=2021),
     )
     assert len(results.hits) == 1
-    assert results.hits[0].id == ref_2020.id
+    assert results.hits[0] == ref_2020.id
 
 
 @pytest.mark.parametrize(

@@ -36,7 +36,6 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     Visibility,
 )
-from app.domain.references.models.models import Reference as DomainReference
 from app.domain.references.models.sql import Enhancement as SQLEnhancement
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import (
@@ -843,16 +842,17 @@ async def test_search_references_with_annotation_filters(
     reference = ReferenceFactory.build()
 
     # Create a mock search result
-    mock_search_result = ESSearchResult[DomainReference](
-        hits=[reference],
+    mock_search_result = ESSearchResult(
+        hits=[reference.id],
         total=ESSearchTotal(value=1, relation="eq"),
         page=1,
     )
 
-    # Mock the service method
-    # Temporary patch until ES itself includes annotations
+    # Mock the service methods
     mock_search = AsyncMock(return_value=mock_search_result)
     monkeypatch.setattr(ReferenceService, "search_references", mock_search)
+    mock_get_dedup = AsyncMock(return_value=[reference])
+    monkeypatch.setattr(ReferenceService, "get_deduplicated_references", mock_get_dedup)
 
     # Test with annotation filters
     response = await client.get(

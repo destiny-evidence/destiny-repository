@@ -6,6 +6,7 @@ import pytest
 from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.exception_handlers import (
     es_exception_handler,
@@ -13,7 +14,11 @@ from app.api.exception_handlers import (
 )
 from app.core.exceptions import ESQueryError, ParseError
 from app.domain.references import routes as references
-from app.domain.references.repository import ReferenceESRepository
+from app.domain.references.models.models import EnhancementType
+from app.domain.references.repository import (
+    ReferenceESRepository,
+    ReferenceSQLRepository,
+)
 from tests.factories import (
     AbstractContentEnhancementFactory,
     AnnotationEnhancementFactory,
@@ -53,7 +58,7 @@ async def client(
 
 
 @pytest.fixture
-async def search_references(es_client: AsyncElasticsearch):
+async def search_references(es_client: AsyncElasticsearch, session: AsyncSession):
     """Create and index test references with various metadata and annotations."""
     references = [
         ReferenceFactory.build(
@@ -183,10 +188,20 @@ async def search_references(es_client: AsyncElasticsearch):
     )
 
     es_repository = ReferenceESRepository(es_client)
+    sql_repository = ReferenceSQLRepository(session)
     for reference in references:
         await es_repository.add(reference)
+        await sql_repository.add(reference)
+    await session.commit()
     await es_client.indices.refresh(index="reference")
     return references
+
+
+def _get_biblio(ref: dict) -> dict:
+    for e in ref["enhancements"]:
+        if e["content"].get("enhancement_type") == EnhancementType.BIBLIOGRAPHIC:
+            return e["content"]
+    return {}
 
 
 @pytest.mark.parametrize(
@@ -197,7 +212,7 @@ async def search_references(es_client: AsyncElasticsearch):
             {"q": "(title:Machine OR title:Deep) AND title:Learning"},
             2,
             lambda refs: all(
-                "Learning" in ref["enhancements"][0]["content"]["title"] for ref in refs
+                "Learning" in _get_biblio(ref).get("title", "") for ref in refs
             ),
         ),
         # Wildcard with year filter and sorting
@@ -210,15 +225,15 @@ async def search_references(es_client: AsyncElasticsearch):
             },
             2,
             lambda refs: (
-                refs[0]["enhancements"][0]["content"]["publication_year"]
-                > refs[1]["enhancements"][0]["content"]["publication_year"]
+                _get_biblio(refs[0]).get("publication_year", 0)
+                > _get_biblio(refs[1]).get("publication_year", 0)
             ),
         ),
         # Fuzzy matching with NOT
         (
             {"q": "title:Lerning~1 NOT title:Climate"},
             1,
-            lambda refs: "Medical" in refs[0]["enhancements"][0]["content"]["title"],
+            lambda refs: "Medical" in _get_biblio(refs[0]).get("title", ""),
         ),
         # Annotation filter: inclusion true with score threshold and sort by score
         (
@@ -229,7 +244,7 @@ async def search_references(es_client: AsyncElasticsearch):
             },
             2,
             lambda refs: (
-                refs[0]["enhancements"][0]["content"]["title"]
+                _get_biblio(refs[0]).get("title")
                 == "Machine Learning in Climate Science"
             ),
         ),
@@ -240,7 +255,7 @@ async def search_references(es_client: AsyncElasticsearch):
                 "annotation": ["classifier:taxonomy/Outcomes/Economic"],
             },
             1,
-            lambda refs: "Climate" in refs[0]["enhancements"][0]["content"]["title"],
+            lambda refs: "Climate" in _get_biblio(refs[0]).get("title", ""),
         ),
         # Query with year range and annotation filter
         (
@@ -250,15 +265,13 @@ async def search_references(es_client: AsyncElasticsearch):
                 "annotation": ["inclusion:destiny@0.9"],
             },
             1,
-            lambda refs: "Machine" in refs[0]["enhancements"][0]["content"]["title"],
+            lambda refs: "Machine" in _get_biblio(refs[0]).get("title", ""),
         ),
         # Combined title and abstract search
         (
             {"q": "title:Climate AND abstract:agricultural"},
             1,
-            lambda refs: (
-                "Agriculture" in refs[0]["enhancements"][0]["content"]["title"]
-            ),
+            lambda refs: "Agriculture" in _get_biblio(refs[0]).get("title", ""),
         ),
     ],
 )
@@ -327,7 +340,7 @@ async def test_query_string_error_handling(
 
 
 @pytest.fixture
-async def cross_field_references(es_client: AsyncElasticsearch):
+async def cross_field_references(es_client: AsyncElasticsearch, session: AsyncSession):
     """Create references with search terms split across title and abstract fields."""
     references = [
         # "george" in title, "harrison" in abstract
@@ -383,8 +396,11 @@ async def cross_field_references(es_client: AsyncElasticsearch):
     ]
 
     es_repository = ReferenceESRepository(es_client)
+    sql_repository = ReferenceSQLRepository(session)
     for reference in references:
         await es_repository.add(reference)
+        await sql_repository.add(reference)
+    await session.commit()
     await es_client.indices.refresh(index="reference")
     return references
 

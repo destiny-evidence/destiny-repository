@@ -162,7 +162,7 @@ class ESSearchTotal(BaseModel):
     )
 
 
-class ESSearchResult(BaseModel, Generic[GenericDomainModelType]):
+class ESSearchResult(BaseModel):
     """Wrapping class for Elasticsearch search results."""
 
     hits: list[UUID] = Field(
