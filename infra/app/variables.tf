@@ -385,3 +385,27 @@ variable "otel_instrument_taskiq" {
   type        = bool
   default     = false
 }
+
+variable "es_slowlog_warn_threshold" {
+  description = "Elasticsearch slowlog warn threshold"
+  type        = string
+  default     = null
+}
+
+variable "es_slowlog_info_threshold" {
+  description = "Elasticsearch slowlog info threshold"
+  type        = string
+  default     = null
+}
+
+variable "es_slowlog_debug_threshold" {
+  description = "Elasticsearch slowlog debug threshold"
+  type        = string
+  default     = null
+}
+
+variable "es_slowlog_trace_threshold" {
+  description = "Elasticsearch slowlog trace threshold"
+  type        = string
+  default     = null
+}
