@@ -3,26 +3,26 @@
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tests.db_utils import SimpleRepository, SimpleSQLModel
+from tests.persistence_models import SimpleSQLModel, SimpleSQLRepository
 
 
 @pytest.fixture
-def repository(session: AsyncSession) -> SimpleRepository:
+def repository(session: AsyncSession) -> SimpleSQLRepository:
     """Create a simple repository for testing."""
-    return SimpleRepository(session)
+    return SimpleSQLRepository(session)
 
 
-async def test_get_all_pks_empty(repository: SimpleRepository) -> None:
+async def test_get_all_pks_empty(repository: SimpleSQLRepository) -> None:
     """Test get_all_pks returns empty list when no records exist."""
     pks = await repository.get_all_pks()
     assert pks == []
 
 
 async def test_get_all_pks_returns_all(
-    repository: SimpleRepository, session: AsyncSession
+    repository: SimpleSQLRepository, session: AsyncSession
 ) -> None:
     """Test get_all_pks returns all primary keys."""
-    records = [SimpleSQLModel(name=f"test_{i}") for i in range(5)]
+    records = [SimpleSQLModel(title=f"test_{i}") for i in range(5)]
     session.add_all(records)
     await session.commit()
 
@@ -32,10 +32,10 @@ async def test_get_all_pks_returns_all(
 
 
 async def test_get_all_pks_with_bounds(
-    repository: SimpleRepository, session: AsyncSession
+    repository: SimpleSQLRepository, session: AsyncSession
 ) -> None:
     """Test get_all_pks respects min_id and max_id bounds."""
-    records = [SimpleSQLModel(name=f"test_{i}") for i in range(5)]
+    records = [SimpleSQLModel(title=f"test_{i}") for i in range(5)]
     session.add_all(records)
     await session.commit()
 
@@ -49,7 +49,7 @@ async def test_get_all_pks_with_bounds(
 
 
 async def test_get_partition_boundaries_empty(
-    repository: SimpleRepository,
+    repository: SimpleSQLRepository,
 ) -> None:
     """Test get_partition_boundaries returns empty list when no records exist."""
     boundaries = await repository.get_partition_boundaries(partition_size=10)
@@ -57,10 +57,10 @@ async def test_get_partition_boundaries_empty(
 
 
 async def test_get_partition_boundaries_single_partition(
-    repository: SimpleRepository, session: AsyncSession
+    repository: SimpleSQLRepository, session: AsyncSession
 ) -> None:
     """Test get_partition_boundaries with fewer records than partition_size."""
-    records = [SimpleSQLModel(name=f"test_{i}") for i in range(5)]
+    records = [SimpleSQLModel(title=f"test_{i}") for i in range(5)]
     session.add_all(records)
     await session.commit()
 
@@ -72,10 +72,10 @@ async def test_get_partition_boundaries_single_partition(
 
 
 async def test_get_partition_boundaries_multiple_partitions(
-    repository: SimpleRepository, session: AsyncSession
+    repository: SimpleSQLRepository, session: AsyncSession
 ) -> None:
     """Test get_partition_boundaries creates correct number of partitions."""
-    records = [SimpleSQLModel(name=f"test_{i}") for i in range(25)]
+    records = [SimpleSQLModel(title=f"test_{i}") for i in range(25)]
     session.add_all(records)
     await session.commit()
 
@@ -97,10 +97,10 @@ async def test_get_partition_boundaries_multiple_partitions(
 
 
 async def test_get_partition_boundaries_single_record(
-    repository: SimpleRepository, session: AsyncSession
+    repository: SimpleSQLRepository, session: AsyncSession
 ) -> None:
     """Test get_partition_boundaries with a single record."""
-    record = SimpleSQLModel(name="single")
+    record = SimpleSQLModel(title="single")
     session.add(record)
     await session.commit()
 
@@ -112,11 +112,11 @@ async def test_get_partition_boundaries_single_record(
 
 
 async def test_partition_and_retrieve_all_ids(
-    repository: SimpleRepository, session: AsyncSession
+    repository: SimpleSQLRepository, session: AsyncSession
 ) -> None:
     """Test that partitioning and get_all_pks together retrieve all IDs exactly once."""
     # Create exactly 50 records for clean 5-partition split
-    records = [SimpleSQLModel(name=f"test_{i}") for i in range(50)]
+    records = [SimpleSQLModel(title=f"test_{i}") for i in range(50)]
     session.add_all(records)
     await session.commit()
 

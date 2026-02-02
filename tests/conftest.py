@@ -22,12 +22,12 @@ from app.persistence.sql.session import (
     db_manager,
 )
 from tests.db_utils import (
-    SimpleSQLModel,
     alembic_config_from_url,
     clean_tables,
     tmp_database,
 )
 from tests.es_utils import create_test_indices, delete_test_indices
+from tests.persistence_models import SimpleSQLModel
 
 settings = get_settings()
 MIGRATION_TASK: asyncio.Task | None = None

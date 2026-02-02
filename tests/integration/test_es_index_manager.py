@@ -7,7 +7,8 @@ import pytest
 from app.core.exceptions import NotFoundError
 from app.persistence.es.client import AsyncESClientManager
 from app.persistence.es.index_manager import IndexManager
-from tests.es_utils import DomainSimpleDoc, SimpleDoc, delete_test_indices
+from tests.es_utils import delete_test_indices
+from tests.persistence_models import SimpleDoc, SimpleDomainModel
 
 
 @pytest.fixture
@@ -78,7 +79,7 @@ async def test_initialise_es_index_is_idempotent(index_manager: IndexManager):
 
     # Add a document to the index so we can check for it
     # after reinitialising
-    dummy_doc = SimpleDoc.from_domain(DomainSimpleDoc(content="test document"))
+    dummy_doc = SimpleDoc.from_domain(SimpleDomainModel(content="test document"))
     doc_added = await dummy_doc.save(using=index_manager.client, validate=True)
     assert doc_added == "created"
 
@@ -103,7 +104,7 @@ async def test_migrate_es_index_happy_path(index_manager: IndexManager):
     await index_manager.initialize_index()
     # Add documents to index so we can check for them after migrating
     dummy_docs = [
-        SimpleDoc.from_domain(DomainSimpleDoc(content=f"test document {i}"))
+        SimpleDoc.from_domain(SimpleDomainModel(content=f"test document {i}"))
         for i in range(1, 11)
     ]
 
@@ -207,7 +208,7 @@ async def test_reindex_preserves_data_updated_in_source(index_manager: IndexMana
     assert src_index_name
 
     # Add a document to the  source index
-    dummy = DomainSimpleDoc(content="test document")
+    dummy = SimpleDomainModel(content="test document")
     dummy_document_src = SimpleDoc.from_domain(dummy)
 
     doc_added = await dummy_document_src.save(using=index_manager.client, validate=True)
@@ -285,7 +286,7 @@ async def test_reindex_succeeds_on_version_clash(index_manager: IndexManager):
     src_index_name = await index_manager.get_current_index_name()
     assert src_index_name
 
-    dummy = DomainSimpleDoc(content="test document")
+    dummy = SimpleDomainModel(content="test document")
     dummy_document_src = SimpleDoc.from_domain(dummy)
 
     doc_added = await dummy_document_src.save(using=index_manager.client, validate=True)
@@ -355,7 +356,7 @@ async def test_reindex_does_not_delete_documents_from_destination(
     assert dest_index_name
 
     # Add a document to the new index
-    dummy = DomainSimpleDoc(content="test document")
+    dummy = SimpleDomainModel(content="test document")
     dummy_document_dest = SimpleDoc.from_domain(dummy)
 
     doc_added = await dummy_document_dest.save(
@@ -388,7 +389,7 @@ async def test_rollback_to_previous_version(index_manager: IndexManager):
 
     # Add a document to the new index to we can confirm is
     # is _not_ present after we roll back
-    dummy_doc = SimpleDoc.from_domain(DomainSimpleDoc(content="test document"))
+    dummy_doc = SimpleDoc.from_domain(SimpleDomainModel(content="test document"))
     doc_added = await dummy_doc.save(using=index_manager.client, validate=True)
     assert doc_added == "created"
 
