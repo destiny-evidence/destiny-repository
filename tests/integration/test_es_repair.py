@@ -1,5 +1,6 @@
 """Tests ES repair functionality (and inherently the link between SQL and ES)."""
 
+import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 
@@ -12,6 +13,7 @@ from taskiq import InMemoryBroker
 
 from app.api.exception_handlers import not_found_exception_handler
 from app.core.exceptions import NotFoundError
+from app.domain.references import tasks as reference_tasks
 from app.domain.references.models.models import Visibility
 from app.domain.references.models.sql import (
     Enhancement as SQLEnhancement,
@@ -36,8 +38,15 @@ from tests.factories import (
     EnhancementFactory,
     LinkedExternalIdentifierFactory,
     PubMedIdentifierFactory,
-    RawEnhancementFactory,
 )
+
+
+async def wait_for_all_tasks() -> None:
+    """Wait for all tasks to complete."""
+    assert isinstance(broker, InMemoryBroker)
+    # Gives time for chained tasks to be scheduled (eg repairing)
+    await asyncio.sleep(0.5)
+    await broker.wait_all()
 
 
 async def sub_test_reference_index_initial_rebuild(
@@ -60,9 +69,7 @@ async def sub_test_reference_index_initial_rebuild(
     assert "Repair task for index" in response_data["message"]
     assert index_name in response_data["message"]
 
-    # Wait for the task to complete
-    assert isinstance(broker, InMemoryBroker)
-    await broker.wait_all()
+    await wait_for_all_tasks()
 
     # Verify index still exists after rebuild
     exists = await es_client.indices.exists(index=index_name)
@@ -117,9 +124,7 @@ async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
     assert "Repair task for index" in response_data["message"]
     assert index_name in response_data["message"]
 
-    # Wait for the task to complete
-    assert isinstance(broker, InMemoryBroker)
-    await broker.wait_all()
+    await wait_for_all_tasks()
 
     # Verify the updated data is reflected in Elasticsearch
     await es_client.indices.refresh(index=index_name)
@@ -159,9 +164,7 @@ async def sub_test_robot_automation_initial_rebuild(
     assert "Repair task for index" in response_data["message"]
     assert index_manager.alias_name in response_data["message"]
 
-    # Wait for the task to complete
-    assert isinstance(broker, InMemoryBroker)
-    await broker.wait_all()
+    await wait_for_all_tasks()
 
     # Verify index still exists after rebuild
     index_name = await index_manager.get_current_index_name()
@@ -225,9 +228,7 @@ async def sub_test_robot_automation_update_without_rebuild(  # noqa: PLR0913
     assert "Repair task for index" in response_data["message"]
     assert index_name in response_data["message"]
 
-    # Wait for the task to complete
-    assert isinstance(broker, InMemoryBroker)
-    await broker.wait_all()
+    await wait_for_all_tasks()
 
     # Verify the updated robot automation is reflected in Elasticsearch
     await es_client.indices.refresh(index=index_name)
@@ -284,56 +285,71 @@ async def test_repair_reference_index_with_rebuild(
     es_client: AsyncElasticsearch,
     session: AsyncSession,
 ) -> None:
-    """Test repairing the reference index with rebuild flag."""
+    """Test repairing the reference index with rebuild flag and distributed chunks."""
     # Ensure index exists first
     index_manager = system_routes.reference_index_manager(es_client)
     await index_manager.initialize_index()
 
-    # Add sample data to SQL
-    reference_id = uuid.uuid4()
-    reference = SQLReference(
-        id=reference_id,
-        visibility=Visibility.PUBLIC,
-    )
-    session.add(reference)
+    # Create 5 references with identifiers and enhancements
+    references: list[SQLReference] = []
+    for i in range(5):
+        reference_id = uuid.uuid4()
+        reference = SQLReference(id=reference_id, visibility=Visibility.PUBLIC)
+        session.add(reference)
+        references.append(reference)
 
-    # Add identifier
-    identifier = SQLExternalIdentifier.from_domain(
-        LinkedExternalIdentifierFactory.build(
-            reference_id=reference_id,
-            identifier=DOIIdentifierFactory.build(identifier="10.1234/test-reference"),
+        identifier = SQLExternalIdentifier.from_domain(
+            LinkedExternalIdentifierFactory.build(
+                reference_id=reference_id,
+                identifier=DOIIdentifierFactory.build(
+                    identifier=f"10.1234/test-ref-{i}"
+                ),
+            )
         )
-    )
+        session.add(identifier)
 
-    session.add(identifier)
-
-    # Add enhancement
-    enhancement = SQLEnhancement.from_domain(
-        EnhancementFactory.build(
-            reference_id=reference_id,
-            source="test_source",
-            content=AnnotationEnhancementFactory.build(),
+        enhancement = SQLEnhancement.from_domain(
+            EnhancementFactory.build(
+                reference_id=reference_id,
+                source="test_source",
+                content=AnnotationEnhancementFactory.build(),
+            )
         )
-    )
+        session.add(enhancement)
 
-    session.add(enhancement)
-
-    # Add a raw enhancement as these are special
-    raw_enhancement = SQLEnhancement.from_domain(
-        EnhancementFactory.build(
-            reference_id=reference_id, content=RawEnhancementFactory.build()
-        )
-    )
-
-    session.add(raw_enhancement)
     await session.commit()
 
-    # Run sub-tests
-    await sub_test_reference_index_initial_rebuild(
-        client, es_client, index_manager, reference_id
-    )
+    # Use small chunk_size to force multiple distributed tasks
+    original_chunk_size = reference_tasks.settings.es_reference_repair_chunk_size
+    reference_tasks.settings.es_reference_repair_chunk_size = 2
+
+    try:
+        # Test repair with rebuild - should create 3 chunks for 5 records
+        index_name = index_manager.alias_name
+        response = await client.post(
+            f"/system/indices/{index_name}/repair/",
+            params={"rebuild": True},
+        )
+
+        assert response.status_code == status.HTTP_202_ACCEPTED
+        await wait_for_all_tasks()
+
+        # Verify all 5 references were indexed
+        await es_client.indices.refresh(index=index_name)
+        es_response = await es_client.search(
+            index=index_name, body={"query": {"match_all": {}}}
+        )
+
+        assert es_response["hits"]["total"]["value"] == 5
+        indexed_ids = {hit["_id"] for hit in es_response["hits"]["hits"]}
+        expected_ids = {str(ref.id) for ref in references}
+        assert indexed_ids == expected_ids
+    finally:
+        reference_tasks.settings.es_reference_repair_chunk_size = original_chunk_size
+
+    # Run sub-test for update without rebuild using first reference
     await sub_test_reference_index_update_without_rebuild(
-        client, es_client, session, index_manager, reference_id, reference
+        client, es_client, session, index_manager, references[0].id, references[0]
     )
 
 
@@ -354,9 +370,7 @@ async def test_rebuild_index_maintains_shard_number(
 
     assert response.status_code == status.HTTP_202_ACCEPTED
 
-    # Wait for the task to complete
-    assert isinstance(broker, InMemoryBroker)
-    await broker.wait_all()
+    await wait_for_all_tasks()
 
     # Verify the number of shards remains the same
     index_name = await index_manager.get_current_index_name()

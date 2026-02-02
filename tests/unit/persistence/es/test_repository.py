@@ -8,16 +8,16 @@ from elasticsearch.helpers import async_bulk
 
 from app.core.exceptions import ESQueryError
 from app.persistence.es.repository import GenericAsyncESRepository
-from tests.es_utils import DomainSimpleDoc, SimpleDoc
+from tests.persistence_models import SimpleDoc, SimpleDomainModel
 
 
-class SimpleRepository(GenericAsyncESRepository[DomainSimpleDoc, SimpleDoc]):
+class SimpleRepository(GenericAsyncESRepository[SimpleDomainModel, SimpleDoc]):
     """Simple repository for testing."""
 
     def __init__(self, client: AsyncElasticsearch):
         super().__init__(
             client=client,
-            domain_cls=DomainSimpleDoc,
+            domain_cls=SimpleDomainModel,
             persistence_cls=SimpleDoc,
         )
 
@@ -37,7 +37,7 @@ async def create_simple_doc(
     content: str,
 ) -> str:
     """Helper to create and index a simple document."""
-    doc = DomainSimpleDoc(title=title, year=year, content=content)
+    doc = SimpleDomainModel(title=title, year=year, content=content)
     await repository.add(doc)
     return str(doc.id)
 

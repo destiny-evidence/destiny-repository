@@ -1,5 +1,6 @@
 """Generic repositories define expected functionality."""
 
+import math
 from abc import ABC
 from collections.abc import Collection
 from typing import Generic
@@ -7,7 +8,7 @@ from uuid import UUID
 
 from opentelemetry import trace
 from pydantic import UUID4
-from sqlalchemy import inspect, select, update
+from sqlalchemy import func, inspect, select, update
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import (
@@ -444,20 +445,69 @@ class GenericAsyncSqlRepository(
         return persistence.to_domain()
 
     @trace_repository_method(tracer)
-    async def get_all_pks(self) -> list[UUID]:
+    async def get_all_pks(
+        self,
+        min_id: UUID | None = None,
+        max_id: UUID | None = None,
+    ) -> list[UUID]:
         """
         Get all primary keys in the repository.
 
         Generally used as a convenience method before calling another bulk
         method that requires primary keys.
 
-        Returns:
-        - list[UUID]: A list of all primary keys in the repository.
+        :min_id: Inclusive lower bound for primary keys to return.
+        :type min_id: UUID | None
+        :max_id: Inclusive upper bound for primary keys to return.
+        :type max_id: UUID | None
+
+        :rtype: list[UUID]
 
         """
         query = select(self._persistence_cls.id)
+        if min_id:
+            query = query.where(self._persistence_cls.id >= min_id)
+        if max_id:
+            query = query.where(self._persistence_cls.id <= max_id)
         result = await self._session.execute(query)
-        return [row[0] for row in result.fetchall()]
+        return list(result.scalars().all())
+
+    @trace_repository_method(tracer)
+    async def get_partition_boundaries(
+        self, partition_size: int
+    ) -> list[tuple[UUID, UUID]]:
+        """
+        Get partition boundaries for the records in the repository.
+
+        Samples boundary IDs at regular intervals based on partition_size,
+        returning [start_id, end_id] tuples suitable for parallel processing.
+
+        :param partition_size: Approximate number of records per partition.
+        :type partition_size: int
+        :return: List of inclusive [start_id, end_id] tuples.
+        :rtype: list[tuple[UUID, UUID]]
+
+        """
+        total = await self.count()
+
+        if total == 0:
+            return []
+
+        partitions = select(
+            self._persistence_cls.id.label("id"),
+            func.ntile(math.ceil(total / partition_size))
+            .over(order_by=self._persistence_cls.id)
+            .label("tile"),
+        ).subquery()
+
+        query = (
+            select(func.min(partitions.c.id), func.max(partitions.c.id))
+            .group_by(partitions.c.tile)
+            .order_by(partitions.c.tile)
+        )
+
+        result = await self._session.execute(query)
+        return [(row[0], row[1]) for row in result.fetchall()]
 
     @trace_repository_method(tracer)
     async def bulk_update(self, pks: list[UUID4], **kwargs: object) -> int:
@@ -610,3 +660,16 @@ class GenericAsyncSqlRepository(
 
         result = await self._session.execute(query)
         return [record.to_domain(preload=preload) for record in result.scalars().all()]
+
+    @trace_repository_method(tracer)
+    async def count(self) -> int:
+        """
+        Count the number of records in the repository.
+
+        Returns:
+        - int: The number of records.
+
+        """
+        query = select(func.count(self._persistence_cls.id))
+        result = await self._session.execute(query)
+        return result.scalar_one()
