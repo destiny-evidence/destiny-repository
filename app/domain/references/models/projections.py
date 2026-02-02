@@ -4,6 +4,7 @@ from collections import defaultdict
 from uuid import UUID
 
 import destiny_sdk
+from destiny_sdk.identifiers import ExternalIdentifierType
 
 from app.core.exceptions import ProjectionError
 from app.domain.base import GenericProjection
@@ -13,10 +14,54 @@ from app.domain.references.models.models import (
     EnhancementRequest,
     EnhancementRequestStatus,
     EnhancementType,
+    LinkedExternalIdentifier,
     PendingEnhancementStatus,
     Reference,
     ReferenceSearchFields,
 )
+
+# Mapping from ExternalIdentifierType to ES flattened dict key
+_IDENTIFIER_TYPE_TO_KEY: dict[ExternalIdentifierType, str] = {
+    ExternalIdentifierType.DOI: "doi",
+    ExternalIdentifierType.OPEN_ALEX: "open_alex",
+    ExternalIdentifierType.PM_ID: "pmid",
+    ExternalIdentifierType.PRO_QUEST: "proquest",
+    ExternalIdentifierType.ERIC: "eric",
+    # OTHER uses other_identifier_name as key
+}
+
+
+def flatten_identifiers(
+    identifiers: list[LinkedExternalIdentifier] | None,
+) -> dict[str, str] | None:
+    """
+    Convert identifiers list to flattened dict for ES indexing.
+
+    Example output: {"doi": "10.1234/abc", "open_alex": "W123456", "pmid": "12345"}
+
+    For OTHER identifier type, uses other_identifier_name as the key.
+    If multiple identifiers of the same type exist, the last one wins.
+    """
+    if not identifiers:
+        return None
+
+    result: dict[str, str] = {}
+    for linked_identifier in identifiers:
+        identifier = linked_identifier.identifier
+        identifier_type = identifier.identifier_type
+
+        if identifier_type == ExternalIdentifierType.OTHER:
+            # Use the other_identifier_name as key (lowercased)
+            key = getattr(identifier, "other_identifier_name", None)
+            if key:
+                key = key.lower()
+        else:
+            key = _IDENTIFIER_TYPE_TO_KEY.get(identifier_type)
+
+        if key:
+            result[key] = str(identifier.identifier)
+
+    return result if result else None
 
 
 class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):

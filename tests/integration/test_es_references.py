@@ -302,18 +302,8 @@ async def test_es_repository_cycle(
     await es_reference_repository.add(reference)
 
     es_reference = await es_reference_repository.get_by_pk(reference.id)
-
     assert es_reference.id == reference.id
     assert es_reference.visibility == "public"
-    assert len(es_reference.identifiers or []) == 4
-    assert len(es_reference.enhancements or []) == 3
-    # Check that ids are preserved
-    assert {enhancement.id for enhancement in es_reference.enhancements or []} == {
-        enhancement.id
-        for enhancement in reference.enhancements or []
-        # Raw enhancements are filtered out
-        if enhancement.content.enhancement_type != EnhancementType.RAW
-    }
 
     # Check the ES projections themselves
     client = es_reference_repository._client  # noqa: SLF001
@@ -326,6 +316,14 @@ async def test_es_repository_cycle(
             id=str(reference.id),
         )
     )["_source"]
+
+    # Check flattened identifiers
+    assert raw_es_reference["identifiers"] == {
+        "pm_id": "123",
+        "doi": "10.1000/xyz123",
+        "eric": "ED3925083",
+        "isbn": "978-3-16-148410-0",
+    }
 
     assert (
         raw_es_reference["publication_year"]
@@ -367,8 +365,6 @@ async def test_es_repository_update_existing(
 
     assert updated_reference.id == reference.id
     assert updated_reference.visibility == "restricted"
-    assert len(updated_reference.identifiers or []) == 4
-    assert len(updated_reference.enhancements or []) == 0
 
 
 async def test_add_bulk(
@@ -389,8 +385,6 @@ async def test_add_bulk(
     for ref_id in ref_ids:
         retrieved_ref = await es_reference_repository.get_by_pk(ref_id)
         assert retrieved_ref.visibility == "public"
-        assert len(retrieved_ref.identifiers or []) == 4
-        assert len(retrieved_ref.enhancements or []) == 3
 
 
 async def test_robot_automation_percolation(

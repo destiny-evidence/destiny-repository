@@ -7,6 +7,7 @@ from uuid import UUID
 from elasticsearch.dsl import (
     Boolean,
     Date,
+    Flattened,
     InnerDoc,
     Integer,
     Keyword,
@@ -33,6 +34,7 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.projections import (
     ReferenceSearchFieldsProjection,
+    flatten_identifiers,
 )
 from app.persistence.es.persistence import GenericESPersistence, GenericNestedDocument
 
@@ -340,30 +342,66 @@ class ReferenceSearchFieldsMixin(InnerDoc):
 
 class ReferenceDocument(
     GenericESPersistence[Reference],
-    ReferenceDomainMixin,
     ReferenceSearchFieldsMixin,
 ):
-    """Persistence model for references in Elasticsearch."""
+    """
+    Lean persistence model for references in Elasticsearch.
+
+    This document stores only the fields needed for search operations:
+    - visibility and duplicate_determination for filtering
+    - identifiers as a flattened dict for quick lookups (e.g., {"doi": "10.1234/abc"})
+    - search fields (title, abstract, authors, etc.) from ReferenceSearchFieldsMixin
+
+    Full reference data is stored in PostgreSQL and hydrated from there when needed.
+    Nested structures (identifiers, enhancements) are preserved only in the
+    RobotAutomationPercolationDocument for percolation queries.
+    """
 
     class Index:
         """Index metadata for the persistence model."""
 
         name = "reference"
 
+    visibility: Visibility = mapped_field(Keyword(required=True))
+    duplicate_determination: DuplicateDetermination | None = mapped_field(
+        Keyword(required=False),
+    )
+    identifiers: dict[str, str] | None = mapped_field(Flattened(required=False))
+    """
+    Flattened identifiers for quick lookups.
+
+    Example: {"doi": "10.1234/abc", "open_alex": "W123456", "pmid": "12345"}
+    """
+
     @classmethod
     def from_domain(cls, domain_obj: Reference) -> Self:
         """Create a persistence model from a domain model."""
         return cls(
             # Parent's parent does accept meta, but mypy doesn't like it here.
-            # Ignoring easier than chaining __init__ methods IMO.
             meta={"id": domain_obj.id},  # type: ignore[call-arg]
-            **ReferenceDomainMixin.from_domain(domain_obj).to_dict(),
+            visibility=domain_obj.visibility,
+            duplicate_determination=(
+                domain_obj.duplicate_decision.duplicate_determination
+                if domain_obj.duplicate_decision
+                else None
+            ),
+            identifiers=flatten_identifiers(domain_obj.identifiers),
             **ReferenceSearchFieldsMixin.from_domain(domain_obj).to_dict(),
         )
 
     def to_domain(self) -> Reference:
-        """Create a domain model from this persistence model."""
-        return ReferenceDomainMixin.to_domain(self)
+        """
+        Create a minimal domain model from this persistence model.
+
+        Since ES is now search-only, full hydration should be done from PostgreSQL.
+        This returns a minimal Reference with only the ID and visibility.
+        """
+        # meta.id can be a UUID object (when created directly) or string (from ES)
+        ref_id = self.meta.id if isinstance(self.meta.id, UUID) else UUID(self.meta.id)
+        return Reference(
+            id=ref_id,
+            visibility=self.visibility,
+        )
 
 
 class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):
