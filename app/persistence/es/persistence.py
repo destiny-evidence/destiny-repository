@@ -37,6 +37,9 @@ class GenericESPersistence(
     @classmethod
     def from_hit(cls, hit: Hit) -> Self:
         """Create a persistence model from an Elasticsearch Hit object."""
+        # If you're reading this because you've added nested documents to Elasticsearch
+        # and you're wondering why the marshalling doesn't work, check out commit
+        # 7c2cc7bef2bcb35fe18fa0606ad9fa84272144af.
         return cls(
             **hit.to_dict(),
             meta={"id": hit.meta.id},
