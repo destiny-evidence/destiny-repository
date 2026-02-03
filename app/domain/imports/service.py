@@ -256,47 +256,47 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                         import_batch.id, chunk, chunk_start_line_number
                     )
 
-    @tracer.start_as_current_span("Distribute import batch chunk")
     async def _distribute_import_batch_chunk(
         self, import_batch_id: UUID, lines: list[str], start_line_number: int
     ) -> None:
         """Bulk insert import results and queue tasks in parallel."""
-        trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_batch_id))
-        trace_attribute(Attributes.FILE_LINE_NO, str(start_line_number))
-        import_results = await self.register_results(
-            [
-                ImportResult(
-                    import_batch_id=import_batch_id,
-                    status=ImportResultStatus.CREATED,
-                )
-                for _ in lines
-            ]
-        )
-
-        queue_coroutines: list[Coroutine[None, None, None]] = []
-        for i, (result, line) in enumerate(zip(import_results, lines, strict=True)):
-            line_number = start_line_number + i
-            with new_linked_trace(
-                "Queue import reference task",
-                attributes={
-                    Attributes.FILE_LINE_NO: line_number,
-                    Attributes.IMPORT_BATCH_ID: str(import_batch_id),
-                    Attributes.IMPORT_RESULT_ID: str(result.id),
-                },
-            ):
-                queue_coroutines.append(
-                    queue_task_with_trace(
-                        ("app.domain.imports.tasks", "import_reference"),
-                        result.id,
-                        line,
-                        line_number,
-                        settings.import_reference_retry_count,
-                        otel_enabled=settings.otel_enabled,
-                        trace_link=get_current_trace_link(),
+        with new_linked_trace("Distribute import batch chunk"):
+            trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_batch_id))
+            trace_attribute(Attributes.FILE_LINE_NO, str(start_line_number))
+            import_results = await self.register_results(
+                [
+                    ImportResult(
+                        import_batch_id=import_batch_id,
+                        status=ImportResultStatus.CREATED,
                     )
-                )
+                    for _ in lines
+                ]
+            )
 
-        await asyncio.gather(*queue_coroutines)
+            queue_coroutines: list[Coroutine[None, None, None]] = []
+            for i, (result, line) in enumerate(zip(import_results, lines, strict=True)):
+                line_number = start_line_number + i
+                with new_linked_trace(
+                    "Queue import reference task",
+                    attributes={
+                        Attributes.FILE_LINE_NO: line_number,
+                        Attributes.IMPORT_BATCH_ID: str(import_batch_id),
+                        Attributes.IMPORT_RESULT_ID: str(result.id),
+                    },
+                ):
+                    queue_coroutines.append(
+                        queue_task_with_trace(
+                            ("app.domain.imports.tasks", "import_reference"),
+                            result.id,
+                            line,
+                            line_number,
+                            settings.import_reference_retry_count,
+                            otel_enabled=settings.otel_enabled,
+                            trace_link=get_current_trace_link(),
+                        )
+                    )
+
+            await asyncio.gather(*queue_coroutines)
 
     @sql_unit_of_work
     async def get_import_results(
