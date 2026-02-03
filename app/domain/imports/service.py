@@ -12,7 +12,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.core.config import get_settings
 from app.core.exceptions import SQLIntegrityError
-from app.core.telemetry.attributes import Attributes, trace_attribute
+from app.core.telemetry.attributes import Attributes
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.otel import get_current_trace_link, new_linked_trace
 from app.core.telemetry.taskiq import queue_task_with_trace
@@ -260,9 +260,13 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         self, import_batch_id: UUID, lines: list[str], start_line_number: int
     ) -> None:
         """Bulk insert import results and queue tasks in parallel."""
-        with new_linked_trace("Distribute import batch chunk"):
-            trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_batch_id))
-            trace_attribute(Attributes.FILE_LINE_NO, str(start_line_number))
+        with new_linked_trace(
+            "Distribute import batch chunk",
+            attributes={
+                Attributes.IMPORT_BATCH_ID: str(import_batch_id),
+                Attributes.FILE_LINE_NO: str(start_line_number),
+            },
+        ):
             import_results = await self.register_results(
                 [
                     ImportResult(
