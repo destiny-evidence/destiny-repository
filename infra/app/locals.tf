@@ -40,8 +40,8 @@ locals {
     }
   }
 
-  # Active environment configuration
-  env = local.environment_configs[var.environment]
+  # Active environment configuration (defaults to development for unknown environments)
+  env = lookup(local.environment_configs, var.environment, local.environment_configs["development"])
 
   minimum_resource_tags = {
     # All these tags are required for UCL tenant compliance policies
