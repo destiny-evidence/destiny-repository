@@ -338,7 +338,7 @@ async def test_query_string_search_with_document(
     assert len(results.hits) == 1
     assert str(results.hits[0].id) == test_doc
     assert results.hits[0].document is not None
-    assert isinstance(results.hits[0].document, DomainSimpleDoc)
+    assert isinstance(results.hits[0].document, SimpleDomainModel)
     assert results.hits[0].document.title == "test document"
     assert results.hits[0].document.year == 2023
     assert results.hits[0].document.content == "This is sample content for testing"
