@@ -8,6 +8,7 @@ from opentelemetry import trace
 from structlog.contextvars import bound_contextvars
 
 from app.core.config import Environment, get_settings
+from app.core.exceptions import SQLIntegrityError
 from app.core.telemetry.attributes import (
     Attributes,
     name_span,
@@ -299,9 +300,32 @@ async def process_reference_duplicate_decision(
                 )
                 return
 
-            await reference_service.process_reference_duplicate_decision(
-                reference_duplicate_decision
-            )
+            try:
+                await reference_service.process_reference_duplicate_decision(
+                    reference_duplicate_decision
+                )
+            except SQLIntegrityError as e:
+                # Only handle race conditions for the expected model.
+                if e.lookup_model != "ReferenceDuplicateDecision":
+                    raise
+                # Rollback to clear the invalid session state before re-fetching.
+                await sql_uow.rollback()
+                updated_decision = (
+                    await reference_service.get_reference_duplicate_decision(
+                        reference_duplicate_decision_id
+                    )
+                )
+                if (
+                    updated_decision.duplicate_determination
+                    != DuplicateDetermination.PENDING
+                ):
+                    logger.info(
+                        "Decision was processed by another worker, skipping.",
+                        duplicate_determination=updated_decision.duplicate_determination,
+                        collision=e.collision,
+                    )
+                    return
+                raise  # Re-raise if still pending (different integrity issue)
 
 
 @broker.task(
