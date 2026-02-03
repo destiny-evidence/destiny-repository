@@ -7,7 +7,6 @@ from uuid import UUID
 from elasticsearch.dsl import (
     Boolean,
     Date,
-    Flattened,
     InnerDoc,
     Integer,
     Keyword,
@@ -32,10 +31,7 @@ from app.domain.references.models.models import (
     RobotAutomation,
     Visibility,
 )
-from app.domain.references.models.projections import (
-    ReferenceSearchFieldsProjection,
-    flatten_identifiers,
-)
+from app.domain.references.models.projections import ReferenceSearchFieldsProjection
 from app.persistence.es.persistence import GenericESPersistence, GenericNestedDocument
 
 EXCLUDED_ENHANCEMENT_TYPES = {
@@ -349,10 +345,10 @@ class ReferenceDocument(
 
     This document stores only the fields needed for search operations:
     - visibility and duplicate_determination for filtering
-    - identifiers as a flattened dict for quick lookups (e.g., {"doi": "10.1234/abc"})
     - search fields (title, abstract, authors, etc.) from ReferenceSearchFieldsMixin
 
-    Full reference data is stored in PostgreSQL and hydrated from there when needed.
+    Full reference data (including identifiers) is stored in PostgreSQL and hydrated
+    from there when needed. Identifier lookups are done via PostgreSQL, not ES.
     Nested structures (identifiers, enhancements) are preserved only in the
     RobotAutomationPercolationDocument for percolation queries.
     """
@@ -366,12 +362,6 @@ class ReferenceDocument(
     duplicate_determination: DuplicateDetermination | None = mapped_field(
         Keyword(required=False),
     )
-    identifiers: dict[str, str] | None = mapped_field(Flattened(required=False))
-    """
-    Flattened identifiers for quick lookups.
-
-    Example: {"doi": "10.1234/abc", "open_alex": "W123456", "pmid": "12345"}
-    """
 
     @classmethod
     def from_domain(cls, domain_obj: Reference) -> Self:
@@ -385,7 +375,6 @@ class ReferenceDocument(
                 if domain_obj.duplicate_decision
                 else None
             ),
-            identifiers=flatten_identifiers(domain_obj.identifiers),
             **ReferenceSearchFieldsMixin.from_domain(domain_obj).to_dict(),
         )
 
@@ -396,10 +385,8 @@ class ReferenceDocument(
         Since ES is now search-only, full hydration should be done from PostgreSQL.
         This returns a minimal Reference with only the ID and visibility.
         """
-        # meta.id can be a UUID object (when created directly) or string (from ES)
-        ref_id = self.meta.id if isinstance(self.meta.id, UUID) else UUID(self.meta.id)
         return Reference(
-            id=ref_id,
+            id=self.meta.id,  # Pydantic handles str -> UUID coercion
             visibility=self.visibility,
         )
 

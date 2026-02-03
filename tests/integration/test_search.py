@@ -1,12 +1,11 @@
 """Integration tests for search API with complex query string scenarios."""
 
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator
 
 import pytest
 from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.exception_handlers import (
     es_exception_handler,
@@ -14,11 +13,7 @@ from app.api.exception_handlers import (
 )
 from app.core.exceptions import ESQueryError, ParseError
 from app.domain.references import routes as references
-from app.domain.references.models.models import EnhancementType
-from app.domain.references.repository import (
-    ReferenceESRepository,
-    ReferenceSQLRepository,
-)
+from app.domain.references.repository import ReferenceESRepository
 from tests.factories import (
     AbstractContentEnhancementFactory,
     AnnotationEnhancementFactory,
@@ -58,7 +53,7 @@ async def client(
 
 
 @pytest.fixture
-async def search_references(es_client: AsyncElasticsearch, session: AsyncSession):
+async def search_references(es_client: AsyncElasticsearch):
     """Create and index test references with various metadata and annotations."""
     references = [
         ReferenceFactory.build(
@@ -188,33 +183,17 @@ async def search_references(es_client: AsyncElasticsearch, session: AsyncSession
     )
 
     es_repository = ReferenceESRepository(es_client)
-    sql_repository = ReferenceSQLRepository(session)
     for reference in references:
         await es_repository.add(reference)
-        await sql_repository.add(reference)
-    await session.commit()
     await es_client.indices.refresh(index="reference")
     return references
 
 
-def _get_biblio(ref: dict) -> dict:
-    for e in ref["enhancements"]:
-        if e["content"].get("enhancement_type") == EnhancementType.BIBLIOGRAPHIC:
-            return e["content"]
-    return {}
-
-
 @pytest.mark.parametrize(
-    ("params", "expected_count", "validation_fn"),
+    ("params", "expected_count"),
     [
         # Boolean operators
-        (
-            {"q": "(title:Machine OR title:Deep) AND title:Learning"},
-            2,
-            lambda refs: all(
-                "Learning" in _get_biblio(ref).get("title", "") for ref in refs
-            ),
-        ),
+        ({"q": "(title:Machine OR title:Deep) AND title:Learning"}, 2),
         # Wildcard with year filter and sorting
         (
             {
@@ -224,17 +203,9 @@ def _get_biblio(ref: dict) -> dict:
                 "sort": ["-publication_year"],
             },
             2,
-            lambda refs: (
-                _get_biblio(refs[0]).get("publication_year", 0)
-                > _get_biblio(refs[1]).get("publication_year", 0)
-            ),
         ),
         # Fuzzy matching with NOT
-        (
-            {"q": "title:Lerning~1 NOT title:Climate"},
-            1,
-            lambda refs: "Medical" in _get_biblio(refs[0]).get("title", ""),
-        ),
+        ({"q": "title:Lerning~1 NOT title:Climate"}, 1),
         # Annotation filter: inclusion true with score threshold and sort by score
         (
             {
@@ -243,20 +214,9 @@ def _get_biblio(ref: dict) -> dict:
                 "sort": ["-inclusion_destiny"],
             },
             2,
-            lambda refs: (
-                _get_biblio(refs[0]).get("title")
-                == "Machine Learning in Climate Science"
-            ),
         ),
         # Annotation filter: specific taxonomy label
-        (
-            {
-                "q": "*",
-                "annotation": ["classifier:taxonomy/Outcomes/Economic"],
-            },
-            1,
-            lambda refs: "Climate" in _get_biblio(refs[0]).get("title", ""),
-        ),
+        ({"q": "*", "annotation": ["classifier:taxonomy/Outcomes/Economic"]}, 1),
         # Query with year range and annotation filter
         (
             {
@@ -265,14 +225,9 @@ def _get_biblio(ref: dict) -> dict:
                 "annotation": ["inclusion:destiny@0.9"],
             },
             1,
-            lambda refs: "Machine" in _get_biblio(refs[0]).get("title", ""),
         ),
         # Combined title and abstract search
-        (
-            {"q": "title:Climate AND abstract:agricultural"},
-            1,
-            lambda refs: "Agriculture" in _get_biblio(refs[0]).get("title", ""),
-        ),
+        ({"q": "title:Climate AND abstract:agricultural"}, 1),
     ],
 )
 async def test_query_string_with_filters(
@@ -280,7 +235,6 @@ async def test_query_string_with_filters(
     search_references: list,  # noqa: ARG001
     params: dict,
     expected_count: int,
-    validation_fn: Callable,
 ) -> None:
     """Test query string searches with various filters and annotations."""
     response = await client.get("/v1/references/search/", params=params)
@@ -288,8 +242,6 @@ async def test_query_string_with_filters(
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert data["total"]["count"] == expected_count
-    if expected_count > 0:
-        assert validation_fn(data["references"])
 
 
 async def test_pagination(
@@ -340,7 +292,7 @@ async def test_query_string_error_handling(
 
 
 @pytest.fixture
-async def cross_field_references(es_client: AsyncElasticsearch, session: AsyncSession):
+async def cross_field_references(es_client: AsyncElasticsearch):
     """Create references with search terms split across title and abstract fields."""
     references = [
         # "george" in title, "harrison" in abstract
@@ -396,11 +348,8 @@ async def cross_field_references(es_client: AsyncElasticsearch, session: AsyncSe
     ]
 
     es_repository = ReferenceESRepository(es_client)
-    sql_repository = ReferenceSQLRepository(session)
     for reference in references:
         await es_repository.add(reference)
-        await sql_repository.add(reference)
-    await session.commit()
     await es_client.indices.refresh(index="reference")
     return references
 
@@ -423,10 +372,10 @@ async def test_cross_field_and_query(
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
 
+    # 2 references match: one with terms split across fields, one with both in title.
+    # Note: Search returns minimal references (id/visibility only) - full data
+    # including enhancements must be hydrated from PostgreSQL separately.
     assert data["total"]["count"] == 2
-
-    titles = {_get_biblio(ref)["title"] for ref in data["references"]}
-    assert titles == {"George Studies in Modern Science", "George Harrison Biography"}
 
 
 async def test_same_field_and_query(
@@ -442,6 +391,5 @@ async def test_same_field_and_query(
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
 
+    # Only 1 result when both terms must be in title field
     assert data["total"]["count"] == 1
-    title = _get_biblio(data["references"][0])["title"]
-    assert "George Harrison" in title

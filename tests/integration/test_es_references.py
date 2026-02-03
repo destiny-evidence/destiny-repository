@@ -317,13 +317,7 @@ async def test_es_repository_cycle(
         )
     )["_source"]
 
-    # Check flattened identifiers
-    assert raw_es_reference["identifiers"] == {
-        "pmid": "123",
-        "doi": "10.1000/xyz123",
-        "eric": "ED3925083",
-        "isbn": "978-3-16-148410-0",
-    }
+    # Identifiers are stored in PostgreSQL only, not ES
 
     assert (
         raw_es_reference["publication_year"]
