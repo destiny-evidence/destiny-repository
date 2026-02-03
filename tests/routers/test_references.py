@@ -52,7 +52,7 @@ from app.domain.references.service import ReferenceService
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
-from app.persistence.es.persistence import ESSearchResult, ESSearchTotal
+from app.persistence.es.persistence import ESHit, ESSearchResult, ESSearchTotal
 from app.tasks import broker
 from app.utils.time_and_date import apply_positive_timedelta, iso8601_duration_adapter
 from tests.factories import (
@@ -843,7 +843,7 @@ async def test_search_references_with_annotation_filters(
 
     # Create a mock search result
     mock_search_result = ESSearchResult(
-        hits=[reference.id],
+        hits=[ESHit(id=reference.id, score=1.0)],
         total=ESSearchTotal(value=1, relation="eq"),
         page=1,
     )

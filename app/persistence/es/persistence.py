@@ -2,7 +2,6 @@
 
 from abc import abstractmethod
 from typing import Generic, Literal, Self, get_args, get_origin
-from uuid import UUID
 
 from elasticsearch.dsl import AsyncDocument, InnerDoc
 from elasticsearch.dsl.document_base import InstrumentedField
@@ -11,9 +10,7 @@ from elasticsearch.dsl.response import Hit
 from elasticsearch.dsl.utils import AttrList
 from pydantic import UUID4, BaseModel, Field
 
-from app.domain.base import (
-    SQLAttributeMixin,  # noqa: F401, required for Pydantic generic construction
-)
+from app.domain.base import SQLAttributeMixin
 from app.persistence.generics import GenericDomainModelType
 
 
@@ -146,6 +143,20 @@ class ESScoreResult(BaseModel):
     score: float
 
 
+class ESHit(BaseModel):
+    """Represents a single hit from an Elasticsearch search result."""
+
+    id: UUID4 = Field(description="The document ID.")
+    score: float | None = Field(
+        default=None,
+        description="The relevance score of the hit.",
+    )
+    document: SQLAttributeMixin | None = Field(
+        default=None,
+        description="The source document, if requested.",
+    )
+
+
 class ESSearchTotal(BaseModel):
     """
     Class for total results in Elasticsearch search results.
@@ -165,9 +176,9 @@ class ESSearchTotal(BaseModel):
 class ESSearchResult(BaseModel):
     """Wrapping class for Elasticsearch search results."""
 
-    hits: list[UUID] = Field(
+    hits: list[ESHit] = Field(
         default_factory=list,
-        description="The list of object IDs returned from the search query.",
+        description="The list of hits returned from the search query.",
     )
     total: ESSearchTotal = Field(
         description="The total number of results matching the search query.",

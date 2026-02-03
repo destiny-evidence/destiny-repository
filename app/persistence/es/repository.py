@@ -22,7 +22,7 @@ from app.core.exceptions import (
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.repository import trace_repository_method
 from app.persistence.es.generics import GenericESPersistenceType
-from app.persistence.es.persistence import ESSearchResult, ESSearchTotal
+from app.persistence.es.persistence import ESHit, ESSearchResult, ESSearchTotal
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
 
@@ -173,18 +173,29 @@ class GenericAsyncESRepository(
             )
 
     def _parse_search_result(
-        self, response: Response[Hit], page: int
+        self, response: Response[Hit], page: int, *, parse_document: bool = False
     ) -> ESSearchResult:
         """
         Parse an Elasticsearch search response into a search result.
 
         :param response: The Elasticsearch search response.
         :type response: Response[Hit]
+        :param parse_document: Whether to parse and include the full document.
+        :type parse_document: bool
         :return: The parsed search result.
         :rtype: ESSearchResult
         """
         return ESSearchResult(
-            hits=[hit.meta.id for hit in response.hits],
+            hits=[
+                ESHit(
+                    id=hit.meta.id,
+                    score=hit.meta.score,
+                    document=self._persistence_cls.from_hit(hit).to_domain()
+                    if parse_document
+                    else None,
+                )
+                for hit in response.hits
+            ],
             # ES DSL typing on response.hits is incorrect
             total=ESSearchTotal(
                 value=response.hits.total.value,  # type: ignore[attr-defined]
@@ -194,13 +205,15 @@ class GenericAsyncESRepository(
         )
 
     @trace_repository_method(tracer)
-    async def search_with_query_string(
+    async def search_with_query_string(  # noqa: PLR0913
         self,
         query: str,
         page: int = 1,
         page_size: int = 20,
         fields: Sequence[str] | None = None,
         sort: list[str] | None = None,
+        *,
+        parse_document: bool = False,
     ) -> ESSearchResult:
         """
         Search for records using a query string.
@@ -216,6 +229,9 @@ class GenericAsyncESRepository(
         :type fields: Sequence[str] | None
         :param sort: The sorting criteria for the search results.
         :type sort: list[str] | None
+        :param parse_document: Whether to retrieve the documents and include them in the
+            hits as domain models.
+        :type parse_document: bool
         :return: A list of matching records.
         :rtype: ESSearchResult
         """
@@ -232,9 +248,11 @@ class GenericAsyncESRepository(
         )
         if sort:
             search = search.sort(*sort)
+        if not parse_document:
+            search = search.source(includes=[])
         try:
             response = await search.execute()
         except BadRequestError as exc:
             msg = f"Elasticsearch query string search failed: {exc}."
             raise ESQueryError(msg) from exc
-        return self._parse_search_result(response, page)
+        return self._parse_search_result(response, page, parse_document=parse_document)

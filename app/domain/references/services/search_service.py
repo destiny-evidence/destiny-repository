@@ -96,5 +96,9 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         if global_filters:
             query_string = f"({query_string}) AND {' AND '.join(global_filters)}"
         return await self.es_uow.references.search_with_query_string(
-            query_string, fields=self.default_search_fields, page=page, sort=sort
+            query_string,
+            fields=self.default_search_fields,
+            page=page,
+            sort=sort,
+            parse_document=False,
         )
