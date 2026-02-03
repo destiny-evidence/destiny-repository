@@ -409,3 +409,16 @@ variable "es_slowlog_trace_threshold" {
   type        = string
   default     = null
 }
+
+variable "alert_email_recipients" {
+  description = "List of email addresses to receive alerts"
+  type        = list(string)
+  default     = []
+}
+
+variable "alert_slack_webhook_url" {
+  description = "Slack webhook URL for alerts (optional)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
