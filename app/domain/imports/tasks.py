@@ -82,7 +82,9 @@ async def distribute_import_batch(import_batch_id: UUID4) -> None:
         import_service = await get_import_service(sql_uow=sql_uow)
 
         import_batch = await import_service.get_import_batch(import_batch_id)
-        await import_service.distribute_import_batch(import_batch)
+        await import_service.distribute_import_batch(
+            import_batch, chunk_size=settings.import_batch_chunk_size
+        )
 
 
 @broker.task

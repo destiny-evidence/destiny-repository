@@ -244,26 +244,32 @@ async def test_distribute_import_batch_happy_path(monkeypatch, fake_uow):
     monkeypatch.setattr(httpx, "AsyncClient", lambda: FakeClient(lines))
 
     created_results = []
+    register_results_call_count = 0
 
-    async def fake_register_result(result):
-        created_results.append(result)
-        return result
+    async def fake_register_results(results):
+        nonlocal register_results_call_count
+        register_results_call_count += 1
+        created_results.extend(results)
+        return results
 
     queued_tasks = []
 
-    async def fake_queue_task_with_trace(*args, otel_enabled):  # noqa: ARG001
+    async def fake_queue_task_with_trace(*args, otel_enabled, **kwargs):  # noqa: ARG001
         queued_tasks.append(args)
 
     service = ImportService(ImportAntiCorruptionService(), fake_uow())
-    monkeypatch.setattr(service, "register_result", fake_register_result)
+    monkeypatch.setattr(service, "register_results", fake_register_results)
     monkeypatch.setattr(
         "app.domain.imports.service.queue_task_with_trace", fake_queue_task_with_trace
     )
 
-    await service.distribute_import_batch(import_batch)
+    await service.distribute_import_batch(import_batch, chunk_size=2)
 
     assert len(created_results) == len(lines)
     assert len(queued_tasks) == len(lines)
+
+    # Check the batch was chunked up
+    assert register_results_call_count == 2
 
 
 @pytest.mark.asyncio

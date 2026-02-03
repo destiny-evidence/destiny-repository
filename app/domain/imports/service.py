@@ -1,5 +1,7 @@
 """The service for interacting with and managing imports."""
 
+import asyncio
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import httpx
@@ -12,7 +14,7 @@ from app.core.config import get_settings
 from app.core.exceptions import SQLIntegrityError
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
-from app.core.telemetry.otel import new_linked_trace
+from app.core.telemetry.otel import get_current_trace_link, new_linked_trace
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.imports.models.models import (
     ImportBatch,
@@ -28,6 +30,9 @@ from app.domain.references.service import ReferenceService
 from app.domain.service import GenericService
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
+
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -123,9 +128,9 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         )
 
     @sql_unit_of_work
-    async def register_result(self, result: ImportResult) -> ImportResult:
-        """Register an import result, persisting it to the database."""
-        return await self.sql_uow.imports.batches.results.add(result)
+    async def register_results(self, results: list[ImportResult]) -> list[ImportResult]:
+        """Register multiple import results in bulk."""
+        return await self.sql_uow.imports.batches.results.add_bulk(results)
 
     @sql_unit_of_work
     async def update_import_result(
@@ -221,7 +226,9 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
             )
         return import_result, reference_result.duplicate_decision_id
 
-    async def distribute_import_batch(self, import_batch: ImportBatch) -> None:
+    async def distribute_import_batch(
+        self, import_batch: ImportBatch, chunk_size: int
+    ) -> None:
         """Distribute an import batch."""
         async with (
             httpx.AsyncClient() as client,
@@ -229,34 +236,67 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
             HTTPXClientInstrumentor().instrument_client(client)
             async with client.stream("GET", str(import_batch.storage_url)) as response:
                 response.raise_for_status()
-                line_number = 1
+
+                chunk: list[str] = []
+                chunk_start_line_number = 1
+
                 async for line in response.aiter_lines():
-                    with new_linked_trace(
-                        "Queue import reference task",
-                        attributes={
-                            Attributes.FILE_LINE_NO: line_number,
-                            Attributes.IMPORT_BATCH_ID: str(import_batch.id),
-                        },
-                    ):
-                        if line := line.strip():
-                            import_result = await self.register_result(
-                                ImportResult(
-                                    import_batch_id=import_batch.id,
-                                    status=ImportResultStatus.CREATED,
-                                )
+                    if line := line.strip():
+                        chunk.append(line)
+
+                        if len(chunk) >= chunk_size:
+                            await self._distribute_import_batch_chunk(
+                                import_batch.id, chunk, chunk_start_line_number
                             )
-                            trace_attribute(
-                                Attributes.IMPORT_RESULT_ID, str(import_result.id)
-                            )
-                            await queue_task_with_trace(
-                                ("app.domain.imports.tasks", "import_reference"),
-                                import_result.id,
-                                line,
-                                line_number,
-                                settings.import_reference_retry_count,
-                                otel_enabled=settings.otel_enabled,
-                            )
-                            line_number += 1
+                            chunk_start_line_number += len(chunk)
+                            chunk = []
+
+                if chunk:
+                    await self._distribute_import_batch_chunk(
+                        import_batch.id, chunk, chunk_start_line_number
+                    )
+
+    @tracer.start_as_current_span("Distribute import batch chunk")
+    async def _distribute_import_batch_chunk(
+        self, import_batch_id: UUID, lines: list[str], start_line_number: int
+    ) -> None:
+        """Bulk insert import results and queue tasks in parallel."""
+        trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_batch_id))
+        trace_attribute(Attributes.FILE_LINE_NO, str(start_line_number))
+        import_results = await self.register_results(
+            [
+                ImportResult(
+                    import_batch_id=import_batch_id,
+                    status=ImportResultStatus.CREATED,
+                )
+                for _ in lines
+            ]
+        )
+
+        queue_coroutines: list[Coroutine[None, None, None]] = []
+        for i, (result, line) in enumerate(zip(import_results, lines, strict=True)):
+            line_number = start_line_number + i
+            with new_linked_trace(
+                "Queue import reference task",
+                attributes={
+                    Attributes.FILE_LINE_NO: line_number,
+                    Attributes.IMPORT_BATCH_ID: str(import_batch_id),
+                    Attributes.IMPORT_RESULT_ID: str(result.id),
+                },
+            ):
+                queue_coroutines.append(
+                    queue_task_with_trace(
+                        ("app.domain.imports.tasks", "import_reference"),
+                        result.id,
+                        line,
+                        line_number,
+                        settings.import_reference_retry_count,
+                        otel_enabled=settings.otel_enabled,
+                        trace_link=get_current_trace_link(),
+                    )
+                )
+
+        await asyncio.gather(*queue_coroutines)
 
     @sql_unit_of_work
     async def get_import_results(

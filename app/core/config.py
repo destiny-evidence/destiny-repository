@@ -413,6 +413,14 @@ class Settings(BaseSettings):
         ),
     )
 
+    import_batch_chunk_size: int = Field(
+        default=1000,
+        description=(
+            "Number of lines to include in each chunk when distributing import "
+            "batches for processing."
+        ),
+    )
+
     # Message lock renewal configuration
     message_lock_renewal_duration: int = Field(
         default=3600 * 3,  # 3 hours

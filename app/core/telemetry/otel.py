@@ -40,6 +40,15 @@ logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 
+def get_current_trace_link() -> dict[str, str]:
+    """Capture the current span context as a trace link dict."""
+    span_context = trace.get_current_span().get_span_context()
+    return {
+        "trace_id": format(span_context.trace_id, "032x"),
+        "span_id": format(span_context.span_id, "016x"),
+    }
+
+
 def configure_otel(
     config: OTelConfig,
     app_name: str,

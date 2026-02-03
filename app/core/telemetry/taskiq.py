@@ -18,6 +18,7 @@ from taskiq import (
 
 from app.core.telemetry.attributes import Attributes
 from app.core.telemetry.logger import get_logger
+from app.core.telemetry.otel import get_current_trace_link
 
 tracer = trace.get_tracer(__name__)
 logger = get_logger(__name__)
@@ -28,6 +29,7 @@ async def queue_task_with_trace(
     *args: object,
     long_running: bool = False,
     otel_enabled: bool,
+    trace_link: dict[str, str] | None = None,
     **kwargs: object,
 ) -> None:
     """
@@ -39,6 +41,8 @@ async def queue_task_with_trace(
     :type args: object
     :param long_running: Whether the task is long-running and needs lock renewal.
     :type long_running: bool
+    :param trace_link: Pre-captured trace link dict. If None, captures current span.
+    :type trace_link: dict[str, str] | None
     :param kwargs: Keyword arguments for the task.
     :type kwargs: object
 
@@ -66,13 +70,10 @@ async def queue_task_with_trace(
         await task.kiq(*args, **kwargs)
         return
 
-    # Pass span context for linking (not propagation) so tasks
-    # create their own traces with independent sampling decisions
-    span_context = trace.get_current_span().get_span_context()
-    trace_link = {
-        "trace_id": format(span_context.trace_id, "032x"),
-        "span_id": format(span_context.span_id, "016x"),
-    }
+    # Use provided trace_link or capture current span context
+    if trace_link is None:
+        trace_link = get_current_trace_link()
+
     await task.kiq(
         *args,
         **kwargs,
