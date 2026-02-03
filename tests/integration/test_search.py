@@ -1,6 +1,6 @@
 """Integration tests for search API with complex query string scenarios."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 
 import pytest
 from elasticsearch import AsyncElasticsearch
@@ -190,10 +190,16 @@ async def search_references(es_client: AsyncElasticsearch):
 
 
 @pytest.mark.parametrize(
-    ("params", "expected_count"),
+    ("params", "expected_count", "validation_fn"),
     [
         # Boolean operators
-        ({"q": "(title:Machine OR title:Deep) AND title:Learning"}, 2),
+        (
+            {"q": "(title:Machine OR title:Deep) AND title:Learning"},
+            2,
+            lambda refs: all(
+                "Learning" in ref["enhancements"][0]["content"]["title"] for ref in refs
+            ),
+        ),
         # Wildcard with year filter and sorting
         (
             {
@@ -203,9 +209,17 @@ async def search_references(es_client: AsyncElasticsearch):
                 "sort": ["-publication_year"],
             },
             2,
+            lambda refs: (
+                refs[0]["enhancements"][0]["content"]["publication_year"]
+                > refs[1]["enhancements"][0]["content"]["publication_year"]
+            ),
         ),
         # Fuzzy matching with NOT
-        ({"q": "title:Lerning~1 NOT title:Climate"}, 1),
+        (
+            {"q": "title:Lerning~1 NOT title:Climate"},
+            1,
+            lambda refs: "Medical" in refs[0]["enhancements"][0]["content"]["title"],
+        ),
         # Annotation filter: inclusion true with score threshold and sort by score
         (
             {
@@ -214,9 +228,20 @@ async def search_references(es_client: AsyncElasticsearch):
                 "sort": ["-inclusion_destiny"],
             },
             2,
+            lambda refs: (
+                refs[0]["enhancements"][0]["content"]["title"]
+                == "Machine Learning in Climate Science"
+            ),
         ),
         # Annotation filter: specific taxonomy label
-        ({"q": "*", "annotation": ["classifier:taxonomy/Outcomes/Economic"]}, 1),
+        (
+            {
+                "q": "*",
+                "annotation": ["classifier:taxonomy/Outcomes/Economic"],
+            },
+            1,
+            lambda refs: "Climate" in refs[0]["enhancements"][0]["content"]["title"],
+        ),
         # Query with year range and annotation filter
         (
             {
@@ -225,9 +250,16 @@ async def search_references(es_client: AsyncElasticsearch):
                 "annotation": ["inclusion:destiny@0.9"],
             },
             1,
+            lambda refs: "Machine" in refs[0]["enhancements"][0]["content"]["title"],
         ),
         # Combined title and abstract search
-        ({"q": "title:Climate AND abstract:agricultural"}, 1),
+        (
+            {"q": "title:Climate AND abstract:agricultural"},
+            1,
+            lambda refs: (
+                "Agriculture" in refs[0]["enhancements"][0]["content"]["title"]
+            ),
+        ),
     ],
 )
 async def test_query_string_with_filters(
@@ -235,6 +267,7 @@ async def test_query_string_with_filters(
     search_references: list,  # noqa: ARG001
     params: dict,
     expected_count: int,
+    validation_fn: Callable,
 ) -> None:
     """Test query string searches with various filters and annotations."""
     response = await client.get("/v1/references/search/", params=params)
@@ -242,6 +275,8 @@ async def test_query_string_with_filters(
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert data["total"]["count"] == expected_count
+    if expected_count > 0:
+        assert validation_fn(data["references"])
 
 
 async def test_pagination(
@@ -372,10 +407,10 @@ async def test_cross_field_and_query(
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
 
-    # 2 references match: one with terms split across fields, one with both in title.
-    # Note: Search returns minimal references (id/visibility only) - full data
-    # including enhancements must be hydrated from PostgreSQL separately.
     assert data["total"]["count"] == 2
+
+    titles = {ref["enhancements"][0]["content"]["title"] for ref in data["references"]}
+    assert titles == {"George Studies in Modern Science", "George Harrison Biography"}
 
 
 async def test_same_field_and_query(
@@ -391,5 +426,6 @@ async def test_same_field_and_query(
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
 
-    # Only 1 result when both terms must be in title field
     assert data["total"]["count"] == 1
+    title = data["references"][0]["enhancements"][0]["content"]["title"]
+    assert "George Harrison" in title
