@@ -834,6 +834,43 @@ async def test_robot_enhancement_batch_renew_lease_empty_response(
     )
 
 
+async def test_search_references_preserves_es_order(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that search results preserve the order from Elasticsearch."""
+    ref_a = ReferenceFactory.build()
+    ref_b = ReferenceFactory.build()
+    ref_c = ReferenceFactory.build()
+
+    # ES returns results in order: A, B, C (by score)
+    mock_search_result = ESSearchResult(
+        hits=[
+            ESHit(id=ref_a.id, score=3.0),
+            ESHit(id=ref_b.id, score=2.0),
+            ESHit(id=ref_c.id, score=1.0),
+        ],
+        total=ESSearchTotal(value=3, relation="eq"),
+        page=1,
+    )
+
+    mock_search = AsyncMock(return_value=mock_search_result)
+    monkeypatch.setattr(ReferenceService, "search_references", mock_search)
+
+    # SQL returns references in different order: C, A, B
+    mock_get_dedup = AsyncMock(return_value=[ref_c, ref_a, ref_b])
+    monkeypatch.setattr(ReferenceService, "get_deduplicated_references", mock_get_dedup)
+
+    response = await client.get("/v1/references/search/", params={"q": "test"})
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    returned_ids = [ref["id"] for ref in data["references"]]
+
+    # Order should match ES order (A, B, C), not SQL order (C, A, B)
+    assert returned_ids == [str(ref_a.id), str(ref_b.id), str(ref_c.id)]
+
+
 async def test_search_references_with_annotation_filters(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
