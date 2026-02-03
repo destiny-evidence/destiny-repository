@@ -425,7 +425,7 @@ async def test_cross_field_and_query(
 
     assert data["total"]["count"] == 2
 
-    titles = {ref["enhancements"][0]["content"]["title"] for ref in data["references"]}
+    titles = {_get_biblio(ref)["title"] for ref in data["references"]}
     assert titles == {"George Studies in Modern Science", "George Harrison Biography"}
 
 
@@ -443,5 +443,5 @@ async def test_same_field_and_query(
     data = response.json()
 
     assert data["total"]["count"] == 1
-    title = data["references"][0]["enhancements"][0]["content"]["title"]
+    title = _get_biblio(data["references"][0])["title"]
     assert "George Harrison" in title
