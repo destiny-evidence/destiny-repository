@@ -955,7 +955,7 @@ class TestShortcutDeduplication:
         decision = ReferenceDuplicateDecision(
             reference_id=incoming.id,
             duplicate_determination=DuplicateDetermination.DUPLICATE,
-            canonical_reference_id=uuid.uuid4(),
+            canonical_reference_id=uuid7(),
             active_decision=True,
         )
         duplicate_repo = fake_repository([decision])
