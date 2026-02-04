@@ -491,6 +491,11 @@ class ReferenceSearchFields(ProjectedBaseModel):
         default_factory=list, description="The authors of the reference."
     )
 
+    publication_date: datetime.date | None = Field(
+        default=None,
+        description="The publication date of the reference.",
+    )
+
     publication_year: int | None = Field(
         default=None,
         description="The publication year of the reference.",

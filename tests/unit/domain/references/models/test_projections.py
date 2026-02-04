@@ -254,7 +254,7 @@ class TestReferenceSearchFieldsProjection:
         """Test that we prioritise canonical enhancements"""
         reference_id = uuid7()
 
-        canonical_biblography = EnhancementFactory.build(
+        canonical_bibliography = EnhancementFactory.build(
             reference_id=reference_id,
             content=BibliographicMetadataEnhancementFactory.build(
                 title="We get this title, this enhancement is on canonical reference",
@@ -265,16 +265,24 @@ class TestReferenceSearchFieldsProjection:
 
         reference = ReferenceFactory.build(
             id=reference_id,
-            enhancements=[bibliographic_enhancement, canonical_biblography],
+            enhancements=[bibliographic_enhancement, canonical_bibliography],
         )
 
         reference_proj = ReferenceSearchFieldsProjection.get_from_reference(reference)
-        assert reference_proj.title == canonical_biblography.content.title
+        assert reference_proj.title == canonical_bibliography.content.title
+        assert (
+            reference_proj.publication_date
+            == canonical_bibliography.content.publication_date
+        )
+        assert (
+            reference_proj.publication_year
+            == canonical_bibliography.content.publication_year
+        )
 
     def test_reference_sorting_prioritises_created_date(
         self, bibliographic_enhancement, sample_authorship
     ):
-        """Test that we prioritise the created date of the enhancements"""
+        """Test that we prioritize the created date of the enhancements"""
         reference_id = uuid7()
 
         most_recent_bibliography = EnhancementFactory.build(
@@ -295,7 +303,7 @@ class TestReferenceSearchFieldsProjection:
         reference_proj = ReferenceSearchFieldsProjection.get_from_reference(reference)
         assert reference_proj.title == most_recent_bibliography.content.title
 
-    def test_reference_sorting_priorises_canonical_over_most_recent(
+    def test_reference_sorting_prioritizes_canonical_over_most_recent(
         self, bibliographic_enhancement, sample_authorship
     ):
         """
@@ -325,6 +333,10 @@ class TestReferenceSearchFieldsProjection:
 
         reference_proj = ReferenceSearchFieldsProjection.get_from_reference(reference)
         assert reference_proj.title == bibliographic_enhancement.content.title
+        assert (
+            reference_proj.publication_date
+            == bibliographic_enhancement.content.publication_date
+        )
 
     def test_reference_sorting_the_uber_refrence(
         self,
@@ -453,6 +465,10 @@ class TestReferenceSearchFieldsProjection:
 
         assert result.publication_year == (
             most_recent_canonical_bibliography.content.publication_year
+        )
+
+        assert result.publication_date == (
+            most_recent_canonical_bibliography.content.publication_date
         )
 
         assert result.title == most_recent_canonical_bibliography.content.title
@@ -588,7 +604,7 @@ class TestReferenceSearchFieldsProjection:
         """Test we get year from publication date if publication year not provided."""
         enhancement_without_publication_year = EnhancementFactory.build(
             source="fallback_source",
-            # Can't use factory here as we're explicity setting missing values
+            # Can't use factory here as we're explicitly setting missing values
             content=destiny_sdk.enhancements.BibliographicMetadataEnhancement(
                 enhancement_type=EnhancementType.BIBLIOGRAPHIC,
                 title="Date Fallback Paper",

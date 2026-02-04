@@ -232,8 +232,8 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     """
     Mixin to project Reference fields relevant to various search strategies.
 
-    Currently this holds fields for identifing candidate canonicals during deduplication
-    and for searching references by query on title, authors, and abstracts.
+    Currently this holds fields for identifying candidate canonicals during
+    deduplication and for searching references by query.
     """
 
     abstract: str | None = mapped_field(Text(required=False), default=None)
@@ -252,6 +252,12 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     - Middle authors in alphabetical order
     - Last author
     """
+
+    publication_date: datetime.date | None = mapped_field(
+        Date(required=False),
+        default=None,
+    )
+    """The publication date of the reference."""
 
     publication_year: int | None = mapped_field(
         Integer(required=False),
@@ -317,6 +323,7 @@ class ReferenceSearchFieldsMixin(InnerDoc):
             abstract=projection.abstract,
             title=projection.title,
             authors=projection.authors,
+            publication_date=projection.publication_date,
             publication_year=projection.publication_year,
             annotations=projection.annotations,
             evaluated_schemes=projection.evaluated_schemes,

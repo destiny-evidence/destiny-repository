@@ -33,7 +33,7 @@ class IndexManager:
     migrations by creating new indices and switching the alias atomically.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         document_class: type[AsyncDocument],
         client: AsyncElasticsearch,
@@ -41,8 +41,6 @@ class IndexManager:
         otel_enabled: bool = False,
         repair_task: AsyncTaskiqDecoratedTask[..., Coroutine[Any, Any, None]]
         | None = None,
-        version_prefix: str = "v",
-        number_of_shards: int | None = None,
         reindex_status_polling_interval: int = 5 * 60,  # default to 5min
     ) -> None:
         """
@@ -54,19 +52,17 @@ class IndexManager:
             repair_task: Asynchronous task used to repair an index (defaults None)
             version_prefix: Prefix for version numbers in index names
             reindex_status_polling_interval: How often to check status of reindexing (defaults 5s)
-            number_of_shards: Number of shards to use when creating new indices. If None, defaults to
-                existing index's number of shards or 1 if no existing index found.
 
         """  # noqa: E501
         self.document_class = document_class
         self.client = client
         self.repair_task = repair_task
-        self.version_prefix = version_prefix
         self.reindex_status_polling_interval = reindex_status_polling_interval
-        self.number_of_shards = number_of_shards
 
         self.alias_name = document_class.Index.name
         self.otel_enabled = otel_enabled
+
+        self.version_prefix = "v"
 
     async def get_current_version(self, index_name: str | None = None) -> int | None:
         """
@@ -103,24 +99,6 @@ class IndexManager:
         except elasticsearch.NotFoundError:
             return None
 
-    async def get_current_number_of_shards(self) -> int | None:
-        """
-        Get the number of shards for the current index.
-
-        Returns:
-            Number of shards or None if no current index
-
-        """
-        current_index_name = await self.get_current_index_name()
-        if current_index_name is None:
-            return None
-
-        index_settings = await self.client.indices.get_settings(
-            index=current_index_name
-        )
-        settings = index_settings[current_index_name]["settings"]["index"]
-        return int(settings["number_of_shards"])
-
     @tracer.start_as_current_span("Rebuild index")
     async def rebuild_index(self) -> None:
         """
@@ -142,6 +120,12 @@ class IndexManager:
             attribute=Attributes.DB_COLLECTION_NAME, value=current_index_name
         )
 
+        # Apply exactly the same settings as the current index
+        index_settings = await self._get_updated_settings(
+            index_name=current_index_name,
+            settings_changeset={},
+        )
+
         await self.client.indices.delete_alias(
             index=current_index_name, name=self.alias_name
         )
@@ -150,7 +134,10 @@ class IndexManager:
         await self._delete_index_safely(index_name=current_index_name)
 
         logger.info("Recreating index", index=current_index_name)
-        await self._create_index_with_mapping(current_index_name)
+        await self._create_index_with_mapping(
+            current_index_name,
+            settings=index_settings,
+        )
 
         await self.client.indices.put_alias(
             index=current_index_name, name=self.alias_name
@@ -177,33 +164,34 @@ class IndexManager:
         """Generate a versioned index name."""
         return f"{self.alias_name}_{self.version_prefix}{version}"
 
-    async def _create_index_with_mapping(self, index_name: str) -> None:
+    async def _create_index_with_mapping(
+        self, index_name: str, settings: dict[str, Any]
+    ) -> None:
         """
         Create a new index with the mapping from the document class.
 
-        If number_of_shards is not provided in the constructor, it is taken from the
-        existing index. If there is no existing index, it defaults to 1.
-
         Args:
             index_name: Name of the index to create
+            settings: Settings for the index.
+            Will use elasticsearch defaults if empty dictionary.
 
         """
         index = AsyncIndex(name=index_name)
-        index.settings(
-            number_of_shards=(
-                self.number_of_shards
-                or (await self.get_current_number_of_shards())
-                or 1
-            )
-        )
+
+        index.settings(**settings)
+
         index.document(self.document_class)
         await index.create(using=self.client)
         logger.info("Created index: %s", index_name)
 
     @tracer.start_as_current_span("Initialize index")
-    async def initialize_index(self) -> str:
+    async def initialize_index(self, settings: dict[str, Any] | None = None) -> str:
         """
         Initialize the index with version 1 if it doesn't exist.
+
+        Args:
+            settings: Settings for the index.
+            An empty dict will use elasticsearch defaults, as will None.
 
         Returns:
             The name of the active index
@@ -220,7 +208,9 @@ class IndexManager:
 
             trace_attribute(attribute=Attributes.DB_COLLECTION_NAME, value=index_name)
 
-            await self._create_index_with_mapping(index_name)
+            await self._create_index_with_mapping(
+                index_name, settings=settings if settings is not None else {}
+            )
 
             await self.client.indices.put_alias(index=index_name, name=self.alias_name)
 
@@ -238,9 +228,15 @@ class IndexManager:
         return current_index
 
     @tracer.start_as_current_span("Migrate index")
-    async def migrate(self) -> str | None:
+    async def migrate(
+        self, settings_changeset: dict[str, Any] | None = None
+    ) -> str | None:
         """
         Migrate to a new index version.
+
+        Args:
+            settings_changeset: Settings changes for the migrated index.
+            If None, defaults to existing index's settings.
 
         Returns:
             New index name if migration occurred, None otherwise
@@ -253,8 +249,13 @@ class IndexManager:
         source_index = await self.get_current_index_name()
 
         if source_index is None:
-            logger.info("No existing index for %s, initialising", self.alias_name)
-            return await self.initialize_index()
+            logger.info("No existing index for %s, initializing", self.alias_name)
+            return await self.initialize_index(settings=settings_changeset or {})
+
+        index_settings = await self._get_updated_settings(
+            index_name=source_index,
+            settings_changeset=settings_changeset or {},
+        )
 
         # Currently required for backwards compatibility with our
         # existing index names.
@@ -275,7 +276,10 @@ class IndexManager:
         logger.info("Starting migration from %s to %s", source_index, destination_index)
 
         # Create the destination index
-        await self._create_index_with_mapping(index_name=destination_index)
+        await self._create_index_with_mapping(
+            index_name=destination_index,
+            settings=index_settings,
+        )
 
         # Reindex data
         await self._reindex_data(
@@ -405,7 +409,7 @@ class IndexManager:
 
         Args:
             target_version: Version to rollback to (defaults to current - 1) OR
-            target_index: for backwards compatibilitiy until all indices are renamed.
+            target_index: for backwards compatibility until all indices are renamed.
 
         Returns:
             The index name that was rolled back to
@@ -456,3 +460,69 @@ class IndexManager:
 
         logger.info("Rolled back from %s to %s", current_index, target_index)
         return target_index
+
+    async def _get_updated_settings(
+        self, index_name: str, settings_changeset: dict[str, Any]
+    ) -> dict[str, Any]:
+        """
+        Apply settings from changeset that differ from the existing settings.
+
+        Args:
+            current_settings: Current index settings
+            settings_changeset: Changeset to apply to current settings
+
+        Returns:
+            Index settings with changes applied.
+
+        """
+        index_settings = await self._get_reusable_index_settings(index_name)
+        self._update_nested_settings(index_settings, settings_changeset)
+        return index_settings
+
+    def _update_nested_settings(
+        self, current_settings: dict[str, Any], settings_changeset: dict[str, Any]
+    ) -> None:
+        """Recursively update nested settings dictionaries."""
+        for key, value in settings_changeset.items():
+            if (
+                key in current_settings
+                and isinstance(current_settings[key], dict)
+                and isinstance(value, dict)
+            ):
+                self._update_nested_settings(current_settings[key], value)
+            else:
+                current_settings[key] = value
+
+    async def _get_reusable_index_settings(self, index_name: str) -> dict[str, Any]:
+        """
+        Get index settings that can be used to create a new index.
+
+        This removes non-reusable settings like creation date which are
+        returned in the index settings API.
+
+        Returns:
+            A dictionary of index settings that can be reused to create a new index.
+
+        """
+        non_reusable_index_settings = [
+            "creation_date",
+            "uuid",
+            "version",
+            "provided_name",
+            "routing",
+            "blocks",
+        ]
+
+        source_settings = await self.client.indices.get_settings(index=index_name)
+
+        if not source_settings or index_name not in source_settings:
+            msg = f"Could not retrieve settings for index {index_name}"
+            set_span_status(status=trace.StatusCode.ERROR, detail=msg)
+            raise NotFoundError(msg)
+
+        index_settings = source_settings[index_name]["settings"]["index"]
+        return {
+            setting: value
+            for setting, value in index_settings.items()
+            if setting not in non_reusable_index_settings
+        }

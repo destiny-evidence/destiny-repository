@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+from typing import Any
 
 from elasticsearch import NotFoundError
 from opentelemetry import trace
@@ -15,6 +16,7 @@ from app.domain.references.models.es import (
 )
 from app.persistence.es.client import es_manager
 from app.persistence.es.index_manager import IndexManager
+from app.utils.es.config import SlowlogThresholds
 from app.utils.es.config import get_settings as get_es_migration_settings
 
 settings = get_es_migration_settings()
@@ -39,6 +41,31 @@ index_documents = {
 }
 
 
+def get_index_settings_changeset(
+    number_of_shards: int | None, slowlog_thresholds: SlowlogThresholds
+) -> dict | None:
+    """Create index settings changeset for migration."""
+    settings: dict[str, Any] = {
+        "search": {
+            "slowlog": {
+                "threshold": {
+                    "query": {
+                        "warn": slowlog_thresholds.warn,
+                        "info": slowlog_thresholds.info,
+                        "debug": slowlog_thresholds.debug,
+                        "trace": slowlog_thresholds.trace,
+                    }
+                }
+            }
+        }
+    }
+
+    if number_of_shards:
+        settings["number_of_shards"] = number_of_shards
+
+    return settings
+
+
 async def run_migration(alias: str, number_of_shards: int | None) -> None:
     """Run elasticsearch index migrations."""
     es_config = settings.es_config
@@ -52,11 +79,15 @@ async def run_migration(alias: str, number_of_shards: int | None) -> None:
                 client=client,
                 otel_enabled=settings.otel_enabled,
                 reindex_status_polling_interval=settings.reindex_status_polling_interval,
-                number_of_shards=number_of_shards,
             )
-            await index_manager.migrate()
+
+            index_settings_changeset = get_index_settings_changeset(
+                number_of_shards, settings.slowlog_thresholds
+            )
+
+            await index_manager.migrate(settings_changeset=index_settings_changeset)
     except Exception:
-        logger.exception("An unhandled exception occured")
+        logger.exception("An unhandled exception occurred")
     finally:
         await es_manager.close()
 
@@ -79,7 +110,7 @@ async def run_rollback(alias: str, target_index: str | None = None) -> None:
             else:
                 await index_manager.rollback()
     except Exception:
-        logger.exception("An unhandled exception occured")
+        logger.exception("An unhandled exception occurred")
     finally:
         await es_manager.close()
 
@@ -117,13 +148,13 @@ async def delete_old_index(index_to_delete: str) -> None:
             await client.indices.delete(index=index_to_delete)
             logger.info("Deleted old index: %s", index_to_delete)
     except Exception:
-        logger.exception("An unhandled exception occured")
+        logger.exception("An unhandled exception occurred")
     finally:
         await es_manager.close()
 
 
 def argument_parser() -> argparse.ArgumentParser:
-    """Create argument parser for migrating indicies."""
+    """Create argument parser for migrating indices."""
     parser = argparse.ArgumentParser(description="Migrate or roll back an ES index.")
 
     operation_group = parser.add_mutually_exclusive_group(required=True)
@@ -173,6 +204,7 @@ def argument_parser() -> argparse.ArgumentParser:
             "Number of shards to use when migrating an index. "
             "Defaults to the previous index's number of shards if not specified."
         ),
+        default=None,
     )
 
     return parser
@@ -182,7 +214,7 @@ def validate_args(args: argparse.Namespace) -> None:
     """
     Enforce specific argument combinations, raising RuntimeError if violated.
 
-    Due to the mututally exclusive parsing group, we're guarenteed a single operation
+    Due to the mutually exclusive parsing group, we're guaranteed a single operation
     but we need to check that valid arguments have been passed:
 
     * Migrating an index requires an index alias, or all.
@@ -190,7 +222,7 @@ def validate_args(args: argparse.Namespace) -> None:
     * Deleting requires a target index name.
 
     We should be able to massively simplify this once we've migrated existing
-    indcies to the versioned pattern, as the checks become:
+    indices to the versioned pattern, as the checks become:
 
     * Migrating and Rolling back an index require an alias
     * Deleting requires a target index name.

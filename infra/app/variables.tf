@@ -289,6 +289,42 @@ variable "honeycombio_log_endpoint" {
   default     = "https://api.honeycomb.io/v1/logs"
 }
 
+variable "otel_orphan_log_sample_rate_notset" {
+  description = "OTel log sampling rate for NOTSET level (0.0 to 1.0)"
+  type        = number
+  default     = 0.0
+}
+
+variable "otel_orphan_log_sample_rate_debug" {
+  description = "OTel log sampling rate for DEBUG level (0.0 to 1.0)"
+  type        = number
+  default     = 0.0
+}
+
+variable "otel_orphan_log_sample_rate_info" {
+  description = "OTel log sampling rate for INFO level (0.0 to 1.0)"
+  type        = number
+  default     = 0.01
+}
+
+variable "otel_orphan_log_sample_rate_warning" {
+  description = "OTel log sampling rate for WARNING level (0.0 to 1.0)"
+  type        = number
+  default     = 1.0
+}
+
+variable "otel_orphan_log_sample_rate_error" {
+  description = "OTel log sampling rate for ERROR level (0.0 to 1.0)"
+  type        = number
+  default     = 1.0
+}
+
+variable "otel_orphan_log_sample_rate_critical" {
+  description = "OTel log sampling rate for CRITICAL level (0.0 to 1.0)"
+  type        = number
+  default     = 1.0
+}
+
 variable "telemetry_enabled" {
   description = "Whether telemetry is enabled for the application"
   type        = bool
@@ -348,4 +384,28 @@ variable "otel_instrument_taskiq" {
   description = "Whether to enable OpenTelemetry auto-instrumentation for TaskIQ operations"
   type        = bool
   default     = false
+}
+
+variable "es_slowlog_warn_threshold" {
+  description = "Elasticsearch slowlog warn threshold"
+  type        = string
+  default     = null
+}
+
+variable "es_slowlog_info_threshold" {
+  description = "Elasticsearch slowlog info threshold"
+  type        = string
+  default     = null
+}
+
+variable "es_slowlog_debug_threshold" {
+  description = "Elasticsearch slowlog debug threshold"
+  type        = string
+  default     = null
+}
+
+variable "es_slowlog_trace_threshold" {
+  description = "Elasticsearch slowlog trace threshold"
+  type        = string
+  default     = null
 }

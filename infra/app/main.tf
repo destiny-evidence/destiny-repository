@@ -148,6 +148,14 @@ locals {
         instrument_sql           = var.otel_instrument_sql
         instrument_elasticsearch = var.otel_instrument_elasticsearch
         instrument_taskiq        = var.otel_instrument_taskiq
+        orphan_log_sample_config = {
+          notset_sample_rate   = var.otel_orphan_log_sample_rate_notset
+          debug_sample_rate    = var.otel_orphan_log_sample_rate_debug
+          info_sample_rate     = var.otel_orphan_log_sample_rate_info
+          warning_sample_rate  = var.otel_orphan_log_sample_rate_warning
+          error_sample_rate    = var.otel_orphan_log_sample_rate_error
+          critical_sample_rate = var.otel_orphan_log_sample_rate_critical
+        }
       })
     },
   ]
@@ -676,6 +684,16 @@ resource "azurerm_container_app_job" "es_index_migrator" {
       env {
         name  = "REINDEX_STATUS_POLLING_INTERVAL"
         value = var.es_migrator_reindex_polling_interval
+      }
+
+      env {
+        name = "SLOWLOG_THRESHOLDS"
+        value = jsonencode({
+          warn  = var.es_slowlog_warn_threshold
+          info  = var.es_slowlog_info_threshold
+          debug = var.es_slowlog_debug_threshold
+          trace = var.es_slowlog_trace_threshold
+        })
       }
     }
   }

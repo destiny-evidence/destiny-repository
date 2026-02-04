@@ -19,6 +19,8 @@ from destiny_sdk.enhancements import (
     Location,
     LocationEnhancement,
     Pagination,
+    PublicationVenue,
+    PublicationVenueType,
     RawEnhancement,
     ReferenceAssociationEnhancement,
     ReferenceAssociationType,
@@ -169,6 +171,17 @@ class PaginationFactory(factory.Factory):
     )
 
 
+class PublicationVenueFactory(factory.Factory):
+    class Meta:
+        model = PublicationVenue
+
+    display_name = factory.Faker("company")
+    venue_type = factory.Faker("enum", enum_cls=PublicationVenueType)
+    issn = factory.LazyFunction(lambda: [fake.numerify(text="####-####")])
+    issn_l = factory.Faker("numerify", text="####-####")
+    host_organization_name = factory.Faker("company")
+
+
 class BibliographicMetadataEnhancementFactory(factory.Factory):
     class Meta:
         model = BibliographicMetadataEnhancement
@@ -186,6 +199,7 @@ class BibliographicMetadataEnhancementFactory(factory.Factory):
     publisher = factory.Faker("company")
     title = factory.Faker("sentence", nb_words=6)
     pagination = factory.LazyFunction(lambda: PaginationFactory.build())
+    publication_venue = factory.LazyFunction(lambda: PublicationVenueFactory.build())
 
     @factory.post_generation
     def publication_year(self, create, extracted, **kwargs):  # noqa: ANN001, ANN003, ARG002

@@ -43,7 +43,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
         :rtype: ReferenceSearchFields
         """
         try:
-            title, publication_year = None, None
+            title, publication_year, publication_date = None, None, None
             abstract = None
             authorship: list[destiny_sdk.enhancements.Authorship] = []
             annotations_by_scheme: dict[
@@ -71,6 +71,10 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                             else None
                         )
                         or publication_year
+                    )
+
+                    publication_date = (
+                        enhancement.content.publication_date or publication_date
                     )
 
                 elif enhancement.content.enhancement_type == EnhancementType.ABSTRACT:
@@ -109,6 +113,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             return ReferenceSearchFields(
                 abstract=abstract,
                 authors=cls.__order_authorship_by_position(authorship),
+                publication_date=publication_date,
                 publication_year=publication_year,
                 title=title,
                 annotations=annotations,
@@ -148,7 +153,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
         """
         Order a references enhancements by priority for projecting in increasing order.
 
-        Prioritiy is defined as
+        Priority is defined as
         * Firstly, we prioritize enhancements on the canonical reference
         * Secondly, we prioritize most recent enhancements
 

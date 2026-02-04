@@ -381,9 +381,27 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         ]
 
     @sql_unit_of_work
-    async def get_all_reference_ids(self) -> list[UUID]:
-        """Get all reference IDs from the database."""
-        return await self.sql_uow.references.get_all_pks()
+    async def get_all_reference_ids(
+        self, min_id: UUID | None, max_id: UUID | None
+    ) -> list[UUID]:
+        """
+        Get all reference IDs.
+
+        :param min_id: Inclusive lower bound for reference IDs to return.
+        :type min_id: UUID | None
+        :param max_id: Inclusive upper bound for reference IDs to return.
+        :type max_id: UUID | None
+        :rtype: list[UUID]
+
+        """
+        return await self.sql_uow.references.get_all_pks(min_id=min_id, max_id=max_id)
+
+    @sql_unit_of_work
+    async def get_reference_id_partition_boundaries(
+        self, partition_size: int
+    ) -> list[tuple[UUID, UUID]]:
+        """Get the start and end reference IDs for each chunk of references."""
+        return await self.sql_uow.references.get_partition_boundaries(partition_size)
 
     @sql_unit_of_work
     async def get_references_from_identifiers(
@@ -788,11 +806,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> None:
         """Index references in Elasticsearch."""
         await self._synchronizer.references.bulk_sql_to_es(reference_ids)
-
-    async def repopulate_reference_index(self) -> None:
-        """Index ALL references in Elasticsearch."""
-        reference_ids = await self.get_all_reference_ids()
-        await self.index_references(reference_ids)
 
     async def _get_reference_changesets_from_enhancements(
         self,
