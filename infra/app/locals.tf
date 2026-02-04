@@ -15,13 +15,7 @@ locals {
       db_backup_days  = 7
       db_ha_enabled   = false
 
-      alerts_enabled          = true
-      db_storage_warning_pct  = 70
-      db_storage_critical_pct = 85
-      db_cpu_warning_pct      = 80
-      db_cpu_critical_pct     = 90
-      db_memory_warning_pct   = 80
-      db_memory_critical_pct  = 90
+      alerts_enabled = false
 
       es_snapshot_schedule  = "0 30 1 * * ?" # Daily at 01:30
       es_snapshot_retention = 7
