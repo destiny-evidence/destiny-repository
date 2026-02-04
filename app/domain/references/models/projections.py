@@ -1,7 +1,7 @@
 """Projection functions for reference domain data."""
 
-import uuid
 from collections import defaultdict
+from uuid import UUID
 
 import destiny_sdk
 
@@ -148,7 +148,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
 
     @classmethod
     def __priority_sorted_enhancements(
-        cls, canonical_id: uuid.UUID, enhancements: list[Enhancement] | None
+        cls, canonical_id: UUID, enhancements: list[Enhancement] | None
     ) -> list[Enhancement]:
         """
         Order a references enhancements by priority for projecting in increasing order.
@@ -169,7 +169,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             return []
 
         def __priority_sort_key(
-            canonical_id: uuid.UUID, enhancement: Enhancement
+            canonical_id: UUID, enhancement: Enhancement
         ) -> tuple[bool, float]:
             """Key for sorting enhancements."""
             if not enhancement.created_at:

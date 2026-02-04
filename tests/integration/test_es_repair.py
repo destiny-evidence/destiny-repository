@@ -1,8 +1,8 @@
 """Tests ES repair functionality (and inherently the link between SQL and ES)."""
 
 import asyncio
-import uuid
 from collections.abc import AsyncGenerator
+from uuid import UUID, uuid7
 
 import pytest
 from elasticsearch import AsyncElasticsearch
@@ -53,7 +53,7 @@ async def sub_test_reference_index_initial_rebuild(
     client: AsyncClient,
     es_client: AsyncElasticsearch,
     index_manager: IndexManager,
-    reference_id: uuid.UUID,
+    reference_id: UUID,
 ) -> None:
     """Sub-test: Test reference index repair with rebuild=True."""
     index_name = index_manager.alias_name
@@ -96,7 +96,7 @@ async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
     es_client: AsyncElasticsearch,
     session: AsyncSession,
     index_manager: IndexManager,
-    reference_id: uuid.UUID,
+    reference_id: UUID,
     reference: SQLReference,
 ) -> None:
     """Sub-test: Test reference index repair with rebuild=False after SQL update."""
@@ -148,8 +148,8 @@ async def sub_test_robot_automation_initial_rebuild(
     client: AsyncClient,
     es_client: AsyncElasticsearch,
     index_manager: IndexManager,
-    automation_id: uuid.UUID,
-    robot_id: uuid.UUID,
+    automation_id: UUID,
+    robot_id: UUID,
 ) -> None:
     """Sub-test: Test robot automation index repair with rebuild=True."""
     # Test repair with rebuild
@@ -193,8 +193,8 @@ async def sub_test_robot_automation_update_without_rebuild(  # noqa: PLR0913
     es_client: AsyncElasticsearch,
     session: AsyncSession,
     index_manager: IndexManager,
-    automation_id: uuid.UUID,
-    robot_id: uuid.UUID,
+    automation_id: UUID,
+    robot_id: UUID,
     automation: SQLRobotAutomation,
 ) -> None:
     """Sub-test: Test robot automation repair with rebuild=False after SQL update."""
@@ -293,7 +293,7 @@ async def test_repair_reference_index_with_rebuild(
     # Create 5 references with identifiers and enhancements
     references: list[SQLReference] = []
     for i in range(5):
-        reference_id = uuid.uuid4()
+        reference_id = uuid7()
         reference = SQLReference(id=reference_id, visibility=Visibility.PUBLIC)
         session.add(reference)
         references.append(reference)
@@ -392,7 +392,7 @@ async def test_repair_robot_automation_percolation_index_with_rebuild(
     await index_manager.initialize_index()
 
     # Add sample robot and robot automation to SQL
-    robot_id = uuid.uuid4()
+    robot_id = uuid7()
     robot = SQLRobot(
         id=robot_id,
         client_secret="test-secret",
@@ -404,7 +404,7 @@ async def test_repair_robot_automation_percolation_index_with_rebuild(
     await session.commit()
 
     # Add robot automation
-    automation_id = uuid.uuid4()
+    automation_id = uuid7()
     automation = SQLRobotAutomation(
         id=automation_id,
         robot_id=robot_id,

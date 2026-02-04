@@ -1,8 +1,8 @@
 """Tests for the robot management router."""
 
-import uuid
 from collections.abc import AsyncGenerator
 from unittest.mock import patch
+from uuid import uuid7
 
 import pytest
 from fastapi import FastAPI, status
@@ -171,7 +171,7 @@ async def test_update_robot_fails_if_try_to_specify_client_secret(
     robot_update["client_secret"] = "this isn't allowed!"
 
     response = await client.put(f"/v1/robots/{robot.id}/", json=robot_update)
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 async def test_get_robot_happy_path(
@@ -194,7 +194,7 @@ async def test_get_robot_robot_does_not_exist(
     client: AsyncClient,
 ) -> None:
     """Test returns 404 if the requested robot does not exist."""
-    response = await client.get(f"/v1/robots/{uuid.uuid4()}/")
+    response = await client.get(f"/v1/robots/{uuid7()}/")
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
@@ -221,7 +221,7 @@ async def test_cycle_secret_robot_does_not_exist(
     client: AsyncClient,
 ) -> None:
     """Test returns 404 if robot does not exist."""
-    response = await client.post(f"/v1/robots/{uuid.uuid4()}/secret/")
+    response = await client.post(f"/v1/robots/{uuid7()}/secret/")
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 

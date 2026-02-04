@@ -7,7 +7,6 @@ from typing import Generic
 from uuid import UUID
 
 from opentelemetry import trace
-from pydantic import UUID4
 from sqlalchemy import func, inspect, select, update
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -510,12 +509,12 @@ class GenericAsyncSqlRepository(
         return [(row[0], row[1]) for row in result.fetchall()]
 
     @trace_repository_method(tracer)
-    async def bulk_update(self, pks: list[UUID4], **kwargs: object) -> int:
+    async def bulk_update(self, pks: list[UUID], **kwargs: object) -> int:
         """
         Bulk update records by their primary keys.
 
         Args:
-        - pks (list[UUID4]): The primary keys of records to update.
+        - pks (list[UUID]): The primary keys of records to update.
         - kwargs (object): The attributes to update.
 
         Returns:

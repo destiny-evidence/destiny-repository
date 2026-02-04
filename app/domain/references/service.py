@@ -1,7 +1,6 @@
 """The service for interacting with and managing references."""
 
 import datetime
-import uuid
 from collections import defaultdict
 from collections.abc import Collection, Iterable
 from uuid import UUID
@@ -414,7 +413,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             if identifier.identifier_type:
                 external_identifiers.append(identifier)
             else:
-                db_identifiers.append(uuid.UUID(identifier.identifier))
+                db_identifiers.append(UUID(identifier.identifier))
 
         references = await self.sql_uow.references.find_with_identifiers(
             external_identifiers,
@@ -1202,9 +1201,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def _detect_and_dispatch_robot_automations(
         self,
         reference: ReferenceWithChangeset | None = None,
-        enhancement_ids: Iterable[uuid.UUID] | None = None,
+        enhancement_ids: Iterable[UUID] | None = None,
         source_str: str | None = None,
-        skip_robot_id: uuid.UUID | None = None,
+        skip_robot_id: UUID | None = None,
     ) -> None:
         """
         Request default enhancements for a set of references.
@@ -1239,9 +1238,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def detect_and_dispatch_robot_automations(
         self,
         reference: ReferenceWithChangeset | None = None,
-        enhancement_ids: Iterable[uuid.UUID] | None = None,
+        enhancement_ids: Iterable[UUID] | None = None,
         source_str: str | None = None,
-        skip_robot_id: uuid.UUID | None = None,
+        skip_robot_id: UUID | None = None,
     ) -> None:
         """Detect and dispatch robot automations for an added reference/enhancement."""
         await self._detect_and_dispatch_robot_automations(

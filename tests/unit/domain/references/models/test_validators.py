@@ -1,4 +1,4 @@
-from uuid import uuid4
+from uuid import uuid7
 
 import pytest
 
@@ -12,7 +12,7 @@ from app.domain.references.models.validators import parse_identifier_lookup_from
     [
         # Valid UUID, no type
         (
-            str(uuid4()),
+            str(uuid7()),
             {"identifier_type": None, "other_identifier_name": None, "error": None},
         ),
         # Known types
@@ -50,8 +50,8 @@ from app.domain.references.models.validators import parse_identifier_lookup_from
             },
         ),
         # Invalid: not a UUID, no delimiter
-        ("not-a-uuid", {"error": "Must be UUIDv4"}),
-        ("1234-5678-90ab", {"error": "Must be UUIDv4"}),
+        ("not-a-uuid", {"error": "Must be UUID"}),
+        ("1234-5678-90ab", {"error": "Must be UUID"}),
         # Unknown type
         ("unknown_type:id", {"error": "Unknown identifier type"}),
         # Valid parsing of ID with a colon

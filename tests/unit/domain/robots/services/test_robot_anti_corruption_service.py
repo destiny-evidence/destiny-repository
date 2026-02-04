@@ -1,6 +1,6 @@
 """Tests for RobotAntiCorruptionService."""
 
-import uuid
+from uuid import uuid7
 
 import destiny_sdk
 import pytest
@@ -34,7 +34,7 @@ class TestRobotAntiCorruptionService:
     def robot_data(self):
         """Create SDK Robot test data."""
         return destiny_sdk.robots.Robot(
-            id=uuid.uuid4(),
+            id=uuid7(),
             name="Test Robot",
             description="A test robot for unit testing",
             owner="Test Owner",
@@ -44,7 +44,7 @@ class TestRobotAntiCorruptionService:
     def domain_robot(self):
         """Create a domain Robot instance."""
         return Robot(
-            id=uuid.uuid4(),
+            id=uuid7(),
             name="Test Robot",
             description="A test robot for unit testing",
             owner="Test Owner",
