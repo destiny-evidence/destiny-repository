@@ -171,7 +171,7 @@ async def test_update_robot_fails_if_try_to_specify_client_secret(
     robot_update["client_secret"] = "this isn't allowed!"
 
     response = await client.put(f"/v1/robots/{robot.id}/", json=robot_update)
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 async def test_get_robot_happy_path(

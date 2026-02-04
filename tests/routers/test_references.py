@@ -319,7 +319,7 @@ async def test_add_robot_automation_missing_robot(
         "/v1/enhancement-requests/automations/", json=robot_automation_create
     )
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert "robot" in response.json()["detail"].casefold()
 
 
@@ -451,7 +451,7 @@ async def test_update_robot_automation_missing_robot(
         json=robot_automation_update,
     )
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert "robot" in response.json()["detail"].casefold()
 
 
@@ -622,7 +622,7 @@ async def test_request_robot_enhancement_batch_invalid_robot_id(
         "/v1/robot-enhancement-batches/?robot_id=invalid-uuid&limit=10"
     )
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     mock_get_pending.assert_not_awaited()
 
 
@@ -638,7 +638,7 @@ async def test_request_robot_enhancement_batch_missing_robot_id(
 
     response = await client.post("/v1/robot-enhancement-batches/?limit=10")
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     mock_get_pending.assert_not_awaited()
 
 
@@ -750,12 +750,12 @@ async def test_lookup_references_too_many_identifiers(
         "/v1/references/",
         params={"identifier": too_many_identifiers},
     )
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     response = await client.get(
         "/v1/references/",
         params={"identifier": ",".join(too_many_identifiers)},
     )
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 async def test_lookup_references_invalid_identifier_format(
