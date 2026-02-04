@@ -300,3 +300,81 @@ resource "azurerm_monitor_metric_alert" "db_memory_critical" {
     action_group_id = azurerm_monitor_action_group.alerts[0].id
   }
 }
+
+resource "azurerm_monitor_metric_alert" "app_restart_count" {
+  count = local.env.alerts_enabled ? 1 : 0
+
+  name                = "${local.name}-app-restart-count"
+  resource_group_name = azurerm_resource_group.this.name
+  scopes              = [module.container_app.container_app_id]
+  description         = "Alert when app container restart count exceeds 3"
+  severity            = 1 # error
+  frequency           = "PT1M"
+  window_size         = "PT5M"
+
+  tags = local.minimum_resource_tags
+
+  criteria {
+    metric_namespace = "Microsoft.App/containerApps"
+    metric_name      = "RestartCount"
+    aggregation      = "Maximum"
+    operator         = "GreaterThan"
+    threshold        = 3
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.alerts[0].id
+  }
+}
+
+resource "azurerm_monitor_metric_alert" "tasks_restart_count" {
+  count = local.env.alerts_enabled ? 1 : 0
+
+  name                = "${local.name}-tasks-restart-count"
+  resource_group_name = azurerm_resource_group.this.name
+  scopes              = [module.container_app_tasks.container_app_id]
+  description         = "Alert when tasks container restart count exceeds 3"
+  severity            = 1 # error
+  frequency           = "PT1M"
+  window_size         = "PT5M"
+
+  tags = local.minimum_resource_tags
+
+  criteria {
+    metric_namespace = "Microsoft.App/containerApps"
+    metric_name      = "RestartCount"
+    aggregation      = "Maximum"
+    operator         = "GreaterThan"
+    threshold        = 3
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.alerts[0].id
+  }
+}
+
+resource "azurerm_monitor_metric_alert" "ui_restart_count" {
+  count = local.env.alerts_enabled ? 1 : 0
+
+  name                = "${local.name}-ui-restart-count"
+  resource_group_name = azurerm_resource_group.this.name
+  scopes              = [module.container_app_ui.container_app_id]
+  description         = "Alert when UI container restart count exceeds 3"
+  severity            = 1 # error
+  frequency           = "PT1M"
+  window_size         = "PT5M"
+
+  tags = local.minimum_resource_tags
+
+  criteria {
+    metric_namespace = "Microsoft.App/containerApps"
+    metric_name      = "RestartCount"
+    aggregation      = "Maximum"
+    operator         = "GreaterThan"
+    threshold        = 3
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.alerts[0].id
+  }
+}
