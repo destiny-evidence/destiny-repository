@@ -1,3 +1,92 @@
+resource "azurerm_logic_app_workflow" "slack_alerts" {
+  count = local.env.alerts_enabled && var.alert_slack_webhook_url != "" ? 1 : 0
+
+  name                = "${local.name}-slack-alerts"
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+
+  tags = local.minimum_resource_tags
+}
+
+resource "azurerm_logic_app_trigger_http_request" "slack_alerts" {
+  count = local.env.alerts_enabled && var.alert_slack_webhook_url != "" ? 1 : 0
+
+  name         = "azure-monitor-webhook"
+  logic_app_id = azurerm_logic_app_workflow.slack_alerts[0].id
+
+  schema = <<-SCHEMA
+    {
+      "type": "object",
+      "properties": {
+        "schemaId": { "type": "string" },
+        "data": {
+          "type": "object",
+          "properties": {
+            "essentials": {
+              "type": "object",
+              "properties": {
+                "alertRule": { "type": "string" },
+                "severity": { "type": "string" },
+                "monitorCondition": { "type": "string" },
+                "description": { "type": "string" },
+                "firedDateTime": { "type": "string" },
+                "configurationItems": { "type": "array" }
+              }
+            }
+          }
+        }
+      }
+    }
+  SCHEMA
+}
+
+resource "azurerm_logic_app_action_http" "post_to_slack" {
+  count = local.env.alerts_enabled && var.alert_slack_webhook_url != "" ? 1 : 0
+
+  name         = "post-to-slack"
+  logic_app_id = azurerm_logic_app_workflow.slack_alerts[0].id
+  method       = "POST"
+  uri          = var.alert_slack_webhook_url
+
+  headers = {
+    "Content-Type" = "application/json"
+  }
+
+  body = <<-BODY
+    {
+      "blocks": [
+        {
+          "type": "header",
+          "text": {
+            "type": "plain_text",
+            "text": "@{if(equals(triggerBody()?['data']?['essentials']?['severity'], 'Sev0'), '🚨 CRITICAL', if(equals(triggerBody()?['data']?['essentials']?['severity'], 'Sev1'), '❌ ERROR', '⚠️ WARNING'))} @{triggerBody()?['data']?['essentials']?['alertRule']}",
+            "emoji": true
+          }
+        },
+        {
+          "type": "section",
+          "fields": [
+            { "type": "mrkdwn", "text": "*Status:*\n@{triggerBody()?['data']?['essentials']?['monitorCondition']}" },
+            { "type": "mrkdwn", "text": "*Severity:*\n@{triggerBody()?['data']?['essentials']?['severity']}" }
+          ]
+        },
+        {
+          "type": "section",
+          "text": { "type": "mrkdwn", "text": "*Description:*\n@{triggerBody()?['data']?['essentials']?['description']}" }
+        },
+        {
+          "type": "section",
+          "text": { "type": "mrkdwn", "text": "*Resource:*\n@{first(triggerBody()?['data']?['essentials']?['configurationItems'])}" }
+        },
+        {
+          "type": "context",
+          "elements": [{ "type": "mrkdwn", "text": "Fired at @{triggerBody()?['data']?['essentials']?['firedDateTime']}" }]
+        }
+      ]
+    }
+  BODY
+}
+
 resource "azurerm_monitor_action_group" "alerts" {
   count = local.env.alerts_enabled ? 1 : 0
 
@@ -16,11 +105,12 @@ resource "azurerm_monitor_action_group" "alerts" {
     }
   }
 
-  dynamic "webhook_receiver" {
+  dynamic "logic_app_receiver" {
     for_each = var.alert_slack_webhook_url != "" ? [1] : []
     content {
-      name                    = "slack"
-      service_uri             = var.alert_slack_webhook_url
+      name                    = "slack-via-logic-app"
+      resource_id             = azurerm_logic_app_workflow.slack_alerts[0].id
+      callback_url            = azurerm_logic_app_trigger_http_request.slack_alerts[0].callback_url
       use_common_alert_schema = true
     }
   }
