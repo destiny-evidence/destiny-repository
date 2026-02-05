@@ -1,7 +1,6 @@
 """The service for interacting with and managing references."""
 
 import datetime
-import uuid
 from collections import defaultdict
 from collections.abc import Collection, Iterable
 from uuid import UUID
@@ -118,7 +117,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
         :param reference_ids: The ID of the references to get the deduplicated view for.
         :type reference_ids: Collection[UUID] | None
-        :param references: The references to get the deduplicated view for. Must have]
+        :param references: The references to get the deduplicated view for. Must have
             identifiers, enhancements, duplicate_decision and duplicate_references
             preloaded.
         :type references: Collection[Reference] | None
@@ -145,6 +144,28 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             DeduplicatedReferenceProjection.get_from_reference(reference)
             for reference in references
         ]
+
+    @sql_unit_of_work
+    async def get_deduplicated_references(
+        self,
+        reference_ids: Collection[UUID] | None = None,
+        references: Collection[Reference] | None = None,
+    ) -> list[Reference]:
+        """
+        Get the deduplicated reference for a given reference.
+
+        :param reference_ids: The ID of the references to get the deduplicated view for.
+        :type reference_ids: Collection[UUID] | None
+        :param references: The references to get the deduplicated view for. Must have
+            identifiers, enhancements, duplicate_decision and duplicate_references
+            preloaded.
+        :type references: Collection[Reference] | None
+        :return: The deduplicated reference.
+        :rtype: Reference
+        """
+        return await self._get_deduplicated_references(
+            reference_ids=reference_ids, references=references
+        )
 
     async def _get_deduplicated_reference(self, reference_id: UUID) -> Reference:
         """
@@ -414,7 +435,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             if identifier.identifier_type:
                 external_identifiers.append(identifier)
             else:
-                db_identifiers.append(uuid.UUID(identifier.identifier))
+                db_identifiers.append(UUID(identifier.identifier))
 
         references = await self.sql_uow.references.find_with_identifiers(
             external_identifiers,
@@ -1188,7 +1209,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         annotations: list[AnnotationFilter] | None = None,
         publication_year_range: PublicationYearRange | None = None,
         sort: list[str] | None = None,
-    ) -> ESSearchResult[Reference]:
+    ) -> ESSearchResult:
         """Search for references given a query string."""
         return await self._search_service.search_with_query_string(
             query,
@@ -1202,9 +1223,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def _detect_and_dispatch_robot_automations(
         self,
         reference: ReferenceWithChangeset | None = None,
-        enhancement_ids: Iterable[uuid.UUID] | None = None,
+        enhancement_ids: Iterable[UUID] | None = None,
         source_str: str | None = None,
-        skip_robot_id: uuid.UUID | None = None,
+        skip_robot_id: UUID | None = None,
     ) -> None:
         """
         Request default enhancements for a set of references.
@@ -1239,9 +1260,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def detect_and_dispatch_robot_automations(
         self,
         reference: ReferenceWithChangeset | None = None,
-        enhancement_ids: Iterable[uuid.UUID] | None = None,
+        enhancement_ids: Iterable[UUID] | None = None,
         source_str: str | None = None,
-        skip_robot_id: uuid.UUID | None = None,
+        skip_robot_id: UUID | None = None,
     ) -> None:
         """Detect and dispatch robot automations for an added reference/enhancement."""
         await self._detect_and_dispatch_robot_automations(

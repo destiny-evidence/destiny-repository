@@ -1,11 +1,11 @@
 """Fixtures for e2e import tests."""
 
 import tempfile
-import uuid
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import UUID, uuid7
 
 import httpx
 import pytest
@@ -66,7 +66,7 @@ def get_import_file_signed_url():
         content = "\n".join(r.to_jsonl() for r in sdk_reference_file_input).encode(
             "utf-8"
         )
-        name = f"{uuid.uuid4()}.jsonl"
+        name = f"{uuid7()}.jsonl"
         tempdir = tempfile.TemporaryDirectory()
         filepath = Path(tempdir.name) / name
         with Path.open(filepath, "wb") as f:
@@ -100,7 +100,7 @@ def get_import_file_signed_url():
 @pytest.fixture
 async def robot_automation_on_all_imports(
     destiny_client_v1: httpx.AsyncClient, es_client: AsyncElasticsearch, robot: Robot
-) -> uuid.UUID:
+) -> UUID:
     """Create a robot automation that runs on all imports."""
     response = await destiny_client_v1.post(
         "/enhancement-requests/automations/",

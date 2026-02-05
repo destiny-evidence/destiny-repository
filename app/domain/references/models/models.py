@@ -2,9 +2,9 @@
 
 import datetime
 import json
-import uuid
 from enum import StrEnum, auto
 from typing import Any, Literal, Self
+from uuid import UUID
 
 import destiny_sdk
 
@@ -12,7 +12,6 @@ import destiny_sdk
 from destiny_sdk.enhancements import EnhancementContent, EnhancementType  # noqa: F401
 from destiny_sdk.identifiers import ExternalIdentifier, ExternalIdentifierType
 from pydantic import (
-    UUID4,
     BaseModel,
     Field,
     PositiveInt,
@@ -254,7 +253,7 @@ class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
     identifier: destiny_sdk.identifiers.ExternalIdentifier = Field(
         description="The identifier itself.", discriminator="identifier_type"
     )
-    reference_id: uuid.UUID = Field(
+    reference_id: UUID = Field(
         description="The ID of the reference this identifier identifies."
     )
     reference: Reference | None = Field(
@@ -317,7 +316,7 @@ class Enhancement(DomainBaseModel, SQLTimestampMixin):
         default=None,
         description="The version of the robot that generated the content.",
     )
-    derived_from: list[uuid.UUID] | None = Field(
+    derived_from: list[UUID] | None = Field(
         default=None,
         description="List of enhancement IDs that this enhancement was derived from.",
     )
@@ -325,7 +324,7 @@ class Enhancement(DomainBaseModel, SQLTimestampMixin):
         discriminator="enhancement_type",
         description="The content of the enhancement.",
     )
-    reference_id: uuid.UUID = Field(
+    reference_id: UUID = Field(
         description="The ID of the reference this enhancement is associated with."
     )
 
@@ -358,12 +357,10 @@ class Enhancement(DomainBaseModel, SQLTimestampMixin):
 class EnhancementRequest(DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin):
     """Request to add enhancements to a list of references."""
 
-    reference_ids: list[uuid.UUID] = Field(
+    reference_ids: list[UUID] = Field(
         description="The IDs of the references these enhancements are associated with."
     )
-    robot_id: uuid.UUID = Field(
-        description="The robot to request the enhancement from."
-    )
+    robot_id: UUID = Field(description="The robot to request the enhancement from.")
     request_status: EnhancementRequestStatus = Field(
         default=EnhancementRequestStatus.RECEIVED,
         description="The status of the request to create an enhancement.",
@@ -409,7 +406,7 @@ Errors for individual references are provided <TBC>.
 class RobotResultValidationEntry(DomainBaseModel):
     """A single entry in the validation result file for a enhancement request."""
 
-    reference_id: uuid.UUID | None = Field(
+    reference_id: UUID | None = Field(
         default=None,
         description=(
             "The ID of the reference which was enhanced. "
@@ -434,7 +431,7 @@ class RobotAutomation(DomainBaseModel, SQLAttributeMixin):
     is sent to the specified robot to perform the enhancement.
     """
 
-    robot_id: UUID4 = Field(
+    robot_id: UUID = Field(
         description="The ID of the robot that will be used to enhance the reference."
     )
     query: dict[str, Any] = Field(
@@ -445,8 +442,8 @@ class RobotAutomation(DomainBaseModel, SQLAttributeMixin):
 class RobotAutomationPercolationResult(BaseModel):
     """Result of a percolation query against RobotAutomations."""
 
-    robot_id: UUID4
-    reference_ids: set[UUID4]
+    robot_id: UUID
+    reference_ids: set[UUID]
 
 
 class CandidateCanonicalSearchFields(ProjectedBaseModel):
@@ -569,7 +566,7 @@ class ReferenceDuplicateDeterminationResult(BaseModel):
         DuplicateDetermination.UNRESOLVED,
         DuplicateDetermination.UNSEARCHABLE,
     ]
-    canonical_reference_id: UUID4 | None = Field(
+    canonical_reference_id: UUID | None = Field(
         default=None,
         description="The ID of the determined canonical reference.",
     )
@@ -597,8 +594,8 @@ class ReferenceDuplicateDeterminationResult(BaseModel):
 class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
     """Model representing a decision on whether a reference is a duplicate."""
 
-    reference_id: UUID4 = Field(description="The ID of the reference being evaluated.")
-    enhancement_id: UUID4 | None = Field(
+    reference_id: UUID = Field(description="The ID of the reference being evaluated.")
+    enhancement_id: UUID | None = Field(
         default=None,
         description=(
             "The ID of the enhancement that triggered this duplicate decision, if any."
@@ -608,7 +605,7 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         default=False,
         description="Whether this is the active decision for the reference.",
     )
-    candidate_canonical_ids: list[UUID4] = Field(
+    candidate_canonical_ids: list[UUID] = Field(
         default_factory=list,
         description="A list of candidate canonical IDs for the reference.",
     )
@@ -616,7 +613,7 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         default=DuplicateDetermination.PENDING,
         description="The duplicate status of the reference.",
     )
-    canonical_reference_id: UUID4 | None = Field(
+    canonical_reference_id: UUID | None = Field(
         default=None,
         description="The ID of the canonical reference this reference duplicates.",
     )
@@ -740,22 +737,22 @@ class PendingEnhancementStatus(StateMachineMixin, StrEnum):
 class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
     """A pending enhancement."""
 
-    reference_id: UUID4 = Field(
+    reference_id: UUID = Field(
         ...,
         description="The ID of the reference to be enhanced.",
     )
-    robot_id: UUID4 = Field(
+    robot_id: UUID = Field(
         ...,
         description="The ID of the robot that will perform the enhancement.",
     )
-    enhancement_request_id: UUID4 | None = Field(
+    enhancement_request_id: UUID | None = Field(
         default=None,
         description=(
             "The ID of the batch enhancement request that this pending enhancement"
             " belongs to."
         ),
     )
-    robot_enhancement_batch_id: UUID4 | None = Field(
+    robot_enhancement_batch_id: UUID | None = Field(
         default=None,
         description=(
             "The ID of the robot enhancement batch that this pending enhancement"
@@ -780,7 +777,7 @@ class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
         default=datetime.datetime(1970, 1, 1, tzinfo=datetime.UTC),
         description="The datetime at which the pending enhancement expires.",
     )
-    retry_of: UUID4 | None = Field(
+    retry_of: UUID | None = Field(
         default=None,
         description=(
             "The ID of the pending enhancement that this is a retry of, if any."
@@ -811,7 +808,7 @@ class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
 class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):
     """A batch of references to be enhanced by a robot."""
 
-    robot_id: UUID4 = Field(
+    robot_id: UUID = Field(
         ...,
         description="The ID of the robot that will perform the enhancement.",
     )
@@ -840,7 +837,7 @@ class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):
 class ReferenceIds(BaseModel):
     """Model representing a list of reference IDs."""
 
-    reference_ids: list[UUID4] = Field(
+    reference_ids: list[UUID] = Field(
         ...,
         description="A list of reference IDs.",
     )
@@ -879,4 +876,19 @@ class AnnotationFilter(BaseModel):
         description="Optional score threshold for the annotation filter.",
         ge=0.0,
         le=1.0,
+    )
+
+
+class ReferenceSearchResult(BaseModel):
+    """Wrapping class for Elasticsearch search results."""
+
+    references: list[Reference] = Field(
+        default_factory=list,
+        description="The list of references returned from the search query.",
+    )
+    total: int = Field(
+        description="The total number of results matching the search query.",
+    )
+    page: int = Field(
+        description="The page number of the results.",
     )
