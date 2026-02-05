@@ -14,6 +14,7 @@ resource "azurerm_logic_app_trigger_http_request" "slack_alerts" {
   name         = "azure-monitor-webhook"
   logic_app_id = azurerm_logic_app_workflow.slack_alerts[0].id
 
+  # schema: https://learn.microsoft.com/en-us/azure/azure-monitor/alerts/alerts-common-schema
   schema = <<-SCHEMA
     {
       "type": "object",
@@ -52,6 +53,8 @@ resource "azurerm_logic_app_action_http" "post_to_slack" {
     "Content-Type" = "application/json"
   }
 
+  # body: https://api.slack.com/block-kit
+  # expressions: https://learn.microsoft.com/en-us/azure/logic-apps/workflow-definition-language-functions-reference
   body = <<-BODY
     {
       "blocks": [
