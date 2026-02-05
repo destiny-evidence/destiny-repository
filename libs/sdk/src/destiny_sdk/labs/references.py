@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from destiny_sdk.enhancements import (
     Annotation,
     AnnotationType,
+    AuthorPosition,
     BibliographicMetadataEnhancement,
     EnhancementType,
 )
@@ -85,6 +86,9 @@ class LabsReference(BaseModel):
         """The first author of the reference as str."""
         for meta in self.it_bibliographics():
             if meta.authorship is not None and len(meta.authorship) > 0:
+                for author in meta.authorship:
+                    if author.position == AuthorPosition.FIRST:
+                        return author.display_name
                 return meta.authorship[0].display_name
         return None
 
