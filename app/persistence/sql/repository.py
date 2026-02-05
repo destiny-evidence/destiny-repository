@@ -108,16 +108,9 @@ class GenericAsyncSqlRepository(
             relationship = attribute
             load_type = relationship.info.get("load_type", RelationshipLoadType.JOINED)
             max_recursion_depth = relationship.info.get("max_recursion_depth")
-            is_self_referential = (
-                relationship.prop.mapper.class_ == self._persistence_cls
-            )
 
             # Determine the base loading strategy
-            if depth > 1 and not is_self_referential:
-                # Nested non-self-referential relationships must use SELECTIN to
-                # batch loads properly (joinedload doesn't work under selectinload)
-                loader = selectinload(relationship)
-            elif load_type == RelationshipLoadType.SELECTIN:
+            if load_type == RelationshipLoadType.SELECTIN:
                 # Recurse once, we add more loads dynamically below
                 loader = selectinload(relationship, recursion_depth=1)
             else:
@@ -137,6 +130,9 @@ class GenericAsyncSqlRepository(
                 # self-referential chain
                 avoid_propagate.add(relationship.key)
 
+            is_self_referential = (
+                relationship.prop.mapper.class_ == self._persistence_cls
+            )
             if preload and is_self_referential:
                 loader = loader.options(
                     *self._get_relationship_loads(
