@@ -1,6 +1,6 @@
 """Unit tests for Elasticsearch repository query string search functionality."""
 
-from uuid import uuid4
+from uuid import uuid7
 
 import pytest
 from elasticsearch import AsyncElasticsearch
@@ -157,7 +157,7 @@ async def test_query_string_search_many_results(
             title="common title",
             year=2023,
             content=f"content {i}",
-            meta={"id": uuid4()},
+            meta={"id": uuid7()},
         )
         for i in range(10001)
     ]
@@ -225,7 +225,7 @@ async def test_query_string_search_pagination(
             title="pagination",
             year=2023,
             content="content",
-            meta={"id": uuid4()},
+            meta={"id": uuid7()},
         )
         for _ in range(55)
     ]

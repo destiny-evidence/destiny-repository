@@ -2,10 +2,11 @@
 
 from abc import abstractmethod
 from typing import Generic, Literal, Self
+from uuid import UUID
 
 from elasticsearch.dsl import AsyncDocument, InnerDoc
 from elasticsearch.dsl.response import Hit
-from pydantic import UUID4, BaseModel, Field
+from pydantic import BaseModel, Field
 
 from app.domain.base import SQLAttributeMixin
 from app.persistence.generics import GenericDomainModelType
@@ -67,14 +68,14 @@ class GenericNestedDocument(InnerDoc):
 class ESScoreResult(BaseModel):
     """Simple class for id<->score mapping in Elasticsearch search results."""
 
-    id: UUID4
+    id: UUID
     score: float
 
 
 class ESHit(BaseModel):
     """Represents a single hit from an Elasticsearch search result."""
 
-    id: UUID4 = Field(description="The document ID.")
+    id: UUID = Field(description="The document ID.")
     score: float | None = Field(
         default=None,
         description="The relevance score of the hit.",

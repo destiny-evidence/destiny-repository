@@ -1,6 +1,6 @@
 """Anti-corruption service for references domain."""
 
-import uuid
+from uuid import UUID
 
 import destiny_sdk
 from pydantic import ValidationError
@@ -36,7 +36,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     def reference_from_sdk_file_input(
         self,
         reference_in: destiny_sdk.references.ReferenceFileInput,
-        reference_id: uuid.UUID | None = None,
+        reference_id: UUID | None = None,
     ) -> Reference:
         """Create a reference from a file input including id hydration."""
         try:
@@ -125,7 +125,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     def enhancement_from_sdk(
         self,
         enhancement_in: destiny_sdk.references.Enhancement,
-        reference_id: uuid.UUID | None = None,
+        reference_id: UUID | None = None,
     ) -> Enhancement:
         """Create an Enhancement from the SDK model with optional ID grafting."""
         try:
@@ -280,7 +280,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     def robot_automation_from_sdk(
         self,
         robot_automation_in: destiny_sdk.robots.RobotAutomationIn,
-        automation_id: uuid.UUID | None = None,
+        automation_id: UUID | None = None,
     ) -> RobotAutomation:
         """Create a RobotAutomation from the SDK model."""
         try:

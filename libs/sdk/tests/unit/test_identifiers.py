@@ -1,4 +1,4 @@
-import uuid
+from uuid import UUID
 
 import destiny_sdk
 import pytest
@@ -259,7 +259,7 @@ class TestIdentifierLookup:
         [
             # UUID (no type)
             (
-                uuid.UUID("550e8400-e29b-41d4-a716-446655440000"),
+                UUID("550e8400-e29b-41d4-a716-446655440000"),
                 destiny_sdk.identifiers.IdentifierLookup(
                     identifier="550e8400-e29b-41d4-a716-446655440000",
                     identifier_type=None,
@@ -349,8 +349,8 @@ class TestIdentifierLookup:
         result_identifier = parsed.to_identifier()
 
         # Step 8: Assert result is the same as input
-        if isinstance(input_identifier, uuid.UUID):
-            assert isinstance(result_identifier, uuid.UUID)
+        if isinstance(input_identifier, UUID):
+            assert isinstance(result_identifier, UUID)
             assert str(result_identifier) == str(input_identifier)
         else:
             assert isinstance(result_identifier, type(input_identifier))
@@ -364,7 +364,7 @@ class TestIdentifierLookup:
 
     def test_parse_invalid_uuid(self):
         with pytest.raises(
-            ValueError, match="Must be UUIDv4 if no identifier type is specified"
+            ValueError, match="Must be UUID if no identifier type is specified"
         ):
             destiny_sdk.identifiers.IdentifierLookup.parse("not-a-uuid")
 
