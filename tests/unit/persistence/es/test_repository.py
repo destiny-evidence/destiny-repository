@@ -323,3 +323,22 @@ async def test_query_string_search_sorting(
     assert str(results_desc.hits[0].id) == doc_2022
     assert str(results_desc.hits[1].id) == doc_2021
     assert str(results_desc.hits[2].id) == doc_2020
+
+
+async def test_query_string_search_with_document(
+    simple_repository: SimpleRepository,
+    test_doc: str,
+):
+    """Test that parse_document=True returns the full document."""
+    results = await simple_repository.search_with_query_string(
+        "title:test",
+        parse_document=True,
+    )
+
+    assert len(results.hits) == 1
+    assert str(results.hits[0].id) == test_doc
+    assert results.hits[0].document is not None
+    assert isinstance(results.hits[0].document, SimpleDomainModel)
+    assert results.hits[0].document.title == "test document"
+    assert results.hits[0].document.year == 2023
+    assert results.hits[0].document.content == "This is sample content for testing"

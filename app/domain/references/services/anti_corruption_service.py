@@ -319,12 +319,14 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
-    def reference_search_result_to_sdk(
+    def two_stage_reference_search_result_to_sdk(
         self,
-        search_result: ESSearchResult[Reference],
+        search_result: ESSearchResult,
+        references: list[Reference],
     ) -> destiny_sdk.references.ReferenceSearchResult:
-        """Convert the reference search result to the SDK model."""
+        """Convert a search result and retrieved references to the SDK model."""
         try:
+            hit_order = {hit.id: i for i, hit in enumerate(search_result.hits)}
             return destiny_sdk.references.ReferenceSearchResult(
                 total={
                     "count": search_result.total.value,
@@ -335,7 +337,9 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     "number": search_result.page,
                 },
                 references=[
-                    self.reference_to_sdk(reference) for reference in search_result.hits
+                    self.reference_to_sdk(reference)
+                    # Sort references according to search order
+                    for reference in sorted(references, key=lambda r: hit_order[r.id])
                 ],
             )
         except ValidationError as exception:

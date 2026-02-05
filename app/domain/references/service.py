@@ -117,7 +117,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
         :param reference_ids: The ID of the references to get the deduplicated view for.
         :type reference_ids: Collection[UUID] | None
-        :param references: The references to get the deduplicated view for. Must have]
+        :param references: The references to get the deduplicated view for. Must have
             identifiers, enhancements, duplicate_decision and duplicate_references
             preloaded.
         :type references: Collection[Reference] | None
@@ -144,6 +144,28 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             DeduplicatedReferenceProjection.get_from_reference(reference)
             for reference in references
         ]
+
+    @sql_unit_of_work
+    async def get_deduplicated_references(
+        self,
+        reference_ids: Collection[UUID] | None = None,
+        references: Collection[Reference] | None = None,
+    ) -> list[Reference]:
+        """
+        Get the deduplicated reference for a given reference.
+
+        :param reference_ids: The ID of the references to get the deduplicated view for.
+        :type reference_ids: Collection[UUID] | None
+        :param references: The references to get the deduplicated view for. Must have
+            identifiers, enhancements, duplicate_decision and duplicate_references
+            preloaded.
+        :type references: Collection[Reference] | None
+        :return: The deduplicated reference.
+        :rtype: Reference
+        """
+        return await self._get_deduplicated_references(
+            reference_ids=reference_ids, references=references
+        )
 
     async def _get_deduplicated_reference(self, reference_id: UUID) -> Reference:
         """
@@ -1187,7 +1209,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         annotations: list[AnnotationFilter] | None = None,
         publication_year_range: PublicationYearRange | None = None,
         sort: list[str] | None = None,
-    ) -> ESSearchResult[Reference]:
+    ) -> ESSearchResult:
         """Search for references given a query string."""
         return await self._search_service.search_with_query_string(
             query,
