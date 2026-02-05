@@ -14,7 +14,6 @@ from app.api.exception_handlers import (
 )
 from app.core.exceptions import ESQueryError, ParseError
 from app.domain.references import routes as references
-from app.domain.references.models.models import EnhancementType
 from app.domain.references.repository import (
     ReferenceESRepository,
     ReferenceSQLRepository,
@@ -29,6 +28,15 @@ from tests.factories import (
 )
 
 pytestmark = pytest.mark.usefixtures("session")
+
+
+def get_bibliographic_content(ref: dict) -> dict:
+    """Find bibliographic enhancement content from a reference response."""
+    for enh in ref["enhancements"]:
+        if enh["content"]["enhancement_type"] == "bibliographic":
+            return enh["content"]
+    msg = "No bibliographic enhancement found"
+    raise ValueError(msg)
 
 
 @pytest.fixture
@@ -191,17 +199,10 @@ async def search_references(es_client: AsyncElasticsearch, session: AsyncSession
     sql_repository = ReferenceSQLRepository(session)
     for reference in references:
         await es_repository.add(reference)
-        await sql_repository.add(reference)
+        await sql_repository.merge(reference)
     await session.commit()
     await es_client.indices.refresh(index="reference")
     return references
-
-
-def _get_biblio(ref: dict) -> dict:
-    for e in ref["enhancements"]:
-        if e["content"].get("enhancement_type") == EnhancementType.BIBLIOGRAPHIC:
-            return e["content"]
-    return {}
 
 
 @pytest.mark.parametrize(
@@ -212,7 +213,7 @@ def _get_biblio(ref: dict) -> dict:
             {"q": "(title:Machine OR title:Deep) AND title:Learning"},
             2,
             lambda refs: all(
-                "Learning" in _get_biblio(ref).get("title", "") for ref in refs
+                "Learning" in get_bibliographic_content(ref)["title"] for ref in refs
             ),
         ),
         # Wildcard with year filter and sorting
@@ -225,15 +226,15 @@ def _get_biblio(ref: dict) -> dict:
             },
             2,
             lambda refs: (
-                _get_biblio(refs[0]).get("publication_year", 0)
-                > _get_biblio(refs[1]).get("publication_year", 0)
+                get_bibliographic_content(refs[0])["publication_year"]
+                > get_bibliographic_content(refs[1])["publication_year"]
             ),
         ),
         # Fuzzy matching with NOT
         (
             {"q": "title:Lerning~1 NOT title:Climate"},
             1,
-            lambda refs: "Medical" in _get_biblio(refs[0]).get("title", ""),
+            lambda refs: "Medical" in get_bibliographic_content(refs[0])["title"],
         ),
         # Annotation filter: inclusion true with score threshold and sort by score
         (
@@ -244,7 +245,7 @@ def _get_biblio(ref: dict) -> dict:
             },
             2,
             lambda refs: (
-                _get_biblio(refs[0]).get("title")
+                get_bibliographic_content(refs[0])["title"]
                 == "Machine Learning in Climate Science"
             ),
         ),
@@ -255,7 +256,7 @@ def _get_biblio(ref: dict) -> dict:
                 "annotation": ["classifier:taxonomy/Outcomes/Economic"],
             },
             1,
-            lambda refs: "Climate" in _get_biblio(refs[0]).get("title", ""),
+            lambda refs: "Climate" in get_bibliographic_content(refs[0])["title"],
         ),
         # Query with year range and annotation filter
         (
@@ -265,13 +266,13 @@ def _get_biblio(ref: dict) -> dict:
                 "annotation": ["inclusion:destiny@0.9"],
             },
             1,
-            lambda refs: "Machine" in _get_biblio(refs[0]).get("title", ""),
+            lambda refs: "Machine" in get_bibliographic_content(refs[0])["title"],
         ),
         # Combined title and abstract search
         (
             {"q": "title:Climate AND abstract:agricultural"},
             1,
-            lambda refs: "Agriculture" in _get_biblio(refs[0]).get("title", ""),
+            lambda refs: ("Agriculture" in get_bibliographic_content(refs[0])["title"]),
         ),
     ],
 )
@@ -399,7 +400,7 @@ async def cross_field_references(es_client: AsyncElasticsearch, session: AsyncSe
     sql_repository = ReferenceSQLRepository(session)
     for reference in references:
         await es_repository.add(reference)
-        await sql_repository.add(reference)
+        await sql_repository.merge(reference)
     await session.commit()
     await es_client.indices.refresh(index="reference")
     return references
@@ -425,7 +426,7 @@ async def test_cross_field_and_query(
 
     assert data["total"]["count"] == 2
 
-    titles = {_get_biblio(ref)["title"] for ref in data["references"]}
+    titles = {get_bibliographic_content(ref)["title"] for ref in data["references"]}
     assert titles == {"George Studies in Modern Science", "George Harrison Biography"}
 
 
@@ -443,5 +444,5 @@ async def test_same_field_and_query(
     data = response.json()
 
     assert data["total"]["count"] == 1
-    title = _get_biblio(data["references"][0])["title"]
+    title = get_bibliographic_content(data["references"][0])["title"]
     assert "George Harrison" in title

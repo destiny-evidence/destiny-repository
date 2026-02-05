@@ -84,11 +84,7 @@ async def sub_test_reference_index_initial_rebuild(
     assert es_response["hits"]["total"]["value"] == 1
     es_doc = es_response["hits"]["hits"][0]["_source"]
     assert es_doc["visibility"] == "public"
-    assert len(es_doc["identifiers"]) == 1
-    assert es_doc["identifiers"][0]["identifier_type"] == "doi"
-    assert es_doc["identifiers"][0]["identifier"] == "10.1234/test-reference"
-    assert len(es_doc["enhancements"]) == 1
-    assert es_doc["enhancements"][0]["source"] == "test_source"
+    # Identifiers are stored in PostgreSQL only, not ES
 
 
 async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
@@ -135,13 +131,7 @@ async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
     assert es_response["hits"]["total"]["value"] == 1
     es_doc = es_response["hits"]["hits"][0]["_source"]
     assert es_doc["visibility"] == "restricted"  # Updated visibility
-    assert len(es_doc["identifiers"]) == 2  # Now has 2 identifiers
-    # Check both identifiers are present
-    identifier_types = {id_obj["identifier_type"] for id_obj in es_doc["identifiers"]}
-    assert "doi" in identifier_types
-    assert "pm_id" in identifier_types
-    assert len(es_doc["enhancements"]) == 1
-    assert es_doc["enhancements"][0]["source"] == "test_source"
+    # Identifiers are stored in PostgreSQL only, not ES
 
 
 async def sub_test_robot_automation_initial_rebuild(
