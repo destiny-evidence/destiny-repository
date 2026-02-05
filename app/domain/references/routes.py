@@ -343,8 +343,12 @@ async def search_references(
         publication_year_range=publication_year_range,
         sort=sort,
     )
-    references = await reference_service.get_deduplicated_references(
-        [hit.id for hit in search_result.hits]
+    references = (
+        await reference_service.get_deduplicated_references(
+            [hit.id for hit in search_result.hits]
+        )
+        if search_result.hits
+        else []
     )
     return anti_corruption_service.two_stage_reference_search_result_to_sdk(
         search_result, references

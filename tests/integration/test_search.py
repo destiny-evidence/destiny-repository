@@ -320,6 +320,21 @@ async def test_pagination(
     assert data["page"]["count"] == 5
 
 
+async def test_empty_search_results(
+    client: AsyncClient,
+    search_references: list,  # noqa: ARG001
+) -> None:
+    """Test that search returning no results returns empty list, not error."""
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "title:nonexistent_term_xyz123"},
+    )
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["total"]["count"] == 0
+    assert data["references"] == []
+
+
 @pytest.mark.parametrize(
     ("params", "expected_status"),
     [
