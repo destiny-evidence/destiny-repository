@@ -81,9 +81,13 @@ class Reference(GenericSQLPersistence[DomainReference]):
         "ExternalIdentifier",
         back_populates="reference",
         cascade="all, delete, delete-orphan",
+        info=RelationshipInfo(load_type=RelationshipLoadType.SELECTIN).model_dump(),
     )
     enhancements: Mapped[list["Enhancement"]] = relationship(
-        "Enhancement", back_populates="reference", cascade="all, delete, delete-orphan"
+        "Enhancement",
+        back_populates="reference",
+        cascade="all, delete, delete-orphan",
+        info=RelationshipInfo(load_type=RelationshipLoadType.SELECTIN).model_dump(),
     )
     duplicate_decision: Mapped["ReferenceDuplicateDecision"] = relationship(
         "ReferenceDuplicateDecision",
