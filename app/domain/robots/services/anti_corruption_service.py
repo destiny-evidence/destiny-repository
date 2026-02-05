@@ -1,6 +1,6 @@
 """Anti-corruption service for robots domain."""
 
-import uuid
+from uuid import UUID
 
 import destiny_sdk
 from pydantic import ValidationError
@@ -14,7 +14,7 @@ class RobotAntiCorruptionService(GenericAntiCorruptionService):
     """Anti-corruption service for translating between Robot domain and SDK models."""
 
     def robot_from_sdk(
-        self, robot_in: destiny_sdk.robots.RobotIn, robot_id: uuid.UUID | None = None
+        self, robot_in: destiny_sdk.robots.RobotIn, robot_id: UUID | None = None
     ) -> Robot:
         """Create a Robot from the SDK input model."""
         try:

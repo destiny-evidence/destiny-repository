@@ -1,6 +1,6 @@
 """Anti-corruption service for imports domain."""
 
-import uuid
+from uuid import UUID
 
 import destiny_sdk
 from pydantic import ValidationError
@@ -91,7 +91,7 @@ class ImportAntiCorruptionService(GenericAntiCorruptionService):
     def import_batch_from_sdk(
         self,
         import_batch_in: destiny_sdk.imports.ImportBatchIn,
-        import_record_id: uuid.UUID,
+        import_record_id: UUID,
     ) -> ImportBatch:
         """Create an ImportBatch from the SDK input model."""
         try:

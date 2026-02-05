@@ -6,8 +6,8 @@ including initialization, message sending, and delayed message delivery.
 """
 
 import asyncio
-import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid7
 
 import pytest
 from azure.servicebus.aio import (
@@ -134,8 +134,8 @@ async def test_kick_success(
 
     :param broker: current broker.
     """
-    task_id = uuid.uuid4().hex
-    task_name = uuid.uuid4().hex
+    task_id = uuid7().hex
+    task_name = uuid7().hex
 
     sent = BrokerMessage(
         task_id=task_id,

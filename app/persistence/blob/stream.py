@@ -25,7 +25,7 @@ class FileStream:
 
     .. code-block:: python
 
-        async def get_chunk(ids: list[UUID4], other_arg: str) -> list[DomainModel]:
+        async def get_chunk(ids: list[UUID], other_arg: str) -> list[DomainModel]:
             return repository.get_strings(ids, other_arg)
 
         file_stream = FileStream(fn=get_chunk, fn_kwargs=[

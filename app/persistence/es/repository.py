@@ -67,7 +67,7 @@ class GenericAsyncESRepository(
         Get a record using its primary key.
 
         :param pk: The primary key of the record to retrieve.
-        :type pk: UUID4
+        :type pk: UUID
         :return: The retrieved record.
         :rtype: GenericDomainModelType
         """
@@ -145,7 +145,7 @@ class GenericAsyncESRepository(
         Delete a record using its primary key.
 
         :param pk: The primary key of the record to delete.
-        :type pk: UUID4
+        :type pk: UUID
         :param fail_hard: Whether to raise an error if the record does not exist.
         :type fail_hard: bool
         :return: None
