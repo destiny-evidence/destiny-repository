@@ -78,6 +78,8 @@ class GenericAsyncSqlRepository(
         self,
         preload: list[GenericSQLPreloadableType] | None = None,
         depth: int = 1,
+        *,
+        force_selectin: bool = False,
     ) -> list[_AbstractLoad]:
         """
         Get a list of relationship loading strategies with support for nesting.
@@ -85,6 +87,9 @@ class GenericAsyncSqlRepository(
         Args:
             preload: List of relationships to preload
             depth: Internal tracker for max relationship depth
+            force_selectin: If True, use SELECTIN loading for all relationships
+                regardless of their configured load_type. Useful for bulk queries
+                where JOINs would cause cartesian product explosion.
 
         Returns:
             A list of ORM loading options configured for the relationships
@@ -113,7 +118,7 @@ class GenericAsyncSqlRepository(
             )
 
             # Determine the base loading strategy
-            if load_type == RelationshipLoadType.SELECTIN:
+            if force_selectin or load_type == RelationshipLoadType.SELECTIN:
                 if is_self_referential:
                     # recursion_depth is only valid for self-referential relationships
                     loader = selectinload(relationship, recursion_depth=1)
@@ -139,7 +144,9 @@ class GenericAsyncSqlRepository(
             if preload and is_self_referential:
                 loader = loader.options(
                     *self._get_relationship_loads(
-                        [p for p in preload if p not in avoid_propagate], depth + 1
+                        [p for p in preload if p not in avoid_propagate],
+                        depth + 1,
+                        force_selectin=force_selectin,
                     )
                 )
 
@@ -221,7 +228,7 @@ class GenericAsyncSqlRepository(
         - SQLNotFoundError: If any of the records do not exist.
 
         """
-        options = self._get_relationship_loads(preload)
+        options = self._get_relationship_loads(preload, force_selectin=True)
         query = (
             select(self._persistence_cls)
             .where(self._persistence_cls.id.in_(pks))

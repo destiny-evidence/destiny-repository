@@ -27,7 +27,6 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
     _required_preloads: ClassVar[list] = [
         "identifiers",
         "enhancements",
-        "canonical_reference",
         "duplicate_references",
         "duplicate_decision",
     ]
@@ -38,7 +37,7 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
         trace_attribute(Attributes.DB_PK, str(reference_id))
         reference = await self.sql_uow.references.get_by_pk(
             reference_id,
-            preload=self._required_preloads,
+            preload=[*self._required_preloads, "canonical_reference"],
         )
 
         if not reference.is_canonical_like and reference.canonical_reference:
