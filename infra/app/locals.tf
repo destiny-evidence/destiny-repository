@@ -53,8 +53,8 @@ locals {
       db_memory_warning_pct   = 70
       db_memory_critical_pct  = 85
 
-      es_snapshot_schedule  = "0 */30 * * * ?" # Every 30 minutes
-      es_snapshot_retention = 336              # 7 days worth at 30min intervals
+      es_snapshot_schedule  = "0 30 1 * * ?" # Daily at 01:30
+      es_snapshot_retention = 30             # 30 days
     }
   }
 
