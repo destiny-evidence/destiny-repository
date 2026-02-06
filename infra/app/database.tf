@@ -190,3 +190,66 @@ resource "azurerm_container_app_job" "database_migrator" {
     ignore_changes = [template[0].container[0].image]
   }
 }
+
+resource "azurerm_log_analytics_workspace" "postgresql" {
+  name                = "${local.name}-psql-logs"
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+  sku                 = "PerGB2018"
+  retention_in_days   = local.env.db_log_retention_days
+  tags                = local.minimum_resource_tags
+}
+
+locals {
+  postgresql_configurations = {
+    # https://learn.microsoft.com/en-us/azure/postgresql/server-parameters/param-intelligent-tuning
+    "logfiles.download_enable" = "ON"
+    "logfiles.retention_days"  = tostring(local.env.db_logfiles_retention_days)
+
+    # https://www.postgresql.org/docs/current/runtime-config-logging.html
+    "log_checkpoints"            = "ON" # logs when data is flushed to disk
+    "log_connections"            = "ON"
+    "log_disconnections"         = upper(local.env.db_log_disconnections) # off in production due to volume
+    "log_statement"              = "all"
+    "log_min_duration_statement" = tostring(local.env.db_log_min_duration_statement) # slow query threshold in ms
+    "log_lock_waits"             = "ON"
+    "log_temp_files"             = "0" # log all temp files (queries using disk for sorting)
+
+    # https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-query-store
+    "pg_qs.query_capture_mode"              = "TOP" # top resource-consuming queries
+    "pgms_wait_sampling.query_capture_mode" = "ALL" # wait statistics for all queries
+  }
+}
+
+resource "azurerm_postgresql_flexible_server_configuration" "logging" {
+  for_each  = local.postgresql_configurations
+  name      = each.key
+  server_id = azurerm_postgresql_flexible_server.this.id
+  value     = each.value
+}
+
+resource "azurerm_monitor_diagnostic_setting" "postgresql" {
+  name                       = "${local.name}-psql-diagnostics"
+  target_resource_id         = azurerm_postgresql_flexible_server.this.id
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.postgresql.id
+
+  enabled_log {
+    category = "PostgreSQLLogs"
+  }
+
+  enabled_log {
+    category = "PostgreSQLFlexSessions"
+  }
+
+  enabled_log {
+    category = "PostgreSQLFlexQueryStoreRuntime"
+  }
+
+  enabled_log {
+    category = "PostgreSQLFlexQueryStoreWaitStats"
+  }
+
+  enabled_metric {
+    category = "AllMetrics"
+  }
+}
