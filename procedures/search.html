@@ -1,0 +1,758 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Search &#8212; DESTINY Repository v1.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=cf3b3841" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+    <script src="../_static/documentation_options.js?v=e160b93e"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'procedures/search';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Importing References with Batches" href="batch-importing.html" />
+    <link rel="prev" title="API Authentication" href="oauth.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">DESTINY Repository v1.0 documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../codebase/codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../sdk/sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../codebase/codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../sdk/sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="oauth.html">API Authentication</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Search</a></li>
+<li class="toctree-l1"><a class="reference internal" href="batch-importing.html">Importing References with Batches</a></li>
+<li class="toctree-l1"><a class="reference internal" href="requesting-batch-enhancements.html">Requesting Enhancements</a></li>
+<li class="toctree-l1"><a class="reference internal" href="deduplication.html">Reference Deduplication</a></li>
+<li class="toctree-l1"><a class="reference internal" href="robot-registration.html">Registering a Robot</a></li>
+<li class="toctree-l1"><a class="reference internal" href="robot-automation.html">Robot Automations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="destiny-reference-flow.html">DESTINY Reference Flow</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="procedures.html" class="nav-link">Procedures</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Search</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="search">
+<h1>Search<a class="headerlink" href="#search" title="Link to this heading">#</a></h1>
+<nav class="contents local" id="table-of-contents">
+<p class="topic-title">Table of Contents</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="#search-procedures" id="id6">Search Procedures</a></p>
+<ul>
+<li><p><a class="reference internal" href="#api-query-string-search" id="id7">API Query String Search</a></p>
+<ul>
+<li><p><a class="reference internal" href="#parameters" id="id8">Parameters</a></p></li>
+<li><p><a class="reference internal" href="#returns" id="id9">Returns</a></p></li>
+<li><p><a class="reference internal" href="#limitations" id="id10">Limitations</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#api-lookup" id="id11">API Lookup</a></p>
+<ul>
+<li><p><a class="reference internal" href="#id1" id="id12">Parameters</a></p></li>
+<li><p><a class="reference internal" href="#id2" id="id13">Returns</a></p></li>
+<li><p><a class="reference internal" href="#id3" id="id14">Limitations</a></p></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#search-fields" id="id15">Search Fields</a></p>
+<ul>
+<li><p><a class="reference internal" href="#search-field-selection" id="id16">Search Field Selection</a></p></li>
+<li><p><a class="reference internal" href="#bibliographic" id="id17">Bibliographic</a></p></li>
+<li><p><a class="reference internal" href="#abstract" id="id18">Abstract</a></p></li>
+<li><p><a class="reference internal" href="#id5" id="id19">Annotations</a></p></li>
+</ul>
+</li>
+</ul>
+</nav>
+<section id="search-procedures">
+<h2><a class="toc-backref" href="#id6" role="doc-backlink">Search Procedures</a><a class="headerlink" href="#search-procedures" title="Link to this heading">#</a></h2>
+<section id="api-query-string-search">
+<span id="search-procedure"></span><h3><a class="toc-backref" href="#id7" role="doc-backlink">API Query String Search</a><a class="headerlink" href="#api-query-string-search" title="Link to this heading">#</a></h3>
+<p>The simplest API interface for searching references is the <a class="reference external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc#tag/search/operation/search_references_v1_references_search__get">query string search</a> at <cite>/v1/references/search/</cite>. This endpoint requires <a class="reference internal" href="oauth.html"><span class="doc">authentication</span></a>.</p>
+<section id="parameters">
+<h4><a class="toc-backref" href="#id8" role="doc-backlink">Parameters</a><a class="headerlink" href="#parameters" title="Link to this heading">#</a></h4>
+<p>The only required parameter is the query string <code class="docutils literal notranslate"><span class="pre">q</span></code>. Additional optional parameters can be provided to filter, sort, and page through results.</p>
+<section id="query-string-required">
+<h5>Query String (required)<a class="headerlink" href="#query-string-required" title="Link to this heading">#</a></h5>
+<p>The <code class="docutils literal notranslate"><span class="pre">q</span></code> parameter is a query string in the <a class="reference external" href="https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-query-string-query.html#query-string-syntax">Lucene syntax</a>.</p>
+<p>At it’s simplest, this can be a simple keyword search, which will search over <code class="docutils literal notranslate"><span class="pre">title</span></code> and <code class="docutils literal notranslate"><span class="pre">abstract</span></code>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span># Get references with &quot;climate change&quot; anywhere in the title or abstract:
+?q=climate change
+
+# Get references with both &quot;climate change&quot; and &quot;health&quot; anywhere in the title or abstract:
+?q=climate change AND health
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Query parameters must be <a class="reference external" href="https://www.w3schools.com/tags/ref_urlencode.ASP">URL-encoded</a>. For example, spaces must be encoded as <code class="docutils literal notranslate"><span class="pre">%20</span></code> or <code class="docutils literal notranslate"><span class="pre">+</span></code>. Most HTTP client libraries will do this automatically.</p>
+</div>
+<p>More complex queries can be constructed using the search syntax and the set of <a class="reference internal" href="#search-fields"><span class="std std-ref">searchable fields</span></a>.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span># Get references with &quot;climate&quot;, &quot;climatology&quot; etc in the title and either &quot;John Doe&quot; or &quot;Jane Smith&quot; as an author:
+?q=title:&quot;climat*&quot; AND authors:(&quot;John Doe&quot; OR &quot;Jane Smith&quot;)
+
+# Get references with &quot;adaptation&quot; or &quot;mitigation&quot; in the abstract that haven&#39;t yet been classified against the `Intervention` taxonomy:
+?q=abstract:(adaptation OR mitigation) AND NOT evaluated_schemes:classification:taxonomy:Intervention
+
+# Get references with &quot;climate change&quot; in any order and a typoed &quot;health&quot;:
+?q=&quot;change climate&quot;~2 AND helth~
+</pre></div>
+</div>
+</section>
+<section id="start-year-and-end-year">
+<h5>Start Year and End Year<a class="headerlink" href="#start-year-and-end-year" title="Link to this heading">#</a></h5>
+<p>The minimum and maximum publication years (inclusive) for references to return.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span># Get references published from 2015 onwards:
+?q=...&amp;start_year=2015
+
+# Get references published up to and including 2020:
+?q=...&amp;end_year=2020
+
+# Get references published from 2015 to 2020:
+?q=...&amp;start_year=2015&amp;end_year=2020
+</pre></div>
+</div>
+</section>
+<section id="annotations">
+<h5>Annotations<a class="headerlink" href="#annotations" title="Link to this heading">#</a></h5>
+<p>The <code class="docutils literal notranslate"><span class="pre">annotation</span></code> parameter can be used to filter results based on their annotations.</p>
+<p>These are provided in the format <code class="docutils literal notranslate"><span class="pre">&lt;scheme&gt;[/&lt;label&gt;][&#64;score]</span></code>.</p>
+<ul class="simple">
+<li><p>If an annotation is provided without a score, results will be filtered for that annotation being true</p></li>
+<li><p>If a score is specified, results will be filtered for that annotation having a score greater than or equal to the given value.</p></li>
+<li><p>If the label is omitted, results will be filtered if any annotation with the given scheme is true.</p></li>
+</ul>
+<p>Multiple annotations can be provided; they will be combined using a logical <code class="docutils literal notranslate"><span class="pre">AND</span></code>.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span># Get references annotated with `classification:taxonomy:Outcomes/Stroke` as true:
+?q=...&amp;annotation=classification:taxonomy:Outcomes/Stroke
+
+# Get references with an inclusion:destiny score of at least 0.8:
+?q=...&amp;annotation=inclusion:destiny@0.8
+
+# Get references annotated with `classification:taxonomy:Outcomes/Stroke` as true and inclusion:destiny as true:
+?q=...&amp;annotation=classification:taxonomy:Outcomes/Stroke&amp;annotation=inclusion:destiny
+</pre></div>
+</div>
+</section>
+<section id="page">
+<h5>Page<a class="headerlink" href="#page" title="Link to this heading">#</a></h5>
+<p>The page number of results to return. Each page is 20 results.</p>
+<p>If omitted, defaults to the first page.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span># Get the 41st to 60th results:
+?q=...&amp;page=3
+</pre></div>
+</div>
+</section>
+<section id="sort">
+<h5>Sort<a class="headerlink" href="#sort" title="Link to this heading">#</a></h5>
+<p>The field(s) to sort the results by. Use <code class="docutils literal notranslate"><span class="pre">-</span></code> prefix to sort in descending order.</p>
+<p>If not provided, defaults to <code class="docutils literal notranslate"><span class="pre">relevance</span></code> as scored by the search engine.</p>
+<p>Multiple sort fields can be provided; they will be applied in the order given.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span># Sort by inclusion score ascending:
+?q=...&amp;sort=inclusion:destiny
+
+# Sort by publication year descending:
+?q=...&amp;sort=-publication_year
+
+# Sort by publication year ascending, then inclusion score descending:
+?q=...&amp;sort=publication_year&amp;sort=-inclusion:destiny
+</pre></div>
+</div>
+</section>
+</section>
+<section id="returns">
+<h4><a class="toc-backref" href="#id9" role="doc-backlink">Returns</a><a class="headerlink" href="#returns" title="Link to this heading">#</a></h4>
+<p>Returns a <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.references.ReferenceSearchResult" title="libs.sdk.src.destiny_sdk.references.ReferenceSearchResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">ReferenceSearchResult</span></code></a> object.</p>
+</section>
+<section id="limitations">
+<h4><a class="toc-backref" href="#id10" role="doc-backlink">Limitations</a><a class="headerlink" href="#limitations" title="Link to this heading">#</a></h4>
+<p>There is a hard cap on the number of results at 10,000. You cannot page past this point, nor will <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.search.SearchResultTotal" title="libs.sdk.src.destiny_sdk.search.SearchResultTotal"><code class="xref py py-class docutils literal notranslate"><span class="pre">total</span></code></a> show more than this.</p>
+</section>
+</section>
+<section id="api-lookup">
+<span id="lookup-procedure"></span><h3><a class="toc-backref" href="#id11" role="doc-backlink">API Lookup</a><a class="headerlink" href="#api-lookup" title="Link to this heading">#</a></h3>
+<p>Though not strictly a <cite>search</cite>, the <a class="reference external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc#tag/v1/operation/lookup_references_v1_references__get">lookup endpoint</a> at <cite>/v1/references/</cite> can be used to retrieve references by their identifiers. This endpoint requires <a class="reference internal" href="oauth.html"><span class="doc">authentication</span></a>.</p>
+<section id="id1">
+<h4><a class="toc-backref" href="#id12" role="doc-backlink">Parameters</a><a class="headerlink" href="#id1" title="Link to this heading">#</a></h4>
+<section id="identifiers-required">
+<h5>Identifiers (required)<a class="headerlink" href="#identifiers-required" title="Link to this heading">#</a></h5>
+<p>The identifier(s) to look up. Multiple identifiers can be provided, either in a comma-separated list or as multiple parameters.</p>
+<p>Identifiers are in the format <code class="docutils literal notranslate"><span class="pre">[[&lt;other&gt;:]&lt;type&gt;:]&lt;identifier&gt;</span></code>:</p>
+<ul class="simple">
+<li><p>If looking up a reference by its Destiny UUID id, no type prefix is needed: <code class="docutils literal notranslate"><span class="pre">09547790-7dfe-455e-a8df-5dca91963a5b</span></code>.</p></li>
+<li><p>If looking up a reference by a supported <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType" title="libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType"><code class="xref py py-class docutils literal notranslate"><span class="pre">identifier</span> <span class="pre">type</span></code></a>, the type must be prefixed: <code class="docutils literal notranslate"><span class="pre">doi:10.1000/xyz123</span></code>.</p></li>
+<li><p>If looking up a reference by a custom identifier type, the type must be prefixed with <code class="docutils literal notranslate"><span class="pre">other:</span></code>: <code class="docutils literal notranslate"><span class="pre">other:custom:internal-id-001</span></code>.</p></li>
+</ul>
+</section>
+</section>
+<section id="id2">
+<h4><a class="toc-backref" href="#id13" role="doc-backlink">Returns</a><a class="headerlink" href="#id2" title="Link to this heading">#</a></h4>
+<p>Returns a list of <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.references.Reference" title="libs.sdk.src.destiny_sdk.references.Reference"><code class="xref py py-class docutils literal notranslate"><span class="pre">Reference</span></code></a> objects in <a class="reference internal" href="deduplication.html#deduplicated-projection"><span class="std std-ref">deduplicated</span></a> form.</p>
+</section>
+<section id="id3">
+<h4><a class="toc-backref" href="#id14" role="doc-backlink">Limitations</a><a class="headerlink" href="#id3" title="Link to this heading">#</a></h4>
+<p>There is a hard cap of 100 identifiers per request. If more are needed, multiple requests must be made.</p>
+</section>
+</section>
+</section>
+<section id="search-fields">
+<span id="id4"></span><h2><a class="toc-backref" href="#id15" role="doc-backlink">Search Fields</a><a class="headerlink" href="#search-fields" title="Link to this heading">#</a></h2>
+<section id="search-field-selection">
+<h3><a class="toc-backref" href="#id16" role="doc-backlink">Search Field Selection</a><a class="headerlink" href="#search-field-selection" title="Link to this heading">#</a></h3>
+<p>References may have multiple sources of information, so search fields are collapsed into a single set of searchable fields. The relevant data is prioritised by:</p>
+<ul class="simple">
+<li><p>Fields provided on the <a class="reference internal" href="deduplication.html"><span class="doc">canonical reference</span></a> are prioritised over those on duplicate references.</p></li>
+<li><p>Then, the most recently added data is prioritised.</p></li>
+</ul>
+</section>
+<section id="bibliographic">
+<h3><a class="toc-backref" href="#id17" role="doc-backlink">Bibliographic</a><a class="headerlink" href="#bibliographic" title="Link to this heading">#</a></h3>
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">ReferenceSearchFieldsMixin.</span></span><span class="sig-name descname"><span class="pre">title</span></span><em class="property"><span class="w"> </span><span class="pre">str</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a></dt>
+<dd><p>The title of the reference.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">ReferenceSearchFieldsMixin.</span></span><span class="sig-name descname"><span class="pre">authors</span></span><em class="property"><span class="w"> </span><span class="pre">list[str]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a></dt>
+<dd><p>The authors of the reference.</p>
+<p>These are ordered by:</p>
+<ul class="simple">
+<li><p>First author</p></li>
+<li><p>Middle authors in alphabetical order</p></li>
+<li><p>Last author</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">ReferenceSearchFieldsMixin.</span></span><span class="sig-name descname"><span class="pre">publication_year</span></span><em class="property"><span class="w"> </span><span class="pre">int</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a></dt>
+<dd><p>The publication year of the reference.</p>
+</dd></dl>
+
+</section>
+<section id="abstract">
+<h3><a class="toc-backref" href="#id18" role="doc-backlink">Abstract</a><a class="headerlink" href="#abstract" title="Link to this heading">#</a></h3>
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">ReferenceSearchFieldsMixin.</span></span><span class="sig-name descname"><span class="pre">abstract</span></span><em class="property"><span class="w"> </span><span class="pre">str</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a></dt>
+<dd><p>The abstract of the reference.</p>
+</dd></dl>
+
+</section>
+<section id="id5">
+<h3><a class="toc-backref" href="#id19" role="doc-backlink">Annotations</a><a class="headerlink" href="#id5" title="Link to this heading">#</a></h3>
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">ReferenceSearchFieldsMixin.</span></span><span class="sig-name descname"><span class="pre">annotations</span></span><em class="property"><span class="w"> </span><span class="pre">list[str]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a></dt>
+<dd><p>Every <code class="docutils literal notranslate"><span class="pre">true</span></code> annotation on the reference.</p>
+<p>These are in format <code class="docutils literal notranslate"><span class="pre">&lt;scheme&gt;[/&lt;label&gt;]</span></code>.</p>
+<p>Examples:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">classification:taxonomy:Outcomes/Stroke</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">classification:taxonomy:Intervention/Climate</span> <span class="pre">policy</span> <span class="pre">instruments</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">inclusion:destiny</span></code> (No label)</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">ReferenceSearchFieldsMixin.</span></span><span class="sig-name descname"><span class="pre">evaluated_schemes</span></span><em class="property"><span class="w"> </span><span class="pre">list[str]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a></dt>
+<dd><p>Every scheme that has been evaluated for this reference.</p>
+<p>Combining this with <code class="docutils literal notranslate"><span class="pre">annotations</span></code> allows you to determine which annotations
+were evaluated as <code class="docutils literal notranslate"><span class="pre">false</span></code>.</p>
+<p>Examples:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">inclusion:destiny</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">classifier:taxonomy:Outcomes</span></code></p></li>
+</ul>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-prename descclassname"><span class="pre">ReferenceSearchFieldsMixin.</span></span><span class="sig-name descname"><span class="pre">inclusion_destiny</span></span><em class="property"><span class="w"> </span><span class="pre">float[0-1]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a></dt>
+<dd><p>The destiny inclusion score for this reference.</p>
+<p>This is used to apply custom thresholds for inclusion. If you just want to know if
+the reference was included per the default threshold, check for
+<code class="docutils literal notranslate"><span class="pre">inclusion:destiny</span></code> in <code class="docutils literal notranslate"><span class="pre">annotations</span></code>.</p>
+</dd></dl>
+
+</section>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="oauth.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">API Authentication</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="batch-importing.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Importing References with Batches</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#search-procedures">Search Procedures</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#api-query-string-search">API Query String Search</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#parameters">Parameters</a><ul class="nav section-nav flex-column">
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#query-string-required">Query String (required)</a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#start-year-and-end-year">Start Year and End Year</a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#annotations">Annotations</a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#page">Page</a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#sort">Sort</a></li>
+</ul>
+</li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#returns">Returns</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#limitations">Limitations</a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#api-lookup">API Lookup</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">Parameters</a><ul class="nav section-nav flex-column">
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#identifiers-required">Identifiers (required)</a></li>
+</ul>
+</li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id2">Returns</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id3">Limitations</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#search-fields">Search Fields</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#search-field-selection">Search Field Selection</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#bibliographic">Bibliographic</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#abstract">Abstract</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id5">Annotations</a></li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, DESTINY Team.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.16.1.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
