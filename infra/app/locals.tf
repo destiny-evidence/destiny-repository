@@ -17,7 +17,7 @@ locals {
 
       alerts_enabled = false
 
-      db_log_retention_days         = 7
+      db_log_retention_days         = 30
       db_logfiles_retention_days    = 3
       db_log_disconnections         = "on"
       db_log_min_duration_statement = 2000 # Log queries > 2 seconds
@@ -40,7 +40,7 @@ locals {
       db_memory_warning_pct   = 80
       db_memory_critical_pct  = 90
 
-      db_log_retention_days         = 14
+      db_log_retention_days         = 30
       db_logfiles_retention_days    = 7
       db_log_disconnections         = "on"
       db_log_min_duration_statement = 2000 # Log queries > 2 seconds
