@@ -217,7 +217,7 @@ locals {
 
     # https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-query-store
     "pg_qs.query_capture_mode"              = "TOP" # top resource-consuming queries
-    "pgms_wait_sampling.query_capture_mode" = "ALL" # wait statistics for all queries
+    "pgms_wait_sampling.query_capture_mode" = "TOP" # wait statistics for top resource-consuming queries
   }
 }
 
