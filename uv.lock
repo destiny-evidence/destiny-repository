@@ -2,6 +2,9 @@ version = 1
 revision = 3
 requires-python = "==3.14.*"
 
+[manifest]
+excludes = ["ecdsa"]
+
 [[package]]
 name = "accessible-pygments"
 version = "0.0.5"
@@ -553,7 +556,7 @@ dependencies = [
     { name = "opentelemetry-instrumentation-sqlalchemy" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
-    { name = "python-jose" },
+    { name = "python-jose", extra = ["cryptography"] },
     { name = "sqlalchemy-utils" },
     { name = "structlog" },
     { name = "taskiq" },
@@ -620,7 +623,7 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-sqlalchemy", specifier = ">=0.60b1,<0.61" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pydantic-settings", specifier = ">=2.7.1,<3" },
-    { name = "python-jose", specifier = ">=3.5.0,<4" },
+    { name = "python-jose", extras = ["cryptography"], specifier = ">=3.5.0,<4" },
     { name = "sqlalchemy-utils", specifier = ">=0.41.2,<0.42" },
     { name = "structlog", specifier = ">=25.1.0,<26" },
     { name = "taskiq", specifier = ">=0.12.1" },
@@ -674,7 +677,7 @@ dependencies = [
     { name = "httpx" },
     { name = "msal" },
     { name = "pydantic" },
-    { name = "python-jose" },
+    { name = "python-jose", extra = ["cryptography"] },
 ]
 
 [package.metadata]
@@ -684,7 +687,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1,<0.29" },
     { name = "msal", specifier = ">=1.34.0" },
     { name = "pydantic", specifier = ">=2.12.5,<3" },
-    { name = "python-jose", specifier = ">=3.5.0,<4" },
+    { name = "python-jose", extras = ["cryptography"], specifier = ">=3.5.0,<4" },
 ]
 provides-extras = ["labs"]
 
@@ -697,7 +700,7 @@ dev = [
     { name = "pytest-env", specifier = ">=1.1.5,<2" },
     { name = "pytest-httpx", specifier = ">=0.35.0,<0.36" },
     { name = "ruff", specifier = ">=0.11.5,<0.12" },
-    { name = "uvloop", specifier = ">=0.21.0,<0.22" },
+    { name = "uvloop", specifier = ">=0.22.0" },
 ]
 
 [[package]]
@@ -739,18 +742,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ae/ed/aefcc8cd0ba62a0560c3c18c33925362d46c6075480bfa4df87b28e169a9/docutils-0.21.2.tar.gz", hash = "sha256:3a6b18732edf182daa3cd12775bbb338cf5691468f91eeeb109deff6ebfa986f", size = 2204444, upload-time = "2024-04-23T18:57:18.24Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8f/d7/9322c609343d929e75e7e5e6255e614fcc67572cfd083959cdef3b7aad79/docutils-0.21.2-py3-none-any.whl", hash = "sha256:dafca5b9e384f0e419294eb4d2ff9fa826435bf15f15b7bd45723e8ad76811b2", size = 587408, upload-time = "2024-04-23T18:57:14.835Z" },
-]
-
-[[package]]
-name = "ecdsa"
-version = "0.19.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "six" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/c0/1f/924e3caae75f471eae4b26bd13b698f6af2c44279f67af317439c2f4c46a/ecdsa-0.19.1.tar.gz", hash = "sha256:478cba7b62555866fcb3bb3fe985e06decbdb68ef55713c4e5ab98c57d508e61", size = 201793, upload-time = "2025-03-13T11:52:43.25Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/cb/a3/460c57f094a4a165c84a1341c373b0a4f5ec6ac244b998d5021aade89b77/ecdsa-0.19.1-py2.py3-none-any.whl", hash = "sha256:30638e27cf77b7e15c4c4cc1973720149e1033827cfd00661ca5c8cc0cdb24c3", size = 150607, upload-time = "2025-03-13T11:52:41.757Z" },
 ]
 
 [[package]]
@@ -2046,13 +2037,17 @@ name = "python-jose"
 version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ecdsa" },
     { name = "pyasn1" },
     { name = "rsa" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c6/77/3a1c9039db7124eb039772b935f2244fbb73fc8ee65b9acf2375da1c07bf/python_jose-3.5.0.tar.gz", hash = "sha256:fb4eaa44dbeb1c26dcc69e4bd7ec54a1cb8dd64d3b4d81ef08d90ff453f2b01b", size = 92726, upload-time = "2025-05-28T17:31:54.288Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d9/c3/0bd11992072e6a1c513b16500a5d07f91a24017c5909b02c72c62d7ad024/python_jose-3.5.0-py2.py3-none-any.whl", hash = "sha256:abd1202f23d34dfad2c3d28cb8617b90acf34132c7afd60abd0b0b7d3cb55771", size = 34624, upload-time = "2025-05-28T17:31:52.802Z" },
+]
+
+[package.optional-dependencies]
+cryptography = [
+    { name = "cryptography" },
 ]
 
 [[package]]
