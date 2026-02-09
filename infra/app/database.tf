@@ -209,8 +209,8 @@ locals {
     # https://www.postgresql.org/docs/current/runtime-config-logging.html
     "log_checkpoints"            = "ON" # logs when data is flushed to disk
     "log_connections"            = "ON"
-    "log_disconnections"         = upper(local.env.db_log_disconnections) # off in production due to volume
-    "log_statement"              = "all"
+    "log_disconnections"         = upper(local.env.db_log_disconnections)            # off in production due to volume
+    "log_statement"              = "ddl"                                             # log data definition statements, such as CREATE, ALTER, and DROP statements
     "log_min_duration_statement" = tostring(local.env.db_log_min_duration_statement) # slow query threshold in ms
     "log_lock_waits"             = "ON"
     "log_temp_files"             = "0" # log all temp files (queries using disk for sorting)

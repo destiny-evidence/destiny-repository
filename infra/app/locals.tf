@@ -20,7 +20,7 @@ locals {
       db_log_retention_days         = 30
       db_logfiles_retention_days    = 3
       db_log_disconnections         = "on"
-      db_log_min_duration_statement = 2000 # Log queries > 2 seconds
+      db_log_min_duration_statement = 500 # Log queries > 500ms
 
       es_snapshot_schedule  = "0 30 1 * * ?" # Daily at 01:30
       es_snapshot_retention = 7
@@ -43,7 +43,7 @@ locals {
       db_log_retention_days         = 30
       db_logfiles_retention_days    = 7
       db_log_disconnections         = "on"
-      db_log_min_duration_statement = 2000 # Log queries > 2 seconds
+      db_log_min_duration_statement = 500 # Log queries > 500ms
 
       es_snapshot_schedule  = "0 30 1 * * ?"
       es_snapshot_retention = 7
@@ -66,7 +66,7 @@ locals {
       db_log_retention_days         = 30
       db_logfiles_retention_days    = 7
       db_log_disconnections         = "off" # High volume in production
-      db_log_min_duration_statement = 2000  # Log queries > 2 seconds
+      db_log_min_duration_statement = 500   # Log queries > 500ms
 
       es_snapshot_schedule  = "0 30 1 * * ?" # Daily at 01:30
       es_snapshot_retention = 30             # 30 days
