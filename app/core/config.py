@@ -328,6 +328,23 @@ class FeatureFlags(BaseModel):
     """Feature flags for the application."""
 
 
+class DedupScoringConfig(BaseModel):
+    """Configuration for deduplication candidate search scoring."""
+
+    max_author_clauses: int = Field(
+        default=25,
+        ge=1,
+        le=100,
+        description="Maximum author clauses in the ES dis_max query.",
+    )
+    min_author_token_length: int = Field(
+        default=2,
+        ge=1,
+        le=5,
+        description="Minimum token length for author name matching.",
+    )
+
+
 class Settings(BaseSettings):
     """Settings model for API."""
 
@@ -339,6 +356,7 @@ class Settings(BaseSettings):
     toml: TOML = TOML(toml_path=project_root)
 
     feature_flags: FeatureFlags = FeatureFlags()
+    dedup_scoring: DedupScoringConfig = DedupScoringConfig()
 
     db_config: DatabaseConfig
     es_config: ESConfig

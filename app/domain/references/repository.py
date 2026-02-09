@@ -1,7 +1,8 @@
 """Repositories for references and associated models."""
 
 import datetime
-import math
+import re
+import unicodedata
 from abc import ABC
 from collections.abc import Sequence
 from typing import Literal
@@ -24,6 +25,7 @@ from sqlalchemy import (
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.core.config import get_settings
 from app.core.telemetry.repository import trace_repository_method
 from app.domain.references.models.es import (
     ReferenceDocument,
@@ -231,6 +233,77 @@ class ReferenceSQLRepository(
         ]
 
 
+_TOKEN_PATTERN = re.compile(r"[^\W\d_]+", flags=re.UNICODE)
+
+
+def _is_meaningful_token(token: str, min_token_length: int) -> bool:
+    if len(token) >= min_token_length:
+        return True
+
+    if len(token) != 1:
+        return False
+
+    # Preserve single-character non-Latin tokens (e.g., CJK names),
+    # but exclude Latin initials even when accented.
+    return "LATIN" not in unicodedata.name(token, "")
+
+
+def _build_author_dis_max_query(
+    authors: list[str],
+    *,
+    max_clauses: int,
+    min_token_length: int,
+) -> Q | None:
+    """
+    Build a dis_max query for author matching with bounded score contribution.
+
+    Uses dis_max instead of bool.should to prevent author-count inflation.
+    bool.should sums all matching clauses, so papers with thousands of authors
+    (e.g. CERN collaborations) produce inflated scores that drown out title
+    relevance. dis_max takes the best clause score and discounts the rest, bounding
+    the author contribution regardless of author count.
+
+    Caps the clause count to avoid sending redundant clauses to ES (dis_max
+    discounts them anyway). Filters short tokens because single-letter
+    initials match too broadly and produce false positive score boosts.
+
+    Args:
+        authors: Author names to build match queries from.
+        max_clauses: Maximum number of match queries to emit.
+        min_token_length: Minimum token length; filters initials.
+
+    Returns:
+        A dis_max Q object, or None if no valid queries remain.
+
+    """
+    queries: list[Q] = []
+    seen_terms: set[str] = set()
+    for author in authors:
+        tokens = [
+            token
+            for token in _TOKEN_PATTERN.findall(author)
+            if _is_meaningful_token(token, min_token_length)
+        ]
+        if not tokens:
+            continue
+
+        terms = " ".join(tokens)
+        if terms in seen_terms:
+            continue
+
+        seen_terms.add(terms)
+        queries.append(Q("match", authors=terms))
+        if len(queries) >= max_clauses:
+            break
+
+    if not queries:
+        return None
+
+    # 0.1 = best-matching author dominates, additional matches add 10% each.
+    # Enough to prefer multi-author overlap without summing to inflation.
+    return Q("dis_max", queries=queries, tie_breaker=0.1)
+
+
 class ReferenceESRepository(
     GenericAsyncESRepository[DomainReference, ReferenceDocument],
     ReferenceRepositoryBase,
@@ -262,8 +335,9 @@ class ReferenceESRepository(
         The proof of concept does:
 
         - MUST: fuzzy match on title (requires 50% of terms to match)
-        - SHOULD: partial match on authors list (requires 50% of authors to match)
+        - SHOULD: author matching
         - FILTER: publication year within ±1 year range (non-scoring)
+        - FILTER: only canonical references (at rest)
 
         :param search_fields: The search fields of the potential duplicate.
         :type search_fields: CandidateCanonicalSearchFields
@@ -272,6 +346,15 @@ class ReferenceESRepository(
         :return: A list of search results with IDs and scores.
         :rtype: list[ESScoreResult]
         """
+        config = get_settings().dedup_scoring
+
+        author_query = _build_author_dis_max_query(
+            search_fields.authors,
+            max_clauses=config.max_author_clauses,
+            min_token_length=config.min_author_token_length,
+        )
+        should_clauses = [author_query] if author_query else []
+
         search = (
             AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
             .query(
@@ -289,9 +372,7 @@ class ReferenceESRepository(
                             },
                         )
                     ],
-                    should=[
-                        Q("match", authors=author) for author in search_fields.authors
-                    ],
+                    should=should_clauses,
                     filter=[
                         Q(
                             "range",
@@ -317,7 +398,6 @@ class ReferenceESRepository(
                     if search_fields.publication_year
                     else [],
                     must_not=[Q("ids", values=[reference_id])],
-                    minimum_should_match=math.floor(0.5 * len(search_fields.authors)),
                 )
             )
             .source(fields=False)
