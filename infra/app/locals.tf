@@ -17,6 +17,11 @@ locals {
 
       alerts_enabled = false
 
+      db_log_retention_days         = 30
+      db_logfiles_retention_days    = 3
+      db_log_disconnections         = "on"
+      db_log_min_duration_statement = 500 # Log queries > 500ms
+
       es_snapshot_schedule  = "0 30 1 * * ?" # Daily at 01:30
       es_snapshot_retention = 7
     }
@@ -35,6 +40,11 @@ locals {
       db_memory_warning_pct   = 80
       db_memory_critical_pct  = 90
 
+      db_log_retention_days         = 30
+      db_logfiles_retention_days    = 7
+      db_log_disconnections         = "on"
+      db_log_min_duration_statement = 500 # Log queries > 500ms
+
       es_snapshot_schedule  = "0 30 1 * * ?"
       es_snapshot_retention = 7
     }
@@ -52,6 +62,11 @@ locals {
       db_cpu_critical_pct     = 85
       db_memory_warning_pct   = 70
       db_memory_critical_pct  = 85
+
+      db_log_retention_days         = 30
+      db_logfiles_retention_days    = 7
+      db_log_disconnections         = "off" # High volume in production
+      db_log_min_duration_statement = 500   # Log queries > 500ms
 
       es_snapshot_schedule  = "0 30 1 * * ?" # Daily at 01:30
       es_snapshot_retention = 30             # 30 days
