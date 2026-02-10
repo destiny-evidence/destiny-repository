@@ -312,11 +312,11 @@ class TestProcessReferenceDuplicateDecisionRaceCondition:
 
     @pytest.fixture
     def decision_id(self):
-        return uuid.uuid4()
+        return uuid7()
 
     @pytest.fixture
     def reference_id(self):
-        return uuid.uuid4()
+        return uuid7()
 
     @pytest.fixture
     def mock_decision_pending(self, decision_id, reference_id):
