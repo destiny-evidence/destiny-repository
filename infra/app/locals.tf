@@ -50,7 +50,7 @@ locals {
     }
 
     production = {
-      db_storage_mb   = 4194304 # 4TB
+      db_storage_mb   = 4193280 # 4TB with host caching
       db_storage_tier = "P50"
       db_backup_days  = 35
       db_ha_enabled   = true
