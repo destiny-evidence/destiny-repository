@@ -45,7 +45,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
   storage_mb   = local.env.db_storage_mb
   storage_tier = local.env.db_storage_tier
 
-  sku_name = "GP_Standard_D2ds_v4"
+  sku_name = local.env.db_sku_name
 
   authentication {
     password_auth_enabled         = true # required for init container, see https://covidence.atlassian.net/wiki/spaces/Platforms/pages/624033793/DESTINY+DB+Authentication
