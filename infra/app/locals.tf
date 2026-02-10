@@ -56,7 +56,7 @@ locals {
       db_storage_tier = "P50"
       db_backup_days  = 35
       db_ha_enabled   = true
-      db_sku_name     = "GP_Standard_D8ds_v5"
+      db_sku_name     = "GP_Standard_D8ds_v5" # More memory -> better chance of indexes being cached in memory, improving performance
 
       alerts_enabled          = true
       db_storage_warning_pct  = 70
