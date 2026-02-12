@@ -1,0 +1,30 @@
+name: Rollback Production
+
+concurrency:
+  # No parallel runs allowed between promote and rollback
+  group: promote-production
+  # Rollbacks are allowed to interrupt in-progress deployments
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        type: string
+        description: The image tag to rollback to (e.g., short git SHA)
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  # Note that this rollback strategy does not include
+  # rollback of database migrations.
+  # Manage these via the db migrator prior to rollback.
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: production
+      image_tag: ${{ inputs.image_tag }}

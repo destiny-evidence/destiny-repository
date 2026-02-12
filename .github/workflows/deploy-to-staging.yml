@@ -1,27 +1,29 @@
-name: Deploy to Development
+name: Deploy to Staging
 
 concurrency:
   # No parallel runs allowed
-  group: deploy-development
-  # Don't queue runs, just apply latest
-  cancel-in-progress: true
+  group: deploy-staging
+  # Queue runs behind each other so each change is applied independently.
+  cancel-in-progress: false
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
   id-token: write
   contents: read
-
 jobs:
   build:
     uses: ./.github/workflows/build.yml
     with:
-      environment: development
+      environment: staging
 
   deploy:
     needs: build
     uses: ./.github/workflows/deploy.yml
     with:
-      environment: development
+      environment: staging
       image_tag: ${{ needs.build.outputs.image_tag }}
