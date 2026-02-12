@@ -472,7 +472,7 @@ resource "ec_deployment" "cluster" {
     hot = {
       size = "2g"
       autoscaling = {
-        max_size          = "30g"
+        max_size          = local.env.es_hot_max_size_memory
         max_size_resource = "memory"
       }
     }
@@ -480,7 +480,7 @@ resource "ec_deployment" "cluster" {
     warm = {
       size = "0g"
       autoscaling = {
-        max_size          = "30g"
+        max_size          = "2g" # 400GB storage: https://cloud.elastic.co/pricing
         max_size_resource = "memory"
       }
     }
@@ -488,7 +488,7 @@ resource "ec_deployment" "cluster" {
     cold = {
       size = "0g"
       autoscaling = {
-        max_size          = "60g"
+        max_size          = "0g"
         max_size_resource = "memory"
       }
     }
@@ -496,7 +496,7 @@ resource "ec_deployment" "cluster" {
     frozen = {
       size = "0g"
       autoscaling = {
-        max_size          = "60g"
+        max_size          = "0g"
         max_size_resource = "memory"
       }
     }
@@ -504,7 +504,7 @@ resource "ec_deployment" "cluster" {
     ml = {
       size = "0g"
       autoscaling = {
-        max_size          = "30g"
+        max_size          = "0g"
         max_size_resource = "memory"
       }
     }
