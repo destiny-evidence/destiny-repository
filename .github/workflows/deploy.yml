@@ -129,7 +129,7 @@ jobs:
   migrate-database:
     runs-on: ubuntu-latest
     needs: deploy-container-apps-jobs
-    environment: ${{ inputs.environment || 'staging' }}
+    environment: ${{ inputs.environment }}
     steps:
       - name: "Az CLI login"
         uses: azure/login@v2.1.0
