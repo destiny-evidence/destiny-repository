@@ -253,7 +253,16 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         """Distribute an import batch, retrying on connection errors."""
         last_processed_line = 0
         async for attempt in tenacity.AsyncRetrying(
-            retry=tenacity.retry_if_exception_type(httpx.RemoteProtocolError),
+            retry=tenacity.retry_if_exception_type(httpx.TransportError),
+            before_sleep=lambda rs: logger.warning(
+                "Retrying import batch stream",
+                extra={
+                    "import_batch_id": str(import_batch.id),
+                    "attempt": rs.attempt_number,
+                    "last_processed_line": last_processed_line,  # noqa: B023
+                    "exc": repr(rs.outcome.exception()),
+                },
+            ),
             wait=tenacity.wait_exponential(multiplier=1, max=30),
             stop=tenacity.stop_after_attempt(5),
             reraise=True,

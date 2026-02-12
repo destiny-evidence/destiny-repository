@@ -220,6 +220,7 @@ class TestDistributeImportBatch:
             self._transport = None
             self._fail_after_sequence = fail_after_sequence or []
             self.attempt_count = 0
+            self.streamed_url = None
 
         async def __aenter__(self):
             return self
@@ -228,6 +229,7 @@ class TestDistributeImportBatch:
             pass
 
         def stream(self, method, url):
+            self.streamed_url = url
             fail_after = None
             if self.attempt_count < len(self._fail_after_sequence):
                 fail_after = self._fail_after_sequence[self.attempt_count]
@@ -247,7 +249,8 @@ class TestDistributeImportBatch:
         )
         lines = ["ref1", "ref2", "ref3"]
 
-        monkeypatch.setattr(httpx, "AsyncClient", lambda: self.FakeClient(lines))
+        client = self.FakeClient(lines)
+        monkeypatch.setattr(httpx, "AsyncClient", lambda: client)
 
         created_results = []
         queued_tasks = []
@@ -270,6 +273,7 @@ class TestDistributeImportBatch:
 
         assert len(created_results) == len(lines)
         assert len(queued_tasks) == len(lines)
+        assert client.streamed_url == str(import_batch.storage_url)
 
     @pytest.mark.asyncio
     async def test_retries_on_connection_error(self, monkeypatch, fake_uow):
@@ -305,6 +309,7 @@ class TestDistributeImportBatch:
 
         assert client.attempt_count == 2
         assert queued_lines == ["ref1", "ref2", "ref3", "ref4"]
+        assert client.streamed_url == str(import_batch.storage_url)
 
 
 @pytest.mark.asyncio
