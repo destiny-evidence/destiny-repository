@@ -1,6 +1,10 @@
 name: Promote to Production
 
-concurrency: promote
+concurrency:
+  # No parallel runs allowed
+  group: promote-production
+  # Queue runs behind each other so each change is applied independently.
+  cancel-in-progress: false
 
 on: workflow_dispatch
 

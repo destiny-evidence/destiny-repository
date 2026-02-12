@@ -1,8 +1,10 @@
 name: Deploy to Staging
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # No parallel runs allowed
+  group: deploy-staging
+  # Queue runs behind each other so each change is applied independently.
+  cancel-in-progress: false
 
 on:
   push:

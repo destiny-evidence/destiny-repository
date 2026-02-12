@@ -1,7 +1,8 @@
 name: Build Application & UI Docker Containers
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # No duplicate builds in the same environment
+  group: ${{ github.workflow }}-${{ inputs.environment }}
   cancel-in-progress: true
 
 on:
