@@ -1,4 +1,4 @@
-name: Build Application and UI
+name: Build Application & UI Docker Containers
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -9,14 +9,29 @@ on:
     inputs:
       environment:
         type: string
-        description: environment to build for
+        description: The environment to build for
         required: true
+    outputs:
+      image_tag:
+        description: "The image tag for the built containers, used in deployment workflows."
+        value: ${{ jobs.build-application.outputs.image_tag }}
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        description: The environment to build for
+        required: true
+        options:
+          - development
+          - staging
+          - production
 
 permissions:
   id-token: write
   contents: read
 jobs:
-  build:
+  build-application:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     outputs:
@@ -63,3 +78,51 @@ jobs:
         with:
           push: true
           tags: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ steps.vars.outputs.sha_short }}
+
+  build-ui:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: "Az CLI login"
+        uses: azure/login@v2.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: ui
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Azure Docker Login
+        id: acr_login
+        uses: Azure/cli@v2.0.0
+        with:
+          inlineScript: |
+            {
+              echo "docker_token<<EOF"
+              echo "$(az acr login -n ${{vars.REGISTRY_NAME}} --expose-token --output tsv --query accessToken)"
+              echo "EOF"
+            } >> $GITHUB_OUTPUT
+
+      - name: Login to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{vars.REGISTRY_NAME}}.azurecr.io
+          username: 00000000-0000-0000-0000-000000000000
+          password: ${{ steps.acr_login.outputs.docker_token }}
+
+      - name: Set job env
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build and push UI Docker image
+        uses: docker/build-push-action@v5.1.0
+        with:
+          context: ./ui
+          file: ./ui/Dockerfile
+          push: true
+          tags: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}-ui:${{ steps.vars.outputs.sha_short }}
