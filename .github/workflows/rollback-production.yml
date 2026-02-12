@@ -19,6 +19,9 @@ permissions:
   contents: read
 
 jobs:
+  # Note that this rollback strategy does not include
+  # rollback of database migrations.
+  # Manage these via the db migrator prior to rollback.
   deploy:
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/deploy.yml
