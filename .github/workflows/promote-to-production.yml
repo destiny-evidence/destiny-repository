@@ -9,10 +9,12 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  get-image-tag:
     if: github.ref == 'refs/heads/main' # Only run on main
     runs-on: ubuntu-latest
     environment: production
+    outputs:
+      image_tag: ${{ steps.vars.outputs.sha_short }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -22,8 +24,10 @@ jobs:
         id: vars
         run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-      - name: deploy
-        uses: ./.github/workflows/deploy.yml
-        with:
-          environment: production
-          image_tag: ${{ steps.vars.outputs.sha_short }}
+  deploy:
+    if: github.ref == 'refs/heads/main' # Only run on main, not strictly necessary but for safety
+    uses: ./.github/workflows/deploy.yml
+    needs: get-image-tag
+    with:
+      environment: production
+      image_tag: ${{ needs.get-image-tag.outputs.image_tag }}
