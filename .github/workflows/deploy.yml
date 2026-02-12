@@ -1,8 +1,10 @@
 name: Deploy to Container App Jobs
 
 concurrency:
-  # Allow only one active workflow run per environment
+  # No parallel deployments in the same environment
   group: ${{ github.workflow }}-${{ inputs.environment }}
+  # Automated workflows have their own concurrency limitations
+  # so allow cancellation of this workflow if manually triggered.
   cancel-in-progress: true
 
 on:
