@@ -1,0 +1,29 @@
+name: Promote to Production
+
+concurrency: promote
+
+on: workflow_dispatch
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main' # Only run on main
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: .
+
+      - name: Get image tag
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: deploy
+        uses: ./.github/workflows/deploy.yml
+        with:
+          environment: production
+          image_tag: ${{ steps.vars.outputs.sha_short }}
