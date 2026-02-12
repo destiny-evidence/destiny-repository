@@ -7,7 +7,7 @@
 # To get a newer version, you will need to update the SHA.
 # You can also reference a tag or branch, but the action may change without warning.
 
-name: Deploy to development
+name: Deploy to Development
 
 on:
   workflow_dispatch:
@@ -15,8 +15,16 @@ on:
 permissions:
   id-token: write
   contents: read
+
 jobs:
-  deploy-to-development:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      environment: development
+
+  deploy:
+    needs: build
     uses: ./.github/workflows/deploy.yml
     with:
       environment: development
+      image_tag: ${{ needs.build.outputs.image_tag }}
