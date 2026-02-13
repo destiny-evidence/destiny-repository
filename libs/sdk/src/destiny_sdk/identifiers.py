@@ -1,10 +1,26 @@
 """Identifier classes for the Destiny SDK."""
 
+import re
+import unicodedata
 import uuid
 from enum import StrEnum, auto
 from typing import Annotated, Literal, Self
 
-from pydantic import UUID4, BaseModel, Field, TypeAdapter, field_validator
+from pydantic import BaseModel, Field, PositiveInt, TypeAdapter, field_validator
+
+from .core import UUID
+
+# Case-insensitive patterns for DOI URL prefix stripping
+_DOI_URL_PREFIX_RE = re.compile(r"^(?:https?://)?(?:dx\.)?doi\.org/", re.IGNORECASE)
+_DOI_SCHEME_RE = re.compile(r"^doi:\s*", re.IGNORECASE)
+
+# Translation table for DOI canonicalization (extensible for future characters)
+_DOI_CHAR_TRANSLATION = str.maketrans(
+    {
+        "\u00a0": " ",  # NBSP -> space
+        "\u2010": "-",  # Unicode hyphen -> ASCII hyphen
+    }
+)
 
 
 class ExternalIdentifierType(StrEnum):
@@ -24,7 +40,7 @@ class ExternalIdentifierType(StrEnum):
     PM_ID = auto()
     """A PubMed ID which is a unique identifier for a document in PubMed."""
     PRO_QUEST = auto()
-    """A ProQuest ID which is a unqiue identifier for a document in ProQuest."""
+    """A ProQuest ID which is a unique identifier for a document in ProQuest."""
     OPEN_ALEX = auto()
     """An OpenAlex ID which is a unique identifier for a document in OpenAlex."""
     OTHER = auto()
@@ -35,8 +51,13 @@ class DOIIdentifier(BaseModel):
     """An external identifier representing a DOI."""
 
     identifier: str = Field(
-        description="The DOI of the reference.",
-        pattern=r"^10\.\d{4,9}/[-._;()/:a-zA-Z0-9%<>\[\]+&]+$",
+        description=(
+            "The DOI of the reference. "
+            "Format: '10.<registrant>/<suffix>' where registrant is 4-9 digits "
+            "and suffix is any non-whitespace characters. "
+            "Examples: 10.1000/journal.pone.0001, 10.18730/9WQ$D, 10.1000/édition"
+        ),
+        pattern=r"^10\.\d{4,9}/\S+$",
     )
     identifier_type: Literal[ExternalIdentifierType.DOI] = Field(
         ExternalIdentifierType.DOI, description="The type of identifier used."
@@ -44,23 +65,33 @@ class DOIIdentifier(BaseModel):
 
     @field_validator("identifier", mode="before")
     @classmethod
-    def remove_doi_url(cls, value: str) -> str:
-        """Remove the URL part of the DOI if it exists."""
-        return (
-            value.removeprefix("http://")
-            .removeprefix("https://")
-            .removeprefix("doi.org/")
-            .removeprefix("dx.doi.org/")
-            .removeprefix("doi:")
-            .strip()
-        )
+    def canonicalize_doi(cls, value: str) -> str:
+        """
+        Canonicalize DOI: strip URL prefixes and normalize Unicode.
+
+        - NFC Unicode normalization
+        - Translate special characters (NBSP, Unicode hyphen) via translation table
+        - Case-insensitive URL/scheme prefix stripping
+        """
+        # NFC normalization first
+        value = unicodedata.normalize("NFC", str(value))
+        # Translate special characters and strip
+        value = value.translate(_DOI_CHAR_TRANSLATION).strip()
+        # Strip URL prefixes (case-insensitive)
+        value = _DOI_URL_PREFIX_RE.sub("", value)
+        value = _DOI_SCHEME_RE.sub("", value)
+        return value.strip()
 
 
 class ProQuestIdentifier(BaseModel):
     """An external identifier representing a ProQuest ID."""
 
     identifier: str = Field(
-        description="The ProQuest id of the reference", pattern=r"[0-9]+$"
+        description=(
+            "The ProQuest ID of the reference. "
+            "Format: numeric digits only. Example: 12345678"
+        ),
+        pattern=r"[0-9]+$",
     )
     identifier_type: Literal[ExternalIdentifierType.PRO_QUEST] = Field(
         ExternalIdentifierType.PRO_QUEST, description="The type of identifier used."
@@ -84,12 +115,16 @@ class ERICIdentifier(BaseModel):
     """
     An external identifier representing an ERIC Number.
 
-    An ERIC Number is defined as a unqiue identifiying number preceeded by
-    EJ (for a journal article) or ED (for a non-journal document).
+    An ERIC Number is defined as a unique identifying number preceded by
+    ED (for a non-journal document) or EJ (for a journal article).
     """
 
     identifier: str = Field(
-        description="The ERIC Number of the reference.", pattern=r"E[D|J][0-9]+$"
+        description=(
+            "The ERIC Number. "
+            "Format: 'ED' or 'EJ' followed by digits. Example: ED123456 or EJ789012"
+        ),
+        pattern=r"E[D|J][0-9]+$",
     )
     identifier_type: Literal[ExternalIdentifierType.ERIC] = Field(
         ExternalIdentifierType.ERIC, description="The type of identifier used."
@@ -112,7 +147,9 @@ class ERICIdentifier(BaseModel):
 class PubMedIdentifier(BaseModel):
     """An external identifier representing a PubMed ID."""
 
-    identifier: int = Field(description="The PubMed ID of the reference.")
+    identifier: PositiveInt = Field(
+        description="The PubMed ID (PMID) of the reference. Example: 12345678",
+    )
     identifier_type: Literal[ExternalIdentifierType.PM_ID] = Field(
         ExternalIdentifierType.PM_ID, description="The type of identifier used."
     )
@@ -122,7 +159,11 @@ class OpenAlexIdentifier(BaseModel):
     """An external identifier representing an OpenAlex ID."""
 
     identifier: str = Field(
-        description="The OpenAlex ID of the reference.", pattern=r"^W\d+$"
+        description=(
+            "The OpenAlex ID of the reference. "
+            "Format: 'W' followed by digits. Example: W2741809807"
+        ),
+        pattern=r"^W\d+$",
     )
     identifier_type: Literal[ExternalIdentifierType.OPEN_ALEX] = Field(
         ExternalIdentifierType.OPEN_ALEX, description="The type of identifier used."
@@ -166,7 +207,7 @@ ExternalIdentifier = Annotated[
 ]
 
 #: Any identifier including external identifiers and repository UUID4s.
-Identifier = Annotated[ExternalIdentifier | UUID4, Field()]
+Identifier = Annotated[ExternalIdentifier | UUID, Field()]
 
 ExternalIdentifierAdapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
     ExternalIdentifier
@@ -180,7 +221,7 @@ class LinkedExternalIdentifier(BaseModel):
         description="The identifier of the reference.",
         discriminator="identifier_type",
     )
-    reference_id: UUID4 = Field(
+    reference_id: UUID = Field(
         description="The ID of the reference this identifier identifies."
     )
 
@@ -211,11 +252,11 @@ class IdentifierLookup(BaseModel):
         """Parse an identifier string into an IdentifierLookup."""
         if delimiter not in identifier_lookup_string:
             try:
-                UUID4(identifier_lookup_string)
+                TypeAdapter(UUID).validate_python(identifier_lookup_string)
             except ValueError as exc:
                 msg = (
                     f"Invalid identifier lookup string: {identifier_lookup_string}. "
-                    "Must be UUIDv4 if no identifier type is specified."
+                    "Must be UUID if no identifier type is specified."
                 )
                 raise ValueError(msg) from exc
             return cls(
@@ -249,7 +290,9 @@ class IdentifierLookup(BaseModel):
 
     @classmethod
     def from_identifier(cls, identifier: Identifier) -> Self:
-        """Create an IdentifierLookup from an ExternalIdentifier or UUID4."""
+        """Create an IdentifierLookup from an ExternalIdentifier or UUID."""
+        # Use stdlib uuid here as we can't use Annotated types in isinstance checks
+        # The UUID versions is already validated per `identifier`
         if isinstance(identifier, uuid.UUID):
             return cls(identifier=str(identifier), identifier_type=None)
         return cls(
@@ -259,9 +302,9 @@ class IdentifierLookup(BaseModel):
         )
 
     def to_identifier(self) -> Identifier:
-        """Convert into an ExternalIdentifier or UUID4 if it has no identifier_type."""
+        """Convert into an ExternalIdentifier or UUID if it has no identifier_type."""
         if self.identifier_type is None:
-            return UUID4(self.identifier)
+            return TypeAdapter(UUID).validate_python(self.identifier)
         return ExternalIdentifierAdapter.validate_python(self.model_dump())
 
     def __repr__(self) -> str:

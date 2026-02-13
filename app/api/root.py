@@ -85,7 +85,7 @@ def register_api(
         version="1.0.0",
         lifespan=lifespan,
         middleware=[
-            Middleware(LoggerMiddleware),
+            Middleware(LoggerMiddleware),  # type: ignore[arg-type]
             Middleware(
                 CORSMiddleware,
                 allow_origins=cors_allow_origins,
@@ -173,6 +173,6 @@ def register_api(
 
     if otel_enabled:
         FastAPIInstrumentor().instrument_app(app)
-        app.add_middleware(FastAPITracingMiddleware)
+        app.add_middleware(FastAPITracingMiddleware)  # type: ignore[arg-type]
 
     return app

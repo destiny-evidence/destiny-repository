@@ -120,7 +120,7 @@ variable "queue_active_jobs_scaling_threshold" {
 }
 
 variable "created_by" {
-  description = "Who created this infrastrcuture. Required tag for resource groups"
+  description = "Who created this infrastructure. Required tag for resource groups"
   type        = string
 }
 
@@ -202,12 +202,12 @@ variable "region" {
 }
 
 variable "open_alex_incremental_updater_client_id" {
-  description = "The client id of the open alex incrememtal updater application"
+  description = "The client id of the open alex incremental updater application"
   type        = string
 }
 
 variable "open_alex_incremental_updater_external_client_id" {
-  description = "The client id of the open alex incrememtal updater application in the external tenant. Required when external_directory_enabled is true."
+  description = "The client id of the open alex incremental updater application in the external tenant. Required when external_directory_enabled is true."
   type        = string
 }
 
@@ -215,17 +215,6 @@ variable "destiny_demonstrator_ui_app_name" {
   description = "The name of the destiny demonstrator ui application"
   type        = string
   default     = "demonstrator-ui"
-}
-
-variable "elasticsearch_sku" {
-  description = "SKU for the Elasticsearch cluster"
-  type        = string
-  default     = "ess-consumption-2024_Monthly"
-}
-
-variable "elasticsearch_admin_email" {
-  description = "Email address for the Elasticsearch admin user"
-  type        = string
 }
 
 # elasticsearch is not available in all regions, see https://www.elastic.co/cloud/regions
@@ -253,19 +242,16 @@ variable "elasticsearch_index_migrator_timeout" {
   default     = 28800 # 8 hour timeout
 }
 
-
-variable "pypi_token" {
-  description = "API token for PyPI"
-  type        = string
-  sensitive   = true
+variable "database_migrator_timeout" {
+  description = "How long to wait for a database migration to complete when running a container app job in seconds"
+  type        = number
+  default     = 28800 # 8 hour timeout
 }
-
 
 variable "pypi_repository" {
   description = "PyPI repository to publish to, either 'pypi' or 'testpypi'"
   type        = string
 }
-
 
 variable "honeycombio_api_key_id" {
   description = "API key id for Honeycomb.io"
@@ -303,16 +289,46 @@ variable "honeycombio_log_endpoint" {
   default     = "https://api.honeycomb.io/v1/logs"
 }
 
+variable "otel_orphan_log_sample_rate_notset" {
+  description = "OTel log sampling rate for NOTSET level (0.0 to 1.0)"
+  type        = number
+  default     = 0.0
+}
+
+variable "otel_orphan_log_sample_rate_debug" {
+  description = "OTel log sampling rate for DEBUG level (0.0 to 1.0)"
+  type        = number
+  default     = 0.0
+}
+
+variable "otel_orphan_log_sample_rate_info" {
+  description = "OTel log sampling rate for INFO level (0.0 to 1.0)"
+  type        = number
+  default     = 0.01
+}
+
+variable "otel_orphan_log_sample_rate_warning" {
+  description = "OTel log sampling rate for WARNING level (0.0 to 1.0)"
+  type        = number
+  default     = 1.0
+}
+
+variable "otel_orphan_log_sample_rate_error" {
+  description = "OTel log sampling rate for ERROR level (0.0 to 1.0)"
+  type        = number
+  default     = 1.0
+}
+
+variable "otel_orphan_log_sample_rate_critical" {
+  description = "OTel log sampling rate for CRITICAL level (0.0 to 1.0)"
+  type        = number
+  default     = 1.0
+}
+
 variable "telemetry_enabled" {
   description = "Whether telemetry is enabled for the application"
   type        = bool
   default     = true
-}
-
-variable "honeycomb_alert_slack_channel" {
-  description = "Slack channel for Honeycomb alerts"
-  type        = string
-  default     = "#destiny-alerts"
 }
 
 variable "feature_flags" {
@@ -350,4 +366,59 @@ variable "trusted_unique_identifier_types" {
   description = "External identifier types that are certain to be unique. Used for shortcutting deduplication."
   type        = list(string)
   default     = []
+}
+
+variable "otel_instrument_sql" {
+  description = "Whether to enable OpenTelemetry auto-instrumentation for SQL operations"
+  type        = bool
+  default     = false
+}
+
+variable "otel_instrument_elasticsearch" {
+  description = "Whether to enable OpenTelemetry auto-instrumentation for Elasticsearch operations"
+  type        = bool
+  default     = false
+}
+
+variable "otel_instrument_taskiq" {
+  description = "Whether to enable OpenTelemetry auto-instrumentation for TaskIQ operations"
+  type        = bool
+  default     = false
+}
+
+variable "es_slowlog_warn_threshold" {
+  description = "Elasticsearch slowlog warn threshold"
+  type        = string
+  default     = null
+}
+
+variable "es_slowlog_info_threshold" {
+  description = "Elasticsearch slowlog info threshold"
+  type        = string
+  default     = null
+}
+
+variable "es_slowlog_debug_threshold" {
+  description = "Elasticsearch slowlog debug threshold"
+  type        = string
+  default     = null
+}
+
+variable "es_slowlog_trace_threshold" {
+  description = "Elasticsearch slowlog trace threshold"
+  type        = string
+  default     = null
+}
+
+variable "alert_email_recipients" {
+  description = "List of email addresses to receive alerts"
+  type        = list(string)
+  default     = []
+}
+
+variable "alert_slack_webhook_url" {
+  description = "Slack webhook URL for alerts (optional)"
+  type        = string
+  default     = ""
+  sensitive   = true
 }

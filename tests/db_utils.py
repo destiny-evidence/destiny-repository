@@ -1,9 +1,9 @@
 """Utilities for managing databases for tests."""
 
 import contextlib
-import uuid
 from collections.abc import AsyncIterator
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from uuid import uuid7
 
 import sqlalchemy as sa
 from alembic.config import Config as AlembicConfig
@@ -51,7 +51,7 @@ async def tmp_database(
     suffix: str = "", encoding: str = "utf8", template: str | None = None
 ) -> AsyncIterator[str]:
     """Context manager for creating new database and deleting it on exit."""
-    tmp_db_name = f"{uuid.uuid4().hex}.tests_base.{suffix}"
+    tmp_db_name = f"{uuid7().hex}.tests_base.{suffix}"
     await create_database_async(tmp_db_name, encoding, template)
     parsed_url = urlparse(get_settings().db_config.connection_string)
     query_params = parse_qs(parsed_url.query)
@@ -124,5 +124,10 @@ async def clean_tables(conn: AsyncConnection) -> None:
     # https://www.lob.com/blog/truncate-vs-delete-efficiently-clearing-data-from-a-postgres-table
     # BUT DELETE FROM query does not reset any AUTO_INCREMENT counters
     for table in reversed(Base.metadata.sorted_tables):
-        await conn.execute(table.delete())
+        # Check if table exists (handles test-only tables like simple_test_model)
+        exists = await conn.run_sync(
+            lambda sync_conn, table=table: sa.inspect(sync_conn).has_table(table.name)
+        )
+        if exists:
+            await conn.execute(table.delete())
     await conn.commit()

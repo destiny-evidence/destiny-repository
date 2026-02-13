@@ -1,7 +1,6 @@
 """The service for interacting with and managing references."""
 
 import datetime
-import uuid
 from collections import defaultdict
 from collections.abc import Collection, Iterable
 from uuid import UUID
@@ -118,7 +117,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
         :param reference_ids: The ID of the references to get the deduplicated view for.
         :type reference_ids: Collection[UUID] | None
-        :param references: The references to get the deduplicated view for. Must have]
+        :param references: The references to get the deduplicated view for. Must have
             identifiers, enhancements, duplicate_decision and duplicate_references
             preloaded.
         :type references: Collection[Reference] | None
@@ -145,6 +144,28 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             DeduplicatedReferenceProjection.get_from_reference(reference)
             for reference in references
         ]
+
+    @sql_unit_of_work
+    async def get_deduplicated_references(
+        self,
+        reference_ids: Collection[UUID] | None = None,
+        references: Collection[Reference] | None = None,
+    ) -> list[Reference]:
+        """
+        Get the deduplicated reference for a given reference.
+
+        :param reference_ids: The ID of the references to get the deduplicated view for.
+        :type reference_ids: Collection[UUID] | None
+        :param references: The references to get the deduplicated view for. Must have
+            identifiers, enhancements, duplicate_decision and duplicate_references
+            preloaded.
+        :type references: Collection[Reference] | None
+        :return: The deduplicated reference.
+        :rtype: Reference
+        """
+        return await self._get_deduplicated_references(
+            reference_ids=reference_ids, references=references
+        )
 
     async def _get_deduplicated_reference(self, reference_id: UUID) -> Reference:
         """
@@ -382,9 +403,27 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         ]
 
     @sql_unit_of_work
-    async def get_all_reference_ids(self) -> list[UUID]:
-        """Get all reference IDs from the database."""
-        return await self.sql_uow.references.get_all_pks()
+    async def get_all_reference_ids(
+        self, min_id: UUID | None, max_id: UUID | None
+    ) -> list[UUID]:
+        """
+        Get all reference IDs.
+
+        :param min_id: Inclusive lower bound for reference IDs to return.
+        :type min_id: UUID | None
+        :param max_id: Inclusive upper bound for reference IDs to return.
+        :type max_id: UUID | None
+        :rtype: list[UUID]
+
+        """
+        return await self.sql_uow.references.get_all_pks(min_id=min_id, max_id=max_id)
+
+    @sql_unit_of_work
+    async def get_reference_id_partition_boundaries(
+        self, partition_size: int
+    ) -> list[tuple[UUID, UUID]]:
+        """Get the start and end reference IDs for each chunk of references."""
+        return await self.sql_uow.references.get_partition_boundaries(partition_size)
 
     @sql_unit_of_work
     async def get_references_from_identifiers(
@@ -396,7 +435,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             if identifier.identifier_type:
                 external_identifiers.append(identifier)
             else:
-                db_identifiers.append(uuid.UUID(identifier.identifier))
+                db_identifiers.append(UUID(identifier.identifier))
 
         references = await self.sql_uow.references.find_with_identifiers(
             external_identifiers,
@@ -712,6 +751,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         validation_result_file = await blob_repository.upload_file_to_blob_storage(
             content=FileStream(
                 generator=self._enhancement_service.process_robot_enhancement_batch_result(
+                    robot_enhancement_batch_id=robot_enhancement_batch.id,
                     blob_repository=blob_repository,
                     result_file=robot_enhancement_batch.result_file,
                     pending_enhancements=pending_enhancements,
@@ -788,11 +828,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> None:
         """Index references in Elasticsearch."""
         await self._synchronizer.references.bulk_sql_to_es(reference_ids)
-
-    async def repopulate_reference_index(self) -> None:
-        """Index ALL references in Elasticsearch."""
-        reference_ids = await self.get_all_reference_ids()
-        await self.index_references(reference_ids)
 
     async def _get_reference_changesets_from_enhancements(
         self,
@@ -1134,20 +1169,29 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return updated, expiry
 
     @sql_unit_of_work
+    async def add_pending_duplicate_decisions_for_reference_ids(
+        self,
+        reference_ids: ReferenceIds,
+    ) -> list[ReferenceDuplicateDecision]:
+        """Add a reference duplicate decision."""
+        return await self.sql_uow.reference_duplicate_decisions.add_bulk(
+            [
+                ReferenceDuplicateDecision(
+                    reference_id=reference_id,
+                    duplicate_determination=DuplicateDetermination.PENDING,
+                )
+                for reference_id in reference_ids.reference_ids
+            ]
+        )
+
     async def invoke_deduplication_for_references(
         self,
         reference_ids: ReferenceIds,
     ) -> None:
         """Invoke deduplication for a list of references."""
         reference_duplicate_decisions = (
-            await self.sql_uow.reference_duplicate_decisions.add_bulk(
-                [
-                    ReferenceDuplicateDecision(
-                        reference_id=reference_id,
-                        duplicate_determination=DuplicateDetermination.PENDING,
-                    )
-                    for reference_id in reference_ids.reference_ids
-                ]
+            await self.add_pending_duplicate_decisions_for_reference_ids(
+                reference_ids,
             )
         )
         for decision in reference_duplicate_decisions:
@@ -1165,7 +1209,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         annotations: list[AnnotationFilter] | None = None,
         publication_year_range: PublicationYearRange | None = None,
         sort: list[str] | None = None,
-    ) -> ESSearchResult[Reference]:
+    ) -> ESSearchResult:
         """Search for references given a query string."""
         return await self._search_service.search_with_query_string(
             query,
@@ -1179,9 +1223,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def _detect_and_dispatch_robot_automations(
         self,
         reference: ReferenceWithChangeset | None = None,
-        enhancement_ids: Iterable[uuid.UUID] | None = None,
+        enhancement_ids: Iterable[UUID] | None = None,
         source_str: str | None = None,
-        skip_robot_id: uuid.UUID | None = None,
+        skip_robot_id: UUID | None = None,
     ) -> None:
         """
         Request default enhancements for a set of references.
@@ -1216,9 +1260,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def detect_and_dispatch_robot_automations(
         self,
         reference: ReferenceWithChangeset | None = None,
-        enhancement_ids: Iterable[uuid.UUID] | None = None,
+        enhancement_ids: Iterable[UUID] | None = None,
         source_str: str | None = None,
-        skip_robot_id: uuid.UUID | None = None,
+        skip_robot_id: UUID | None = None,
     ) -> None:
         """Detect and dispatch robot automations for an added reference/enhancement."""
         await self._detect_and_dispatch_robot_automations(

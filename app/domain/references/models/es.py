@@ -31,15 +31,17 @@ from app.domain.references.models.models import (
     RobotAutomation,
     Visibility,
 )
-from app.domain.references.models.projections import (
-    ReferenceSearchFieldsProjection,
-)
+from app.domain.references.models.projections import ReferenceSearchFieldsProjection
 from app.persistence.es.persistence import GenericESPersistence, GenericNestedDocument
 
 EXCLUDED_ENHANCEMENT_TYPES = {
     EnhancementType.RAW,
     EnhancementType.REFERENCE_ASSOCIATION,
 }
+
+# Fields excluded from ES indexing. These are not useful for candidate generation
+# and are only needed for classification stage which uses PostgreSQL.
+EXCLUDED_ENHANCEMENT_CONTENT_FIELDS = {"pagination"}
 
 
 class ExternalIdentifierDocument(GenericNestedDocument):
@@ -152,7 +154,9 @@ class EnhancementDocument(GenericNestedDocument):
             robot_version=domain_obj.robot_version,
             created_at=domain_obj.created_at,
             content=EnhancementContentDocument(
-                **domain_obj.content.model_dump(mode="json")
+                **domain_obj.content.model_dump(
+                    mode="json", exclude=EXCLUDED_ENHANCEMENT_CONTENT_FIELDS
+                )
             ),
         )
 
@@ -226,8 +230,8 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     """
     Mixin to project Reference fields relevant to various search strategies.
 
-    Currently this holds fields for identifing candidate canonicals during deduplication
-    and for searching references by query on title, authors, and abstracts.
+    Currently this holds fields for identifying candidate canonicals during
+    deduplication and for searching references by query.
     """
 
     abstract: str | None = mapped_field(Text(required=False), default=None)
@@ -246,6 +250,12 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     - Middle authors in alphabetical order
     - Last author
     """
+
+    publication_date: datetime.date | None = mapped_field(
+        Date(required=False),
+        default=None,
+    )
+    """The publication date of the reference."""
 
     publication_year: int | None = mapped_field(
         Integer(required=False),
@@ -311,6 +321,7 @@ class ReferenceSearchFieldsMixin(InnerDoc):
             abstract=projection.abstract,
             title=projection.title,
             authors=projection.authors,
+            publication_date=projection.publication_date,
             publication_year=projection.publication_year,
             annotations=projection.annotations,
             evaluated_schemes=projection.evaluated_schemes,
@@ -327,30 +338,57 @@ class ReferenceSearchFieldsMixin(InnerDoc):
 
 class ReferenceDocument(
     GenericESPersistence[Reference],
-    ReferenceDomainMixin,
     ReferenceSearchFieldsMixin,
 ):
-    """Persistence model for references in Elasticsearch."""
+    """
+    Lean persistence model for references in Elasticsearch.
+
+    This document stores only the fields needed for search operations:
+    - visibility and duplicate_determination for filtering
+    - search fields (title, abstract, authors, etc.) from ReferenceSearchFieldsMixin
+
+    Full reference data (including identifiers) is stored in PostgreSQL and hydrated
+    from there when needed. Identifier lookups are done via PostgreSQL, not ES.
+    Nested structures (identifiers, enhancements) are preserved only in the
+    RobotAutomationPercolationDocument for percolation queries.
+    """
 
     class Index:
         """Index metadata for the persistence model."""
 
         name = "reference"
 
+    visibility: Visibility = mapped_field(Keyword(required=True))
+    duplicate_determination: DuplicateDetermination | None = mapped_field(
+        Keyword(required=False),
+    )
+
     @classmethod
     def from_domain(cls, domain_obj: Reference) -> Self:
         """Create a persistence model from a domain model."""
         return cls(
             # Parent's parent does accept meta, but mypy doesn't like it here.
-            # Ignoring easier than chaining __init__ methods IMO.
             meta={"id": domain_obj.id},  # type: ignore[call-arg]
-            **ReferenceDomainMixin.from_domain(domain_obj).to_dict(),
+            visibility=domain_obj.visibility,
+            duplicate_determination=(
+                domain_obj.duplicate_decision.duplicate_determination
+                if domain_obj.duplicate_decision
+                else None
+            ),
             **ReferenceSearchFieldsMixin.from_domain(domain_obj).to_dict(),
         )
 
     def to_domain(self) -> Reference:
-        """Create a domain model from this persistence model."""
-        return ReferenceDomainMixin.to_domain(self)
+        """
+        Create a minimal domain model from this persistence model.
+
+        Since ES is now search-only, full hydration should be done from PostgreSQL.
+        This returns a minimal Reference with only the ID and visibility.
+        """
+        return Reference(
+            id=self.meta.id,  # Pydantic handles str -> UUID coercion
+            visibility=self.visibility,
+        )
 
 
 class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):

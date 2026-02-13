@@ -1,13 +1,13 @@
 """Generic repositories define expected functionality."""
 
+import math
 from abc import ABC
 from collections.abc import Collection
 from typing import Generic
 from uuid import UUID
 
 from opentelemetry import trace
-from pydantic import UUID4
-from sqlalchemy import inspect, select, update
+from sqlalchemy import func, inspect, select, update
 from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import (
@@ -78,6 +78,8 @@ class GenericAsyncSqlRepository(
         self,
         preload: list[GenericSQLPreloadableType] | None = None,
         depth: int = 1,
+        *,
+        force_selectin: bool = False,
     ) -> list[_AbstractLoad]:
         """
         Get a list of relationship loading strategies with support for nesting.
@@ -85,6 +87,9 @@ class GenericAsyncSqlRepository(
         Args:
             preload: List of relationships to preload
             depth: Internal tracker for max relationship depth
+            force_selectin: If True, use SELECTIN loading for all relationships
+                regardless of their configured load_type. Useful for bulk queries
+                where JOINs would cause cartesian product explosion.
 
         Returns:
             A list of ORM loading options configured for the relationships
@@ -108,11 +113,17 @@ class GenericAsyncSqlRepository(
             relationship = attribute
             load_type = relationship.info.get("load_type", RelationshipLoadType.JOINED)
             max_recursion_depth = relationship.info.get("max_recursion_depth")
+            is_self_referential = (
+                relationship.prop.mapper.class_ == self._persistence_cls
+            )
 
             # Determine the base loading strategy
-            if load_type == RelationshipLoadType.SELECTIN:
-                # Recurse once, we add more loads dynamically below
-                loader = selectinload(relationship, recursion_depth=1)
+            if force_selectin or load_type == RelationshipLoadType.SELECTIN:
+                if is_self_referential:
+                    # recursion_depth is only valid for self-referential relationships
+                    loader = selectinload(relationship, recursion_depth=1)
+                else:
+                    loader = selectinload(relationship)
             else:
                 loader = joinedload(relationship)
 
@@ -130,13 +141,12 @@ class GenericAsyncSqlRepository(
                 # self-referential chain
                 avoid_propagate.add(relationship.key)
 
-            is_self_referential = (
-                relationship.prop.mapper.class_ == self._persistence_cls
-            )
             if preload and is_self_referential:
                 loader = loader.options(
                     *self._get_relationship_loads(
-                        [p for p in preload if p not in avoid_propagate], depth + 1
+                        [p for p in preload if p not in avoid_propagate],
+                        depth + 1,
+                        force_selectin=force_selectin,
                     )
                 )
 
@@ -218,7 +228,7 @@ class GenericAsyncSqlRepository(
         - SQLNotFoundError: If any of the records do not exist.
 
         """
-        options = self._get_relationship_loads(preload)
+        options = self._get_relationship_loads(preload, force_selectin=True)
         query = (
             select(self._persistence_cls)
             .where(self._persistence_cls.id.in_(pks))
@@ -444,28 +454,77 @@ class GenericAsyncSqlRepository(
         return persistence.to_domain()
 
     @trace_repository_method(tracer)
-    async def get_all_pks(self) -> list[UUID]:
+    async def get_all_pks(
+        self,
+        min_id: UUID | None = None,
+        max_id: UUID | None = None,
+    ) -> list[UUID]:
         """
         Get all primary keys in the repository.
 
         Generally used as a convenience method before calling another bulk
         method that requires primary keys.
 
-        Returns:
-        - list[UUID]: A list of all primary keys in the repository.
+        :min_id: Inclusive lower bound for primary keys to return.
+        :type min_id: UUID | None
+        :max_id: Inclusive upper bound for primary keys to return.
+        :type max_id: UUID | None
+
+        :rtype: list[UUID]
 
         """
         query = select(self._persistence_cls.id)
+        if min_id:
+            query = query.where(self._persistence_cls.id >= min_id)
+        if max_id:
+            query = query.where(self._persistence_cls.id <= max_id)
         result = await self._session.execute(query)
-        return [row[0] for row in result.fetchall()]
+        return list(result.scalars().all())
 
     @trace_repository_method(tracer)
-    async def bulk_update(self, pks: list[UUID4], **kwargs: object) -> int:
+    async def get_partition_boundaries(
+        self, partition_size: int
+    ) -> list[tuple[UUID, UUID]]:
+        """
+        Get partition boundaries for the records in the repository.
+
+        Samples boundary IDs at regular intervals based on partition_size,
+        returning [start_id, end_id] tuples suitable for parallel processing.
+
+        :param partition_size: Approximate number of records per partition.
+        :type partition_size: int
+        :return: List of inclusive [start_id, end_id] tuples.
+        :rtype: list[tuple[UUID, UUID]]
+
+        """
+        total = await self.count()
+
+        if total == 0:
+            return []
+
+        partitions = select(
+            self._persistence_cls.id.label("id"),
+            func.ntile(math.ceil(total / partition_size))
+            .over(order_by=self._persistence_cls.id)
+            .label("tile"),
+        ).subquery()
+
+        query = (
+            select(func.min(partitions.c.id), func.max(partitions.c.id))
+            .group_by(partitions.c.tile)
+            .order_by(partitions.c.tile)
+        )
+
+        result = await self._session.execute(query)
+        return [(row[0], row[1]) for row in result.fetchall()]
+
+    @trace_repository_method(tracer)
+    async def bulk_update(self, pks: list[UUID], **kwargs: object) -> int:
         """
         Bulk update records by their primary keys.
 
         Args:
-        - pks (list[UUID4]): The primary keys of records to update.
+        - pks (list[UUID]): The primary keys of records to update.
         - kwargs (object): The attributes to update.
 
         Returns:
@@ -610,3 +669,16 @@ class GenericAsyncSqlRepository(
 
         result = await self._session.execute(query)
         return [record.to_domain(preload=preload) for record in result.scalars().all()]
+
+    @trace_repository_method(tracer)
+    async def count(self) -> int:
+        """
+        Count the number of records in the repository.
+
+        Returns:
+        - int: The number of records.
+
+        """
+        query = select(func.count(self._persistence_cls.id))
+        result = await self._session.execute(query)
+        return result.scalar_one()

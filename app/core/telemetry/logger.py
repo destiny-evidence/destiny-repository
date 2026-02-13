@@ -1,15 +1,17 @@
 """Functionality for logging with structured attributes."""
 
 import logging
+import random
 import sys
 from typing import TYPE_CHECKING, cast
 
 import structlog
+from opentelemetry import trace
 from opentelemetry.sdk._logs import LoggingHandler
 from opentelemetry.util.types import AnyValue
 
 if TYPE_CHECKING:
-    from app.core.config import LogLevel
+    from app.core.config import LogLevel, LogSamplingConfig
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
@@ -41,6 +43,52 @@ def filter_otel_attributes(
     # otel will add its own timestamp to the event
     event_dict.pop("timestamp", None)
     return event_dict
+
+
+class ElasticTransportFilter(logging.Filter):
+    """Filter out logs from the elastic_transport.transport logger."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Return True if the log should pass through, False to drop it."""
+        return record.name != "elastic_transport.transport"
+
+
+class OrphanLogLevelSamplingFilter(logging.Filter):
+    """
+    Logging filter that samples orphan logs based on their level.
+
+    Orphan logs are those not associated with any trace/span. These are hence not
+    sampled by Refinery, so we apply our own head sampling here.
+
+    This filter randomly drops logs based on configured sampling rates per level.
+    A rate of 1.0 means all logs pass through, 0.0 means all logs are dropped.
+
+    The global log level threshold takes precedence; this filter only further reduces
+    the number of logs sent to OpenTelemetry.
+    """
+
+    def __init__(self, sampling_config: "LogSamplingConfig") -> None:
+        """
+        Initialize the filter with per-level sampling rates.
+
+        :param sampling_config: Configuration for log sampling rates.
+        :type sampling_config: LogSamplingConfig
+        """
+        super().__init__()
+        self._sampling_config = sampling_config
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Return True if the log should pass through, False to drop it."""
+        if trace.get_current_span().get_span_context().is_valid:
+            return True
+
+        rate = self._sampling_config.get_rate(record.levelname)
+
+        if rate == 0.0:
+            return False
+        if rate == 1.0:
+            return True
+        return random.random() < rate  # noqa: S311
 
 
 class LoggerConfigurer:
@@ -116,7 +164,9 @@ class LoggerConfigurer:
         self._root_logger.addHandler(handler)
         self._root_logger.setLevel(getattr(logging, log_level.upper()))
 
-    def configure_otel_logger(self, handler: "LoggingHandler") -> None:
+    def configure_otel_logger(
+        self, handler: LoggingHandler, orphan_log_sampling_config: "LogSamplingConfig"
+    ) -> None:
         """Configure the OpenTelemetry logger."""
         otel_render_processors = cast(
             list[structlog.types.Processor],
@@ -134,6 +184,7 @@ class LoggerConfigurer:
             ],
         )
 
+        handler.addFilter(OrphanLogLevelSamplingFilter(orphan_log_sampling_config))
         handler.setFormatter(
             structlog.stdlib.ProcessorFormatter(
                 processors=[

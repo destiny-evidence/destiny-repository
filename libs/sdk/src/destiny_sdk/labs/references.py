@@ -13,17 +13,18 @@ from pydantic import BaseModel, Field
 from destiny_sdk.enhancements import (
     Annotation,
     AnnotationType,
+    AuthorPosition,
     BibliographicMetadataEnhancement,
     EnhancementType,
 )
 from destiny_sdk.identifiers import ExternalIdentifierType
-from destiny_sdk.references import Reference
+from destiny_sdk.references import Reference, ReferenceFileInput
 
 
 class LabsReference(BaseModel):
     """Experimental presenter class for Reference with added convenience methods."""
 
-    reference: Reference = Field(
+    reference: Reference | ReferenceFileInput = Field(
         ...,
         description="The core Reference object",
     )
@@ -78,6 +79,17 @@ class LabsReference(BaseModel):
         for meta in self.it_bibliographics():
             if meta.title is not None:
                 return meta.title
+        return None
+
+    @property
+    def first_author(self) -> str | None:
+        """The first author of the reference as str."""
+        for meta in self.it_bibliographics():
+            if meta.authorship is not None and len(meta.authorship) > 0:
+                for author in meta.authorship:
+                    if author.position == AuthorPosition.FIRST:
+                        return author.display_name
+                return meta.authorship[0].display_name
         return None
 
     def it_bibliographics(

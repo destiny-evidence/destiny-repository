@@ -15,10 +15,10 @@ jobs:
     strategy:
       matrix:
         python-version:
-          - "3.12"
+          - "3.14"
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Load .env.example into environment
         # This isn't actually used in the testing but helps in the setup
@@ -30,7 +30,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.7.14"
+          version: "0.9.22"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 

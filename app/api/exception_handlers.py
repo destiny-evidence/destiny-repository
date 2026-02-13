@@ -54,7 +54,7 @@ async def not_found_exception_handler(
                 f"{exception.lookup_type} {exception.lookup_value} does not exist."
             )
         )
-        status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+        status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
         if (
             isinstance(exception.lookup_value, UUID | str | int)
             and str(exception.lookup_value) in request.url.path
@@ -107,7 +107,7 @@ async def sdk_to_domain_exception_handler(
     """Return unprocessable entity response when sdk -> domain conversion fails."""
     # Probably want to reduce the amount of information we're giving back here.
     return APIExceptionResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content=APIExceptionContent(detail=exception.errors),
     )
 
@@ -118,7 +118,7 @@ async def invalid_payload_exception_handler(
 ) -> APIExceptionResponse:
     """Return unprocessable entity response when the payload is invalid."""
     return APIExceptionResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content=APIExceptionContent(detail=exception.detail),
     )
 

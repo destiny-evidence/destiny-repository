@@ -9,7 +9,6 @@
 """Router for handling management of references."""
 
 import datetime
-import uuid
 from typing import Annotated
 
 import destiny_sdk
@@ -136,7 +135,6 @@ def robot_service(
 def choose_auth_strategy_reference_reader() -> AuthMethod:
     """Choose reader scope auth strategy for our authorization."""
     return choose_auth_strategy(
-        tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScope.REFERENCE_READER,
         auth_role=AuthRole.REFERENCE_READER,
@@ -147,7 +145,6 @@ def choose_auth_strategy_reference_reader() -> AuthMethod:
 def choose_auth_strategy_reference_deduplicator() -> AuthMethod:
     """Choose reader scope auth strategy for our authorization."""
     return choose_auth_strategy(
-        tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScope.REFERENCE_DEDUPLICATOR,
         auth_role=AuthRole.REFERENCE_DEDUPLICATOR,
@@ -165,7 +162,6 @@ async def enhancement_request_hybrid_auth(
 ) -> bool:
     """Choose enhancement request writer scope auth strategy for our authorization."""
     return await choose_hybrid_auth_strategy(
-        tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         jwt_scope=AuthScope.ENHANCEMENT_REQUEST_WRITER,
         jwt_role=AuthRole.ENHANCEMENT_REQUEST_WRITER,
@@ -347,7 +343,16 @@ async def search_references(
         publication_year_range=publication_year_range,
         sort=sort,
     )
-    return anti_corruption_service.reference_search_result_to_sdk(search_result)
+    references = (
+        await reference_service.get_deduplicated_references(
+            [hit.id for hit in search_result.hits]
+        )
+        if search_result.hits
+        else []
+    )
+    return anti_corruption_service.two_stage_reference_search_result_to_sdk(
+        search_result, references
+    )
 
 
 # NB it's important this occurs before defining `/references/{reference_id}/` route
@@ -357,7 +362,9 @@ reference_router.include_router(search_router)
 
 @reference_router.get("/{reference_id}/")
 async def get_reference(
-    reference_id: Annotated[uuid.UUID, Path(description="The ID of the reference.")],
+    reference_id: Annotated[
+        destiny_sdk.UUID, Path(description="The ID of the reference.")
+    ],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
@@ -455,7 +462,9 @@ async def add_robot_automation(
     path="/{automation_id}/", status_code=status.HTTP_201_CREATED
 )
 async def update_robot_automation(
-    automation_id: Annotated[uuid.UUID, Path(description="The ID of the automation.")],
+    automation_id: Annotated[
+        destiny_sdk.UUID, Path(description="The ID of the automation.")
+    ],
     robot_automation: destiny_sdk.robots.RobotAutomationIn,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     robot_service: Annotated[RobotService, Depends(robot_service)],
@@ -497,7 +506,7 @@ async def get_robot_automations(
 )
 async def request_robot_enhancement_batch(
     robot_id: Annotated[
-        uuid.UUID,
+        destiny_sdk.UUID,
         Query(description="The ID of the robot."),
     ],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
@@ -582,7 +591,7 @@ async def request_robot_enhancement_batch(
     },
 )
 async def renew_robot_enhancement_batch_lease(
-    robot_enhancement_batch_id: uuid.UUID,
+    robot_enhancement_batch_id: destiny_sdk.UUID,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     lease: Annotated[
         datetime.timedelta,
@@ -618,7 +627,7 @@ async def renew_robot_enhancement_batch_lease(
     summary="Get an existing batch of references to enhance",
 )
 async def get_robot_enhancement_batch(
-    robot_enhancement_batch_id: uuid.UUID,
+    robot_enhancement_batch_id: destiny_sdk.UUID,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
@@ -668,7 +677,7 @@ async def request_enhancement(
 )
 async def check_enhancement_request_status(
     enhancement_request_id: Annotated[
-        uuid.UUID, Path(description="The ID of the batch enhancement request.")
+        destiny_sdk.UUID, Path(description="The ID of the batch enhancement request.")
     ],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     anti_corruption_service: Annotated[
@@ -691,7 +700,7 @@ async def check_enhancement_request_status(
 )
 async def fulfill_robot_enhancement_batch(
     robot_enhancement_batch_id: Annotated[
-        uuid.UUID,
+        destiny_sdk.UUID,
         Path(description="The ID of the robot enhancement batch."),
     ],
     robot_result: destiny_sdk.robots.RobotEnhancementBatchResult,
@@ -736,7 +745,7 @@ async def fulfill_robot_enhancement_batch(
             error=str(e),
         )
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Cannot process results: {e}",
         ) from e
 

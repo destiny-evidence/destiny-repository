@@ -13,7 +13,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "4.26.0"
+      version = "4.58.0"
     }
 
     azuread = {
@@ -44,6 +44,11 @@ terraform {
     honeycombio = {
       source  = "honeycombio/honeycombio"
       version = "0.37.0"
+    }
+
+    random = {
+      source  = "hashicorp/random"
+      version = "3.7.1"
     }
   }
 }
@@ -79,7 +84,7 @@ provider "ec" {
 
 provider "elasticstack" {
   elasticsearch {
-    endpoints = ["${ec_deployment.cluster.elasticsearch.https_endpoint}"]
+    endpoints = [ec_deployment.cluster.elasticsearch.https_endpoint]
     username  = ec_deployment.cluster.elasticsearch_username
     password  = ec_deployment.cluster.elasticsearch_password
   }

@@ -1,6 +1,6 @@
 """Unit tests for the models in the references module."""
 
-import uuid
+from uuid import uuid7
 
 import destiny_sdk
 import pytest
@@ -59,7 +59,7 @@ async def test_linked_external_identifier_roundtrip(
         identifier=1234, identifier_type="pm_id"
     )
     sdk_linked = destiny_sdk.identifiers.LinkedExternalIdentifier(
-        identifier=sdk_id, reference_id=(u := uuid.uuid4())
+        identifier=sdk_id, reference_id=(u := uuid7())
     )
     domain = anti_corruption_service.external_identifier_from_sdk(sdk_linked)
     assert domain.identifier == sdk_id
@@ -88,7 +88,7 @@ async def test_enhancement_unserializable_failure(
     with pytest.raises(SDKToDomainError):
         anti_corruption_service.enhancement_from_sdk(
             destiny_sdk.enhancements.Enhancement(
-                reference_id=uuid.uuid4(),
+                reference_id=uuid7(),
                 source="dummy",
                 visibility="public",
                 content=dodgy_enhancement,

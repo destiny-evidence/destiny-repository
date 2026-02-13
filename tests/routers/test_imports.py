@@ -1,9 +1,9 @@
 """Defines tests for the example router."""
 
 import datetime
-import uuid
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock
+from uuid import UUID, uuid7
 
 import pytest
 from elasticsearch import AsyncElasticsearch
@@ -178,7 +178,7 @@ async def test_create_batch_for_import(
     mock_process.assert_awaited_once()
 
     assert mock_process.call_args[0][0] == ImportBatch(
-        id=uuid.UUID(response.json()["id"]),
+        id=UUID(response.json()["id"]),
         import_record_id=valid_import.id,
         status=ImportBatchStatus.CREATED,
         storage_url="https://example.com/batch_data.json",
@@ -304,13 +304,10 @@ async def test_get_import_results(
 
 
 @pytest.mark.usefixtures("stubbed_jwks_response")
-async def test_auth_failure(
-    client: AsyncClient, fake_application_id: str, fake_tenant_id: str
-):
+async def test_auth_failure(client: AsyncClient, fake_application_id: str):
     """Test that we reject invalid tokens."""
     imports.settings.env = Environment.PRODUCTION
     imports.settings.azure_application_id = fake_application_id
-    imports.settings.azure_tenant_id = fake_tenant_id
     imports.import_auth.reset()
 
     import_params = {
@@ -338,12 +335,10 @@ async def test_auth_failure(
 async def test_missing_auth(
     client: AsyncClient,
     fake_application_id: str,
-    fake_tenant_id: str,
 ):
     """Test that we reject missing tokens."""
     imports.settings.env = Environment.PRODUCTION
     imports.settings.azure_application_id = fake_application_id
-    imports.settings.azure_tenant_id = fake_tenant_id
     imports.import_auth.reset()
 
     import_params = {
@@ -374,7 +369,7 @@ async def test_missing_import_record(
     session.add(valid_import)
     await session.commit()
 
-    response = await client.get(f"/v1/imports/records/{(_id:=uuid.uuid4())}/batches/")
+    response = await client.get(f"/v1/imports/records/{(_id:=uuid7())}/batches/")
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.json()["detail"] == f"ImportRecord with id {_id} does not exist."
 
@@ -397,7 +392,7 @@ async def test_deduplicate_references(
         "app.domain.references.service.queue_task_with_trace", mock_queue
     )
 
-    ref_ids = {uuid.uuid4(), uuid.uuid4(), uuid.uuid4()}
+    ref_ids = {uuid7(), uuid7(), uuid7()}
     response = await client.post(
         "/v1/references/duplicate-decisions/",
         json={"reference_ids": [str(r) for r in ref_ids]},

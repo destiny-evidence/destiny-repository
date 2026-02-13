@@ -1,6 +1,6 @@
 """Unit tests for Elasticsearch repository query string search functionality."""
 
-from uuid import uuid4
+from uuid import uuid7
 
 import pytest
 from elasticsearch import AsyncElasticsearch
@@ -8,16 +8,16 @@ from elasticsearch.helpers import async_bulk
 
 from app.core.exceptions import ESQueryError
 from app.persistence.es.repository import GenericAsyncESRepository
-from tests.es_utils import DomainSimpleDoc, SimpleDoc
+from tests.persistence_models import SimpleDoc, SimpleDomainModel
 
 
-class SimpleRepository(GenericAsyncESRepository[DomainSimpleDoc, SimpleDoc]):
+class SimpleRepository(GenericAsyncESRepository[SimpleDomainModel, SimpleDoc]):
     """Simple repository for testing."""
 
     def __init__(self, client: AsyncElasticsearch):
         super().__init__(
             client=client,
-            domain_cls=DomainSimpleDoc,
+            domain_cls=SimpleDomainModel,
             persistence_cls=SimpleDoc,
         )
 
@@ -37,7 +37,7 @@ async def create_simple_doc(
     content: str,
 ) -> str:
     """Helper to create and index a simple document."""
-    doc = DomainSimpleDoc(title=title, year=year, content=content)
+    doc = SimpleDomainModel(title=title, year=year, content=content)
     await repository.add(doc)
     return str(doc.id)
 
@@ -157,7 +157,7 @@ async def test_query_string_search_many_results(
             title="common title",
             year=2023,
             content=f"content {i}",
-            meta={"id": uuid4()},
+            meta={"id": uuid7()},
         )
         for i in range(10001)
     ]
@@ -225,7 +225,7 @@ async def test_query_string_search_pagination(
             title="pagination",
             year=2023,
             content="content",
-            meta={"id": uuid4()},
+            meta={"id": uuid7()},
         )
         for _ in range(55)
     ]
@@ -323,3 +323,22 @@ async def test_query_string_search_sorting(
     assert str(results_desc.hits[0].id) == doc_2022
     assert str(results_desc.hits[1].id) == doc_2021
     assert str(results_desc.hits[2].id) == doc_2020
+
+
+async def test_query_string_search_with_document(
+    simple_repository: SimpleRepository,
+    test_doc: str,
+):
+    """Test that parse_document=True returns the full document."""
+    results = await simple_repository.search_with_query_string(
+        "title:test",
+        parse_document=True,
+    )
+
+    assert len(results.hits) == 1
+    assert str(results.hits[0].id) == test_doc
+    assert results.hits[0].document is not None
+    assert isinstance(results.hits[0].document, SimpleDomainModel)
+    assert results.hits[0].document.title == "test document"
+    assert results.hits[0].document.year == 2023
+    assert results.hits[0].document.content == "This is sample content for testing"

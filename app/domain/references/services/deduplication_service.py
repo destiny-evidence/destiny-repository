@@ -1,11 +1,12 @@
 """Service for managing reference duplicate detection."""
 
-import uuid
 from typing import Literal
+from uuid import UUID
 
 from opentelemetry import trace
 
 from app.core.config import Environment, get_settings
+from app.core.constants import MAX_REFERENCE_DUPLICATE_DEPTH
 from app.core.exceptions import DeduplicationValueError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
@@ -105,11 +106,11 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
     async def register_duplicate_decision_for_reference(
         self,
-        reference_id: uuid.UUID,
-        enhancement_id: uuid.UUID | None = None,
+        reference_id: UUID,
+        enhancement_id: UUID | None = None,
         duplicate_determination: Literal[DuplicateDetermination.EXACT_DUPLICATE]
         | None = None,
-        canonical_reference_id: uuid.UUID | None = None,
+        canonical_reference_id: UUID | None = None,
     ) -> ReferenceDuplicateDecision:
         """
         Register a duplicate decision for a reference.
@@ -118,14 +119,14 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         :type reference: app.domain.references.models.models.Reference
         :param enhancement_id: The enhancement ID triggering with the duplicate
             decision, defaults to None
-        :type enhancement_id: uuid.UUID | None, optional
+        :type enhancement_id: UUID | None, optional
         :param duplicate_determination: Flag indicating if a reference was an exact
             duplicate and not imported, defaults to None
         :type duplicate_determination: Literal[DuplicateDetermination.EXACT_DUPLICATE]
             | None, optional
         :param canonical_reference_id: The canonical reference ID this reference is an
             exact duplicate of, defaults to None
-        :type canonical_reference_id: uuid.UUID | None, optional
+        :type canonical_reference_id: UUID | None, optional
         :return: The registered duplicate decision
         :rtype: ReferenceDuplicateDecision
         """
@@ -333,8 +334,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         elif (
             # Reference forms a chain longer than allowed
             new_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
-            and reference.canonical_chain_length
-            == settings.max_reference_duplicate_depth
+            and reference.canonical_chain_length == MAX_REFERENCE_DUPLICATE_DEPTH
         ):
             # Raise for manual review
             new_decision.duplicate_determination = DuplicateDetermination.DECOUPLED
@@ -366,7 +366,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
         return new_decision, decision_changed
 
-    async def shortcut_deduplication_using_identifiers(
+    async def shortcut_deduplication_using_identifiers(  # noqa: PLR0912
         self,
         reference_duplicate_decision: ReferenceDuplicateDecision,
         trusted_unique_identifier_types: set[ExternalIdentifierType],
@@ -443,7 +443,22 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             candidate for candidate in candidates if candidate.id != reference.id
         ]
         if not candidates:
-            return None
+            if not trusted_identifiers:
+                # No trusted identifiers to shortcut with, fall through to ES
+                return None
+            # Has trusted identifiers but no existing matches - new unique reference
+            # Skip ES deduplication entirely since the trusted identifier guarantees
+            # uniqueness within its source (e.g., OpenAlex W-ID)
+            reference_duplicate_decision.duplicate_determination = (
+                DuplicateDetermination.CANONICAL
+            )
+            reference_duplicate_decision.detail = (
+                "New reference with trusted identifier(s), no existing matches"
+            )
+            reference_duplicate_decision, _ = await self.map_duplicate_decision(
+                reference_duplicate_decision
+            )
+            return [reference_duplicate_decision]
 
         canonical_ids, undeduplicated_ids = set(), set()
         for candidate in candidates:

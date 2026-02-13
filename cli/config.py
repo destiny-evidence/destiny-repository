@@ -24,7 +24,6 @@ class Settings(BaseSettings):
     auth_provider: Literal["azure", "keycloak"] = "azure"
 
     # Azure AD settings
-    azure_tenant_id: str | None = None
     azure_login_url: HttpUrl = HttpUrl("https://login.microsoftonline.com")
     azure_application_id: str | None = None
     cli_client_id: str | None = None

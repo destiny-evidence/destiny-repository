@@ -4,7 +4,6 @@ from typing import Annotated
 
 import destiny_sdk
 from fastapi import APIRouter, Depends, Path, status
-from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
@@ -57,7 +56,9 @@ def import_service(
 
 
 async def validate_import_record(
-    import_record_id: Annotated[UUID4, Path(description="The id of the import")],
+    import_record_id: Annotated[
+        destiny_sdk.UUID, Path(description="The id of the import")
+    ],
     import_service: Annotated[ImportService, Depends(import_service)],
 ) -> None:
     """Validate that the import record exists."""
@@ -67,7 +68,6 @@ async def validate_import_record(
 def choose_auth_strategy_imports() -> AuthMethod:
     """Choose import scope auth strategy for our imports authorization."""
     return choose_auth_strategy(
-        tenant_id=settings.azure_tenant_id,
         application_id=settings.azure_application_id,
         auth_scope=AuthScope.IMPORT_WRITER,
         auth_role=AuthRole.IMPORT_WRITER,
@@ -115,7 +115,9 @@ async def create_record(
 
 @import_record_router.get("/{import_record_id}/")
 async def get_record(
-    import_record_id: Annotated[UUID4, Path(description="The id of the import")],
+    import_record_id: Annotated[
+        destiny_sdk.UUID, Path(description="The id of the import")
+    ],
     import_service: Annotated[ImportService, Depends(import_service)],
     import_anti_corruption_service: Annotated[
         ImportAntiCorruptionService, Depends(import_anti_corruption_service)
@@ -131,7 +133,7 @@ async def get_record(
 )
 async def finalise_record(
     import_record_id: Annotated[
-        UUID4, Path(description="The id of the import to finalise")
+        destiny_sdk.UUID, Path(description="The id of the import to finalise")
     ],
     import_service: Annotated[ImportService, Depends(import_service)],
 ) -> None:
@@ -143,7 +145,7 @@ async def finalise_record(
 @import_batch_router.post("/", status_code=status.HTTP_202_ACCEPTED)
 async def enqueue_batch(
     import_record_id: Annotated[
-        UUID4, Path(description="The id of the associated import")
+        destiny_sdk.UUID, Path(description="The id of the associated import")
     ],
     batch: destiny_sdk.imports.ImportBatchIn,
     import_service: Annotated[ImportService, Depends(import_service)],
@@ -169,7 +171,7 @@ async def enqueue_batch(
 @import_batch_router.get("/")
 async def get_batches(
     import_record_id: Annotated[
-        UUID4, Path(description="The id of the associated import")
+        destiny_sdk.UUID, Path(description="The id of the associated import")
     ],
     import_service: Annotated[ImportService, Depends(import_service)],
     import_anti_corruption_service: Annotated[
@@ -188,7 +190,9 @@ async def get_batches(
 
 @import_batch_router.get("/{import_batch_id}/")
 async def get_batch(
-    import_batch_id: Annotated[UUID4, Path(description="The id of the import batch")],
+    import_batch_id: Annotated[
+        destiny_sdk.UUID, Path(description="The id of the import batch")
+    ],
     import_service: Annotated[ImportService, Depends(import_service)],
     import_anti_corruption_service: Annotated[
         ImportAntiCorruptionService, Depends(import_anti_corruption_service)
@@ -201,7 +205,9 @@ async def get_batch(
 
 @import_batch_router.get("/{import_batch_id}/summary/")
 async def get_import_batch_summary(
-    import_batch_id: Annotated[UUID4, Path(description="The id of the import batch")],
+    import_batch_id: Annotated[
+        destiny_sdk.UUID, Path(description="The id of the import batch")
+    ],
     import_service: Annotated[ImportService, Depends(import_service)],
     import_anti_corruption_service: Annotated[
         ImportAntiCorruptionService, Depends(import_anti_corruption_service)
@@ -214,7 +220,9 @@ async def get_import_batch_summary(
 
 @import_batch_router.get("/{import_batch_id}/results/")
 async def get_import_results(
-    import_batch_id: Annotated[UUID4, Path(description="The id of the import batch")],
+    import_batch_id: Annotated[
+        destiny_sdk.UUID, Path(description="The id of the import batch")
+    ],
     import_service: Annotated[ImportService, Depends(import_service)],
     import_anti_corruption_service: Annotated[
         ImportAntiCorruptionService, Depends(import_anti_corruption_service)

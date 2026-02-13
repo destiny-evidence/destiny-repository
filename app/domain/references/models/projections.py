@@ -1,7 +1,7 @@
 """Projection functions for reference domain data."""
 
-import uuid
 from collections import defaultdict
+from uuid import UUID
 
 import destiny_sdk
 
@@ -43,7 +43,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
         :rtype: ReferenceSearchFields
         """
         try:
-            title, publication_year = None, None
+            title, publication_year, publication_date = None, None, None
             abstract = None
             authorship: list[destiny_sdk.enhancements.Authorship] = []
             annotations_by_scheme: dict[
@@ -71,6 +71,10 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                             else None
                         )
                         or publication_year
+                    )
+
+                    publication_date = (
+                        enhancement.content.publication_date or publication_date
                     )
 
                 elif enhancement.content.enhancement_type == EnhancementType.ABSTRACT:
@@ -109,6 +113,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             return ReferenceSearchFields(
                 abstract=abstract,
                 authors=cls.__order_authorship_by_position(authorship),
+                publication_date=publication_date,
                 publication_year=publication_year,
                 title=title,
                 annotations=annotations,
@@ -143,12 +148,12 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
 
     @classmethod
     def __priority_sorted_enhancements(
-        cls, canonical_id: uuid.UUID, enhancements: list[Enhancement] | None
+        cls, canonical_id: UUID, enhancements: list[Enhancement] | None
     ) -> list[Enhancement]:
         """
         Order a references enhancements by priority for projecting in increasing order.
 
-        Prioritiy is defined as
+        Priority is defined as
         * Firstly, we prioritize enhancements on the canonical reference
         * Secondly, we prioritize most recent enhancements
 
@@ -164,7 +169,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             return []
 
         def __priority_sort_key(
-            canonical_id: uuid.UUID, enhancement: Enhancement
+            canonical_id: UUID, enhancement: Enhancement
         ) -> tuple[bool, float]:
             """Key for sorting enhancements."""
             if not enhancement.created_at:
@@ -260,7 +265,8 @@ class DeduplicatedReferenceProjection(GenericProjection[Reference]):
             },
         )
 
-        # Allows for reference chaining if settings.max_reference_duplicate_length>2
+        # Allows for reference chaining if MAX_REFERENCE_DUPLCIATE_DEPTH is
+        # updated to >2
         duplicate_references = [
             DeduplicatedReferenceProjection.get_from_reference(reference)
             for reference in reference.duplicate_references

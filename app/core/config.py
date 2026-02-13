@@ -187,6 +187,53 @@ class AzureBlobConfig(BaseModel):
         return f"https://{self.storage_account_name}.blob.core.windows.net"
 
 
+class LogLevel(StrEnum):
+    """Log level enum."""
+
+    NOTSET = auto()
+    DEBUG = auto()
+    INFO = auto()
+    WARNING = auto()
+    ERROR = auto()
+    CRITICAL = auto()
+
+
+optimistic_fraction = Field(default=1.0, ge=0.0, le=1.0)
+pessimistic_fraction = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class LogSamplingConfig(BaseModel):
+    """Log level sampling configuration."""
+
+    notset_sample_rate: float = pessimistic_fraction
+    debug_sample_rate: float = pessimistic_fraction
+    info_sample_rate: float = optimistic_fraction
+    warning_sample_rate: float = optimistic_fraction
+    error_sample_rate: float = optimistic_fraction
+    critical_sample_rate: float = optimistic_fraction
+
+    def get_rate(self, level: LogLevel | str) -> float:
+        """Get the sample rate for a given log level."""
+        if isinstance(level, str):
+            try:
+                level = LogLevel[level.upper()]
+            except KeyError:
+                return 1.0
+        return self.rates.get(level, 1.0)
+
+    @property
+    def rates(self) -> dict[LogLevel, float]:
+        """Get a mapping of log levels to their sample rates."""
+        return {
+            LogLevel.NOTSET: self.notset_sample_rate,
+            LogLevel.DEBUG: self.debug_sample_rate,
+            LogLevel.INFO: self.info_sample_rate,
+            LogLevel.WARNING: self.warning_sample_rate,
+            LogLevel.ERROR: self.error_sample_rate,
+            LogLevel.CRITICAL: self.critical_sample_rate,
+        }
+
+
 class OTelConfig(BaseModel):
     """OpenTelemetry configuration."""
 
@@ -198,7 +245,28 @@ class OTelConfig(BaseModel):
     timeout: int = 30
 
     # Flags to control low-level automatic instrumentation
-    instrument_sql: bool = False
+    instrument_sql: bool = Field(
+        default=False,
+        description="Whether to instrument SQL operations automatically.",
+    )
+    instrument_taskiq: bool = Field(
+        default=False,
+        description="Whether to instrument TaskIQ tasks automatically. "
+        "We have custom linking middleware in place already",
+    )
+    instrument_elasticsearch: bool = Field(
+        default=False,
+        description="Whether to instrument Elasticsearch operations automatically. ",
+    )
+
+    orphan_log_sample_config: LogSamplingConfig = Field(
+        default=LogSamplingConfig(),
+        description=(
+            "Log level sampling configuration. "
+            "This applies only to OpenTelemetry logs, and only to logs that are not "
+            "a member of a trace."
+        ),
+    )
 
 
 class Environment(StrEnum):
@@ -214,15 +282,6 @@ class Environment(StrEnum):
     def local_envs(cls) -> set["Environment"]:
         """Get environment values that are for local development."""
         return {cls.LOCAL, cls.TEST}
-
-
-class LogLevel(StrEnum):
-    """Log level enum."""
-
-    DEBUG = auto()
-    INFO = auto()
-    WARNING = auto()
-    ERROR = auto()
 
 
 class ESIndexingOperation(StrEnum):
@@ -297,7 +356,6 @@ class Settings(BaseSettings):
     # Azure AD settings
     azure_application_id: str
     azure_login_url: str = "https://login.microsoftonline.com"
-    azure_tenant_id: str
 
     # Keycloak settings (only used when auth_provider == "keycloak")
     keycloak_url: str | None = Field(
@@ -352,6 +410,17 @@ class Settings(BaseSettings):
     es_indexing_chunk_size_override: dict[ESIndexingOperation, int] = Field(
         default_factory=dict,
         description=("Override the default Elasticsearch indexing chunk size."),
+    )
+
+    es_reference_repair_chunk_size: int = Field(
+        default=1000,
+        description=(
+            "Number of reference records to process in a single distributed task "
+            "when repairing or rebuilding the reference index in Elasticsearch. "
+            "Be wary that if increased too far, then the "
+            "`repair_reference_index_for_chunk` task will require `long_running=True` "
+            "and subsequent lock management."
+        ),
     )
 
     default_es_percolation_chunk_size: int = Field(
@@ -441,17 +510,8 @@ class Settings(BaseSettings):
 
     log_level: LogLevel = Field(
         default=LogLevel.INFO,
-        description="The log level for the application.",
-    )
-
-    max_reference_duplicate_depth: Literal[2] = Field(
-        default=2,
-        description=(
-            "The maximum depth to which reference duplicates are propagated. A depth "
-            "of 2, as in the default, means only direct duplicates are allowed. Higher "
-            "values allow for duplicate chaining, at the significant cost of "
-            "performance and data model complexity."
-        ),
+        description="The log level for the application. "
+        "This applies to both opentelemetry and standard logging.",
     )
 
     cors_allow_origins: list[str] = Field(
