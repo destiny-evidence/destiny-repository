@@ -232,62 +232,6 @@ class ReferenceSQLRepository(
         ]
 
 
-def _build_author_dis_max_query(
-    authors: list[str],
-    *,
-    max_clauses: int,
-    min_token_length: int,
-) -> Q | None:
-    """
-    Build a dis_max query for author matching with bounded score contribution.
-
-    Uses dis_max instead of bool.should to prevent author-count inflation.
-    bool.should sums all matching clauses, so papers with thousands of authors
-    (e.g. CERN collaborations) produce inflated scores that drown out title
-    relevance. dis_max takes the best clause score and discounts the rest, bounding
-    the author contribution regardless of author count.
-
-    Caps the clause count to avoid sending redundant clauses to ES (dis_max
-    discounts them anyway). Filters short tokens because single-letter
-    initials match too broadly and produce false positive score boosts.
-
-    Args:
-        authors: Author names to build match queries from.
-        max_clauses: Maximum number of match queries to emit.
-        min_token_length: Minimum token length; filters initials.
-
-    Returns:
-        A dis_max Q object, or None if no valid queries remain.
-
-    """
-    queries: list[Q] = []
-    seen_terms: set[str] = set()
-    for author in authors:
-        tokens = [
-            token
-            for token in UNICODE_LETTER_PATTERN.findall(author)
-            if is_meaningful_token(token, min_token_length)
-        ]
-        if not tokens:
-            continue
-
-        terms = " ".join(tokens)
-        if terms in seen_terms:
-            continue
-
-        seen_terms.add(terms)
-        queries.append(Q("match", authors=terms))
-        if len(queries) >= max_clauses:
-            break
-
-    if not queries:
-        return None
-
-    # 0.1 = best-matching author dominates, additional matches add 10% each.
-    # Enough to prefer multi-author overlap without summing to inflation.
-    return Q("dis_max", queries=queries, tie_breaker=0.1)
-
-
 class ReferenceESRepository(
     GenericAsyncESRepository[DomainReference, ReferenceDocument],
     ReferenceRepositoryBase,
@@ -301,6 +245,62 @@ class ReferenceESRepository(
             DomainReference,
             ReferenceDocument,
         )
+
+    @staticmethod
+    def _build_author_dis_max_query(
+        authors: list[str],
+        *,
+        max_clauses: int,
+        min_token_length: int,
+    ) -> Q | None:
+        """
+        Build a dis_max query for author matching with bounded score contribution.
+
+        Uses dis_max instead of bool.should to prevent author-count inflation.
+        bool.should sums all matching clauses, so papers with thousands of authors
+        (e.g. CERN collaborations) produce inflated scores that drown out title
+        relevance. dis_max takes the best clause score and discounts the rest, bounding
+        the author contribution regardless of author count.
+
+        Caps the clause count to avoid sending redundant clauses to ES (dis_max
+        discounts them anyway). Filters short tokens because single-letter
+        initials match too broadly and produce false positive score boosts.
+
+        Args:
+            authors: Author names to build match queries from.
+            max_clauses: Maximum number of match queries to emit.
+            min_token_length: Minimum token length; filters initials.
+
+        Returns:
+            A dis_max Q object, or None if no valid queries remain.
+
+        """
+        queries: list[Q] = []
+        seen_terms: set[str] = set()
+        for author in authors:
+            tokens = [
+                token
+                for token in UNICODE_LETTER_PATTERN.findall(author)
+                if is_meaningful_token(token, min_token_length)
+            ]
+            if not tokens:
+                continue
+
+            terms = " ".join(tokens)
+            if terms in seen_terms:
+                continue
+
+            seen_terms.add(terms)
+            queries.append(Q("match", authors=terms))
+            if len(queries) >= max_clauses:
+                break
+
+        if not queries:
+            return None
+
+        # 0.1 = best-matching author dominates, additional matches add 10% each.
+        # Enough to prefer multi-author overlap without summing to inflation.
+        return Q("dis_max", queries=queries, tie_breaker=0.1)
 
     @trace_repository_method(tracer)
     async def search_for_candidate_canonicals(
@@ -333,7 +333,7 @@ class ReferenceESRepository(
         :return: A list of search results with IDs and scores.
         :rtype: list[ESScoreResult]
         """
-        author_query = _build_author_dis_max_query(
+        author_query = self._build_author_dis_max_query(
             search_fields.authors,
             max_clauses=scoring_config.max_author_clauses,
             min_token_length=scoring_config.min_author_token_length,
