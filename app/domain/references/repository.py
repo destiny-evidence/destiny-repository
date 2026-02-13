@@ -1,8 +1,6 @@
 """Repositories for references and associated models."""
 
 import datetime
-import re
-import unicodedata
 from abc import ABC
 from collections.abc import Sequence
 from typing import Literal
@@ -25,7 +23,7 @@ from sqlalchemy import (
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.core.config import get_settings
+from app.core.config import DedupCandidateScoringConfig
 from app.core.telemetry.repository import trace_repository_method
 from app.domain.references.models.es import (
     ReferenceDocument,
@@ -89,6 +87,7 @@ from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
 from app.persistence.sql.repository import GenericAsyncSqlRepository
+from app.utils.regex import UNICODE_LETTER_PATTERN, is_meaningful_token
 
 tracer = trace.get_tracer(__name__)
 
@@ -233,21 +232,6 @@ class ReferenceSQLRepository(
         ]
 
 
-_TOKEN_PATTERN = re.compile(r"[^\W\d_]+", flags=re.UNICODE)
-
-
-def _is_meaningful_token(token: str, min_token_length: int) -> bool:
-    if len(token) >= min_token_length:
-        return True
-
-    if len(token) != 1:
-        return False
-
-    # Preserve single-character non-Latin tokens (e.g., CJK names),
-    # but exclude Latin initials even when accented.
-    return "LATIN" not in unicodedata.name(token, "")
-
-
 def _build_author_dis_max_query(
     authors: list[str],
     *,
@@ -281,8 +265,8 @@ def _build_author_dis_max_query(
     for author in authors:
         tokens = [
             token
-            for token in _TOKEN_PATTERN.findall(author)
-            if _is_meaningful_token(token, min_token_length)
+            for token in UNICODE_LETTER_PATTERN.findall(author)
+            if is_meaningful_token(token, min_token_length)
         ]
         if not tokens:
             continue
@@ -323,6 +307,7 @@ class ReferenceESRepository(
         self,
         search_fields: CandidateCanonicalSearchFields,
         reference_id: UUID,
+        scoring_config: DedupCandidateScoringConfig,
     ) -> list[ESScoreResult]:
         """
         Fuzzy match candidate fingerprints to existing references.
@@ -343,15 +328,15 @@ class ReferenceESRepository(
         :type search_fields: CandidateCanonicalSearchFields
         :param reference_id: The ID of the potential duplicate.
         :type reference_id: UUID
+        :param scoring_config: Configuration for author scoring.
+        :type scoring_config: DedupCandidateScoringConfig
         :return: A list of search results with IDs and scores.
         :rtype: list[ESScoreResult]
         """
-        config = get_settings().dedup_scoring
-
         author_query = _build_author_dis_max_query(
             search_fields.authors,
-            max_clauses=config.max_author_clauses,
-            min_token_length=config.min_author_token_length,
+            max_clauses=scoring_config.max_author_clauses,
+            min_token_length=scoring_config.min_author_token_length,
         )
         should_clauses = [author_query] if author_query else []
 

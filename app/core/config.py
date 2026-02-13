@@ -328,7 +328,7 @@ class FeatureFlags(BaseModel):
     """Feature flags for the application."""
 
 
-class DedupScoringConfig(BaseModel):
+class DedupCandidateScoringConfig(BaseModel):
     """Configuration for deduplication candidate search scoring."""
 
     max_author_clauses: int = Field(
@@ -356,7 +356,7 @@ class Settings(BaseSettings):
     toml: TOML = TOML(toml_path=project_root)
 
     feature_flags: FeatureFlags = FeatureFlags()
-    dedup_scoring: DedupScoringConfig = DedupScoringConfig()
+    dedup_scoring: DedupCandidateScoringConfig = DedupCandidateScoringConfig()
 
     db_config: DatabaseConfig
     es_config: ESConfig

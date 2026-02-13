@@ -37,12 +37,6 @@ modification to run the application), copy the example file:
 cp .env.example .env
 ```
 
-Optional: configure deduplication scoring behavior using `DEDUP_SCORING`:
-
-```shell
-DEDUP_SCORING='{"MAX_AUTHOR_CLAUSES": 25, "MIN_AUTHOR_TOKEN_LENGTH": 2}'
-```
-
 ### Starting the development server
 
 First you will need to start the auxiliary servers:

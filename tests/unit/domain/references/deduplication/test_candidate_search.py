@@ -1,9 +1,9 @@
 """Tests for _build_author_dis_max_query in repository.py."""
 
-from app.core.config import DedupScoringConfig
+from app.core.config import DedupCandidateScoringConfig
 from app.domain.references.repository import _build_author_dis_max_query
 
-_CONFIG_DEFAULTS = DedupScoringConfig()
+_CONFIG_DEFAULTS = DedupCandidateScoringConfig()
 
 _DEFAULTS = {
     "max_clauses": _CONFIG_DEFAULTS.max_author_clauses,
