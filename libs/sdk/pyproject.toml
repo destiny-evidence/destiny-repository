@@ -23,6 +23,7 @@ authors = [
     {email = "tim.repke@pik-potsdam.de", name = "Tim Repke"},
 ]
 dependencies = [
+    "authlib>=1.4.0,<2",
     "cachetools>=5.5.2,<6",
     "fastapi>=0.119.1",
     "httpx>=0.28.1,<0.29",

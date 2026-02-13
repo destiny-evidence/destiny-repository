@@ -16,6 +16,7 @@ from pydantic import HttpUrl, TypeAdapter
 from destiny_sdk.auth import create_signature
 from destiny_sdk.core import UUID, sdk_version
 from destiny_sdk.identifiers import IdentifierLookup
+from destiny_sdk.keycloak_auth import KeycloakAuthCodeFlow, TokenResponse
 from destiny_sdk.references import Reference, ReferenceSearchResult
 from destiny_sdk.robots import (
     EnhancementRequestRead,
@@ -415,6 +416,117 @@ class OAuthMiddleware(httpx.Auth):
         )
 
         return self._parse_token(result)
+
+    def auth_flow(
+        self, request: httpx.Request
+    ) -> Generator[httpx.Request, httpx.Response]:
+        """
+        Add OAuth2 token to request and handle token refresh on expiration.
+
+        :param request: The request to authenticate.
+        :type request: httpx.Request
+        :yield: Authenticated request with token refresh handling.
+        :rtype: Generator[httpx.Request, httpx.Response]
+        """
+        # Add initial token
+        token = self._get_token()
+        request.headers["Authorization"] = f"Bearer {token}"
+
+        response = yield request
+
+        # Check if token expired and retry once with fresh token
+        if response.status_code == httpx.codes.UNAUTHORIZED:
+            try:
+                json_response: dict = response.json()
+                error_detail: str = json_response.get("detail", {})
+            except ValueError:
+                error_detail = ""
+
+            if error_detail == "Token has expired.":
+                # Force refresh token and retry
+                token = self._get_token(force_refresh=True)
+                request.headers["Authorization"] = f"Bearer {token}"
+                yield request
+
+
+class KeycloakOAuthMiddleware(httpx.Auth):
+    """
+    Auth middleware that handles Keycloak OAuth2 token retrieval and refresh.
+
+    This is the Keycloak equivalent of
+    :class:`OAuthMiddleware <libs.sdk.src.destiny_sdk.client.OAuthMiddleware>`.
+
+    **Public Client Application (human login)**
+
+    Initial login will be interactive through a browser window. Subsequent token
+    retrievals will use cached tokens and refreshes where possible.
+
+    .. code-block:: python
+
+        auth = KeycloakOAuthMiddleware(
+            keycloak_url="http://localhost:8080",
+            realm="destiny",
+            client_id="destiny-auth-client",
+        )
+
+    """
+
+    def __init__(
+        self,
+        keycloak_url: str,
+        realm: str,
+        client_id: str = "destiny-auth-client",
+        scopes: list[str] | None = None,
+        callback_port: int = 8400,
+    ) -> None:
+        """
+        Initialize the Keycloak auth middleware.
+
+        :param keycloak_url: The base URL of the Keycloak server.
+        :type keycloak_url: str
+        :param realm: The Keycloak realm name.
+        :type realm: str
+        :param client_id: The OAuth2 client ID.
+        :type client_id: str
+        :param scopes: Optional list of scopes to request.
+        :type scopes: list[str] | None
+        :param callback_port: Port for local callback server during auth flow.
+        :type callback_port: int
+        """
+        self._auth_flow = KeycloakAuthCodeFlow(
+            keycloak_url=keycloak_url,
+            realm=realm,
+            client_id=client_id,
+            callback_port=callback_port,
+        )
+        self._scopes = scopes
+        self._token: TokenResponse | None = None
+
+    def _get_token(self, *, force_refresh: bool = False) -> str:
+        """
+        Get an OAuth2 token from Keycloak.
+
+        :param force_refresh: Whether to force a token refresh.
+        :type force_refresh: bool
+        :return: The OAuth2 access token.
+        :rtype: str
+        """
+        # If we have a token and a refresh token, try to refresh
+        if self._token and self._token.refresh_token and force_refresh:
+            try:
+                self._token = self._auth_flow.refresh_token(self._token.refresh_token)
+            except httpx.HTTPStatusError:
+                # Refresh failed, will do full auth flow below
+                pass
+            else:
+                return self._token.access_token
+        elif self._token and not force_refresh:
+            # We have a valid token, return it
+            return self._token.access_token
+
+        # Perform full authentication flow
+        self._token = self._auth_flow.authenticate(scopes=self._scopes)
+        return self._token.access_token
 
     def auth_flow(
         self, request: httpx.Request

@@ -18,6 +18,8 @@ from typing import Annotated, Any, Protocol
 from uuid import UUID
 
 import destiny_sdk
+from authlib.jose import JsonWebKey, JsonWebToken
+from authlib.jose import errors as jose_errors
 from cachetools import TTLCache
 from fastapi import Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -396,6 +398,232 @@ class AzureJwtAuth(AuthMethod):
         return self._require_scope_or_role(verified_claims)
 
 
+class KeycloakJwtAuth(AuthMethod):
+    """
+    AuthMethod for authorizing requests using JWTs issued by Keycloak.
+
+    Similar to AzureJwtAuth but configured for Keycloak's OIDC endpoints.
+    Uses authlib.jose for JWT verification and JWKS handling.
+
+    Example:
+        .. code-block:: python
+
+            auth = KeycloakJwtAuth(
+                keycloak_url="http://localhost:8080",
+                realm="destiny",
+                client_id="destiny-repository-client",
+                scope=AuthScope.REFERENCE_READER,
+            )
+
+            router = APIRouter(
+                prefix="/references",
+                tags=["references"],
+                dependencies=[Depends(auth)]
+            )
+
+    """
+
+    def __init__(  # noqa: PLR0913
+        self,
+        keycloak_url: str,
+        realm: str,
+        client_id: str,
+        scope: StrEnum | None = None,
+        role: StrEnum | None = None,
+        cache_ttl: int = CACHE_TTL,
+        issuer_url: str | None = None,
+    ) -> None:
+        """
+        Initialize the Keycloak JWT auth dependency.
+
+        Args:
+            keycloak_url: The base URL of the Keycloak server (used for JWKS fetching)
+            realm: The Keycloak realm name
+            client_id: The client ID (audience) for token validation
+            scope: The required authorization scope for delegated (user) tokens
+            role: The required authorization role for application tokens
+            cache_ttl: Time to live for JWKS cache entries, defaults to 24 hours
+            issuer_url: Optional separate URL for token issuer validation. Defaults to
+                keycloak_url if not provided. Useful when tokens are issued with a
+                different URL than the internal JWKS endpoint (e.g., in Docker).
+
+        """
+        self.keycloak_url = keycloak_url.rstrip("/")
+        self.realm = realm
+        self.client_id = client_id
+        self.scope = scope
+        self.role = role
+        self.cache: TTLCache = TTLCache(maxsize=1, ttl=cache_ttl)
+
+        issuer_base = (issuer_url or keycloak_url).rstrip("/")
+        self.issuer = f"{issuer_base}/realms/{self.realm}"
+        self.jwks_uri = (
+            f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/certs"
+        )
+
+        # Create JWT decoder with claims validation
+        self._jwt = JsonWebToken(["RS256"])
+
+    async def verify_token(self, token: str) -> dict[str, Any]:
+        """
+        Verify the token using JWKS fetched from Keycloak.
+
+        Uses authlib.jose for JWT decoding and JWKS key matching.
+
+        Args:
+            token: The JWT to be verified
+
+        Returns:
+            The decoded token payload
+
+        Raises:
+            AuthError: If token verification fails
+
+        """
+        jwks = self.cache.get("jwks")
+        cached_jwks = bool(jwks)
+
+        if not jwks:
+            try:
+                jwks = await self._get_keycloak_keys()
+            except Exception as exc:
+                raise AuthError(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Unable to fetch signing keys from identity provider.",
+                ) from exc
+            self.cache["jwks"] = jwks
+
+        try:
+            claims = self._jwt.decode(
+                token,
+                jwks,
+                claims_options={
+                    "iss": {"essential": True, "value": self.issuer},
+                    "aud": {"essential": True, "value": self.client_id},
+                },
+            )
+            claims.validate()
+            return dict(claims)
+
+        except jose_errors.ExpiredTokenError as exc:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token is expired.",
+            ) from exc
+
+        except jose_errors.InvalidClaimError as exc:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid token claims: {exc}",
+            ) from exc
+
+        except jose_errors.JoseError as exc:
+            # If we had cached JWKS and verification failed,
+            # try refreshing the keys (key rotation)
+            if cached_jwks:
+                self.cache.pop("jwks", None)
+                return await self.verify_token(token)
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to parse authentication token.",
+            ) from exc
+
+    async def _get_keycloak_keys(self) -> JsonWebKey:
+        """Fetch and import JWKS from Keycloak's OIDC endpoint."""
+        async with AsyncClient() as client:
+            response = await client.get(self.jwks_uri)
+            return JsonWebKey.import_key_set(response.json())
+
+    def _require_scope_or_role(self, verified_claims: dict[str, Any]) -> bool:
+        """
+        Check for required scope or role in the Keycloak token.
+
+        Keycloak tokens have:
+        - scope: space-separated string of scopes
+        - realm_access.roles: list of realm roles
+        - resource_access.{client_id}.roles: list of client roles
+
+        Args:
+            verified_claims: The decoded JWT claims
+
+        Returns:
+            True if authorization is successful
+
+        Raises:
+            AuthError: If required scope/role is not present
+
+        """
+        # Check scopes (space-separated string in Keycloak)
+        if self.scope and verified_claims.get("scope"):
+            scopes = verified_claims["scope"].split()
+            if self.scope.value in scopes:
+                return True
+
+            raise AuthError(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"The scope claim does not contain the required scope "
+                f"{self.scope.value}",
+            )
+
+        # Check realm roles
+        if self.role:
+            realm_roles = verified_claims.get("realm_access", {}).get("roles", [])
+            if self.role.value in realm_roles:
+                return True
+
+            # Also check client-specific roles
+            client_roles = (
+                verified_claims.get("resource_access", {})
+                .get(self.client_id, {})
+                .get("roles", [])
+            )
+            if self.role.value in client_roles:
+                return True
+
+            raise AuthError(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"The roles claim does not contain the required role "
+                f"{self.role.value}",
+            )
+
+        raise AuthError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Neither scope nor roles claim was found in the bearer token.",
+        )
+
+    async def __call__(
+        self,
+        request: Request,  # noqa: ARG002
+        credentials: HTTPAuthorizationCredentials | None,
+    ) -> bool:
+        """Authenticate the request using Keycloak JWT."""
+        if not credentials:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authorization HTTPBearer header missing.",
+            )
+
+        verified_claims = await self.verify_token(credentials.credentials)
+
+        # Set telemetry attributes
+        span = trace.get_current_span()
+        span.set_attribute(Attributes.USER_AUTH_METHOD, "keycloak-jwt")
+
+        if sub := verified_claims.get("sub"):
+            span.set_attribute(Attributes.USER_ID, sub)
+        if name := verified_claims.get("name"):
+            span.set_attribute(Attributes.USER_FULL_NAME, name)
+        if email := verified_claims.get("email"):
+            span.set_attribute(Attributes.USER_EMAIL, email)
+
+        # Get roles from realm_access for telemetry
+        realm_access = verified_claims.get("realm_access", {})
+        if roles := realm_access.get("roles"):
+            span.set_attribute(Attributes.USER_ROLES, ",".join(roles))
+
+        return self._require_scope_or_role(verified_claims)
+
+
 class SuccessAuth(AuthMethod):
     """
     A fake auth class that will always respond successfully.
@@ -432,10 +660,28 @@ def choose_auth_strategy(
     *,
     bypass_auth: bool,
 ) -> AuthMethod:
-    """Choose a strategy for our authorization."""
+    """Choose a strategy for our authorization based on configured provider."""
     if bypass_auth:
         return SuccessAuth()
 
+    # Check auth provider setting
+    if settings.auth_provider == "keycloak":
+        if not settings.keycloak_url or not settings.keycloak_client_id:
+            msg = (
+                "Keycloak auth provider selected but keycloak_url or "
+                "keycloak_client_id is not configured"
+            )
+            raise ValueError(msg)
+        return KeycloakJwtAuth(
+            keycloak_url=settings.keycloak_url,
+            realm=settings.keycloak_realm,
+            client_id=settings.keycloak_client_id,
+            scope=auth_scope,
+            role=auth_role,
+            issuer_url=settings.keycloak_issuer_url,
+        )
+
+    # Default to Azure AD
     return AzureJwtAuth(
         application_id=application_id,
         scope=auth_scope,
@@ -559,7 +805,7 @@ class HybridAuth(AuthMethod):
 
     def __init__(
         self,
-        jwt_auth: AzureJwtAuth,
+        jwt_auth: AzureJwtAuth | KeycloakJwtAuth,
         hmac_auth: HMACMultiClientAuth,
     ) -> None:
         """
@@ -568,7 +814,7 @@ class HybridAuth(AuthMethod):
         Note both methods use the Authentication header, so we will never
         attempt to use both at the same time.
 
-        :param jwt_auth: The JWT authentication method to use
+        :param jwt_auth: The JWT authentication method to use (Azure or Keycloak)
         :param hmac_auth: The HMAC authentication method to use
         """
         self._jwt_auth = jwt_auth
@@ -607,12 +853,31 @@ def choose_hybrid_auth_strategy(  # noqa: PLR0913
     if bypass_auth:
         return SuccessAuth()
 
-    return HybridAuth(
-        jwt_auth=AzureJwtAuth(
+    # Choose JWT auth based on provider
+    if settings.auth_provider == "keycloak":
+        if not settings.keycloak_url or not settings.keycloak_client_id:
+            msg = (
+                "Keycloak auth provider selected but keycloak_url or "
+                "keycloak_client_id is not configured"
+            )
+            raise ValueError(msg)
+        jwt_auth: AzureJwtAuth | KeycloakJwtAuth = KeycloakJwtAuth(
+            keycloak_url=settings.keycloak_url,
+            realm=settings.keycloak_realm,
+            client_id=settings.keycloak_client_id,
+            scope=jwt_scope,
+            role=jwt_role,
+            issuer_url=settings.keycloak_issuer_url,
+        )
+    else:
+        jwt_auth = AzureJwtAuth(
             application_id=application_id,
             scope=jwt_scope,
             role=jwt_role,
-        ),
+        )
+
+    return HybridAuth(
+        jwt_auth=jwt_auth,
         hmac_auth=HMACMultiClientAuth(
             get_client_secret=get_client_secret,
             client_type=hmac_client_type,
