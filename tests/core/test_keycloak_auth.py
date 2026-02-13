@@ -1,8 +1,8 @@
 """Test Keycloak JWT authentication."""
 
 import datetime
-from collections.abc import Callable
 from enum import StrEnum
+from typing import Protocol
 from unittest.mock import Mock
 
 import pytest
@@ -26,20 +26,33 @@ class FakeAuthRoles(StrEnum):
     READER = "reference.reader"
 
 
+class TokenGenerator(Protocol):
+    """Protocol for the generate_keycloak_token fixture."""
+
+    def __call__(
+        self,
+        user_payload: dict | None = None,
+        scope: str | None = None,
+        role: str | None = None,
+    ) -> str:
+        """Generate a fake Keycloak token for testing."""
+        ...
+
+
 # Test RSA key pair for signing tokens
 _test_private_key = {
     "kty": "RSA",
     "kid": "test-key-id",
     "use": "sig",
     "alg": "RS256",
-    "n": "kKDUcNhINFIRjuzK2pW1dYGF0iJjmy9Ux15TJwSEX7MeKplHp58HnM_--ZHRj4gEp-Gq9l7wNowdJEO72nITfnjQpyroSIimAY0hxMgv96v7dYS1mYLcPASYenXNWYXA0IrK5ZRb_6NacsA_yVOoeWDglwzEZFkgmyXpi2pI988FY8nDMAlC7KD4IlSTeOakW1zkdd6eQY7CeThIEGlL826vlR2aziAKRtiKBzgfY8Y50USoa7zWRfYqay9A_e_Y_lvj9vPa0fl9MKZpqbHEsN7MrNpMOpuJ6vajtp7JL12IBcgLH9Q80on73Isj6RYc3zS5_SllXS7NbxfJ0jZ7IQ",
+    "n": "kKDUcNhINFIRjuzK2pW1dYGF0iJjmy9Ux15TJwSEX7MeKplHp58HnM_--ZHRj4gEp-Gq9l7wNowdJEO72nITfnjQpyroSIimAY0hxMgv96v7dYS1mYLcPASYenXNWYXA0IrK5ZRb_6NacsA_yVOoeWDglwzEZFkgmyXpi2pI988FY8nDMAlC7KD4IlSTeOakW1zkdd6eQY7CeThIEGlL826vlR2aziAKRtiKBzgfY8Y50USoa7zWRfYqay9A_e_Y_lvj9vPa0fl9MKZpqbHEsN7MrNpMOpuJ6vajtp7JL12IBcgLH9Q80on73Isj6RYc3zS5_SllXS7NbxfJ0jZ7IQ",  # noqa: E501
     "e": "AQAB",
-    "d": "P-w1uSJ-11EmnYsfJXlh2GvE39l_OMm0qOGR0v72Gu4p-R4CQ53QWYi840WF3_B4TlM5oubXOOS4xJyDXMtqvk1bu2cFf3mWFb1xHW51dPw4ifp74TurZ4OIeSez-Utaq1GM1-e4ucZTZcB-8Nbe8bbVzS1BaDDUbn5VON9jHNNda5jQQojcVNF_TRyREJ-kizz3CyveIjmeS6Lb9regIYfAZnrKCiEvhv1m6zhvvqxViz7nzp8D-Es2nrksqWUO-Eh8O9UmeqcHJi32V5PyTTxHP2IG5-x18Bn_cX7_ntZ8a9ollTjf6PoUZMGz_Dsybu7QfQkadgr0sEPODQ7wgQ",
-    "p": "-X2N5eWnp5Wr6rfhLuC30mKIoG1KXCjlZQMyP6QOCayMxhrhUM2ZeHtcl7ExMX0vRr2auQtWYlfPsnHEEbOCehehdoKWgZouCX_CLvBV484T_EIIvcnHp6fCJYpOnodbl6R7kT9if3wI672CAARdiMXmfj94xVj0pYyQZ_Mag5k",
-    "q": "lGbb-VSNfQdCFTki3ClQPCk2YdV4Vh9PVk8Sx9_oTheDGWCKuuhVjqooKedPmqMw1X23GCQwV3pqbKUEonY7BsryUG2MFLCzxJm-c45eWqmR-1rhnwnxHvlopAoSL2CPh4qVqMbGXJ3hJ5roU8KmLAop_DcS7NfvwGG4YInHaMk",
-    "dp": "P90r3ZWT_QoLH-JB-kX7yBcA8lAHoN-3GMxgqHnOPhu1TWDEHHMEvhqV8R6igRCScYFHgeatDi98Myl8DyvsUmSKKFP1Que8sSHLC0jqM44k_4XHxw1H1lrTD9j_lwT_JSotl1iqVgfiILY5-NclOkWuYtLMj3fd6CK7NGC-gME",
-    "dq": "gg0WL416pRwsPF8i_p-x8dcIEnq6B3dO1stbIRBHC9CtEhs52IxtFiZmJjrQ1yq2TBHs19o3ByJ_i5Cd3CYSmmRWMEegYC1ujRdTAP--DmPWS9mcKfzTcxqNKlytDRnpDpZTi2IPSfEN9OBbQ7QsXiHWI3K8QhUGxaidpPR5bYk",
-    "qi": "PoZSlTkB3dVl4mp24kTx4EK4YrT-c7lclsUBArdWt6WhVPCKMjWT1NZ6-sTw4TmWb7a-lOCqXLkfBVMzLkfpR3wp-J_TNfnb9PGP8-cTIE0FAEG9Kpc7tDNj1VhqU1Bl7Yse-Sp1u3vRvSqZvouNfSmTR00_648PrZegTDLZV2A",
+    "d": "P-w1uSJ-11EmnYsfJXlh2GvE39l_OMm0qOGR0v72Gu4p-R4CQ53QWYi840WF3_B4TlM5oubXOOS4xJyDXMtqvk1bu2cFf3mWFb1xHW51dPw4ifp74TurZ4OIeSez-Utaq1GM1-e4ucZTZcB-8Nbe8bbVzS1BaDDUbn5VON9jHNNda5jQQojcVNF_TRyREJ-kizz3CyveIjmeS6Lb9regIYfAZnrKCiEvhv1m6zhvvqxViz7nzp8D-Es2nrksqWUO-Eh8O9UmeqcHJi32V5PyTTxHP2IG5-x18Bn_cX7_ntZ8a9ollTjf6PoUZMGz_Dsybu7QfQkadgr0sEPODQ7wgQ",  # noqa: E501
+    "p": "-X2N5eWnp5Wr6rfhLuC30mKIoG1KXCjlZQMyP6QOCayMxhrhUM2ZeHtcl7ExMX0vRr2auQtWYlfPsnHEEbOCehehdoKWgZouCX_CLvBV484T_EIIvcnHp6fCJYpOnodbl6R7kT9if3wI672CAARdiMXmfj94xVj0pYyQZ_Mag5k",  # noqa: E501
+    "q": "lGbb-VSNfQdCFTki3ClQPCk2YdV4Vh9PVk8Sx9_oTheDGWCKuuhVjqooKedPmqMw1X23GCQwV3pqbKUEonY7BsryUG2MFLCzxJm-c45eWqmR-1rhnwnxHvlopAoSL2CPh4qVqMbGXJ3hJ5roU8KmLAop_DcS7NfvwGG4YInHaMk",  # noqa: E501
+    "dp": "P90r3ZWT_QoLH-JB-kX7yBcA8lAHoN-3GMxgqHnOPhu1TWDEHHMEvhqV8R6igRCScYFHgeatDi98Myl8DyvsUmSKKFP1Que8sSHLC0jqM44k_4XHxw1H1lrTD9j_lwT_JSotl1iqVgfiILY5-NclOkWuYtLMj3fd6CK7NGC-gME",  # noqa: E501
+    "dq": "gg0WL416pRwsPF8i_p-x8dcIEnq6B3dO1stbIRBHC9CtEhs52IxtFiZmJjrQ1yq2TBHs19o3ByJ_i5Cd3CYSmmRWMEegYC1ujRdTAP--DmPWS9mcKfzTcxqNKlytDRnpDpZTi2IPSfEN9OBbQ7QsXiHWI3K8QhUGxaidpPR5bYk",  # noqa: E501
+    "qi": "PoZSlTkB3dVl4mp24kTx4EK4YrT-c7lclsUBArdWt6WhVPCKMjWT1NZ6-sTw4TmWb7a-lOCqXLkfBVMzLkfpR3wp-J_TNfnb9PGP8-cTIE0FAEG9Kpc7tDNj1VhqU1Bl7Yse-Sp1u3vRvSqZvouNfSmTR00_648PrZegTDLZV2A",  # noqa: E501
 }
 
 
@@ -115,7 +128,7 @@ def generate_keycloak_token(
     fake_keycloak_url: str,
     fake_realm: str,
     fake_client_id: str,
-) -> Callable[[dict | None, str | None, str | None], str]:
+) -> TokenGenerator:
     """Create a function that generates fake Keycloak tokens."""
     private_key = JsonWebKey.import_key(_test_private_key)
 
@@ -155,7 +168,7 @@ async def test_verify_token_success(
     httpx_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
-    generate_keycloak_token: Callable[[dict | None, str | None, str | None], str],
+    generate_keycloak_token: TokenGenerator,
 ) -> None:
     """Test that a valid token is successfully verified."""
     payload = {"sub": "test_subject"}
@@ -170,7 +183,7 @@ async def test_verify_token_cached_jwks(
     httpx_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
-    generate_keycloak_token: Callable[[dict | None, str | None, str | None], str],
+    generate_keycloak_token: TokenGenerator,
 ):
     """Test that we cache the JWKS fetched from Keycloak."""
     payload = {"sub": "test_subject"}
@@ -206,7 +219,7 @@ async def test_verify_token_expired(
     httpx_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
-    generate_keycloak_token: Callable[[dict | None, str | None, str | None], str],
+    generate_keycloak_token: TokenGenerator,
 ):
     """Test that we raise an appropriate exception with an expired token."""
     now = datetime.datetime.now(datetime.UTC)
@@ -226,7 +239,7 @@ async def test_verify_token_incorrect_audience(
     httpx_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
-    generate_keycloak_token: Callable[[dict | None, str | None, str | None], str],
+    generate_keycloak_token: TokenGenerator,
 ):
     """Test that we raise an exception with a token having incorrect audience."""
     payload = {
@@ -245,7 +258,7 @@ async def test_verify_token_jwks_retry(
     httpx_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
-    generate_keycloak_token: Callable[[dict | None, str | None, str | None], str],
+    generate_keycloak_token: TokenGenerator,
 ):
     """Test that we get fresh JWKS if the cached one is stale."""
     # Pre-populate cache with stale JWKS
@@ -269,7 +282,7 @@ async def test_verify_token_parse_failure_after_retry(
     httpx_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
-    generate_keycloak_token: Callable[[dict | None, str | None, str | None], str],
+    generate_keycloak_token: TokenGenerator,
 ):
     """Test that we only retry once if we fail to verify a token."""
     # Pre-populate cache with stale JWKS
@@ -293,7 +306,7 @@ async def test_requires_scope_success(
     httpx_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
-    generate_keycloak_token: Callable[[dict | None, str | None, str | None], str],
+    generate_keycloak_token: TokenGenerator,
     fake_request: Request,
 ):
     """Test that we successfully validate a token with the requested scope."""
@@ -309,7 +322,7 @@ async def test_requires_role_success(
     httpx_mock: HTTPXMock,
     auth_with_role: KeycloakJwtAuth,
     fake_public_key: dict,
-    generate_keycloak_token: Callable[[dict | None, str | None, str | None], str],
+    generate_keycloak_token: TokenGenerator,
     fake_request: Request,
 ):
     """Test that we successfully validate a token with the requested role."""
@@ -325,7 +338,7 @@ async def test_requires_scope_not_found(
     httpx_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
-    generate_keycloak_token: Callable[[dict | None, str | None, str | None], str],
+    generate_keycloak_token: TokenGenerator,
     fake_request: Request,
 ):
     """Test that we raise an exception with a token without the appropriate scope."""
@@ -344,7 +357,7 @@ async def test_requires_role_not_found(
     httpx_mock: HTTPXMock,
     auth_with_role: KeycloakJwtAuth,
     fake_public_key: dict,
-    generate_keycloak_token: Callable[[dict | None, str | None, str | None], str],
+    generate_keycloak_token: TokenGenerator,
     fake_request: Request,
 ):
     """Test that we raise an exception with a token without the appropriate role."""
@@ -376,7 +389,7 @@ async def test_custom_issuer_url(
     fake_realm: str,
     fake_client_id: str,
 ):
-    """Test that custom issuer URL is used for validation while JWKS uses keycloak_url."""
+    """Test that custom issuer URL is used for validation while JWKS uses keycloak_url."""  # noqa: E501
     # Internal URL for JWKS fetching
     keycloak_url = "http://keycloak:8080"
     # External URL for issuer validation

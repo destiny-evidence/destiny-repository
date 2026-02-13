@@ -31,7 +31,7 @@ def keycloak():
     """Start a Keycloak container with test realm."""
     logger.info("Starting Keycloak container...")
 
-    # Use dedicated import directory with test realm config (direct access grants enabled)
+    # Use dedicated import directory with test realm config
     import_dir = str(_cwd / "tests/e2e/auth/keycloak-import")
 
     container = (
@@ -127,9 +127,8 @@ async def _get_keycloak_token(keycloak_url: str, scopes: str) -> str:
                 await asyncio.sleep(retry_delay)
                 continue
 
-    raise RuntimeError(
-        f"Failed to get token from Keycloak after {max_retries} attempts"
-    )
+    msg = f"Failed to get token from Keycloak after {max_retries} attempts"
+    raise RuntimeError(msg)
 
 
 @pytest.fixture(scope="session")
@@ -205,7 +204,7 @@ def keycloak_app(  # noqa: PLR0913
                 "0.0.0.0",  # noqa: S104
                 "--port",
                 str(app_port),
-            ]
+            ],
         )
         .with_volume_mapping(str(_cwd / "app"), "/app/app")
         .with_volume_mapping(str(_cwd / "libs/sdk"), "/app/libs/sdk")
@@ -216,7 +215,7 @@ def keycloak_app(  # noqa: PLR0913
                     port=app_port,
                     path="/v1/system/healthcheck/?azure_blob_storage=false",
                 ).for_status_code(200),
-            )
+            ),
         )
     )
     # Add Keycloak environment variables

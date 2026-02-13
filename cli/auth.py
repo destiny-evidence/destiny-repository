@@ -33,6 +33,10 @@ class CLIAuth(httpx.Auth):
 
     def _get_azure_token(self, settings: "Settings") -> str:
         """Get an Azure AD token."""
+        if not settings.azure_application_id:
+            msg = "azure_application_id must be set when using Azure authentication"
+            raise RuntimeError(msg)
+
         return get_token(
             cli_client_id=settings.cli_client_id,
             azure_login_url=str(settings.azure_login_url),
@@ -54,7 +58,8 @@ class CLIAuth(httpx.Auth):
         return token_response.access_token
 
     def auth_flow(
-        self, request: httpx.Request
+        self,
+        request: httpx.Request,
     ) -> Generator[httpx.Request, httpx.Response]:
         """Add a Bearer token to the request if we're not in a test environment."""
         if self.env not in (Environment.LOCAL, Environment.TEST):
