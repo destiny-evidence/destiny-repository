@@ -1,0 +1,1304 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Reference Deduplication &#8212; DESTINY Repository v1.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=cf3b3841" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+    <script src="../_static/documentation_options.js?v=e160b93e"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11.12.1/dist/mermaid.esm.min.mjs"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.2.0/dist/mermaid-layout-elk.esm.min.mjs"></script>
+    <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.12.1/dist/mermaid.esm.min.mjs";import elkLayouts from "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.2.0/dist/mermaid-layout-elk.esm.min.mjs";mermaid.registerLayoutLoaders(elkLayouts);mermaid.initialize({startOnLoad:false});</script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+    <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.12.1/dist/mermaid.esm.min.mjs";
+
+const defaultStyle = document.createElement('style');
+defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+`;
+document.head.appendChild(defaultStyle);
+
+const fullscreenStyle = document.createElement('style');
+fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+document.head.appendChild(fullscreenStyle);
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        return brightness < 128;
+    }
+    return false;
+};
+
+const load = async () => {
+    await mermaid.run();
+
+    const all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(load, 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(load, 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(load, 200);
+        return;
+    }
+
+    const darkTheme = isDarkTheme();
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    const modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    const modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    let previousScrollOffset = [window.scrollX, window.scrollY];
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    const allButtons = [];
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+
+        container.appendChild(fullscreenBtn);
+        allButtons.push(fullscreenBtn);
+    });
+
+    // Update theme classes when theme changes
+    const updateTheme = () => {
+        const dark = isDarkTheme();
+        allButtons.forEach(btn => {
+            if (dark) {
+                btn.classList.add('dark-theme');
+            } else {
+                btn.classList.remove('dark-theme');
+            }
+        });
+        if (dark) {
+            modal.classList.add('dark-theme');
+            modalContent.classList.add('dark-theme');
+            closeBtn.classList.add('dark-theme');
+        } else {
+            modal.classList.remove('dark-theme');
+            modalContent.classList.remove('dark-theme');
+            closeBtn.classList.remove('dark-theme');
+        }
+    };
+
+    // Watch for theme changes
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    observer.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style']
+    });
+};
+
+window.addEventListener("load", load);
+</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'procedures/deduplication';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Registering a Robot" href="robot-registration.html" />
+    <link rel="prev" title="Requesting Enhancements" href="requesting-batch-enhancements.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">DESTINY Repository v1.0 documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../codebase/codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../sdk/sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../codebase/codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../sdk/sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="oauth.html">API Authentication</a></li>
+<li class="toctree-l1"><a class="reference internal" href="search.html">Search</a></li>
+<li class="toctree-l1"><a class="reference internal" href="batch-importing.html">Importing References with Batches</a></li>
+<li class="toctree-l1"><a class="reference internal" href="requesting-batch-enhancements.html">Requesting Enhancements</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Reference Deduplication</a></li>
+<li class="toctree-l1"><a class="reference internal" href="robot-registration.html">Registering a Robot</a></li>
+<li class="toctree-l1"><a class="reference internal" href="robot-automation.html">Robot Automations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="destiny-reference-flow.html">DESTINY Reference Flow</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="procedures.html" class="nav-link">Procedures</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Reference Deduplication</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="reference-deduplication">
+<h1>Reference Deduplication<a class="headerlink" href="#reference-deduplication" title="Link to this heading">#</a></h1>
+<nav class="contents local" id="table-of-contents">
+<p class="topic-title">Table of Contents</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="#terminology-concepts" id="id3">Terminology &amp; Concepts</a></p></li>
+<li><p><a class="reference internal" href="#high-level-process" id="id4">High Level Process</a></p></li>
+<li><p><a class="reference internal" href="#identifier-shortcut" id="id5">Identifier Shortcut</a></p></li>
+<li><p><a class="reference internal" href="#candidate-selection" id="id6">Candidate Selection</a></p></li>
+<li><p><a class="reference internal" href="#deep-deduplication" id="id7">Deep Deduplication</a></p></li>
+<li><p><a class="reference internal" href="#manual-resolution" id="id8">Manual Resolution</a></p></li>
+<li><p><a class="reference internal" href="#action-decision" id="id9">Action Decision</a></p>
+<ul>
+<li><p><a class="reference internal" href="#special-cases" id="id10">Special cases</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#deduplicated-projection" id="id11">Deduplicated Projection</a></p></li>
+<li><p><a class="reference internal" href="#exact-duplicates" id="id12">Exact Duplicates</a></p></li>
+<li><p><a class="reference internal" href="#function-reference" id="id13">Function Reference</a></p></li>
+</ul>
+</nav>
+<section id="terminology-concepts">
+<h2><a class="toc-backref" href="#id3" role="doc-backlink">Terminology &amp; Concepts</a><a class="headerlink" href="#terminology-concepts" title="Link to this heading">#</a></h2>
+<p>Duplicate references are grouped together. Each group has one canonical reference and zero or more duplicates.</p>
+<p>When we search, we look for a canonical reference to which to attach the incoming reference as a duplicate. If we cannot find a canonical reference, the incoming reference becomes a canonical reference with no duplicates. We search for canonical references when we <a class="reference internal" href="batch-importing.html"><span class="doc">Import a Reference</span></a> (with work pending to also search when we ingest a relevant enhancement).</p>
+<ul class="simple">
+<li><p>A <strong>canonical</strong> reference is the primary reference of a group of duplicates. The choice of canonical reference is arbitrary, at least for now. The <a class="reference internal" href="#id1">Deduplicated Projection</a> is the same regardless of canonical choice. A canonical reference has an active duplicate decision of <a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.DuplicateDetermination.CANONICAL" title="app.domain.references.models.models.DuplicateDetermination.CANONICAL"><code class="xref py py-attr docutils literal notranslate"><span class="pre">Canonical</span></code></a>.</p></li>
+<li><p>A <strong>duplicate</strong> reference is a reference which has been determined to be a duplicate of a canonical reference. A duplicate reference has an active duplicate decision of <a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.DuplicateDetermination.DUPLICATE" title="app.domain.references.models.models.DuplicateDetermination.DUPLICATE"><code class="xref py py-attr docutils literal notranslate"><span class="pre">Duplicate</span></code></a>.</p></li>
+<li><p>A <strong>duplicate decision</strong> is the outcome of the deduplication process for a given reference. A reference has at most one <em>active</em> duplicate decision, but may have multiple historical decisions. For instance, a canonical reference has an active decision of canonical. See <a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision"><code class="xref py py-class docutils literal notranslate"><span class="pre">ReferenceDuplicateDecision</span></code></a> for more.</p></li>
+<li><p>A <strong>candidate</strong> duplicate is a reference which has been identified as a potential canonical of an incoming reference, but has not yet been compared in detail.</p></li>
+<li><p>An <strong>exact</strong> duplicate is a reference which has an identical supersetting reference already present in the repository. These are not imported, but a duplicate decision is still registered for them with <a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.DuplicateDetermination.EXACT_DUPLICATE" title="app.domain.references.models.models.DuplicateDetermination.EXACT_DUPLICATE"><code class="xref py py-attr docutils literal notranslate"><span class="pre">Exact</span> <span class="pre">Duplicate</span></code></a>.</p></li>
+</ul>
+<p>It may also help to think of a group of duplicating references as a star graph. The canonical reference is the center of the star, and all duplicates point to it. Duplicates do not point to other duplicates (more on that in <a class="reference internal" href="#action-decision">Action Decision</a>).</p>
+<pre  class="mermaid">
+        flowchart BT
+    D1(Duplicate)
+    D2(Duplicate)
+    D3(Duplicate)
+    D4(Duplicate)
+    D5(Duplicate)
+    D6(Duplicate)
+    D7(Duplicate)
+    C[Canonical]
+
+    D1 --&gt; C
+    D2 --&gt; C
+    D3 --&gt; C
+    D4 --&gt; C
+    D5 --&gt; C
+    D6 --&gt; C
+    D7 --&gt; C
+    </pre><p>Note also that deduplication doesn’t necessarily occur at import time, it may also be triggered manually or by a new enhancement.</p>
+</section>
+<section id="high-level-process">
+<h2><a class="toc-backref" href="#id4" role="doc-backlink">High Level Process</a><a class="headerlink" href="#high-level-process" title="Link to this heading">#</a></h2>
+<pre  class="mermaid">
+        flowchart LR
+
+    R[[Repository Process]]
+    P[(Register Pending Decision)]
+    T[Initiate Duplicate Decision]
+    IS[[Identifier Shortcut]]
+    CS[[Candidate Selection]]
+    DD[[Deep Deduplication]]
+    A[[Action Decision]]
+    DP&gt;Deduplicated Projection]
+
+    T--&gt;IS
+    IS--&gt;|Shortcut|A
+    IS--&gt;|No shortcut|CS
+    CS--&gt;|No candidates found|A
+    CS--&gt;|Candidates found|DD
+    DD--&gt;A
+    R--&gt;P
+    P-.-&gt;|Queue|T
+    A~~~DP
+    </pre><p>There are six key steps:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="#id2">Exact Duplicates</a> - an early-exit check to see if the incoming reference is an exact duplicate of an existing reference. This occurs outside the main deduplication flow.</p></li>
+<li><p><a class="reference internal" href="#identifier-shortcut">Identifier Shortcut</a> - a fast-path check to see if the incoming reference has any unique identifiers that match an existing reference.</p></li>
+<li><p><a class="reference internal" href="#candidate-selection">Candidate Selection</a> - a high-recall, low-precision search to find potential canonical references.</p></li>
+<li><p><a class="reference internal" href="#deep-deduplication">Deep Deduplication</a> - a high-precision comparison of the incoming reference against each candidate to determine if it duplicates the candidate.</p></li>
+<li><p><a class="reference internal" href="#action-decision">Action Decision</a> - deciding what to do with the reference based on the deduplication results.</p></li>
+<li><p><a class="reference internal" href="#id1">Deduplicated Projection</a> - the output of the process, the final representation of the deduplicated reference.</p></li>
+</ul>
+</section>
+<section id="identifier-shortcut">
+<h2><a class="toc-backref" href="#id5" role="doc-backlink">Identifier Shortcut</a><a class="headerlink" href="#identifier-shortcut" title="Link to this heading">#</a></h2>
+<pre  class="mermaid">
+        flowchart LR
+
+    D[&quot;Duplicate Decision&quot;]
+    I[&quot;Get Unique Identifiers&quot;]
+    E[(&quot;Search for Identifiers&quot;)]
+    CS[&quot;Go to Candidate Selection&quot;]
+    C1{&quot;Matches Found?&quot;}
+    A[&quot;Go to Action Decision&quot;]
+    M[&quot;Manual Review&quot;]
+    C2{&quot;Multiple Matches?&quot;}
+    C3{&quot;Different Canonicals?&quot;}
+    F[&quot;For each unmapped match&quot;]
+
+    D--&gt;I--&gt;E--&gt;C1
+    C1--&gt;|No|CS
+    C1--&gt;|Yes|C2
+    C2--&gt;|Yes|C3
+    C2--&gt;|No|A
+    C3--&gt;|Yes|M
+    C3--&gt;|No|F
+    F--&gt;A
+    F--&gt;A
+    F--&gt;A
+    F--&gt;A
+    F--&gt;A
+    </pre><p>The identifier shortcut is a high precision, low-recall step that attempts to quickly determine the duplicate decision for an incoming reference based on its unique identifiers. These identifiers are configured by <a class="reference internal" href="../codebase/config.html#app.core.config.Settings.trusted_unique_identifier_types" title="app.core.config.Settings.trusted_unique_identifier_types"><code class="xref py py-attr docutils literal notranslate"><span class="pre">trusted_unique_identifier_types</span></code></a>.</p>
+<p>This is a very powerful operation that should be enabled with caution. It relies on both the uniqueness of the identifiers and the accuracy of the incoming data. An instance where it is suitable to be used is with OpenAlex IDs and OpenAlex imports, where we can verify both those assumptions.</p>
+<p>There are a handful of possible outcomes, documented more fully in <a class="reference internal" href="#app.domain.references.services.deduplication_service.DeduplicationService.shortcut_deduplication_using_identifiers" title="app.domain.references.services.deduplication_service.DeduplicationService.shortcut_deduplication_using_identifiers"><code class="xref py py-meth docutils literal notranslate"><span class="pre">shortcut_deduplication_using_identifiers()</span></code></a>, but in summary:</p>
+<ul class="simple">
+<li><p>If no matches are found or no unique identifiers exist, we proceed to <a class="reference internal" href="#candidate-selection">Candidate Selection</a>.</p></li>
+<li><p>If any matches are found, we build a duplicate decision tree for <strong>all</strong> of them - any undeduplicated references that are matched are included.</p></li>
+<li><p>If the above is unresolvable, (i.e. we find more than one existing duplicate decision tree), we raise the decision for manual review. This provides an important sense-check of our core assumptions.</p></li>
+</ul>
+</section>
+<section id="candidate-selection">
+<h2><a class="toc-backref" href="#id6" role="doc-backlink">Candidate Selection</a><a class="headerlink" href="#candidate-selection" title="Link to this heading">#</a></h2>
+<pre  class="mermaid">
+        flowchart LR
+
+    D[&quot;Duplicate Decision&quot;]
+    SF[&quot;Project Search Fields&quot;]
+    ES[(&quot;Search Against ES&quot;)]
+    C{&quot;One or more candidates?&quot;}
+    CR[&quot;Decision = Canonical&quot;]
+    DD[&quot;Deep Dedup&quot;]
+
+    D--&gt;SF
+    SF--&gt;ES
+    ES--&gt;C
+    C--&gt;|Yes|DD
+    C--&gt;|No|CR
+    </pre><p>Candidate selection employs a high-recall, low-precision approach to identify potential canonical references. The goal is to ensure that all possible canonicals are considered, even if it means including some false positives.</p>
+<p>If no candidates are found, the incoming reference is immediately designated as a canonical reference.</p>
+<p>The search strategy is a work in progress, but will likely involve a combination of projected fields (defined in <a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.CandidateCanonicalSearchFields" title="app.domain.references.models.models.CandidateCanonicalSearchFields"><code class="xref py py-class docutils literal notranslate"><span class="pre">CandidateCanonicalSearchFields</span></code></a>) and a fuzzy Elasticsearch query:</p>
+<p>At this stage, only canonical references are considered as candidates.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ReferenceESRepository.</span></span><span class="sig-name descname"><span class="pre">search_for_candidate_canonicals</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">search_fields</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.CandidateCanonicalSearchFields" title="app.domain.references.models.models.CandidateCanonicalSearchFields"><span class="pre">CandidateCanonicalSearchFields</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">reference_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">UUID</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scoring_config</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DedupCandidateScoringConfig</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="../codebase/persistence/models.html#app.persistence.es.persistence.ESScoreResult" title="app.persistence.es.persistence.ESScoreResult"><span class="pre">ESScoreResult</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/repository.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals" title="Link to this definition">#</a></dt>
+<dd><p>Fuzzy match candidate fingerprints to existing references.</p>
+<p>This is a high-recall search strategy.</p>
+<p>NOT TESTED/EVALUATED. Thrown together as a proof of concept, this must
+be polished and evaluated before use.</p>
+<p>The proof of concept does:</p>
+<ul class="simple">
+<li><p>MUST: fuzzy match on title (requires 50% of terms to match)</p></li>
+<li><p>SHOULD: author matching</p></li>
+<li><p>FILTER: publication year within ±1 year range (non-scoring)</p></li>
+<li><p>FILTER: only canonical references (at rest)</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>search_fields</strong> (<a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.CandidateCanonicalSearchFields" title="app.domain.references.models.models.CandidateCanonicalSearchFields"><em>CandidateCanonicalSearchFields</em></a>) – The search fields of the potential duplicate.</p></li>
+<li><p><strong>reference_id</strong> (<em>UUID</em>) – The ID of the potential duplicate.</p></li>
+<li><p><strong>scoring_config</strong> (<em>DedupCandidateScoringConfig</em>) – Configuration for author scoring.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A list of search results with IDs and scores.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list[<a class="reference internal" href="../codebase/persistence/models.html#app.persistence.es.persistence.ESScoreResult" title="app.persistence.es.persistence.ESScoreResult">ESScoreResult</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="deep-deduplication">
+<h2><a class="toc-backref" href="#id7" role="doc-backlink">Deep Deduplication</a><a class="headerlink" href="#deep-deduplication" title="Link to this heading">#</a></h2>
+<pre  class="mermaid">
+        flowchart LR
+
+    D[Duplicate Decision]
+    R[Get References]
+    DD[[Perform Deep Dedup]]
+    C[Canonical Found?]
+    A[Proceed to Actioning]
+    M([Raise for Manual Review])
+
+    D--&gt;R--&gt;DD--&gt;C
+    C--&gt;|Yes|A
+    C--&gt;|No|A
+    C--&gt;|&quot;Ambiguous/Uncertain&quot;|M
+    </pre><p>If candidate canonicals are found, each is compared in detail against the incoming reference to determine if they are true duplicates. This step prioritizes precision over recall, aiming to minimize false positives.</p>
+<p>This algorithm is still being built out. For now, we have a placeholder that we will update in the future:</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.services.deduplication_service.DeduplicationService.__placeholder_duplicate_determinator">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">DeduplicationService.</span></span><span class="sig-name descname"><span class="pre">__placeholder_duplicate_determinator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reference_duplicate_decision</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision"><span class="pre">ReferenceDuplicateDecision</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDeterminationResult" title="app.domain.references.models.models.ReferenceDuplicateDeterminationResult"><span class="pre">ReferenceDuplicateDeterminationResult</span></a></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/services/deduplication_service.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.services.deduplication_service.DeduplicationService.__placeholder_duplicate_determinator" title="Link to this definition">#</a></dt>
+<dd><p>Implement a basic placeholder duplicate determinator.</p>
+<p>Temporary implementation: takes the first candidate as the duplicate.
+This is the one with the highest score in the candidate nomination stage.
+This completes the flow but should not be used in production.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>reference_duplicate_decision</strong> (<a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision"><em>ReferenceDuplicateDecision</em></a>) – The decision to determine duplicates for.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The result of the duplicate determination.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDeterminationResult" title="app.domain.references.models.models.ReferenceDuplicateDeterminationResult">ReferenceDuplicateDeterminationResult</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="manual-resolution">
+<h2><a class="toc-backref" href="#id8" role="doc-backlink">Manual Resolution</a><a class="headerlink" href="#manual-resolution" title="Link to this heading">#</a></h2>
+<p>Duplicate decisions that are <a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.DuplicateDetermination.DECOUPLED" title="app.domain.references.models.models.DuplicateDetermination.DECOUPLED"><code class="xref py py-attr docutils literal notranslate"><span class="pre">Decoupled</span></code></a> or <a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.DuplicateDetermination.UNRESOLVED" title="app.domain.references.models.models.DuplicateDetermination.UNRESOLVED"><code class="xref py py-attr docutils literal notranslate"><span class="pre">Unresolved</span></code></a> can be handled here. This is not yet implemented.</p>
+</section>
+<section id="action-decision">
+<h2><a class="toc-backref" href="#id9" role="doc-backlink">Action Decision</a><a class="headerlink" href="#action-decision" title="Link to this heading">#</a></h2>
+<p>Once the deduplication process is complete, the decision must be actioned. In essence, this involves activating the new decision unless there is a particular reason not to.</p>
+<section id="special-cases">
+<h3><a class="toc-backref" href="#id10" role="doc-backlink">Special cases</a><a class="headerlink" href="#special-cases" title="Link to this heading">#</a></h3>
+<p>The bold lines in the flowchart indicate what we expect to be nominal flow.</p>
+<pre  class="mermaid">
+        flowchart LR
+
+    N[&quot;New Decision (N)&quot;]
+    C1{&quot;Active Decision Exists? (A)&quot;}
+    C2{A == N?}
+    C3{A Canonical &amp; N Duplicate?}
+    C4{N is Canonical?}
+    C5{N's Canonical is Canonical?}
+    T[[Activate New Decision]]
+    M([Mark for Manual Handling])
+
+    N ==&gt; C1
+    C1 ==&gt;|Yes| C2
+    C1 --&gt;|No| C4
+    C2 ==&gt;|Yes| T
+    C2 --&gt;|No| C3
+    C3 ==&gt;|Yes| T
+    C3 --&gt;|No| M
+    C4 --&gt;|No| C5
+    C4 ==&gt;|Yes| T
+    C5 --&gt;|No| M
+    C5 ==&gt;|Yes| T
+    M ~~~ T
+    </pre><p>There are two cases where the new decision is not automatically activated:</p>
+<ol class="arabic simple">
+<li><p>The active decision is duplicate and the new decision is canonical or a duplicate of a different reference.</p></li>
+<li><p>The new decision is canonical but its canonical reference is not.</p></li>
+</ol>
+<p>Both of these <em>can</em> be handled automatically, but manual review allows us to highlight and understanding the frequency and nature of these cases. The commentary around these is changing frequently so not documenting in detail here, but please reach out if you want more information!</p>
+</section>
+</section>
+<section id="deduplicated-projection">
+<span id="id1"></span><h2><a class="toc-backref" href="#id11" role="doc-backlink">Deduplicated Projection</a><a class="headerlink" href="#deduplicated-projection" title="Link to this heading">#</a></h2>
+<p>The end product of deduplication is a rich database with each individual reference, linked together with their duplicate decision history. However, this is not the most convenient format for most use cases. To this end, the default view for interfacing with the repository is the deduplicated projection.</p>
+<p>The deduplication projection is simply a consolidated <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.references.Reference" title="libs.sdk.src.destiny_sdk.references.Reference"><code class="xref py py-class docutils literal notranslate"><span class="pre">Reference</span></code></a> object, with enhancements and identifiers of its duplicates included in the canonical reference. This is the view that is indexed into Elasticsearch, and likely the view that most robots and users will interact with.</p>
+<p>Also note this projected view is reversible, data provenance is preserved through the <code class="docutils literal notranslate"><span class="pre">reference_id</span></code> field on each enhancement and identifier.</p>
+<p>See also:</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.models.projections.DeduplicatedReferenceProjection.get_from_reference">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">DeduplicatedReferenceProjection.</span></span><span class="sig-name descname"><span class="pre">get_from_reference</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reference</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.Reference" title="app.domain.references.models.models.Reference"><span class="pre">Reference</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.Reference" title="app.domain.references.models.models.Reference"><span class="pre">Reference</span></a></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/projections.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.projections.DeduplicatedReferenceProjection.get_from_reference" title="Link to this definition">#</a></dt>
+<dd><p>Get the deduplicated reference from a reference.</p>
+</dd></dl>
+
+</section>
+<section id="exact-duplicates">
+<span id="id2"></span><h2><a class="toc-backref" href="#id12" role="doc-backlink">Exact Duplicates</a><a class="headerlink" href="#exact-duplicates" title="Link to this heading">#</a></h2>
+<p>Exact duplicates are references which are wholly represented (superset) by an existing reference in the repository. This does not form part of the main deduplication flow, but provides an early-exit optimisation for importers and enhancement processors.</p>
+<p>Exact duplication is performed on individual references, not the deduplicated projection. This preserves any implied contextual information from the incoming reference.</p>
+<p>See also: <a class="reference internal" href="#app.domain.references.services.deduplication_service.DeduplicationService.find_exact_duplicate" title="app.domain.references.services.deduplication_service.DeduplicationService.find_exact_duplicate"><code class="xref py py-attr docutils literal notranslate"><span class="pre">app.domain.references.services.deduplication_service.DeduplicationService.find_exact_duplicate</span></code></a>.</p>
+</section>
+<section id="function-reference">
+<h2><a class="toc-backref" href="#id13" role="doc-backlink">Function Reference</a><a class="headerlink" href="#function-reference" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="app.domain.references.services.deduplication_service.DeduplicationService">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">app.domain.references.services.deduplication_service.</span></span><span class="sig-name descname"><span class="pre">DeduplicationService</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">anti_corruption_service</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ReferenceAntiCorruptionService</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sql_uow</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">AsyncSqlUnitOfWork</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">es_uow</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">AsyncESUnitOfWork</span></span></em><span class="sig-paren">)</span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/services/deduplication_service.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.services.deduplication_service.DeduplicationService" title="Link to this definition">#</a></dt>
+<dd><p>Service for managing reference duplicate detection.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.services.deduplication_service.DeduplicationService.determine_canonical_from_candidates">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">determine_canonical_from_candidates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reference_duplicate_decision</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision"><span class="pre">ReferenceDuplicateDecision</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision"><span class="pre">ReferenceDuplicateDecision</span></a></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/services/deduplication_service.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.services.deduplication_service.DeduplicationService.determine_canonical_from_candidates" title="Link to this definition">#</a></dt>
+<dd><p>Determine a canonical reference from its candidates.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>reference_duplicate_decision</strong> (<a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision"><em>ReferenceDuplicateDecision</em></a>) – The decision to determine duplicates for.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The updated decision with the determination result.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision">ReferenceDuplicateDecision</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.services.deduplication_service.DeduplicationService.find_exact_duplicate">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">find_exact_duplicate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reference</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.Reference" title="app.domain.references.models.models.Reference"><span class="pre">Reference</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.Reference" title="app.domain.references.models.models.Reference"><span class="pre">Reference</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/services/deduplication_service.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.services.deduplication_service.DeduplicationService.find_exact_duplicate" title="Link to this definition">#</a></dt>
+<dd><p>Find exact duplicate references for the given reference.</p>
+<p>This is <em>not</em> part of the regular deduplication flow but is used to circumvent
+importing and processing redundant references.</p>
+<p>Exact duplicates are defined in
+<a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.Reference.is_superset" title="app.domain.references.models.models.Reference.is_superset"><code class="xref py py-attr docutils literal notranslate"><span class="pre">app.domain.references.models.models.Reference.is_superset()</span></code></a>.
+A reference may have more than one exact duplicate, this just returns the first.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>reference</strong> (<a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.Reference" title="app.domain.references.models.models.Reference"><em>app.domain.references.models.models.Reference</em></a>) – The reference to find duplicates for.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The supersetting reference, or None if no duplicate was found.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.Reference" title="app.domain.references.models.models.Reference">app.domain.references.models.models.Reference</a> | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.services.deduplication_service.DeduplicationService.map_duplicate_decision">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">map_duplicate_decision</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">new_decision</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision"><span class="pre">ReferenceDuplicateDecision</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision"><span class="pre">ReferenceDuplicateDecision</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/services/deduplication_service.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.services.deduplication_service.DeduplicationService.map_duplicate_decision" title="Link to this definition">#</a></dt>
+<dd><p>Apply the persistence changes from the new duplicate decision.</p>
+<p>If the new decision is not terminal, it is not made active.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>new_decision</strong> (<a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision"><em>ReferenceDuplicateDecision</em></a>) – The new decision to apply.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The applied decision and whether it changed.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple[<a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision">ReferenceDuplicateDecision</a>, bool]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.services.deduplication_service.DeduplicationService.nominate_candidate_canonicals">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">nominate_candidate_canonicals</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reference_duplicate_decision</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision"><span class="pre">ReferenceDuplicateDecision</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision"><span class="pre">ReferenceDuplicateDecision</span></a></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/services/deduplication_service.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.services.deduplication_service.DeduplicationService.nominate_candidate_canonicals" title="Link to this definition">#</a></dt>
+<dd><p>Nominate candidate canonical references for the given decision.</p>
+<p>This uses the search strategy in
+<a class="reference internal" href="#app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals" title="app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals"><code class="xref py py-attr docutils literal notranslate"><span class="pre">app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>reference_duplicate_decision</strong> (<a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision"><em>ReferenceDuplicateDecision</em></a>) – The decision to find candidates for.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The updated decision with candidate IDs and status.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision">ReferenceDuplicateDecision</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.services.deduplication_service.DeduplicationService.register_duplicate_decision_for_reference">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">register_duplicate_decision_for_reference</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reference_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">UUID</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">enhancement_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">UUID</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">duplicate_determination</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="pre">DuplicateDetermination.EXACT_DUPLICATE</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">canonical_reference_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">UUID</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision"><span class="pre">ReferenceDuplicateDecision</span></a></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/services/deduplication_service.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.services.deduplication_service.DeduplicationService.register_duplicate_decision_for_reference" title="Link to this definition">#</a></dt>
+<dd><p>Register a duplicate decision for a reference.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>reference</strong> (<a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.Reference" title="app.domain.references.models.models.Reference"><em>app.domain.references.models.models.Reference</em></a>) – The reference to register the duplicate decision for.</p></li>
+<li><p><strong>enhancement_id</strong> (<em>UUID</em><em> | </em><em>None</em><em>, </em><em>optional</em>) – The enhancement ID triggering with the duplicate
+decision, defaults to None</p></li>
+<li><p><strong>duplicate_determination</strong> (<em>Literal</em><em>[</em><em>DuplicateDetermination.EXACT_DUPLICATE</em><em>]
+</em><em>| </em><em>None</em><em>, </em><em>optional</em>) – Flag indicating if a reference was an exact
+duplicate and not imported, defaults to None</p></li>
+<li><p><strong>canonical_reference_id</strong> (<em>UUID</em><em> | </em><em>None</em><em>, </em><em>optional</em>) – The canonical reference ID this reference is an
+exact duplicate of, defaults to None</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The registered duplicate decision</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision">ReferenceDuplicateDecision</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.services.deduplication_service.DeduplicationService.shortcut_deduplication_using_identifiers">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">shortcut_deduplication_using_identifiers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reference_duplicate_decision</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision"><span class="pre">ReferenceDuplicateDecision</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">trusted_unique_identifier_types</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">set</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType" title="libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType"><span class="pre">ExternalIdentifierType</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision"><span class="pre">ReferenceDuplicateDecision</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/services/deduplication_service.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.services.deduplication_service.DeduplicationService.shortcut_deduplication_using_identifiers" title="Link to this definition">#</a></dt>
+<dd><p>Deduplicate the given reference using trusted unique identifiers.</p>
+<p>This shortcuts the regular deduplication flow and is only run on import.</p>
+<p>This is a very powerful operation and should only be used with identifier types
+that are certain to be unique and reliable. Misuse can lead to incorrect
+duplicate relationships that are hard to correct.</p>
+<p>The search will likely return multiple references (“candidates”),
+to be handled by:</p>
+<p><strong>Terminal Cases:</strong></p>
+<p><strong>A.</strong> If they all belong to the same duplicate relationship graph, the given
+reference will be marked as duplicate of that graph’s canonical reference.</p>
+<p><strong>B.</strong> If they belong to more than one duplicate relationship graph, the given
+reference is marked as decoupled for manual review, as it indicates disconnected
+duplicate relationship graphs and undermines the assumption of the shortcut.</p>
+<p><strong>C.</strong> If none of them belong to a duplicate relationship graph, the given
+reference becomes the canonical of a new duplicate relationship graph including
+all candidates.</p>
+<p><strong>D.</strong> If some of them belong to a single duplicate relationship graph and some
+don’t, the non-graph references are marked as duplicates of the canonical of
+the graph.</p>
+<p><strong>Non-terminal Cases:</strong></p>
+<p><strong>E.</strong> Finally, if the given reference has no trusted identifiers or no
+candidates are found, no action is taken and regular deduplication continues.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>reference</strong> (<a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.Reference" title="app.domain.references.models.models.Reference"><em>app.domain.references.models.models.Reference</em></a>) – The reference to deduplicate.</p></li>
+<li><p><strong>trusted_unique_identifier_types</strong> (<em>set</em><em>[</em><a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType" title="libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType"><em>ExternalIdentifierType</em></a><em>]</em>) – The identifier types considered
+trusted unique identifiers.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The generated duplicate decisions, if any.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list[<a class="reference internal" href="../codebase/models/references.html#app.domain.references.models.models.ReferenceDuplicateDecision" title="app.domain.references.models.models.ReferenceDuplicateDecision">ReferenceDuplicateDecision</a>] | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="requesting-batch-enhancements.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Requesting Enhancements</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="robot-registration.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Registering a Robot</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#terminology-concepts">Terminology &amp; Concepts</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#high-level-process">High Level Process</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#identifier-shortcut">Identifier Shortcut</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#candidate-selection">Candidate Selection</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals"><code class="docutils literal notranslate"><span class="pre">ReferenceESRepository.search_for_candidate_canonicals()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#deep-deduplication">Deep Deduplication</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.services.deduplication_service.DeduplicationService.__placeholder_duplicate_determinator"><code class="docutils literal notranslate"><span class="pre">DeduplicationService.__placeholder_duplicate_determinator()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#manual-resolution">Manual Resolution</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#action-decision">Action Decision</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#special-cases">Special cases</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#deduplicated-projection">Deduplicated Projection</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.projections.DeduplicatedReferenceProjection.get_from_reference"><code class="docutils literal notranslate"><span class="pre">DeduplicatedReferenceProjection.get_from_reference()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#exact-duplicates">Exact Duplicates</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#function-reference">Function Reference</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.services.deduplication_service.DeduplicationService"><code class="docutils literal notranslate"><span class="pre">DeduplicationService</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.services.deduplication_service.DeduplicationService.determine_canonical_from_candidates"><code class="docutils literal notranslate"><span class="pre">DeduplicationService.determine_canonical_from_candidates()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.services.deduplication_service.DeduplicationService.find_exact_duplicate"><code class="docutils literal notranslate"><span class="pre">DeduplicationService.find_exact_duplicate()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.services.deduplication_service.DeduplicationService.map_duplicate_decision"><code class="docutils literal notranslate"><span class="pre">DeduplicationService.map_duplicate_decision()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.services.deduplication_service.DeduplicationService.nominate_candidate_canonicals"><code class="docutils literal notranslate"><span class="pre">DeduplicationService.nominate_candidate_canonicals()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.services.deduplication_service.DeduplicationService.register_duplicate_decision_for_reference"><code class="docutils literal notranslate"><span class="pre">DeduplicationService.register_duplicate_decision_for_reference()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.services.deduplication_service.DeduplicationService.shortcut_deduplication_using_identifiers"><code class="docutils literal notranslate"><span class="pre">DeduplicationService.shortcut_deduplication_using_identifiers()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, DESTINY Team.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.16.1.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
