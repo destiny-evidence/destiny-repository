@@ -3,6 +3,7 @@
 from uuid import UUID
 
 import httpx
+import tenacity
 from asyncpg.exceptions import DeadlockDetectedError  # type: ignore[import-untyped]
 from opentelemetry import trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
@@ -221,42 +222,68 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
             )
         return import_result, reference_result.duplicate_decision_id
 
-    async def distribute_import_batch(self, import_batch: ImportBatch) -> None:
-        """Distribute an import batch."""
-        async with (
-            httpx.AsyncClient() as client,
+    async def _queue_import_line(
+        self, import_batch_id: UUID, line: str, line_number: int
+    ) -> None:
+        """Queue a single line for import processing."""
+        with new_linked_trace(
+            "Queue import reference task",
+            attributes={
+                Attributes.FILE_LINE_NO: line_number,
+                Attributes.IMPORT_BATCH_ID: str(import_batch_id),
+            },
         ):
-            HTTPXClientInstrumentor().instrument_client(client)
-            async with client.stream("GET", str(import_batch.storage_url)) as response:
-                response.raise_for_status()
-                line_number = 1
-                async for line in response.aiter_lines():
-                    with new_linked_trace(
-                        "Queue import reference task",
-                        attributes={
-                            Attributes.FILE_LINE_NO: line_number,
-                            Attributes.IMPORT_BATCH_ID: str(import_batch.id),
-                        },
-                    ):
-                        if line := line.strip():
-                            import_result = await self.register_result(
-                                ImportResult(
-                                    import_batch_id=import_batch.id,
-                                    status=ImportResultStatus.CREATED,
-                                )
-                            )
-                            trace_attribute(
-                                Attributes.IMPORT_RESULT_ID, str(import_result.id)
-                            )
-                            await queue_task_with_trace(
-                                ("app.domain.imports.tasks", "import_reference"),
-                                import_result.id,
-                                line,
-                                line_number,
-                                settings.import_reference_retry_count,
-                                otel_enabled=settings.otel_enabled,
-                            )
+            import_result = await self.register_result(
+                ImportResult(
+                    import_batch_id=import_batch_id,
+                    status=ImportResultStatus.CREATED,
+                )
+            )
+            trace_attribute(Attributes.IMPORT_RESULT_ID, str(import_result.id))
+            await queue_task_with_trace(
+                ("app.domain.imports.tasks", "import_reference"),
+                import_result.id,
+                line,
+                line_number,
+                settings.import_reference_retry_count,
+                otel_enabled=settings.otel_enabled,
+            )
+
+    async def distribute_import_batch(self, import_batch: ImportBatch) -> None:
+        """Distribute an import batch, retrying on connection errors."""
+        last_processed_line = 0
+        async for attempt in tenacity.AsyncRetrying(
+            retry=tenacity.retry_if_exception_type(httpx.TransportError),
+            before_sleep=lambda rs: logger.warning(
+                "Retrying import batch stream",
+                extra={
+                    "import_batch_id": str(import_batch.id),
+                    "attempt": rs.attempt_number,
+                    "last_processed_line": last_processed_line,  # noqa: B023
+                    "exc": repr(rs.outcome.exception()),
+                },
+            ),
+            wait=tenacity.wait_exponential(multiplier=1, max=30),
+            stop=tenacity.stop_after_attempt(5),
+            reraise=True,
+        ):
+            with attempt:
+                async with httpx.AsyncClient() as client:
+                    HTTPXClientInstrumentor().instrument_client(client)
+                    async with client.stream(
+                        "GET", str(import_batch.storage_url)
+                    ) as response:
+                        response.raise_for_status()
+                        line_number = 0
+                        async for line in response.aiter_lines():
                             line_number += 1
+                            if line_number <= last_processed_line:
+                                continue
+                            if line := line.strip():
+                                await self._queue_import_line(
+                                    import_batch.id, line, line_number
+                                )
+                            last_processed_line = line_number
 
     @sql_unit_of_work
     async def get_import_results(
