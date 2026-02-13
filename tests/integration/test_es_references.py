@@ -13,6 +13,7 @@ from destiny_sdk.enhancements import (
 )
 from elasticsearch import AsyncElasticsearch
 
+from app.core.config import DedupCandidateScoringConfig
 from app.core.exceptions import ESNotFoundError
 from app.domain.references.models.models import (
     Enhancement,
@@ -649,6 +650,7 @@ async def test_canonical_candidate_search(
     results = await es_reference_repository.search_for_candidate_canonicals(
         search_fields=matching_search_fields,
         reference_id=matching_ref1.id,
+        scoring_config=DedupCandidateScoringConfig(),
     )
 
     assert {reference.id for reference in results} == {matching_ref2.id}
@@ -662,5 +664,6 @@ async def test_canonical_candidate_search(
     results = await es_reference_repository.search_for_candidate_canonicals(
         non_matching_search_fields,
         reference_id=non_matching_ref.id,
+        scoring_config=DedupCandidateScoringConfig(),
     )
     assert not results

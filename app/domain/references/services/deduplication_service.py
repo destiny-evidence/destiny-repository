@@ -189,6 +189,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         search_result = await self.es_uow.references.search_for_candidate_canonicals(
             search_fields,
             reference_id=reference.id,
+            scoring_config=settings.dedup_scoring,
         )
 
         if not search_result:
