@@ -1,6 +1,7 @@
 """Keycloak e2e test fixtures."""
 
 import asyncio
+import os
 import pathlib
 
 import httpx
@@ -23,7 +24,7 @@ logger = get_logger(__name__)
 
 _cwd = pathlib.Path.cwd()
 container_prefix = "e2e"
-host_name = "host.docker.internal"
+host_name = os.getenv("DOCKER_HOSTNAME", "host.docker.internal")
 
 
 @pytest.fixture(scope="session")

@@ -484,7 +484,13 @@ class KeycloakJwtAuth(AuthMethod):
         cached_jwks = bool(jwks)
 
         if not jwks:
-            jwks = await self._get_keycloak_keys()
+            try:
+                jwks = await self._get_keycloak_keys()
+            except Exception as exc:
+                raise AuthError(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Unable to fetch signing keys from identity provider.",
+                ) from exc
             self.cache["jwks"] = jwks
 
         try:
