@@ -69,7 +69,7 @@ class KeycloakAuthCodeFlow:
         """Create an OAuth2Client configured for PKCE."""
         return OAuth2Client(
             client_id=self.client_id,
-            token_endpoint_auth_method="none",  # Public client
+            token_endpoint_auth_method="none",  # Public client  # noqa: S106
             code_challenge_method="S256",
         )
 
@@ -141,7 +141,7 @@ class KeycloakAuthCodeFlow:
                 if parsed.path == "/callback":
                     # Store the full callback URL for authlib to parse
                     received_response["url"] = (
-                        f"http://localhost:{self.server.server_port}{self.path}"
+                        f"http://localhost:{self.server.server_port}{self.path}"  # type: ignore[attr-defined]
                     )
                     params = parse_qs(parsed.query)
 
@@ -159,7 +159,7 @@ class KeycloakAuthCodeFlow:
                             b"<p>You can close this window.</p></body></html>"
                         )
 
-            def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+            def log_message(self, format: str, *args: Any) -> None:  # noqa: A002, ANN401
                 pass  # Suppress logging
 
         server = HTTPServer(("localhost", self.callback_port), CallbackHandler)

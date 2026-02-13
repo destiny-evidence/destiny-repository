@@ -515,10 +515,11 @@ class KeycloakOAuthMiddleware(httpx.Auth):
         if self._token and self._token.refresh_token and force_refresh:
             try:
                 self._token = self._auth_flow.refresh_token(self._token.refresh_token)
-                return self._token.access_token
             except httpx.HTTPStatusError:
                 # Refresh failed, will do full auth flow below
                 pass
+            else:
+                return self._token.access_token
         elif self._token and not force_refresh:
             # We have a valid token, return it
             return self._token.access_token
