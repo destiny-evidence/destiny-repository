@@ -1,3 +1,4 @@
+# ruff: noqa: SLF001
 """Tests for ReferenceESRepository._build_author_dis_max_query."""
 
 from app.core.config import DedupCandidateScoringConfig
