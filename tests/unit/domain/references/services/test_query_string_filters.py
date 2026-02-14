@@ -17,7 +17,7 @@ def test_annotation_filter_escapes_quotes_in_label():
     #   — the " terminates the quoted term early, leaving `quote"` as
     #     bare Lucene syntax that can alter query logic.
     service = _StubSearchService()
-    result = service._build_annotation_query_string_filter(
+    result = service._build_annotation_query_string_filter(  # noqa: SLF001
         AnnotationFilter(scheme="test", label='unescaped"quote'),
     )
     assert result == r'annotations:"test/unescaped\"quote"'
