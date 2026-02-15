@@ -28,6 +28,14 @@ def is_meaningful_token(token: str, min_token_length: int) -> bool:
     return "LATIN" not in unicodedata.name(token, "")
 
 
+_LUCENE_QUOTE_ESCAPE = re.compile(r'([\\"])')
+
+
+def escape_lucene_quoted_term(value: str) -> str:
+    """Escape backslashes and double quotes for use inside a Lucene quoted term."""
+    return _LUCENE_QUOTE_ESCAPE.sub(r"\\\1", value)
+
+
 def camel_to_snake(s: str) -> str:
     """Convert a camelCase or PascalCase string to snake_case."""
     return _camel_case_pattern.sub("_", s).casefold()
