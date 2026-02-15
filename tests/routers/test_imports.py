@@ -185,6 +185,37 @@ async def test_create_batch_for_import(
     )
 
 
+async def test_enqueue_batch_rejects_ssrf_storage_url(
+    client: AsyncClient,
+    session: AsyncSession,
+    valid_import: SQLImportRecord,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Validation failure in storage URL returns 422 with generic message."""
+    session.add(valid_import)
+    await session.commit()
+
+    monkeypatch.setattr(
+        "app.domain.imports.routes.validate_storage_url_async",
+        AsyncMock(
+            side_effect=ValueError("storage_url resolves to a disallowed address.")
+        ),
+    )
+
+    # Cloud metadata endpoint — classic SSRF target
+    batch_params = {"storage_url": "https://169.254.169.254/latest/meta-data"}
+    response = await client.post(
+        f"/v1/imports/records/{valid_import.id}/batches/", json=batch_params
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert "disallowed address" in response.json()["detail"]
+    # Ensure no IP addresses leak in the response
+    assert not any(
+        char.isdigit() and "." in response.json()["detail"]
+        for char in response.json()["detail"]
+    )
+
+
 async def test_get_batches(
     client: AsyncClient, session: AsyncSession, valid_import: SQLImportRecord
 ) -> None:

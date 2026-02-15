@@ -200,13 +200,11 @@ async def test_distribute_import_batch_happy_path(monkeypatch, fake_uow):
             self._lines = lines
             self._idx = 0
             self.status_code = 200
+            self.is_success = True
 
         async def aiter_lines(self):
             for line in self._lines:
                 yield line
-
-        def raise_for_status(self):
-            pass
 
         async def __aenter__(self):
             return self
@@ -265,6 +263,66 @@ async def test_distribute_import_batch_happy_path(monkeypatch, fake_uow):
 
     assert len(created_results) == len(lines)
     assert len(queued_tasks) == len(lines)
+
+
+@pytest.mark.asyncio
+async def test_distribute_import_batch_rejects_redirect(monkeypatch, fake_uow):
+    """A 3xx response from storage is rejected (SSRF redirect prevention)."""
+    batch_id = uuid7()
+    import_batch = ImportBatch(
+        id=batch_id,
+        storage_url="https://fake-storage-url.com",
+        status=ImportBatchStatus.CREATED,
+        import_record_id=uuid7(),
+    )
+
+    class FakeRedirectResponse:
+        status_code = 302
+        is_success = False
+
+        def __init__(self):
+            self.request = httpx.Request("GET", str(import_batch.storage_url))
+
+        async def aiter_lines(self):
+            return
+            yield
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    class FakeStreamContext:
+        def __init__(self, response):
+            self._response = response
+
+        async def __aenter__(self):
+            return self._response
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    class FakeClient:
+        def __init__(self):
+            self._transport = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+        def stream(self, method, url):
+            return FakeStreamContext(FakeRedirectResponse())
+
+    # Accept **kwargs to absorb follow_redirects=False from SSRF mitigation
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+
+    service = ImportService(ImportAntiCorruptionService(), fake_uow())
+
+    with pytest.raises(httpx.HTTPStatusError, match="302"):
+        await service.distribute_import_batch(import_batch)
 
 
 @pytest.mark.asyncio
