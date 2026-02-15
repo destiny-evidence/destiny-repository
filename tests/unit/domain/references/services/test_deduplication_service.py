@@ -1,7 +1,7 @@
 import datetime
 import itertools
 from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid7
+from uuid import UUID, uuid7
 
 import pytest
 from destiny_sdk.enhancements import Authorship
@@ -752,6 +752,7 @@ class TestShortcutDeduplication:
             duplicate_determination=DuplicateDetermination.PENDING,
         )
         duplicate_repo = fake_repository([decision])
+        duplicate_repo.get_active_decision_determination = AsyncMock(return_value=None)
         uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
         uow.references.find_with_identifiers = AsyncMock(
             return_value=[existing_1, existing_2]
@@ -814,6 +815,7 @@ class TestShortcutDeduplication:
             duplicate_determination=DuplicateDetermination.PENDING,
         )
         duplicate_repo = fake_repository([decision])
+        duplicate_repo.get_active_decision_determination = AsyncMock(return_value=None)
         uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
         service = DeduplicationService(
             anti_corruption_service,
@@ -971,3 +973,73 @@ class TestShortcutDeduplication:
                 decision,
                 trusted_unique_identifier_types={ExternalIdentifierType.OPEN_ALEX},
             )
+
+    async def test_shortcut_skips_candidate_with_existing_decision(
+        self,
+        trusted_identifier: LinkedExternalIdentifier,
+        anti_corruption_service: ReferenceAntiCorruptionService,
+        fake_uow,
+        fake_repository,
+    ):
+        """
+        Race condition guard: if another worker already created a decision for
+        an undeduplicated candidate, skip the side-effect for that candidate.
+        """
+        existing_1: Reference = ReferenceFactory.build()
+        assert existing_1.identifiers
+        existing_1.identifiers.append(trusted_identifier)
+        existing_2: Reference = ReferenceFactory.build()
+        assert existing_2.identifiers
+        existing_2.identifiers.append(trusted_identifier)
+        incoming: Reference = ReferenceFactory.build()
+        assert incoming.identifiers
+        incoming.identifiers.append(trusted_identifier)
+
+        repo = fake_repository([existing_1, existing_2, incoming])
+        decision = ReferenceDuplicateDecision(
+            reference_id=incoming.id,
+            duplicate_determination=DuplicateDetermination.PENDING,
+        )
+        duplicate_repo = fake_repository([decision])
+
+        # existing_1 has no decision (None) — side-effect should proceed
+        # existing_2 already has CANONICAL — side-effect should be skipped
+        async def _lookup_determination(ref_id: UUID) -> DuplicateDetermination | None:
+            if ref_id == existing_2.id:
+                return DuplicateDetermination.CANONICAL
+            return None
+
+        duplicate_repo.get_active_decision_determination = AsyncMock(
+            side_effect=_lookup_determination
+        )
+
+        uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
+        uow.references.find_with_identifiers = AsyncMock(
+            return_value=[existing_1, existing_2]
+        )
+        service = DeduplicationService(
+            anti_corruption_service,
+            uow,
+            fake_uow(),
+        )
+
+        results = await service.shortcut_deduplication_using_identifiers(
+            decision,
+            trusted_unique_identifier_types={ExternalIdentifierType.OPEN_ALEX},
+        )
+        assert results
+        # Incoming becomes canonical + only existing_1 gets a side-effect decision
+        assert len(results) == 2
+        assert results[0].reference_id == incoming.id
+        assert results[0].duplicate_determination == DuplicateDetermination.CANONICAL
+
+        assert results[1].reference_id == existing_1.id
+        assert results[1].duplicate_determination == DuplicateDetermination.DUPLICATE
+        assert results[1].canonical_reference_id == incoming.id
+
+        # existing_2 already handled by another worker — no side-effect decision created
+        assert all(r.reference_id != existing_2.id for r in results)
+        # Verify the guard checked both candidates (one per undeduplicated_id)
+        assert duplicate_repo.get_active_decision_determination.await_count == 2
+        duplicate_repo.get_active_decision_determination.assert_any_await(existing_1.id)
+        duplicate_repo.get_active_decision_determination.assert_any_await(existing_2.id)

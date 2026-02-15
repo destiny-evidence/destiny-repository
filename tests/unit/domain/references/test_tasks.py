@@ -420,7 +420,65 @@ class TestProcessReferenceDuplicateDecisionRaceCondition:
         mock_reference_service.process_reference_duplicate_decision.assert_awaited_once()
 
     @pytest.mark.usefixtures("mock_sql_uow_cm", "mock_es_uow_cm")
-    async def test_still_pending_after_refetch_reraises(
+    @pytest.mark.parametrize(
+        "collision",
+        [
+            pytest.param("unique constraint violation", id="standard-constraint"),
+            pytest.param("some_other_constraint", id="arbitrary-constraint"),
+        ],
+    )
+    async def test_still_pending_retries(
+        self,
+        monkeypatch,
+        mock_sql_uow_cm,
+        decision_id,
+        mock_decision_pending,
+        collision,
+    ):
+        """
+        When a ReferenceDuplicateDecision integrity error occurs and the
+        decision is still PENDING after re-fetch, re-queue with decremented
+        retries regardless of which constraint collided.
+        """
+        mock_reference_service = AsyncMock()
+        mock_reference_service.get_reference_duplicate_decision.side_effect = [
+            mock_decision_pending,
+            mock_decision_pending,  # Still PENDING after re-fetch
+        ]
+        mock_reference_service.process_reference_duplicate_decision.side_effect = (
+            SQLIntegrityError(
+                detail="Integrity error",
+                lookup_model="ReferenceDuplicateDecision",
+                collision=collision,
+            )
+        )
+
+        mock_queue = AsyncMock()
+        monkeypatch.setattr(
+            "app.domain.references.tasks.queue_task_with_trace",
+            mock_queue,
+        )
+        monkeypatch.setattr(
+            "app.domain.references.tasks.get_blob_repository",
+            AsyncMock(return_value=AsyncMock()),
+        )
+        monkeypatch.setattr(
+            "app.domain.references.tasks.get_reference_service",
+            AsyncMock(return_value=mock_reference_service),
+        )
+
+        # Should not raise — re-queued instead
+        await process_reference_duplicate_decision(decision_id, remaining_retries=3)
+
+        mock_queue.assert_awaited_once()
+        call_kwargs = mock_queue.call_args.kwargs
+        assert call_kwargs["remaining_retries"] == 2
+
+        sql_uow = mock_sql_uow_cm.__aenter__.return_value
+        sql_uow.rollback.assert_awaited_once()
+
+    @pytest.mark.usefixtures("mock_sql_uow_cm", "mock_es_uow_cm")
+    async def test_still_pending_exhausted_retries(
         self,
         monkeypatch,
         mock_sql_uow_cm,
@@ -428,14 +486,12 @@ class TestProcessReferenceDuplicateDecisionRaceCondition:
         mock_decision_pending,
     ):
         """
-        Test that when decision is still PENDING after re-fetch, we re-raise
-        since it's a different integrity issue (not a race condition).
+        Test that when retries are exhausted, we re-raise.
         """
         mock_reference_service = AsyncMock()
-        # Both calls return PENDING - not a race condition, different issue
         mock_reference_service.get_reference_duplicate_decision.side_effect = [
             mock_decision_pending,
-            mock_decision_pending,  # Still PENDING after re-fetch
+            mock_decision_pending,
         ]
         mock_reference_service.process_reference_duplicate_decision.side_effect = (
             SQLIntegrityError(
@@ -455,8 +511,7 @@ class TestProcessReferenceDuplicateDecisionRaceCondition:
         )
 
         with pytest.raises(SQLIntegrityError):
-            await process_reference_duplicate_decision(decision_id)
+            await process_reference_duplicate_decision(decision_id, remaining_retries=0)
 
-        # Verify rollback was still called
         sql_uow = mock_sql_uow_cm.__aenter__.return_value
         sql_uow.rollback.assert_awaited_once()

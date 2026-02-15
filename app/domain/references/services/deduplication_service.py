@@ -527,7 +527,28 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
         # Map any undeduplicated candidates as duplicates of the canonical
         side_effect_decisions = []
+        dedup_repo = self.sql_uow.reference_duplicate_decisions
         for candidate_id in undeduplicated_ids:
+            # Guard: skip candidates that another worker already decided.
+            # Uses a scalar SELECT to bypass the ORM identity map cache and
+            # see the latest committed state under READ COMMITTED.
+            # UNSEARCHABLE decisions are not skipped — they should be
+            # pulled into the duplicate graph.
+            existing_determination = await dedup_repo.get_active_decision_determination(
+                candidate_id
+            )
+            if (
+                existing_determination is not None
+                and existing_determination != DuplicateDetermination.UNSEARCHABLE
+            ):
+                logger.info(
+                    "Candidate already has active non-UNSEARCHABLE decision, "
+                    "skipping side-effect.",
+                    candidate_id=str(candidate_id),
+                    existing_determination=existing_determination,
+                )
+                continue
+
             decision, _ = await self.map_duplicate_decision(
                 ReferenceDuplicateDecision(
                     reference_id=candidate_id,

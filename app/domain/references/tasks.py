@@ -260,6 +260,7 @@ async def repair_robot_automation_percolation_index() -> None:
 @broker.task
 async def process_reference_duplicate_decision(
     reference_duplicate_decision_id: UUID,
+    remaining_retries: int = 3,
 ) -> None:
     """Task to process a reference duplicate decision."""
     name_span("Process reference duplicate decision")
@@ -325,7 +326,20 @@ async def process_reference_duplicate_decision(
                         collision=e.collision,
                     )
                     return
-                raise  # Re-raise if still pending (different integrity issue)
+                if remaining_retries > 0:
+                    logger.warning(
+                        "Active decision constraint collision, retrying.",
+                        remaining_retries=remaining_retries,
+                        collision=e.collision,
+                    )
+                    await queue_task_with_trace(
+                        process_reference_duplicate_decision,
+                        reference_duplicate_decision_id,
+                        remaining_retries=remaining_retries - 1,
+                        otel_enabled=settings.otel_enabled,
+                    )
+                    return
+                raise
 
 
 @broker.task(

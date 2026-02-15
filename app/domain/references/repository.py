@@ -627,6 +627,23 @@ class ReferenceDuplicateDecisionSQLRepository(
             SQLReferenceDuplicateDecision,
         )
 
+    async def get_active_decision_determination(
+        self, reference_id: UUID
+    ) -> DuplicateDetermination | None:
+        """
+        Return the determination of the active decision for a reference, or None.
+
+        Uses a scalar query to bypass the ORM identity map, ensuring we see
+        the latest committed state from other transactions under READ COMMITTED.
+        """
+        result = await self._session.execute(
+            select(SQLReferenceDuplicateDecision.duplicate_determination).where(
+                SQLReferenceDuplicateDecision.reference_id == reference_id,
+                SQLReferenceDuplicateDecision.active_decision.is_(True),
+            )
+        )
+        return result.scalar_one_or_none()
+
 
 class PendingEnhancementRepositoryBase(
     GenericAsyncRepository[DomainPendingEnhancement, GenericPersistenceType],
