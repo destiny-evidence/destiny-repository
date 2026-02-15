@@ -241,7 +241,8 @@ async def test_distribute_import_batch_happy_path(monkeypatch, fake_uow):
             response = FakeResponse(self._lines)
             return FakeStreamContext(response)
 
-    monkeypatch.setattr(httpx, "AsyncClient", lambda: FakeClient(lines))
+    # Accept **kwargs to absorb follow_redirects=False from SSRF mitigation
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FakeClient(lines))
 
     created_results = []
 

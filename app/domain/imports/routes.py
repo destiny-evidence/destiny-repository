@@ -3,7 +3,7 @@
 from typing import Annotated
 
 import destiny_sdk
-from fastapi import APIRouter, Depends, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
@@ -26,6 +26,7 @@ from app.domain.imports.services.anti_corruption_service import (
 from app.domain.imports.tasks import distribute_import_batch
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
+from app.utils.validate_url import validate_storage_url_async
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -154,6 +155,13 @@ async def enqueue_batch(
     ],
 ) -> destiny_sdk.imports.ImportBatchRead:
     """Register an import batch for a given import."""
+    try:
+        await validate_storage_url_async(batch.storage_url)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
     import_batch = await import_service.register_batch(
         import_anti_corruption_service.import_batch_from_sdk(
             batch, import_record_id=import_record_id
