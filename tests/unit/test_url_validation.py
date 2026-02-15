@@ -7,7 +7,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import HttpUrl
 
-from app.utils.validate_url import _cache, validate_storage_url
+from app.utils.validate_url import (
+    _cache,
+    validate_storage_url,
+    validate_storage_url_async,
+)
 
 TEST_URL = HttpUrl("https://example.com/data.jsonl")
 
@@ -101,6 +105,24 @@ def test_cache_skips_dns_on_repeat_call() -> None:
         validate_storage_url(TEST_URL)
         validate_storage_url(TEST_URL)
         assert mock_getaddrinfo.call_count == 1
+
+
+@pytest.mark.usefixtures("_remote_settings")
+@pytest.mark.asyncio
+async def test_async_cache_hit_skips_thread_dispatch() -> None:
+    """Async wrapper returns immediately from cache without calling to_thread."""
+    addrinfo = _addrinfo("93.184.216.34")
+    with patch(
+        "app.utils.validate_url.socket.getaddrinfo",
+        return_value=addrinfo,
+    ):
+        # Prime the cache via sync path
+        validate_storage_url(TEST_URL)
+
+    with patch("app.utils.validate_url.asyncio.to_thread") as mock_to_thread:
+        result = await validate_storage_url_async(TEST_URL)
+        assert result == TEST_URL
+        mock_to_thread.assert_not_called()
 
 
 @pytest.mark.usefixtures("_remote_settings")

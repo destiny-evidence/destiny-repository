@@ -2,20 +2,23 @@
 
 import asyncio
 import ipaddress
-import logging
 import socket
+import threading
 from urllib.parse import urlparse
 
 from cachetools import TTLCache
 from pydantic import HttpUrl
 
 from app.core.config import get_settings
+from app.core.telemetry.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Only successful validations are stored — DNS failures and blocked
 # IPs are never cached so transient issues don't become sticky.
+# Lock guards against concurrent access from asyncio.to_thread workers.
 _cache: TTLCache[tuple[str, int], bool] = TTLCache(maxsize=1024, ttl=300)
+_cache_lock = threading.Lock()
 
 
 def validate_storage_url(url: HttpUrl) -> HttpUrl:
@@ -48,8 +51,9 @@ def validate_storage_url(url: HttpUrl) -> HttpUrl:
         return url
 
     cache_key = (hostname, port)
-    if cache_key in _cache:
-        return url
+    with _cache_lock:
+        if cache_key in _cache:
+            return url
 
     try:
         addrinfos = socket.getaddrinfo(hostname, port)
@@ -63,15 +67,15 @@ def validate_storage_url(url: HttpUrl) -> HttpUrl:
 
         if not ip.is_global:
             logger.warning(
-                "SSRF blocked: storage_url hostname %s resolved to "
-                "non-global IP %s",
+                "SSRF blocked: storage_url hostname %s resolved to " "non-global IP %s",
                 hostname,
                 ip,
             )
             msg = "storage_url resolves to a disallowed address."
             raise ValueError(msg)
 
-    _cache[cache_key] = True
+    with _cache_lock:
+        _cache[cache_key] = True
     return url
 
 
@@ -84,6 +88,7 @@ async def validate_storage_url_async(url: HttpUrl) -> HttpUrl:
     parsed = urlparse(str(url))
     hostname = parsed.hostname
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    if hostname and (hostname, port) in _cache:
-        return url
+    with _cache_lock:
+        if hostname and (hostname, port) in _cache:
+            return url
     return await asyncio.to_thread(validate_storage_url, url)
