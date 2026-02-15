@@ -306,8 +306,14 @@ async def process_reference_duplicate_decision(
                     reference_duplicate_decision
                 )
             except SQLIntegrityError as e:
-                # Only handle race conditions for the expected model.
-                if e.lookup_model != "ReferenceDuplicateDecision":
+                # Only retry the specific TOCTOU race on the active-decision
+                # unique constraint. Other integrity errors (NOT NULL, FK, etc.)
+                # indicate real bugs and should fail fast.
+                _is_active_decision_race = (
+                    e.lookup_model == "ReferenceDuplicateDecision"
+                    and "(reference_id, active_decision)" in e.collision
+                )
+                if not _is_active_decision_race:
                     raise
                 # Rollback to clear the invalid session state before re-fetching.
                 await sql_uow.rollback()

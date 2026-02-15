@@ -185,6 +185,19 @@ class FakeRepository:
                 updated_count += 1
         return updated_count
 
+    async def get_active_decision_determinations(
+        self, reference_ids: set[UUID]
+    ) -> dict[UUID, object]:
+        """Return {reference_id: duplicate_determination} for active decisions."""
+        if not reference_ids:
+            return {}
+        return {
+            record.reference_id: record.duplicate_determination  # type: ignore[attr-defined]
+            for record in self.repository.values()
+            if getattr(record, "reference_id", None) in reference_ids
+            and getattr(record, "active_decision", False) is True
+        }
+
     async def bulk_update_by_filter(
         self, filter_conditions: dict, **kwargs: object
     ) -> int:

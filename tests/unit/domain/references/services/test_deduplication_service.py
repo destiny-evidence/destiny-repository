@@ -1,7 +1,7 @@
 import datetime
 import itertools
 from unittest.mock import AsyncMock, MagicMock
-from uuid import UUID, uuid7
+from uuid import uuid7
 
 import pytest
 from destiny_sdk.enhancements import Authorship
@@ -752,7 +752,7 @@ class TestShortcutDeduplication:
             duplicate_determination=DuplicateDetermination.PENDING,
         )
         duplicate_repo = fake_repository([decision])
-        duplicate_repo.get_active_decision_determination = AsyncMock(return_value=None)
+        duplicate_repo.get_active_decision_determinations = AsyncMock(return_value={})
         uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
         uow.references.find_with_identifiers = AsyncMock(
             return_value=[existing_1, existing_2]
@@ -815,7 +815,7 @@ class TestShortcutDeduplication:
             duplicate_determination=DuplicateDetermination.PENDING,
         )
         duplicate_repo = fake_repository([decision])
-        duplicate_repo.get_active_decision_determination = AsyncMock(return_value=None)
+        duplicate_repo.get_active_decision_determinations = AsyncMock(return_value={})
         uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
         service = DeduplicationService(
             anti_corruption_service,
@@ -1002,15 +1002,12 @@ class TestShortcutDeduplication:
         )
         duplicate_repo = fake_repository([decision])
 
-        # existing_1 has no decision (None) — side-effect should proceed
+        # existing_1 has no decision — side-effect should proceed
         # existing_2 already has CANONICAL — side-effect should be skipped
-        async def _lookup_determination(ref_id: UUID) -> DuplicateDetermination | None:
-            if ref_id == existing_2.id:
-                return DuplicateDetermination.CANONICAL
-            return None
-
-        duplicate_repo.get_active_decision_determination = AsyncMock(
-            side_effect=_lookup_determination
+        duplicate_repo.get_active_decision_determinations = AsyncMock(
+            return_value={
+                existing_2.id: DuplicateDetermination.CANONICAL,
+            }
         )
 
         uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
@@ -1037,9 +1034,7 @@ class TestShortcutDeduplication:
         assert results[1].duplicate_determination == DuplicateDetermination.DUPLICATE
         assert results[1].canonical_reference_id == incoming.id
 
-        # existing_2 already handled by another worker — no side-effect decision created
+        # existing_2 already handled by another worker — no side-effect
         assert all(r.reference_id != existing_2.id for r in results)
-        # Verify the guard checked both candidates (one per undeduplicated_id)
-        assert duplicate_repo.get_active_decision_determination.await_count == 2
-        duplicate_repo.get_active_decision_determination.assert_any_await(existing_1.id)
-        duplicate_repo.get_active_decision_determination.assert_any_await(existing_2.id)
+        # Verify the bulk guard was called once with all candidate IDs
+        duplicate_repo.get_active_decision_determinations.assert_awaited_once()

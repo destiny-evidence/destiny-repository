@@ -310,6 +310,11 @@ async def test_validate_and_import_robot_enhancement_batch_result_indexing_failu
 class TestProcessReferenceDuplicateDecisionRaceCondition:
     """Tests for race condition handling in process_reference_duplicate_decision."""
 
+    # Matches the DETAIL line Postgres emits for the active-decision constraint
+    ACTIVE_DECISION_COLLISION = (
+        "Violation: Key (reference_id, active_decision)" "=(uuid, t) already exists."
+    )
+
     @pytest.fixture
     def decision_id(self):
         return uuid7()
@@ -355,12 +360,13 @@ class TestProcessReferenceDuplicateDecisionRaceCondition:
             mock_decision_pending,
             mock_decision_canonical,
         ]
+        side_effect = SQLIntegrityError(
+            detail="Integrity error",
+            lookup_model="ReferenceDuplicateDecision",
+            collision=self.ACTIVE_DECISION_COLLISION,
+        )
         mock_reference_service.process_reference_duplicate_decision.side_effect = (
-            SQLIntegrityError(
-                detail="Integrity error",
-                lookup_model="ReferenceDuplicateDecision",
-                collision="unique constraint violation",
-            )
+            side_effect
         )
 
         monkeypatch.setattr(
@@ -420,37 +426,29 @@ class TestProcessReferenceDuplicateDecisionRaceCondition:
         mock_reference_service.process_reference_duplicate_decision.assert_awaited_once()
 
     @pytest.mark.usefixtures("mock_sql_uow_cm", "mock_es_uow_cm")
-    @pytest.mark.parametrize(
-        "collision",
-        [
-            pytest.param("unique constraint violation", id="standard-constraint"),
-            pytest.param("some_other_constraint", id="arbitrary-constraint"),
-        ],
-    )
     async def test_still_pending_retries(
         self,
         monkeypatch,
         mock_sql_uow_cm,
         decision_id,
         mock_decision_pending,
-        collision,
     ):
         """
-        When a ReferenceDuplicateDecision integrity error occurs and the
-        decision is still PENDING after re-fetch, re-queue with decremented
-        retries regardless of which constraint collided.
+        When the active-decision constraint race fires and the decision is
+        still PENDING after re-fetch, re-queue with decremented retries.
         """
         mock_reference_service = AsyncMock()
         mock_reference_service.get_reference_duplicate_decision.side_effect = [
             mock_decision_pending,
             mock_decision_pending,  # Still PENDING after re-fetch
         ]
+        side_effect = SQLIntegrityError(
+            detail="Integrity error",
+            lookup_model="ReferenceDuplicateDecision",
+            collision=self.ACTIVE_DECISION_COLLISION,
+        )
         mock_reference_service.process_reference_duplicate_decision.side_effect = (
-            SQLIntegrityError(
-                detail="Integrity error",
-                lookup_model="ReferenceDuplicateDecision",
-                collision=collision,
-            )
+            side_effect
         )
 
         mock_queue = AsyncMock()
@@ -493,12 +491,13 @@ class TestProcessReferenceDuplicateDecisionRaceCondition:
             mock_decision_pending,
             mock_decision_pending,
         ]
+        side_effect = SQLIntegrityError(
+            detail="Integrity error",
+            lookup_model="ReferenceDuplicateDecision",
+            collision=self.ACTIVE_DECISION_COLLISION,
+        )
         mock_reference_service.process_reference_duplicate_decision.side_effect = (
-            SQLIntegrityError(
-                detail="Integrity error",
-                lookup_model="ReferenceDuplicateDecision",
-                collision="unique constraint violation",
-            )
+            side_effect
         )
 
         monkeypatch.setattr(
@@ -515,3 +514,42 @@ class TestProcessReferenceDuplicateDecisionRaceCondition:
 
         sql_uow = mock_sql_uow_cm.__aenter__.return_value
         sql_uow.rollback.assert_awaited_once()
+
+    @pytest.mark.usefixtures("mock_sql_uow_cm", "mock_es_uow_cm")
+    async def test_non_active_decision_constraint_reraises(
+        self,
+        monkeypatch,
+        decision_id,
+        mock_decision_pending,
+    ):
+        """
+        Integrity errors on the correct model but a different constraint
+        (e.g. NOT NULL, FK) should re-raise immediately — they are real bugs,
+        not TOCTOU races.
+        """
+        mock_reference_service = AsyncMock()
+        mock_reference_service.get_reference_duplicate_decision.side_effect = [
+            mock_decision_pending
+        ]
+        mock_reference_service.process_reference_duplicate_decision.side_effect = (
+            SQLIntegrityError(
+                detail="Integrity error",
+                lookup_model="ReferenceDuplicateDecision",
+                collision="Violation: Key (some_other_column)=(value) already exists.",
+            )
+        )
+
+        monkeypatch.setattr(
+            "app.domain.references.tasks.get_blob_repository",
+            AsyncMock(return_value=AsyncMock()),
+        )
+        monkeypatch.setattr(
+            "app.domain.references.tasks.get_reference_service",
+            AsyncMock(return_value=mock_reference_service),
+        )
+
+        with pytest.raises(SQLIntegrityError) as exc_info:
+            await process_reference_duplicate_decision(decision_id, remaining_retries=3)
+
+        assert exc_info.value.lookup_model == "ReferenceDuplicateDecision"
+        mock_reference_service.process_reference_duplicate_decision.assert_awaited_once()
