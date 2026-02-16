@@ -350,7 +350,7 @@ async def test_requires_scope_not_found(
     with pytest.raises(HTTPException) as excinfo:
         await auth(fake_request, credentials)
     assert excinfo.value.status_code == status.HTTP_403_FORBIDDEN
-    assert "scope claim does not contain the required scope" in excinfo.value.detail
+    assert "required scope or role" in excinfo.value.detail
 
 
 async def test_requires_role_not_found(
@@ -369,7 +369,33 @@ async def test_requires_role_not_found(
     with pytest.raises(HTTPException) as excinfo:
         await auth_with_role(fake_request, credentials)
     assert excinfo.value.status_code == status.HTTP_403_FORBIDDEN
-    assert "roles claim does not contain the required role" in excinfo.value.detail
+    assert "required scope or role" in excinfo.value.detail
+
+
+async def test_scope_fallback_to_role(  # noqa: PLR0913
+    httpx_mock: HTTPXMock,
+    fake_keycloak_url: str,
+    fake_realm: str,
+    fake_client_id: str,
+    fake_public_key: dict,
+    generate_keycloak_token: TokenGenerator,
+    fake_request: Request,
+):
+    """Test that role check is used when scope is missing but role is present."""
+    auth = KeycloakJwtAuth(
+        keycloak_url=fake_keycloak_url,
+        realm=fake_realm,
+        client_id=fake_client_id,
+        scope=FakeAuthScopes.READ_ALL,
+        role=FakeAuthRoles.READER,
+    )
+    httpx_mock.add_response(json={"keys": [fake_public_key]})
+
+    # Token has wrong scope but correct role
+    token = generate_keycloak_token(scope="openid", role=FakeAuthRoles.READER.value)
+    credentials = Mock()
+    credentials.credentials = token
+    assert await auth(fake_request, credentials) is True
 
 
 async def test_missing_credentials(
@@ -381,6 +407,21 @@ async def test_missing_credentials(
         await auth(fake_request, None)
     assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
     assert excinfo.value.detail == "Authorization HTTPBearer header missing."
+
+
+async def test_jwks_fetch_failure(
+    httpx_mock: HTTPXMock,
+    auth: KeycloakJwtAuth,
+    generate_keycloak_token: TokenGenerator,
+):
+    """Test that a JWKS fetch failure returns 401 instead of crashing."""
+    httpx_mock.add_response(status_code=500)
+
+    token = generate_keycloak_token()
+    with pytest.raises(HTTPException) as excinfo:
+        await auth.verify_token(token)
+    assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "Unable to fetch signing keys" in excinfo.value.detail
 
 
 async def test_custom_issuer_url(
