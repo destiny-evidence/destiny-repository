@@ -51,6 +51,7 @@ class AuthRole(StrEnum):
     REFERENCE_READER = "reference.reader"
     REFERENCE_DEDUPLICATOR = "reference.deduplicator"
     ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer"
+    ROBOT_WRITER = "robot.writer"
 
 
 class AuthScope(StrEnum):
@@ -532,6 +533,7 @@ class KeycloakJwtAuth(AuthMethod):
         """Fetch and import JWKS from Keycloak's OIDC endpoint."""
         async with AsyncClient() as client:
             response = await client.get(self.jwks_uri)
+            response.raise_for_status()
             return JsonWebKey.import_key_set(response.json())
 
     def _require_scope_or_role(self, verified_claims: dict[str, Any]) -> bool:
@@ -542,6 +544,10 @@ class KeycloakJwtAuth(AuthMethod):
         - scope: space-separated string of scopes
         - realm_access.roles: list of realm roles
         - resource_access.{client_id}.roles: list of client roles
+
+        Keycloak tokens always contain a ``scope`` claim. We therefore check
+        scope first and fall back to roles, allowing service accounts that
+        have a realm/client role but no explicit scope.
 
         Args:
             verified_claims: The decoded JWT claims
@@ -559,12 +565,6 @@ class KeycloakJwtAuth(AuthMethod):
             if self.scope.value in scopes:
                 return True
 
-            raise AuthError(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"The scope claim does not contain the required scope "
-                f"{self.scope.value}",
-            )
-
         # Check realm roles
         if self.role:
             realm_roles = verified_claims.get("realm_access", {}).get("roles", [])
@@ -580,15 +580,9 @@ class KeycloakJwtAuth(AuthMethod):
             if self.role.value in client_roles:
                 return True
 
-            raise AuthError(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"The roles claim does not contain the required role "
-                f"{self.role.value}",
-            )
-
         raise AuthError(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Neither scope nor roles claim was found in the bearer token.",
+            detail="The token does not contain the required scope or role.",
         )
 
     async def __call__(
