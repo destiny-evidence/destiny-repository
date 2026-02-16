@@ -610,9 +610,14 @@ class KeycloakJwtAuth(AuthMethod):
         if email := verified_claims.get("email"):
             span.set_attribute(Attributes.USER_EMAIL, email)
 
-        # Get roles from realm_access for telemetry
-        realm_access = verified_claims.get("realm_access", {})
-        if roles := realm_access.get("roles"):
+        # Get roles from realm_access and resource_access for telemetry
+        roles = list(verified_claims.get("realm_access", {}).get("roles", []))
+        roles.extend(
+            verified_claims.get("resource_access", {})
+            .get(self.client_id, {})
+            .get("roles", [])
+        )
+        if roles:
             span.set_attribute(Attributes.USER_ROLES, ",".join(roles))
 
         return self._require_scope_or_role(verified_claims)
