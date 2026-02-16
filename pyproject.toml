@@ -71,7 +71,7 @@ dependencies = [
     "sqlalchemy-utils>=0.41.2,<0.42",
     "structlog>=25.1.0,<26",
     "taskiq-aio-pika>=0.4.1,<0.5",
-    "taskiq>=0.12.1",
+    "taskiq[reload]>=0.12.1",
     "tenacity>=9.1.2",
     "uvloop>=0.22.0",
 ]
