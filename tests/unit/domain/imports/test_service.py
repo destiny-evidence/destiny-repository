@@ -179,30 +179,20 @@ async def test_import_reference_sql_integrity_error(
     assert result.status == ImportResultStatus.RETRYING
 
 
-@pytest.mark.asyncio
-async def test_distribute_import_batch_happy_path(monkeypatch, fake_uow):
-    """Test distribute_import_batch happy path with multiple lines."""
-
-    # Prepare a fake ImportBatch
-    batch_id = uuid7()
-    import_batch = ImportBatch(
-        id=batch_id,
-        storage_url="https://fake-storage-url.com",
-        status=ImportBatchStatus.CREATED,
-        import_record_id=uuid7(),
-    )
-
-    # Prepare lines to be returned by the HTTPX stream
-    lines = ["ref1", "ref2", "ref3"]
+class TestDistributeImportBatch:
+    """Tests for distribute_import_batch method."""
 
     class FakeResponse:
-        def __init__(self, lines):
+        def __init__(self, lines, fail_after=None):
             self._lines = lines
-            self._idx = 0
+            self._fail_after = fail_after
             self.status_code = 200
 
         async def aiter_lines(self):
-            for line in self._lines:
+            for i, line in enumerate(self._lines):
+                if self._fail_after is not None and i >= self._fail_after:
+                    msg = "peer closed connection"
+                    raise httpx.RemoteProtocolError(msg)
                 yield line
 
         def raise_for_status(self):
@@ -225,9 +215,12 @@ async def test_distribute_import_batch_happy_path(monkeypatch, fake_uow):
             pass
 
     class FakeClient:
-        def __init__(self, lines):
+        def __init__(self, lines, fail_after_sequence=None):
             self._lines = lines
             self._transport = None
+            self._fail_after_sequence = fail_after_sequence or []
+            self.attempt_count = 0
+            self.streamed_url = None
 
         async def __aenter__(self):
             return self
@@ -236,34 +229,87 @@ async def test_distribute_import_batch_happy_path(monkeypatch, fake_uow):
             pass
 
         def stream(self, method, url):
-            assert method == "GET"
-            assert url == str(import_batch.storage_url)
-            response = FakeResponse(self._lines)
-            return FakeStreamContext(response)
+            self.streamed_url = url
+            fail_after = None
+            if self.attempt_count < len(self._fail_after_sequence):
+                fail_after = self._fail_after_sequence[self.attempt_count]
+            self.attempt_count += 1
+            return TestDistributeImportBatch.FakeStreamContext(
+                TestDistributeImportBatch.FakeResponse(self._lines, fail_after)
+            )
 
-    monkeypatch.setattr(httpx, "AsyncClient", lambda: FakeClient(lines))
+    @pytest.mark.asyncio
+    async def test_happy_path(self, monkeypatch, fake_uow):
+        """Test distribute_import_batch happy path with multiple lines."""
+        import_batch = ImportBatch(
+            id=uuid7(),
+            storage_url="https://fake-storage-url.com",
+            status=ImportBatchStatus.CREATED,
+            import_record_id=uuid7(),
+        )
+        lines = ["ref1", "ref2", "ref3"]
 
-    created_results = []
+        client = self.FakeClient(lines)
+        monkeypatch.setattr(httpx, "AsyncClient", lambda: client)
 
-    async def fake_register_result(result):
-        created_results.append(result)
-        return result
+        created_results = []
+        queued_tasks = []
 
-    queued_tasks = []
+        async def fake_register_result(result):
+            created_results.append(result)
+            return result
 
-    async def fake_queue_task_with_trace(*args, otel_enabled):  # noqa: ARG001
-        queued_tasks.append(args)
+        async def fake_queue_task_with_trace(*args, otel_enabled):  # noqa: ARG001
+            queued_tasks.append(args)
 
-    service = ImportService(ImportAntiCorruptionService(), fake_uow())
-    monkeypatch.setattr(service, "register_result", fake_register_result)
-    monkeypatch.setattr(
-        "app.domain.imports.service.queue_task_with_trace", fake_queue_task_with_trace
-    )
+        service = ImportService(ImportAntiCorruptionService(), fake_uow())
+        monkeypatch.setattr(service, "register_result", fake_register_result)
+        monkeypatch.setattr(
+            "app.domain.imports.service.queue_task_with_trace",
+            fake_queue_task_with_trace,
+        )
 
-    await service.distribute_import_batch(import_batch)
+        await service.distribute_import_batch(import_batch)
 
-    assert len(created_results) == len(lines)
-    assert len(queued_tasks) == len(lines)
+        assert len(created_results) == len(lines)
+        assert len(queued_tasks) == len(lines)
+        assert client.streamed_url == str(import_batch.storage_url)
+
+    @pytest.mark.asyncio
+    async def test_retries_on_connection_error(self, monkeypatch, fake_uow):
+        """Test that it retries and resumes from last line on connection error."""
+        import_batch = ImportBatch(
+            id=uuid7(),
+            storage_url="https://fake-storage-url.com",
+            status=ImportBatchStatus.CREATED,
+            import_record_id=uuid7(),
+        )
+        lines = ["ref1", "ref2", "ref3", "ref4"]
+
+        # First attempt fails after 2 lines, second attempt succeeds
+        client = self.FakeClient(lines, fail_after_sequence=[2, None])
+        monkeypatch.setattr(httpx, "AsyncClient", lambda: client)
+
+        queued_lines = []
+
+        async def fake_register_result(result):
+            return result
+
+        async def fake_queue_task_with_trace(*args, otel_enabled):  # noqa: ARG001
+            queued_lines.append(args[2])
+
+        service = ImportService(ImportAntiCorruptionService(), fake_uow())
+        monkeypatch.setattr(service, "register_result", fake_register_result)
+        monkeypatch.setattr(
+            "app.domain.imports.service.queue_task_with_trace",
+            fake_queue_task_with_trace,
+        )
+
+        await service.distribute_import_batch(import_batch)
+
+        assert client.attempt_count == 2
+        assert queued_lines == ["ref1", "ref2", "ref3", "ref4"]
+        assert client.streamed_url == str(import_batch.storage_url)
 
 
 @pytest.mark.asyncio
