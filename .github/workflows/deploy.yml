@@ -1,4 +1,4 @@
-name: Deploy to Container App Jobs
+name: Deploy to Azure
 
 concurrency:
   # No parallel deployments in the same environment
