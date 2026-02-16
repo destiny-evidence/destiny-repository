@@ -441,8 +441,8 @@ class KeycloakJwtAuth(AuthMethod):
             keycloak_url: The base URL of the Keycloak server (used for JWKS fetching)
             realm: The Keycloak realm name
             client_id: The client ID (audience) for token validation
-            scope: The required authorization scope for delegated (user) tokens
-            role: The required authorization role for application tokens
+            scope: The required scope in the token's `scope` claim
+            role: The required role in `realm_access.roles` or client roles
             cache_ttl: Time to live for JWKS cache entries, defaults to 24 hours
             issuer_url: Optional separate URL for token issuer validation. Defaults to
                 keycloak_url if not provided. Useful when tokens are issued with a
