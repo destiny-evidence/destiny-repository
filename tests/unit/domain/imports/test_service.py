@@ -239,7 +239,7 @@ async def test_distribute_import_batch_happy_path(monkeypatch, fake_uow):
             response = FakeResponse(self._lines)
             return FakeStreamContext(response)
 
-    # Accept **kwargs to absorb follow_redirects=False from SSRF mitigation
+    # Accept **kwargs to absorb follow_redirects=False
     monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FakeClient(lines))
 
     created_results = []
@@ -267,7 +267,7 @@ async def test_distribute_import_batch_happy_path(monkeypatch, fake_uow):
 
 @pytest.mark.asyncio
 async def test_distribute_import_batch_rejects_redirect(monkeypatch, fake_uow):
-    """A 3xx response from storage is rejected (SSRF redirect prevention)."""
+    """A 3xx response from storage is rejected (redirect prevention)."""
     batch_id = uuid7()
     import_batch = ImportBatch(
         id=batch_id,
@@ -316,7 +316,7 @@ async def test_distribute_import_batch_rejects_redirect(monkeypatch, fake_uow):
         def stream(self, method, url):
             return FakeStreamContext(FakeRedirectResponse())
 
-    # Accept **kwargs to absorb follow_redirects=False from SSRF mitigation
+    # Accept **kwargs to absorb follow_redirects=False
     monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FakeClient())
 
     service = ImportService(ImportAntiCorruptionService(), fake_uow())

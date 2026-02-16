@@ -2,7 +2,7 @@
 
 import datetime
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid7
 
 import pytest
@@ -185,35 +185,27 @@ async def test_create_batch_for_import(
     )
 
 
-async def test_enqueue_batch_rejects_ssrf_storage_url(
+async def test_enqueue_batch_rejects_disallowed_domain(
     client: AsyncClient,
     session: AsyncSession,
     valid_import: SQLImportRecord,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Validation failure in storage URL returns 422 with generic message."""
+    """Storage URL with a disallowed domain returns 422."""
     session.add(valid_import)
     await session.commit()
 
     monkeypatch.setattr(
-        "app.domain.imports.routes.validate_storage_url_async",
-        AsyncMock(
-            side_effect=ValueError("storage_url resolves to a disallowed address.")
-        ),
+        "app.domain.imports.routes.validate_storage_url",
+        MagicMock(side_effect=ValueError("storage_url hostname is not allowed.")),
     )
 
-    # Cloud metadata endpoint — classic SSRF target
-    batch_params = {"storage_url": "https://169.254.169.254/latest/meta-data"}
+    batch_params = {"storage_url": "https://disallowed.example.com/data.jsonl"}
     response = await client.post(
         f"/v1/imports/records/{valid_import.id}/batches/", json=batch_params
     )
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
-    assert "disallowed address" in response.json()["detail"]
-    # Ensure no IP addresses leak in the response
-    assert not any(
-        char.isdigit() and "." in response.json()["detail"]
-        for char in response.json()["detail"]
-    )
+    assert "not allowed" in response.json()["detail"]
 
 
 async def test_get_batches(

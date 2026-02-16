@@ -26,7 +26,7 @@ from app.domain.imports.services.anti_corruption_service import (
 from app.domain.imports.tasks import distribute_import_batch
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
-from app.utils.validate_url import validate_storage_url_async
+from app.utils.validate_url import validate_storage_url
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -156,7 +156,7 @@ async def enqueue_batch(
 ) -> destiny_sdk.imports.ImportBatchRead:
     """Register an import batch for a given import."""
     try:
-        await validate_storage_url_async(batch.storage_url)
+        validate_storage_url(batch.storage_url)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

@@ -229,8 +229,8 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
             HTTPXClientInstrumentor().instrument_client(client)
             async with client.stream("GET", str(import_batch.storage_url)) as response:
                 # Reject non-2xx explicitly: follow_redirects is disabled
-                # to prevent SSRF via open-redirect, so 3xx must be caught
-                # here rather than relying on raise_for_status (4xx/5xx only).
+                # to prevent open-redirect, so 3xx must be caught here
+                # rather than relying on raise_for_status (4xx/5xx only).
                 if not response.is_success:
                     msg = (
                         f"Unexpected status {response.status_code} "
