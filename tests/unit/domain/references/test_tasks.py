@@ -466,11 +466,11 @@ class TestProcessReferenceDuplicateDecisionRaceCondition:
         )
 
         # Should not raise — re-queued instead
-        await process_reference_duplicate_decision(decision_id, remaining_retries=3)
+        await process_reference_duplicate_decision(decision_id, remaining_retries=1)
 
         mock_queue.assert_awaited_once()
         call_kwargs = mock_queue.call_args.kwargs
-        assert call_kwargs["remaining_retries"] == 2
+        assert call_kwargs["remaining_retries"] == 0
 
         sql_uow = mock_sql_uow_cm.__aenter__.return_value
         sql_uow.rollback.assert_awaited_once()
@@ -549,7 +549,7 @@ class TestProcessReferenceDuplicateDecisionRaceCondition:
         )
 
         with pytest.raises(SQLIntegrityError) as exc_info:
-            await process_reference_duplicate_decision(decision_id, remaining_retries=3)
+            await process_reference_duplicate_decision(decision_id, remaining_retries=1)
 
         assert exc_info.value.lookup_model == "ReferenceDuplicateDecision"
         mock_reference_service.process_reference_duplicate_decision.assert_awaited_once()

@@ -260,7 +260,7 @@ async def repair_robot_automation_percolation_index() -> None:
 @broker.task
 async def process_reference_duplicate_decision(
     reference_duplicate_decision_id: UUID,
-    remaining_retries: int = 3,
+    remaining_retries: int = 1,
 ) -> None:
     """Task to process a reference duplicate decision."""
     name_span("Process reference duplicate decision")
