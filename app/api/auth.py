@@ -409,17 +409,20 @@ class KeycloakJwtAuth(AuthMethod):
     Example:
         .. code-block:: python
 
-            auth = KeycloakJwtAuth(
-                keycloak_url="http://localhost:8080",
-                realm="destiny",
-                client_id="destiny-repository-client",
-                scope=AuthScope.REFERENCE_READER,
-            )
+            def auth_strategy():
+                return KeycloakJwtAuth(
+                    keycloak_url="http://localhost:8080",
+                    realm="destiny",
+                    client_id="destiny-repository-client",
+                    scope=AuthScope.REFERENCE_READER,
+                )
+
+            caching_auth = CachingStrategyAuth(selector=auth_strategy)
 
             router = APIRouter(
                 prefix="/references",
                 tags=["references"],
-                dependencies=[Depends(auth)]
+                dependencies=[Depends(caching_auth)]
             )
 
     """
