@@ -390,12 +390,8 @@ class AzureJwtAuth(AuthMethod):
         span.set_attribute(Attributes.USER_AUTH_METHOD, "azure-jwt")
         if oid := verified_claims.get("oid"):
             span.set_attribute(Attributes.USER_ID, oid)
-        if name := verified_claims.get("name"):
-            span.set_attribute(Attributes.USER_FULL_NAME, name)
         if roles := verified_claims.get("roles"):
             span.set_attribute(Attributes.USER_ROLES, ",".join(roles))
-        if email := verified_claims.get("email"):
-            span.set_attribute(Attributes.USER_EMAIL, email)
 
         return self._require_scope_or_role(verified_claims)
 
@@ -604,10 +600,6 @@ class KeycloakJwtAuth(AuthMethod):
 
         if sub := verified_claims.get("sub"):
             span.set_attribute(Attributes.USER_ID, sub)
-        if name := verified_claims.get("name"):
-            span.set_attribute(Attributes.USER_FULL_NAME, name)
-        if email := verified_claims.get("email"):
-            span.set_attribute(Attributes.USER_EMAIL, email)
 
         # Get roles from realm_access and resource_access for telemetry
         roles = list(verified_claims.get("realm_access", {}).get("roles", []))
