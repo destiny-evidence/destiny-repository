@@ -123,6 +123,10 @@ locals {
       name  = "TRUSTED_UNIQUE_IDENTIFIER_TYPES",
       value = jsonencode(var.trusted_unique_identifier_types)
     },
+    {
+      name  = "ALLOWED_IMPORT_DOMAINS",
+      value = jsonencode(var.allowed_import_domains)
+    },
   ]
 
 

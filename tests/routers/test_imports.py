@@ -204,7 +204,7 @@ async def test_enqueue_batch_rejects_disallowed_domain(
     response = await client.post(
         f"/v1/imports/records/{valid_import.id}/batches/", json=batch_params
     )
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_403_FORBIDDEN
     assert "not allowed" in response.json()["detail"]
 
 

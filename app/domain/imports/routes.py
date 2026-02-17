@@ -159,7 +159,7 @@ async def enqueue_batch(
         validate_storage_url(batch.storage_url)
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail=str(exc),
         ) from exc
     import_batch = await import_service.register_batch(

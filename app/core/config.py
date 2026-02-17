@@ -496,7 +496,7 @@ class Settings(BaseSettings):
         default=["blob.core.windows.net"],
         description=(
             "Allowed domain suffixes for import storage URLs. "
-            "URLs whose hostname does not match are rejected with 422. "
+            "URLs whose hostname does not match are rejected with 403. "
             "Empty list disables the check."
         ),
     )
