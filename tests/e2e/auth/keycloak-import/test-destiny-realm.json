@@ -62,8 +62,7 @@
         "import.writer",
         "reference.reader",
         "reference.deduplicator",
-        "enhancement_request.writer",
-        "robot.writer"
+        "enhancement_request.writer"
       ]
     }
   ],
@@ -203,6 +202,23 @@
         "enhancement_request.writer",
         "robot.writer"
       ]
+    },
+    {
+      "username": "restricteduser",
+      "email": "restricteduser@localhost",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Restricted",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "testpass",
+          "temporary": false
+        }
+      ],
+      "groups": ["consumers"],
+      "realmRoles": ["reference.reader"]
     }
   ],
   "scopeMappings": [

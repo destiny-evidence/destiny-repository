@@ -94,6 +94,45 @@ class TestKeycloakAuth:
         assert "id" in robot_data
         assert "client_secret" in robot_data
 
+    async def test_requesting_unassigned_scope_is_denied(
+        self,
+        keycloak_api_client: httpx.AsyncClient,
+        keycloak_url: str,
+    ):
+        """
+        Test that a user cannot gain access by requesting a scope they don't have.
+
+        The restricteduser does not have robot.writer.all assigned.
+        Even though they explicitly request it in the token, Keycloak should
+        not include it, and the API should deny access.
+        """
+        token_url = f"{keycloak_url}/realms/destiny/protocol/openid-connect/token"
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                token_url,
+                data={
+                    "grant_type": "password",
+                    "client_id": "destiny-auth-client",
+                    "username": "restricteduser",
+                    "password": "testpass",
+                    "scope": "openid robot.writer.all",
+                },
+            )
+            response.raise_for_status()
+            token = response.json()["access_token"]
+
+        response = await keycloak_api_client.post(
+            "robots/",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "name": "Unauthorized Robot",
+                "description": "Should not be created",
+                "owner": "restricted@example.com",
+            },
+        )
+        assert response.status_code == 403
+
     async def test_healthcheck_no_auth_required(
         self,
         keycloak_api_client: httpx.AsyncClient,
