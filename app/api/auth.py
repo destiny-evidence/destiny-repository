@@ -18,13 +18,14 @@ from typing import Annotated, Any, Protocol
 from uuid import UUID
 
 import destiny_sdk
-from authlib.jose import JsonWebKey, JsonWebToken
-from authlib.jose import errors as jose_errors
 from cachetools import TTLCache
 from fastapi import Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from httpx import AsyncClient
 from jose import exceptions, jwt
+from joserfc import errors as joserfc_errors
+from joserfc import jwt as joserfc_jwt
+from joserfc.jwk import KeySet
 from opentelemetry import trace
 
 from app.core.config import get_settings
@@ -404,7 +405,7 @@ class KeycloakJwtAuth(AuthMethod):
     AuthMethod for authorizing requests using JWTs issued by Keycloak.
 
     Similar to AzureJwtAuth but configured for Keycloak's OIDC endpoints.
-    Uses authlib.jose for JWT verification and JWKS handling.
+    Uses joserfc for JWT verification and JWKS handling.
 
     Example:
         .. code-block:: python
@@ -465,14 +466,16 @@ class KeycloakJwtAuth(AuthMethod):
             f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/certs"
         )
 
-        # Create JWT decoder with claims validation
-        self._jwt = JsonWebToken(["RS256"])
+        self._claims_registry = joserfc_jwt.JWTClaimsRegistry(
+            iss={"essential": True, "value": self.issuer},
+            aud={"essential": True, "value": self.client_id},
+        )
 
     async def verify_token(self, token: str) -> dict[str, Any]:
         """
         Verify the token using JWKS fetched from Keycloak.
 
-        Uses authlib.jose for JWT decoding and JWKS key matching.
+        Uses joserfc for JWT decoding and JWKS key matching.
 
         Args:
             token: The JWT to be verified
@@ -498,30 +501,23 @@ class KeycloakJwtAuth(AuthMethod):
             self.cache["jwks"] = jwks
 
         try:
-            claims = self._jwt.decode(
-                token,
-                jwks,
-                claims_options={
-                    "iss": {"essential": True, "value": self.issuer},
-                    "aud": {"essential": True, "value": self.client_id},
-                },
-            )
-            claims.validate()
-            return dict(claims)
+            decoded = joserfc_jwt.decode(token, jwks, algorithms=["RS256"])
+            self._claims_registry.validate(decoded.claims)
+            return dict(decoded.claims)
 
-        except jose_errors.ExpiredTokenError as exc:
+        except joserfc_errors.ExpiredTokenError as exc:
             raise AuthError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token is expired.",
             ) from exc
 
-        except jose_errors.InvalidClaimError as exc:
+        except joserfc_errors.InvalidClaimError as exc:
             raise AuthError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=f"Invalid token claims: {exc}",
             ) from exc
 
-        except jose_errors.JoseError as exc:
+        except joserfc_errors.JoseError as exc:
             # If we had cached JWKS and verification failed,
             # try refreshing the keys (key rotation)
             if cached_jwks:
@@ -532,12 +528,12 @@ class KeycloakJwtAuth(AuthMethod):
                 detail="Unable to parse authentication token.",
             ) from exc
 
-    async def _get_keycloak_keys(self) -> JsonWebKey:
+    async def _get_keycloak_keys(self) -> KeySet:
         """Fetch and import JWKS from Keycloak's OIDC endpoint."""
         async with AsyncClient() as client:
             response = await client.get(self.jwks_uri)
             response.raise_for_status()
-            return JsonWebKey.import_key_set(response.json())
+            return KeySet.import_key_set(response.json())
 
     def _require_scope_or_role(self, verified_claims: dict[str, Any]) -> bool:
         """

@@ -6,9 +6,9 @@ from typing import Protocol
 from unittest.mock import Mock
 
 import pytest
-from authlib.jose import JsonWebKey
-from authlib.jose import jwt as authlib_jwt
 from fastapi import HTTPException, Request, status
+from joserfc import jwt as joserfc_jwt
+from joserfc.jwk import KeySet, RSAKey
 from pytest_httpx import HTTPXMock
 
 from app.api.auth import KeycloakJwtAuth
@@ -53,6 +53,14 @@ _test_private_key = {
     "dp": "P90r3ZWT_QoLH-JB-kX7yBcA8lAHoN-3GMxgqHnOPhu1TWDEHHMEvhqV8R6igRCScYFHgeatDi98Myl8DyvsUmSKKFP1Que8sSHLC0jqM44k_4XHxw1H1lrTD9j_lwT_JSotl1iqVgfiILY5-NclOkWuYtLMj3fd6CK7NGC-gME",  # noqa: E501
     "dq": "gg0WL416pRwsPF8i_p-x8dcIEnq6B3dO1stbIRBHC9CtEhs52IxtFiZmJjrQ1yq2TBHs19o3ByJ_i5Cd3CYSmmRWMEegYC1ujRdTAP--DmPWS9mcKfzTcxqNKlytDRnpDpZTi2IPSfEN9OBbQ7QsXiHWI3K8QhUGxaidpPR5bYk",  # noqa: E501
     "qi": "PoZSlTkB3dVl4mp24kTx4EK4YrT-c7lclsUBArdWt6WhVPCKMjWT1NZ6-sTw4TmWb7a-lOCqXLkfBVMzLkfpR3wp-J_TNfnb9PGP8-cTIE0FAEG9Kpc7tDNj1VhqU1Bl7Yse-Sp1u3vRvSqZvouNfSmTR00_648PrZegTDLZV2A",  # noqa: E501
+}
+
+# A different valid RSA public key (won't verify tokens signed with _test_private_key)
+_stale_public_key = {
+    "kty": "RSA",
+    "kid": "stale-key-id",
+    "n": "mt3UUZ5dmza8z_WT2VdUbAhKfw_MSJrV17udpa7UJCsWf6W-BA7BcFGd1ihRi4OEgihnrE538bi_kWlZmN6q2ALQa7IcYelwX_HZ0ot47LuLoveLiAoMqNdKpqdpEV7tKzfWqQJBB18PRmE0jkraFk1l508Fc_uwkS0VEjFdDh87ezICwNsztq_TF37NtrjnqU3Vd6Ip1FbMMCGSfAcr9CiM8YwGwxT4AjLmCpDmIp_ZpBEe5Rw8gHQSHG9IEgThJlvGMdPDg3Pxt8mTQVI3ulaCVdbNreL4P2CLla6ffPaDpdK-R-LDneTch_E31jQgCkntfe7MWNQlXfTCgIL4qw",  # noqa: E501
+    "e": "AQAB",
 }
 
 
@@ -130,7 +138,7 @@ def generate_keycloak_token(
     fake_client_id: str,
 ) -> TokenGenerator:
     """Create a function that generates fake Keycloak tokens."""
-    private_key = JsonWebKey.import_key(_test_private_key)
+    private_key = RSAKey.import_key(_test_private_key)
 
     def __generate_token(
         user_payload: dict | None = None,
@@ -159,7 +167,7 @@ def generate_keycloak_token(
             payload["realm_access"] = {"roles": [role]}
 
         header = {"alg": "RS256", "kid": _test_private_key["kid"]}
-        return authlib_jwt.encode(header, payload, private_key).decode("utf-8")
+        return joserfc_jwt.encode(header, payload, private_key)
 
     return __generate_token
 
@@ -261,10 +269,8 @@ async def test_verify_token_jwks_retry(
     generate_keycloak_token: TokenGenerator,
 ):
     """Test that we get fresh JWKS if the cached one is stale."""
-    # Pre-populate cache with stale JWKS
-    stale_public_key = fake_public_key.copy()
-    stale_public_key["n"] = "stale_n"
-    auth.cache["jwks"] = JsonWebKey.import_key_set({"keys": [stale_public_key]})
+    # Pre-populate cache with a valid but wrong key
+    auth.cache["jwks"] = KeySet.import_key_set({"keys": [_stale_public_key]})
 
     # Add fresh JWKS response
     httpx_mock.add_response(json={"keys": [fake_public_key]})
@@ -281,17 +287,14 @@ async def test_verify_token_jwks_retry(
 async def test_verify_token_parse_failure_after_retry(
     httpx_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
-    fake_public_key: dict,
     generate_keycloak_token: TokenGenerator,
 ):
     """Test that we only retry once if we fail to verify a token."""
-    # Pre-populate cache with stale JWKS
-    stale_public_key = fake_public_key.copy()
-    stale_public_key["n"] = "stale_n"
-    auth.cache["jwks"] = JsonWebKey.import_key_set({"keys": [stale_public_key]})
+    # Pre-populate cache with a valid but wrong key
+    auth.cache["jwks"] = KeySet.import_key_set({"keys": [_stale_public_key]})
 
-    # Return stale JWKS again on refresh
-    httpx_mock.add_response(json={"keys": [stale_public_key]})
+    # Return the same wrong key on refresh
+    httpx_mock.add_response(json={"keys": [_stale_public_key]})
 
     token = generate_keycloak_token()
     with pytest.raises(HTTPException) as excinfo:
@@ -451,7 +454,7 @@ async def test_custom_issuer_url(
     )
 
     # Generate token with issuer_url
-    private_key = JsonWebKey.import_key(_test_private_key)
+    private_key = RSAKey.import_key(_test_private_key)
     now = datetime.datetime.now(datetime.UTC)
     payload = {
         "sub": "test-user-id",
@@ -462,7 +465,7 @@ async def test_custom_issuer_url(
         "scope": f"openid {FakeAuthScopes.READ_ALL.value}",
     }
     header = {"alg": "RS256", "kid": _test_private_key["kid"]}
-    token = authlib_jwt.encode(header, payload, private_key).decode("utf-8")
+    token = joserfc_jwt.encode(header, payload, private_key)
 
     result = await auth.verify_token(token)
     assert result["sub"] == "test-user-id"

@@ -57,6 +57,7 @@ dependencies = [
     "fastapi[standard]>=0.128,<0.129",
     "frozenlist==1.6.0",
     "greenlet>=3.1.1,<4",
+    "joserfc>=1.0.0",
     "minio>=7.2.15,<8",
     "opentelemetry-distro>=0.60b1,<0.61",
     "opentelemetry-exporter-otlp>=1.39.1,<2",
