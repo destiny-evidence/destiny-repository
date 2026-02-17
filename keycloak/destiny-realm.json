@@ -43,6 +43,10 @@
       {
         "name": "enhancement_request.writer",
         "description": "Can request enhancements"
+      },
+      {
+        "name": "robot.writer",
+        "description": "Can register robots and rotate robot client secrets"
       }
     ]
   },
@@ -58,7 +62,8 @@
         "import.writer",
         "reference.reader",
         "reference.deduplicator",
-        "enhancement_request.writer"
+        "enhancement_request.writer",
+        "robot.writer"
       ]
     }
   ],
@@ -207,7 +212,8 @@
         "import.writer",
         "reference.reader",
         "reference.deduplicator",
-        "enhancement_request.writer"
+        "enhancement_request.writer",
+        "robot.writer"
       ]
     }
   ],
@@ -231,6 +237,10 @@
     {
       "clientScope": "enhancement_request.writer.all",
       "roles": ["enhancement_request.writer"]
+    },
+    {
+      "clientScope": "robot.writer.all",
+      "roles": ["robot.writer"]
     }
   ]
 }
