@@ -71,13 +71,17 @@ class TestKeycloakAuth:
         )
         assert response.status_code == 401
 
-    async def test_robots_endpoint_with_admin_scope(
+    async def test_requesting_assigned_scope_is_granted(
         self,
         keycloak_api_client: httpx.AsyncClient,
         keycloak_token_all_scopes: str,
     ):
-        """Test that admin endpoints work with appropriate scope."""
-        # Create a robot (requires robot.writer.all scope)
+        """
+        Test that a user can access an endpoint when they have the required scope.
+
+        testuser has robot.writer.all via the developers group, which holds the
+        robot.writer role. The scopeMapping for robot.writer.all requires that role.
+        """
         response = await keycloak_api_client.post(
             "robots/",
             headers={"Authorization": f"Bearer {keycloak_token_all_scopes}"},
