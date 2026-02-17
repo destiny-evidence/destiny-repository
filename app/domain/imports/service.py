@@ -268,12 +268,27 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
             reraise=True,
         ):
             with attempt:
-                async with httpx.AsyncClient() as client:
+                async with httpx.AsyncClient(
+                    follow_redirects=False,
+                ) as client:
                     HTTPXClientInstrumentor().instrument_client(client)
                     async with client.stream(
                         "GET", str(import_batch.storage_url)
                     ) as response:
-                        response.raise_for_status()
+                        # Reject non-2xx explicitly: follow_redirects is
+                        # disabled to prevent open-redirect, so 3xx must
+                        # be caught here rather than relying on
+                        # raise_for_status (4xx/5xx only).
+                        if not response.is_success:
+                            msg = (
+                                f"Unexpected status {response.status_code} "
+                                f"fetching storage_url"
+                            )
+                            raise httpx.HTTPStatusError(
+                                msg,
+                                request=response.request,
+                                response=response,
+                            )
                         line_number = 0
                         async for line in response.aiter_lines():
                             line_number += 1

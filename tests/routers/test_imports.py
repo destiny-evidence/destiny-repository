@@ -2,7 +2,7 @@
 
 import datetime
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid7
 
 import pytest
@@ -183,6 +183,29 @@ async def test_create_batch_for_import(
         status=ImportBatchStatus.CREATED,
         storage_url="https://example.com/batch_data.json",
     )
+
+
+async def test_enqueue_batch_rejects_disallowed_domain(
+    client: AsyncClient,
+    session: AsyncSession,
+    valid_import: SQLImportRecord,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Storage URL with a disallowed domain returns 422."""
+    session.add(valid_import)
+    await session.commit()
+
+    monkeypatch.setattr(
+        "app.domain.imports.routes.validate_storage_url",
+        MagicMock(side_effect=ValueError("storage_url hostname is not allowed.")),
+    )
+
+    batch_params = {"storage_url": "https://disallowed.example.com/data.jsonl"}
+    response = await client.post(
+        f"/v1/imports/records/{valid_import.id}/batches/", json=batch_params
+    )
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert "not allowed" in response.json()["detail"]
 
 
 async def test_get_batches(

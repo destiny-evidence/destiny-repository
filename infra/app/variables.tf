@@ -368,6 +368,12 @@ variable "trusted_unique_identifier_types" {
   default     = []
 }
 
+variable "allowed_import_domains" {
+  description = "Allowed domain suffixes for import storage URLs. Empty list disables the check."
+  type        = list(string)
+  default     = ["blob.core.windows.net"]
+}
+
 variable "otel_instrument_sql" {
   description = "Whether to enable OpenTelemetry auto-instrumentation for SQL operations"
   type        = bool

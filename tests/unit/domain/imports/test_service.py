@@ -187,6 +187,7 @@ class TestDistributeImportBatch:
             self._lines = lines
             self._fail_after = fail_after
             self.status_code = 200
+            self.is_success = True
 
         async def aiter_lines(self):
             for i, line in enumerate(self._lines):
@@ -194,9 +195,6 @@ class TestDistributeImportBatch:
                     msg = "peer closed connection"
                     raise httpx.RemoteProtocolError(msg)
                 yield line
-
-        def raise_for_status(self):
-            pass
 
         async def __aenter__(self):
             return self
@@ -250,7 +248,8 @@ class TestDistributeImportBatch:
         lines = ["ref1", "ref2", "ref3"]
 
         client = self.FakeClient(lines)
-        monkeypatch.setattr(httpx, "AsyncClient", lambda: client)
+        # Accept **kwargs to absorb follow_redirects=False
+        monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: client)
 
         created_results = []
         queued_tasks = []
@@ -288,7 +287,8 @@ class TestDistributeImportBatch:
 
         # First attempt fails after 2 lines, second attempt succeeds
         client = self.FakeClient(lines, fail_after_sequence=[2, None])
-        monkeypatch.setattr(httpx, "AsyncClient", lambda: client)
+        # Accept **kwargs to absorb follow_redirects=False
+        monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: client)
 
         queued_lines = []
 
@@ -310,6 +310,66 @@ class TestDistributeImportBatch:
         assert client.attempt_count == 2
         assert queued_lines == ["ref1", "ref2", "ref3", "ref4"]
         assert client.streamed_url == str(import_batch.storage_url)
+
+
+@pytest.mark.asyncio
+async def test_distribute_import_batch_rejects_redirect(monkeypatch, fake_uow):
+    """A 3xx response from storage is rejected (redirect prevention)."""
+    batch_id = uuid7()
+    import_batch = ImportBatch(
+        id=batch_id,
+        storage_url="https://fake-storage-url.com",
+        status=ImportBatchStatus.CREATED,
+        import_record_id=uuid7(),
+    )
+
+    class FakeRedirectResponse:
+        status_code = 302
+        is_success = False
+
+        def __init__(self):
+            self.request = httpx.Request("GET", str(import_batch.storage_url))
+
+        async def aiter_lines(self):
+            return
+            yield
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    class FakeStreamContext:
+        def __init__(self, response):
+            self._response = response
+
+        async def __aenter__(self):
+            return self._response
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    class FakeClient:
+        def __init__(self):
+            self._transport = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+        def stream(self, method, url):
+            return FakeStreamContext(FakeRedirectResponse())
+
+    # Accept **kwargs to absorb follow_redirects=False
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+
+    service = ImportService(ImportAntiCorruptionService(), fake_uow())
+
+    with pytest.raises(httpx.HTTPStatusError, match="302"):
+        await service.distribute_import_batch(import_batch)
 
 
 @pytest.mark.asyncio

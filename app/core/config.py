@@ -492,6 +492,15 @@ class Settings(BaseSettings):
         "This applies to both opentelemetry and standard logging.",
     )
 
+    allowed_import_domains: list[str] = Field(
+        default=["blob.core.windows.net"],
+        description=(
+            "Allowed domain suffixes for import storage URLs. "
+            "URLs whose hostname does not match are rejected with 403. "
+            "Empty list disables the check."
+        ),
+    )
+
     cors_allow_origins: list[str] = Field(
         default_factory=list,
         description="List of allowed origins for CORS.",
