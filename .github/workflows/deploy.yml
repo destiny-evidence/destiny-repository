@@ -1,7 +1,10 @@
 name: Deploy to Azure
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # No parallel deployments in the same environment
+  group: ${{ github.workflow }}-${{ inputs.environment }}
+  # Automated workflows have their own concurrency limitations
+  # so allow cancellation of this workflow if manually triggered.
   cancel-in-progress: true
 
 on:
@@ -11,115 +14,19 @@ on:
         type: string
         description: environment to deploy to
         required: true
-  push:
-    branches:
-      - main
-  workflow_dispatch:
+      image_tag:
+        type: string
+        description: image tag to deploy
+        required: true
 
 permissions:
   id-token: write
   contents: read
+
 jobs:
-  build:
+  deploy-application:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment || 'staging' }}
-    outputs:
-      image_tag: ${{ steps.vars.outputs.sha_short }}
-    steps:
-      - name: "Az CLI login"
-        uses: azure/login@v2.1.0
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
-      - uses: actions/checkout@v6
-        with:
-          sparse-checkout: .
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Azure Docker Login
-        id: acr_login
-        uses: Azure/cli@v2.0.0
-        with:
-          inlineScript: |
-            {
-              echo "docker_token<<EOF"
-              echo "$(az acr login -n ${{vars.REGISTRY_NAME}} --expose-token --output tsv --query accessToken)"
-              echo "EOF"
-            } >> $GITHUB_OUTPUT
-
-      - name: Login to Azure Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{vars.REGISTRY_NAME}}.azurecr.io
-          username: 00000000-0000-0000-0000-000000000000
-          password: ${{ steps.acr_login.outputs.docker_token }}
-
-      - name: Set job env
-        id: vars
-        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-      - name: Build and push Docker images
-        uses: docker/build-push-action@v5.1.0
-        with:
-          push: true
-          tags: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ steps.vars.outputs.sha_short }}
-
-  build-ui:
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.environment || 'staging' }}
-    outputs:
-      image_tag: ${{ steps.vars.outputs.sha_short }}
-    steps:
-      - name: "Az CLI login"
-        uses: azure/login@v2.1.0
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
-      - uses: actions/checkout@v6
-        with:
-          sparse-checkout: ui
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Azure Docker Login
-        id: acr_login
-        uses: Azure/cli@v2.0.0
-        with:
-          inlineScript: |
-            {
-              echo "docker_token<<EOF"
-              echo "$(az acr login -n ${{vars.REGISTRY_NAME}} --expose-token --output tsv --query accessToken)"
-              echo "EOF"
-            } >> $GITHUB_OUTPUT
-      - name: Login to Azure Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{vars.REGISTRY_NAME}}.azurecr.io
-          username: 00000000-0000-0000-0000-000000000000
-          password: ${{ steps.acr_login.outputs.docker_token }}
-
-      - name: Set job env
-        id: vars
-        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-      - name: Build and push UI Docker image
-        uses: docker/build-push-action@v5.1.0
-        with:
-          context: ./ui
-          file: ./ui/Dockerfile
-          push: true
-          tags: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}-ui:${{ steps.vars.outputs.sha_short }}
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    environment: ${{ inputs.environment || 'staging' }}
+    environment: ${{ inputs.environment }}
     steps:
       - name: "Az CLI login"
         uses: azure/login@v2.1.0
@@ -135,7 +42,7 @@ jobs:
           containerAppName: ${{vars.CONTAINER_APP_NAME}}
           resourceGroup: ${{vars.RESOURCE_GROUP}}
           containerAppEnvironment: ${{vars.CONTAINER_APP_ENV}}
-          imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ needs.build.outputs.image_tag }}
+          imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ inputs.image_tag }}
 
       - name: Deploy built image to tasks container
         uses: Azure/container-apps-deploy-action@v1
@@ -144,19 +51,66 @@ jobs:
           containerAppName: ${{vars.CONTAINER_APP_TASKS_NAME}}
           resourceGroup: ${{vars.RESOURCE_GROUP}}
           containerAppEnvironment: ${{vars.CONTAINER_APP_ENV}}
-          imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ needs.build.outputs.image_tag }}
+          imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ inputs.image_tag }}
 
-  deploy-to-container-app-jobs:
-    needs: build
-    uses: ./.github/workflows/deploy-to-container-app-jobs.yml
-    with:
-      environment: ${{ inputs.environment || 'staging' }}
-      image-tag: ${{ needs.build.outputs.image_tag }}
+  deploy-container-apps-jobs:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: "Az CLI login"
+        uses: azure/login@v2.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Update scheduled container app jobs images
+        uses: Azure/cli@v2.0.0
+        with:
+          inlineScript: |
+            JOBS=$(az containerapp job list \
+              --resource-group ${{vars.RESOURCE_GROUP}} \
+              --query "[?tags.app=='${{vars.APP_NAME}}' && tags.environment=='${{ inputs.environment }}' && tags.\"job-type\"=='scheduled'].name" \
+              --output tsv)
+
+            if [ -z "$JOBS" ]; then
+              echo "No scheduled jobs found"
+              exit 0
+            fi
+
+            for JOB_NAME in $JOBS; do
+              echo "Updating job: $JOB_NAME"
+              az containerapp job update \
+                --name "$JOB_NAME" \
+                --resource-group ${{vars.RESOURCE_GROUP}} \
+                --image ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ inputs.image_tag }}
+            done
+
+      - name: Update database migrator job image and command
+        uses: Azure/cli@v2.0.0
+        with:
+          inlineScript: |
+            az containerapp job update \
+              --name "db-migrator-${{ vars.ENVIRONMENT_NAME }}" \
+              --resource-group ${{vars.RESOURCE_GROUP}} \
+              --image ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ inputs.image_tag }} \
+              --command alembic upgrade head
+
+      - name: Update elasticsearch index migrator job image and command
+        uses: Azure/cli@v2.0.0
+        with:
+          inlineScript: |
+            az containerapp job update \
+              --name "es-index-migrator-${{ vars.ENVIRONMENT_NAME }}" \
+              --resource-group ${{vars.RESOURCE_GROUP}} \
+              --image ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}:${{ inputs.image_tag }} \
+              --command echo "Empty Command"
+          # We reset the command to empty as the azure portal has a poor manual command update UI.
+          # So we want the default container command to be something that doesn't trigger a migration.
 
   deploy-ui:
     runs-on: ubuntu-latest
-    needs: build-ui
-    environment: ${{ inputs.environment || 'staging' }}
+    environment: ${{ inputs.environment }}
     steps:
       - name: "Az CLI login"
         uses: azure/login@v2.1.0
@@ -172,12 +126,12 @@ jobs:
           containerAppName: ${{vars.CONTAINER_APP_UI_NAME}}
           resourceGroup: ${{vars.RESOURCE_GROUP}}
           containerAppEnvironment: ${{vars.CONTAINER_APP_ENV}}
-          imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}-ui:${{ needs.build-ui.outputs.image_tag }}
+          imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}-ui:${{ inputs.image_tag }}
 
   migrate-database:
     runs-on: ubuntu-latest
-    needs: deploy-to-container-app-jobs
-    environment: ${{ inputs.environment || 'staging' }}
+    needs: deploy-container-apps-jobs
+    environment: ${{ inputs.environment }}
     steps:
       - name: "Az CLI login"
         uses: azure/login@v2.1.0
