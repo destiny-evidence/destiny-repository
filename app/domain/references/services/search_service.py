@@ -15,6 +15,7 @@ from app.domain.service import GenericService
 from app.persistence.es.persistence import ESSearchResult
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
+from app.utils.regex import escape_lucene_quoted_term
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -55,6 +56,8 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         """
         Build an annotation filter for Elasticsearch query string.
 
+        All user-supplied values are escaped to prevent query injection.
+
         Examples:
         - For score filter: `scheme:>=0.8` (minimum bound on score)
         - For scheme and label: `annotations:"scheme/label"`
@@ -69,8 +72,10 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
                 field += f"_{annotation.label}"
             return f"{field}:>={annotation.score}"
         if not annotation.label:
-            return f"annotations:{annotation.scheme.replace(":", r"\:")}*"
-        return f'annotations:"{annotation.scheme}/{annotation.label}"'
+            return f"annotations:{annotation.scheme.replace(':', r'\:')}*"
+        scheme = escape_lucene_quoted_term(annotation.scheme)
+        label = escape_lucene_quoted_term(annotation.label)
+        return f'annotations:"{scheme}/{label}"'
 
     async def search_with_query_string(
         self,
