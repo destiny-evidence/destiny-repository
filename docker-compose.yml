@@ -127,8 +127,6 @@ services:
     env_file:
       - .env
     environment:
-      ENV: local
-      BYPASS_AUTH: "false"
       MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
       MINIO_CONFIG: '{"HOST":"fs:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass"}'
