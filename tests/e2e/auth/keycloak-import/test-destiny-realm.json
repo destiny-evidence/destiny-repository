@@ -14,14 +14,6 @@
   "ssoSessionIdleTimeout": 1800,
   "ssoSessionMaxLifespan": 36000,
   "offlineSessionIdleTimeout": 2592000,
-  "defaultOptionalClientScopes": [
-    "administrator.all",
-    "import.writer.all",
-    "reference.reader.all",
-    "reference.deduplicator.all",
-    "enhancement_request.writer.all",
-    "robot.writer.all"
-  ],
   "roles": {
     "realm": [
       {

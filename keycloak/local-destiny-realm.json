@@ -14,14 +14,6 @@
   "ssoSessionIdleTimeout": 1800,
   "ssoSessionMaxLifespan": 36000,
   "offlineSessionIdleTimeout": 2592000,
-  "defaultOptionalClientScopes": [
-    "administrator.all",
-    "import.writer.all",
-    "reference.reader.all",
-    "reference.deduplicator.all",
-    "enhancement_request.writer.all",
-    "robot.writer.all"
-  ],
   "roles": {
     "realm": [
       {
@@ -143,14 +135,6 @@
         "https://oauth.pstmn.io/v1/callback"
       ],
       "webOrigins": ["http://localhost:3000", "https://oauth.pstmn.io"],
-      "defaultClientScopes": [
-        "openid",
-        "profile",
-        "email",
-        "roles",
-        "web-origins",
-        "reference.reader.all"
-      ],
       "optionalClientScopes": [
         "administrator.all",
         "import.writer.all",
