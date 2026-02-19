@@ -198,6 +198,8 @@ resource "azuread_application_api_access" "destiny_repository_auth_ui" {
 
   scope_ids = [
     random_uuid.reference_reader_scope.result,
+    random_uuid.enhancement_request_writer_scope.result,
+    random_uuid.robot_writer_scope.result,
   ]
 }
 
