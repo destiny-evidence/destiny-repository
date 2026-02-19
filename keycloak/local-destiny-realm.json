@@ -154,6 +154,7 @@
       "optionalClientScopes": [
         "administrator.all",
         "import.writer.all",
+        "reference.reader.all",
         "reference.deduplicator.all",
         "enhancement_request.writer.all",
         "robot.writer.all"
@@ -206,15 +207,7 @@
           "temporary": false
         }
       ],
-      "groups": ["developers"],
-      "realmRoles": [
-        "administrator",
-        "import.writer",
-        "reference.reader",
-        "reference.deduplicator",
-        "enhancement_request.writer",
-        "robot.writer"
-      ]
+      "groups": ["developers"]
     }
   ],
   "scopeMappings": [

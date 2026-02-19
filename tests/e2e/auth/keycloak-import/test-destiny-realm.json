@@ -62,7 +62,8 @@
         "import.writer",
         "reference.reader",
         "reference.deduplicator",
-        "enhancement_request.writer"
+        "enhancement_request.writer",
+        "robot.writer"
       ]
     }
   ],
@@ -193,15 +194,7 @@
           "temporary": false
         }
       ],
-      "groups": ["developers"],
-      "realmRoles": [
-        "administrator",
-        "import.writer",
-        "reference.reader",
-        "reference.deduplicator",
-        "enhancement_request.writer",
-        "robot.writer"
-      ]
+      "groups": ["developers"]
     },
     {
       "username": "restricteduser",
@@ -217,8 +210,7 @@
           "temporary": false
         }
       ],
-      "groups": ["consumers"],
-      "realmRoles": ["reference.reader"]
+      "groups": ["consumers"]
     }
   ],
   "scopeMappings": [
