@@ -197,9 +197,9 @@ To get a token for use in a development environment, there is a utility module:
 uv run python -m app.utils.get_token
 ```
 
-### Keycloak Authentication
+### Keycloak Authentication (Experimental)
 
-The API supports Keycloak as an alternative auth provider to Azure AD, controlled by the `AUTH_PROVIDER` setting in `.env`:
+Keycloak support is experimental as we transition from Azure AD to Keycloak. It is controlled by the `AUTH_PROVIDER` setting in `.env`:
 
 ```dotenv
 AUTH_PROVIDER=keycloak
