@@ -1,6 +1,5 @@
 """Keycloak e2e test fixtures."""
 
-import asyncio
 import os
 import pathlib
 
@@ -71,7 +70,7 @@ def keycloak_internal_url(keycloak: DockerContainer) -> str:
 
 async def _get_keycloak_token(keycloak_url: str, scopes: str) -> str:
     """
-    Get a token from Keycloak with retry logic.
+    Get a token from Keycloak.
 
     Args:
         keycloak_url: Base URL for Keycloak (e.g., http://localhost:8080)
@@ -82,54 +81,21 @@ async def _get_keycloak_token(keycloak_url: str, scopes: str) -> str:
 
     """
     token_url = f"{keycloak_url}/realms/destiny/protocol/openid-connect/token"
-    max_retries = 30
-    retry_delay = 1.0
 
     async with httpx.AsyncClient() as client:
-        for attempt in range(max_retries):
-            try:
-                response = await client.post(
-                    token_url,
-                    data={
-                        "grant_type": "password",
-                        "client_id": "destiny-auth-client",
-                        "username": "testuser",
-                        "password": "testpass",
-                        "scope": scopes,
-                    },
-                    timeout=5.0,
-                )
-                if response.status_code == 200:
-                    return response.json()["access_token"]
-
-                if response.status_code == 400 and "invalid_scope" in response.text:
-                    logger.info(
-                        "Keycloak realm not ready yet (attempt %d/%d): %s",
-                        attempt + 1,
-                        max_retries,
-                        response.text,
-                    )
-                    await asyncio.sleep(retry_delay)
-                    continue
-
-                logger.error(
-                    "Failed to get token from Keycloak: %s %s",
-                    response.status_code,
-                    response.text,
-                )
-                response.raise_for_status()
-            except httpx.RequestError as e:
-                logger.info(
-                    "Keycloak not accepting connections (attempt %d/%d): %s",
-                    attempt + 1,
-                    max_retries,
-                    str(e),
-                )
-                await asyncio.sleep(retry_delay)
-                continue
-
-    msg = f"Failed to get token from Keycloak after {max_retries} attempts"
-    raise RuntimeError(msg)
+        response = await client.post(
+            token_url,
+            data={
+                "grant_type": "password",
+                "client_id": "destiny-auth-client",
+                "username": "testuser",
+                "password": "testpass",
+                "scope": scopes,
+            },
+            timeout=5.0,
+        )
+        response.raise_for_status()
+        return response.json()["access_token"]
 
 
 @pytest.fixture(scope="session")
