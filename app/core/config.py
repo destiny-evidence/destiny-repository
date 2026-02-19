@@ -365,8 +365,39 @@ class Settings(BaseSettings):
     otel_config: OTelConfig | None = None
     otel_enabled: bool = False
 
+    # Authentication provider selection
+    auth_provider: Literal["azure", "keycloak"] = Field(
+        default="azure",
+        description="The authentication provider to use: 'azure' or 'keycloak'.",
+    )
+
+    # Azure AD settings
     azure_application_id: str
-    azure_login_url: str
+    azure_login_url: str = "https://login.microsoftonline.com"
+
+    # Keycloak settings (only used when auth_provider == "keycloak")
+    keycloak_url: str | None = Field(
+        default=None,
+        description="The base URL of the Keycloak server (used for JWKS fetching).",
+    )
+    keycloak_issuer_url: str | None = Field(
+        default=None,
+        description=(
+            "The issuer URL for token validation. Defaults to keycloak_url if not set. "
+            "Useful when the token issuer differs from the internal Keycloak URL "
+            "(e.g., in Docker where tokens are issued with localhost but JWKS is "
+            "fetched via internal network)."
+        ),
+    )
+    keycloak_realm: str = Field(
+        default="destiny",
+        description="The Keycloak realm name.",
+    )
+    keycloak_client_id: str | None = Field(
+        default=None,
+        description="The Keycloak client ID for token validation.",
+    )
+
     message_broker_url: str | None = None
     message_broker_namespace: str | None = None
     message_broker_queue_name: str = "taskiq"
@@ -486,6 +517,15 @@ class Settings(BaseSettings):
         ),
     )
 
+    bypass_auth: bool | None = Field(
+        default=None,
+        description=(
+            "Override auth bypass behavior. When None (default), auth is bypassed "
+            "only when running locally (ENV=local/test). Set to False to enforce "
+            "auth even locally."
+        ),
+    )
+
     log_level: LogLevel = Field(
         default=LogLevel.INFO,
         description="The log level for the application. "
@@ -519,6 +559,19 @@ class Settings(BaseSettings):
     def running_locally(self) -> bool:
         """Return True if the app is running locally."""
         return self.env in Environment.local_envs()
+
+    @property
+    def should_bypass_auth(self) -> bool:
+        """
+        Return True if auth should be bypassed.
+
+        Auth can only be bypassed when running locally (ENV=local/test).
+        """
+        if not self.running_locally:
+            return False
+        if self.bypass_auth is not None:
+            return self.bypass_auth
+        return True
 
     @property
     def default_blob_location(self) -> str:

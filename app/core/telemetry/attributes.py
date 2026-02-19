@@ -72,8 +72,6 @@ class Attributes(StrEnum):
 
     # User attributes
     USER_ID = _user_attributes.USER_ID
-    USER_EMAIL = _user_attributes.USER_EMAIL
-    USER_FULL_NAME = _user_attributes.USER_FULL_NAME
     USER_ROLES = _user_attributes.USER_ROLES
     USER_AUTH_METHOD = "user.auth.method"
 

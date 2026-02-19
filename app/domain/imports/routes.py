@@ -72,7 +72,7 @@ def choose_auth_strategy_imports() -> AuthMethod:
         application_id=settings.azure_application_id,
         auth_scope=AuthScope.IMPORT_WRITER,
         auth_role=AuthRole.IMPORT_WRITER,
-        bypass_auth=settings.running_locally,
+        bypass_auth=settings.should_bypass_auth,
     )
 
 

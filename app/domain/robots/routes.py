@@ -55,7 +55,7 @@ def choose_auth_strategy_robot_writer() -> AuthMethod:
     return choose_auth_strategy(
         application_id=settings.azure_application_id,
         auth_scope=AuthScope.ROBOT_WRITER,
-        bypass_auth=settings.running_locally,
+        bypass_auth=settings.should_bypass_auth,
     )
 
 

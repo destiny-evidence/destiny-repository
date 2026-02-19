@@ -197,6 +197,34 @@ To get a token for use in a development environment, there is a utility module:
 uv run python -m app.utils.get_token
 ```
 
+### Keycloak Authentication (Experimental)
+
+Keycloak support is experimental as we transition from Azure AD to Keycloak. It is controlled by the `AUTH_PROVIDER` setting in `.env`:
+
+```dotenv
+AUTH_PROVIDER=keycloak
+KEYCLOAK_URL=http://localhost:8080
+KEYCLOAK_REALM=destiny
+KEYCLOAK_CLIENT_ID=destiny-repository-client
+```
+
+When `ENV=local` (the default in `.env.example`), authentication is bypassed entirely regardless of the provider. To test with Keycloak auth enforced locally, start Keycloak and run the app via docker compose:
+
+```sh
+docker compose --profile keycloak --profile app up
+```
+
+Set `BYPASS_AUTH=false` and configure the internal Keycloak URL (`http://keycloak:8080`) for token validation, while using `http://localhost:8080` as the issuer URL to match tokens obtained from the browser.
+
+The Keycloak realm is auto-imported from the [keycloak/](keycloak/) directory on startup. The admin console is available at <http://localhost:8080> with credentials `admin`/`admin`.
+
+To run the app outside docker while still using Keycloak for auth, set `BYPASS_AUTH=false` in your `.env` and start Keycloak separately:
+
+```sh
+docker compose --profile keycloak up -d
+BYPASS_AUTH=false uv run fastapi dev
+```
+
 ## Development
 
 Before commiting any changes, please run the pre-commit hooks. This will ensure that the code is formatted correctly and minimise diffs to code changes when submitting a pull request.

@@ -138,7 +138,7 @@ def choose_auth_strategy_reference_reader() -> AuthMethod:
         application_id=settings.azure_application_id,
         auth_scope=AuthScope.REFERENCE_READER,
         auth_role=AuthRole.REFERENCE_READER,
-        bypass_auth=settings.running_locally,
+        bypass_auth=settings.should_bypass_auth,
     )
 
 
@@ -148,7 +148,7 @@ def choose_auth_strategy_reference_deduplicator() -> AuthMethod:
         application_id=settings.azure_application_id,
         auth_scope=AuthScope.REFERENCE_DEDUPLICATOR,
         auth_role=AuthRole.REFERENCE_DEDUPLICATOR,
-        bypass_auth=settings.running_locally,
+        bypass_auth=settings.should_bypass_auth,
     )
 
 
@@ -167,7 +167,7 @@ async def enhancement_request_hybrid_auth(
         jwt_role=AuthRole.ENHANCEMENT_REQUEST_WRITER,
         get_client_secret=robot_service.get_robot_secret_standalone,
         hmac_client_type=HMACClientType.ROBOT,
-        bypass_auth=settings.running_locally,
+        bypass_auth=settings.should_bypass_auth,
     )(request=request, credentials=credentials)
 
 

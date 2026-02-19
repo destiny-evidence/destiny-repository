@@ -111,6 +111,7 @@ def auth_settings_production():
 def configured_jwt_auth(fake_application_id: str):
     """Configure JWT auth settings for testing."""
     auth_settings.env = Environment.PRODUCTION
+    auth_settings.auth_provider = "azure"  # Explicitly use Azure for these tests
     auth_settings.azure_application_id = fake_application_id
     yield
     auth_settings.__init__()  # type: ignore[call-args, misc]

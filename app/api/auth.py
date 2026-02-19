@@ -23,6 +23,9 @@ from fastapi import Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from httpx import AsyncClient
 from jose import exceptions, jwt
+from joserfc import errors as joserfc_errors
+from joserfc import jwt as joserfc_jwt
+from joserfc.jwk import KeySet
 from opentelemetry import trace
 
 from app.core.config import get_settings
@@ -49,6 +52,7 @@ class AuthRole(StrEnum):
     REFERENCE_READER = "reference.reader"
     REFERENCE_DEDUPLICATOR = "reference.deduplicator"
     ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer"
+    ROBOT_WRITER = "robot.writer"
 
 
 class AuthScope(StrEnum):
@@ -386,12 +390,226 @@ class AzureJwtAuth(AuthMethod):
         span.set_attribute(Attributes.USER_AUTH_METHOD, "azure-jwt")
         if oid := verified_claims.get("oid"):
             span.set_attribute(Attributes.USER_ID, oid)
-        if name := verified_claims.get("name"):
-            span.set_attribute(Attributes.USER_FULL_NAME, name)
         if roles := verified_claims.get("roles"):
             span.set_attribute(Attributes.USER_ROLES, ",".join(roles))
-        if email := verified_claims.get("email"):
-            span.set_attribute(Attributes.USER_EMAIL, email)
+
+        return self._require_scope_or_role(verified_claims)
+
+
+class KeycloakJwtAuth(AuthMethod):
+    """
+    AuthMethod for authorizing requests using JWTs issued by Keycloak.
+
+    Similar to AzureJwtAuth but configured for Keycloak's OIDC endpoints.
+    Uses joserfc for JWT verification and JWKS handling.
+
+    Example:
+        .. code-block:: python
+
+            def auth_strategy():
+                return KeycloakJwtAuth(
+                    keycloak_url="http://localhost:8080",
+                    realm="destiny",
+                    client_id="destiny-repository-client",
+                    scope=AuthScope.REFERENCE_READER,
+                )
+
+            caching_auth = CachingStrategyAuth(selector=auth_strategy)
+
+            router = APIRouter(
+                prefix="/references",
+                tags=["references"],
+                dependencies=[Depends(caching_auth)]
+            )
+
+    """
+
+    def __init__(  # noqa: PLR0913
+        self,
+        keycloak_url: str,
+        realm: str,
+        client_id: str,
+        scope: StrEnum | None = None,
+        role: StrEnum | None = None,
+        cache_ttl: int = CACHE_TTL,
+        issuer_url: str | None = None,
+    ) -> None:
+        """
+        Initialize the Keycloak JWT auth dependency.
+
+        Args:
+            keycloak_url: The base URL of the Keycloak server (used for JWKS fetching)
+            realm: The Keycloak realm name
+            client_id: The client ID (audience) for token validation
+            scope: The required scope in the token's `scope` claim
+            role: The required role in `realm_access.roles` or client roles
+            cache_ttl: Time to live for JWKS cache entries, defaults to 24 hours
+            issuer_url: Optional separate URL for token issuer validation. Defaults to
+                keycloak_url if not provided. Useful when tokens are issued with a
+                different URL than the internal JWKS endpoint (e.g., in Docker).
+
+        """
+        self.keycloak_url = keycloak_url.rstrip("/")
+        self.realm = realm
+        self.client_id = client_id
+        self.scope = scope
+        self.role = role
+        self.cache: TTLCache = TTLCache(maxsize=1, ttl=cache_ttl)
+
+        issuer_base = (issuer_url or keycloak_url).rstrip("/")
+        self.issuer = f"{issuer_base}/realms/{self.realm}"
+        self.jwks_uri = (
+            f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/certs"
+        )
+
+        self._claims_registry = joserfc_jwt.JWTClaimsRegistry(
+            iss={"essential": True, "value": self.issuer},
+            aud={"essential": True, "value": self.client_id},
+        )
+
+    async def verify_token(self, token: str) -> dict[str, Any]:
+        """
+        Verify the token using JWKS fetched from Keycloak.
+
+        Uses joserfc for JWT decoding and JWKS key matching.
+
+        Args:
+            token: The JWT to be verified
+
+        Returns:
+            The decoded token payload
+
+        Raises:
+            AuthError: If token verification fails
+
+        """
+        jwks = self.cache.get("jwks")
+        cached_jwks = bool(jwks)
+
+        if not jwks:
+            try:
+                jwks = await self._get_keycloak_keys()
+            except Exception as exc:
+                raise AuthError(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Unable to fetch signing keys from identity provider.",
+                ) from exc
+            self.cache["jwks"] = jwks
+
+        try:
+            decoded = joserfc_jwt.decode(token, jwks, algorithms=["RS256"])
+            self._claims_registry.validate(decoded.claims)
+            return dict(decoded.claims)
+
+        except joserfc_errors.ExpiredTokenError as exc:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token is expired.",
+            ) from exc
+
+        except joserfc_errors.InvalidClaimError as exc:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid token claims: {exc}",
+            ) from exc
+
+        except joserfc_errors.JoseError as exc:
+            # If we had cached JWKS and verification failed,
+            # try refreshing the keys (key rotation)
+            if cached_jwks:
+                self.cache.pop("jwks", None)
+                return await self.verify_token(token)
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to parse authentication token.",
+            ) from exc
+
+    async def _get_keycloak_keys(self) -> KeySet:
+        """Fetch and import JWKS from Keycloak's OIDC endpoint."""
+        async with AsyncClient() as client:
+            response = await client.get(self.jwks_uri)
+            response.raise_for_status()
+            return KeySet.import_key_set(response.json())
+
+    def _require_scope_or_role(self, verified_claims: dict[str, Any]) -> bool:
+        """
+        Check for required scope or role in the Keycloak token.
+
+        Keycloak tokens have:
+        - scope: space-separated string of scopes
+        - realm_access.roles: list of realm roles
+        - resource_access.{client_id}.roles: list of client roles
+
+        Keycloak tokens always contain a ``scope`` claim. We therefore check
+        scope first and fall back to roles, allowing service accounts that
+        have a realm/client role but no explicit scope.
+
+        Args:
+            verified_claims: The decoded JWT claims
+
+        Returns:
+            True if authorization is successful
+
+        Raises:
+            AuthError: If required scope/role is not present
+
+        """
+        # Check scopes (space-separated string in Keycloak)
+        if self.scope and verified_claims.get("scope"):
+            scopes = verified_claims["scope"].split()
+            if self.scope.value in scopes:
+                return True
+
+        # Check realm roles
+        if self.role:
+            realm_roles = verified_claims.get("realm_access", {}).get("roles", [])
+            if self.role.value in realm_roles:
+                return True
+
+            # Also check client-specific roles
+            client_roles = (
+                verified_claims.get("resource_access", {})
+                .get(self.client_id, {})
+                .get("roles", [])
+            )
+            if self.role.value in client_roles:
+                return True
+
+        raise AuthError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The token does not contain the required scope or role.",
+        )
+
+    async def __call__(
+        self,
+        request: Request,  # noqa: ARG002
+        credentials: HTTPAuthorizationCredentials | None,
+    ) -> bool:
+        """Authenticate the request using Keycloak JWT."""
+        if not credentials:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authorization HTTPBearer header missing.",
+            )
+
+        verified_claims = await self.verify_token(credentials.credentials)
+
+        # Set telemetry attributes
+        span = trace.get_current_span()
+        span.set_attribute(Attributes.USER_AUTH_METHOD, "keycloak-jwt")
+
+        if sub := verified_claims.get("sub"):
+            span.set_attribute(Attributes.USER_ID, sub)
+
+        # Get roles from realm_access and resource_access for telemetry
+        roles = list(verified_claims.get("realm_access", {}).get("roles", []))
+        roles.extend(
+            verified_claims.get("resource_access", {})
+            .get(self.client_id, {})
+            .get("roles", [])
+        )
+        if roles:
+            span.set_attribute(Attributes.USER_ROLES, ",".join(roles))
 
         return self._require_scope_or_role(verified_claims)
 
@@ -432,10 +650,28 @@ def choose_auth_strategy(
     *,
     bypass_auth: bool,
 ) -> AuthMethod:
-    """Choose a strategy for our authorization."""
+    """Choose a strategy for our authorization based on configured provider."""
     if bypass_auth:
         return SuccessAuth()
 
+    # Check auth provider setting
+    if settings.auth_provider == "keycloak":
+        if not settings.keycloak_url or not settings.keycloak_client_id:
+            msg = (
+                "Keycloak auth provider selected but keycloak_url or "
+                "keycloak_client_id is not configured"
+            )
+            raise ValueError(msg)
+        return KeycloakJwtAuth(
+            keycloak_url=settings.keycloak_url,
+            realm=settings.keycloak_realm,
+            client_id=settings.keycloak_client_id,
+            scope=auth_scope,
+            role=auth_role,
+            issuer_url=settings.keycloak_issuer_url,
+        )
+
+    # Default to Azure AD
     return AzureJwtAuth(
         application_id=application_id,
         scope=auth_scope,
@@ -559,7 +795,7 @@ class HybridAuth(AuthMethod):
 
     def __init__(
         self,
-        jwt_auth: AzureJwtAuth,
+        jwt_auth: AzureJwtAuth | KeycloakJwtAuth,
         hmac_auth: HMACMultiClientAuth,
     ) -> None:
         """
@@ -568,7 +804,7 @@ class HybridAuth(AuthMethod):
         Note both methods use the Authentication header, so we will never
         attempt to use both at the same time.
 
-        :param jwt_auth: The JWT authentication method to use
+        :param jwt_auth: The JWT authentication method to use (Azure or Keycloak)
         :param hmac_auth: The HMAC authentication method to use
         """
         self._jwt_auth = jwt_auth
@@ -607,12 +843,31 @@ def choose_hybrid_auth_strategy(  # noqa: PLR0913
     if bypass_auth:
         return SuccessAuth()
 
-    return HybridAuth(
-        jwt_auth=AzureJwtAuth(
+    # Choose JWT auth based on provider
+    if settings.auth_provider == "keycloak":
+        if not settings.keycloak_url or not settings.keycloak_client_id:
+            msg = (
+                "Keycloak auth provider selected but keycloak_url or "
+                "keycloak_client_id is not configured"
+            )
+            raise ValueError(msg)
+        jwt_auth: AzureJwtAuth | KeycloakJwtAuth = KeycloakJwtAuth(
+            keycloak_url=settings.keycloak_url,
+            realm=settings.keycloak_realm,
+            client_id=settings.keycloak_client_id,
+            scope=jwt_scope,
+            role=jwt_role,
+            issuer_url=settings.keycloak_issuer_url,
+        )
+    else:
+        jwt_auth = AzureJwtAuth(
             application_id=application_id,
             scope=jwt_scope,
             role=jwt_role,
-        ),
+        )
+
+    return HybridAuth(
+        jwt_auth=jwt_auth,
         hmac_auth=HMACMultiClientAuth(
             get_client_secret=get_client_secret,
             client_type=hmac_client_type,
