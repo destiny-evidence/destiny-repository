@@ -151,7 +151,7 @@ The identifier(s) to look up. Multiple identifiers can be provided, either in a 
 
 Identifiers are in the format ``[[<other>:]<type>:]<identifier>``:
 
-- If looking up a reference by its Destiny UUID4 id, no type prefix is needed: ``09547790-7dfe-455e-a8df-5dca91963a5b``.
+- If looking up a reference by its Destiny UUID id, no type prefix is needed: ``09547790-7dfe-455e-a8df-5dca91963a5b``.
 - If looking up a reference by a supported :class:`identifier type <libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType>`, the type must be prefixed: ``doi:10.1000/xyz123``.
 - If looking up a reference by a custom identifier type, the type must be prefixed with ``other:``: ``other:custom:internal-id-001``.
 

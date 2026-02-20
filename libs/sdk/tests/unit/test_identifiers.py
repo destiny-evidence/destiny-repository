@@ -1,4 +1,4 @@
-import uuid
+from uuid import UUID
 
 import destiny_sdk
 import pytest
@@ -28,6 +28,59 @@ def test_doi_url_removed():
         identifier="http://doi.org/10.1000/xyz123",
     )
     assert obj.identifier == "10.1000/xyz123"
+
+
+@pytest.mark.parametrize(
+    "doi",
+    [
+        # DataCite GLIS characters: = ~ * $
+        # Crossref/legacy: #
+        "10.18730/9WQ$D",  # Dollar sign
+        "10.18730/9WQ*D",  # Asterisk
+        "10.18730/9WQ~D",  # Tilde
+        "10.18730/9WQ=D",  # Equals
+        "10.18730/9WQ#D",  # Hash
+        "10.18730/9WQ$~*=#D",  # Multiple special characters
+        # Latin Extended characters (accented letters)
+        "10.1000/journalÉdition",  # É (U+00C9)
+        "10.1000/café",  # é (U+00E9)
+        "10.1000/naïve",  # ï (U+00EF)
+        "10.1000/Müller",  # ü (U+00FC)
+        "10.1000/señor",  # ñ (U+00F1)
+    ],
+)
+def test_valid_doi_with_special_characters(doi: str):
+    """Test that DOIs with DataCite GLIS and Latin Extended characters are valid."""
+    obj = destiny_sdk.identifiers.DOIIdentifier(
+        identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.DOI,
+        identifier=doi,
+    )
+    assert obj.identifier == doi
+
+
+@pytest.mark.parametrize(
+    ("doi_input", "expected"),
+    [
+        # Unicode hyphen → ASCII hyphen
+        ("10.1000/abc\u2010def", "10.1000/abc-def"),
+        # NBSP stripped (leading/trailing)
+        ("\u00a010.1000/xyz123", "10.1000/xyz123"),
+        ("10.1000/xyz123\u00a0", "10.1000/xyz123"),
+        # Case-insensitive URL prefix stripping
+        ("HTTP://DOI.ORG/10.1000/xyz123", "10.1000/xyz123"),
+        ("HTTPS://DOI.ORG/10.1000/xyz123", "10.1000/xyz123"),
+        ("https://DX.DOI.ORG/10.1000/xyz123", "10.1000/xyz123"),
+        ("DOI:10.1000/xyz123", "10.1000/xyz123"),
+        ("doi: 10.1000/xyz123", "10.1000/xyz123"),
+    ],
+)
+def test_doi_canonicalization(doi_input: str, expected: str):
+    """Test DOI canonicalization: Unicode normalization and URL prefix stripping."""
+    obj = destiny_sdk.identifiers.DOIIdentifier(
+        identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.DOI,
+        identifier=doi_input,
+    )
+    assert obj.identifier == expected
 
 
 def test_valid_eric_identifier():
@@ -206,7 +259,7 @@ class TestIdentifierLookup:
         [
             # UUID (no type)
             (
-                uuid.UUID("550e8400-e29b-41d4-a716-446655440000"),
+                UUID("550e8400-e29b-41d4-a716-446655440000"),
                 destiny_sdk.identifiers.IdentifierLookup(
                     identifier="550e8400-e29b-41d4-a716-446655440000",
                     identifier_type=None,
@@ -296,8 +349,8 @@ class TestIdentifierLookup:
         result_identifier = parsed.to_identifier()
 
         # Step 8: Assert result is the same as input
-        if isinstance(input_identifier, uuid.UUID):
-            assert isinstance(result_identifier, uuid.UUID)
+        if isinstance(input_identifier, UUID):
+            assert isinstance(result_identifier, UUID)
             assert str(result_identifier) == str(input_identifier)
         else:
             assert isinstance(result_identifier, type(input_identifier))
@@ -311,7 +364,7 @@ class TestIdentifierLookup:
 
     def test_parse_invalid_uuid(self):
         with pytest.raises(
-            ValueError, match="Must be UUIDv4 if no identifier type is specified"
+            ValueError, match="Must be UUID if no identifier type is specified"
         ):
             destiny_sdk.identifiers.IdentifierLookup.parse("not-a-uuid")
 

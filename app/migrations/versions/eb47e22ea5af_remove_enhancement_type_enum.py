@@ -27,6 +27,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # Not safely downgradable. We can create the enum type, but can't
-    # apply it to the pending_enhancement table without triggering the problem
+    # apply it to the table without triggering the problem
     # we're trying to avoid. See also https://github.com/destiny-evidence/destiny-repository/pull/343#discussion_r2458931314
     pass

@@ -1,7 +1,7 @@
 import datetime
 import itertools
-import uuid
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid7
 
 import pytest
 from destiny_sdk.enhancements import Authorship
@@ -35,6 +35,18 @@ def reference() -> Reference:
 
 
 @pytest.fixture
+def reference_with_non_other_identifier(reference: Reference) -> Reference:
+    assert reference.identifiers
+    reference.identifiers.append(
+        LinkedExternalIdentifierFactory.build(
+            identifier=OpenAlexIdentifierFactory.build(),
+            reference_id=reference.id,
+        )
+    )
+    return reference
+
+
+@pytest.fixture
 def searchable_reference(reference: Reference) -> Reference:
     return reference.model_copy(
         update={
@@ -60,20 +72,23 @@ def anti_corruption_service():
 
 @pytest.mark.asyncio
 async def test_find_exact_duplicate_happy_path(
-    reference, anti_corruption_service, fake_uow, fake_repository
+    reference_with_non_other_identifier,
+    anti_corruption_service,
+    fake_uow,
+    fake_repository,
 ):
-    candidate = reference.model_copy(
-        update={"id": uuid.uuid4()},
+    candidate = reference_with_non_other_identifier.model_copy(
+        update={"id": uuid7()},
     )
     repo = fake_repository([candidate])
     uow = fake_uow(references=repo)
     uow.references.find_with_identifiers = AsyncMock(return_value=[candidate])
     service = DeduplicationService(anti_corruption_service, uow, fake_uow())
-    result = await service.find_exact_duplicate(reference)
+    result = await service.find_exact_duplicate(reference_with_non_other_identifier)
     assert result == candidate
     # No longer a subset
     result = await service.find_exact_duplicate(
-        reference.model_copy(update={"visibility": "hidden"})
+        reference_with_non_other_identifier.model_copy(update={"visibility": "hidden"})
     )
     assert not result
 
@@ -82,7 +97,7 @@ async def test_find_exact_duplicate_happy_path(
 async def test_find_exact_duplicate_no_identifiers(
     anti_corruption_service, fake_uow, fake_repository
 ):
-    ref = Reference(id=uuid.uuid4(), identifiers=None)
+    ref = Reference(id=uuid7(), identifiers=None)
     uow = fake_uow(references=fake_repository())
     service = DeduplicationService(anti_corruption_service, uow, fake_uow())
     with pytest.raises(DeduplicationValueError):
@@ -94,7 +109,7 @@ async def test_find_exact_duplicate_only_other_identifier(
     anti_corruption_service, fake_uow, fake_repository
 ):
     ref = Reference(
-        id=uuid.uuid4(),
+        id=uuid7(),
         identifiers=[
             LinkedExternalIdentifier(
                 identifier=OtherIdentifier(
@@ -102,7 +117,7 @@ async def test_find_exact_duplicate_only_other_identifier(
                     identifier_type=ExternalIdentifierType.OTHER,
                     other_identifier_name="other_name",
                 ),
-                reference_id=uuid.uuid4(),
+                reference_id=uuid7(),
             )
         ],
     )
@@ -119,6 +134,14 @@ async def test_find_exact_duplicate_updated_enhancement(
     bibliography = BibliographicMetadataEnhancementFactory.build(title="A title")
     raw_enhancement = RawEnhancementFactory.build()
     ref = ReferenceFactory.build(
+        identifiers=[
+            # Ensure we have at least one non-other identifier
+            LinkedExternalIdentifierFactory.build(
+                identifier=OpenAlexIdentifierFactory.build()
+            ),
+            # Build another random one
+            LinkedExternalIdentifierFactory.build(),
+        ],
         enhancements=[
             EnhancementFactory.build(
                 content=bibliography,
@@ -197,7 +220,7 @@ async def test_nominate_candidate_canonicals_candidates_not_found(
 
     # Patch service.es_uow to mock search_for_candidate_canonicals
     service.es_uow = MagicMock()
-    candidate_result = [MagicMock(id=uuid.uuid4())]
+    candidate_result = [MagicMock(id=uuid7())]
     service.es_uow.references.search_for_candidate_canonicals = AsyncMock(
         return_value=candidate_result
     )
@@ -226,7 +249,7 @@ async def test_nominate_candidate_canonicals_candidates_found(
 
     # Patch service.es_uow to mock search_for_candidate_duplicates
     service.es_uow = MagicMock()
-    candidate_result = [MagicMock(id=uuid.uuid4())]
+    candidate_result = [MagicMock(id=uuid7())]
     service.es_uow.references.search_for_candidate_canonicals = AsyncMock(
         return_value=candidate_result
     )
@@ -269,10 +292,10 @@ async def test_determine_and_map_duplicate_happy_path(
 ):
     # Setup reference and decision
     reference = MagicMock(spec=Reference)
-    reference.id = uuid.uuid4()
+    reference.id = uuid7()
     reference.duplicate_decision = None
 
-    candidate_id = uuid.uuid4()
+    candidate_id = uuid7()
     decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         candidate_canonical_ids=[candidate_id],
@@ -306,11 +329,11 @@ async def test_determine_and_map_duplicate_no_change(
 ):
     # Setup reference and decision
     reference = MagicMock(spec=Reference)
-    reference.id = uuid.uuid4()
+    reference.id = uuid7()
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.DUPLICATE,
-        canonical_reference_id=uuid.uuid4(),
+        canonical_reference_id=uuid7(),
         active_decision=True,
     )
     reference.duplicate_decision = active_decision
@@ -347,7 +370,7 @@ async def test_determine_no_op_terminal(
     fake_uow, fake_repository, anti_corruption_service
 ):
     reference = MagicMock(spec=Reference)
-    reference.id = uuid.uuid4()
+    reference.id = uuid7()
     reference.duplicate_decision = None
 
     decision = ReferenceDuplicateDecision(
@@ -375,11 +398,11 @@ async def test_determine_and_map_duplicate_decoupled_canonical_change(
 ):
     # Setup reference and active decision (was DUPLICATE, now CANONICAL)
     reference = MagicMock(spec=Reference)
-    reference.id = uuid.uuid4()
+    reference.id = uuid7()
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.DUPLICATE,
-        canonical_reference_id=uuid.uuid4(),
+        canonical_reference_id=uuid7(),
         active_decision=True,
     )
     reference.duplicate_decision = active_decision
@@ -420,9 +443,9 @@ async def test_determine_and_map_duplicate_decoupled_different_canonical(
 ):
     # Setup reference and active decision (was DUPLICATE of A, now DUPLICATE of B)
     reference = MagicMock(spec=Reference)
-    reference.id = uuid.uuid4()
-    canonical_a = uuid.uuid4()
-    canonical_b = uuid.uuid4()
+    reference.id = uuid7()
+    canonical_a = uuid7()
+    canonical_b = uuid7()
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.DUPLICATE,
@@ -462,7 +485,7 @@ async def test_determine_and_map_duplicate_decoupled_chain_length(
 ):
     # Setup reference with canonical chain length 2 using real Reference objects
     canonical_reference = Reference(
-        id=uuid.uuid4(),
+        id=uuid7(),
         identifiers=[],
         enhancements=[],
         duplicate_decision=None,
@@ -470,14 +493,14 @@ async def test_determine_and_map_duplicate_decoupled_chain_length(
     )
 
     reference = Reference(
-        id=uuid.uuid4(),
+        id=uuid7(),
         identifiers=[],
         enhancements=[],
         duplicate_decision=None,
         canonical_reference=canonical_reference,
     )
 
-    candidate_id = uuid.uuid4()
+    candidate_id = uuid7()
     decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         candidate_canonical_ids=[candidate_id],
@@ -493,8 +516,7 @@ async def test_determine_and_map_duplicate_decoupled_chain_length(
             reference_duplicate_decisions=dec_repo,
         ),
         fake_uow(),
-    )  # Patch settings.max_reference_duplicate_depth to 2
-    service.__class__.settings = MagicMock(max_reference_duplicate_depth=2)
+    )
 
     determined = await service.determine_canonical_from_candidates(decision)
     out_decision, decision_changed = await service.map_duplicate_decision(determined)
@@ -509,7 +531,7 @@ async def test_determine_and_map_duplicate_now_duplicate(
 ):
     # Setup reference and active decision (was CANONICAL, now DUPLICATE)
     reference = MagicMock(spec=Reference)
-    reference.id = uuid.uuid4()
+    reference.id = uuid7()
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.CANONICAL,
@@ -518,7 +540,7 @@ async def test_determine_and_map_duplicate_now_duplicate(
     )
     reference.duplicate_decision = active_decision
 
-    candidate_id = uuid.uuid4()
+    candidate_id = uuid7()
     decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         candidate_canonical_ids=[candidate_id],
@@ -730,6 +752,7 @@ class TestShortcutDeduplication:
             duplicate_determination=DuplicateDetermination.PENDING,
         )
         duplicate_repo = fake_repository([decision])
+        duplicate_repo.get_active_decision_determinations = AsyncMock(return_value={})
         uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
         uow.references.find_with_identifiers = AsyncMock(
             return_value=[existing_1, existing_2]
@@ -792,6 +815,7 @@ class TestShortcutDeduplication:
             duplicate_determination=DuplicateDetermination.PENDING,
         )
         duplicate_repo = fake_repository([decision])
+        duplicate_repo.get_active_decision_determinations = AsyncMock(return_value={})
         uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
         service = DeduplicationService(
             anti_corruption_service,
@@ -828,14 +852,26 @@ class TestShortcutDeduplication:
             "with trusted identifier(s)"
         )
 
-    async def test_shortcut_deduplication_case_e(
+    async def test_shortcut_marks_canonical_when_trusted_identifier_has_no_matches(
         self,
         trusted_identifier: LinkedExternalIdentifier,
         anti_corruption_service: ReferenceAntiCorruptionService,
         fake_uow,
         fake_repository,
     ):
-        """Various scenarios that should not shortcut deduplication."""
+        """
+        Trusted identifiers with no matches should mark CANONICAL immediately.
+
+        Justification for skipping ES deduplication:
+        - Trusted identifiers (e.g., OpenAlex W-ID) are unique within source
+        - No matching references means the reference is definitively unique
+        - ES fuzzy matching would be redundant and could create false
+          duplicate relationships based on similar titles/authors when we
+          already have certainty from the identifier
+
+        Previously this would return None (fall through to ES). Now it marks
+        as CANONICAL immediately, avoiding unnecessary ES queries.
+        """
         incoming: Reference = ReferenceFactory.build()
         assert incoming.identifiers
         incoming.identifiers.append(trusted_identifier)
@@ -854,23 +890,151 @@ class TestShortcutDeduplication:
         )
         uow.references.find_with_identifiers = AsyncMock(return_value=[])
 
-        # No trusted identifiers
-        assert not await service.shortcut_deduplication_using_identifiers(
-            decision,
-            trusted_unique_identifier_types=set(),
-        )
-
-        # No matching references found
-        assert not await service.shortcut_deduplication_using_identifiers(
+        results = await service.shortcut_deduplication_using_identifiers(
             decision,
             trusted_unique_identifier_types={ExternalIdentifierType.OPEN_ALEX},
         )
 
-        # Not a pending duplicate decision
-        decision.active_decision = True
-        decision.duplicate_determination = DuplicateDetermination.DUPLICATE
+        # Key assertion: we get a result instead of None (fall through case)
+        assert results is not None, (
+            "Trusted identifier with no matches should shortcut to CANONICAL, "
+            "not fall through to ES deduplication"
+        )
+        assert len(results) == 1
+        assert results[0].duplicate_determination == DuplicateDetermination.CANONICAL
+        assert results[0].detail == (
+            "New reference with trusted identifier(s), no existing matches"
+        )
+
+    async def test_shortcut_deduplication_case_e_no_trusted_identifiers(
+        self,
+        trusted_identifier: LinkedExternalIdentifier,
+        anti_corruption_service: ReferenceAntiCorruptionService,
+        fake_uow,
+        fake_repository,
+    ):
+        """Falls through to ES when no trusted identifier types are provided."""
+        incoming: Reference = ReferenceFactory.build()
+        assert incoming.identifiers
+        incoming.identifiers.append(trusted_identifier)
+
+        repo = fake_repository([incoming])
+        decision = ReferenceDuplicateDecision(
+            reference_id=incoming.id,
+            duplicate_determination=DuplicateDetermination.PENDING,
+        )
+        duplicate_repo = fake_repository([decision])
+        uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
+        service = DeduplicationService(
+            anti_corruption_service,
+            uow,
+            fake_uow(),
+        )
+        uow.references.find_with_identifiers = AsyncMock(return_value=[])
+
+        # No trusted identifiers provided - falls through to ES deduplication
+        result = await service.shortcut_deduplication_using_identifiers(
+            decision,
+            trusted_unique_identifier_types=set(),
+        )
+        assert (
+            result is None
+        ), "Should fall through to ES when no trusted types provided"
+
+    async def test_shortcut_deduplication_rejects_non_pending(
+        self,
+        trusted_identifier: LinkedExternalIdentifier,
+        anti_corruption_service: ReferenceAntiCorruptionService,
+        fake_uow,
+        fake_repository,
+    ):
+        """Rejects shortcut on non-pending duplicate decisions."""
+        incoming: Reference = ReferenceFactory.build()
+        assert incoming.identifiers
+        incoming.identifiers.append(trusted_identifier)
+
+        repo = fake_repository([incoming])
+        decision = ReferenceDuplicateDecision(
+            reference_id=incoming.id,
+            duplicate_determination=DuplicateDetermination.DUPLICATE,
+            canonical_reference_id=uuid7(),
+            active_decision=True,
+        )
+        duplicate_repo = fake_repository([decision])
+        uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
+        service = DeduplicationService(
+            anti_corruption_service,
+            uow,
+            fake_uow(),
+        )
+
         with pytest.raises(DeduplicationValueError):
             await service.shortcut_deduplication_using_identifiers(
                 decision,
                 trusted_unique_identifier_types={ExternalIdentifierType.OPEN_ALEX},
             )
+
+    async def test_shortcut_skips_candidate_with_existing_decision(
+        self,
+        trusted_identifier: LinkedExternalIdentifier,
+        anti_corruption_service: ReferenceAntiCorruptionService,
+        fake_uow,
+        fake_repository,
+    ):
+        """
+        Race condition guard: if another worker already created a decision for
+        an undeduplicated candidate, skip the side-effect for that candidate.
+        """
+        existing_1: Reference = ReferenceFactory.build()
+        assert existing_1.identifiers
+        existing_1.identifiers.append(trusted_identifier)
+        existing_2: Reference = ReferenceFactory.build()
+        assert existing_2.identifiers
+        existing_2.identifiers.append(trusted_identifier)
+        incoming: Reference = ReferenceFactory.build()
+        assert incoming.identifiers
+        incoming.identifiers.append(trusted_identifier)
+
+        repo = fake_repository([existing_1, existing_2, incoming])
+        decision = ReferenceDuplicateDecision(
+            reference_id=incoming.id,
+            duplicate_determination=DuplicateDetermination.PENDING,
+        )
+        duplicate_repo = fake_repository([decision])
+
+        # existing_1 has no decision — side-effect should proceed
+        # existing_2 already has CANONICAL — side-effect should be skipped
+        duplicate_repo.get_active_decision_determinations = AsyncMock(
+            return_value={
+                existing_2.id: DuplicateDetermination.CANONICAL,
+            }
+        )
+
+        uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
+        uow.references.find_with_identifiers = AsyncMock(
+            return_value=[existing_1, existing_2]
+        )
+        service = DeduplicationService(
+            anti_corruption_service,
+            uow,
+            fake_uow(),
+        )
+
+        results = await service.shortcut_deduplication_using_identifiers(
+            decision,
+            trusted_unique_identifier_types={ExternalIdentifierType.OPEN_ALEX},
+        )
+        assert results
+        # Incoming becomes canonical + only existing_1 gets a side-effect decision
+        assert len(results) == 2
+        assert results[0].reference_id == incoming.id
+        assert results[0].duplicate_determination == DuplicateDetermination.CANONICAL
+
+        assert results[1].reference_id == existing_1.id
+        assert results[1].duplicate_determination == DuplicateDetermination.DUPLICATE
+        assert results[1].canonical_reference_id == incoming.id
+
+        # existing_2 already handled by another worker — no side-effect
+        assert all(r.reference_id != existing_2.id for r in results)
+        # Verify the bulk guard was called once with all candidate IDs
+        duplicate_repo.get_active_decision_determinations.assert_awaited_once()

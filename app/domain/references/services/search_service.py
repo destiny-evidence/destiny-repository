@@ -7,7 +7,6 @@ from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     AnnotationFilter,
     PublicationYearRange,
-    Reference,
 )
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -16,6 +15,7 @@ from app.domain.service import GenericService
 from app.persistence.es.persistence import ESSearchResult
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
+from app.utils.regex import escape_lucene_quoted_term
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -56,6 +56,8 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         """
         Build an annotation filter for Elasticsearch query string.
 
+        All user-supplied values are escaped to prevent query injection.
+
         Examples:
         - For score filter: `scheme:>=0.8` (minimum bound on score)
         - For scheme and label: `annotations:"scheme/label"`
@@ -70,8 +72,10 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
                 field += f"_{annotation.label}"
             return f"{field}:>={annotation.score}"
         if not annotation.label:
-            return f"annotations:{annotation.scheme.replace(":", r"\:")}*"
-        return f'annotations:"{annotation.scheme}/{annotation.label}"'
+            return f"annotations:{annotation.scheme.replace(':', r'\:')}*"
+        scheme = escape_lucene_quoted_term(annotation.scheme)
+        label = escape_lucene_quoted_term(annotation.label)
+        return f'annotations:"{scheme}/{label}"'
 
     async def search_with_query_string(
         self,
@@ -80,7 +84,7 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         annotations: list[AnnotationFilter] | None = None,
         publication_year_range: PublicationYearRange | None = None,
         sort: list[str] | None = None,
-    ) -> ESSearchResult[Reference]:
+    ) -> ESSearchResult:
         """Search for references matching the query string."""
         global_filters: list[str] = []
         if publication_year_range:
@@ -97,5 +101,9 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         if global_filters:
             query_string = f"({query_string}) AND {' AND '.join(global_filters)}"
         return await self.es_uow.references.search_with_query_string(
-            query_string, fields=self.default_search_fields, page=page, sort=sort
+            query_string,
+            fields=self.default_search_fields,
+            page=page,
+            sort=sort,
+            parse_document=False,
         )

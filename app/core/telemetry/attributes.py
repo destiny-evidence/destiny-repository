@@ -13,6 +13,9 @@ from opentelemetry.semconv._incubating.attributes import (
     messaging_attributes as _messaging_attributes,
 )
 from opentelemetry.semconv._incubating.attributes import (
+    otel_attributes as _otel_attributes,
+)
+from opentelemetry.semconv._incubating.attributes import (
     service_attributes as _service_attributes,
 )
 from opentelemetry.semconv._incubating.attributes import (
@@ -69,8 +72,6 @@ class Attributes(StrEnum):
 
     # User attributes
     USER_ID = _user_attributes.USER_ID
-    USER_EMAIL = _user_attributes.USER_EMAIL
-    USER_FULL_NAME = _user_attributes.USER_FULL_NAME
     USER_ROLES = _user_attributes.USER_ROLES
     USER_AUTH_METHOD = "user.auth.method"
 
@@ -88,6 +89,7 @@ class Attributes(StrEnum):
     ROBOT_ENHANCEMENT_BATCH_ID = "app.robot_enhancement_batch.id"
     ROBOT_ID = "app.robot.id"
     ROBOT_AUTOMATION_ID = "app.robot_automation.id"
+    REFERENCE_DUPLICATE_DECISION_ID = "app.reference_duplicate_decision.id"
 
     # Other
     FILE_LINE_NO = "app.file.line_number"
@@ -96,6 +98,18 @@ class Attributes(StrEnum):
 def trace_attribute(attribute: Attributes, value: AttributeValue) -> None:
     """Trace an attribute in the current span."""
     trace.get_current_span().set_attribute(attribute.value, value)
+
+
+def sample_trace() -> None:
+    """
+    Explicitly sample the current trace.
+
+    This ensures the span is sampled by Refinery.
+    """
+    trace.get_current_span().set_attribute(
+        _otel_attributes.OTEL_SPAN_SAMPLING_RESULT,
+        _otel_attributes.OtelSpanSamplingResultValues.RECORD_AND_SAMPLE.value,
+    )
 
 
 def name_span(name: str) -> None:

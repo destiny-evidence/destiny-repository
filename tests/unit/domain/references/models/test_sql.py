@@ -1,4 +1,4 @@
-import uuid
+from uuid import uuid7
 
 import destiny_sdk
 import pytest
@@ -111,7 +111,7 @@ class DummyDomainEnhancementRequest:
 @pytest.mark.asyncio
 async def test_reference_from_and_to_domain_without_preload():
     # Create dummy domain reference without identifiers and enhancements
-    ref_id = uuid.uuid4()
+    ref_id = uuid7()
     dummy_ref = DummyDomainReference(id=ref_id, visibility=Visibility.PUBLIC)
 
     # Convert from domain to SQL model
@@ -130,8 +130,8 @@ async def test_reference_from_and_to_domain_without_preload():
 @pytest.mark.asyncio
 async def test_external_identifier_from_and_to_domain():
     # Create dummy domain external identifier
-    ext_id = uuid.uuid4()
-    ref_id = uuid.uuid4()
+    ext_id = uuid7()
+    ref_id = uuid7()
     dummy_ext = DummyDomainExternalIdentifier(
         id=ext_id,
         reference_id=ref_id,
@@ -165,8 +165,8 @@ async def test_external_identifier_from_and_to_domain():
 @pytest.mark.asyncio
 async def test_enhancement_from_and_to_domain():
     # Create dummy domain enhancement with content using DummyContent
-    enh_id = uuid.uuid4()
-    ref_id = uuid.uuid4()
+    enh_id = uuid7()
+    ref_id = uuid7()
     dummy_content = DummyContent()
     dummy_enh = DummyDomainEnhancement(
         id=enh_id,
@@ -213,16 +213,16 @@ async def test_enhancement_from_and_to_domain():
 @pytest.mark.asyncio
 async def test_reference_with_relationships():
     # Create dummy domain external identifier and enhancement
-    ref_id = uuid.uuid4()
+    ref_id = uuid7()
     dummy_ext = DummyDomainExternalIdentifier(
-        id=uuid.uuid4(),
+        id=uuid7(),
         reference_id=ref_id,
         identifier_type=ExternalIdentifierType.PM_ID,
         identifier="123456",
     )
     dummy_content = DummyContent()
     dummy_enh = DummyDomainEnhancement(
-        id=uuid.uuid4(),
+        id=uuid7(),
         reference_id=ref_id,
         source="annotation_source",
         visibility=Visibility.RESTRICTED,

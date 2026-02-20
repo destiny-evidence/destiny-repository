@@ -1,7 +1,7 @@
 """Unit tests for the ImportService class."""
 
-import uuid
 from unittest.mock import AsyncMock
+from uuid import uuid7
 
 import destiny_sdk
 import httpx
@@ -21,10 +21,10 @@ from app.domain.imports.services.anti_corruption_service import (
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 
-RECORD_ID = uuid.uuid4()
-REF_ID = uuid.uuid4()
-RESULT_ID = uuid.uuid4()
-BATCH_ID = uuid.uuid4()
+RECORD_ID = uuid7()
+REF_ID = uuid7()
+RESULT_ID = uuid7()
+BATCH_ID = uuid7()
 
 
 @pytest.fixture
@@ -179,34 +179,22 @@ async def test_import_reference_sql_integrity_error(
     assert result.status == ImportResultStatus.RETRYING
 
 
-@pytest.mark.asyncio
-async def test_distribute_import_batch_happy_path(monkeypatch, fake_uow):
-    """Test distribute_import_batch happy path with multiple lines."""
-
-    # Prepare a fake ImportBatch
-    batch_id = uuid.uuid4()
-    import_batch = ImportBatch(
-        id=batch_id,
-        storage_url="https://fake-storage-url.com",
-        status=ImportBatchStatus.CREATED,
-        import_record_id=uuid.uuid4(),
-    )
-
-    # Prepare lines to be returned by the HTTPX stream
-    lines = ["ref1", "ref2", "ref3"]
+class TestDistributeImportBatch:
+    """Tests for distribute_import_batch method."""
 
     class FakeResponse:
-        def __init__(self, lines):
+        def __init__(self, lines, fail_after=None):
             self._lines = lines
-            self._idx = 0
+            self._fail_after = fail_after
             self.status_code = 200
+            self.is_success = True
 
         async def aiter_lines(self):
-            for line in self._lines:
+            for i, line in enumerate(self._lines):
+                if self._fail_after is not None and i >= self._fail_after:
+                    msg = "peer closed connection"
+                    raise httpx.RemoteProtocolError(msg)
                 yield line
-
-        def raise_for_status(self):
-            pass
 
         async def __aenter__(self):
             return self
@@ -225,8 +213,145 @@ async def test_distribute_import_batch_happy_path(monkeypatch, fake_uow):
             pass
 
     class FakeClient:
-        def __init__(self, lines):
+        def __init__(self, lines, fail_after_sequence=None):
             self._lines = lines
+            self._transport = None
+            self._fail_after_sequence = fail_after_sequence or []
+            self.attempt_count = 0
+            self.streamed_url = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+        def stream(self, method, url):
+            self.streamed_url = url
+            fail_after = None
+            if self.attempt_count < len(self._fail_after_sequence):
+                fail_after = self._fail_after_sequence[self.attempt_count]
+            self.attempt_count += 1
+            return TestDistributeImportBatch.FakeStreamContext(
+                TestDistributeImportBatch.FakeResponse(self._lines, fail_after)
+            )
+
+    @pytest.mark.asyncio
+    async def test_happy_path(self, monkeypatch, fake_uow):
+        """Test distribute_import_batch happy path with multiple lines."""
+        import_batch = ImportBatch(
+            id=uuid7(),
+            storage_url="https://fake-storage-url.com",
+            status=ImportBatchStatus.CREATED,
+            import_record_id=uuid7(),
+        )
+        lines = ["ref1", "ref2", "ref3"]
+
+        client = self.FakeClient(lines)
+        # Accept **kwargs to absorb follow_redirects=False
+        monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: client)
+
+        created_results = []
+        queued_tasks = []
+
+        async def fake_register_result(result):
+            created_results.append(result)
+            return result
+
+        async def fake_queue_task_with_trace(*args, otel_enabled):  # noqa: ARG001
+            queued_tasks.append(args)
+
+        service = ImportService(ImportAntiCorruptionService(), fake_uow())
+        monkeypatch.setattr(service, "register_result", fake_register_result)
+        monkeypatch.setattr(
+            "app.domain.imports.service.queue_task_with_trace",
+            fake_queue_task_with_trace,
+        )
+
+        await service.distribute_import_batch(import_batch)
+
+        assert len(created_results) == len(lines)
+        assert len(queued_tasks) == len(lines)
+        assert client.streamed_url == str(import_batch.storage_url)
+
+    @pytest.mark.asyncio
+    async def test_retries_on_connection_error(self, monkeypatch, fake_uow):
+        """Test that it retries and resumes from last line on connection error."""
+        import_batch = ImportBatch(
+            id=uuid7(),
+            storage_url="https://fake-storage-url.com",
+            status=ImportBatchStatus.CREATED,
+            import_record_id=uuid7(),
+        )
+        lines = ["ref1", "ref2", "ref3", "ref4"]
+
+        # First attempt fails after 2 lines, second attempt succeeds
+        client = self.FakeClient(lines, fail_after_sequence=[2, None])
+        # Accept **kwargs to absorb follow_redirects=False
+        monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: client)
+
+        queued_lines = []
+
+        async def fake_register_result(result):
+            return result
+
+        async def fake_queue_task_with_trace(*args, otel_enabled):  # noqa: ARG001
+            queued_lines.append(args[2])
+
+        service = ImportService(ImportAntiCorruptionService(), fake_uow())
+        monkeypatch.setattr(service, "register_result", fake_register_result)
+        monkeypatch.setattr(
+            "app.domain.imports.service.queue_task_with_trace",
+            fake_queue_task_with_trace,
+        )
+
+        await service.distribute_import_batch(import_batch)
+
+        assert client.attempt_count == 2
+        assert queued_lines == ["ref1", "ref2", "ref3", "ref4"]
+        assert client.streamed_url == str(import_batch.storage_url)
+
+
+@pytest.mark.asyncio
+async def test_distribute_import_batch_rejects_redirect(monkeypatch, fake_uow):
+    """A 3xx response from storage is rejected (redirect prevention)."""
+    batch_id = uuid7()
+    import_batch = ImportBatch(
+        id=batch_id,
+        storage_url="https://fake-storage-url.com",
+        status=ImportBatchStatus.CREATED,
+        import_record_id=uuid7(),
+    )
+
+    class FakeRedirectResponse:
+        status_code = 302
+        is_success = False
+
+        def __init__(self):
+            self.request = httpx.Request("GET", str(import_batch.storage_url))
+
+        async def aiter_lines(self):
+            return
+            yield
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    class FakeStreamContext:
+        def __init__(self, response):
+            self._response = response
+
+        async def __aenter__(self):
+            return self._response
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    class FakeClient:
+        def __init__(self):
             self._transport = None
 
         async def __aenter__(self):
@@ -236,34 +361,15 @@ async def test_distribute_import_batch_happy_path(monkeypatch, fake_uow):
             pass
 
         def stream(self, method, url):
-            assert method == "GET"
-            assert url == str(import_batch.storage_url)
-            response = FakeResponse(self._lines)
-            return FakeStreamContext(response)
+            return FakeStreamContext(FakeRedirectResponse())
 
-    monkeypatch.setattr(httpx, "AsyncClient", lambda: FakeClient(lines))
-
-    created_results = []
-
-    async def fake_register_result(result):
-        created_results.append(result)
-        return result
-
-    queued_tasks = []
-
-    async def fake_queue_task_with_trace(*args, otel_enabled):  # noqa: ARG001
-        queued_tasks.append(args)
+    # Accept **kwargs to absorb follow_redirects=False
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FakeClient())
 
     service = ImportService(ImportAntiCorruptionService(), fake_uow())
-    monkeypatch.setattr(service, "register_result", fake_register_result)
-    monkeypatch.setattr(
-        "app.domain.imports.service.queue_task_with_trace", fake_queue_task_with_trace
-    )
 
-    await service.distribute_import_batch(import_batch)
-
-    assert len(created_results) == len(lines)
-    assert len(queued_tasks) == len(lines)
+    with pytest.raises(httpx.HTTPStatusError, match="302"):
+        await service.distribute_import_batch(import_batch)
 
 
 @pytest.mark.asyncio
@@ -271,7 +377,7 @@ async def test_get_import_batch_summary_batch_completed_no_failures(
     fake_repository, fake_uow, fake_import_batch
 ):
     fake_import_result_completed = ImportResult(
-        id=uuid.uuid4(),
+        id=uuid7(),
         import_batch_id=BATCH_ID,
         status=ImportResultStatus.COMPLETED,
         reference_id=REF_ID,
@@ -303,17 +409,17 @@ async def test_get_import_batch_summary_batch_completed_with_failures(
     fake_repository, fake_uow, fake_import_batch
 ):
     fake_import_result_failed = ImportResult(
-        id=uuid.uuid4(),
+        id=uuid7(),
         import_batch_id=BATCH_ID,
         status=ImportResultStatus.FAILED,
         failure_details="ded",
     )
 
     fake_import_result_partial_failed = ImportResult(
-        id=uuid.uuid4(),
+        id=uuid7(),
         import_batch_id=BATCH_ID,
         status=ImportResultStatus.PARTIALLY_FAILED,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid7(),
         failure_details="not ded, but close",
     )
 
@@ -343,16 +449,16 @@ async def test_get_import_batch_summary_batch_in_progress(
     fake_repository, fake_uow, fake_import_batch
 ):
     fake_import_result_failed = ImportResult(
-        id=uuid.uuid4(),
+        id=uuid7(),
         import_batch_id=BATCH_ID,
         status=ImportResultStatus.STARTED,
     )
 
     fake_import_result_partial_failed = ImportResult(
-        id=uuid.uuid4(),
+        id=uuid7(),
         import_batch_id=BATCH_ID,
         status=ImportResultStatus.COMPLETED,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid7(),
     )
 
     fake_batch = fake_import_batch(

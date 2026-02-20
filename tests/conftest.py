@@ -21,8 +21,13 @@ from app.persistence.sql.session import (
     AsyncDatabaseSessionManager,
     db_manager,
 )
-from tests.db_utils import alembic_config_from_url, clean_tables, tmp_database
+from tests.db_utils import (
+    alembic_config_from_url,
+    clean_tables,
+    tmp_database,
+)
 from tests.es_utils import create_test_indices, delete_test_indices
+from tests.persistence_models import SimpleSQLModel
 
 settings = get_settings()
 MIGRATION_TASK: asyncio.Task | None = None
@@ -62,7 +67,13 @@ async def sessionmanager_for_tests(
 ) -> AsyncGenerator[AsyncDatabaseSessionManager]:
     """Build shared session manager for tests."""
     db_manager.init(DatabaseConfig(db_url=migrated_postgres_template), "test")
-    # can add another init (redis, etc...)
+
+    # Create test-only tables that aren't part of migrations
+    engine = db_manager._engine  # noqa: SLF001
+    assert engine
+    async with engine.begin() as conn:
+        await conn.run_sync(SimpleSQLModel.__table__.create, checkfirst=True)
+
     yield db_manager
     await db_manager.close()
 
@@ -114,12 +125,6 @@ _fake_private_key = {
 def fake_application_id() -> str:
     """Return a fake application id for testing."""
     return "test_application_id"
-
-
-@pytest.fixture
-def fake_tenant_id() -> str:
-    """Return a fake tenant id for testing."""
-    return "test_tenant_id"
 
 
 @pytest.fixture

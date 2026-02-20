@@ -22,7 +22,7 @@ jobs:
       name: ${{ inputs.environment }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Extract version from pyproject.toml
         id: extract-version
@@ -37,7 +37,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.7.14"
+          version: "0.9.22"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 

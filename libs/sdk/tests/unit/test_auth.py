@@ -1,8 +1,8 @@
 """Tests for HMAC Authentication."""
 
 import time
-import uuid
 from collections.abc import AsyncGenerator
+from uuid import uuid7
 
 import destiny_sdk
 import pytest
@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, FastAPI, status
 from httpx import ASGITransport, AsyncClient
 
 TEST_SECRET_KEY = "dlfskdfhgk8ei346oiehslkdfrerikfglser934utofs"
-TEST_CLIENT_ID = uuid.uuid4()
+TEST_CLIENT_ID = uuid7()
 REQUEST_BODY = b'{"message": "info"}'
 
 

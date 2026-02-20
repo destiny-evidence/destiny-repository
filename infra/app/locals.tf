@@ -7,17 +7,80 @@ locals {
     "reference*",
     "robot-automation-percolation*"
   ]
-  is_production  = var.environment == "production"
-  is_development = var.environment == "development"
 
-  prod_db_storage_mb = 65536
-  dev_db_storage_mb  = 32768
+  environment_configs = {
+    development = {
+      db_storage_mb   = 32768 # 32GB
+      db_storage_tier = "P4"
+      db_backup_days  = 7
+      db_ha_enabled   = false
+      db_sku_name     = "GP_Standard_D2ds_v4"
 
-  # IPOS tiers for postgresql flexible server
-  # We use the default for our storage size as defined at
-  # https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/postgresql_flexible_server#storage_tier-defaults-based-on-storage_mb
-  prod_db_storage_tier = "P6"
-  dev_db_storage_tier  = "P4"
+      alerts_enabled = false
+
+      db_log_retention_days         = 30
+      db_logfiles_retention_days    = 3
+      db_log_disconnections         = "on"
+      db_log_min_duration_statement = 500 # Log queries > 500ms
+
+      es_snapshot_schedule   = "0 30 1 * * ?" # Daily at 01:30
+      es_snapshot_retention  = 7
+      es_hot_max_size_memory = "8g" # 280GB storage: https://cloud.elastic.co/pricing
+    }
+
+    staging = {
+      db_storage_mb   = 131072 # 128GB
+      db_storage_tier = "P10"
+      db_backup_days  = 7
+      db_ha_enabled   = false
+      db_sku_name     = "GP_Standard_D2ds_v4"
+
+      alerts_enabled          = true
+      db_storage_warning_pct  = 70
+      db_storage_critical_pct = 85
+      db_cpu_warning_pct      = 80
+      db_cpu_critical_pct     = 90
+      db_memory_warning_pct   = 80
+      db_memory_critical_pct  = 90
+
+      db_log_retention_days         = 30
+      db_logfiles_retention_days    = 7
+      db_log_disconnections         = "on"
+      db_log_min_duration_statement = 500 # Log queries > 500ms
+
+      es_snapshot_schedule   = "0 30 1 * * ?"
+      es_snapshot_retention  = 7
+      es_hot_max_size_memory = "8g" # 280GB storage: https://cloud.elastic.co/pricing
+    }
+
+    production = {
+      db_storage_mb   = 4193280 # 4TB with host caching
+      db_storage_tier = "P50"
+      db_backup_days  = 35
+      db_ha_enabled   = true
+      db_sku_name     = "GP_Standard_D8ds_v5" # More memory -> better chance of indexes being cached in memory, improving performance
+
+      alerts_enabled          = true
+      db_storage_warning_pct  = 70
+      db_storage_critical_pct = 85
+      db_cpu_warning_pct      = 70
+      db_cpu_critical_pct     = 85
+      db_memory_warning_pct   = 70
+      db_memory_critical_pct  = 85
+
+      db_log_retention_days         = 30
+      db_logfiles_retention_days    = 7
+      db_log_disconnections         = "off" # High volume in production
+      db_log_min_duration_statement = 500   # Log queries > 500ms
+
+      es_snapshot_schedule   = "0 30 1 * * ?" # Daily at 01:30
+      es_snapshot_retention  = 30             # 30 days
+      es_hot_max_size_memory = "60g"          # 2TB storage: https://cloud.elastic.co/pricing
+    }
+  }
+
+  # Active environment configuration (defaults to development for unknown environments)
+  env = lookup(local.environment_configs, var.environment, local.environment_configs["development"])
 
   minimum_resource_tags = {
     # All these tags are required for UCL tenant compliance policies

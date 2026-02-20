@@ -46,12 +46,9 @@ export async function createMsalConfig(): Promise<Configuration> {
         process.env.NEXT_PUBLIC_AZURE_CLIENT_ID ||
         "",
       authority:
-        runtime.AZURE_LOGIN_URL ||
-        process.env.AZURE_LOGIN_URL ||
-        `https://login.microsoftonline.com/${
-          runtime.NEXT_PUBLIC_AZURE_TENANT_ID ||
-          process.env.NEXT_PUBLIC_AZURE_TENANT_ID
-        }`,
+        runtime.NEXT_PUBLIC_AZURE_LOGIN_URL ||
+        process.env.NEXT_PUBLIC_AZURE_LOGIN_URL ||
+        "",
       redirectUri,
     },
     cache: {

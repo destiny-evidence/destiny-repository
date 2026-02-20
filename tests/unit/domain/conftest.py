@@ -1,5 +1,4 @@
-import uuid
-from uuid import UUID, uuid4
+from uuid import UUID, uuid7
 
 import pytest
 
@@ -186,6 +185,19 @@ class FakeRepository:
                 updated_count += 1
         return updated_count
 
+    async def get_active_decision_determinations(
+        self, reference_ids: set[UUID]
+    ) -> dict[UUID, object]:
+        """Return {reference_id: duplicate_determination} for active decisions."""
+        if not reference_ids:
+            return {}
+        return {
+            record.reference_id: record.duplicate_determination  # type: ignore[attr-defined]
+            for record in self.repository.values()
+            if getattr(record, "reference_id", None) in reference_ids
+            and getattr(record, "active_decision", False) is True
+        }
+
     async def bulk_update_by_filter(
         self, filter_conditions: dict, **kwargs: object
     ) -> int:
@@ -274,7 +286,7 @@ def fake_import_batch():
     def _fake_import_batch(
         id: UUID, status: ImportBatchStatus, import_results: list[ImportResult]
     ) -> ImportBatch:
-        import_record_id = uuid4()
+        import_record_id = uuid7()
 
         return ImportBatch(
             id=id,
@@ -347,7 +359,7 @@ def pending_enhancement_factory(session, created_reference, created_robot):
         status: PendingEnhancementStatus = PendingEnhancementStatus.PENDING,
         expires_at=None,
         source: str = "test",
-        retry_of: uuid.UUID | None = None,
+        retry_of: UUID | None = None,
         **kwargs,
     ) -> PendingEnhancement:
         pending_enhancement = PendingEnhancementFactory.build(

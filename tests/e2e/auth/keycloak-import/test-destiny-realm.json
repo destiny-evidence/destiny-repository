@@ -1,27 +1,19 @@
 {
   "realm": "destiny",
   "enabled": true,
-  "displayName": "DESTINY Repository",
-  "sslRequired": "external",
+  "displayName": "DESTINY Repository (Test)",
+  "sslRequired": "none",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": true,
   "editUsernameAllowed": false,
-  "bruteForceProtected": true,
+  "bruteForceProtected": false,
   "accessTokenLifespan": 300,
   "accessTokenLifespanForImplicitFlow": 900,
   "ssoSessionIdleTimeout": 1800,
   "ssoSessionMaxLifespan": 36000,
   "offlineSessionIdleTimeout": 2592000,
-  "defaultOptionalClientScopes": [
-    "administrator.all",
-    "import.writer.all",
-    "reference.reader.all",
-    "reference.deduplicator.all",
-    "enhancement_request.writer.all",
-    "robot.writer.all"
-  ],
   "roles": {
     "realm": [
       {
@@ -43,9 +35,30 @@
       {
         "name": "enhancement_request.writer",
         "description": "Can request enhancements"
+      },
+      {
+        "name": "robot.writer",
+        "description": "Can register robots and rotate robot client secrets"
       }
     ]
   },
+  "groups": [
+    {
+      "name": "consumers",
+      "realmRoles": ["reference.reader"]
+    },
+    {
+      "name": "developers",
+      "realmRoles": [
+        "administrator",
+        "import.writer",
+        "reference.reader",
+        "reference.deduplicator",
+        "enhancement_request.writer",
+        "robot.writer"
+      ]
+    }
+  ],
   "clientScopes": [
     {
       "name": "administrator.all",
@@ -106,38 +119,29 @@
     {
       "clientId": "destiny-auth-client",
       "name": "DESTINY Repository Auth Client",
-      "description": "Public client for user authentication (UI, Postman, API testing tools)",
+      "description": "Public client for all user authentication (UI, CLI, Postman, API testing tools)",
       "enabled": true,
       "publicClient": true,
-      "directAccessGrantsEnabled": false,
+      "directAccessGrantsEnabled": true,
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "protocol": "openid-connect",
-      "rootUrl": "http://localhost:3000",
+      "rootUrl": "",
       "baseUrl": "/",
-      "redirectUris": [
-        "http://localhost:3000/*",
-        "https://oauth.pstmn.io/v1/callback"
-      ],
-      "webOrigins": ["http://localhost:3000", "https://oauth.pstmn.io"],
-      "defaultClientScopes": [
-        "openid",
-        "profile",
-        "email",
-        "roles",
-        "web-origins",
-        "reference.reader.all"
-      ],
+      "redirectUris": ["*"],
+      "webOrigins": ["*"],
       "optionalClientScopes": [
         "administrator.all",
         "import.writer.all",
+        "reference.reader.all",
         "reference.deduplicator.all",
         "enhancement_request.writer.all",
         "robot.writer.all"
       ],
       "attributes": {
+        "oauth2.device.authorization.grant.enabled": "true",
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:3000/*"
+        "post.logout.redirect.uris": "*"
       },
       "protocolMappers": [
         {
@@ -165,49 +169,6 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "protocol": "openid-connect"
-    },
-    {
-      "clientId": "destiny-cli",
-      "name": "DESTINY Repository CLI",
-      "description": "Command-line interface client",
-      "enabled": true,
-      "publicClient": true,
-      "directAccessGrantsEnabled": false,
-      "standardFlowEnabled": true,
-      "implicitFlowEnabled": false,
-      "protocol": "openid-connect",
-      "redirectUris": ["http://localhost:*", "http://127.0.0.1:*"],
-      "defaultClientScopes": [
-        "openid",
-        "profile",
-        "email",
-        "roles",
-        "reference.reader.all"
-      ],
-      "optionalClientScopes": [
-        "administrator.all",
-        "import.writer.all",
-        "reference.deduplicator.all",
-        "enhancement_request.writer.all",
-        "robot.writer.all"
-      ],
-      "attributes": {
-        "oauth2.device.authorization.grant.enabled": "true",
-        "pkce.code.challenge.method": "S256"
-      },
-      "protocolMappers": [
-        {
-          "name": "destiny-api-audience",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-audience-mapper",
-          "consentRequired": false,
-          "config": {
-            "included.client.audience": "destiny-repository-client",
-            "id.token.claim": "false",
-            "access.token.claim": "true"
-          }
-        }
-      ]
     }
   ],
   "users": [
@@ -225,13 +186,23 @@
           "temporary": false
         }
       ],
-      "realmRoles": [
-        "administrator",
-        "import.writer",
-        "reference.reader",
-        "reference.deduplicator",
-        "enhancement_request.writer"
-      ]
+      "groups": ["developers"]
+    },
+    {
+      "username": "restricteduser",
+      "email": "restricteduser@localhost",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Restricted",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "testpass",
+          "temporary": false
+        }
+      ],
+      "groups": ["consumers"]
     }
   ],
   "scopeMappings": [
@@ -254,6 +225,10 @@
     {
       "clientScope": "enhancement_request.writer.all",
       "roles": ["enhancement_request.writer"]
+    },
+    {
+      "clientScope": "robot.writer.all",
+      "roles": ["robot.writer"]
     }
   ]
 }

@@ -1,9 +1,9 @@
 """Defines tests for the references router."""
 
 import datetime
-import uuid
 from collections.abc import AsyncGenerator
 from unittest.mock import ANY, AsyncMock, patch
+from uuid import UUID, uuid7
 
 import pytest
 from destiny_sdk.enhancements import EnhancementType
@@ -36,7 +36,6 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     Visibility,
 )
-from app.domain.references.models.models import Reference as DomainReference
 from app.domain.references.models.sql import Enhancement as SQLEnhancement
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import (
@@ -53,7 +52,7 @@ from app.domain.references.service import ReferenceService
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
-from app.persistence.es.persistence import ESSearchResult, ESSearchTotal
+from app.persistence.es.persistence import ESHit, ESSearchResult, ESSearchTotal
 from app.tasks import broker
 from app.utils.time_and_date import apply_positive_timedelta, iso8601_duration_adapter
 from tests.factories import (
@@ -203,10 +202,10 @@ async def add_robot_enhancement_batch(
     return robot_enhancement_batch.to_domain()
 
 
-async def add_enhancement(session: AsyncSession, reference_id: uuid.UUID):
+async def add_enhancement(session: AsyncSession, reference_id: UUID):
     """Add a basic enhancement to a reference."""
     enhancement = SQLEnhancement(
-        id=uuid.uuid4(),
+        id=uuid7(),
         reference_id=reference_id,
         visibility=Visibility.PUBLIC,
         source="test_source",
@@ -240,8 +239,8 @@ async def test_get_reference_with_enhancements_happy_path(
 
     response_data = response.json()
 
-    assert uuid.UUID(response_data["id"]) == reference.id
-    assert uuid.UUID(response_data["enhancements"][0]["id"]) == enhancement.id
+    assert UUID(response_data["id"]) == reference.id
+    assert UUID(response_data["enhancements"][0]["id"]) == enhancement.id
 
 
 async def test_request_batch_enhancement_happy_path(
@@ -301,7 +300,7 @@ async def test_add_robot_automation_happy_path(
         assert found, "Expected 'robot_id' to be set in structlog contextvars"
         assert response.status_code == status.HTTP_201_CREATED
         response_data = response.json()
-    assert uuid.UUID(response_data["robot_id"]) == robot.id
+    assert UUID(response_data["robot_id"]) == robot.id
     assert response_data["query"] == robot_automation_create["query"]
 
 
@@ -311,7 +310,7 @@ async def test_add_robot_automation_missing_robot(
 ) -> None:
     """Test adding a robot automation with a missing robot."""
     robot_automation_create = {
-        "robot_id": str(uuid.uuid4()),
+        "robot_id": str(uuid7()),
         "query": {"match": {"robot_id": "some-robot-id"}},
     }
 
@@ -319,7 +318,7 @@ async def test_add_robot_automation_missing_robot(
         "/v1/enhancement-requests/automations/", json=robot_automation_create
     )
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert "robot" in response.json()["detail"].casefold()
 
 
@@ -391,9 +390,9 @@ async def test_update_robot_automation_happy_path(
 
     assert response.status_code == status.HTTP_201_CREATED
     response_data = response.json()
-    assert uuid.UUID(response_data["robot_id"]) == robot.id
+    assert UUID(response_data["robot_id"]) == robot.id
     assert response_data["query"] == robot_automation_update["query"]
-    assert uuid.UUID(response_data["id"]) == uuid.UUID(automation_id)
+    assert UUID(response_data["id"]) == UUID(automation_id)
 
 
 async def test_update_robot_automation_nonexistent_automation(
@@ -403,7 +402,7 @@ async def test_update_robot_automation_nonexistent_automation(
 ) -> None:
     """Test updating a nonexistent robot automation."""
     robot = await add_robot(session)
-    fake_automation_id = uuid.uuid4()
+    fake_automation_id = uuid7()
 
     robot_automation_update = {
         "robot_id": str(robot.id),
@@ -440,7 +439,7 @@ async def test_update_robot_automation_missing_robot(
     automation_id = create_response.json()["id"]
 
     # Now try to update with a nonexistent robot
-    fake_robot_id = uuid.uuid4()
+    fake_robot_id = uuid7()
     robot_automation_update = {
         "robot_id": str(fake_robot_id),
         "query": {"match": {"name": "updated_query"}},
@@ -451,7 +450,7 @@ async def test_update_robot_automation_missing_robot(
         json=robot_automation_update,
     )
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert "robot" in response.json()["detail"].casefold()
 
 
@@ -509,7 +508,7 @@ async def test_get_robot_automations_with_automations(
     assert automation_ids == expected_ids
 
     # Check robot IDs are correct
-    robot_ids = {uuid.UUID(automation["robot_id"]) for automation in response_data}
+    robot_ids = {UUID(automation["robot_id"]) for automation in response_data}
     expected_robot_ids = {robot.id, robot.id}
     assert robot_ids == expected_robot_ids
 
@@ -622,7 +621,7 @@ async def test_request_robot_enhancement_batch_invalid_robot_id(
         "/v1/robot-enhancement-batches/?robot_id=invalid-uuid&limit=10"
     )
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     mock_get_pending.assert_not_awaited()
 
 
@@ -638,7 +637,7 @@ async def test_request_robot_enhancement_batch_missing_robot_id(
 
     response = await client.post("/v1/robot-enhancement-batches/?limit=10")
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     mock_get_pending.assert_not_awaited()
 
 
@@ -743,19 +742,19 @@ async def test_lookup_references_too_many_identifiers(
 ) -> None:
     """Test lookup_references with too many identifiers."""
     too_many_identifiers = [
-        str(uuid.uuid4())
+        str(uuid7())
         for _ in range(get_settings().max_lookup_reference_query_length + 1)
     ]
     response = await client.get(
         "/v1/references/",
         params={"identifier": too_many_identifiers},
     )
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     response = await client.get(
         "/v1/references/",
         params={"identifier": ",".join(too_many_identifiers)},
     )
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 async def test_lookup_references_invalid_identifier_format(
@@ -768,12 +767,12 @@ async def test_lookup_references_invalid_identifier_format(
         params={"identifier": invalid_identifier},
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "Must be UUIDv4" in response.text
+    assert "Must be UUID" in response.text
 
 
 async def test_get_robot_enhancement_batch_nonexistent_batch(client: AsyncClient):
     """Test getting a robot enhancement batch that does not exist."""
-    response = await client.get(f"/v1/robot-enhancement-batces/{uuid.uuid4()}/")
+    response = await client.get(f"/v1/robot-enhancement-batces/{uuid7()}/")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -791,7 +790,7 @@ async def test_robot_enhancement_batch_renew_lease(
         ReferenceService, "renew_robot_enhancement_batch_lease", mock_renew_lease
     )
 
-    _id = uuid.uuid4()
+    _id = uuid7()
     response = await client.patch(
         f"/v1/robot-enhancement-batches/{_id}/renew-lease/?lease={dt_iso}"
     )
@@ -818,7 +817,7 @@ async def test_robot_enhancement_batch_renew_lease_empty_response(
         ReferenceService, "renew_robot_enhancement_batch_lease", mock_renew_lease
     )
 
-    _id = uuid.uuid4()
+    _id = uuid7()
     response = await client.patch(
         f"/v1/robot-enhancement-batches/{_id}/renew-lease/?lease={dt_iso}"
     )
@@ -835,6 +834,43 @@ async def test_robot_enhancement_batch_renew_lease_empty_response(
     )
 
 
+async def test_search_references_preserves_es_order(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that search results preserve the order from Elasticsearch."""
+    ref_a = ReferenceFactory.build()
+    ref_b = ReferenceFactory.build()
+    ref_c = ReferenceFactory.build()
+
+    # ES returns results in order: A, B, C (by score)
+    mock_search_result = ESSearchResult(
+        hits=[
+            ESHit(id=ref_a.id, score=3.0),
+            ESHit(id=ref_b.id, score=2.0),
+            ESHit(id=ref_c.id, score=1.0),
+        ],
+        total=ESSearchTotal(value=3, relation="eq"),
+        page=1,
+    )
+
+    mock_search = AsyncMock(return_value=mock_search_result)
+    monkeypatch.setattr(ReferenceService, "search_references", mock_search)
+
+    # SQL returns references in different order: C, A, B
+    mock_get_dedup = AsyncMock(return_value=[ref_c, ref_a, ref_b])
+    monkeypatch.setattr(ReferenceService, "get_deduplicated_references", mock_get_dedup)
+
+    response = await client.get("/v1/references/search/", params={"q": "test"})
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    returned_ids = [ref["id"] for ref in data["references"]]
+
+    # Order should match ES order (A, B, C), not SQL order (C, A, B)
+    assert returned_ids == [str(ref_a.id), str(ref_b.id), str(ref_c.id)]
+
+
 async def test_search_references_with_annotation_filters(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -843,16 +879,17 @@ async def test_search_references_with_annotation_filters(
     reference = ReferenceFactory.build()
 
     # Create a mock search result
-    mock_search_result = ESSearchResult[DomainReference](
-        hits=[reference],
+    mock_search_result = ESSearchResult(
+        hits=[ESHit(id=reference.id, score=1.0)],
         total=ESSearchTotal(value=1, relation="eq"),
         page=1,
     )
 
-    # Mock the service method
-    # Temporary patch until ES itself includes annotations
+    # Mock the service methods
     mock_search = AsyncMock(return_value=mock_search_result)
     monkeypatch.setattr(ReferenceService, "search_references", mock_search)
+    mock_get_dedup = AsyncMock(return_value=[reference])
+    monkeypatch.setattr(ReferenceService, "get_deduplicated_references", mock_get_dedup)
 
     # Test with annotation filters
     response = await client.get(

@@ -21,24 +21,18 @@ class FakeAuthScopes(StrEnum):
 
 @pytest.fixture
 def auth(
-    fake_tenant_id: str,
     fake_application_id: str,
 ) -> AzureJwtAuth:
     """Create fixure AzureJwtAuth instance for testing."""
-    return AzureJwtAuth(
-        fake_tenant_id, fake_application_id, scope=FakeAuthScopes.READ_ALL
-    )
+    return AzureJwtAuth(fake_application_id, scope=FakeAuthScopes.READ_ALL)
 
 
 @pytest.fixture
 def auth_with_role(
-    fake_tenant_id: str,
     fake_application_id: str,
 ) -> AzureJwtAuth:
     """Create fixure AzureJwtAuth instance for testing."""
-    return AzureJwtAuth(
-        fake_tenant_id, fake_application_id, role=FakeAuthScopes.READ_ALL
-    )
+    return AzureJwtAuth(fake_application_id, role=FakeAuthScopes.READ_ALL)
 
 
 @pytest.fixture

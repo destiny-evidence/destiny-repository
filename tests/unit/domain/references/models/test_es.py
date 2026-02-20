@@ -15,5 +15,4 @@ def test_enhancement_content_clean_raises_runtime_error_if_raw_enhancement():
     enhancement_doc = EnhancementDocument.from_domain(raw_enhancement)
 
     with pytest.raises(RuntimeError, match="excluded enhancement"):
-        # Force call clean
         enhancement_doc.content.clean()

@@ -1,6 +1,6 @@
 """Anti-corruption service for references domain."""
 
-import uuid
+from uuid import UUID
 
 import destiny_sdk
 from pydantic import ValidationError
@@ -36,7 +36,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     def reference_from_sdk_file_input(
         self,
         reference_in: destiny_sdk.references.ReferenceFileInput,
-        reference_id: uuid.UUID | None = None,
+        reference_id: UUID | None = None,
     ) -> Reference:
         """Create a reference from a file input including id hydration."""
         try:
@@ -125,7 +125,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     def enhancement_from_sdk(
         self,
         enhancement_in: destiny_sdk.references.Enhancement,
-        reference_id: uuid.UUID | None = None,
+        reference_id: UUID | None = None,
     ) -> Enhancement:
         """Create an Enhancement from the SDK model with optional ID grafting."""
         try:
@@ -280,7 +280,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     def robot_automation_from_sdk(
         self,
         robot_automation_in: destiny_sdk.robots.RobotAutomationIn,
-        automation_id: uuid.UUID | None = None,
+        automation_id: UUID | None = None,
     ) -> RobotAutomation:
         """Create a RobotAutomation from the SDK model."""
         try:
@@ -319,12 +319,14 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
-    def reference_search_result_to_sdk(
+    def two_stage_reference_search_result_to_sdk(
         self,
-        search_result: ESSearchResult[Reference],
+        search_result: ESSearchResult,
+        references: list[Reference],
     ) -> destiny_sdk.references.ReferenceSearchResult:
-        """Convert the reference search result to the SDK model."""
+        """Convert a search result and retrieved references to the SDK model."""
         try:
+            hit_order = {hit.id: i for i, hit in enumerate(search_result.hits)}
             return destiny_sdk.references.ReferenceSearchResult(
                 total={
                     "count": search_result.total.value,
@@ -335,7 +337,9 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     "number": search_result.page,
                 },
                 references=[
-                    self.reference_to_sdk(reference) for reference in search_result.hits
+                    self.reference_to_sdk(reference)
+                    # Sort references according to search order
+                    for reference in sorted(references, key=lambda r: hit_order[r.id])
                 ],
             )
         except ValidationError as exception:

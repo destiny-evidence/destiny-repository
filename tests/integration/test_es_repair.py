@@ -1,7 +1,8 @@
 """Tests ES repair functionality (and inherently the link between SQL and ES)."""
 
-import uuid
+import asyncio
 from collections.abc import AsyncGenerator
+from uuid import UUID, uuid7
 
 import pytest
 from elasticsearch import AsyncElasticsearch
@@ -12,6 +13,7 @@ from taskiq import InMemoryBroker
 
 from app.api.exception_handlers import not_found_exception_handler
 from app.core.exceptions import NotFoundError
+from app.domain.references import tasks as reference_tasks
 from app.domain.references.models.models import Visibility
 from app.domain.references.models.sql import (
     Enhancement as SQLEnhancement,
@@ -36,15 +38,22 @@ from tests.factories import (
     EnhancementFactory,
     LinkedExternalIdentifierFactory,
     PubMedIdentifierFactory,
-    RawEnhancementFactory,
 )
+
+
+async def wait_for_all_tasks() -> None:
+    """Wait for all tasks to complete."""
+    assert isinstance(broker, InMemoryBroker)
+    # Gives time for chained tasks to be scheduled (eg repairing)
+    await asyncio.sleep(0.5)
+    await broker.wait_all()
 
 
 async def sub_test_reference_index_initial_rebuild(
     client: AsyncClient,
     es_client: AsyncElasticsearch,
     index_manager: IndexManager,
-    reference_id: uuid.UUID,
+    reference_id: UUID,
 ) -> None:
     """Sub-test: Test reference index repair with rebuild=True."""
     index_name = index_manager.alias_name
@@ -60,9 +69,7 @@ async def sub_test_reference_index_initial_rebuild(
     assert "Repair task for index" in response_data["message"]
     assert index_name in response_data["message"]
 
-    # Wait for the task to complete
-    assert isinstance(broker, InMemoryBroker)
-    await broker.wait_all()
+    await wait_for_all_tasks()
 
     # Verify index still exists after rebuild
     exists = await es_client.indices.exists(index=index_name)
@@ -77,11 +84,7 @@ async def sub_test_reference_index_initial_rebuild(
     assert es_response["hits"]["total"]["value"] == 1
     es_doc = es_response["hits"]["hits"][0]["_source"]
     assert es_doc["visibility"] == "public"
-    assert len(es_doc["identifiers"]) == 1
-    assert es_doc["identifiers"][0]["identifier_type"] == "doi"
-    assert es_doc["identifiers"][0]["identifier"] == "10.1234/test-reference"
-    assert len(es_doc["enhancements"]) == 1
-    assert es_doc["enhancements"][0]["source"] == "test_source"
+    # Identifiers are stored in PostgreSQL only, not ES
 
 
 async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
@@ -89,7 +92,7 @@ async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
     es_client: AsyncElasticsearch,
     session: AsyncSession,
     index_manager: IndexManager,
-    reference_id: uuid.UUID,
+    reference_id: UUID,
     reference: SQLReference,
 ) -> None:
     """Sub-test: Test reference index repair with rebuild=False after SQL update."""
@@ -117,9 +120,7 @@ async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
     assert "Repair task for index" in response_data["message"]
     assert index_name in response_data["message"]
 
-    # Wait for the task to complete
-    assert isinstance(broker, InMemoryBroker)
-    await broker.wait_all()
+    await wait_for_all_tasks()
 
     # Verify the updated data is reflected in Elasticsearch
     await es_client.indices.refresh(index=index_name)
@@ -130,21 +131,15 @@ async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
     assert es_response["hits"]["total"]["value"] == 1
     es_doc = es_response["hits"]["hits"][0]["_source"]
     assert es_doc["visibility"] == "restricted"  # Updated visibility
-    assert len(es_doc["identifiers"]) == 2  # Now has 2 identifiers
-    # Check both identifiers are present
-    identifier_types = {id_obj["identifier_type"] for id_obj in es_doc["identifiers"]}
-    assert "doi" in identifier_types
-    assert "pm_id" in identifier_types
-    assert len(es_doc["enhancements"]) == 1
-    assert es_doc["enhancements"][0]["source"] == "test_source"
+    # Identifiers are stored in PostgreSQL only, not ES
 
 
 async def sub_test_robot_automation_initial_rebuild(
     client: AsyncClient,
     es_client: AsyncElasticsearch,
     index_manager: IndexManager,
-    automation_id: uuid.UUID,
-    robot_id: uuid.UUID,
+    automation_id: UUID,
+    robot_id: UUID,
 ) -> None:
     """Sub-test: Test robot automation index repair with rebuild=True."""
     # Test repair with rebuild
@@ -159,9 +154,7 @@ async def sub_test_robot_automation_initial_rebuild(
     assert "Repair task for index" in response_data["message"]
     assert index_manager.alias_name in response_data["message"]
 
-    # Wait for the task to complete
-    assert isinstance(broker, InMemoryBroker)
-    await broker.wait_all()
+    await wait_for_all_tasks()
 
     # Verify index still exists after rebuild
     index_name = await index_manager.get_current_index_name()
@@ -190,8 +183,8 @@ async def sub_test_robot_automation_update_without_rebuild(  # noqa: PLR0913
     es_client: AsyncElasticsearch,
     session: AsyncSession,
     index_manager: IndexManager,
-    automation_id: uuid.UUID,
-    robot_id: uuid.UUID,
+    automation_id: UUID,
+    robot_id: UUID,
     automation: SQLRobotAutomation,
 ) -> None:
     """Sub-test: Test robot automation repair with rebuild=False after SQL update."""
@@ -225,9 +218,7 @@ async def sub_test_robot_automation_update_without_rebuild(  # noqa: PLR0913
     assert "Repair task for index" in response_data["message"]
     assert index_name in response_data["message"]
 
-    # Wait for the task to complete
-    assert isinstance(broker, InMemoryBroker)
-    await broker.wait_all()
+    await wait_for_all_tasks()
 
     # Verify the updated robot automation is reflected in Elasticsearch
     await es_client.indices.refresh(index=index_name)
@@ -284,57 +275,100 @@ async def test_repair_reference_index_with_rebuild(
     es_client: AsyncElasticsearch,
     session: AsyncSession,
 ) -> None:
-    """Test repairing the reference index with rebuild flag."""
+    """Test repairing the reference index with rebuild flag and distributed chunks."""
     # Ensure index exists first
     index_manager = system_routes.reference_index_manager(es_client)
     await index_manager.initialize_index()
 
-    # Add sample data to SQL
-    reference_id = uuid.uuid4()
-    reference = SQLReference(
-        id=reference_id,
-        visibility=Visibility.PUBLIC,
-    )
-    session.add(reference)
+    # Create 5 references with identifiers and enhancements
+    references: list[SQLReference] = []
+    for i in range(5):
+        reference_id = uuid7()
+        reference = SQLReference(id=reference_id, visibility=Visibility.PUBLIC)
+        session.add(reference)
+        references.append(reference)
 
-    # Add identifier
-    identifier = SQLExternalIdentifier.from_domain(
-        LinkedExternalIdentifierFactory.build(
-            reference_id=reference_id,
-            identifier=DOIIdentifierFactory.build(identifier="10.1234/test-reference"),
+        identifier = SQLExternalIdentifier.from_domain(
+            LinkedExternalIdentifierFactory.build(
+                reference_id=reference_id,
+                identifier=DOIIdentifierFactory.build(
+                    identifier=f"10.1234/test-ref-{i}"
+                ),
+            )
         )
-    )
+        session.add(identifier)
 
-    session.add(identifier)
-
-    # Add enhancement
-    enhancement = SQLEnhancement.from_domain(
-        EnhancementFactory.build(
-            reference_id=reference_id,
-            source="test_source",
-            content=AnnotationEnhancementFactory.build(),
+        enhancement = SQLEnhancement.from_domain(
+            EnhancementFactory.build(
+                reference_id=reference_id,
+                source="test_source",
+                content=AnnotationEnhancementFactory.build(),
+            )
         )
-    )
+        session.add(enhancement)
 
-    session.add(enhancement)
-
-    # Add a raw enhancement as these are special
-    raw_enhancement = SQLEnhancement.from_domain(
-        EnhancementFactory.build(
-            reference_id=reference_id, content=RawEnhancementFactory.build()
-        )
-    )
-
-    session.add(raw_enhancement)
     await session.commit()
 
-    # Run sub-tests
-    await sub_test_reference_index_initial_rebuild(
-        client, es_client, index_manager, reference_id
-    )
+    # Use small chunk_size to force multiple distributed tasks
+    original_chunk_size = reference_tasks.settings.es_reference_repair_chunk_size
+    reference_tasks.settings.es_reference_repair_chunk_size = 2
+
+    try:
+        # Test repair with rebuild - should create 3 chunks for 5 records
+        index_name = index_manager.alias_name
+        response = await client.post(
+            f"/system/indices/{index_name}/repair/",
+            params={"rebuild": True},
+        )
+
+        assert response.status_code == status.HTTP_202_ACCEPTED
+        await wait_for_all_tasks()
+
+        # Verify all 5 references were indexed
+        await es_client.indices.refresh(index=index_name)
+        es_response = await es_client.search(
+            index=index_name, body={"query": {"match_all": {}}}
+        )
+
+        assert es_response["hits"]["total"]["value"] == 5
+        indexed_ids = {hit["_id"] for hit in es_response["hits"]["hits"]}
+        expected_ids = {str(ref.id) for ref in references}
+        assert indexed_ids == expected_ids
+    finally:
+        reference_tasks.settings.es_reference_repair_chunk_size = original_chunk_size
+
+    # Run sub-test for update without rebuild using first reference
     await sub_test_reference_index_update_without_rebuild(
-        client, es_client, session, index_manager, reference_id, reference
+        client, es_client, session, index_manager, references[0].id, references[0]
     )
+
+
+async def test_rebuild_index_maintains_shard_number(
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,
+) -> None:
+    """Test that repairing an index maintains the number of shards."""
+    # Ensure index exists first with specific shard count
+    index_manager = system_routes.reference_index_manager(es_client)
+    await index_manager.migrate(settings_changeset={"number_of_shards": 3})
+
+    # Repair the index
+    response = await client.post(
+        f"/system/indices/{index_manager.alias_name}/repair/",
+        params={"rebuild": True},
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+
+    await wait_for_all_tasks()
+
+    # Verify the number of shards remains the same
+    index_name = await index_manager.get_current_index_name()
+    index_settings = await es_client.indices.get_settings(index=index_name)
+    actual_shard_count = int(
+        index_settings[index_name]["settings"]["index"]["number_of_shards"]
+    )
+    assert actual_shard_count == 3
 
 
 async def test_repair_robot_automation_percolation_index_with_rebuild(
@@ -348,7 +382,7 @@ async def test_repair_robot_automation_percolation_index_with_rebuild(
     await index_manager.initialize_index()
 
     # Add sample robot and robot automation to SQL
-    robot_id = uuid.uuid4()
+    robot_id = uuid7()
     robot = SQLRobot(
         id=robot_id,
         client_secret="test-secret",
@@ -360,7 +394,7 @@ async def test_repair_robot_automation_percolation_index_with_rebuild(
     await session.commit()
 
     # Add robot automation
-    automation_id = uuid.uuid4()
+    automation_id = uuid7()
     automation = SQLRobotAutomation(
         id=automation_id,
         robot_id=robot_id,
@@ -416,7 +450,6 @@ async def test_repair_nonexistent_index(
 async def test_repair_auth_failure(
     client: AsyncClient,
     fake_application_id: str,
-    fake_tenant_id: str,
 ) -> None:
     """Test attempting to repair an index with missing and incorrect auth fails."""
     from app.core.config import Environment
@@ -424,7 +457,6 @@ async def test_repair_auth_failure(
     # Set up production environment and auth settings
     system_routes.settings.env = Environment.PRODUCTION
     system_routes.settings.azure_application_id = fake_application_id
-    system_routes.settings.azure_tenant_id = fake_tenant_id
     system_routes.system_utility_auth.reset()
 
     test_index_name = "test-index"

@@ -11,11 +11,12 @@ from msal import (
     PublicClientApplication,
     UserAssignedManagedIdentity,
 )
-from pydantic import UUID4, HttpUrl, TypeAdapter
+from pydantic import HttpUrl, TypeAdapter
 
 from destiny_sdk.auth import create_signature
-from destiny_sdk.core import sdk_version
+from destiny_sdk.core import UUID, sdk_version
 from destiny_sdk.identifiers import IdentifierLookup
+from destiny_sdk.keycloak_auth import KeycloakAuthCodeFlow, TokenResponse
 from destiny_sdk.references import Reference, ReferenceSearchResult
 from destiny_sdk.robots import (
     EnhancementRequestRead,
@@ -35,7 +36,7 @@ class HMACSigningAuth(httpx.Auth):
 
     requires_request_body = True
 
-    def __init__(self, secret_key: str, client_id: UUID4) -> None:
+    def __init__(self, secret_key: str, client_id: UUID) -> None:
         """
         Initialize the client.
 
@@ -73,14 +74,16 @@ class RobotClient:
     Current implementation only supports robot results.
     """
 
-    def __init__(self, base_url: HttpUrl, secret_key: str, client_id: UUID4) -> None:
+    def __init__(self, base_url: HttpUrl, secret_key: str, client_id: UUID) -> None:
         """
         Initialize the client.
 
         :param base_url: The base URL for the Destiny Repository API.
         :type base_url: HttpUrl
         :param secret_key: The secret key for signing requests
-        :type auth_method: str
+        :type secret_key: str
+        :param client_id: The client ID for signing requests
+        :type client_id: UUID
         """
         self.session = httpx.Client(
             base_url=str(base_url).removesuffix("/").removesuffix("/v1") + "/v1",
@@ -131,7 +134,7 @@ class RobotClient:
 
     def poll_robot_enhancement_batch(
         self,
-        robot_id: UUID4,
+        robot_id: UUID,
         limit: int = 10,
         lease: str | None = None,
         timeout: int = 60,
@@ -142,7 +145,7 @@ class RobotClient:
         Signs the request with the client's secret key.
 
         :param robot_id: The ID of the robot to poll for
-        :type robot_id: UUID4
+        :type robot_id: UUID
         :param limit: The maximum number of pending enhancements to return
         :type limit: int
         :param lease: The duration to lease the pending enhancements for,
@@ -169,7 +172,7 @@ class RobotClient:
         return RobotEnhancementBatch.model_validate(response.json())
 
     def renew_robot_enhancement_batch_lease(
-        self, robot_enhancement_batch_id: UUID4, lease_duration: str | None = None
+        self, robot_enhancement_batch_id: UUID, lease_duration: str | None = None
     ) -> None:
         """
         Renew the lease for a robot enhancement batch.
@@ -177,7 +180,7 @@ class RobotClient:
         Signs the request with the client's secret key.
 
         :param robot_enhancement_batch_id: The ID of the robot enhancement batch
-        :type robot_enhancement_batch_id: UUID4
+        :type robot_enhancement_batch_id: UUID
         :param lease_duration: The duration to lease the pending enhancements for,
             in ISO 8601 duration format eg PT10M. If not provided the repository will
             use a default lease duration.
@@ -213,8 +216,8 @@ class OAuthMiddleware(httpx.Auth):
 
         auth = OAuthMiddleware(
             azure_client_id="client-id",
-            azure_application_id="login-url",
-            azure_tenant_id="tenant-id",
+            azure_application_id="application-id",
+            azure_login_url="login-url",
         )
 
     **Confidential Client Application (client credentials)**
@@ -260,11 +263,9 @@ class OAuthMiddleware(httpx.Auth):
         """
         Initialize the auth middleware.
 
-        :param tenant_id: The OAuth2 tenant ID.
-        :type tenant_id: str
-        :param client_id: The OAuth2 client ID.
-        :type client_id: str
-        :param application_id: The application ID for the Destiny API.
+        :param azure_client_id: The OAuth2 client ID.
+        :type azure_client_id: str
+        :param azure_application_id: The application ID for the Destiny API.
         :type application_id: str
         :param azure_login_url: The Azure login URL.
         :type azure_login_url: str
@@ -415,6 +416,117 @@ class OAuthMiddleware(httpx.Auth):
         )
 
         return self._parse_token(result)
+
+    def auth_flow(
+        self, request: httpx.Request
+    ) -> Generator[httpx.Request, httpx.Response]:
+        """
+        Add OAuth2 token to request and handle token refresh on expiration.
+
+        :param request: The request to authenticate.
+        :type request: httpx.Request
+        :yield: Authenticated request with token refresh handling.
+        :rtype: Generator[httpx.Request, httpx.Response]
+        """
+        # Add initial token
+        token = self._get_token()
+        request.headers["Authorization"] = f"Bearer {token}"
+
+        response = yield request
+
+        # Check if token expired and retry once with fresh token
+        if response.status_code == httpx.codes.UNAUTHORIZED:
+            try:
+                json_response: dict = response.json()
+                error_detail: str = json_response.get("detail", {})
+            except ValueError:
+                error_detail = ""
+
+            if error_detail == "Token has expired.":
+                # Force refresh token and retry
+                token = self._get_token(force_refresh=True)
+                request.headers["Authorization"] = f"Bearer {token}"
+                yield request
+
+
+class KeycloakOAuthMiddleware(httpx.Auth):
+    """
+    Auth middleware that handles Keycloak OAuth2 token retrieval and refresh.
+
+    This is the Keycloak equivalent of
+    :class:`OAuthMiddleware <libs.sdk.src.destiny_sdk.client.OAuthMiddleware>`.
+
+    **Public Client Application (human login)**
+
+    Initial login will be interactive through a browser window. Subsequent token
+    retrievals will use cached tokens and refreshes where possible.
+
+    .. code-block:: python
+
+        auth = KeycloakOAuthMiddleware(
+            keycloak_url="http://localhost:8080",
+            realm="destiny",
+            client_id="destiny-auth-client",
+        )
+
+    """
+
+    def __init__(
+        self,
+        keycloak_url: str,
+        realm: str,
+        client_id: str = "destiny-auth-client",
+        scopes: list[str] | None = None,
+        callback_port: int = 8400,
+    ) -> None:
+        """
+        Initialize the Keycloak auth middleware.
+
+        :param keycloak_url: The base URL of the Keycloak server.
+        :type keycloak_url: str
+        :param realm: The Keycloak realm name.
+        :type realm: str
+        :param client_id: The OAuth2 client ID.
+        :type client_id: str
+        :param scopes: Optional list of scopes to request.
+        :type scopes: list[str] | None
+        :param callback_port: Port for local callback server during auth flow.
+        :type callback_port: int
+        """
+        self._auth_flow = KeycloakAuthCodeFlow(
+            keycloak_url=keycloak_url,
+            realm=realm,
+            client_id=client_id,
+            callback_port=callback_port,
+        )
+        self._scopes = scopes
+        self._token: TokenResponse | None = None
+
+    def _get_token(self, *, force_refresh: bool = False) -> str:
+        """
+        Get an OAuth2 token from Keycloak.
+
+        :param force_refresh: Whether to force a token refresh.
+        :type force_refresh: bool
+        :return: The OAuth2 access token.
+        :rtype: str
+        """
+        # If we have a token and a refresh token, try to refresh
+        if self._token and self._token.refresh_token and force_refresh:
+            try:
+                self._token = self._auth_flow.refresh_token(self._token.refresh_token)
+            except httpx.HTTPStatusError:
+                # Refresh failed, will do full auth flow below
+                pass
+            else:
+                return self._token.access_token
+        elif self._token and not force_refresh:
+            # We have a valid token, return it
+            return self._token.access_token
+
+        # Perform full authentication flow
+        self._token = self._auth_flow.authenticate(scopes=self._scopes)
+        return self._token.access_token
 
     def auth_flow(
         self, request: httpx.Request

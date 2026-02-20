@@ -10,8 +10,8 @@
   "dependencies": {
     "@azure/msal-browser": "^4.25.1",
     "@azure/msal-react": "^3.0.20",
-    "axios": "^1.13.0",
-    "next": "^16.0.7",
+    "axios": "^1.13.5",
+    "next": "^16.1.5",
     "oidc-client-ts": "^3.1.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",

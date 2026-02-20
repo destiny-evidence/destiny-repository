@@ -1,6 +1,6 @@
 import datetime
-import uuid
 from datetime import date
+from uuid import uuid7
 
 import destiny_sdk
 import pytest
@@ -8,7 +8,13 @@ from pydantic import ValidationError
 
 
 def test_bibliographic_metadata_enhancement_valid():
-    # Create valid bibliographic content
+    # Create valid bibliographic content with pagination
+    pagination = destiny_sdk.enhancements.Pagination(
+        volume="42",
+        issue="7",
+        first_page="495",
+        last_page="512",
+    )
     bibliographic = destiny_sdk.enhancements.BibliographicMetadataEnhancement(
         enhancement_type=destiny_sdk.enhancements.EnhancementType.BIBLIOGRAPHIC,
         authorship=[],
@@ -19,19 +25,62 @@ def test_bibliographic_metadata_enhancement_valid():
         publication_year=2020,
         publisher="Test Publisher",
         title="Test Title",
+        pagination=pagination,
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
-        id=uuid.uuid4(),
+        id=uuid7(),
         source="test_source",
         visibility="public",
         robot_version="1.0",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.BIBLIOGRAPHIC,
         content=bibliographic,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid7(),
     )
     assert (
         enhancement.content.enhancement_type
         == destiny_sdk.enhancements.EnhancementType.BIBLIOGRAPHIC
+    )
+    assert enhancement.content.pagination.volume == "42"
+    assert enhancement.content.pagination.issue == "7"
+    assert enhancement.content.pagination.first_page == "495"
+    assert enhancement.content.pagination.last_page == "512"
+
+
+def test_bibliographic_metadata_enhancement_non_numeric_pagination_fields():
+    """Test that non-numeric pagination fields are accepted (per OpenAlex spec)."""
+    bibliographic = destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+        title="Test Title",
+        pagination=destiny_sdk.enhancements.Pagination(
+            volume="Spring",
+            issue="Special Issue",
+            first_page="A1",
+            last_page="A15",
+        ),
+    )
+    assert bibliographic.pagination.volume == "Spring"
+    assert bibliographic.pagination.issue == "Special Issue"
+    assert bibliographic.pagination.first_page == "A1"
+    assert bibliographic.pagination.last_page == "A15"
+
+
+def test_bibliographic_metadata_enhancement_with_publication_venue():
+    """Test BibliographicMetadataEnhancement with publication_venue field."""
+    venue = destiny_sdk.enhancements.PublicationVenue(
+        display_name="Science",
+        venue_type=destiny_sdk.enhancements.PublicationVenueType.JOURNAL,
+        issn=["0036-8075"],
+        issn_l="0036-8075",
+        host_organization_name="AAAS",
+    )
+    bibliographic = destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+        title="Test Article",
+        publication_venue=venue,
+    )
+    assert bibliographic.publication_venue is not None
+    assert bibliographic.publication_venue.display_name == "Science"
+    assert (
+        bibliographic.publication_venue.venue_type
+        == destiny_sdk.enhancements.PublicationVenueType.JOURNAL
     )
 
 
@@ -43,13 +92,13 @@ def test_abstract_content_enhancement_valid():
         abstract="This is a test abstract.",
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
-        id=uuid.uuid4(),
+        id=uuid7(),
         source="test_source",
         visibility="public",
         robot_version="2.0",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.ABSTRACT,
         content=abstract_content,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid7(),
     )
     assert enhancement.content.abstract == "This is a test abstract."
 
@@ -69,13 +118,13 @@ def test_annotation_enhancement_valid():
         annotations=[annotation1],
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
-        id=uuid.uuid4(),
+        id=uuid7(),
         source="test_source",
         visibility="public",
         robot_version="1.5",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.ANNOTATION,
         content=annotations_content,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid7(),
     )
     assert enhancement.content.annotations[0].label == "Machine Learning"
 
@@ -95,13 +144,13 @@ def test_location_enhancement_valid():
         locations=[location],
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
-        id=uuid.uuid4(),
+        id=uuid7(),
         source="test_source",
         visibility="public",
         robot_version="1.2",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.LOCATION,
         content=location_content,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid7(),
     )
     assert enhancement.content.locations[0].license == "cc-by"
 
@@ -180,7 +229,7 @@ def test_association_enhancement_valid():
     association_content = destiny_sdk.enhancements.ReferenceAssociationEnhancement(
         enhancement_type=destiny_sdk.enhancements.EnhancementType.REFERENCE_ASSOCIATION,
         associated_reference_ids=[
-            uuid.uuid4(),
+            uuid7(),
             destiny_sdk.identifiers.OpenAlexIdentifier(
                 identifier="https://openalex.org/W1234567890",
                 identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.OPEN_ALEX,
@@ -189,13 +238,13 @@ def test_association_enhancement_valid():
         association_type=destiny_sdk.enhancements.ReferenceAssociationType.CITES,
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
-        id=uuid.uuid4(),
+        id=uuid7(),
         source="test_source",
         visibility="public",
         robot_version="1.0",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.REFERENCE_ASSOCIATION,
         content=association_content,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid7(),
     )
     assert (
         enhancement.content.association_type
@@ -224,3 +273,28 @@ def test_association_enhancement_invalid_identifier_type_errors():
             ],
             association_type=destiny_sdk.enhancements.ReferenceAssociationType.CITES,
         )
+
+
+def test_pagination_empty_string_to_none():
+    """Test that empty pagination strings are converted to None."""
+    pagination = destiny_sdk.enhancements.Pagination(
+        volume="", issue="  ", first_page=None, last_page="42"
+    )
+    assert pagination.volume is None
+    assert pagination.issue is None
+    assert pagination.first_page is None
+    assert pagination.last_page == "42"
+
+
+def test_pagination_nbsp_normalized():
+    """Test that NBSP (U+00A0) is replaced with space and stripped."""
+    pagination = destiny_sdk.enhancements.Pagination(
+        volume="\u00a042\u00a0",  # NBSP padding
+        issue="7\u00a0",  # Trailing NBSP
+        first_page="\u00a0",  # Only NBSP -> should become None
+        last_page="100",
+    )
+    assert pagination.volume == "42"
+    assert pagination.issue == "7"
+    assert pagination.first_page is None
+    assert pagination.last_page == "100"

@@ -6,10 +6,10 @@ Logs from all processes are viewable in Honeycomb.
 
 ## Running on Azure
 
-Migrations are run via a `es-index-migrator-[ENV]` container app job which can be triggered manually with an image and command override.
+Migrations are run via a `es-index-migrator-[ENV]` container app job which can be triggered manually with a command override.
 
-- Note that you need to both save _AND THEN_ apply the configuration changes when inputting them into the UI.
-- Note that command needs to be seperated by commas at every space like `python, -m, app.utils.es.es_migration, --migrate, --alias, reference`
+- Note that you need to both save _AND THEN_ apply the command changes when inputting them into the UI.
+- Note that command needs to be separated by commas at every space like `python, -m, app.utils.es.es_migration, --migrate, --alias, reference`
 
 ## Migrate an index
 
@@ -17,6 +17,12 @@ To migrate an index to a new index with updated mappings based on document class
 
 ```zsh
 python -m app.utils.es.es_migration --migrate --alias reference
+```
+
+If you want to change the number of shards, specify with the `-n` or `--number-of-shards` argument. If not specified, it will assume the shard count on the index the alias currently points to.
+
+```zsh
+python -m app.utils.es.es_migration --migrate --alias reference --number-of-shards 50
 ```
 
 ## Rollback an index
