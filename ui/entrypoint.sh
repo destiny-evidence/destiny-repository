@@ -6,10 +6,10 @@ cat > /app/public/runtime-config.json <<EOF
   "NEXT_PUBLIC_API_URL":"${NEXT_PUBLIC_API_URL}",
   "NEXT_PUBLIC_AZURE_LOGIN_URL":"${NEXT_PUBLIC_AZURE_LOGIN_URL}",
   "ENV":"${ENV}",
-  "AUTH_PROVIDER": "keycloak",
-  "KEYCLOAK_URL": "http://localhost:8080",
-  "KEYCLOAK_REALM": "destiny",
-  "KEYCLOAK_CLIENT_ID": "destiny-auth-client"
+  "AUTH_PROVIDER": "${AUTH_PROVIDER:-azure}",
+  "KEYCLOAK_URL": "${KEYCLOAK_URL}",
+  "KEYCLOAK_REALM": "${KEYCLOAK_REALM:-destiny}",
+  "KEYCLOAK_CLIENT_ID": "${KEYCLOAK_CLIENT_ID}"
 }
 EOF
 exec "$@"

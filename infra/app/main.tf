@@ -339,6 +339,18 @@ module "container_app_ui" {
       name  = "NEXT_PUBLIC_AZURE_APPLICATION_ID"
       value = local.auth_application_id
     },
+    {
+      name  = "AUTH_PROVIDER"
+      value = var.auth_provider
+    },
+    {
+      name  = "KEYCLOAK_URL"
+      value = var.auth_provider == "keycloak" ? "https://${data.azurerm_container_app.keycloak[0].ingress[0].fqdn}" : ""
+    },
+    {
+      name  = "KEYCLOAK_CLIENT_ID"
+      value = var.auth_provider == "keycloak" ? "destiny-auth-ui-client-${var.environment}" : ""
+    },
   ]
 
   ingress = {
