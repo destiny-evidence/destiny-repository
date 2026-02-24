@@ -1,153 +1,31 @@
 // React hook for Destiny Repository API access - supports Azure AD and Keycloak
 
 import { createContext, useContext } from "react";
-import { useMsal } from "@azure/msal-react";
-import { useAuth } from "react-oidc-context";
-import { InteractionStatus } from "@azure/msal-browser";
-import { getMsalLoginRequest, AuthProvider } from "../authConfig";
+import { AuthProvider } from "../authConfig";
 import { apiGet, ApiResult } from "./client";
 import { ReferenceLookupResult, SearchParams, SearchResult } from "./types";
 
 /**
- * Context to provide the auth provider from layout.
+ * Unified auth context provided by layout based on the active auth provider.
+ * Each provider wrapper (AzureAuthBridge, KeycloakAuthBridge) provides its own
+ * implementation, so auth hooks are only called within their provider tree.
  */
-export const AuthProviderContext = createContext<AuthProvider>("local");
-
-/**
- * Hook for Azure AD (MSAL) authentication.
- * Called unconditionally but only uses MSAL when enabled.
- */
-function useAzureAuth(enabled: boolean) {
-  // useMsal must be called unconditionally to maintain hook order.
-  // When not in MSAL context, it returns safe defaults.
-  let instance: ReturnType<typeof useMsal>["instance"] | null = null;
-  let accounts: ReturnType<typeof useMsal>["accounts"] = [];
-  let inProgress: ReturnType<typeof useMsal>["inProgress"] =
-    InteractionStatus.None;
-
-  try {
-    const msal = useMsal();
-    instance = msal.instance;
-    accounts = msal.accounts;
-    inProgress = msal.inProgress;
-  } catch {
-    // Not in MSAL context - use defaults
-  }
-
-  const isLoggedIn = enabled && (accounts?.length ?? 0) > 0;
-  const isLoginProcessing =
-    enabled &&
-    (inProgress === InteractionStatus.Login ||
-      inProgress === InteractionStatus.AcquireToken ||
-      inProgress === InteractionStatus.HandleRedirect ||
-      inProgress === InteractionStatus.SsoSilent);
-
-  async function getToken(): Promise<string | undefined> {
-    if (!enabled || !instance || !accounts || accounts.length === 0)
-      return undefined;
-
-    try {
-      const request = await getMsalLoginRequest();
-      const resp = await instance.acquireTokenSilent({
-        ...request,
-        account: accounts[0],
-      });
-      return resp?.accessToken;
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      console.warn("acquireTokenSilent failed, starting redirect:", message);
-      try {
-        const request = await getMsalLoginRequest();
-        instance.acquireTokenRedirect({
-          ...request,
-          account: accounts[0],
-        });
-      } catch (redirectErr) {
-        console.error("acquireTokenRedirect failed:", redirectErr);
-      }
-      return undefined;
-    }
-  }
-
-  return { getToken, isLoggedIn, isLoginProcessing };
+export interface AuthContextValue {
+  getToken: () => Promise<string | undefined>;
+  isLoggedIn: boolean;
+  isLoginProcessing: boolean;
+  provider: AuthProvider;
 }
 
-/**
- * Hook for Keycloak (OIDC) authentication.
- * Called unconditionally but only uses OIDC when enabled.
- */
-function useKeycloakAuth(enabled: boolean) {
-  // useAuth must be called unconditionally to maintain hook order.
-  // When not in OIDC context, it throws - we catch and use defaults.
-  let auth: ReturnType<typeof useAuth> | null = null;
-
-  try {
-    auth = useAuth();
-  } catch {
-    // Not in OIDC context - use defaults
-  }
-
-  const isLoggedIn = enabled && (auth?.isAuthenticated ?? false);
-  const isLoginProcessing = enabled && (auth?.isLoading ?? false);
-
-  async function getToken(): Promise<string | undefined> {
-    if (!enabled || !auth?.isAuthenticated || !auth.user) return undefined;
-
-    // Refresh the token if it expires within 30 seconds.
-    // signinSilent() uses the refresh token grant (no iframe) when available.
-    if (auth.user.expired || (auth.user.expires_in ?? 0) < 30) {
-      try {
-        const renewed = await auth.signinSilent();
-        return renewed?.access_token;
-      } catch {
-        return undefined;
-      }
-    }
-
-    return auth.user.access_token;
-  }
-
-  return { getToken, isLoggedIn, isLoginProcessing };
-}
-
-/**
- * Hook for local development (no auth).
- */
-function useLocalAuth() {
-  return {
-    getToken: async () => undefined,
-    isLoggedIn: true, // Always "logged in" locally
-    isLoginProcessing: false,
-  };
-}
+export const AuthContext = createContext<AuthContextValue>({
+  getToken: async () => undefined,
+  isLoggedIn: true,
+  isLoginProcessing: false,
+  provider: "local",
+});
 
 export function useApi() {
-  // Get provider from context - this is set synchronously by layout after initialization
-  const provider = useContext(AuthProviderContext);
-
-  const isLocal = provider === "local";
-
-  // Always call hooks unconditionally based on provider from context.
-  // The layout ensures children only render when inside the correct provider context.
-  const azureAuth = useAzureAuth(provider === "azure");
-  const keycloakAuth = useKeycloakAuth(provider === "keycloak");
-  const localAuth = useLocalAuth();
-
-  // Select the appropriate auth based on provider
-  const auth =
-    provider === "azure"
-      ? azureAuth
-      : provider === "keycloak"
-        ? keycloakAuth
-        : localAuth;
-
-  async function getToken(): Promise<string | undefined> {
-    if (isLocal) return undefined;
-    return auth.getToken();
-  }
-
-  const isLoggedIn = isLocal || auth.isLoggedIn;
-  const isLoginProcessing = auth.isLoginProcessing;
+  const { getToken, isLoggedIn, isLoginProcessing } = useContext(AuthContext);
 
   async function fetchReferences(
     identifiers: string[],
