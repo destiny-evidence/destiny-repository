@@ -92,6 +92,18 @@ function useKeycloakAuth(enabled: boolean) {
 
   async function getToken(): Promise<string | undefined> {
     if (!enabled || !auth?.isAuthenticated || !auth.user) return undefined;
+
+    // Refresh the token if it expires within 30 seconds.
+    // signinSilent() uses the refresh token grant (no iframe) when available.
+    if (auth.user.expired || (auth.user.expires_in ?? 0) < 30) {
+      try {
+        const renewed = await auth.signinSilent();
+        return renewed?.access_token;
+      } catch {
+        return undefined;
+      }
+    }
+
     return auth.user.access_token;
   }
 
