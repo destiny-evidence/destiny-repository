@@ -105,6 +105,11 @@ export async function createKeycloakConfig(): Promise<AuthProviderProps> {
         ? new WebStorageStateStore({ store: window.localStorage })
         : undefined,
     automaticSilentRenew: true,
+    // Disable iframe-based session monitoring (check_session_iframe from OIDC discovery).
+    // This avoids Chrome's "Access other apps and services" prompt for cross-origin iframes.
+    // Token renewal still works via refresh tokens, which Keycloak issues for public clients.
+    monitorSession: false,
+    revokeTokensOnSignout: true,
     onSigninCallback: () => {
       // Remove OIDC query params from URL after sign-in
       window.history.replaceState({}, document.title, window.location.pathname);
