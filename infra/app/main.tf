@@ -45,6 +45,12 @@ resource "azuread_group_member" "container_app_tasks_to_crud" {
 }
 
 
+data "azurerm_container_app" "keycloak" {
+  count               = var.auth_provider == "keycloak" ? 1 : 0
+  name                = "destiny-shared-keycloak"
+  resource_group_name = var.shared_infra_resource_group_name
+}
+
 locals {
   # When external directory is enabled, use the external directory app and tenant
   # Otherwise, use the application tenant
@@ -126,6 +132,18 @@ locals {
     {
       name  = "ALLOWED_IMPORT_DOMAINS",
       value = jsonencode(var.allowed_import_domains)
+    },
+    {
+      name  = "AUTH_PROVIDER"
+      value = var.auth_provider
+    },
+    {
+      name  = "KEYCLOAK_URL"
+      value = var.auth_provider == "keycloak" ? "https://${data.azurerm_container_app.keycloak[0].ingress[0].fqdn}" : ""
+    },
+    {
+      name  = "KEYCLOAK_CLIENT_ID"
+      value = var.auth_provider == "keycloak" ? "destiny-repository-client-${var.environment}" : ""
     },
   ]
 
