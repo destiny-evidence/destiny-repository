@@ -104,9 +104,9 @@ export async function createKeycloakConfig(): Promise<AuthProviderProps> {
       typeof window !== "undefined"
         ? new WebStorageStateStore({ store: window.localStorage })
         : undefined,
-    // Disable automatic silent renew and session monitoring to avoid cross-origin iframes,
-    // which trigger Chrome's "Access other apps and services" Storage Access API prompt.
-    // Token refresh is handled manually in useKeycloakAuth's getToken() using signinSilent().
+    // Disable automatic silent renew and session monitoring to avoid cross-origin iframes.
+    // Keycloak is on a different domain, so the IdP session cookie is blocked as third-party.
+    // Token refresh is handled manually in KeycloakAuthBridge's getToken() via refresh tokens.
     automaticSilentRenew: false,
     monitorSession: false,
     revokeTokensOnSignout: true,

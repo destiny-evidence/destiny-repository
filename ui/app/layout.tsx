@@ -91,9 +91,9 @@ function KeycloakAuthBridge({ children }: { children: React.ReactNode }) {
 
     // Refresh the token if it expires within 30 seconds.
     if (auth.user.expired || (auth.user.expires_in ?? 0) < 30) {
-      // Only use signinSilent() when a refresh token is available.
-      // Without one, it falls back to an iframe which triggers
-      // Chrome's Storage Access API prompt.
+      // Without a refresh token, signinSilent() falls back to an iframe that needs the IdP session cookie.
+      // While Keycloak is in a different domain, browsers will block this as a third-party cookie.
+      // So we bail out instead for now.
       if (!auth.user.refresh_token) {
         return undefined;
       }
