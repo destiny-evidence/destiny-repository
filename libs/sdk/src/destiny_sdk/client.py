@@ -11,7 +11,7 @@ from msal import (
     PublicClientApplication,
     UserAssignedManagedIdentity,
 )
-from pydantic import HttpUrl, TypeAdapter
+from pydantic import HttpUrl, SecretStr, TypeAdapter
 
 from destiny_sdk.auth import create_signature
 from destiny_sdk.core import UUID, sdk_version
@@ -260,7 +260,7 @@ class OAuthMiddleware(httpx.Auth):
         azure_client_id: str,
         azure_application_id: str,
         azure_login_url: HttpUrl | str | None = None,
-        azure_client_secret: str | None = None,
+        azure_client_secret: SecretStr | None = None,
         *,
         use_managed_identity: bool = False,
     ) -> None:
@@ -274,7 +274,7 @@ class OAuthMiddleware(httpx.Auth):
         :param azure_login_url: The Azure login URL.
         :type azure_login_url: str
         :param azure_client_secret: The Azure client secret.
-        :type azure_client_secret: str | None
+        :type azure_client_secret: SecretStr | None
         :param use_managed_identity: Whether to use managed identity for authentication
         :type use_managed_identity: bool
         """
@@ -308,7 +308,7 @@ class OAuthMiddleware(httpx.Auth):
             self._oauth_app = ConfidentialClientApplication(
                 client_id=azure_client_id,
                 authority=str(azure_login_url),
-                client_credential=azure_client_secret,
+                client_credential=azure_client_secret.get_secret_value(),
             )
             self._get_token = self._get_token_from_confidential_client
         else:
@@ -494,7 +494,7 @@ class KeycloakOAuthMiddleware(httpx.Auth):
         keycloak_url: str,
         realm: str,
         client_id: str = "destiny-auth-client",
-        client_secret: str | None = None,
+        client_secret: SecretStr | None = None,
         scopes: list[str] | None = None,
         callback_port: int = 8400,
     ) -> None:
@@ -509,7 +509,7 @@ class KeycloakOAuthMiddleware(httpx.Auth):
         :type client_id: str
         :param client_secret: The OAuth2 client secret. When provided, uses
             client credentials flow instead of authorization code flow.
-        :type client_secret: str | None
+        :type client_secret: SecretStr | None
         :param scopes: Optional list of scopes to request.
         :type scopes: list[str] | None
         :param callback_port: Port for local callback server during auth code flow.
@@ -521,7 +521,7 @@ class KeycloakOAuthMiddleware(httpx.Auth):
                 keycloak_url=keycloak_url,
                 realm=realm,
                 client_id=client_id,
-                client_secret=client_secret,
+                client_secret=client_secret.get_secret_value(),
             )
             self._get_token = self._get_token_from_client_credentials
         else:

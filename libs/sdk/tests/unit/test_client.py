@@ -25,7 +25,7 @@ from msal import (
     ManagedIdentityClient,
     PublicClientApplication,
 )
-from pydantic import HttpUrl
+from pydantic import HttpUrl, SecretStr
 from pytest_httpx import HTTPXMock
 
 
@@ -332,7 +332,7 @@ class TestOAuthMiddleware:
             azure_login_url="test-url",
             azure_client_id="test-client",
             azure_application_id="test-app",
-            azure_client_secret="test-secret",
+            azure_client_secret=SecretStr("test-secret"),
         )
 
         # Create a test request
@@ -450,7 +450,7 @@ class TestKeycloakOAuthMiddleware:
             keycloak_url="http://localhost:8080",
             realm="destiny",
             client_id="test-service-client",
-            client_secret="test-secret",
+            client_secret=SecretStr("test-secret"),
             scopes=["import.writer.all"],
         )
 
@@ -494,7 +494,7 @@ class TestKeycloakOAuthMiddleware:
             keycloak_url="http://localhost:8080",
             realm="destiny",
             client_id="test-service-client",
-            client_secret="test-secret",
+            client_secret=SecretStr("test-secret"),
         )
 
         request = httpx.Request("GET", "https://api.example.com/test")
