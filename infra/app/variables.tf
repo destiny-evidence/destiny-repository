@@ -39,6 +39,12 @@ variable "tasks_max_replicas" {
   default     = 10
 }
 
+variable "auth_provider" {
+  description = "Authentication provider: 'azure' or 'keycloak'"
+  type        = string
+  default     = "azure"
+}
+
 variable "azure_tenant_id" {
   description = "ID of the azure application "
   type        = string
@@ -105,6 +111,12 @@ variable "container_registry_name" {
 variable "container_registry_resource_group" {
   description = "The name of the resource group the container registry is in"
   type        = string
+}
+
+variable "shared_infra_resource_group_name" {
+  description = "Resource group containing shared infrastructure (Keycloak, registry, etc.)"
+  type        = string
+  default     = "rg-destiny-evidence-shared"
 }
 
 variable "cpu_scaling_threshold" {

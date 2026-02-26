@@ -1,65 +1,31 @@
-// React hook for Destiny Repository API access
+// React hook for Destiny Repository API access - supports Azure AD and Keycloak
 
-import React from "react";
-import { useMsal } from "@azure/msal-react";
-import { getLoginRequest } from "../msalConfig";
+import { createContext, useContext } from "react";
+import { AuthProvider } from "../authConfig";
 import { apiGet, ApiResult } from "./client";
 import { ReferenceLookupResult, SearchParams, SearchResult } from "./types";
-import { getRuntimeConfig } from "../runtimeConfig";
-import { InteractionStatus } from "@azure/msal-browser";
+
+/**
+ * Unified auth context provided by layout based on the active auth provider.
+ * Each provider wrapper (AzureAuthBridge, KeycloakAuthBridge) provides its own
+ * implementation, so auth hooks are only called within their provider tree.
+ */
+export interface AuthContextValue {
+  getToken: () => Promise<string | undefined>;
+  isLoggedIn: boolean;
+  isLoginProcessing: boolean;
+  provider: AuthProvider;
+}
+
+export const AuthContext = createContext<AuthContextValue>({
+  getToken: async () => undefined,
+  isLoggedIn: true,
+  isLoginProcessing: false,
+  provider: "local",
+});
 
 export function useApi() {
-  const { instance, accounts, inProgress } = useMsal();
-
-  const [env, setEnv] = React.useState<string | undefined>(undefined);
-
-  React.useEffect(() => {
-    (async () => {
-      try {
-        const cfg = await getRuntimeConfig();
-        setEnv(cfg["ENV"]);
-      } catch (e) {
-        console.warn("Failed to load runtime config", e);
-      }
-    })();
-  }, []);
-
-  const isLocal = env === "local";
-  const isLoggedIn = isLocal || (accounts?.length ?? 0) > 0;
-  const isLoginProcessing =
-    inProgress === InteractionStatus.Login ||
-    inProgress === InteractionStatus.AcquireToken ||
-    inProgress === InteractionStatus.HandleRedirect ||
-    inProgress === InteractionStatus.SsoSilent;
-
-  async function getToken(): Promise<string | undefined> {
-    if (!isLoggedIn || isLocal) return undefined;
-    if (!accounts || accounts.length === 0) return undefined;
-
-    try {
-      const request = await getLoginRequest();
-      const resp = await instance.acquireTokenSilent({
-        ...request,
-        account: accounts[0],
-      });
-      return resp?.accessToken;
-    } catch (err: any) {
-      console.warn(
-        "acquireTokenSilent failed, starting redirect:",
-        err?.message,
-      );
-      try {
-        const request = await getLoginRequest();
-        instance.acquireTokenRedirect({
-          ...request,
-          account: accounts[0],
-        });
-      } catch (redirectErr) {
-        console.error("acquireTokenRedirect failed:", redirectErr);
-      }
-      return undefined;
-    }
-  }
+  const { getToken, isLoggedIn, isLoginProcessing } = useContext(AuthContext);
 
   async function fetchReferences(
     identifiers: string[],
@@ -72,7 +38,7 @@ export function useApi() {
       urlParams.set("identifier", identifiers.join(","));
 
       const path = `/references/?${urlParams.toString()}`;
-      const result: ApiResult<any> = await apiGet(path, token);
+      const result: ApiResult<unknown> = await apiGet(path, token);
 
       const dataArr = Array.isArray(result.data) ? result.data : [];
       if (dataArr.length === 0 && !result.error) {
@@ -86,10 +52,11 @@ export function useApi() {
         data: dataArr,
         error: result.error,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
       return {
         data: undefined,
-        error: { type: "generic", detail: err?.message ?? "Unknown error" },
+        error: { type: "generic", detail: message },
       };
     }
   }
@@ -116,7 +83,7 @@ export function useApi() {
       }
 
       const path = `/references/search/?${urlParams.toString()}`;
-      const result: ApiResult<any> = await apiGet(path, token);
+      const result: ApiResult<SearchResult["data"]> = await apiGet(path, token);
 
       if (result.error) {
         return {
@@ -136,10 +103,11 @@ export function useApi() {
         data: result.data,
         error: null,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
       return {
         data: undefined,
-        error: { type: "generic", detail: err?.message ?? "Unknown error" },
+        error: { type: "generic", detail: message },
       };
     }
   }

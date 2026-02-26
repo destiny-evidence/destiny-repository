@@ -1,10 +1,14 @@
-# Copy to ui/public/runtime-config.json if running with `npm run dev`
-# If running with docker, this will autogenerate from env vars with the same names
 {
-    "NEXT_PUBLIC_API_URL":"http://localhost:8000/v1/",
-    "ENV":"local",
+    "NEXT_PUBLIC_API_URL": "http://localhost:8000/v1/",
+    "ENV": "local",
+    "AUTH_PROVIDER": "keycloak",
+
     # Not needed for local dev, to verify auth fill out and use real values and set ENV!=local
-    "NEXT_PUBLIC_AZURE_CLIENT_ID"="<replace-me>",
-    "NEXT_PUBLIC_AZURE_APPLICATION_ID"="<replace-me>",
-    "NEXT_PUBLIC_AZURE_LOGIN_URL"="<replace-me>"
+    "NEXT_PUBLIC_AZURE_CLIENT_ID": "<replace-me>",
+    "NEXT_PUBLIC_AZURE_APPLICATION_ID": "<replace-me>",
+    "NEXT_PUBLIC_AZURE_LOGIN_URL"="<replace-me>",
+
+    "KEYCLOAK_URL": "http://localhost:8080",
+    "KEYCLOAK_REALM": "destiny",
+    "KEYCLOAK_CLIENT_ID": "destiny-auth-client"
 }
