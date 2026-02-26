@@ -566,7 +566,7 @@ class KeycloakOAuthMiddleware(httpx.Auth):
     def _get_token_from_client_credentials(
         self,
         *,
-        force_refresh: bool = False,  # noqa: ARG002
+        force_refresh: bool = False,
     ) -> str:
         """
         Get an OAuth2 token using client credentials.
@@ -574,11 +574,14 @@ class KeycloakOAuthMiddleware(httpx.Auth):
         Client credentials tokens have no refresh token, so on expiry
         we simply re-acquire a new token.
 
-        :param force_refresh: Unused; kept for interface compatibility.
+        :param force_refresh: Whether to force re-acquisition of the token.
         :type force_refresh: bool
         :return: The OAuth2 access token.
         :rtype: str
         """
+        if self._token and not force_refresh:
+            return self._token.access_token
+
         self._token = self._auth_flow.authenticate(scopes=self._scopes)
         return self._token.access_token
 
