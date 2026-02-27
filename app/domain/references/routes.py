@@ -40,7 +40,11 @@ from app.api.auth import (
 from app.api.decorators import experimental
 from app.api.exception_handlers import APIExceptionContent, APIExceptionResponse
 from app.core.config import get_settings
-from app.core.exceptions import ParseError, StateTransitionError
+from app.core.exceptions import (
+    DeduplicationValueError,
+    ParseError,
+    StateTransitionError,
+)
 from app.core.telemetry.fastapi import PayloadAttributeTracer
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
@@ -762,7 +766,7 @@ async def fulfill_robot_enhancement_batch(
 
 
 @deduplication_router.post(
-    "/",
+    "/invoke/",
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def invoke_deduplication_for_references(
@@ -775,6 +779,51 @@ async def invoke_deduplication_for_references(
         n_references=len(reference_ids.reference_ids),
     )
     await reference_service.invoke_deduplication_for_references(reference_ids)
+
+
+@deduplication_router.post(
+    "/",
+    status_code=status.HTTP_201_CREATED,
+)
+async def make_duplicate_decisions(
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    reference_duplicate_decisions: Annotated[
+        list[destiny_sdk.deduplication.MakeDuplicateDecision],
+        Field(min_length=1, max_length=10),
+    ],
+) -> list[destiny_sdk.deduplication.MakeDuplicateDecisionResult]:
+    """
+    Manually resolve deduplication for references.
+
+    All provided decisions will be applied to their respective references and made
+    active.
+
+    This is a synchronous endpoint that applies the decisions together, so it may take
+    a short while to complete - ensure your client is configured with a long enough
+    timeout.
+    """
+    logger.info(
+        "Resolving deduplication for references.",
+        n_references=len(reference_duplicate_decisions),
+    )
+    duplicate_decisions = [
+        anti_corruption_service.duplicate_decision_from_sdk_make(decision)
+        for decision in reference_duplicate_decisions
+    ]
+    try:
+        results = await reference_service.make_duplicate_decisions(duplicate_decisions)
+    except DeduplicationValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(e),
+        ) from e
+    return [
+        anti_corruption_service.duplicate_decision_to_sdk_make_result(result)
+        for result in results
+    ]
 
 
 reference_router.include_router(deduplication_router)

@@ -296,6 +296,24 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             msg = "Only terminal duplicate determinations can be mapped."
             raise DeduplicationValueError(msg)
 
+        if new_decision.canonical_reference_id:
+            canonical_ref = await self.sql_uow.references.get_by_pk(
+                new_decision.canonical_reference_id,
+                preload=["duplicate_decision"],
+            )
+            if not canonical_ref.is_canonical:
+                non_canonical_determination = (
+                    canonical_ref.duplicate_decision.duplicate_determination
+                    if canonical_ref.duplicate_decision
+                    else "none"
+                )
+                msg = (
+                    "Cannot mark as duplicate of a non-canonical reference. "
+                    f"Reference {new_decision.canonical_reference_id} has "
+                    f"active determination: {non_canonical_determination}."
+                )
+                raise DeduplicationValueError(msg)
+
         reference = await self.sql_uow.references.get_by_pk(
             new_decision.reference_id,
             preload=["duplicate_decision", "canonical_reference"],
