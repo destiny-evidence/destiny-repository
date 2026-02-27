@@ -934,3 +934,143 @@ async def test_search_references_with_annotation_filters(
     assert call_kwargs["annotations"][3].scheme == "test:scheme"
     assert call_kwargs["annotations"][3].label == "label/with/lots/of/slashes"
     assert call_kwargs["annotations"][3].score is None
+
+
+async def test_make_duplicate_decisions_mark_canonical_and_duplicate(
+    session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """Test marking one reference canonical, then another as its duplicate."""
+    canonical_ref = await add_reference(session)
+    duplicate_ref = await add_reference(session)
+
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(canonical_ref.id),
+                "duplicate_determination": "canonical",
+            }
+        ],
+    )
+    assert response.status_code == status.HTTP_201_CREATED
+
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(duplicate_ref.id),
+                "duplicate_determination": "duplicate",
+                "canonical_reference_id": str(canonical_ref.id),
+            }
+        ],
+    )
+    assert response.status_code == status.HTTP_201_CREATED
+
+
+@pytest.mark.parametrize(
+    "order",
+    ["canonical_first", "duplicate_first"],
+)
+async def test_make_duplicate_decisions_ordering_in_same_call(
+    session: AsyncSession,
+    client: AsyncClient,
+    order: str,
+) -> None:
+    """Canonical must come before duplicate in the same call."""
+    canonical_ref = await add_reference(session)
+    duplicate_ref = await add_reference(session)
+
+    canonical_decision = {
+        "reference_id": str(canonical_ref.id),
+        "duplicate_determination": "canonical",
+    }
+    duplicate_decision = {
+        "reference_id": str(duplicate_ref.id),
+        "duplicate_determination": "duplicate",
+        "canonical_reference_id": str(canonical_ref.id),
+    }
+
+    decisions = (
+        [canonical_decision, duplicate_decision]
+        if order == "canonical_first"
+        else [duplicate_decision, canonical_decision]
+    )
+
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=decisions,
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+
+
+async def test_make_duplicate_decisions_not_a_canonical_reference(
+    session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """Test making a duplicate decision pointing to a non-canonical reference."""
+    target_ref = await add_reference(session)
+    duplicate_ref = await add_reference(session)
+
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(duplicate_ref.id),
+                "duplicate_determination": "duplicate",
+                "canonical_reference_id": str(target_ref.id),
+            }
+        ],
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert "non-canonical" in response.json()["detail"]
+
+
+async def test_make_duplicate_decisions_nonexistent_reference(
+    client: AsyncClient,
+) -> None:
+    """Test making a decision for a reference that doesn't exist."""
+    fake_id = uuid7()
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(fake_id),
+                "duplicate_determination": "canonical",
+            }
+        ],
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert str(fake_id) in response.json()["detail"]
+
+
+async def test_make_duplicate_decisions_duplicate_without_canonical_id(
+    client: AsyncClient,
+) -> None:
+    """Test duplicate without canonical_reference_id fails validation."""
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(uuid7()),
+                "duplicate_determination": "duplicate",
+            }
+        ],
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_make_duplicate_decisions_empty_list(
+    client: AsyncClient,
+) -> None:
+    """Test that an empty list of decisions fails validation."""
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=[],
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT

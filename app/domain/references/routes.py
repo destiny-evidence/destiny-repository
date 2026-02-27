@@ -40,7 +40,11 @@ from app.api.auth import (
 from app.api.decorators import experimental
 from app.api.exception_handlers import APIExceptionContent, APIExceptionResponse
 from app.core.config import get_settings
-from app.core.exceptions import ParseError, StateTransitionError
+from app.core.exceptions import (
+    DeduplicationValueError,
+    ParseError,
+    StateTransitionError,
+)
 from app.core.telemetry.fastapi import PayloadAttributeTracer
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
@@ -809,7 +813,13 @@ async def make_duplicate_decisions(
         anti_corruption_service.duplicate_decision_from_make_sdk(decision)
         for decision in reference_duplicate_decisions
     ]
-    await reference_service.make_duplicate_decisions(duplicate_decisions)
+    try:
+        await reference_service.make_duplicate_decisions(duplicate_decisions)
+    except DeduplicationValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(e),
+        ) from e
 
 
 reference_router.include_router(deduplication_router)

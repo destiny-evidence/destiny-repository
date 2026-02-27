@@ -1279,7 +1279,13 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         duplicate_decisions: list[ReferenceDuplicateDecision],
     ) -> None:
         """Make duplicate decisions for a list of reference duplicate decisions."""
-        for duplicate_decision in duplicate_decisions:
+        # Process canonical decisions first so they can then be duplicated
+        for duplicate_decision in sorted(
+            duplicate_decisions,
+            key=lambda decision: decision.duplicate_determination
+            == DuplicateDetermination.CANONICAL,
+            reverse=True,
+        ):
             (
                 reference_duplicate_decision,
                 decision_changed,

@@ -443,7 +443,7 @@ async def test_canonical_becomes_duplicate(  # noqa: PLR0913
 
     # Now deduplicate the duplicate again and check downstream
     await destiny_client_v1.post(
-        "/references/duplicate-decisions/",
+        "/references/duplicate-decisions/invoke/",
         json={
             "reference_ids": [str(duplicate_reference.id)],
         },
@@ -522,7 +522,7 @@ async def test_duplicate_becomes_canonical(  # noqa: PLR0913
 
     # Now deduplicate the non-duplicate again and check downstream
     await destiny_client_v1.post(
-        "/references/duplicate-decisions/",
+        "/references/duplicate-decisions/invoke/",
         json={
             "reference_ids": [str(non_duplicate_reference.id)],
         },
@@ -596,7 +596,7 @@ async def test_duplicate_change(  # noqa: PLR0913
 
     # Deduplicate the duplicate again and check downstream
     await destiny_client_v1.post(
-        "/references/duplicate-decisions/",
+        "/references/duplicate-decisions/invoke/",
         json={
             "reference_ids": [str(duplicate_reference.id)],
         },
