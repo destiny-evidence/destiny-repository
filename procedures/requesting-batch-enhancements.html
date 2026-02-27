@@ -1,0 +1,991 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Requesting Enhancements &#8212; DESTINY Repository v1.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=cf3b3841" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+    <script src="../_static/documentation_options.js?v=e160b93e"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11.12.1/dist/mermaid.esm.min.mjs"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.2.0/dist/mermaid-layout-elk.esm.min.mjs"></script>
+    <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.12.1/dist/mermaid.esm.min.mjs";import elkLayouts from "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.2.0/dist/mermaid-layout-elk.esm.min.mjs";mermaid.registerLayoutLoaders(elkLayouts);mermaid.initialize({startOnLoad:false});</script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+    <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.12.1/dist/mermaid.esm.min.mjs";
+
+const defaultStyle = document.createElement('style');
+defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+`;
+document.head.appendChild(defaultStyle);
+
+const fullscreenStyle = document.createElement('style');
+fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+document.head.appendChild(fullscreenStyle);
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        return brightness < 128;
+    }
+    return false;
+};
+
+const load = async () => {
+    await mermaid.run();
+
+    const all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(load, 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(load, 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(load, 200);
+        return;
+    }
+
+    const darkTheme = isDarkTheme();
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    const modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    const modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    let previousScrollOffset = [window.scrollX, window.scrollY];
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    const allButtons = [];
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+
+        container.appendChild(fullscreenBtn);
+        allButtons.push(fullscreenBtn);
+    });
+
+    // Update theme classes when theme changes
+    const updateTheme = () => {
+        const dark = isDarkTheme();
+        allButtons.forEach(btn => {
+            if (dark) {
+                btn.classList.add('dark-theme');
+            } else {
+                btn.classList.remove('dark-theme');
+            }
+        });
+        if (dark) {
+            modal.classList.add('dark-theme');
+            modalContent.classList.add('dark-theme');
+            closeBtn.classList.add('dark-theme');
+        } else {
+            modal.classList.remove('dark-theme');
+            modalContent.classList.remove('dark-theme');
+            closeBtn.classList.remove('dark-theme');
+        }
+    };
+
+    // Watch for theme changes
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    observer.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style']
+    });
+};
+
+window.addEventListener("load", load);
+</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'procedures/requesting-batch-enhancements';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Reference Deduplication" href="deduplication.html" />
+    <link rel="prev" title="Importing References with Batches" href="batch-importing.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">DESTINY Repository v1.0 documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../codebase/codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../sdk/sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../codebase/codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../sdk/sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="oauth.html">API Authentication</a></li>
+<li class="toctree-l1"><a class="reference internal" href="search.html">Search</a></li>
+<li class="toctree-l1"><a class="reference internal" href="batch-importing.html">Importing References with Batches</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Requesting Enhancements</a></li>
+<li class="toctree-l1"><a class="reference internal" href="deduplication.html">Reference Deduplication</a></li>
+<li class="toctree-l1"><a class="reference internal" href="robot-registration.html">Registering a Robot</a></li>
+<li class="toctree-l1"><a class="reference internal" href="robot-automation.html">Robot Automations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="destiny-reference-flow.html">DESTINY Reference Flow</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="procedures.html" class="nav-link">Procedures</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Requesting Enhancements</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="requesting-enhancements">
+<h1>Requesting Enhancements<a class="headerlink" href="#requesting-enhancements" title="Link to this heading">#</a></h1>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This document is best understood in conjunction with <a class="reference internal" href="../sdk/schemas.html#sdk-schemas-robots"><span class="std std-ref">Robots Schemas</span></a>. The schemas here, cross-referenced in this document, have significant supplementary documentation.</p>
+</div>
+<nav class="contents local" id="table-of-contents">
+<p class="topic-title">Table of Contents</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="#enhancement-request-flow" id="id1">Enhancement Request Flow</a></p></li>
+<li><p><a class="reference internal" href="#for-requesters" id="id2">For Requesters</a></p>
+<ul>
+<li><p><a class="reference internal" href="#user-request-flow" id="id3">User Request Flow</a></p></li>
+<li><p><a class="reference internal" href="#enhancement-request-status-flow" id="id4">Enhancement Request Status Flow</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#for-robots" id="id5">For Robots</a></p>
+<ul>
+<li><p><a class="reference internal" href="#robot-implementation" id="id6">Robot Implementation</a></p></li>
+</ul>
+</li>
+</ul>
+</nav>
+<section id="enhancement-request-flow">
+<h2><a class="toc-backref" href="#id1" role="doc-backlink">Enhancement Request Flow</a><a class="headerlink" href="#enhancement-request-flow" title="Link to this heading">#</a></h2>
+<p>Robots retrieve and process enhancement requests using a polling-based approach where the robot actively polls the repository for pending enhancement batches.</p>
+</section>
+<section id="for-requesters">
+<h2><a class="toc-backref" href="#id2" role="doc-backlink">For Requesters</a><a class="headerlink" href="#for-requesters" title="Link to this heading">#</a></h2>
+<p>The requester calls the <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/enhancement-requests/</span></code> endpoint with a <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestIn" title="libs.sdk.src.destiny_sdk.robots.EnhancementRequestIn"><code class="xref py py-class docutils literal notranslate"><span class="pre">EnhancementRequestIn</span></code></a> object, providing a robot ID and a list of reference IDs to enhance.</p>
+<p>Once confirmed by the repository, the requester will receive a <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead" title="libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead"><code class="xref py py-class docutils literal notranslate"><span class="pre">EnhancementRequestRead</span></code></a> object containing the request ID and the status of the request.</p>
+<p>The requester can check the status of the request by calling <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/enhancement-requests/&lt;request_id&gt;/</span></code>, again returning a <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead" title="libs.sdk.src.destiny_sdk.robots.EnhancementRequestRead"><code class="xref py py-class docutils literal notranslate"><span class="pre">EnhancementRequestRead</span></code></a>.</p>
+<p>Once processing is complete, the overall status will indicate whether the enhancement request succeeded or failed. Individual batch-level validation details are managed internally by the system and are not exposed to the original requester.</p>
+<section id="user-request-flow">
+<h3><a class="toc-backref" href="#id3" role="doc-backlink">User Request Flow</a><a class="headerlink" href="#user-request-flow" title="Link to this heading">#</a></h3>
+<pre  class="mermaid">
+        sequenceDiagram
+    actor User
+    participant Data Repository
+    User-&gt;&gt;Data Repository: POST /enhancement-requests/ : EnhancementRequestIn
+    Data Repository--&gt;&gt;Data Repository: Register enhancement request
+    Note over Data Repository: Request status: RECEIVED
+    Data Repository--&gt;&gt;User: EnhancementRequestRead (request_id, status)
+    Note over User: User can periodically check status
+    User-&gt;&gt;Data Repository: GET /enhancement-requests/&lt;request_id&gt;/ : Check status
+    Data Repository--&gt;&gt;User: EnhancementRequestRead (updated status)
+    Note over Data Repository: After all robot processing completes...
+    Data Repository--&gt;&gt;Data Repository: Update request state to COMPLETED
+    User-&gt;&gt;Data Repository: GET /enhancement-requests/&lt;request_id&gt;/ : Final status check
+    Data Repository--&gt;&gt;User: EnhancementRequestRead (COMPLETED status)
+    </pre></section>
+<section id="enhancement-request-status-flow">
+<h3><a class="toc-backref" href="#id4" role="doc-backlink">Enhancement Request Status Flow</a><a class="headerlink" href="#enhancement-request-status-flow" title="Link to this heading">#</a></h3>
+<p>Enhancement requests progress through several statuses during their lifecycle:</p>
+<ul class="simple">
+<li><p><strong>RECEIVED</strong>: Enhancement request has been received by the repository</p></li>
+<li><p><strong>ACCEPTED</strong>: Enhancement request has been accepted by the robot</p></li>
+<li><p><strong>PROCESSING</strong>: Enhancement request is being processed by the robot</p></li>
+<li><p><strong>IMPORTING</strong>: Enhancements have been received by the repository and are being imported</p></li>
+<li><p><strong>INDEXING</strong>: Enhancements have been imported and are being indexed</p></li>
+<li><p><strong>PARTIAL_FAILED</strong>: Some enhancements failed to create</p></li>
+<li><p><strong>FAILED</strong>: All enhancements failed to create or the robot encountered a global error</p></li>
+<li><p><strong>INDEXING_FAILED</strong>: Enhancements have been imported but indexing failed</p></li>
+<li><p><strong>COMPLETED</strong>: All enhancements have been successfully created and indexed</p></li>
+</ul>
+<p>Requests typically transition from <code class="docutils literal notranslate"><span class="pre">RECEIVED</span></code> directly to <code class="docutils literal notranslate"><span class="pre">PROCESSING</span></code> when the robot polls for and receives the first batch. The status remains <code class="docutils literal notranslate"><span class="pre">PROCESSING</span></code> until all batches are completed, then moves to <code class="docutils literal notranslate"><span class="pre">IMPORTING</span></code> and eventually <code class="docutils literal notranslate"><span class="pre">COMPLETED</span></code>.</p>
+</section>
+</section>
+<section id="for-robots">
+<h2><a class="toc-backref" href="#id5" role="doc-backlink">For Robots</a><a class="headerlink" href="#for-robots" title="Link to this heading">#</a></h2>
+<p>See <a class="reference internal" href="robot-registration.html"><span class="doc">Robot Registration</span></a> for details on how robots are registered. Robots poll for batches of references assigned to them for enhancement (robot enhancement batches). Each reference is provided in the <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.reference_storage_url" title="libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.reference_storage_url"><code class="xref py py-attr docutils literal notranslate"><span class="pre">reference_storage_url</span></code></a> file.</p>
+<section id="robot-implementation">
+<h3><a class="toc-backref" href="#id6" role="doc-backlink">Robot Implementation</a><a class="headerlink" href="#robot-implementation" title="Link to this heading">#</a></h3>
+<p>Robots actively poll the repository for robot enhancement batches using the SDK client.</p>
+<section id="robot-processing-flow">
+<h4>Robot Processing Flow<a class="headerlink" href="#robot-processing-flow" title="Link to this heading">#</a></h4>
+<pre  class="mermaid">
+        sequenceDiagram
+    participant Data Repository
+    participant Blob Storage
+    participant Robot
+    Note over Data Repository: Enhancement request is RECEIVED
+    Robot-&gt;&gt;Data Repository: POST /robot-enhancement-batches/ : Poll for batches
+    Data Repository-&gt;&gt;+Blob Storage: Store requested references and dependent data
+    Data Repository-&gt;&gt;Robot: RobotEnhancementBatch (batch of references)
+    Note over Data Repository: Request status: PROCESSING
+    Blob Storage-&gt;&gt;-Robot: GET reference_storage_url (download references)
+    Robot--&gt;&gt;Robot: Process references and create enhancements
+    alt More batches available
+        Robot-&gt;&gt;Data Repository: POST /robot-enhancement-batches/ : Poll for next batch
+        Data Repository-&gt;&gt;Robot: RobotEnhancementBatch (next batch)
+        Note over Robot: Process additional batches...
+    else No more batches
+        Robot-&gt;&gt;Data Repository: POST /robot-enhancement-batches/ : Poll for batches
+        Data Repository-&gt;&gt;Robot: HTTP 204 No Content
+    end
+    alt Batch success
+        Robot-&gt;&gt;+Blob Storage: PUT result_storage_url (upload enhancements)
+        Robot-&gt;&gt;Data Repository: POST /robot-enhancement-batches/&lt;batch_id&gt;/results/ : RobotEnhancementBatchResult
+    else Batch failure
+        Robot-&gt;&gt;Data Repository: POST /robot-enhancement-batches/&lt;batch_id&gt;/results/ : RobotEnhancementBatchResult(error)
+    end
+    Note over Robot: Repeat...
+    Blob Storage-&gt;&gt;-Data Repository: Validate and import all enhancements
+    Note over Data Repository: Update request state to IMPORTING → INDEXING → COMPLETED
+    </pre></section>
+<section id="implementation-steps">
+<h4>Implementation Steps<a class="headerlink" href="#implementation-steps" title="Link to this heading">#</a></h4>
+<p>To implement a polling-based robot:</p>
+<ol class="arabic simple">
+<li><p><strong>Poll for batches</strong>: Use <a class="reference internal" href="../sdk/robot-client.html#libs.sdk.src.destiny_sdk.client.RobotClient.poll_robot_enhancement_batch" title="libs.sdk.src.destiny_sdk.client.RobotClient.poll_robot_enhancement_batch"><code class="xref py py-meth docutils literal notranslate"><span class="pre">RobotClient.poll_robot_enhancement_batch()</span></code></a> to retrieve pending batches. The method returns a <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch" title="libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch"><code class="xref py py-class docutils literal notranslate"><span class="pre">RobotEnhancementBatch</span></code></a> object or <code class="docutils literal notranslate"><span class="pre">None</span></code> if no batches are available.</p></li>
+<li><p><strong>Process references</strong>: Download the references from the <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.reference_storage_url" title="libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.reference_storage_url"><code class="xref py py-attr docutils literal notranslate"><span class="pre">reference_storage_url</span></code></a>. Each line in the file is a JSON-serialized <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.references.Reference" title="libs.sdk.src.destiny_sdk.references.Reference"><code class="xref py py-class docutils literal notranslate"><span class="pre">Reference</span></code></a> object, which can be parsed using <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.references.Reference.from_jsonl" title="libs.sdk.src.destiny_sdk.references.Reference.from_jsonl"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Reference.from_jsonl()</span></code></a>. These references will be in the <a class="reference internal" href="deduplication.html#deduplicated-projection"><span class="std std-ref">deduplicated form</span></a>, giving robots full access to the reference’s data.</p></li>
+<li><p><strong>Create enhancements</strong>: Process each reference and create <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.Enhancement" title="libs.sdk.src.destiny_sdk.enhancements.Enhancement"><code class="xref py py-class docutils literal notranslate"><span class="pre">Enhancement</span></code></a> objects or <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.LinkedRobotError" title="libs.sdk.src.destiny_sdk.robots.LinkedRobotError"><code class="xref py py-class docutils literal notranslate"><span class="pre">LinkedRobotError</span></code></a> objects for failed references.</p></li>
+<li><p><strong>Upload results</strong>: Upload the results as a JSONL file to the <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.result_storage_url" title="libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.result_storage_url"><code class="xref py py-attr docutils literal notranslate"><span class="pre">result_storage_url</span></code></a>. Each line should be either an enhancement or an error entry.</p></li>
+<li><p><strong>Submit batch result</strong>: Use <a class="reference internal" href="../sdk/robot-client.html#libs.sdk.src.destiny_sdk.client.RobotClient.send_robot_enhancement_batch_result" title="libs.sdk.src.destiny_sdk.client.RobotClient.send_robot_enhancement_batch_result"><code class="xref py py-meth docutils literal notranslate"><span class="pre">RobotClient.send_robot_enhancement_batch_result()</span></code></a> to notify the repository that the batch is complete. Submit a <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatchResult" title="libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatchResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">RobotEnhancementBatchResult</span></code></a> object.</p></li>
+<li><p><strong>Continue polling</strong>.</p></li>
+</ol>
+<p><strong>Error Handling</strong></p>
+<ul class="simple">
+<li><p><strong>Batch-level errors</strong>: If the entire batch fails (e.g., due to connectivity issues), set the <code class="docutils literal notranslate"><span class="pre">error</span></code> field in the <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatchResult" title="libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatchResult"><code class="xref py py-class docutils literal notranslate"><span class="pre">RobotEnhancementBatchResult</span></code></a>.</p></li>
+<li><p><strong>Reference-level errors</strong>: For individual reference failures, include <a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.robots.LinkedRobotError" title="libs.sdk.src.destiny_sdk.robots.LinkedRobotError"><code class="xref py py-class docutils literal notranslate"><span class="pre">LinkedRobotError</span></code></a> entries in the result file and leave the batch result <code class="docutils literal notranslate"><span class="pre">error</span></code> field as <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+</ul>
+<p><strong>Leasing and Expiry</strong></p>
+<p>Each batch is leased to a robot for a configurable duration (default: 10 minutes). If processing takes longer than the lease duration:</p>
+<ul class="simple">
+<li><p><strong>Lease Renewal</strong>: Call <code class="docutils literal notranslate"><span class="pre">PATCH</span> <span class="pre">/robot-enhancement-batches/&lt;batch_id&gt;/renew-lease/</span></code> to extend the lease before it expires.</p></li>
+<li><p><strong>Expiry</strong>: If the lease expires before results are submitted, pending enhancements transition to <code class="docutils literal notranslate"><span class="pre">EXPIRED</span></code> status and replacement enhancements become available for future batches.</p></li>
+<li><p><strong>Result Rejection</strong>: If results are submitted after expiry, they will be rejected with an HTTP 422 Unprocessable Entity error. The robot should discard the results and poll for new batches.</p></li>
+</ul>
+<p><strong>Status Monitoring and URL Refresh</strong></p>
+<p>Robots can call <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/robot-enhancement-batches/&lt;batch_id&gt;/</span></code> to refresh signed URLs for a specific batch if they expire. Note that the reference data however is not refreshed, it is point-in-time from the time of the initial enhancement request.</p>
+<p>Requesters should use <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/enhancement-requests/&lt;request_id&gt;/</span></code> to monitor the overall request status.</p>
+</section>
+</section>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="batch-importing.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Importing References with Batches</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="deduplication.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Reference Deduplication</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#enhancement-request-flow">Enhancement Request Flow</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#for-requesters">For Requesters</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#user-request-flow">User Request Flow</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#enhancement-request-status-flow">Enhancement Request Status Flow</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#for-robots">For Robots</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#robot-implementation">Robot Implementation</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#robot-processing-flow">Robot Processing Flow</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#implementation-steps">Implementation Steps</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, DESTINY Team.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.16.1.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

@@ -1,0 +1,865 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Configuration &#8212; DESTINY Repository v1.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=cf3b3841" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+    <script src="../_static/documentation_options.js?v=e160b93e"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'codebase/config';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Import Models" href="models/imports.html" />
+    <link rel="prev" title="Structure" href="structure.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">DESTINY Repository v1.0 documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../procedures/procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../sdk/sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../procedures/procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../sdk/sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="structure.html">Structure</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models/imports.html">Import Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models/references.html">Reference Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models/robots.html">Robot Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="persistence/es.html">Elasticsearch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="persistence/blob.html">Blob Storage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="persistence/models.html">Persistence Models</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="codebase.html" class="nav-link">Codebase</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Configuration</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="configuration">
+<h1>Configuration<a class="headerlink" href="#configuration" title="Link to this heading">#</a></h1>
+<p>This section auto-documents the repository application configuration.</p>
+<dl class="py class pydantic_settings">
+<dt class="sig sig-object py" id="app.core.config.Settings">
+<em class="property"><span class="pre">pydantic</span> <span class="pre">settings</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">app.core.config.</span></span><span class="sig-name descname"><span class="pre">Settings</span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings" title="Link to this definition">#</a></dt>
+<dd><p>Settings model for API.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Config<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>extra</strong>: <em>str = ignore</em></p></li>
+<li><p><strong>env_file</strong>: <em>str = .env</em></p></li>
+<li><p><strong>env_file_encoding</strong>: <em>str = utf-8</em></p></li>
+</ul>
+</dd>
+<dt class="field-even">Fields<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference internal" href="#app.core.config.Settings.allowed_import_domains" title="app.core.config.Settings.allowed_import_domains"><code class="xref py py-obj docutils literal notranslate"><span class="pre">allowed_import_domains</span> <span class="pre">(list[str])</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.app_name" title="app.core.config.Settings.app_name"><code class="xref py py-obj docutils literal notranslate"><span class="pre">app_name</span> <span class="pre">(str)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.auth_provider" title="app.core.config.Settings.auth_provider"><code class="xref py py-obj docutils literal notranslate"><span class="pre">auth_provider</span> <span class="pre">(Literal['azure',</span> <span class="pre">'keycloak'])</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.azure_application_id" title="app.core.config.Settings.azure_application_id"><code class="xref py py-obj docutils literal notranslate"><span class="pre">azure_application_id</span> <span class="pre">(str)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.azure_blob_config" title="app.core.config.Settings.azure_blob_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">azure_blob_config</span> <span class="pre">(app.core.config.AzureBlobConfig</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.azure_login_url" title="app.core.config.Settings.azure_login_url"><code class="xref py py-obj docutils literal notranslate"><span class="pre">azure_login_url</span> <span class="pre">(str)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.bypass_auth" title="app.core.config.Settings.bypass_auth"><code class="xref py py-obj docutils literal notranslate"><span class="pre">bypass_auth</span> <span class="pre">(bool</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.cli_client_id" title="app.core.config.Settings.cli_client_id"><code class="xref py py-obj docutils literal notranslate"><span class="pre">cli_client_id</span> <span class="pre">(str</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.cors_allow_origins" title="app.core.config.Settings.cors_allow_origins"><code class="xref py py-obj docutils literal notranslate"><span class="pre">cors_allow_origins</span> <span class="pre">(list[str])</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.db_config" title="app.core.config.Settings.db_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">db_config</span> <span class="pre">(app.core.config.DatabaseConfig)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.dedup_scoring" title="app.core.config.Settings.dedup_scoring"><code class="xref py py-obj docutils literal notranslate"><span class="pre">dedup_scoring</span> <span class="pre">(app.core.config.DedupCandidateScoringConfig)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.default_download_file_chunk_size" title="app.core.config.Settings.default_download_file_chunk_size"><code class="xref py py-obj docutils literal notranslate"><span class="pre">default_download_file_chunk_size</span> <span class="pre">(Literal[1])</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.default_es_indexing_chunk_size" title="app.core.config.Settings.default_es_indexing_chunk_size"><code class="xref py py-obj docutils literal notranslate"><span class="pre">default_es_indexing_chunk_size</span> <span class="pre">(int)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.default_es_percolation_chunk_size" title="app.core.config.Settings.default_es_percolation_chunk_size"><code class="xref py py-obj docutils literal notranslate"><span class="pre">default_es_percolation_chunk_size</span> <span class="pre">(int)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.default_pending_enhancement_lease_duration" title="app.core.config.Settings.default_pending_enhancement_lease_duration"><code class="xref py py-obj docutils literal notranslate"><span class="pre">default_pending_enhancement_lease_duration</span> <span class="pre">(datetime.timedelta)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.default_upload_file_chunk_size" title="app.core.config.Settings.default_upload_file_chunk_size"><code class="xref py py-obj docutils literal notranslate"><span class="pre">default_upload_file_chunk_size</span> <span class="pre">(int)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.env" title="app.core.config.Settings.env"><code class="xref py py-obj docutils literal notranslate"><span class="pre">env</span> <span class="pre">(app.core.config.Environment)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.es_config" title="app.core.config.Settings.es_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">es_config</span> <span class="pre">(app.core.config.ESConfig)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.es_indexing_chunk_size_override" title="app.core.config.Settings.es_indexing_chunk_size_override"><code class="xref py py-obj docutils literal notranslate"><span class="pre">es_indexing_chunk_size_override</span> <span class="pre">(dict[app.core.config.ESIndexingOperation,</span> <span class="pre">int])</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.es_percolation_chunk_size_override" title="app.core.config.Settings.es_percolation_chunk_size_override"><code class="xref py py-obj docutils literal notranslate"><span class="pre">es_percolation_chunk_size_override</span> <span class="pre">(dict[app.core.config.ESPercolationOperation,</span> <span class="pre">int])</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.es_reference_repair_chunk_size" title="app.core.config.Settings.es_reference_repair_chunk_size"><code class="xref py py-obj docutils literal notranslate"><span class="pre">es_reference_repair_chunk_size</span> <span class="pre">(int)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.feature_flags" title="app.core.config.Settings.feature_flags"><code class="xref py py-obj docutils literal notranslate"><span class="pre">feature_flags</span> <span class="pre">(app.core.config.FeatureFlags)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.import_reference_retry_count" title="app.core.config.Settings.import_reference_retry_count"><code class="xref py py-obj docutils literal notranslate"><span class="pre">import_reference_retry_count</span> <span class="pre">(int)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.keycloak_client_id" title="app.core.config.Settings.keycloak_client_id"><code class="xref py py-obj docutils literal notranslate"><span class="pre">keycloak_client_id</span> <span class="pre">(str</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.keycloak_issuer_url" title="app.core.config.Settings.keycloak_issuer_url"><code class="xref py py-obj docutils literal notranslate"><span class="pre">keycloak_issuer_url</span> <span class="pre">(str</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.keycloak_realm" title="app.core.config.Settings.keycloak_realm"><code class="xref py py-obj docutils literal notranslate"><span class="pre">keycloak_realm</span> <span class="pre">(str)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.keycloak_url" title="app.core.config.Settings.keycloak_url"><code class="xref py py-obj docutils literal notranslate"><span class="pre">keycloak_url</span> <span class="pre">(str</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.log_level" title="app.core.config.Settings.log_level"><code class="xref py py-obj docutils literal notranslate"><span class="pre">log_level</span> <span class="pre">(app.core.config.LogLevel)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.max_lookup_reference_query_length" title="app.core.config.Settings.max_lookup_reference_query_length"><code class="xref py py-obj docutils literal notranslate"><span class="pre">max_lookup_reference_query_length</span> <span class="pre">(int)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.max_pending_enhancements_batch_size" title="app.core.config.Settings.max_pending_enhancements_batch_size"><code class="xref py py-obj docutils literal notranslate"><span class="pre">max_pending_enhancements_batch_size</span> <span class="pre">(int)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.message_broker_namespace" title="app.core.config.Settings.message_broker_namespace"><code class="xref py py-obj docutils literal notranslate"><span class="pre">message_broker_namespace</span> <span class="pre">(str</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.message_broker_queue_name" title="app.core.config.Settings.message_broker_queue_name"><code class="xref py py-obj docutils literal notranslate"><span class="pre">message_broker_queue_name</span> <span class="pre">(str)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.message_broker_url" title="app.core.config.Settings.message_broker_url"><code class="xref py py-obj docutils literal notranslate"><span class="pre">message_broker_url</span> <span class="pre">(str</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.message_lock_renewal_duration" title="app.core.config.Settings.message_lock_renewal_duration"><code class="xref py py-obj docutils literal notranslate"><span class="pre">message_lock_renewal_duration</span> <span class="pre">(int)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.minio_config" title="app.core.config.Settings.minio_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">minio_config</span> <span class="pre">(app.core.config.MinioConfig</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.otel_config" title="app.core.config.Settings.otel_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">otel_config</span> <span class="pre">(app.core.config.OTelConfig</span> <span class="pre">|</span> <span class="pre">None)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.otel_enabled" title="app.core.config.Settings.otel_enabled"><code class="xref py py-obj docutils literal notranslate"><span class="pre">otel_enabled</span> <span class="pre">(bool)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.presigned_url_expiry_seconds" title="app.core.config.Settings.presigned_url_expiry_seconds"><code class="xref py py-obj docutils literal notranslate"><span class="pre">presigned_url_expiry_seconds</span> <span class="pre">(int)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.project_root" title="app.core.config.Settings.project_root"><code class="xref py py-obj docutils literal notranslate"><span class="pre">project_root</span> <span class="pre">(pathlib.Path)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.tests_use_rabbitmq" title="app.core.config.Settings.tests_use_rabbitmq"><code class="xref py py-obj docutils literal notranslate"><span class="pre">tests_use_rabbitmq</span> <span class="pre">(bool)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.toml" title="app.core.config.Settings.toml"><code class="xref py py-obj docutils literal notranslate"><span class="pre">toml</span> <span class="pre">(app.core.config.TOML)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.trusted_unique_identifier_types" title="app.core.config.Settings.trusted_unique_identifier_types"><code class="xref py py-obj docutils literal notranslate"><span class="pre">trusted_unique_identifier_types</span> <span class="pre">(set[destiny_sdk.identifiers.ExternalIdentifierType])</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.core.config.Settings.upload_file_chunk_size_override" title="app.core.config.Settings.upload_file_chunk_size_override"><code class="xref py py-obj docutils literal notranslate"><span class="pre">upload_file_chunk_size_override</span> <span class="pre">(dict[app.core.config.UploadFile,</span> <span class="pre">int])</span></code></a></p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.allowed_import_domains">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">allowed_import_domains</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['blob.core.windows.net']</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.allowed_import_domains" title="Link to this definition">#</a></dt>
+<dd><p>Allowed domain suffixes for import storage URLs. URLs whose hostname does not match are rejected with 403. Empty list disables the check.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.app_name">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">app_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"> <span class="pre">[Required]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.app_name" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.auth_provider">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">auth_provider</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'azure'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'keycloak'</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'azure'</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.auth_provider" title="Link to this definition">#</a></dt>
+<dd><p>The authentication provider to use: ‘azure’ or ‘keycloak’.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.azure_application_id">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">azure_application_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"> <span class="pre">[Required]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.azure_application_id" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.azure_blob_config">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">azure_blob_config</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">AzureBlobConfig</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.azure_blob_config" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.azure_login_url">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">azure_login_url</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'https://login.microsoftonline.com'</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.azure_login_url" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.bypass_auth">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">bypass_auth</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.bypass_auth" title="Link to this definition">#</a></dt>
+<dd><p>Override auth bypass behavior. When None (default), auth is bypassed only when running locally (ENV=local/test). Set to False to enforce auth even locally.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.cli_client_id">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">cli_client_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.cli_client_id" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.cors_allow_origins">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">cors_allow_origins</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><em class="property"> <span class="pre">[Optional]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.cors_allow_origins" title="Link to this definition">#</a></dt>
+<dd><p>List of allowed origins for CORS.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.db_config">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">db_config</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">DatabaseConfig</span></em><em class="property"> <span class="pre">[Required]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.db_config" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.dedup_scoring">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">dedup_scoring</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">DedupCandidateScoringConfig</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">DedupCandidateScoringConfig(max_author_clauses=25,</span> <span class="pre">min_author_token_length=2)</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.dedup_scoring" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.default_download_file_chunk_size">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">default_download_file_chunk_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="m"><span class="pre">1</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.default_download_file_chunk_size" title="Link to this definition">#</a></dt>
+<dd><p>Number of records to process in a single file chunk when downloading.Not configurable or used, just representing that we stream line-by-line at this point.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.default_es_indexing_chunk_size">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">default_es_indexing_chunk_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1000</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.default_es_indexing_chunk_size" title="Link to this definition">#</a></dt>
+<dd><p>Number of records to process in a single chunk when indexing to Elasticsearch.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.default_es_percolation_chunk_size">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">default_es_percolation_chunk_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1000</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.default_es_percolation_chunk_size" title="Link to this definition">#</a></dt>
+<dd><p>Number of records to process in a single chunk when percolating to Elasticsearch.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.default_pending_enhancement_lease_duration">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">default_pending_enhancement_lease_duration</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">timedelta</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">datetime.timedelta(seconds=600)</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.default_pending_enhancement_lease_duration" title="Link to this definition">#</a></dt>
+<dd><p>The default duration to lease pending enhancements for, provided in ISO 8601 duration format eg ‘PT10M’.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.default_upload_file_chunk_size">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">default_upload_file_chunk_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.default_upload_file_chunk_size" title="Link to this definition">#</a></dt>
+<dd><p>Number of records to process in a single file chunk when uploading.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.env">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">env</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Environment</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">Environment.PRODUCTION</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.env" title="Link to this definition">#</a></dt>
+<dd><p>The environment the app is running in.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.es_config">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">es_config</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ESConfig</span></em><em class="property"> <span class="pre">[Required]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.es_config" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.es_indexing_chunk_size_override">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">es_indexing_chunk_size_override</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">ESIndexingOperation</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><em class="property"> <span class="pre">[Optional]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.es_indexing_chunk_size_override" title="Link to this definition">#</a></dt>
+<dd><p>Override the default Elasticsearch indexing chunk size.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.es_percolation_chunk_size_override">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">es_percolation_chunk_size_override</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">ESPercolationOperation</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><em class="property"> <span class="pre">[Optional]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.es_percolation_chunk_size_override" title="Link to this definition">#</a></dt>
+<dd><p>Override the default Elasticsearch percolation chunk size.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.es_reference_repair_chunk_size">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">es_reference_repair_chunk_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1000</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.es_reference_repair_chunk_size" title="Link to this definition">#</a></dt>
+<dd><p>Number of reference records to process in a single distributed task when repairing or rebuilding the reference index in Elasticsearch. Be wary that if increased too far, then the <cite>repair_reference_index_for_chunk</cite> task will require <cite>long_running=True</cite> and subsequent lock management.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.feature_flags">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">feature_flags</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">FeatureFlags</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">FeatureFlags()</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.feature_flags" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.import_reference_retry_count">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">import_reference_retry_count</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">3</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.import_reference_retry_count" title="Link to this definition">#</a></dt>
+<dd><p>Number of times to retry importing a reference before marking it as failed. We only retry on errors we are confident can be resolved - eg network issues or inconsistent database state being loaded in parallel.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.keycloak_client_id">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">keycloak_client_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.keycloak_client_id" title="Link to this definition">#</a></dt>
+<dd><p>The Keycloak client ID for token validation.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.keycloak_issuer_url">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">keycloak_issuer_url</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.keycloak_issuer_url" title="Link to this definition">#</a></dt>
+<dd><p>The issuer URL for token validation. Defaults to keycloak_url if not set. Useful when the token issuer differs from the internal Keycloak URL (e.g., in Docker where tokens are issued with localhost but JWKS is fetched via internal network).</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.keycloak_realm">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">keycloak_realm</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'destiny'</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.keycloak_realm" title="Link to this definition">#</a></dt>
+<dd><p>The Keycloak realm name.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.keycloak_url">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">keycloak_url</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.keycloak_url" title="Link to this definition">#</a></dt>
+<dd><p>The base URL of the Keycloak server (used for JWKS fetching).</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.log_level">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">log_level</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">LogLevel</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">LogLevel.INFO</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.log_level" title="Link to this definition">#</a></dt>
+<dd><p>The log level for the application. This applies to both opentelemetry and standard logging.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.max_lookup_reference_query_length">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">max_lookup_reference_query_length</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">100</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.max_lookup_reference_query_length" title="Link to this definition">#</a></dt>
+<dd><p>Maximum number of identifiers to allow in a single reference lookup query.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.max_pending_enhancements_batch_size">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">max_pending_enhancements_batch_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">10000</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.max_pending_enhancements_batch_size" title="Link to this definition">#</a></dt>
+<dd><p>Maximum number of pending enhancements to return in a single batch.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.message_broker_namespace">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">message_broker_namespace</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.message_broker_namespace" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.message_broker_queue_name">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">message_broker_queue_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'taskiq'</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.message_broker_queue_name" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.message_broker_url">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">message_broker_url</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.message_broker_url" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.message_lock_renewal_duration">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">message_lock_renewal_duration</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">10800</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.message_lock_renewal_duration" title="Link to this definition">#</a></dt>
+<dd><p>Duration in seconds to keep renewing message locks. Should be longer than expected processing time.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.minio_config">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">minio_config</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">MinioConfig</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.minio_config" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.otel_config">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">otel_config</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">OTelConfig</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.otel_config" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.otel_enabled">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">otel_enabled</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.otel_enabled" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.presigned_url_expiry_seconds">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">presigned_url_expiry_seconds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">3600</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.presigned_url_expiry_seconds" title="Link to this definition">#</a></dt>
+<dd><p>The number of seconds a signed URL is valid for.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.project_root">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">project_root</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Path</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">PosixPath('/home/runner/work/destiny-repository/destiny-repository')</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.project_root" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.tests_use_rabbitmq">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">tests_use_rabbitmq</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.tests_use_rabbitmq" title="Link to this definition">#</a></dt>
+<dd><p>Whether to use RabbitMQ for tests. Only used in test environment. If false, uses in-memory broker.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.toml">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">toml</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">TOML</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">TOML(toml_path=PosixPath('/home/runner/work/destiny-repository/destiny-repository'))</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.toml" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.trusted_unique_identifier_types">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">trusted_unique_identifier_types</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">set</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="../sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType" title="libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType"><span class="pre">ExternalIdentifierType</span></a><span class="p"><span class="pre">]</span></span></em><em class="property"> <span class="pre">[Optional]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.trusted_unique_identifier_types" title="Link to this definition">#</a></dt>
+<dd><p>Set of external identifier types that are considered trusted unique identifiers for references. These are used to shortcut deduplication. If empty, shortcutting is essentially feature-flagged off.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.core.config.Settings.upload_file_chunk_size_override">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">upload_file_chunk_size_override</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">UploadFile</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><em class="property"> <span class="pre">[Optional]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.upload_file_chunk_size_override" title="Link to this definition">#</a></dt>
+<dd><p>Override the default upload file chunk size.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="app.core.config.Settings.default_blob_container">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">default_blob_container</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.default_blob_container" title="Link to this definition">#</a></dt>
+<dd><p>Return the default blob container.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="app.core.config.Settings.default_blob_location">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">default_blob_location</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.default_blob_location" title="Link to this definition">#</a></dt>
+<dd><p>Return the default blob location.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="app.core.config.Settings.running_locally">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">running_locally</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.running_locally" title="Link to this definition">#</a></dt>
+<dd><p>Return True if the app is running locally.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="app.core.config.Settings.should_bypass_auth">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">should_bypass_auth</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.should_bypass_auth" title="Link to this definition">#</a></dt>
+<dd><p>Return True if auth should be bypassed.</p>
+<p>Auth can only be bypassed when running locally (ENV=local/test).</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="app.core.config.Settings.trace_repr">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">trace_repr</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/core/config.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.core.config.Settings.trace_repr" title="Link to this definition">#</a></dt>
+<dd><p>Get a string representation of the config for tracing.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="structure.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Structure</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="models/imports.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Import Models</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings"><code class="docutils literal notranslate"><span class="pre">Settings</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.allowed_import_domains"><code class="docutils literal notranslate"><span class="pre">Settings.allowed_import_domains</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.app_name"><code class="docutils literal notranslate"><span class="pre">Settings.app_name</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.auth_provider"><code class="docutils literal notranslate"><span class="pre">Settings.auth_provider</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.azure_application_id"><code class="docutils literal notranslate"><span class="pre">Settings.azure_application_id</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.azure_blob_config"><code class="docutils literal notranslate"><span class="pre">Settings.azure_blob_config</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.azure_login_url"><code class="docutils literal notranslate"><span class="pre">Settings.azure_login_url</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.bypass_auth"><code class="docutils literal notranslate"><span class="pre">Settings.bypass_auth</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.cli_client_id"><code class="docutils literal notranslate"><span class="pre">Settings.cli_client_id</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.cors_allow_origins"><code class="docutils literal notranslate"><span class="pre">Settings.cors_allow_origins</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.db_config"><code class="docutils literal notranslate"><span class="pre">Settings.db_config</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.dedup_scoring"><code class="docutils literal notranslate"><span class="pre">Settings.dedup_scoring</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.default_download_file_chunk_size"><code class="docutils literal notranslate"><span class="pre">Settings.default_download_file_chunk_size</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.default_es_indexing_chunk_size"><code class="docutils literal notranslate"><span class="pre">Settings.default_es_indexing_chunk_size</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.default_es_percolation_chunk_size"><code class="docutils literal notranslate"><span class="pre">Settings.default_es_percolation_chunk_size</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.default_pending_enhancement_lease_duration"><code class="docutils literal notranslate"><span class="pre">Settings.default_pending_enhancement_lease_duration</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.default_upload_file_chunk_size"><code class="docutils literal notranslate"><span class="pre">Settings.default_upload_file_chunk_size</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.env"><code class="docutils literal notranslate"><span class="pre">Settings.env</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.es_config"><code class="docutils literal notranslate"><span class="pre">Settings.es_config</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.es_indexing_chunk_size_override"><code class="docutils literal notranslate"><span class="pre">Settings.es_indexing_chunk_size_override</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.es_percolation_chunk_size_override"><code class="docutils literal notranslate"><span class="pre">Settings.es_percolation_chunk_size_override</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.es_reference_repair_chunk_size"><code class="docutils literal notranslate"><span class="pre">Settings.es_reference_repair_chunk_size</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.feature_flags"><code class="docutils literal notranslate"><span class="pre">Settings.feature_flags</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.import_reference_retry_count"><code class="docutils literal notranslate"><span class="pre">Settings.import_reference_retry_count</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.keycloak_client_id"><code class="docutils literal notranslate"><span class="pre">Settings.keycloak_client_id</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.keycloak_issuer_url"><code class="docutils literal notranslate"><span class="pre">Settings.keycloak_issuer_url</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.keycloak_realm"><code class="docutils literal notranslate"><span class="pre">Settings.keycloak_realm</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.keycloak_url"><code class="docutils literal notranslate"><span class="pre">Settings.keycloak_url</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.log_level"><code class="docutils literal notranslate"><span class="pre">Settings.log_level</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.max_lookup_reference_query_length"><code class="docutils literal notranslate"><span class="pre">Settings.max_lookup_reference_query_length</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.max_pending_enhancements_batch_size"><code class="docutils literal notranslate"><span class="pre">Settings.max_pending_enhancements_batch_size</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.message_broker_namespace"><code class="docutils literal notranslate"><span class="pre">Settings.message_broker_namespace</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.message_broker_queue_name"><code class="docutils literal notranslate"><span class="pre">Settings.message_broker_queue_name</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.message_broker_url"><code class="docutils literal notranslate"><span class="pre">Settings.message_broker_url</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.message_lock_renewal_duration"><code class="docutils literal notranslate"><span class="pre">Settings.message_lock_renewal_duration</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.minio_config"><code class="docutils literal notranslate"><span class="pre">Settings.minio_config</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.otel_config"><code class="docutils literal notranslate"><span class="pre">Settings.otel_config</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.otel_enabled"><code class="docutils literal notranslate"><span class="pre">Settings.otel_enabled</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.presigned_url_expiry_seconds"><code class="docutils literal notranslate"><span class="pre">Settings.presigned_url_expiry_seconds</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.project_root"><code class="docutils literal notranslate"><span class="pre">Settings.project_root</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.tests_use_rabbitmq"><code class="docutils literal notranslate"><span class="pre">Settings.tests_use_rabbitmq</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.toml"><code class="docutils literal notranslate"><span class="pre">Settings.toml</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.trusted_unique_identifier_types"><code class="docutils literal notranslate"><span class="pre">Settings.trusted_unique_identifier_types</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.upload_file_chunk_size_override"><code class="docutils literal notranslate"><span class="pre">Settings.upload_file_chunk_size_override</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.default_blob_container"><code class="docutils literal notranslate"><span class="pre">Settings.default_blob_container</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.default_blob_location"><code class="docutils literal notranslate"><span class="pre">Settings.default_blob_location</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.running_locally"><code class="docutils literal notranslate"><span class="pre">Settings.running_locally</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.should_bypass_auth"><code class="docutils literal notranslate"><span class="pre">Settings.should_bypass_auth</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.core.config.Settings.trace_repr"><code class="docutils literal notranslate"><span class="pre">Settings.trace_repr</span></code></a></li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, DESTINY Team.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.16.1.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

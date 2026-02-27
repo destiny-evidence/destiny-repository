@@ -1,0 +1,1137 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>API Authentication &#8212; DESTINY Repository v1.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=cf3b3841" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+    <script src="../_static/documentation_options.js?v=e160b93e"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11.12.1/dist/mermaid.esm.min.mjs"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.2.0/dist/mermaid-layout-elk.esm.min.mjs"></script>
+    <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.12.1/dist/mermaid.esm.min.mjs";import elkLayouts from "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@0.2.0/dist/mermaid-layout-elk.esm.min.mjs";mermaid.registerLayoutLoaders(elkLayouts);mermaid.initialize({startOnLoad:false});</script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+    <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.12.1/dist/mermaid.esm.min.mjs";
+
+const defaultStyle = document.createElement('style');
+defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+`;
+document.head.appendChild(defaultStyle);
+
+const fullscreenStyle = document.createElement('style');
+fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+document.head.appendChild(fullscreenStyle);
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        return brightness < 128;
+    }
+    return false;
+};
+
+const load = async () => {
+    await mermaid.run();
+
+    const all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(load, 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(load, 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(load, 200);
+        return;
+    }
+
+    const darkTheme = isDarkTheme();
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    const modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    const modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    let previousScrollOffset = [window.scrollX, window.scrollY];
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    const allButtons = [];
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+
+        container.appendChild(fullscreenBtn);
+        allButtons.push(fullscreenBtn);
+    });
+
+    // Update theme classes when theme changes
+    const updateTheme = () => {
+        const dark = isDarkTheme();
+        allButtons.forEach(btn => {
+            if (dark) {
+                btn.classList.add('dark-theme');
+            } else {
+                btn.classList.remove('dark-theme');
+            }
+        });
+        if (dark) {
+            modal.classList.add('dark-theme');
+            modalContent.classList.add('dark-theme');
+            closeBtn.classList.add('dark-theme');
+        } else {
+            modal.classList.remove('dark-theme');
+            modalContent.classList.remove('dark-theme');
+            closeBtn.classList.remove('dark-theme');
+        }
+    };
+
+    // Watch for theme changes
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    observer.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style']
+    });
+};
+
+window.addEventListener("load", load);
+</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'procedures/oauth';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Search" href="search.html" />
+    <link rel="prev" title="Procedures" href="procedures.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">DESTINY Repository v1.0 documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../codebase/codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../sdk/sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../codebase/codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../sdk/sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">API Authentication</a></li>
+<li class="toctree-l1"><a class="reference internal" href="search.html">Search</a></li>
+<li class="toctree-l1"><a class="reference internal" href="batch-importing.html">Importing References with Batches</a></li>
+<li class="toctree-l1"><a class="reference internal" href="requesting-batch-enhancements.html">Requesting Enhancements</a></li>
+<li class="toctree-l1"><a class="reference internal" href="deduplication.html">Reference Deduplication</a></li>
+<li class="toctree-l1"><a class="reference internal" href="robot-registration.html">Registering a Robot</a></li>
+<li class="toctree-l1"><a class="reference internal" href="robot-automation.html">Robot Automations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="destiny-reference-flow.html">DESTINY Reference Flow</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="procedures.html" class="nav-link">Procedures</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">API Authentication</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="api-authentication">
+<h1>API Authentication<a class="headerlink" href="#api-authentication" title="Link to this heading">#</a></h1>
+<nav class="contents local" id="table-of-contents">
+<p class="topic-title">Table of Contents</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="#background" id="id4">Background</a></p></li>
+<li><p><a class="reference internal" href="#provisioning" id="id5">Provisioning</a></p></li>
+<li><p><a class="reference internal" href="#obtaining-a-token" id="id6">Obtaining a token</a></p>
+<ul>
+<li><p><a class="reference internal" href="#using-the-sdk" id="id7">Using the SDK</a></p></li>
+<li><p><a class="reference internal" href="#using-a-script" id="id8">Using a script</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#using-the-token" id="id9">Using the token</a></p>
+<ul>
+<li><p><a class="reference internal" href="#id1" id="id10">Using the SDK</a></p></li>
+<li><p><a class="reference internal" href="#using-directly" id="id11">Using directly</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#script-template" id="id12">Script template</a></p></li>
+<li><p><a class="reference internal" href="#troubleshooting" id="id13">Troubleshooting</a></p></li>
+</ul>
+</nav>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This document is about API authentication for anyone <strong>except</strong> robots. For robots, refer to <a class="reference internal" href="../sdk/robot-client.html"><span class="doc">HMAC Auth</span></a>.</p>
+</div>
+<section id="background">
+<h2><a class="toc-backref" href="#id4" role="doc-backlink">Background</a><a class="headerlink" href="#background" title="Link to this heading">#</a></h2>
+<p>Interaction with the DESTINY Repository API requires first obtaining an authentication token from Azure. This token must then be included in the <code class="docutils literal notranslate"><span class="pre">Authorization</span></code> header of each API request.</p>
+<pre  class="mermaid">
+        sequenceDiagram
+    actor Client
+    participant Azure
+    participant API
+    Client-&gt;&gt;Azure: Request token (client credentials)
+    Azure--&gt;&gt;Client: Return access token
+    Client-&gt;&gt;API: API request with Authorization: Bearer &lt;token&gt;
+    API--&gt;&gt;Client: Return requested data
+    </pre></section>
+<section id="provisioning">
+<h2><a class="toc-backref" href="#id5" role="doc-backlink">Provisioning</a><a class="headerlink" href="#provisioning" title="Link to this heading">#</a></h2>
+<p>In order to obtain a token from Azure, you will need to be enrolled in our tenant <code class="docutils literal notranslate"><span class="pre">JT_AD</span></code>. Please reach out if you need access.</p>
+<p>Everyone will have <code class="docutils literal notranslate"><span class="pre">reference.reader</span></code>, but please reach out if you need additional permission scopes. You can see the available scopes per API resource in <a class="reference external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">the API documentation</a> - it is listed under each sub-category.</p>
+</section>
+<section id="obtaining-a-token">
+<h2><a class="toc-backref" href="#id6" role="doc-backlink">Obtaining a token</a><a class="headerlink" href="#obtaining-a-token" title="Link to this heading">#</a></h2>
+<p>There are a number of ways to obtain an OAuth2 token from Azure.</p>
+<p>In all cases, you will need the following information:</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id2">
+<caption><span class="caption-text">Authentication Details</span><a class="headerlink" href="#id2" title="Link to this table">#</a></caption>
+<thead>
+<tr class="row-odd"><th class="head"><p>Environment</p></th>
+<th class="head"><p>Login URL</p></th>
+<th class="head"><p>Client ID</p></th>
+<th class="head"><p>Application ID</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Development</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0fde62ae-2203-44a5-9722-73e965325ae7</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0a4b8df7-5c97-42b2-be07-2bb25e06dbb2</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Staging</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">96ed941e-15dc-4ec0-b9e7-e4eda99efd2e</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">14e3f6c0-b8aa-46c6-98d9-29b0dd2a0f7c</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>Production</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">7164ff26-4078-4107-850f-57b43b97f605</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">e314440e-f72c-4b8e-89c1-7eefef4b55ed</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<section id="using-the-sdk">
+<h3><a class="toc-backref" href="#id7" role="doc-backlink">Using the SDK</a><a class="headerlink" href="#using-the-sdk" title="Link to this heading">#</a></h3>
+<p>This is the recommended way to obtain tokens, as the <a class="reference internal" href="../sdk/client.html"><span class="doc">SDK</span></a> will handle token caching and refreshing for you, and will be kept up to date with any changes to the API authentication process.</p>
+<dl class="py class">
+<dt class="sig sig-object py">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">destiny_sdk.client.</span></span><span class="sig-name descname"><span class="pre">OAuthMiddleware</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">azure_client_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">azure_application_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">azure_login_url</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">HttpUrl</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">azure_client_secret</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SecretStr</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_managed_identity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/destiny_sdk/client.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a></dt>
+<dd><p>Auth middleware that handles OAuth2 token retrieval and refresh.</p>
+<p>This is generally used in conjunction with
+<a class="reference internal" href="../sdk/client.html#libs.sdk.src.destiny_sdk.client.OAuthClient" title="libs.sdk.src.destiny_sdk.client.OAuthClient"><code class="xref py py-class docutils literal notranslate"><span class="pre">OAuthClient</span></code></a>.</p>
+<p>Supports three authentication flows:</p>
+<p><strong>Public Client Application (human login)</strong></p>
+<p>Initial login will be interactive through a browser window. Subsequent token
+retrievals will use cached tokens and refreshes where possible, and only prompt
+for login again if necessary.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">auth</span> <span class="o">=</span> <span class="n">OAuthMiddleware</span><span class="p">(</span>
+    <span class="n">azure_client_id</span><span class="o">=</span><span class="s2">&quot;client-id&quot;</span><span class="p">,</span>
+    <span class="n">azure_application_id</span><span class="o">=</span><span class="s2">&quot;application-id&quot;</span><span class="p">,</span>
+    <span class="n">azure_login_url</span><span class="o">=</span><span class="s2">&quot;login-url&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>Confidential Client Application (client credentials)</strong></p>
+<p>Suitable for service-to-service authentication where no user interaction is
+possible or desired. Reach out if you need help setting up a confidential client
+application. The secret must be stored securely.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">auth</span> <span class="o">=</span> <span class="n">OAuthMiddleware</span><span class="p">(</span>
+    <span class="n">azure_client_id</span><span class="o">=</span><span class="s2">&quot;client-id&quot;</span><span class="p">,</span>
+    <span class="n">azure_application_id</span><span class="o">=</span><span class="s2">&quot;application-id&quot;</span><span class="p">,</span>
+    <span class="n">azure_login_url</span><span class="o">=</span><span class="s2">&quot;login-url&quot;</span><span class="p">,</span>
+    <span class="n">azure_client_secret</span><span class="o">=</span><span class="s2">&quot;your-azure-client-secret&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>Azure Managed Identity</strong></p>
+<p>Suitable for Azure environments that have had API permissions provisioned for
+their managed identity. Note that the <code class="docutils literal notranslate"><span class="pre">azure_client_id</span></code> here is the client ID of
+the managed identity, not the repository.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">auth</span> <span class="o">=</span> <span class="n">OAuthMiddleware</span><span class="p">(</span>
+    <span class="n">azure_client_id</span><span class="o">=</span><span class="s2">&quot;your-managed-identity-client-id&quot;</span><span class="p">,</span>
+    <span class="n">azure_application_id</span><span class="o">=</span><span class="s2">&quot;application-id&quot;</span><span class="p">,</span>
+    <span class="n">use_managed_identity</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+<section id="using-a-script">
+<h3><a class="toc-backref" href="#id8" role="doc-backlink">Using a script</a><a class="headerlink" href="#using-a-script" title="Link to this heading">#</a></h3>
+<p>You can obtain a token programmatically using libraries such as <a class="reference external" href="https://pypi.org/project/msal/">MSAL for Python</a>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">msal</span><span class="w"> </span><span class="kn">import</span> <span class="n">PublicClientApplication</span>
+
+<span class="n">app</span> <span class="o">=</span> <span class="n">PublicClientApplication</span><span class="p">(</span>
+    <span class="n">client_id</span><span class="o">=</span><span class="s2">&quot;&lt;your-client-id&gt;&quot;</span><span class="p">,</span>
+    <span class="n">authority</span><span class="o">=</span><span class="s2">&quot;&lt;your-login-url&gt;&quot;</span><span class="p">,</span>
+    <span class="n">client_credential</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">token</span> <span class="o">=</span> <span class="n">app</span><span class="o">.</span><span class="n">acquire_token_interactive</span><span class="p">(</span>
+    <span class="n">scopes</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;api://&lt;application-id&gt;/.default&quot;</span><span class="p">]</span>
+<span class="p">)</span>
+<span class="n">access_token</span> <span class="o">=</span> <span class="n">token</span><span class="p">[</span><span class="s2">&quot;access_token&quot;</span><span class="p">]</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="using-the-token">
+<h2><a class="toc-backref" href="#id9" role="doc-backlink">Using the token</a><a class="headerlink" href="#using-the-token" title="Link to this heading">#</a></h2>
+<p>The API base URL for each environment is as follows:</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id3">
+<caption><span class="caption-text">API URLs</span><a class="headerlink" href="#id3" title="Link to this table">#</a></caption>
+<thead>
+<tr class="row-odd"><th class="head"><p>Environment</p></th>
+<th class="head"><p>API URL</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Development</p></td>
+<td><p><a class="reference external" href="https://destiny-repository-deve-app.gentlecoast-c1c9497a.swedencentral.azurecontainerapps.io">https://destiny-repository-deve-app.gentlecoast-c1c9497a.swedencentral.azurecontainerapps.io</a></p></td>
+</tr>
+<tr class="row-odd"><td><p>Staging</p></td>
+<td><p><a class="reference external" href="https://destiny-repository-stag-app.proudmeadow-2a76e8ac.swedencentral.azurecontainerapps.io">https://destiny-repository-stag-app.proudmeadow-2a76e8ac.swedencentral.azurecontainerapps.io</a></p></td>
+</tr>
+<tr class="row-even"><td><p>Production</p></td>
+<td><p><a class="reference external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io">https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io</a></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<section id="id1">
+<h3><a class="toc-backref" href="#id10" role="doc-backlink">Using the SDK</a><a class="headerlink" href="#id1" title="Link to this heading">#</a></h3>
+<p>Again, we recommend using the <a class="reference internal" href="../sdk/client.html"><span class="doc">SDK</span></a> to make API requests, as it will handle including the token for you. Some endpoints will have convenience methods available, otherwise you can access the underlying <code class="docutils literal notranslate"><span class="pre">httpx</span></code> client directly.</p>
+<dl class="py class">
+<dt class="sig sig-object py">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">destiny_sdk.client.</span></span><span class="sig-name descname"><span class="pre">OAuthClient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">base_url</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">HttpUrl</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">auth</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Auth</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timeout</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em><span class="sig-paren">)</span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/destiny_sdk/client.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a></dt>
+<dd><p>Client for interaction with the Destiny API using OAuth2.</p>
+<p>This will apply the provided authentication, usually
+<a class="reference internal" href="../sdk/client.html#libs.sdk.src.destiny_sdk.client.OAuthMiddleware" title="libs.sdk.src.destiny_sdk.client.OAuthMiddleware"><code class="xref py py-class docutils literal notranslate"><span class="pre">OAuthMiddleware</span></code></a>,
+to all requests. Some API endpoints are supported directly through methods on this
+class, while others can be accessed through the underlying <code class="docutils literal notranslate"><span class="pre">httpx</span></code> client.</p>
+<p>Example usage:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">destiny_sdk.client</span><span class="w"> </span><span class="kn">import</span> <span class="n">OAuthClient</span><span class="p">,</span> <span class="n">OAuthMiddleware</span>
+
+<span class="n">client</span> <span class="o">=</span> <span class="n">OAuthClient</span><span class="p">(</span>
+    <span class="n">base_url</span><span class="o">=</span><span class="s2">&quot;https://destiny-repository.example.com&quot;</span><span class="p">,</span>
+    <span class="n">auth</span><span class="o">=</span><span class="n">OAuthMiddleware</span><span class="p">(</span><span class="o">...</span><span class="p">),</span>
+<span class="p">)</span>
+
+<span class="c1"># Supported method</span>
+<span class="n">response</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">query</span><span class="o">=</span><span class="s2">&quot;example&quot;</span><span class="p">)</span>
+
+<span class="c1"># Unsupported method, use underlying httpx client</span>
+<span class="n">response</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">get_client</span><span class="p">()</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;/system/healthcheck/&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+<section id="using-directly">
+<h3><a class="toc-backref" href="#id11" role="doc-backlink">Using directly</a><a class="headerlink" href="#using-directly" title="Link to this heading">#</a></h3>
+<p>When making API requests, include the token in the <code class="docutils literal notranslate"><span class="pre">Authorization</span></code> header following <code class="docutils literal notranslate"><span class="pre">Bearer</span></code>, eg:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">httpx</span>
+
+<span class="n">httpx</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+    <span class="n">api_url</span> <span class="o">+</span> <span class="s2">&quot;/v1/references/search/?q=example&quot;</span><span class="p">,</span>
+    <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;Authorization&quot;</span><span class="p">:</span> <span class="s2">&quot;Bearer &lt;access_token&gt;&quot;</span><span class="p">},</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>The tokens will expire after a certain period (usually two hours). After expiration, you will need to obtain a new token using the same method as before.</p>
+</section>
+</section>
+<section id="script-template">
+<h2><a class="toc-backref" href="#id12" role="doc-backlink">Script template</a><a class="headerlink" href="#script-template" title="Link to this heading">#</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Easy access of configurations listed in the tables above</span>
+<span class="n">CONFIGS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;development&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;url&quot;</span><span class="p">:</span> <span class="s2">&quot;https://destiny-repository-deve-app.gentlecoast-c1c9497a&quot;</span>
+               <span class="s2">&quot;.swedencentral.azurecontainerapps.io&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;login_url&quot;</span><span class="p">:</span> <span class="s2">&quot;https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;client&quot;</span><span class="p">:</span> <span class="s2">&quot;0fde62ae-2203-44a5-9722-73e965325ae7&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;app&quot;</span><span class="p">:</span> <span class="s2">&quot;0a4b8df7-5c97-42b2-be07-2bb25e06dbb2&quot;</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;staging&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;url&quot;</span><span class="p">:</span> <span class="s2">&quot;https://destiny-repository-stag-app.proudmeadow-2a76e8ac&quot;</span>
+               <span class="s2">&quot;.swedencentral.azurecontainerapps.io&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;login_url&quot;</span><span class="p">:</span> <span class="s2">&quot;https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;client&quot;</span><span class="p">:</span> <span class="s2">&quot;96ed941e-15dc-4ec0-b9e7-e4eda99efd2e&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;app&quot;</span><span class="p">:</span> <span class="s2">&quot;14e3f6c0-b8aa-46c6-98d9-29b0dd2a0f7c&quot;</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;production&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;url&quot;</span><span class="p">:</span> <span class="s2">&quot;https://destiny-repository-prod-app.politesea-556f2857&quot;</span>
+               <span class="s2">&quot;.swedencentral.azurecontainerapps.io&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;login_url&quot;</span><span class="p">:</span> <span class="s2">&quot;https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;client&quot;</span><span class="p">:</span> <span class="s2">&quot;7164ff26-4078-4107-850f-57b43b97f605&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;app&quot;</span><span class="p">:</span> <span class="s2">&quot;e314440e-f72c-4b8e-89c1-7eefef4b55ed&quot;</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+
+<span class="c1"># Select environment</span>
+<span class="n">ENV</span> <span class="o">=</span> <span class="s2">&quot;staging&quot;</span>
+
+<span class="c1">### Option 1: Use the SDK (recommended)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">destiny_sdk.client</span><span class="w"> </span><span class="kn">import</span> <span class="n">OAuthClient</span><span class="p">,</span> <span class="n">OAuthMiddleware</span>
+<span class="n">client</span> <span class="o">=</span> <span class="n">OAuthClient</span><span class="p">(</span>
+    <span class="n">base_url</span><span class="o">=</span><span class="n">CONFIGS</span><span class="p">[</span><span class="n">ENV</span><span class="p">][</span><span class="s2">&quot;url&quot;</span><span class="p">],</span>
+    <span class="n">auth</span><span class="o">=</span><span class="n">OAuthMiddleware</span><span class="p">(</span>
+        <span class="n">azure_client_id</span><span class="o">=</span><span class="n">CONFIGS</span><span class="p">[</span><span class="n">ENV</span><span class="p">][</span><span class="s2">&quot;client&quot;</span><span class="p">],</span>
+        <span class="n">azure_application_id</span><span class="o">=</span><span class="n">CONFIGS</span><span class="p">[</span><span class="n">ENV</span><span class="p">][</span><span class="s2">&quot;app&quot;</span><span class="p">],</span>
+        <span class="n">azure_login_url</span><span class="o">=</span><span class="n">CONFIGS</span><span class="p">[</span><span class="n">ENV</span><span class="p">][</span><span class="s2">&quot;login_url&quot;</span><span class="p">],</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+<span class="n">response</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="n">query</span><span class="o">=</span><span class="s2">&quot;example&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">response</span><span class="p">)</span>
+
+<span class="c1">### Option 2: Use MSAL directly</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">msal</span><span class="w"> </span><span class="kn">import</span> <span class="n">PublicClientApplication</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">httpx</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+
+<span class="c1"># Authenticate and get auth token</span>
+<span class="n">app</span> <span class="o">=</span> <span class="n">PublicClientApplication</span><span class="p">(</span>
+    <span class="n">client_id</span><span class="o">=</span><span class="n">CONFIGS</span><span class="p">[</span><span class="n">ENV</span><span class="p">][</span><span class="s2">&quot;client&quot;</span><span class="p">],</span>
+    <span class="n">authority</span><span class="o">=</span><span class="n">CONFIGS</span><span class="p">[</span><span class="n">ENV</span><span class="p">][</span><span class="s2">&quot;login_url&quot;</span><span class="p">],</span>
+    <span class="n">client_credential</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">token</span> <span class="o">=</span> <span class="n">app</span><span class="o">.</span><span class="n">acquire_token_interactive</span><span class="p">(</span>
+    <span class="n">scopes</span><span class="o">=</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;api://</span><span class="si">{</span><span class="n">CONFIGS</span><span class="p">[</span><span class="n">ENV</span><span class="p">][</span><span class="s1">&#39;app&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">/.default&quot;</span><span class="p">]</span>
+<span class="p">)</span>
+
+<span class="c1"># Request data from DESTinY API</span>
+<span class="n">response</span> <span class="o">=</span> <span class="n">httpx</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">CONFIGS</span><span class="p">[</span><span class="n">ENV</span><span class="p">][</span><span class="s1">&#39;url&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">/v1/references/search/?q=example&quot;</span><span class="p">,</span>
+    <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;Authorization&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;Bearer </span><span class="si">{</span><span class="n">token</span><span class="p">[</span><span class="s2">&quot;access_token&quot;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">},</span>
+<span class="p">)</span>
+
+<span class="c1"># Use response</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">(),</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
+</pre></div>
+</div>
+</section>
+<section id="troubleshooting">
+<h2><a class="toc-backref" href="#id13" role="doc-backlink">Troubleshooting</a><a class="headerlink" href="#troubleshooting" title="Link to this heading">#</a></h2>
+<p>Please reach out if you experience any issues both obtaining or using tokens - most likely, we need to update some permissions.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="procedures.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Procedures</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="search.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Search</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#background">Background</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#provisioning">Provisioning</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#obtaining-a-token">Obtaining a token</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#using-the-sdk">Using the SDK</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#using-a-script">Using a script</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#using-the-token">Using the token</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#id1">Using the SDK</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#using-directly">Using directly</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#script-template">Script template</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#troubleshooting">Troubleshooting</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, DESTINY Team.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.16.1.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

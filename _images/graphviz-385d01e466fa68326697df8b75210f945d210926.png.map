@@ -1,0 +1,14 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.PendingEnhancement
+
+A pending enhancement.
+" alt="" coords="581,292,1015,572"/>
+<area shape="rect" id="node2" title="app.domain.references.models.models.RobotEnhancementBatch
+
+A batch of references to be enhanced by a robot.
+" alt="" coords="5,5,437,229"/>
+<area shape="rect" id="node3" title="app.persistence.blob.models.BlobStorageFile
+
+Model to represent Blob Storage files.
+" alt="" coords="679,103,917,243"/>
+</map>

@@ -1,0 +1,14 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.imports.models.models.ImportBatch
+
+Core import batch model with database and internal attributes included.
+" alt="" coords="43,263,376,459"/>
+<area shape="rect" id="node2" title="app.domain.imports.models.models.ImportRecord
+
+Core import record model with database and internal attributes included.
+" alt="" coords="520,5,906,313"/>
+<area shape="rect" id="node3" title="app.domain.imports.models.models.ImportResult
+
+Core import result model with database attributes included.
+" alt="" coords="572,408,854,604"/>
+</map>
