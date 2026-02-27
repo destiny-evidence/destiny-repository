@@ -378,7 +378,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
 
     def duplicate_decision_from_sdk_make(
         self,
-        make_duplicate_decision: destiny_sdk.duplicate_decisions.MakeDuplicateDecision,
+        make_duplicate_decision: destiny_sdk.deduplication.MakeDuplicateDecision,
     ) -> ReferenceDuplicateDecision:
         """Convert a MakeDuplicateDecision SDK model to a ReferenceDuplicateDecision."""
         try:
@@ -396,9 +396,9 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     def duplicate_decision_to_sdk_make_result(
         self,
         decision: ReferenceDuplicateDecision,
-    ) -> destiny_sdk.duplicate_decisions.MakeDuplicateResult:
-        """Convert a ReferenceDuplicateDecision to a MakeDuplicateResult SDK model."""
-        return destiny_sdk.duplicate_decisions.MakeDuplicateResult(
+    ) -> destiny_sdk.deduplication.MakeDuplicateDecisionResult:
+        """Convert a ReferenceDuplicateDecision to a MakeDuplicateDecisionResult."""
+        return destiny_sdk.deduplication.MakeDuplicateDecisionResult(
             id=decision.id,
             reference_id=decision.reference_id,
             outcome=decision.duplicate_determination,

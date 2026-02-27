@@ -12,9 +12,9 @@ class ManualDuplicateDetermination(StrEnum):
     """The determination of whether a reference is a duplicate."""
 
     DUPLICATE = auto()
-    """[TERMINAL] The reference is a duplicate of another reference."""
+    """The reference is a duplicate of another reference."""
     CANONICAL = auto()
-    """[TERMINAL] The reference is not a duplicate of another reference."""
+    """The reference is not a duplicate of another reference."""
 
 
 class MakeDuplicateDecision(BaseModel):
@@ -61,7 +61,7 @@ class ManualDuplicateDeterminationResult(StrEnum):
     """The decision was reclassified and needs further attention."""
 
 
-class MakeDuplicateResult(BaseModel):
+class MakeDuplicateDecisionResult(BaseModel):
     """Result of applying a duplicate decision."""
 
     id: UUID = Field(description="The ID of the duplicate decision record.")
@@ -70,7 +70,6 @@ class MakeDuplicateResult(BaseModel):
     )
     outcome: ManualDuplicateDeterminationResult = Field(
         description="The resolved outcome. "
-        "May differ from the requested determination if reclassified.",
     )
     canonical_reference_id: UUID | None = Field(
         default=None,

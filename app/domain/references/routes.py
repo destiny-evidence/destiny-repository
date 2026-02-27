@@ -791,10 +791,10 @@ async def make_duplicate_decisions(
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
     reference_duplicate_decisions: Annotated[
-        list[destiny_sdk.duplicate_decisions.MakeDuplicateDecision],
+        list[destiny_sdk.deduplication.MakeDuplicateDecision],
         Field(min_length=1, max_length=10),
     ],
-) -> list[destiny_sdk.duplicate_decisions.MakeDuplicateResult]:
+) -> list[destiny_sdk.deduplication.MakeDuplicateDecisionResult]:
     """
     Manually resolve deduplication for references.
 
