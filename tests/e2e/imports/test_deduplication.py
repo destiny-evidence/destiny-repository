@@ -17,7 +17,6 @@ from destiny_sdk.references import ReferenceFileInput
 from elasticsearch import AsyncElasticsearch
 from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from tenacity import Retrying, stop_after_attempt, wait_fixed
 
 from app.domain.references.models.es import ReferenceDocument
 from app.domain.references.models.models import (
@@ -40,7 +39,6 @@ from tests.e2e.utils import (
     import_references,
     poll_duplicate_process,
     poll_pending_enhancement,
-    refresh_reference_index,
     refresh_robot_automation_index,
 )
 from tests.factories import (
@@ -411,35 +409,20 @@ async def test_canonical_becomes_duplicate(  # noqa: PLR0913
         )
     ).pop()
 
-    # Manually insert the duplicate reference to avoid side effects
     pg_session.add(SQLReference.from_domain(duplicate_reference))
-    pg_session.add(
-        SQLReferenceDuplicateDecision(
-            id=(canonical_decision_id := uuid7()),
-            reference_id=duplicate_reference.id,
-            duplicate_determination=DuplicateDetermination.CANONICAL,
-            active_decision=True,
-            candidate_canonical_ids=[],
-        )
-    )
     await pg_session.commit()
 
-    # Index it to elasticsearch
-    await destiny_client_v1.post(
-        f"/system/indices/{ReferenceDocument.Index.name}/repair/"
-    )
-    for retry in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(1)):
-        with retry:
-            await refresh_reference_index(es_client)
-            es_result = await es_client.search(
-                index=ReferenceDocument.Index.name,
-                query={"match_all": {}},
-            )
-            assert es_result["hits"]["total"]["value"] == 2
-            assert {hit["_id"] for hit in es_result["hits"]["hits"]} == {
-                str(canonical_reference_id),
-                str(duplicate_reference.id),
+    make_response = await destiny_client_v1.post(
+        "/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(duplicate_reference.id),
+                "duplicate_determination": "canonical",
             }
+        ],
+    )
+    assert make_response.status_code == 201
+    canonical_decision_id = UUID(make_response.json()[0]["id"])
 
     # Now deduplicate the duplicate again and check downstream
     await destiny_client_v1.post(
@@ -506,19 +489,21 @@ async def test_duplicate_becomes_canonical(  # noqa: PLR0913
         )
     ).pop()
 
-    # Directly import the non-duplicate reference to avoid side effects
     pg_session.add(SQLReference.from_domain(non_duplicate_reference))
-    pg_session.add(
-        SQLReferenceDuplicateDecision(
-            id=(non_canonical_decision_id := uuid7()),
-            reference_id=non_duplicate_reference.id,
-            duplicate_determination=DuplicateDetermination.DUPLICATE,
-            canonical_reference_id=canonical_reference_id,
-            active_decision=True,
-            candidate_canonical_ids=[canonical_reference_id],
-        )
-    )
     await pg_session.commit()
+
+    make_response = await destiny_client_v1.post(
+        "/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(non_duplicate_reference.id),
+                "duplicate_determination": "duplicate",
+                "canonical_reference_id": str(canonical_reference_id),
+            }
+        ],
+    )
+    assert make_response.status_code == 201
+    non_canonical_decision_id = UUID(make_response.json()[0]["id"])
 
     # Now deduplicate the non-duplicate again and check downstream
     await destiny_client_v1.post(
@@ -579,20 +564,21 @@ async def test_duplicate_change(  # noqa: PLR0913
         for reference in (canonical_reference, non_duplicate_reference)
     ]
 
-    # Now manually import the duplicate reference to avoid side effects
-    # Manually insert the duplicate reference to avoid side effects
     pg_session.add(SQLReference.from_domain(duplicate_reference))
-    pg_session.add(
-        SQLReferenceDuplicateDecision(
-            id=(duplicate_decision_id := uuid7()),
-            reference_id=duplicate_reference.id,
-            duplicate_determination=DuplicateDetermination.DUPLICATE,
-            active_decision=True,
-            candidate_canonical_ids=[],
-            canonical_reference_id=non_duplicate_reference_id,
-        )
-    )
     await pg_session.commit()
+
+    make_response = await destiny_client_v1.post(
+        "/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(duplicate_reference.id),
+                "duplicate_determination": "duplicate",
+                "canonical_reference_id": str(non_duplicate_reference_id),
+            }
+        ],
+    )
+    assert make_response.status_code == 201
+    duplicate_decision_id = UUID(make_response.json()[0]["id"])
 
     # Deduplicate the duplicate again and check downstream
     await destiny_client_v1.post(
