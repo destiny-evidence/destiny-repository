@@ -762,7 +762,7 @@ async def fulfill_robot_enhancement_batch(
 
 
 @deduplication_router.post(
-    "/",
+    "/invoke/",
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def invoke_deduplication_for_references(
@@ -775,6 +775,41 @@ async def invoke_deduplication_for_references(
         n_references=len(reference_ids.reference_ids),
     )
     await reference_service.invoke_deduplication_for_references(reference_ids)
+
+
+@deduplication_router.post(
+    "/",
+    status_code=status.HTTP_201_CREATED,
+)
+async def make_duplicate_decisions(
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    reference_duplicate_decisions: Annotated[
+        list[destiny_sdk.duplicate_decisions.MakeDuplicateDecision],
+        Field(min_length=1, max_length=10),
+    ],
+) -> None:
+    """
+    Manually resolve deduplication for references.
+
+    All provided decisions will be applied to their respective references and made
+    active.
+
+    This is a synchronous endpoint that applies the decisions together, so it may take
+    a short while to complete - ensure your client is configured with a long enough
+    timeout.
+    """
+    logger.info(
+        "Resolving deduplication for references.",
+        n_references=len(reference_duplicate_decisions),
+    )
+    duplicate_decisions = [
+        anti_corruption_service.duplicate_decision_from_make_sdk(decision)
+        for decision in reference_duplicate_decisions
+    ]
+    await reference_service.make_duplicate_decisions(duplicate_decisions)
 
 
 reference_router.include_router(deduplication_router)

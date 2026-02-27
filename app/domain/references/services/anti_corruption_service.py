@@ -15,6 +15,7 @@ from app.domain.references.models.models import (
     LinkedExternalIdentifier,
     PublicationYearRange,
     Reference,
+    ReferenceDuplicateDecision,
     RobotAutomation,
     RobotEnhancementBatch,
     RobotResultValidationEntry,
@@ -374,3 +375,20 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             label=label,
             score=score,
         )
+
+    def duplicate_decision_from_make_sdk(
+        self,
+        make_duplicate_decision: destiny_sdk.duplicate_decisions.MakeDuplicateDecision,
+    ) -> ReferenceDuplicateDecision:
+        """Convert a MakeDuplicateDecision SDK model to a ReferenceDuplicateDecision."""
+        try:
+            reference_duplicate_decision = ReferenceDuplicateDecision(
+                reference_id=make_duplicate_decision.reference_id,
+                duplicate_determination=make_duplicate_decision.duplicate_determination,
+                canonical_reference_id=make_duplicate_decision.canonical_reference_id,
+                detail=make_duplicate_decision.detail,
+            )
+            reference_duplicate_decision.check_serializability()
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
+        return reference_duplicate_decision

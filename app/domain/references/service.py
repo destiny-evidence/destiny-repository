@@ -1271,3 +1271,22 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             source_str=source_str,
             skip_robot_id=skip_robot_id,
         )
+
+    @sql_unit_of_work
+    @es_unit_of_work
+    async def make_duplicate_decisions(
+        self,
+        duplicate_decisions: list[ReferenceDuplicateDecision],
+    ) -> None:
+        """Make duplicate decisions for a list of reference duplicate decisions."""
+        for duplicate_decision in duplicate_decisions:
+            (
+                reference_duplicate_decision,
+                decision_changed,
+            ) = await self._deduplication_service.map_duplicate_decision(
+                duplicate_decision
+            )
+            await self.apply_reference_duplicate_decision_side_effects(
+                reference_duplicate_decision,
+                decision_changed=decision_changed,
+            )

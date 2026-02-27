@@ -3,6 +3,7 @@
 from . import (
     auth,
     client,
+    duplicate_decisions,
     enhancements,
     identifiers,
     imports,
@@ -18,6 +19,7 @@ __all__ = [
     "UUID",
     "auth",
     "client",
+    "duplicate_decisions",
     "enhancements",
     "identifiers",
     "imports",
