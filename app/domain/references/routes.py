@@ -794,7 +794,7 @@ async def make_duplicate_decisions(
         list[destiny_sdk.duplicate_decisions.MakeDuplicateDecision],
         Field(min_length=1, max_length=10),
     ],
-) -> None:
+) -> list[destiny_sdk.duplicate_decisions.MakeDuplicateResult]:
     """
     Manually resolve deduplication for references.
 
@@ -810,16 +810,20 @@ async def make_duplicate_decisions(
         n_references=len(reference_duplicate_decisions),
     )
     duplicate_decisions = [
-        anti_corruption_service.duplicate_decision_from_make_sdk(decision)
+        anti_corruption_service.duplicate_decision_from_sdk_make(decision)
         for decision in reference_duplicate_decisions
     ]
     try:
-        await reference_service.make_duplicate_decisions(duplicate_decisions)
+        results = await reference_service.make_duplicate_decisions(duplicate_decisions)
     except DeduplicationValueError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(e),
         ) from e
+    return [
+        anti_corruption_service.duplicate_decision_to_sdk_make_result(result)
+        for result in results
+    ]
 
 
 reference_router.include_router(deduplication_router)

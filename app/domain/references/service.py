@@ -1277,8 +1277,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def make_duplicate_decisions(
         self,
         duplicate_decisions: list[ReferenceDuplicateDecision],
-    ) -> None:
+    ) -> list[ReferenceDuplicateDecision]:
         """Make duplicate decisions for a list of reference duplicate decisions."""
+        results: list[ReferenceDuplicateDecision] = []
         # Process canonical decisions first so they can then be duplicated
         for duplicate_decision in sorted(
             duplicate_decisions,
@@ -1296,3 +1297,5 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 reference_duplicate_decision,
                 decision_changed=decision_changed,
             )
+            results.append(reference_duplicate_decision)
+        return results

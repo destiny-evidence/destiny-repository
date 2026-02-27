@@ -376,7 +376,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             score=score,
         )
 
-    def duplicate_decision_from_make_sdk(
+    def duplicate_decision_from_sdk_make(
         self,
         make_duplicate_decision: destiny_sdk.duplicate_decisions.MakeDuplicateDecision,
     ) -> ReferenceDuplicateDecision:
@@ -392,3 +392,17 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
         return reference_duplicate_decision
+
+    def duplicate_decision_to_sdk_make_result(
+        self,
+        decision: ReferenceDuplicateDecision,
+    ) -> destiny_sdk.duplicate_decisions.MakeDuplicateResult:
+        """Convert a ReferenceDuplicateDecision to a MakeDuplicateResult SDK model."""
+        return destiny_sdk.duplicate_decisions.MakeDuplicateResult(
+            id=decision.id,
+            reference_id=decision.reference_id,
+            outcome=decision.duplicate_determination,
+            canonical_reference_id=decision.canonical_reference_id,
+            active_decision=decision.active_decision,
+            detail=decision.detail,
+        )

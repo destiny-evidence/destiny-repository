@@ -954,6 +954,12 @@ async def test_make_duplicate_decisions_mark_canonical_and_duplicate(
         ],
     )
     assert response.status_code == status.HTTP_201_CREATED
+    results = response.json()
+    assert len(results) == 1
+    assert results[0]["reference_id"] == str(canonical_ref.id)
+    assert results[0]["outcome"] == "canonical"
+    assert results[0]["active_decision"] is True
+    assert results[0]["canonical_reference_id"] is None
 
     response = await client.post(
         "/v1/references/duplicate-decisions/",
@@ -966,6 +972,12 @@ async def test_make_duplicate_decisions_mark_canonical_and_duplicate(
         ],
     )
     assert response.status_code == status.HTTP_201_CREATED
+    results = response.json()
+    assert len(results) == 1
+    assert results[0]["reference_id"] == str(duplicate_ref.id)
+    assert results[0]["outcome"] == "duplicate"
+    assert results[0]["active_decision"] is True
+    assert results[0]["canonical_reference_id"] == str(canonical_ref.id)
 
 
 @pytest.mark.parametrize(
@@ -1003,6 +1015,11 @@ async def test_make_duplicate_decisions_ordering_in_same_call(
     )
 
     assert response.status_code == status.HTTP_201_CREATED
+    results = response.json()
+    assert len(results) == 2
+    outcomes = {r["reference_id"]: r["outcome"] for r in results}
+    assert outcomes[str(canonical_ref.id)] == "canonical"
+    assert outcomes[str(duplicate_ref.id)] == "duplicate"
 
 
 async def test_make_duplicate_decisions_not_a_canonical_reference(

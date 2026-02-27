@@ -48,3 +48,38 @@ class MakeDuplicateDecision(BaseModel):
             raise ValueError(msg)
 
         return self
+
+
+class ManualDuplicateDeterminationResult(StrEnum):
+    """The possible outcomes of applying a manual duplicate decision."""
+
+    DUPLICATE = auto()
+    """The reference was marked as a duplicate of a canonical reference."""
+    CANONICAL = auto()
+    """The reference was marked as canonical (not a duplicate)."""
+    DECOUPLED = auto()
+    """The decision was reclassified and needs further attention."""
+
+
+class MakeDuplicateResult(BaseModel):
+    """Result of applying a duplicate decision."""
+
+    id: UUID = Field(description="The ID of the duplicate decision record.")
+    reference_id: UUID = Field(
+        description="The ID of the reference this decision applies to."
+    )
+    outcome: ManualDuplicateDeterminationResult = Field(
+        description="The resolved outcome. "
+        "May differ from the requested determination if reclassified.",
+    )
+    canonical_reference_id: UUID | None = Field(
+        default=None,
+        description="The ID of the canonical reference, if applicable.",
+    )
+    active_decision: bool = Field(
+        description="Whether this decision is the active decision for the reference.",
+    )
+    detail: str | None = Field(
+        default=None,
+        description="Additional detail about the decision.",
+    )
