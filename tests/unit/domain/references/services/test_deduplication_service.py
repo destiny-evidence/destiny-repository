@@ -296,6 +296,7 @@ async def test_determine_and_map_duplicate_happy_path(
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
     reference.duplicate_decision = None
+    reference.duplicate_chain_depth = 1
 
     canonical = MagicMock(spec=Reference)
     canonical.id = uuid7()
@@ -341,6 +342,7 @@ async def test_determine_and_map_duplicate_no_change(
 
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
+    reference.duplicate_chain_depth = 1
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.DUPLICATE,
@@ -553,6 +555,7 @@ async def test_determine_and_map_duplicate_now_duplicate(
 
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
+    reference.duplicate_chain_depth = 1
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.CANONICAL,
@@ -601,6 +604,7 @@ async def test_map_allow_destructive_decision_still_enforces_chain_length(
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
     reference.duplicate_decision = None
+    reference.duplicate_chain_depth = 1
 
     new_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
@@ -622,6 +626,48 @@ async def test_map_allow_destructive_decision_still_enforces_chain_length(
     out, changed, _ = await service.map_duplicate_decision(
         new_decision, allow_destructive_decision=True
     )
+    assert out.duplicate_determination == DuplicateDetermination.DECOUPLED
+    assert "Max duplicate chain length" in out.detail
+    assert changed
+
+
+@pytest.mark.asyncio
+async def test_map_chain_length_accounts_for_existing_duplicates(
+    fake_uow, fake_repository, anti_corruption_service
+):
+    """A canonical with dependents cannot become a duplicate (chain too deep)."""
+    target_canonical = MagicMock(spec=Reference)
+    target_canonical.id = uuid7()
+    target_canonical.is_canonical = True
+    target_canonical.canonical_chain_length = 1
+
+    reference = MagicMock(spec=Reference)
+    reference.id = uuid7()
+    reference.duplicate_chain_depth = 2
+    reference.duplicate_decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=DuplicateDetermination.CANONICAL,
+        active_decision=True,
+    )
+
+    new_decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=target_canonical.id,
+    )
+
+    ref_repo = fake_repository([reference, target_canonical])
+    dec_repo = fake_repository([new_decision])
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(
+            references=ref_repo,
+            reference_duplicate_decisions=dec_repo,
+        ),
+        fake_uow(),
+    )
+
+    out, changed, _ = await service.map_duplicate_decision(new_decision)
     assert out.duplicate_determination == DuplicateDetermination.DECOUPLED
     assert "Max duplicate chain length" in out.detail
     assert changed

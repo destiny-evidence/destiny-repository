@@ -326,7 +326,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
         reference = await self.sql_uow.references.get_by_pk(
             new_decision.reference_id,
-            preload=["duplicate_decision"],
+            preload=["duplicate_decision", "duplicate_references"],
         )
         active_decision = reference.duplicate_decision
 
@@ -369,7 +369,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             # Proposed chain would exceed maximum allowed depth
             new_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
             and canonical_ref is not None
-            and canonical_ref.canonical_chain_length + 1 > MAX_REFERENCE_DUPLICATE_DEPTH
+            and canonical_ref.canonical_chain_length + reference.duplicate_chain_depth
+            > MAX_REFERENCE_DUPLICATE_DEPTH
         ):
             # Raise for manual review
             new_decision.duplicate_determination = DuplicateDetermination.DECOUPLED

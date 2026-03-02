@@ -212,6 +212,21 @@ class Reference(
             else 0
         )
 
+    @property
+    def duplicate_chain_depth(self) -> int:
+        """
+        Get the depth of the duplicate chain below this reference.
+
+        This is the number of references from this reference to its deepest
+        duplicate, including this reference.
+
+        Requires duplicate_references to be preloaded, will always return 1
+        if not.
+        """
+        if not self.duplicate_references:
+            return 1
+        return 1 + max(r.duplicate_chain_depth for r in self.duplicate_references)
+
     def is_superset(
         self,
         reference: "Reference",
