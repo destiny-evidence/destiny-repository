@@ -6,7 +6,6 @@ from uuid import UUID
 from opentelemetry import trace
 
 from app.core.config import Environment, get_settings
-from app.core.constants import MAX_REFERENCE_DUPLICATE_DEPTH
 from app.core.exceptions import DeduplicationValueError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
@@ -309,7 +308,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         if new_decision.canonical_reference_id:
             canonical_ref = await self.sql_uow.references.get_by_pk(
                 new_decision.canonical_reference_id,
-                preload=["duplicate_decision", "canonical_reference"],
+                preload=["duplicate_decision"],
             )
             if not canonical_ref.is_canonical:
                 non_canonical_determination = (
@@ -366,16 +365,14 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 + (new_decision.detail if new_decision.detail else "")
             )
         elif (
-            # Proposed chain would exceed maximum allowed depth
+            # A duplicate cannot have duplicates — only canonicals can
             new_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
-            and canonical_ref is not None
-            and canonical_ref.canonical_chain_length + reference.duplicate_chain_depth
-            > MAX_REFERENCE_DUPLICATE_DEPTH
+            and reference.has_duplicates
         ):
-            # Raise for manual review
             new_decision.duplicate_determination = DuplicateDetermination.DECOUPLED
             new_decision.detail = (
-                "Decouple reason: Max duplicate chain length reached. "
+                "Decouple reason: Reference has existing duplicates and cannot "
+                "become a duplicate itself. "
                 + (new_decision.detail if new_decision.detail else "")
             )
         else:
@@ -508,16 +505,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 undeduplicated_ids.add(candidate.id)
             elif candidate.is_canonical:
                 canonical_ids.add(candidate.id)
-            else:
-                # Duplicate of a canonical, find the canonical ID
-                # We get this fresh without the filters so we can traverse a chain if
-                # required
-                canonical_reference = await self.sql_uow.references.get_by_pk(
-                    candidate.id, preload=["canonical_reference"]
-                )
-                while canonical_reference.canonical_reference:
-                    canonical_reference = canonical_reference.canonical_reference
-                canonical_ids.add(canonical_reference.id)
+            elif candidate.duplicate_decision.canonical_reference_id:
+                # Duplicate — use the decision's direct canonical reference ID
+                canonical_ids.add(candidate.duplicate_decision.canonical_reference_id)
 
         if len(canonical_ids) > 1:
             return [

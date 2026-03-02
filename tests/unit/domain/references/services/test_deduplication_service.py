@@ -7,7 +7,6 @@ import pytest
 from destiny_sdk.enhancements import Authorship
 from destiny_sdk.identifiers import OtherIdentifier
 
-from app.core.constants import MAX_REFERENCE_DUPLICATE_DEPTH
 from app.core.exceptions import DeduplicationValueError
 from app.domain.references.models.models import (
     DuplicateDetermination,
@@ -296,12 +295,11 @@ async def test_determine_and_map_duplicate_happy_path(
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
     reference.duplicate_decision = None
-    reference.duplicate_chain_depth = 1
+    reference.has_duplicates = False
 
     canonical = MagicMock(spec=Reference)
     canonical.id = uuid7()
     canonical.is_canonical = True
-    canonical.canonical_chain_length = 1
 
     decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
@@ -338,11 +336,10 @@ async def test_determine_and_map_duplicate_no_change(
     canonical = MagicMock(spec=Reference)
     canonical.id = uuid7()
     canonical.is_canonical = True
-    canonical.canonical_chain_length = 1
 
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
-    reference.duplicate_chain_depth = 1
+    reference.has_duplicates = False
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.DUPLICATE,
@@ -458,12 +455,10 @@ async def test_determine_and_map_duplicate_decoupled_different_canonical(
     canonical_a = MagicMock(spec=Reference)
     canonical_a.id = uuid7()
     canonical_a.is_canonical = True
-    canonical_a.canonical_chain_length = 1
 
     canonical_b = MagicMock(spec=Reference)
     canonical_b.id = uuid7()
     canonical_b.is_canonical = True
-    canonical_b.canonical_chain_length = 1
 
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
@@ -501,31 +496,26 @@ async def test_determine_and_map_duplicate_decoupled_different_canonical(
 
 
 @pytest.mark.asyncio
-async def test_determine_and_map_duplicate_decoupled_chain_length(
+async def test_determine_and_map_duplicate_decoupled_has_duplicates(
     fake_uow, fake_repository, anti_corruption_service
 ):
-    # Candidate passes is_canonical but has an unexpectedly deep chain
-    # (defense-in-depth against data inconsistency).
-    candidate = MagicMock(spec=Reference)
-    candidate.id = uuid7()
-    candidate.is_canonical = True
-    candidate.canonical_chain_length = MAX_REFERENCE_DUPLICATE_DEPTH
+    """A reference with existing duplicates cannot become a duplicate itself."""
+    canonical = MagicMock(spec=Reference)
+    canonical.id = uuid7()
+    canonical.is_canonical = True
 
-    reference = Reference(
-        id=uuid7(),
-        identifiers=[],
-        enhancements=[],
-        duplicate_decision=None,
-        canonical_reference=None,
-    )
+    reference = MagicMock(spec=Reference)
+    reference.id = uuid7()
+    reference.has_duplicates = True
+    reference.duplicate_decision = None
 
     decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
-        candidate_canonical_ids=[candidate.id],
+        candidate_canonical_ids=[canonical.id],
         duplicate_determination=DuplicateDetermination.NOMINATED,
     )
 
-    ref_repo = fake_repository([reference, candidate])
+    ref_repo = fake_repository([reference, canonical])
     dec_repo = fake_repository([decision])
     service = DeduplicationService(
         anti_corruption_service,
@@ -539,7 +529,7 @@ async def test_determine_and_map_duplicate_decoupled_chain_length(
     determined = await service.determine_canonical_from_candidates(decision)
     out_decision, decision_changed, _ = await service.map_duplicate_decision(determined)
     assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
-    assert "Max duplicate chain length reached." in out_decision.detail
+    assert "Reference has existing duplicates" in out_decision.detail
     assert decision_changed
 
 
@@ -551,11 +541,10 @@ async def test_determine_and_map_duplicate_now_duplicate(
     canonical = MagicMock(spec=Reference)
     canonical.id = uuid7()
     canonical.is_canonical = True
-    canonical.canonical_chain_length = 1
 
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
-    reference.duplicate_chain_depth = 1
+    reference.has_duplicates = False
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.CANONICAL,
@@ -592,19 +581,18 @@ async def test_determine_and_map_duplicate_now_duplicate(
 
 
 @pytest.mark.asyncio
-async def test_map_allow_destructive_decision_still_enforces_chain_length(
+async def test_map_allow_destructive_decision_still_enforces_has_duplicates(
     fake_uow, fake_repository, anti_corruption_service
 ):
-    """Chain-length check is always enforced, even with allow_destructive_decision."""
+    """has_duplicates check is always enforced, even with allow_destructive_decision."""
     canonical = MagicMock(spec=Reference)
     canonical.id = uuid7()
     canonical.is_canonical = True
-    canonical.canonical_chain_length = MAX_REFERENCE_DUPLICATE_DEPTH
 
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
     reference.duplicate_decision = None
-    reference.duplicate_chain_depth = 1
+    reference.has_duplicates = True
 
     new_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
@@ -627,23 +615,22 @@ async def test_map_allow_destructive_decision_still_enforces_chain_length(
         new_decision, allow_destructive_decision=True
     )
     assert out.duplicate_determination == DuplicateDetermination.DECOUPLED
-    assert "Max duplicate chain length" in out.detail
+    assert "Reference has existing duplicates" in out.detail
     assert changed
 
 
 @pytest.mark.asyncio
-async def test_map_chain_length_accounts_for_existing_duplicates(
+async def test_map_canonical_with_dependents_cannot_become_duplicate(
     fake_uow, fake_repository, anti_corruption_service
 ):
-    """A canonical with dependents cannot become a duplicate (chain too deep)."""
+    """A canonical with existing duplicates cannot become a duplicate itself."""
     target_canonical = MagicMock(spec=Reference)
     target_canonical.id = uuid7()
     target_canonical.is_canonical = True
-    target_canonical.canonical_chain_length = 1
 
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
-    reference.duplicate_chain_depth = 2
+    reference.has_duplicates = True
     reference.duplicate_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.CANONICAL,
@@ -669,7 +656,7 @@ async def test_map_chain_length_accounts_for_existing_duplicates(
 
     out, changed, _ = await service.map_duplicate_decision(new_decision)
     assert out.duplicate_determination == DuplicateDetermination.DECOUPLED
-    assert "Max duplicate chain length" in out.detail
+    assert "Reference has existing duplicates" in out.detail
     assert changed
 
 
