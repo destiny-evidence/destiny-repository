@@ -801,9 +801,13 @@ async def make_duplicate_decisions(
     All provided decisions will be applied to their respective references and made
     active.
 
-    This is a synchronous endpoint that applies the decisions together, so it may take
+    This applies the decisions together before returning, so it may take
     a short while to complete - ensure your client is configured with a long enough
     timeout.
+
+    Any decisions with determination `duplicate` must point `canonical_reference_id`
+    to a reference that is already canonical, or declared canonical in the same request.
+    If this is not the case, the request will fail with a 422 error.
     """
     logger.info(
         "Resolving deduplication for references.",

@@ -1278,7 +1278,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         duplicate_decisions: list[ReferenceDuplicateDecision],
     ) -> list[ReferenceDuplicateDecision]:
-        """Make duplicate decisions for a list of reference duplicate decisions."""
+        """
+        Make duplicate decisions for a list of reference duplicate decisions.
+
+        If both canonical and duplicate determinations are present, canonical decisions
+        will be processed first to allow subsequent duplicate decisions to point to them
+        """
         results: list[ReferenceDuplicateDecision] = []
         # Process canonical decisions first so they can then be duplicated
         for duplicate_decision in sorted(
