@@ -980,38 +980,27 @@ async def test_make_duplicate_decisions_mark_canonical_and_duplicate(
     assert results[0]["canonical_reference_id"] == str(canonical_ref.id)
 
 
-@pytest.mark.parametrize(
-    "order",
-    ["canonical_first", "duplicate_first"],
-)
-async def test_make_duplicate_decisions_ordering_in_same_call(
+async def test_make_duplicate_decisions_multiple_in_one_call(
     session: AsyncSession,
     client: AsyncClient,
-    order: str,
 ) -> None:
-    """Canonical must come before duplicate in the same call."""
+    """Test that multiple decisions can be submitted in a single call."""
     canonical_ref = await add_reference(session)
     duplicate_ref = await add_reference(session)
 
-    canonical_decision = {
-        "reference_id": str(canonical_ref.id),
-        "duplicate_determination": "canonical",
-    }
-    duplicate_decision = {
-        "reference_id": str(duplicate_ref.id),
-        "duplicate_determination": "duplicate",
-        "canonical_reference_id": str(canonical_ref.id),
-    }
-
-    decisions = (
-        [canonical_decision, duplicate_decision]
-        if order == "canonical_first"
-        else [duplicate_decision, canonical_decision]
-    )
-
     response = await client.post(
         "/v1/references/duplicate-decisions/",
-        json=decisions,
+        json=[
+            {
+                "reference_id": str(duplicate_ref.id),
+                "duplicate_determination": "duplicate",
+                "canonical_reference_id": str(canonical_ref.id),
+            },
+            {
+                "reference_id": str(canonical_ref.id),
+                "duplicate_determination": "canonical",
+            },
+        ],
     )
 
     assert response.status_code == status.HTTP_201_CREATED

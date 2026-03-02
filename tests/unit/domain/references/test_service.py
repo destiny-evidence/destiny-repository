@@ -2,7 +2,7 @@
 
 import datetime
 import json
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 from uuid import uuid7
 
 import pytest
@@ -1049,6 +1049,55 @@ async def test_expire_and_replace_stale_pending_enhancements_with_expired(
         assert new_pe.enhancement_request_id == enhancement_request_id
         assert new_pe.source == "test-source"
         assert new_pe.status == PendingEnhancementStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_make_duplicate_decisions_processes_canonical_first(
+    fake_repository, fake_uow
+):
+    """Test that canonical decisions are always processed before duplicate ones."""
+    canonical_id = uuid7()
+    duplicate_id = uuid7()
+
+    canonical_decision = ReferenceDuplicateDecision(
+        reference_id=canonical_id,
+        duplicate_determination=DuplicateDetermination.CANONICAL,
+    )
+    duplicate_decision = ReferenceDuplicateDecision(
+        reference_id=duplicate_id,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=canonical_id,
+    )
+
+    mock_map = AsyncMock(side_effect=lambda d: (d, True))
+    mock_side_effects = AsyncMock()
+
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), fake_uow(), fake_uow()
+    )
+
+    with (
+        patch.object(
+            service._deduplication_service,  # noqa: SLF001
+            "map_duplicate_decision",
+            mock_map,
+        ),
+        patch.object(
+            service,
+            "apply_reference_duplicate_decision_side_effects",
+            mock_side_effects,
+        ),
+    ):
+        # Pass duplicate first — service should reorder
+        results = await service.make_duplicate_decisions(
+            [duplicate_decision, canonical_decision]
+        )
+
+    assert len(results) == 2
+    assert mock_map.call_args_list == [
+        call(canonical_decision),
+        call(duplicate_decision),
+    ]
 
 
 @pytest.mark.asyncio
