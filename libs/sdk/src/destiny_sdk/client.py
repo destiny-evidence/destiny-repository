@@ -11,12 +11,16 @@ from msal import (
     PublicClientApplication,
     UserAssignedManagedIdentity,
 )
-from pydantic import HttpUrl, TypeAdapter
+from pydantic import HttpUrl, SecretStr, TypeAdapter
 
 from destiny_sdk.auth import create_signature
 from destiny_sdk.core import UUID, sdk_version
 from destiny_sdk.identifiers import IdentifierLookup
-from destiny_sdk.keycloak_auth import KeycloakAuthCodeFlow, TokenResponse
+from destiny_sdk.keycloak_auth import (
+    KeycloakAuthCodeFlow,
+    KeycloakClientCredentialsFlow,
+    TokenResponse,
+)
 from destiny_sdk.references import Reference, ReferenceSearchResult
 from destiny_sdk.robots import (
     EnhancementRequestRead,
@@ -256,7 +260,7 @@ class OAuthMiddleware(httpx.Auth):
         azure_client_id: str,
         azure_application_id: str,
         azure_login_url: HttpUrl | str | None = None,
-        azure_client_secret: str | None = None,
+        azure_client_secret: SecretStr | None = None,
         *,
         use_managed_identity: bool = False,
     ) -> None:
@@ -270,7 +274,7 @@ class OAuthMiddleware(httpx.Auth):
         :param azure_login_url: The Azure login URL.
         :type azure_login_url: str
         :param azure_client_secret: The Azure client secret.
-        :type azure_client_secret: str | None
+        :type azure_client_secret: SecretStr | None
         :param use_managed_identity: Whether to use managed identity for authentication
         :type use_managed_identity: bool
         """
@@ -304,7 +308,7 @@ class OAuthMiddleware(httpx.Auth):
             self._oauth_app = ConfidentialClientApplication(
                 client_id=azure_client_id,
                 authority=str(azure_login_url),
-                client_credential=azure_client_secret,
+                client_credential=azure_client_secret.get_secret_value(),
             )
             self._get_token = self._get_token_from_confidential_client
         else:
@@ -469,13 +473,28 @@ class KeycloakOAuthMiddleware(httpx.Auth):
             client_id="destiny-auth-client",
         )
 
+    **Confidential Client (machine-to-machine)**
+
+    Uses client credentials for service-to-service authentication with no user
+    interaction. Tokens are re-acquired on expiry (no refresh token).
+
+    .. code-block:: python
+
+        auth = KeycloakOAuthMiddleware(
+            keycloak_url="http://localhost:8080",
+            realm="destiny",
+            client_id="my-service-client",
+            client_secret="my-secret",
+        )
+
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         keycloak_url: str,
         realm: str,
         client_id: str = "destiny-auth-client",
+        client_secret: SecretStr | None = None,
         scopes: list[str] | None = None,
         callback_port: int = 8400,
     ) -> None:
@@ -488,23 +507,37 @@ class KeycloakOAuthMiddleware(httpx.Auth):
         :type realm: str
         :param client_id: The OAuth2 client ID.
         :type client_id: str
+        :param client_secret: The OAuth2 client secret. When provided, uses
+            client credentials flow instead of authorization code flow.
+        :type client_secret: SecretStr | None
         :param scopes: Optional list of scopes to request.
         :type scopes: list[str] | None
-        :param callback_port: Port for local callback server during auth flow.
+        :param callback_port: Port for local callback server during auth code flow.
         :type callback_port: int
         """
-        self._auth_flow = KeycloakAuthCodeFlow(
-            keycloak_url=keycloak_url,
-            realm=realm,
-            client_id=client_id,
-            callback_port=callback_port,
-        )
+        self._auth_flow: KeycloakClientCredentialsFlow | KeycloakAuthCodeFlow
+        if client_secret:
+            self._auth_flow = KeycloakClientCredentialsFlow(
+                keycloak_url=keycloak_url,
+                realm=realm,
+                client_id=client_id,
+                client_secret=client_secret.get_secret_value(),
+            )
+            self._get_token = self._get_token_from_client_credentials
+        else:
+            self._auth_flow = KeycloakAuthCodeFlow(
+                keycloak_url=keycloak_url,
+                realm=realm,
+                client_id=client_id,
+                callback_port=callback_port,
+            )
+            self._get_token = self._get_token_from_auth_code
         self._scopes = scopes
         self._token: TokenResponse | None = None
 
-    def _get_token(self, *, force_refresh: bool = False) -> str:
+    def _get_token_from_auth_code(self, *, force_refresh: bool = False) -> str:
         """
-        Get an OAuth2 token from Keycloak.
+        Get an OAuth2 token using the authorization code flow.
 
         :param force_refresh: Whether to force a token refresh.
         :type force_refresh: bool
@@ -513,6 +546,9 @@ class KeycloakOAuthMiddleware(httpx.Auth):
         """
         # If we have a token and a refresh token, try to refresh
         if self._token and self._token.refresh_token and force_refresh:
+            if not isinstance(self._auth_flow, KeycloakAuthCodeFlow):
+                msg = "Auth code flow required for token refresh"
+                raise TypeError(msg)
             try:
                 self._token = self._auth_flow.refresh_token(self._token.refresh_token)
             except httpx.HTTPStatusError:
@@ -521,10 +557,31 @@ class KeycloakOAuthMiddleware(httpx.Auth):
             else:
                 return self._token.access_token
         elif self._token and not force_refresh:
-            # We have a valid token, return it
             return self._token.access_token
 
         # Perform full authentication flow
+        self._token = self._auth_flow.authenticate(scopes=self._scopes)
+        return self._token.access_token
+
+    def _get_token_from_client_credentials(
+        self,
+        *,
+        force_refresh: bool = False,
+    ) -> str:
+        """
+        Get an OAuth2 token using client credentials.
+
+        Client credentials tokens have no refresh token, so on expiry
+        we simply re-acquire a new token.
+
+        :param force_refresh: Whether to force re-acquisition of the token.
+        :type force_refresh: bool
+        :return: The OAuth2 access token.
+        :rtype: str
+        """
+        if self._token and not force_refresh:
+            return self._token.access_token
+
         self._token = self._auth_flow.authenticate(scopes=self._scopes)
         return self._token.access_token
 

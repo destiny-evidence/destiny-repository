@@ -6,6 +6,7 @@ from uuid import UUID, uuid7
 import httpx
 import pytest
 from destiny_sdk.client import (
+    KeycloakOAuthMiddleware,
     OAuthClient,
     OAuthMiddleware,
     RobotClient,
@@ -24,7 +25,7 @@ from msal import (
     ManagedIdentityClient,
     PublicClientApplication,
 )
-from pydantic import HttpUrl
+from pydantic import HttpUrl, SecretStr
 from pytest_httpx import HTTPXMock
 
 
@@ -331,7 +332,7 @@ class TestOAuthMiddleware:
             azure_login_url="test-url",
             azure_client_id="test-client",
             azure_application_id="test-app",
-            azure_client_secret="test-secret",
+            azure_client_secret=SecretStr("test-secret"),
         )
 
         # Create a test request
@@ -424,3 +425,95 @@ class TestOAuthMiddleware:
             retry_request.headers["Authorization"] == f"Bearer {mock_refreshed_token}"
         )
         assert call_count["count"] == 2  # Initial + refresh
+
+
+class TestKeycloakOAuthMiddleware:
+    """Tests for KeycloakOAuthMiddleware authentication."""
+
+    def test_client_credentials_auth_flow(self, httpx_mock: HTTPXMock) -> None:
+        """Test Keycloak middleware auth flow with client credentials."""
+        mock_token = "keycloak_cc_token_789"
+
+        # Mock the Keycloak token endpoint
+        httpx_mock.add_response(
+            url="http://localhost:8080/realms/destiny/protocol/openid-connect/token",
+            method="POST",
+            json={
+                "access_token": mock_token,
+                "expires_in": 300,
+                "token_type": "Bearer",
+                "scope": "openid import.writer.all",
+            },
+        )
+
+        middleware = KeycloakOAuthMiddleware(
+            keycloak_url="http://localhost:8080",
+            realm="destiny",
+            client_id="test-service-client",
+            client_secret=SecretStr("test-secret"),
+            scopes=["import.writer.all"],
+        )
+
+        request = httpx.Request("GET", "https://api.example.com/test")
+
+        flow = middleware.auth_flow(request)
+        authenticated_request = next(flow)
+
+        assert "Authorization" in authenticated_request.headers
+        assert authenticated_request.headers["Authorization"] == f"Bearer {mock_token}"
+
+    @pytest.mark.httpx_mock(can_send_already_matched_responses=True)
+    def test_client_credentials_reacquires_on_expiry(
+        self, httpx_mock: HTTPXMock
+    ) -> None:
+        """Test that client credentials middleware re-acquires token on 401."""
+        initial_token = "keycloak_cc_token_initial"
+        refreshed_token = "keycloak_cc_token_refreshed"
+        call_count = {"count": 0}
+
+        def token_response(_request, **_kwargs):
+            call_count["count"] += 1
+            token = refreshed_token if call_count["count"] > 1 else initial_token
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": token,
+                    "expires_in": 300,
+                    "token_type": "Bearer",
+                    "scope": "openid",
+                },
+            )
+
+        httpx_mock.add_callback(
+            token_response,
+            url="http://localhost:8080/realms/destiny/protocol/openid-connect/token",
+            method="POST",
+        )
+
+        middleware = KeycloakOAuthMiddleware(
+            keycloak_url="http://localhost:8080",
+            realm="destiny",
+            client_id="test-service-client",
+            client_secret=SecretStr("test-secret"),
+        )
+
+        request = httpx.Request("GET", "https://api.example.com/test")
+
+        flow = middleware.auth_flow(request)
+        authenticated_request = next(flow)
+
+        assert (
+            authenticated_request.headers["Authorization"] == f"Bearer {initial_token}"
+        )
+
+        # Simulate token expiry
+        expired_response = httpx.Response(
+            status_code=401,
+            json={"detail": "Token has expired."},
+            request=authenticated_request,
+        )
+
+        retry_request = flow.send(expired_response)
+
+        assert retry_request.headers["Authorization"] == f"Bearer {refreshed_token}"
+        assert call_count["count"] == 2

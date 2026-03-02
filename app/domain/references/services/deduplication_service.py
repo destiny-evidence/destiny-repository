@@ -305,9 +305,15 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 preload=["duplicate_decision"],
             )
             if not canonical_ref.is_canonical:
+                non_canonical_determination = (
+                    canonical_ref.duplicate_decision.duplicate_determination
+                    if canonical_ref.duplicate_decision
+                    else "none"
+                )
                 msg = (
-                    "Cannot mark a reference as a duplicate of a non-canonical "
-                    f"reference ({new_decision.canonical_reference_id})."
+                    "Cannot mark as duplicate of a non-canonical reference. "
+                    f"Reference {new_decision.canonical_reference_id} has "
+                    f"active determination: {non_canonical_determination}."
                 )
                 raise DeduplicationValueError(msg)
 

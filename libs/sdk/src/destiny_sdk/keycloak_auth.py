@@ -20,6 +20,87 @@ class TokenResponse:
     scope: str
 
 
+class KeycloakClientCredentialsFlow:
+    """
+    Client credentials flow for machine-to-machine authentication.
+
+    Uses a confidential client (client_id + client_secret) to obtain tokens
+    without user interaction.
+
+    Example usage:
+        flow = KeycloakClientCredentialsFlow(
+            keycloak_url="http://localhost:8080",
+            realm="destiny",
+            client_id="my-service-client",
+            client_secret="my-secret",
+        )
+        token = flow.authenticate(scopes=["import.writer.all"])
+    """
+
+    def __init__(
+        self,
+        keycloak_url: str,
+        realm: str,
+        client_id: str,
+        client_secret: str,
+    ) -> None:
+        """
+        Initialize Keycloak client credentials flow.
+
+        Args:
+            keycloak_url: Base URL of the Keycloak server
+            realm: Keycloak realm name
+            client_id: OIDC client ID
+            client_secret: OIDC client secret
+
+        """
+        self.keycloak_url = keycloak_url.rstrip("/")
+        self.realm = realm
+        self.client_id = client_id
+        self.client_secret = client_secret
+
+        base = f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect"
+        self.token_endpoint = f"{base}/token"
+
+    def authenticate(
+        self,
+        scopes: list[str] | None = None,
+    ) -> TokenResponse:
+        """
+        Obtain an access token using client credentials.
+
+        Args:
+            scopes: Optional list of scopes to request
+
+        Returns:
+            TokenResponse with access token (refresh_token will be None)
+
+        """
+        client = OAuth2Client(
+            client_id=self.client_id,
+            client_secret=self.client_secret,
+            token_endpoint_auth_method="client_secret_post",  # noqa: S106
+        )
+
+        scope_str = "openid"
+        if scopes:
+            scope_str = f"{scope_str} {' '.join(scopes)}"
+
+        token = client.fetch_token(
+            self.token_endpoint,
+            grant_type="client_credentials",
+            scope=scope_str,
+        )
+
+        return TokenResponse(
+            access_token=token["access_token"],
+            refresh_token=None,
+            expires_in=token["expires_in"],
+            token_type=token["token_type"],
+            scope=token.get("scope", ""),
+        )
+
+
 class KeycloakAuthCodeFlow:
     """
     Authorization code flow with PKCE for CLI and Python clients.

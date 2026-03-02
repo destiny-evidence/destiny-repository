@@ -417,7 +417,7 @@ async def test_deduplicate_references(
 
     ref_ids = {uuid7(), uuid7(), uuid7()}
     response = await client.post(
-        "/v1/references/duplicate-decisions/",
+        "/v1/references/duplicate-decisions/invoke/",
         json={"reference_ids": [str(r) for r in ref_ids]},
     )
     assert response.status_code == status.HTTP_202_ACCEPTED
