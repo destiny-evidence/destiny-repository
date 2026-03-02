@@ -1271,3 +1271,36 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             source_str=source_str,
             skip_robot_id=skip_robot_id,
         )
+
+    @sql_unit_of_work
+    @es_unit_of_work
+    async def make_duplicate_decisions(
+        self,
+        duplicate_decisions: list[ReferenceDuplicateDecision],
+    ) -> list[ReferenceDuplicateDecision]:
+        """
+        Make duplicate decisions for a list of reference duplicate decisions.
+
+        If both canonical and duplicate determinations are present, canonical decisions
+        will be processed first to allow subsequent duplicate decisions to point to them
+        """
+        results: list[ReferenceDuplicateDecision] = []
+        # Process canonical decisions first so they can then be duplicated
+        for duplicate_decision in sorted(
+            duplicate_decisions,
+            key=lambda decision: decision.duplicate_determination
+            == DuplicateDetermination.CANONICAL,
+            reverse=True,
+        ):
+            (
+                reference_duplicate_decision,
+                decision_changed,
+            ) = await self._deduplication_service.map_duplicate_decision(
+                duplicate_decision
+            )
+            await self.apply_reference_duplicate_decision_side_effects(
+                reference_duplicate_decision,
+                decision_changed=decision_changed,
+            )
+            results.append(reference_duplicate_decision)
+        return results

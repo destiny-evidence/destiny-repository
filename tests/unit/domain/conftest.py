@@ -216,6 +216,44 @@ class FakeRepository:
         return updated_count
 
 
+def link_fake_repos(
+    child_repo: "FakeRepository",
+    parent_repo: "FakeRepository",
+    *,
+    fk: str,
+    attr: str,
+    filter_field: str | None = None,
+    filter_value: object = None,
+) -> None:
+    """Simulate a SQLAlchemy viewonly relationship between FakeRepositories.
+
+    After every ``merge`` on *child_repo*, the matching record in
+    *parent_repo* (looked up via *fk* → parent PK) will have its
+    *attr* set to the merged record — mirroring how SQLAlchemy syncs
+    relationships within a session.
+
+    An optional filter (e.g. ``filter_field="active_decision",
+    filter_value=True``) restricts which merges trigger the sync.
+    """
+    _original = child_repo.merge
+
+    async def _synced_merge(record):
+        result = await _original(record)
+        parent_id = getattr(result, fk, None)
+        if (
+            parent_id
+            and parent_id in parent_repo.repository
+            and (
+                filter_field is None
+                or getattr(result, filter_field, None) == filter_value
+            )
+        ):
+            setattr(parent_repo.repository[parent_id], attr, result)
+        return result
+
+    child_repo.merge = _synced_merge  # type: ignore[method-assign]
+
+
 class FakeUnitOfWork:
     def __init__(
         self,
