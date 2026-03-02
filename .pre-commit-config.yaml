@@ -23,6 +23,7 @@ repos:
     rev: v0.24.2
     hooks:
       - id: toml-sort-fix
+        exclude: \.lock$
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.19.1
     hooks:
