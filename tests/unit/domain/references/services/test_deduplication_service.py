@@ -708,6 +708,33 @@ async def test_map_duplicate_decision_rejects_non_canonical_target(
         await service.map_duplicate_decision(decision)
 
 
+@pytest.mark.asyncio
+async def test_map_duplicate_decision_rejects_self_reference(
+    fake_uow,
+    fake_repository,
+    anti_corruption_service,
+):
+    """A reference cannot be marked as a duplicate of itself."""
+    ref_id = uuid7()
+    decision = ReferenceDuplicateDecision(
+        reference_id=ref_id,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=ref_id,
+    )
+
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(
+            references=fake_repository([]),
+            reference_duplicate_decisions=fake_repository([decision]),
+        ),
+        fake_uow(),
+    )
+
+    with pytest.raises(DeduplicationValueError, match="duplicate of itself"):
+        await service.map_duplicate_decision(decision)
+
+
 class TestShortcutDeduplication:
     """
     Test the five cases listed in the docstring of

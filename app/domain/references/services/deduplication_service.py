@@ -304,8 +304,11 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             msg = "Only terminal duplicate determinations can be mapped."
             raise DeduplicationValueError(msg)
 
-        canonical_ref = None
         if new_decision.canonical_reference_id:
+            if new_decision.canonical_reference_id == new_decision.reference_id:
+                msg = "Cannot mark a reference as a duplicate of itself."
+                raise DeduplicationValueError(msg)
+
             canonical_ref = await self.sql_uow.references.get_by_pk(
                 new_decision.canonical_reference_id,
                 preload=["duplicate_decision"],
@@ -332,33 +335,25 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         # Preset to True, will be flipped if not changed
         decision_changed = True
 
-        # Remap active decision if needed and handle other cases
-        if new_decision.duplicate_determination == DuplicateDetermination.UNSEARCHABLE:
-            new_decision.active_decision = True
-            if active_decision:
-                active_decision.active_decision = False
-        elif (
+        if (
             active_decision
-            and not allow_destructive_decision
+            and active_decision.duplicate_determination
+            == DuplicateDetermination.DUPLICATE
             and (
-                (
-                    # Reference was duplicate but is now canonical
-                    new_decision.duplicate_determination
-                    == DuplicateDetermination.CANONICAL
-                    and active_decision.duplicate_determination
-                    == DuplicateDetermination.DUPLICATE
-                )
+                # Reference was duplicate but is now canonical
+                new_decision.duplicate_determination == DuplicateDetermination.CANONICAL
                 or (
                     # Was duplicate but now duplicate of a different canonical
                     new_decision.duplicate_determination
-                    == active_decision.duplicate_determination
                     == DuplicateDetermination.DUPLICATE
                     and active_decision.canonical_reference_id
                     != new_decision.canonical_reference_id
                 )
             )
+            and not allow_destructive_decision
         ):
-            # Maintain existing decision and raise for manual review
+            # Destructive change: the old canonical reference will lose data from this
+            # duplicate being removed.
             new_decision.duplicate_determination = DuplicateDetermination.DECOUPLED
             new_decision.detail = (
                 "Decouple reason: Existing duplicate decision changed. "
@@ -369,10 +364,12 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             new_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
             and reference.has_duplicates
         ):
+            # A future implementation might automatically merge the duplicate graphs
+            # here, but for now we flag it so we can come to understand the edge cases
             new_decision.duplicate_determination = DuplicateDetermination.DECOUPLED
             new_decision.detail = (
                 "Decouple reason: Reference has existing duplicates and cannot "
-                "become a duplicate itself. "
+                "become a duplicate itself. Remap existing duplicates before retrying. "
                 + (new_decision.detail if new_decision.detail else "")
             )
         else:
