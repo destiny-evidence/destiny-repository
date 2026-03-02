@@ -1069,7 +1069,7 @@ async def test_make_duplicate_decisions_processes_canonical_first(
         canonical_reference_id=canonical_id,
     )
 
-    mock_map = AsyncMock(side_effect=lambda d: (d, True))
+    mock_map = AsyncMock(side_effect=lambda d, **kw: (d, True, None))  # noqa: ARG005
     mock_side_effects = AsyncMock()
 
     service = ReferenceService(
@@ -1095,8 +1095,8 @@ async def test_make_duplicate_decisions_processes_canonical_first(
 
     assert len(results) == 2
     assert mock_map.call_args_list == [
-        call(canonical_decision),
-        call(duplicate_decision),
+        call(canonical_decision, allow_destructive_decision=True),
+        call(duplicate_decision, allow_destructive_decision=True),
     ]
 
 

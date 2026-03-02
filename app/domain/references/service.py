@@ -1053,6 +1053,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         (
             reference_duplicate_decision,
             decision_changed,
+            _,
         ) = await self._deduplication_service.map_duplicate_decision(
             reference_duplicate_decision
         )
@@ -1295,12 +1296,33 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             (
                 reference_duplicate_decision,
                 decision_changed,
+                old_decision,
             ) = await self._deduplication_service.map_duplicate_decision(
-                duplicate_decision
+                duplicate_decision, allow_destructive_decision=True
             )
             await self.apply_reference_duplicate_decision_side_effects(
                 reference_duplicate_decision,
                 decision_changed=decision_changed,
             )
+            if (
+                old_decision
+                and old_decision.canonical_reference_id
+                and reference_duplicate_decision.canonical_reference_id
+                != old_decision.canonical_reference_id
+            ):
+                # We forcibly moved this duplicate, either to be a duplicate of a
+                # different canonical, or to be canonical itself. Re-apply any
+                # side effects for the old canonical reference, to allow it to
+                # retrigger and automations and recalculate enhancements without
+                # the old duplicate's data.
+                old_canonical = await self.sql_uow.references.get_by_pk(
+                    old_decision.canonical_reference_id,
+                    preload=["duplicate_decision"],
+                )
+                if old_canonical.duplicate_decision:
+                    await self.apply_reference_duplicate_decision_side_effects(
+                        old_canonical.duplicate_decision,
+                        decision_changed=True,
+                    )
             results.append(reference_duplicate_decision)
         return results

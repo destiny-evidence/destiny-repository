@@ -549,6 +549,7 @@ async def test_duplicate_change(  # noqa: PLR0913
     Verify behaviour when a duplicate-like reference becomes a different duplicate.
 
     We point duplicate->non_duplicate, then the process changes it to duplicate->canonical.
+    This creates a DECOUPLED decision. We then resolve it via the manual endpoint.
     """
     # First import the canonical and non-duplicate references. Both will register as canonical.
     canonical_reference_id, non_duplicate_reference_id = [
@@ -604,6 +605,53 @@ async def test_duplicate_change(  # noqa: PLR0913
     )
     assert old_decision
     assert old_decision.active_decision
+
+    # Now resolve the decouple via the manual endpoint: point to the real canonical.
+    resolve_response = await destiny_client_v1.post(
+        "/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(duplicate_reference.id),
+                "duplicate_determination": "duplicate",
+                "canonical_reference_id": str(canonical_reference_id),
+            }
+        ],
+    )
+    assert resolve_response.status_code == 201
+    result = resolve_response.json()[0]
+    assert result["outcome"] == "duplicate"
+    assert result["canonical_reference_id"] == str(
+        duplicate_decision.canonical_reference_id
+    )
+    assert result["active_decision"]
+
+    # The old DUPLICATE of non_duplicate should now be inactive.
+    await pg_session.expire_all()
+    old_decision = await pg_session.get(
+        SQLReferenceDuplicateDecision, duplicate_decision_id
+    )
+    assert old_decision
+    assert not old_decision.active_decision
+
+    # ES: duplicate removed, canonical present with merged data,
+    # non_duplicate present as standalone.
+    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+    es_result = await es_client.search(
+        index=ReferenceDocument.Index.name,
+        query={
+            "terms": {
+                "_id": [
+                    str(canonical_reference_id),
+                    str(duplicate_reference.id),
+                    str(non_duplicate_reference_id),
+                ]
+            }
+        },
+    )
+    es_ids = {hit["_id"] for hit in es_result["hits"]["hits"]}
+    assert str(duplicate_reference.id) not in es_ids
+    assert str(canonical_reference_id) in es_ids
+    assert str(non_duplicate_reference_id) in es_ids
 
 
 async def test_deduplication_shortcut(  # noqa: PLR0913

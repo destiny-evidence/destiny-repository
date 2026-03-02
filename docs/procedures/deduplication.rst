@@ -182,7 +182,13 @@ This algorithm is still being built out. For now, we have a placeholder that we 
 Manual Resolution
 -----------------
 
-Duplicate decisions that are :attr:`Decoupled <app.domain.references.models.models.DuplicateDetermination.DECOUPLED>` or :attr:`Unresolved <app.domain.references.models.models.DuplicateDetermination.UNRESOLVED>` can be handled here. This is not yet implemented.
+When the `Action Decision`_ creates a :attr:`Decoupled <app.domain.references.models.models.DuplicateDetermination.DECOUPLED>` decision (due to a conflict or chain-length issue), the old terminal decision stays active and the decoupled decision is recorded as inactive. This allows the reference to remain functional while awaiting human review.
+
+To resolve, submit the desired decision via the ``POST /references/duplicate-decisions/`` endpoint. This endpoint bypasses the conflict check that would otherwise create another decoupled decision. Chain-length and :attr:`is_canonical <app.domain.references.models.models.Reference.is_canonical>` validations are still enforced, so you cannot create excessively deep chains or point to a non-canonical reference.
+
+When the resolution changes which canonical a duplicate points to (e.g. DUPLICATE(A) to DUPLICATE(B), or DUPLICATE to CANONICAL), side effects are applied to both the new and old canonical references, ensuring both their Elasticsearch projections and robot automations are re-evaluated.
+
+:attr:`Unresolved <app.domain.references.models.models.DuplicateDetermination.UNRESOLVED>` decisions can be handled through the same endpoint.
 
 
 Action Decision
