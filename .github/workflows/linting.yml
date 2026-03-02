@@ -40,3 +40,7 @@ jobs:
 
       - name: Run pre-commit
         run: pre-commit run --all-files --color always --verbose
+
+      - name: Show hook modifications (if any)
+        if: always()
+        run: git diff

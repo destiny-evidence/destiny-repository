@@ -626,7 +626,7 @@ async def test_duplicate_change(  # noqa: PLR0913
     assert result["active_decision"]
 
     # The old DUPLICATE of non_duplicate should now be inactive.
-    await pg_session.expire_all()
+    pg_session.expire_all()
     old_decision = await pg_session.get(
         SQLReferenceDuplicateDecision, duplicate_decision_id
     )
