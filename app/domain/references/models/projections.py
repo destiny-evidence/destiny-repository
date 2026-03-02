@@ -265,26 +265,17 @@ class DeduplicatedReferenceProjection(GenericProjection[Reference]):
             },
         )
 
-        # Allows for reference chaining if MAX_REFERENCE_DUPLCIATE_DEPTH is
-        # updated to >2
-        duplicate_references = [
-            DeduplicatedReferenceProjection.get_from_reference(reference)
-            for reference in reference.duplicate_references
-        ]
-
-        # If None, we assume it was not preloaded. An empty reference with preloads
-        # would have an empty list here instead.
         if deduplicated_reference.enhancements is not None:
             deduplicated_reference.enhancements += [
                 enhancement
-                for reference in duplicate_references
-                for enhancement in reference.enhancements or []
+                for ref in reference.duplicate_references
+                for enhancement in ref.enhancements or []
             ]
         if deduplicated_reference.identifiers is not None:
             deduplicated_reference.identifiers += [
                 identifier
-                for reference in duplicate_references
-                for identifier in (reference.identifiers or [])
+                for ref in reference.duplicate_references
+                for identifier in (ref.identifiers or [])
             ]
 
         return deduplicated_reference

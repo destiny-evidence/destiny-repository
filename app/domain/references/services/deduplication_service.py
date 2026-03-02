@@ -6,7 +6,6 @@ from uuid import UUID
 from opentelemetry import trace
 
 from app.core.config import Environment, get_settings
-from app.core.constants import MAX_REFERENCE_DUPLICATE_DEPTH
 from app.core.exceptions import DeduplicationValueError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
@@ -307,6 +306,10 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
         canonical_ref = None
         if new_decision.canonical_reference_id:
+            if new_decision.canonical_reference_id == new_decision.reference_id:
+                msg = "Cannot mark a reference as a duplicate of itself."
+                raise DeduplicationValueError(msg)
+
             canonical_ref = await self.sql_uow.references.get_by_pk(
                 new_decision.canonical_reference_id,
                 preload=["duplicate_decision", "canonical_reference"],
@@ -333,57 +336,44 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         # Preset to True, will be flipped if not changed
         decision_changed = True
 
-        # Remap active decision if needed and handle other cases
-        if new_decision.duplicate_determination == DuplicateDetermination.UNSEARCHABLE:
-            new_decision.active_decision = True
-            if active_decision:
-                active_decision.active_decision = False
-        elif (
+        if (
             active_decision
-            and not allow_destructive_decision
+            and active_decision.duplicate_determination
+            == DuplicateDetermination.DUPLICATE
             and (
-                (
-                    # Reference was duplicate but is now canonical
-                    new_decision.duplicate_determination
-                    == DuplicateDetermination.CANONICAL
-                    and active_decision.duplicate_determination
-                    == DuplicateDetermination.DUPLICATE
-                )
+                # Duplicate is becoming canonical
+                new_decision.duplicate_determination == DuplicateDetermination.CANONICAL
                 or (
-                    # Was duplicate but now duplicate of a different canonical
+                    # Duplicate changes canonical reference
                     new_decision.duplicate_determination
-                    == active_decision.duplicate_determination
                     == DuplicateDetermination.DUPLICATE
                     and active_decision.canonical_reference_id
                     != new_decision.canonical_reference_id
                 )
             )
+            and not allow_destructive_decision
         ):
-            # Maintain existing decision and raise for manual review
+            # Destructive change to the old canonical reference which now loses
+            # a duplicate. Raise for manual review of the decision and the implications.
             new_decision.duplicate_determination = DuplicateDetermination.DECOUPLED
             new_decision.detail = (
                 "Decouple reason: Existing duplicate decision changed. "
                 + (new_decision.detail if new_decision.detail else "")
             )
         elif (
-            # Proposed chain would exceed maximum allowed depth
             new_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
-            and canonical_ref is not None
-            and canonical_ref.canonical_chain_length + reference.duplicate_chain_depth
-            > MAX_REFERENCE_DUPLICATE_DEPTH
+            and reference.has_duplicates
         ):
-            # Raise for manual review
+            # A canonical reference with duplicates has been flagged as a duplicate.
+            # A future implementation may merge duplicate trees here, for now let's flag
+            # for manual review.
             new_decision.duplicate_determination = DuplicateDetermination.DECOUPLED
             new_decision.detail = (
-                "Decouple reason: Max duplicate chain length reached. "
+                "Decouple reason: Reference has existing duplicates and cannot "
+                "become a duplicate itself. Remap existing duplicates before retrying. "
                 + (new_decision.detail if new_decision.detail else "")
             )
         else:
-            # Either:
-            # - No active decision
-            # - Decision is the same
-            # - Decision is moving from canonical to duplicate
-            # Just update the active decision to record the consistent state.
             if active_decision:
                 if (
                     active_decision.duplicate_determination
@@ -508,16 +498,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 undeduplicated_ids.add(candidate.id)
             elif candidate.is_canonical:
                 canonical_ids.add(candidate.id)
-            else:
-                # Duplicate of a canonical, find the canonical ID
-                # We get this fresh without the filters so we can traverse a chain if
-                # required
-                canonical_reference = await self.sql_uow.references.get_by_pk(
-                    candidate.id, preload=["canonical_reference"]
-                )
-                while canonical_reference.canonical_reference:
-                    canonical_reference = canonical_reference.canonical_reference
-                canonical_ids.add(canonical_reference.id)
+            elif candidate.duplicate_decision.canonical_reference_id:
+                # Duplicate — use the decision's direct canonical reference ID
+                canonical_ids.add(candidate.duplicate_decision.canonical_reference_id)
 
         if len(canonical_ids) > 1:
             return [

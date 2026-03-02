@@ -207,6 +207,7 @@ The bold lines in the flowchart indicate what we expect to be nominal flow.
         C3{A Canonical & N Duplicate?}
         C4{N is Canonical?}
         C5{N's Canonical is Canonical?}
+        C6{Reference has duplicates?}
         T[[Activate New Decision]]
         M([Mark for Manual Handling])
 
@@ -220,16 +221,20 @@ The bold lines in the flowchart indicate what we expect to be nominal flow.
         C4 -->|No| C5
         C4 ==>|Yes| T
         C5 -->|No| M
-        C5 ==>|Yes| T
+        C5 ==>|Yes| C6
+        C6 -->|Yes| M
+        C6 ==>|No| T
         M ~~~ T
 
-There are two cases where the new decision is not automatically activated:
+There are three cases where the new decision is not automatically activated:
 
-1. The active decision is duplicate and the new decision is canonical or a duplicate of a different reference.
+1. The active decision is duplicate and the new decision is canonical or a duplicate of a different reference. This is a destructive change to the existing canonical reference, which may have implications for its enhancements, and needs to be reviewed in context.
 
-2. The new decision is canonical but its canonical reference is not.
+2. The proposed canonical reference is not actually canonical.
 
-Both of these *can* be handled automatically, but manual review allows us to highlight and understanding the frequency and nature of these cases. The commentary around these is changing frequently so not documenting in detail here, but please reach out if you want more information!
+3. The reference being marked as a duplicate already has duplicates pointing to it (which would create a chaining situation).
+
+These are marked as ``DECOUPLED`` for manual review via the ``POST /references/duplicate-decisions/`` endpoint.
 
 .. _deduplicated-projection:
 

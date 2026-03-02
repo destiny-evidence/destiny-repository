@@ -115,8 +115,8 @@ class DuplicateDetermination(StrEnum):
     DECOUPLED = auto()
     """
     A decision has been made, but needs further attention. This could
-    be due to a change in the canonical mapping, or a chain of duplicates longer
-    than allowed.
+    be due to a change in the canonical mapping, or a reference with existing
+    duplicates being marked as a duplicate.
     """
 
     @classmethod
@@ -197,35 +197,15 @@ class Reference(
         )
 
     @property
-    def canonical_chain_length(self) -> int:
+    def has_duplicates(self) -> bool | None:
         """
-        Get the length of the canonical chain for this reference.
+        Whether this reference has any duplicate references pointing to it.
 
-        This is the number of references in the chain from this reference to
-        the root canonical reference, including this reference.
-
-        Requires canonical_reference to be preloaded, will always return 1 if not.
+        Will return None if duplicate references are not preloaded.
         """
-        return 1 + (
-            self.canonical_reference.canonical_chain_length
-            if self.canonical_reference
-            else 0
-        )
-
-    @property
-    def duplicate_chain_depth(self) -> int:
-        """
-        Get the depth of the duplicate chain below this reference.
-
-        This is the number of references from this reference to its deepest
-        duplicate, including this reference.
-
-        Requires duplicate_references to be preloaded, will always return 1
-        if not.
-        """
-        if not self.duplicate_references:
-            return 1
-        return 1 + max(r.duplicate_chain_depth for r in self.duplicate_references)
+        if self.duplicate_references is None:
+            return None
+        return bool(self.duplicate_references)
 
     def is_superset(
         self,

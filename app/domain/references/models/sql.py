@@ -18,7 +18,6 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.constants import MAX_REFERENCE_DUPLICATE_DEPTH
 from app.core.exceptions import SQLPreloadError
 from app.domain.references.models.models import (
     DuplicateDetermination,
@@ -93,11 +92,8 @@ class Reference(GenericSQLPersistence[DomainReference]):
         viewonly=True,
     )
 
-    # When using a self-referential relationship, SQLAlchemy requires information
-    # about how far to take the recursion (As it needs to perform n+1 joins for n-depth
-    # searching, but doesn't know n).
-    # Also see:
-    # - https://docs.sqlalchemy.org/en/20/orm/self_referential.html#configuring-self-referential-eager-loading
+    # Self-referential relationships. max_recursion_depth=1 means we only load
+    # the direct relationship (duplicates point to canonicals, no chaining).
     canonical_reference: Mapped["Reference"] = relationship(
         "Reference",
         secondary="reference_duplicate_decision",
@@ -108,7 +104,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
         uselist=False,
         viewonly=True,
         info=RelationshipInfo(
-            max_recursion_depth=MAX_REFERENCE_DUPLICATE_DEPTH - 1,
+            max_recursion_depth=1,
             load_type=RelationshipLoadType.SELECTIN,
             back_populates="duplicate_references",
         ).model_dump(),
@@ -122,7 +118,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
         "ReferenceDuplicateDecision.active_decision==True)",
         viewonly=True,
         info=RelationshipInfo(
-            max_recursion_depth=MAX_REFERENCE_DUPLICATE_DEPTH - 1,
+            max_recursion_depth=1,
             load_type=RelationshipLoadType.SELECTIN,
             back_populates="canonical_reference",
         ).model_dump(),
@@ -160,10 +156,8 @@ class Reference(GenericSQLPersistence[DomainReference]):
                 ]
                 if "enhancements" in (preload or [])
                 else None,
-                # Note we don't propagate the opposite side of the duplicate self-join
-                # to avoid infinite recursion. Having both sides of the relationship in
-                # preload will still return the tree on both sides but won't attempt to
-                # double back.
+                # Strip the opposite side of the self-join to avoid accessing
+                # relationships the SQL layer didn't eagerly load.
                 canonical_reference=self.canonical_reference.to_domain(
                     preload=[p for p in (preload or []) if p != "duplicate_references"]
                 )
@@ -185,8 +179,8 @@ class Reference(GenericSQLPersistence[DomainReference]):
             )
         except MissingGreenlet as exc:
             msg = (
-                "Trying to preload a missing relationship. This may be due to "
-                "a deeper reference duplicate depth than specified in settings."
+                "Trying to preload a missing relationship. Check that the "
+                "required relationships are being eagerly loaded."
             )
             raise SQLPreloadError(msg) from exc
 

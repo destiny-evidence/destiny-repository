@@ -589,36 +589,6 @@ async def test_get_deduplicated_reference_duplicate_to_canonical(
     assert len(duplicate.identifiers) == 1
 
 
-@pytest.mark.asyncio
-async def test_get_deduplicated_canonical_reference_duplicate_chain(
-    fake_repository, fake_uow, canonical_reference, get_duplicate_reference
-):
-    intermediate_reference = get_duplicate_reference(canonical_reference.id)
-    duplicate_reference = get_duplicate_reference(intermediate_reference.id)
-    canonical_reference.duplicate_references = [intermediate_reference]
-    intermediate_reference.duplicate_references = [duplicate_reference]
-    refs = fake_repository(
-        [canonical_reference, intermediate_reference, duplicate_reference]
-    )
-    uow = fake_uow(references=refs)
-    service = ReferenceService(
-        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
-    )
-    canonical = await service._get_deduplicated_canonical_reference(  # noqa: SLF001
-        duplicate_reference.id
-    )
-    assert canonical.id == canonical_reference.id
-    assert len(canonical.enhancements) == 1
-    assert len(canonical.identifiers) == 2
-
-    canonical = await service._get_deduplicated_canonical_reference(  # noqa: SLF001
-        intermediate_reference.id
-    )
-    assert canonical.id == canonical_reference.id
-    assert len(canonical.enhancements) == 1
-    assert len(canonical.identifiers) == 2
-
-
 async def test_get_deduplicated_canonical_references(
     fake_repository, fake_uow, canonical_reference, get_duplicate_reference
 ):
