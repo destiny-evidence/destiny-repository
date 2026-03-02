@@ -326,7 +326,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
         reference = await self.sql_uow.references.get_by_pk(
             new_decision.reference_id,
-            preload=["duplicate_decision", "duplicate_references"],
+            preload=["duplicate_decision"],
         )
         active_decision = reference.duplicate_decision
 
@@ -377,25 +377,11 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 "Decouple reason: Max duplicate chain length reached. "
                 + (new_decision.detail if new_decision.detail else "")
             )
-        elif (
-            # Canonical with existing duplicates cannot become a duplicate itself
-            new_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
-            and active_decision
-            and active_decision.duplicate_determination
-            == DuplicateDetermination.CANONICAL
-            and reference.duplicate_references
-        ):
-            new_decision.duplicate_determination = DuplicateDetermination.DECOUPLED
-            new_decision.detail = (
-                "Decouple reason: Canonical has existing duplicates that "
-                "would be orphaned. Merge or re-point duplicates first. "
-                + (new_decision.detail if new_decision.detail else "")
-            )
         else:
             # Either:
             # - No active decision
             # - Decision is the same
-            # - Canonical to duplicate (no existing duplicates to orphan)
+            # - Decision is moving from canonical to duplicate
             # Just update the active decision to record the consistent state.
             if active_decision:
                 if (

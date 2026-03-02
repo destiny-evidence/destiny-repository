@@ -553,7 +553,6 @@ async def test_determine_and_map_duplicate_now_duplicate(
 
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
-    reference.duplicate_references = []
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.CANONICAL,
@@ -625,51 +624,6 @@ async def test_map_allow_destructive_decision_still_enforces_chain_length(
     )
     assert out.duplicate_determination == DuplicateDetermination.DECOUPLED
     assert "Max duplicate chain length" in out.detail
-    assert changed
-
-
-@pytest.mark.asyncio
-async def test_map_canonical_to_duplicate_decouples_when_has_duplicates(
-    fake_uow, fake_repository, anti_corruption_service
-):
-    """Canonical with existing duplicates cannot become a duplicate."""
-    target_canonical = MagicMock(spec=Reference)
-    target_canonical.id = uuid7()
-    target_canonical.is_canonical = True
-    target_canonical.canonical_chain_length = 1
-
-    existing_duplicate = MagicMock(spec=Reference)
-    existing_duplicate.id = uuid7()
-
-    reference = MagicMock(spec=Reference)
-    reference.id = uuid7()
-    reference.duplicate_references = [existing_duplicate]
-    reference.duplicate_decision = ReferenceDuplicateDecision(
-        reference_id=reference.id,
-        duplicate_determination=DuplicateDetermination.CANONICAL,
-        active_decision=True,
-    )
-
-    new_decision = ReferenceDuplicateDecision(
-        reference_id=reference.id,
-        duplicate_determination=DuplicateDetermination.DUPLICATE,
-        canonical_reference_id=target_canonical.id,
-    )
-
-    ref_repo = fake_repository([reference, target_canonical])
-    dec_repo = fake_repository([new_decision])
-    service = DeduplicationService(
-        anti_corruption_service,
-        fake_uow(
-            references=ref_repo,
-            reference_duplicate_decisions=dec_repo,
-        ),
-        fake_uow(),
-    )
-
-    out, changed, _ = await service.map_duplicate_decision(new_decision)
-    assert out.duplicate_determination == DuplicateDetermination.DECOUPLED
-    assert "orphaned" in out.detail
     assert changed
 
 
