@@ -988,7 +988,42 @@ async def test_make_duplicate_decisions_multiple_in_one_call(
     session: AsyncSession,
     client: AsyncClient,
 ) -> None:
-    """Test that multiple decisions can be submitted in a single call."""
+    """
+    Test that multiple decisions can be submitted in a single call.
+
+    Canonical must appear before the duplicate that references it.
+    """
+    canonical_ref = await add_reference(session)
+    duplicate_ref = await add_reference(session)
+
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(canonical_ref.id),
+                "duplicate_determination": "canonical",
+            },
+            {
+                "reference_id": str(duplicate_ref.id),
+                "duplicate_determination": "duplicate",
+                "canonical_reference_id": str(canonical_ref.id),
+            },
+        ],
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    results = response.json()
+    assert len(results) == 2
+    outcomes = {r["reference_id"]: r["outcome"] for r in results}
+    assert outcomes[str(canonical_ref.id)] == "canonical"
+    assert outcomes[str(duplicate_ref.id)] == "duplicate"
+
+
+async def test_make_duplicate_decisions_multiple_wrong_order(
+    session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """Duplicate before its canonical in the same request should fail."""
     canonical_ref = await add_reference(session)
     duplicate_ref = await add_reference(session)
 
@@ -1007,12 +1042,8 @@ async def test_make_duplicate_decisions_multiple_in_one_call(
         ],
     )
 
-    assert response.status_code == status.HTTP_201_CREATED
-    results = response.json()
-    assert len(results) == 2
-    outcomes = {r["reference_id"]: r["outcome"] for r in results}
-    assert outcomes[str(canonical_ref.id)] == "canonical"
-    assert outcomes[str(duplicate_ref.id)] == "duplicate"
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert "non-canonical" in response.json()["detail"]
 
 
 async def test_make_duplicate_decisions_not_a_canonical_reference(

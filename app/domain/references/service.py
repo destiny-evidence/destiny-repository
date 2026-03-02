@@ -1282,17 +1282,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """
         Make duplicate decisions for a list of reference duplicate decisions.
 
-        If both canonical and duplicate determinations are present, canonical decisions
-        will be processed first to allow subsequent duplicate decisions to point to them
+        Decisions are processed in the order provided. If a duplicate decision
+        references a canonical that is declared in the same request, the canonical
+        must appear first.
         """
         results: list[ReferenceDuplicateDecision] = []
-        # Process canonical decisions first so they can then be duplicated
-        for duplicate_decision in sorted(
-            duplicate_decisions,
-            key=lambda decision: decision.duplicate_determination
-            == DuplicateDetermination.CANONICAL,
-            reverse=True,
-        ):
+        for duplicate_decision in duplicate_decisions:
             (
                 reference_duplicate_decision,
                 decision_changed,
