@@ -182,7 +182,9 @@ This algorithm is still being built out. For now, we have a placeholder that we 
 Manual Resolution
 -----------------
 
-The ``POST /references/duplicate-decisions/`` endpoint provides an interface to manually make duplicate decisions. This may be useful if the automated process raises a reference for manual review, or if a user simply wants to manually deduplicate references.
+The ``POST /references/duplicate-decisions/`` endpoint provides an interface to manually make duplicate decisions.
+
+This may be useful if the automated process raises a reference for manual review, or if a user simply wants to manually deduplicate references.
 
 
 Action Decision
