@@ -294,15 +294,20 @@ async def test_determine_and_map_duplicate_happy_path(
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
     reference.duplicate_decision = None
+    reference.has_duplicates = False
 
     candidate_id = uuid7()
+    canonical = MagicMock(spec=Reference)
+    canonical.id = candidate_id
+    canonical.is_canonical = True
+
     decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         candidate_canonical_ids=[candidate_id],
         duplicate_determination=DuplicateDetermination.NOMINATED,
     )
 
-    ref_repo = fake_repository([reference])
+    ref_repo = fake_repository([reference, canonical])
     dec_repo = fake_repository([decision])
     service = DeduplicationService(
         anti_corruption_service,
@@ -328,12 +333,17 @@ async def test_determine_and_map_duplicate_no_change(
     fake_uow, fake_repository, anti_corruption_service
 ):
     # Setup reference and decision
+    canonical = MagicMock(spec=Reference)
+    canonical.id = uuid7()
+    canonical.is_canonical = True
+
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
+    reference.has_duplicates = False
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.DUPLICATE,
-        canonical_reference_id=uuid7(),
+        canonical_reference_id=canonical.id,
         active_decision=True,
     )
     reference.duplicate_decision = active_decision
@@ -344,7 +354,7 @@ async def test_determine_and_map_duplicate_no_change(
         duplicate_determination=DuplicateDetermination.NOMINATED,
     )
 
-    ref_repo = fake_repository([reference])
+    ref_repo = fake_repository([reference, canonical])
     dec_repo = fake_repository([decision])
     service = DeduplicationService(
         anti_corruption_service,
@@ -442,10 +452,13 @@ async def test_determine_and_map_duplicate_decoupled_different_canonical(
     fake_uow, fake_repository, anti_corruption_service
 ):
     # Setup reference and active decision (was DUPLICATE of A, now DUPLICATE of B)
+    canonical_b_ref = MagicMock(spec=Reference)
+    canonical_b_ref.id = uuid7()
+    canonical_b_ref.is_canonical = True
+
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
     canonical_a = uuid7()
-    canonical_b = uuid7()
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.DUPLICATE,
@@ -456,11 +469,11 @@ async def test_determine_and_map_duplicate_decoupled_different_canonical(
 
     decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
-        candidate_canonical_ids=[canonical_b],
+        candidate_canonical_ids=[canonical_b_ref.id],
         duplicate_determination=DuplicateDetermination.NOMINATED,
     )
 
-    ref_repo = fake_repository([reference])
+    ref_repo = fake_repository([reference, canonical_b_ref])
     dec_repo = fake_repository([active_decision, decision])
     service = DeduplicationService(
         anti_corruption_service,
@@ -480,34 +493,35 @@ async def test_determine_and_map_duplicate_decoupled_different_canonical(
 
 
 @pytest.mark.asyncio
-async def test_determine_and_map_duplicate_decoupled_chain_length(
+async def test_determine_and_map_duplicate_decoupled_has_duplicates(
     fake_uow, fake_repository, anti_corruption_service
 ):
-    # Setup reference with canonical chain length 2 using real Reference objects
-    canonical_reference = Reference(
+    """Reference with existing duplicates cannot become a duplicate itself."""
+    existing_duplicate = Reference(
         id=uuid7(),
         identifiers=[],
         enhancements=[],
-        duplicate_decision=None,
-        canonical_reference=None,
     )
-
     reference = Reference(
         id=uuid7(),
         identifiers=[],
         enhancements=[],
         duplicate_decision=None,
-        canonical_reference=canonical_reference,
+        duplicate_references=[existing_duplicate],
     )
 
     candidate_id = uuid7()
+    canonical = MagicMock(spec=Reference)
+    canonical.id = candidate_id
+    canonical.is_canonical = True
+
     decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         candidate_canonical_ids=[candidate_id],
         duplicate_determination=DuplicateDetermination.NOMINATED,
     )
 
-    ref_repo = fake_repository([reference])
+    ref_repo = fake_repository([reference, canonical])
     dec_repo = fake_repository([decision])
     service = DeduplicationService(
         anti_corruption_service,
@@ -521,8 +535,37 @@ async def test_determine_and_map_duplicate_decoupled_chain_length(
     determined = await service.determine_canonical_from_candidates(decision)
     out_decision, decision_changed = await service.map_duplicate_decision(determined)
     assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
-    assert "Decouple reason: Max duplicate chain length reached." in out_decision.detail
+    assert "Decouple reason: Reference has existing duplicates" in out_decision.detail
     assert decision_changed
+
+
+@pytest.mark.asyncio
+async def test_map_duplicate_decision_rejects_self_reference(
+    fake_uow, fake_repository, anti_corruption_service
+):
+    """Cannot mark a reference as a duplicate of itself."""
+    reference = MagicMock(spec=Reference)
+    reference.id = uuid7()
+
+    decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=reference.id,
+    )
+
+    ref_repo = fake_repository([reference])
+    dec_repo = fake_repository([decision])
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(
+            references=ref_repo,
+            reference_duplicate_decisions=dec_repo,
+        ),
+        fake_uow(),
+    )
+
+    with pytest.raises(DeduplicationValueError, match="duplicate of itself"):
+        await service.map_duplicate_decision(decision)
 
 
 @pytest.mark.asyncio
@@ -532,6 +575,7 @@ async def test_determine_and_map_duplicate_now_duplicate(
     # Setup reference and active decision (was CANONICAL, now DUPLICATE)
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
+    reference.has_duplicates = False
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.CANONICAL,
@@ -541,13 +585,17 @@ async def test_determine_and_map_duplicate_now_duplicate(
     reference.duplicate_decision = active_decision
 
     candidate_id = uuid7()
+    canonical = MagicMock(spec=Reference)
+    canonical.id = candidate_id
+    canonical.is_canonical = True
+
     decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         candidate_canonical_ids=[candidate_id],
         duplicate_determination=DuplicateDetermination.NOMINATED,
     )
 
-    ref_repo = fake_repository([reference])
+    ref_repo = fake_repository([reference, canonical])
     dec_repo = fake_repository([active_decision, decision])
     service = DeduplicationService(
         anti_corruption_service,
@@ -613,6 +661,27 @@ class TestShortcutDeduplication:
         self, trusted_identifier: LinkedExternalIdentifier
     ) -> tuple[Reference, Reference]:
         return self._get_existing_canonical_and_duplicate(trusted_identifier)
+
+    @staticmethod
+    def _link_decisions_to_references(decision_repo, reference_repo):
+        """Wrap decision_repo.merge to update reference.duplicate_decision.
+
+        Mimics SQLAlchemy's behavior where eagerly-loaded relationships
+        reflect the latest committed state.
+        """
+        original_merge = decision_repo.merge
+
+        async def linking_merge(record):
+            result = await original_merge(record)
+            if getattr(result, "active_decision", False) and hasattr(
+                result, "reference_id"
+            ):
+                ref = reference_repo.repository.get(result.reference_id)
+                if ref:
+                    ref.duplicate_decision = result
+            return result
+
+        decision_repo.merge = linking_merge
 
     async def test_shortcut_deduplication_case_a(
         self,
@@ -753,6 +822,7 @@ class TestShortcutDeduplication:
         )
         duplicate_repo = fake_repository([decision])
         duplicate_repo.get_active_decision_determinations = AsyncMock(return_value={})
+        self._link_decisions_to_references(duplicate_repo, repo)
         uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
         uow.references.find_with_identifiers = AsyncMock(
             return_value=[existing_1, existing_2]
@@ -1009,6 +1079,7 @@ class TestShortcutDeduplication:
                 existing_2.id: DuplicateDetermination.CANONICAL,
             }
         )
+        self._link_decisions_to_references(duplicate_repo, repo)
 
         uow = fake_uow(references=repo, reference_duplicate_decisions=duplicate_repo)
         uow.references.find_with_identifiers = AsyncMock(
