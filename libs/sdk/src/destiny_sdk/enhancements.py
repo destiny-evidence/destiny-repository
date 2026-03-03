@@ -468,7 +468,13 @@ class ReferenceAssociationEnhancement(BaseModel):
 
 
 class LinkedDataEnhancement(BaseModel):
-    """An enhancement for storing structured data in a linked data format."""
+    """
+    An enhancement for storing structured data in a linked data format.
+
+    The content is a JSON-LD document conforming to the vocabulary and
+    context specified. This enhancement type is produced by mapping robots
+    that transform RawEnhancement data into the shared vocabulary.
+    """
 
     enhancement_type: Literal[EnhancementType.LINKED_DATA] = EnhancementType.LINKED_DATA
 
