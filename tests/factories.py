@@ -16,6 +16,7 @@ from destiny_sdk.enhancements import (
     BooleanAnnotation,
     DriverVersion,
     EnhancementType,
+    LinkedDataEnhancement,
     Location,
     LocationEnhancement,
     Pagination,
@@ -295,6 +296,16 @@ class ReferenceAssociationEnhancementFactory(factory.Factory):
         )
     )
     association_type = factory.Faker("enum", enum_cls=ReferenceAssociationType)
+
+
+class LinkedDataEnhancementFactory(factory.Factory):
+    class Meta:
+        model = LinkedDataEnhancement
+
+    enhancement_type = EnhancementType.LINKED_DATA
+    context_uri = factory.Faker("uri")
+    vocabulary_uri = factory.Faker("uri")
+    data = factory.LazyFunction(lambda: fake.pydict() | {"@context": fake.uri()})
 
 
 class RawEnhancementFactory(factory.Factory):
