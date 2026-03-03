@@ -275,6 +275,92 @@ def test_association_enhancement_invalid_identifier_type_errors():
         )
 
 
+def test_linked_data_enhancement_valid():
+    linked_data = destiny_sdk.enhancements.LinkedDataEnhancement(
+        context_uri="https://vocab.evrepo.org/context/v1.jsonld",
+        vocabulary_uri="https://vocab.evrepo.org/vocabulary/v1",
+        data={
+            "@context": "https://vocab.evrepo.org/context/v1.jsonld",
+            "@type": "ScholarlyArticle",
+            "name": "Test",
+        },
+    )
+    assert (
+        linked_data.enhancement_type
+        == destiny_sdk.enhancements.EnhancementType.LINKED_DATA
+    )
+    assert linked_data.data["@type"] == "ScholarlyArticle"
+
+
+def test_linked_data_enhancement_discriminator_resolution():
+    """Enhancement.content resolves to LinkedDataEnhancement via discriminator."""
+    linked_data = destiny_sdk.enhancements.LinkedDataEnhancement(
+        context_uri="https://vocab.evrepo.org/context/v1.jsonld",
+        vocabulary_uri="https://vocab.evrepo.org/vocabulary/v1",
+        data={
+            "@context": "https://vocab.evrepo.org/context/v1.jsonld",
+            "@type": "Dataset",
+            "key": "value",
+        },
+    )
+    enhancement = destiny_sdk.enhancements.Enhancement(
+        id=uuid7(),
+        source="test_source",
+        visibility="public",
+        robot_version="1.0",
+        content=linked_data,
+        reference_id=uuid7(),
+    )
+    assert isinstance(
+        enhancement.content, destiny_sdk.enhancements.LinkedDataEnhancement
+    )
+
+    dumped = enhancement.to_jsonl()
+    restored = destiny_sdk.enhancements.Enhancement.model_validate_json(dumped)
+    assert isinstance(restored.content, destiny_sdk.enhancements.LinkedDataEnhancement)
+    assert restored.content.data["key"] == "value"
+
+
+def test_linked_data_enhancement_fingerprint_deterministic():
+    kwargs = {
+        "context_uri": "https://vocab.evrepo.org/context/v1.jsonld",
+        "vocabulary_uri": "https://vocab.evrepo.org/vocabulary/v1",
+        "data": {
+            "@context": "https://vocab.evrepo.org/context/v1.jsonld",
+            "b": 2,
+            "a": 1,
+        },
+    }
+    a = destiny_sdk.enhancements.LinkedDataEnhancement(**kwargs)
+    b = destiny_sdk.enhancements.LinkedDataEnhancement(**kwargs)
+    assert a.fingerprint == b.fingerprint
+
+
+def test_linked_data_enhancement_fingerprint_differs_with_different_data():
+    common = {
+        "context_uri": "https://vocab.evrepo.org/context/v1.jsonld",
+        "vocabulary_uri": "https://vocab.evrepo.org/vocabulary/v1",
+    }
+    a = destiny_sdk.enhancements.LinkedDataEnhancement(
+        data={"@context": "https://vocab.evrepo.org/context/v1.jsonld", "x": 1},
+        **common,
+    )
+    b = destiny_sdk.enhancements.LinkedDataEnhancement(
+        data={"@context": "https://vocab.evrepo.org/context/v1.jsonld", "x": 2},
+        **common,
+    )
+    assert a.fingerprint != b.fingerprint
+
+
+def test_linked_data_enhancement_requires_valid_urls():
+    with pytest.raises(ValidationError):
+        destiny_sdk.enhancements.LinkedDataEnhancement(
+            context_uri="not-a-url",
+            vocabulary_uri="https://vocab.evrepo.org/vocabulary/v1",
+            data={"@context": "https://vocab.evrepo.org/context/v1.jsonld"},
+        )
+
+
 def test_pagination_empty_string_to_none():
     """Test that empty pagination strings are converted to None."""
     pagination = destiny_sdk.enhancements.Pagination(
