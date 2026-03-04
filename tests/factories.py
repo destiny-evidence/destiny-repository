@@ -305,7 +305,10 @@ class LinkedDataEnhancementFactory(factory.Factory):
     enhancement_type = EnhancementType.LINKED_DATA
     context_uri = factory.Faker("uri")
     vocabulary_uri = factory.Faker("uri")
-    data = factory.LazyFunction(lambda: fake.pydict() | {"@context": fake.uri()})
+    data = factory.LazyFunction(
+        lambda: fake.pydict(value_types=[str, int, float, bool])
+        | {"@context": fake.uri()}
+    )
 
 
 class RawEnhancementFactory(factory.Factory):
