@@ -5,7 +5,14 @@ import json
 from enum import StrEnum, auto
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    HttpUrl,
+    JsonValue,
+    field_validator,
+    model_validator,
+)
 
 from destiny_sdk.core import UUID, _JsonlFileInputMixIn
 from destiny_sdk.identifiers import Identifier
@@ -29,6 +36,8 @@ class EnhancementType(StrEnum):
     """Locations where the reference can be found."""
     REFERENCE_ASSOCIATION = auto()
     """Associations to other references."""
+    LINKED_DATA = auto()
+    """Structured data in a linked data format."""
     RAW = auto()
     """A free form enhancement for arbitrary/unstructured data."""
     FULL_TEXT = auto()
@@ -458,6 +467,48 @@ class ReferenceAssociationEnhancement(BaseModel):
     )
 
 
+class LinkedDataEnhancement(BaseModel):
+    """
+    An enhancement for storing structured data in a linked data format.
+
+    The content is a JSON-LD document conforming to the vocabulary and
+    context specified. This enhancement type is produced by mapping robots
+    that transform RawEnhancement data into the shared vocabulary.
+    """
+
+    enhancement_type: Literal[EnhancementType.LINKED_DATA] = EnhancementType.LINKED_DATA
+
+    context_uri: HttpUrl = Field(
+        description=(
+            "The URI of the JSON-LD @context document used to interpret the data. "
+            "This pins the enhancement to a specific version of the vocabulary mapping."
+        ),
+        examples=["https://vocab.evrepo.org/context/v1.jsonld"],
+    )
+
+    vocabulary_uri: HttpUrl = Field(
+        description=(
+            "The URI of the vocabulary against which this data was produced. "
+            "Used for compatibility checking."
+        ),
+        examples=["https://vocab.evrepo.org/vocabulary/v1"],
+    )
+
+    data: dict[str, JsonValue] = Field(
+        description=(
+            "The JSON-LD content. When combined with the @context, this forms a "
+            "complete linked data graph."
+        ),
+    )
+
+    @property
+    def fingerprint(self) -> str:
+        """The unique fingerprint of this linked data enhancement."""
+        return json.dumps(
+            self.model_dump(mode="json", exclude_none=True), sort_keys=True
+        )
+
+
 class RawEnhancement(BaseModel):
     """
     An enhancement for storing raw/arbitrary/unstructured data.
@@ -516,6 +567,7 @@ EnhancementContent = Annotated[
     | AnnotationEnhancement
     | LocationEnhancement
     | ReferenceAssociationEnhancement
+    | LinkedDataEnhancement
     | RawEnhancement,
     Field(discriminator="enhancement_type"),
 ]
