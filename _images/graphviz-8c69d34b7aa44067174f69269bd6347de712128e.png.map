@@ -1,0 +1,12 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.ReferenceSearchFields
+
+Projection representing fields used for searching references.
+
+This model is a projection of
+:class:`app.domain.references.models.models.Reference`.
+
+This is injected into the root of Elasticsearch Reference documents for easy
+searching.
+" alt="" coords="5,5,283,257"/>
+</map>

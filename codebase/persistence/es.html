@@ -1,0 +1,960 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Elasticsearch &#8212; DESTINY Repository v1.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../_static/autodoc_pydantic.css" />
+    <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=cf3b3841" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+    <script src="../../_static/documentation_options.js?v=e160b93e"></script>
+    <script src="../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'codebase/persistence/es';</script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Blob Storage" href="blob.html" />
+    <link rel="prev" title="Robot Models" href="../models/robots.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">DESTINY Repository v1.0 documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../procedures/procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="../codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../sdk/sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../procedures/procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="../codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../sdk/sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../structure.html">Structure</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../config.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../models/imports.html">Import Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../models/references.html">Reference Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../models/robots.html">Robot Models</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Elasticsearch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="blob.html">Blob Storage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models.html">Persistence Models</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../codebase.html" class="nav-link">Codebase</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Elasticsearch</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="elasticsearch">
+<h1>Elasticsearch<a class="headerlink" href="#elasticsearch" title="Link to this heading">#</a></h1>
+<p>WIP - auto-generated documentation. This can be used to imply the index document structures, but it is recommended to refer to the Elasticsearch instance directly.</p>
+<p id="module-app.domain.references.models.es">Objects used to interface with Elasticsearch implementations.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="app.domain.references.models.es.AnnotationDocument">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">app.domain.references.models.es.</span></span><span class="sig-name descname"><span class="pre">AnnotationDocument</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">meta</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.AnnotationDocument" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">GenericNestedDocument</span></code></p>
+<p>Persistence model for useful annotation fields in Elasticsearch.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.AnnotationDocument.annotation_type">
+<span class="sig-name descname"><span class="pre">annotation_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[annotation_type]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.AnnotationDocument.annotation_type" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.AnnotationDocument.label">
+<span class="sig-name descname"><span class="pre">label</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[label]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.AnnotationDocument.label" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.AnnotationDocument.scheme">
+<span class="sig-name descname"><span class="pre">scheme</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[scheme]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.AnnotationDocument.scheme" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.AnnotationDocument.value">
+<span class="sig-name descname"><span class="pre">value</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[value]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.AnnotationDocument.value" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="app.domain.references.models.es.EnhancementContentDocument">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">app.domain.references.models.es.</span></span><span class="sig-name descname"><span class="pre">EnhancementContentDocument</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">meta</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.EnhancementContentDocument" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">GenericNestedDocument</span></code></p>
+<p>Persistence model for enhancement content in Elasticsearch.</p>
+<p>We define anything we want to explicitly index here and map as dynamic in the
+parent document.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.EnhancementContentDocument.annotations">
+<span class="sig-name descname"><span class="pre">annotations</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#app.domain.references.models.es.AnnotationDocument" title="app.domain.references.models.es.AnnotationDocument"><span class="pre">AnnotationDocument</span></a><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[annotations]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.EnhancementContentDocument.annotations" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.models.es.EnhancementContentDocument.clean">
+<span class="sig-name descname"><span class="pre">clean</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.EnhancementContentDocument.clean" title="Link to this definition">#</a></dt>
+<dd><p>Automatically called when saving a document.</p>
+<p>We utilise to provide a final barrier to prevent RAW enhancements being indexed.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.EnhancementContentDocument.enhancement_type">
+<span class="sig-name descname"><span class="pre">enhancement_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../../sdk/schemas.html#libs.sdk.src.destiny_sdk.enhancements.EnhancementType" title="libs.sdk.src.destiny_sdk.enhancements.EnhancementType"><span class="pre">EnhancementType</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[enhancement_type]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.EnhancementContentDocument.enhancement_type" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="app.domain.references.models.es.EnhancementDocument">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">app.domain.references.models.es.</span></span><span class="sig-name descname"><span class="pre">EnhancementDocument</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">meta</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.EnhancementDocument" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">GenericNestedDocument</span></code></p>
+<p>Persistence model for enhancements in Elasticsearch.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.EnhancementDocument.content">
+<span class="sig-name descname"><span class="pre">content</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#app.domain.references.models.es.EnhancementContentDocument" title="app.domain.references.models.es.EnhancementContentDocument"><span class="pre">EnhancementContentDocument</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[content]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.EnhancementDocument.content" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.EnhancementDocument.created_at">
+<span class="sig-name descname"><span class="pre">created_at</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">datetime</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[created_at]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.EnhancementDocument.created_at" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.models.es.EnhancementDocument.from_domain">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_domain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">domain_obj</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../models/references.html#app.domain.references.models.models.Enhancement" title="app.domain.references.models.models.Enhancement"><span class="pre">Enhancement</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.EnhancementDocument.from_domain" title="Link to this definition">#</a></dt>
+<dd><p>Create a persistence model from a domain model.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.EnhancementDocument.id">
+<span class="sig-name descname"><span class="pre">id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">UUID</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[id]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.EnhancementDocument.id" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.EnhancementDocument.reference_id">
+<span class="sig-name descname"><span class="pre">reference_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">UUID</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[reference_id]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.EnhancementDocument.reference_id" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.EnhancementDocument.robot_version">
+<span class="sig-name descname"><span class="pre">robot_version</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[robot_version]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.EnhancementDocument.robot_version" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.EnhancementDocument.source">
+<span class="sig-name descname"><span class="pre">source</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[source]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.EnhancementDocument.source" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.models.es.EnhancementDocument.to_domain">
+<span class="sig-name descname"><span class="pre">to_domain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reference_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">UUID</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../models/references.html#app.domain.references.models.models.Enhancement" title="app.domain.references.models.models.Enhancement"><span class="pre">Enhancement</span></a></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.EnhancementDocument.to_domain" title="Link to this definition">#</a></dt>
+<dd><p>Create a domain model from this persistence model.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.EnhancementDocument.visibility">
+<span class="sig-name descname"><span class="pre">visibility</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../models/references.html#app.domain.references.models.models.Visibility" title="app.domain.references.models.models.Visibility"><span class="pre">Visibility</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[visibility]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.EnhancementDocument.visibility" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ExternalIdentifierDocument">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">app.domain.references.models.es.</span></span><span class="sig-name descname"><span class="pre">ExternalIdentifierDocument</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">meta</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ExternalIdentifierDocument" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">GenericNestedDocument</span></code></p>
+<p>Persistence model for external identifiers in Elasticsearch.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ExternalIdentifierDocument.from_domain">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_domain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">domain_obj</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../models/references.html#app.domain.references.models.models.LinkedExternalIdentifier" title="app.domain.references.models.models.LinkedExternalIdentifier"><span class="pre">LinkedExternalIdentifier</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ExternalIdentifierDocument.from_domain" title="Link to this definition">#</a></dt>
+<dd><p>Create a persistence model from a domain ExternalIdentifier object.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ExternalIdentifierDocument.identifier">
+<span class="sig-name descname"><span class="pre">identifier</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[identifier]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ExternalIdentifierDocument.identifier" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ExternalIdentifierDocument.identifier_type">
+<span class="sig-name descname"><span class="pre">identifier_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../../sdk/schemas.html#libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType" title="libs.sdk.src.destiny_sdk.identifiers.ExternalIdentifierType"><span class="pre">ExternalIdentifierType</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[identifier_type]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ExternalIdentifierDocument.identifier_type" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ExternalIdentifierDocument.other_identifier_name">
+<span class="sig-name descname"><span class="pre">other_identifier_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[other_identifier_name]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ExternalIdentifierDocument.other_identifier_name" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ExternalIdentifierDocument.reference_id">
+<span class="sig-name descname"><span class="pre">reference_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">UUID</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[reference_id]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ExternalIdentifierDocument.reference_id" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ExternalIdentifierDocument.to_domain">
+<span class="sig-name descname"><span class="pre">to_domain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reference_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">UUID</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../models/references.html#app.domain.references.models.models.LinkedExternalIdentifier" title="app.domain.references.models.models.LinkedExternalIdentifier"><span class="pre">LinkedExternalIdentifier</span></a></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ExternalIdentifierDocument.to_domain" title="Link to this definition">#</a></dt>
+<dd><p>Convert the persistence model into a Domain ExternalIdentifier object.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceDocument">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">app.domain.references.models.es.</span></span><span class="sig-name descname"><span class="pre">ReferenceDocument</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">meta</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceDocument" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">GenericESPersistence</span></code>[<a class="reference internal" href="../models/references.html#app.domain.references.models.models.Reference" title="app.domain.references.models.models.Reference"><code class="xref py py-class docutils literal notranslate"><span class="pre">Reference</span></code></a>], <a class="reference internal" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin" title="app.domain.references.models.es.ReferenceSearchFieldsMixin"><code class="xref py py-class docutils literal notranslate"><span class="pre">ReferenceSearchFieldsMixin</span></code></a></p>
+<p>Lean persistence model for references in Elasticsearch.</p>
+<p>This document stores only the fields needed for search operations:
+- visibility and duplicate_determination for filtering
+- search fields (title, abstract, authors, etc.) from ReferenceSearchFieldsMixin</p>
+<p>Full reference data (including identifiers) is stored in PostgreSQL and hydrated
+from there when needed. Identifier lookups are done via PostgreSQL, not ES.
+Nested structures (identifiers, enhancements) are preserved only in the
+RobotAutomationPercolationDocument for percolation queries.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceDocument.Index">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">Index</span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceDocument.Index" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Index metadata for the persistence model.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceDocument.Index.name">
+<span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'reference'</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceDocument.Index.name" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceDocument.duplicate_determination">
+<span class="sig-name descname"><span class="pre">duplicate_determination</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../models/references.html#app.domain.references.models.models.DuplicateDetermination" title="app.domain.references.models.models.DuplicateDetermination"><span class="pre">DuplicateDetermination</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[duplicate_determination]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceDocument.duplicate_determination" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceDocument.from_domain">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_domain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">domain_obj</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../models/references.html#app.domain.references.models.models.Reference" title="app.domain.references.models.models.Reference"><span class="pre">Reference</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceDocument.from_domain" title="Link to this definition">#</a></dt>
+<dd><p>Create a persistence model from a domain model.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceDocument.to_domain">
+<span class="sig-name descname"><span class="pre">to_domain</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../models/references.html#app.domain.references.models.models.Reference" title="app.domain.references.models.models.Reference"><span class="pre">Reference</span></a></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceDocument.to_domain" title="Link to this definition">#</a></dt>
+<dd><p>Create a minimal domain model from this persistence model.</p>
+<p>Since ES is now search-only, full hydration should be done from PostgreSQL.
+This returns a minimal Reference with only the ID and visibility.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceDocument.visibility">
+<span class="sig-name descname"><span class="pre">visibility</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../models/references.html#app.domain.references.models.models.Visibility" title="app.domain.references.models.models.Visibility"><span class="pre">Visibility</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[visibility]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceDocument.visibility" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceDomainMixin">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">app.domain.references.models.es.</span></span><span class="sig-name descname"><span class="pre">ReferenceDomainMixin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">meta</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceDomainMixin" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">InnerDoc</span></code></p>
+<p>Mapping of Reference domain model to Elasticsearch document.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceDomainMixin.duplicate_determination">
+<span class="sig-name descname"><span class="pre">duplicate_determination</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../models/references.html#app.domain.references.models.models.DuplicateDetermination" title="app.domain.references.models.models.DuplicateDetermination"><span class="pre">DuplicateDetermination</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[duplicate_determination]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceDomainMixin.duplicate_determination" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceDomainMixin.enhancements">
+<span class="sig-name descname"><span class="pre">enhancements</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#app.domain.references.models.es.EnhancementDocument" title="app.domain.references.models.es.EnhancementDocument"><span class="pre">EnhancementDocument</span></a><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[enhancements]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceDomainMixin.enhancements" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceDomainMixin.from_domain">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_domain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reference</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../models/references.html#app.domain.references.models.models.Reference" title="app.domain.references.models.models.Reference"><span class="pre">Reference</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceDomainMixin.from_domain" title="Link to this definition">#</a></dt>
+<dd><p>Create a ReferenceDomainMixin from a Reference domain model.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceDomainMixin.identifiers">
+<span class="sig-name descname"><span class="pre">identifiers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#app.domain.references.models.es.ExternalIdentifierDocument" title="app.domain.references.models.es.ExternalIdentifierDocument"><span class="pre">ExternalIdentifierDocument</span></a><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[identifiers]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceDomainMixin.identifiers" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceDomainMixin.to_domain">
+<span class="sig-name descname"><span class="pre">to_domain</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../models/references.html#app.domain.references.models.models.Reference" title="app.domain.references.models.models.Reference"><span class="pre">Reference</span></a></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceDomainMixin.to_domain" title="Link to this definition">#</a></dt>
+<dd><p>Create a domain model from a ReferenceDomainMixin.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceDomainMixin.visibility">
+<span class="sig-name descname"><span class="pre">visibility</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../models/references.html#app.domain.references.models.models.Visibility" title="app.domain.references.models.models.Visibility"><span class="pre">Visibility</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[visibility]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceDomainMixin.visibility" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceSearchFieldsMixin">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">app.domain.references.models.es.</span></span><span class="sig-name descname"><span class="pre">ReferenceSearchFieldsMixin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">meta</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">InnerDoc</span></code></p>
+<p>Mixin to project Reference fields relevant to various search strategies.</p>
+<p>Currently this holds fields for identifying candidate canonicals during
+deduplication and for searching references by query.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceSearchFieldsMixin.abstract">
+<span class="sig-name descname"><span class="pre">abstract</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[abstract]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.abstract" title="Link to this definition">#</a></dt>
+<dd><p>The abstract of the reference.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceSearchFieldsMixin.annotations">
+<span class="sig-name descname"><span class="pre">annotations</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[annotations]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.annotations" title="Link to this definition">#</a></dt>
+<dd><p>Every <code class="docutils literal notranslate"><span class="pre">true</span></code> annotation on the reference.</p>
+<p>These are in format <code class="docutils literal notranslate"><span class="pre">&lt;scheme&gt;[/&lt;label&gt;]</span></code>.</p>
+<p>Examples:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">classification:taxonomy:Outcomes/Stroke</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">classification:taxonomy:Intervention/Climate</span> <span class="pre">policy</span> <span class="pre">instruments</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">inclusion:destiny</span></code> (No label)</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceSearchFieldsMixin.authors">
+<span class="sig-name descname"><span class="pre">authors</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[authors]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.authors" title="Link to this definition">#</a></dt>
+<dd><p>The authors of the reference.</p>
+<p>These are ordered by:</p>
+<ul class="simple">
+<li><p>First author</p></li>
+<li><p>Middle authors in alphabetical order</p></li>
+<li><p>Last author</p></li>
+</ul>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceSearchFieldsMixin.evaluated_schemes">
+<span class="sig-name descname"><span class="pre">evaluated_schemes</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[evaluated_schemes]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.evaluated_schemes" title="Link to this definition">#</a></dt>
+<dd><p>Every scheme that has been evaluated for this reference.</p>
+<p>Combining this with <code class="docutils literal notranslate"><span class="pre">annotations</span></code> allows you to determine which annotations
+were evaluated as <code class="docutils literal notranslate"><span class="pre">false</span></code>.</p>
+<p>Examples:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">inclusion:destiny</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">classifier:taxonomy:Outcomes</span></code></p></li>
+</ul>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceSearchFieldsMixin.from_domain">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_domain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">reference</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../models/references.html#app.domain.references.models.models.Reference" title="app.domain.references.models.models.Reference"><span class="pre">Reference</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.from_domain" title="Link to this definition">#</a></dt>
+<dd><p>Create the ES ReferenceDeduplicationMixin.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceSearchFieldsMixin.from_projection">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_projection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">projection</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../models/references.html#app.domain.references.models.models.ReferenceSearchFields" title="app.domain.references.models.models.ReferenceSearchFields"><span class="pre">ReferenceSearchFields</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.from_projection" title="Link to this definition">#</a></dt>
+<dd><p>Create a ReferenceCandidateCanonicalMixin from the search projection.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceSearchFieldsMixin.inclusion_destiny">
+<span class="sig-name descname"><span class="pre">inclusion_destiny</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[inclusion_destiny]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.inclusion_destiny" title="Link to this definition">#</a></dt>
+<dd><p>The destiny inclusion score for this reference.</p>
+<p>This is used to apply custom thresholds for inclusion. If you just want to know if
+the reference was included per the default threshold, check for
+<code class="docutils literal notranslate"><span class="pre">inclusion:destiny</span></code> in <code class="docutils literal notranslate"><span class="pre">annotations</span></code>.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceSearchFieldsMixin.publication_date">
+<span class="sig-name descname"><span class="pre">publication_date</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">date</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[publication_date]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.publication_date" title="Link to this definition">#</a></dt>
+<dd><p>The publication date of the reference.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceSearchFieldsMixin.publication_year">
+<span class="sig-name descname"><span class="pre">publication_year</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[publication_year]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.publication_year" title="Link to this definition">#</a></dt>
+<dd><p>The publication year of the reference.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.ReferenceSearchFieldsMixin.title">
+<span class="sig-name descname"><span class="pre">title</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[title]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.title" title="Link to this definition">#</a></dt>
+<dd><p>The title of the reference.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="app.domain.references.models.es.RobotAutomationPercolationDocument">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">app.domain.references.models.es.</span></span><span class="sig-name descname"><span class="pre">RobotAutomationPercolationDocument</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">meta</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.RobotAutomationPercolationDocument" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">GenericESPersistence</span></code>[<a class="reference internal" href="../models/references.html#app.domain.references.models.models.RobotAutomation" title="app.domain.references.models.models.RobotAutomation"><code class="xref py py-class docutils literal notranslate"><span class="pre">RobotAutomation</span></code></a>]</p>
+<p>Persistence model for robot automation percolation in Elasticsearch.</p>
+<p>This model serves two purposes in order to fully define the index: a persistence
+layer for queries that dictate robot automation, and a percolator layer to convert
+domain models to queryable documents that run against said queries.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="app.domain.references.models.es.RobotAutomationPercolationDocument.Index">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">Index</span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.Index" title="Link to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Index metadata for the persistence model.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.RobotAutomationPercolationDocument.Index.name">
+<span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'robot-automation-percolation'</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.Index.name" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.RobotAutomationPercolationDocument.changeset">
+<span class="sig-name descname"><span class="pre">changeset</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#app.domain.references.models.es.ReferenceDomainMixin" title="app.domain.references.models.es.ReferenceDomainMixin"><span class="pre">ReferenceDomainMixin</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[changeset]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.changeset" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.models.es.RobotAutomationPercolationDocument.from_domain">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_domain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">domain_obj</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../models/references.html#app.domain.references.models.models.RobotAutomation" title="app.domain.references.models.models.RobotAutomation"><span class="pre">RobotAutomation</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.from_domain" title="Link to this definition">#</a></dt>
+<dd><p>Create a percolator query from a domain model.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.models.es.RobotAutomationPercolationDocument.percolatable_document_from_domain">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">percolatable_document_from_domain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">percolatable</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../models/references.html#app.domain.references.models.models.ReferenceWithChangeset" title="app.domain.references.models.models.ReferenceWithChangeset"><span class="pre">ReferenceWithChangeset</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.percolatable_document_from_domain" title="Link to this definition">#</a></dt>
+<dd><p>Create a percolatable document from a domain model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>percolatable</strong> (<a class="reference internal" href="../models/references.html#app.domain.references.models.models.ReferenceWithChangeset" title="app.domain.references.models.models.ReferenceWithChangeset"><em>ReferenceWithChangeset</em></a>) – The percolatable document to convert.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The persistence model.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#app.domain.references.models.es.RobotAutomationPercolationDocument" title="app.domain.references.models.es.RobotAutomationPercolationDocument">RobotAutomationPercolationDocument</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.RobotAutomationPercolationDocument.query">
+<span class="sig-name descname"><span class="pre">query</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[query]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.query" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.RobotAutomationPercolationDocument.reference">
+<span class="sig-name descname"><span class="pre">reference</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#app.domain.references.models.es.ReferenceDomainMixin" title="app.domain.references.models.es.ReferenceDomainMixin"><span class="pre">ReferenceDomainMixin</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[reference]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.reference" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.domain.references.models.es.RobotAutomationPercolationDocument.robot_id">
+<span class="sig-name descname"><span class="pre">robot_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">UUID</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">InstrumentedField[robot_id]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.robot_id" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.domain.references.models.es.RobotAutomationPercolationDocument.to_domain">
+<span class="sig-name descname"><span class="pre">to_domain</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../models/references.html#app.domain.references.models.models.RobotAutomation" title="app.domain.references.models.models.RobotAutomation"><span class="pre">RobotAutomation</span></a></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/domain/references/models/es.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.to_domain" title="Link to this definition">#</a></dt>
+<dd><p>Create a domain model from this persistence model.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="../models/robots.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Robot Models</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="blob.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Blob Storage</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.AnnotationDocument"><code class="docutils literal notranslate"><span class="pre">AnnotationDocument</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.AnnotationDocument.annotation_type"><code class="docutils literal notranslate"><span class="pre">AnnotationDocument.annotation_type</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.AnnotationDocument.label"><code class="docutils literal notranslate"><span class="pre">AnnotationDocument.label</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.AnnotationDocument.scheme"><code class="docutils literal notranslate"><span class="pre">AnnotationDocument.scheme</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.AnnotationDocument.value"><code class="docutils literal notranslate"><span class="pre">AnnotationDocument.value</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.EnhancementContentDocument"><code class="docutils literal notranslate"><span class="pre">EnhancementContentDocument</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.EnhancementContentDocument.annotations"><code class="docutils literal notranslate"><span class="pre">EnhancementContentDocument.annotations</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.EnhancementContentDocument.clean"><code class="docutils literal notranslate"><span class="pre">EnhancementContentDocument.clean()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.EnhancementContentDocument.enhancement_type"><code class="docutils literal notranslate"><span class="pre">EnhancementContentDocument.enhancement_type</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.EnhancementDocument"><code class="docutils literal notranslate"><span class="pre">EnhancementDocument</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.EnhancementDocument.content"><code class="docutils literal notranslate"><span class="pre">EnhancementDocument.content</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.EnhancementDocument.created_at"><code class="docutils literal notranslate"><span class="pre">EnhancementDocument.created_at</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.EnhancementDocument.from_domain"><code class="docutils literal notranslate"><span class="pre">EnhancementDocument.from_domain()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.EnhancementDocument.id"><code class="docutils literal notranslate"><span class="pre">EnhancementDocument.id</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.EnhancementDocument.reference_id"><code class="docutils literal notranslate"><span class="pre">EnhancementDocument.reference_id</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.EnhancementDocument.robot_version"><code class="docutils literal notranslate"><span class="pre">EnhancementDocument.robot_version</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.EnhancementDocument.source"><code class="docutils literal notranslate"><span class="pre">EnhancementDocument.source</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.EnhancementDocument.to_domain"><code class="docutils literal notranslate"><span class="pre">EnhancementDocument.to_domain()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.EnhancementDocument.visibility"><code class="docutils literal notranslate"><span class="pre">EnhancementDocument.visibility</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ExternalIdentifierDocument"><code class="docutils literal notranslate"><span class="pre">ExternalIdentifierDocument</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ExternalIdentifierDocument.from_domain"><code class="docutils literal notranslate"><span class="pre">ExternalIdentifierDocument.from_domain()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ExternalIdentifierDocument.identifier"><code class="docutils literal notranslate"><span class="pre">ExternalIdentifierDocument.identifier</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ExternalIdentifierDocument.identifier_type"><code class="docutils literal notranslate"><span class="pre">ExternalIdentifierDocument.identifier_type</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ExternalIdentifierDocument.other_identifier_name"><code class="docutils literal notranslate"><span class="pre">ExternalIdentifierDocument.other_identifier_name</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ExternalIdentifierDocument.reference_id"><code class="docutils literal notranslate"><span class="pre">ExternalIdentifierDocument.reference_id</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ExternalIdentifierDocument.to_domain"><code class="docutils literal notranslate"><span class="pre">ExternalIdentifierDocument.to_domain()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceDocument"><code class="docutils literal notranslate"><span class="pre">ReferenceDocument</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceDocument.Index"><code class="docutils literal notranslate"><span class="pre">ReferenceDocument.Index</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceDocument.Index.name"><code class="docutils literal notranslate"><span class="pre">ReferenceDocument.Index.name</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceDocument.duplicate_determination"><code class="docutils literal notranslate"><span class="pre">ReferenceDocument.duplicate_determination</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceDocument.from_domain"><code class="docutils literal notranslate"><span class="pre">ReferenceDocument.from_domain()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceDocument.to_domain"><code class="docutils literal notranslate"><span class="pre">ReferenceDocument.to_domain()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceDocument.visibility"><code class="docutils literal notranslate"><span class="pre">ReferenceDocument.visibility</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceDomainMixin"><code class="docutils literal notranslate"><span class="pre">ReferenceDomainMixin</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceDomainMixin.duplicate_determination"><code class="docutils literal notranslate"><span class="pre">ReferenceDomainMixin.duplicate_determination</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceDomainMixin.enhancements"><code class="docutils literal notranslate"><span class="pre">ReferenceDomainMixin.enhancements</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceDomainMixin.from_domain"><code class="docutils literal notranslate"><span class="pre">ReferenceDomainMixin.from_domain()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceDomainMixin.identifiers"><code class="docutils literal notranslate"><span class="pre">ReferenceDomainMixin.identifiers</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceDomainMixin.to_domain"><code class="docutils literal notranslate"><span class="pre">ReferenceDomainMixin.to_domain()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceDomainMixin.visibility"><code class="docutils literal notranslate"><span class="pre">ReferenceDomainMixin.visibility</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin"><code class="docutils literal notranslate"><span class="pre">ReferenceSearchFieldsMixin</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.abstract"><code class="docutils literal notranslate"><span class="pre">ReferenceSearchFieldsMixin.abstract</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.annotations"><code class="docutils literal notranslate"><span class="pre">ReferenceSearchFieldsMixin.annotations</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.authors"><code class="docutils literal notranslate"><span class="pre">ReferenceSearchFieldsMixin.authors</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.evaluated_schemes"><code class="docutils literal notranslate"><span class="pre">ReferenceSearchFieldsMixin.evaluated_schemes</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.from_domain"><code class="docutils literal notranslate"><span class="pre">ReferenceSearchFieldsMixin.from_domain()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.from_projection"><code class="docutils literal notranslate"><span class="pre">ReferenceSearchFieldsMixin.from_projection()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.inclusion_destiny"><code class="docutils literal notranslate"><span class="pre">ReferenceSearchFieldsMixin.inclusion_destiny</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.publication_date"><code class="docutils literal notranslate"><span class="pre">ReferenceSearchFieldsMixin.publication_date</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.publication_year"><code class="docutils literal notranslate"><span class="pre">ReferenceSearchFieldsMixin.publication_year</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.ReferenceSearchFieldsMixin.title"><code class="docutils literal notranslate"><span class="pre">ReferenceSearchFieldsMixin.title</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.RobotAutomationPercolationDocument"><code class="docutils literal notranslate"><span class="pre">RobotAutomationPercolationDocument</span></code></a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.Index"><code class="docutils literal notranslate"><span class="pre">RobotAutomationPercolationDocument.Index</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.Index.name"><code class="docutils literal notranslate"><span class="pre">RobotAutomationPercolationDocument.Index.name</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.changeset"><code class="docutils literal notranslate"><span class="pre">RobotAutomationPercolationDocument.changeset</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.from_domain"><code class="docutils literal notranslate"><span class="pre">RobotAutomationPercolationDocument.from_domain()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.percolatable_document_from_domain"><code class="docutils literal notranslate"><span class="pre">RobotAutomationPercolationDocument.percolatable_document_from_domain()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.query"><code class="docutils literal notranslate"><span class="pre">RobotAutomationPercolationDocument.query</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.reference"><code class="docutils literal notranslate"><span class="pre">RobotAutomationPercolationDocument.reference</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.robot_id"><code class="docutils literal notranslate"><span class="pre">RobotAutomationPercolationDocument.robot_id</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#app.domain.references.models.es.RobotAutomationPercolationDocument.to_domain"><code class="docutils literal notranslate"><span class="pre">RobotAutomationPercolationDocument.to_domain()</span></code></a></li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, DESTINY Team.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.16.1.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
