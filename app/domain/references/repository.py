@@ -366,15 +366,10 @@ class ReferenceESRepository(
                                 "lte": search_fields.publication_year + 1,
                             },
                         ),
-                        # This filter ensures we only match against references that are
-                        # "at rest". This avoids race conditions where reference B and C
-                        # are being deduplicated at the same time, perhaps creating
-                        # links B->A and C->B - in turn, creating a chain that we do
-                        # not control, which is a no-no.
-                        # Better handling will be needed in the future if/when we fully
-                        # implement chaining (which will require deliberate candidate
-                        # selection against duplicates as well as canonicals, probably
-                        # still "at rest" though).
+                        # Only match against canonical references that are "at rest".
+                        # Duplicates are never candidates. This also avoids race
+                        # conditions where two references being deduplicated
+                        # concurrently could create conflicting relationships.
                         Q(
                             "term",
                             duplicate_determination=DuplicateDetermination.CANONICAL,

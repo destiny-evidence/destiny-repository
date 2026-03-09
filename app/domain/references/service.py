@@ -208,7 +208,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
             raise RuntimeError(msg)
 
-        return await self._get_deduplicated_canonical_reference(
+        return await self._get_deduplicated_reference(
             reference.duplicate_decision.canonical_reference_id
         )
 
@@ -271,7 +271,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
         if duplicate_canonical_ids:
-            canonical_references += await self._get_deduplicated_canonical_references(
+            canonical_references += await self._get_deduplicated_references(
                 reference_ids=duplicate_canonical_ids,
             )
 

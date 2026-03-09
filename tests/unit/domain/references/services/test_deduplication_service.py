@@ -295,6 +295,7 @@ async def test_determine_and_map_duplicate_happy_path(
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
     reference.duplicate_decision = None
+    reference.has_duplicates = False
 
     canonical = MagicMock(spec=Reference)
     canonical.id = uuid7()
@@ -338,6 +339,7 @@ async def test_determine_and_map_duplicate_no_change(
 
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
+    reference.has_duplicates = False
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.DUPLICATE,
@@ -494,24 +496,21 @@ async def test_determine_and_map_duplicate_decoupled_different_canonical(
 
 
 @pytest.mark.asyncio
-async def test_determine_and_map_duplicate_decoupled_chain_length(
+async def test_determine_and_map_duplicate_decoupled_has_duplicates(
     fake_uow, fake_repository, anti_corruption_service
 ):
-    # Setup reference with canonical chain length 2 using real Reference objects
-    canonical_reference = Reference(
+    """Reference with existing duplicates cannot become a duplicate itself."""
+    existing_duplicate = Reference(
         id=uuid7(),
         identifiers=[],
         enhancements=[],
-        duplicate_decision=None,
-        canonical_reference=None,
     )
-
     reference = Reference(
         id=uuid7(),
         identifiers=[],
         enhancements=[],
         duplicate_decision=None,
-        canonical_reference=canonical_reference,
+        duplicate_references=[existing_duplicate],
     )
 
     candidate = MagicMock(spec=Reference)
@@ -538,8 +537,37 @@ async def test_determine_and_map_duplicate_decoupled_chain_length(
     determined = await service.determine_canonical_from_candidates(decision)
     out_decision, decision_changed = await service.map_duplicate_decision(determined)
     assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
-    assert "Decouple reason: Max duplicate chain length reached." in out_decision.detail
+    assert "Decouple reason: Reference has existing duplicates" in out_decision.detail
     assert decision_changed
+
+
+@pytest.mark.asyncio
+async def test_map_duplicate_decision_rejects_self_reference(
+    fake_uow, fake_repository, anti_corruption_service
+):
+    """Cannot mark a reference as a duplicate of itself."""
+    reference = MagicMock(spec=Reference)
+    reference.id = uuid7()
+
+    decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=reference.id,
+    )
+
+    ref_repo = fake_repository([reference])
+    dec_repo = fake_repository([decision])
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(
+            references=ref_repo,
+            reference_duplicate_decisions=dec_repo,
+        ),
+        fake_uow(),
+    )
+
+    with pytest.raises(DeduplicationValueError, match="duplicate of itself"):
+        await service.map_duplicate_decision(decision)
 
 
 @pytest.mark.asyncio
@@ -553,6 +581,7 @@ async def test_determine_and_map_duplicate_now_duplicate(
 
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
+    reference.has_duplicates = False
     active_decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
         duplicate_determination=DuplicateDetermination.CANONICAL,
