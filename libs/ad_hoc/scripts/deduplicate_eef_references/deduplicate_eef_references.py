@@ -18,7 +18,7 @@ app, which has network access to the database and the necessary packages
 (asyncpg, azure-identity) already installed. API writes use the public URL.
 
 ```
-uv run --script deduplicate-eef-references.py \
+uv run --script deduplicate_eef_references.py \
     --environment development \
     --api-url ... \
     --azure-client-id ... \
@@ -99,7 +99,11 @@ def get_eef_reference_ids(environment: str) -> list[str]:
         text=True,
         check=True,
     )
-    output = result.stdout
+    return parse_reference_ids(result.stdout)
+
+
+def parse_reference_ids(output: str) -> list[str]:
+    """Extract reference IDs from delimited remote script output."""
     start = output.index("---BEGIN_RESULTS---") + len("---BEGIN_RESULTS---") + 1
     end = output.index("---END_RESULTS---")
     return [line.strip() for line in output[start:end].splitlines() if line.strip()]
@@ -129,7 +133,7 @@ def group_references(
             for identifier in (reference.identifiers or [])
         )
         groups[key].append(reference)
-    return list(groups.values())
+    return [group for group in groups.values() if len(group) > 1]
 
 
 def _build_decisions(group: list[Reference]) -> list[MakeDuplicateDecision]:
@@ -157,10 +161,7 @@ def link_duplicates(
 ) -> None:
     """Link duplicate references together."""
     decisions = [
-        decision
-        for group in reference_groups
-        if len(group) > 1
-        for decision in _build_decisions(group)
+        decision for group in reference_groups for decision in _build_decisions(group)
     ]
     print(f"Sending {len(decisions)} decisions...")
     chunks = list(batched(decisions, MAKE_DUPLICATE_DECISION_CHUNK_SIZE))
@@ -226,15 +227,14 @@ if __name__ == "__main__":
     references = get_references(client, ids)
     print(f"Fetched {len(references)} references.")
 
-    reference_groups = group_references(references)
-    duplicate_groups = [g for g in reference_groups if len(g) > 1]
-    print(
-        f"Grouped into {len(reference_groups)} groups, "
-        f"{len(duplicate_groups)} with duplicates."
-    )
+    duplicate_groups = group_references(references)
+    print(f"Found {len(duplicate_groups)} duplicate groups.")
+    for group in duplicate_groups:
+        canonical, *duplicates = group
+        print(f"  {canonical.id}: {len(duplicates)} duplicate(s)")
 
     if args.dry_run:
         print("Dry run — no changes made.")
     else:
-        link_duplicates(client, reference_groups)
+        link_duplicates(client, duplicate_groups)
         print("Duplicate linking complete.")
