@@ -138,10 +138,12 @@ def group_references(
     """Group references that share an identical set of identifiers."""
     groups: dict[frozenset[str], list[Reference]] = defaultdict(list)
     for reference in references:
+        if not reference.identifiers:
+            continue
         # Use existing serializer to nicely handle "other" identifiers :)
         key = frozenset(
             IdentifierLookup.from_identifier(identifier).serialize()
-            for identifier in (reference.identifiers or [])
+            for identifier in reference.identifiers
         )
         groups[key].append(reference)
     return [group for group in groups.values() if len(group) > 1]

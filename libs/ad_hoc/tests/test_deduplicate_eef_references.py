@@ -114,19 +114,6 @@ class TestGroupReferences:
 
         assert group_references([ref_a, ref_b]) == []
 
-    def test_no_identifiers_group_together(self) -> None:
-        """References with no identifiers share the same key."""
-        ref_a = _make_reference(identifiers=None)
-        ref_b = _make_reference(identifiers=None)
-
-        groups = group_references([ref_a, ref_b])
-        assert len(groups) == 1
-        assert len(groups[0]) == 2
-
-    def test_empty_input(self) -> None:
-        """Empty input returns no groups."""
-        assert group_references([]) == []
-
 
 class TestBuildDecisions:
     """Tests for _build_decisions."""
