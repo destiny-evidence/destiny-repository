@@ -1,18 +1,12 @@
-# /// script
-# requires-python = ">=3.14"
-# dependencies = [
-#     "asyncpg",
-#     "azure-identity",
-# ]
-# ///
-
 # ruff: noqa: T201
 
 """
 Remote helper script for deduplicate-eef-references.py.
 
-Runs inside a container app via `az containerapp exec` to query the database
-for EEF reference IDs. Not intended to be run directly.
+Runs inside a container app. Not intended to be run directly.
+
+NB there's a max size on what you can pipe to an az containerapp exec so edit with care.
+This is pretty close to the limit.
 """
 
 import asyncio
@@ -21,8 +15,6 @@ import os
 
 import asyncpg
 from azure.identity import DefaultAzureCredential
-
-SOURCE_NAME_PREFIX = "eef-eppi-review-export"
 
 
 async def main() -> None:
@@ -45,8 +37,7 @@ async def main() -> None:
         "JOIN import_result ir ON ir.reference_id = r.id "
         "JOIN import_batch ib ON ir.import_batch_id = ib.id "
         "JOIN import_record i ON ib.import_record_id = i.id "
-        "WHERE i.source_name LIKE $1",
-        f"{SOURCE_NAME_PREFIX}%",
+        "WHERE i.source_name LIKE 'eef-eppi-review-export%'",
     )
     print("---BEGIN_RESULTS---")
     for row in rows:

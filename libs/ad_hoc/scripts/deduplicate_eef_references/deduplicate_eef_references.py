@@ -11,7 +11,8 @@
 Script to manually deduplicate EEF references.
 
 Some EEF works have multiple study arms, represented as individual references in the
-DESTINY repository. This script identifies and links duplicate references based .
+DESTINY repository. This script identifies and links duplicate references based on
+all external identifiers matching.
 
 DB reads are performed by exec'ing a Python script into a running container
 app, which has network access to the database and the necessary packages
@@ -31,6 +32,8 @@ See also: https://github.com/destiny-evidence/destiny-repository/issues/570
 
 import argparse
 import base64
+import os
+import pty
 import subprocess
 from collections import defaultdict
 from itertools import batched
@@ -51,9 +54,11 @@ LOOKUP_REFERENCES_CHUNK_SIZE = 100
 MAKE_DUPLICATE_DECISION_CHUNK_SIZE = 10
 
 
-def _resolve_container_name(app_name: str, resource_group: str) -> str:
-    """Resolve the container name from the container app."""
-    result = subprocess.run(
+def get_eef_reference_ids(environment: str) -> list[str]:
+    """Fetch EEF reference IDs by exec'ing a Python script into the container."""
+    app_name = f"destiny-repository-{environment[:4]}-app"
+    resource_group = f"rg-destiny-repository-{environment}"
+    container = subprocess.run(
         [
             "az",
             "containerapp",
@@ -70,35 +75,41 @@ def _resolve_container_name(app_name: str, resource_group: str) -> str:
         capture_output=True,
         text=True,
         check=True,
-    )
-    return result.stdout.strip()
+    ).stdout.strip()
 
-
-def get_eef_reference_ids(environment: str) -> list[str]:
-    """Fetch EEF reference IDs by exec'ing a Python script into the container."""
-    app_name = f"destiny-repository-{environment[:4]}-app"
-    resource_group = f"rg-destiny-repository-{environment}"
-    container = _resolve_container_name(app_name, resource_group)
-    encoded_script = base64.b64encode(REMOTE_QUERY_SCRIPT.read_bytes()).decode()
-    result = subprocess.run(
-        [
-            "az",
-            "containerapp",
-            "exec",
-            "--name",
-            app_name,
-            "--resource-group",
-            resource_group,
-            "--container",
-            container,
-            "--command",
-            f"echo '{encoded_script}' | base64 -d > /tmp/_remote_query.py"
-            " && uv run --script /tmp/_remote_query.py",
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
+    # az containerapp exec splits --command on spaces (direct exec, no shell),
+    # so we use python3 -c with a space-free expression to bootstrap the
+    # remote script. exec also requires stdin to be a TTY.
+    encoded = base64.b64encode(REMOTE_QUERY_SCRIPT.read_bytes()).decode()
+    bootstrap = (
+        f"exec(compile(__import__('base64').b64decode('{encoded}')"
+        ",'<remote>','exec'),{'__name__':'__main__'})"
     )
+    primary_fd, replica_fd = pty.openpty()
+    try:
+        result = subprocess.run(
+            [
+                "az",
+                "containerapp",
+                "exec",
+                "--name",
+                app_name,
+                "--resource-group",
+                resource_group,
+                "--container",
+                container,
+                "--command",
+                f"python3 -c {bootstrap}",
+            ],
+            stdin=replica_fd,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    finally:
+        os.close(replica_fd)
+        os.close(primary_fd)
+
     return parse_reference_ids(result.stdout)
 
 
@@ -117,7 +128,7 @@ def get_references(
     return [
         ref
         for chunk in batched(ids, LOOKUP_REFERENCES_CHUNK_SIZE)
-        for ref in client.lookup([IdentifierLookup(id=ref_id) for ref_id in chunk])
+        for ref in client.lookup(chunk)
     ]
 
 
