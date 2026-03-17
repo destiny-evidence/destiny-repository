@@ -47,7 +47,8 @@ from destiny_sdk.deduplication import (
 from destiny_sdk.identifiers import IdentifierLookup
 from destiny_sdk.references import Reference
 
-REMOTE_QUERY_SCRIPT = Path(__file__).parent / "_remote_get_eef_reference_ids.py"
+SCRIPT_DIR = Path(__file__).parent
+REMOTE_QUERY_SCRIPT = SCRIPT_DIR / "_remote_get_eef_reference_ids.py"
 
 # API limitations
 LOOKUP_REFERENCES_CHUNK_SIZE = 100
@@ -249,5 +250,14 @@ if __name__ == "__main__":
     if args.dry_run:
         print("Dry run — no changes made.")
     else:
+        duplicate_ids = {ref.id for group in duplicate_groups for ref in group[1:]}
+        canonical_ids = [ref.id for ref in references if ref.id not in duplicate_ids]
+        output_file = SCRIPT_DIR / f"canonical_ids_{args.environment}.txt"
+        output_file.write_text(
+            "\n".join(str(ref_id) for ref_id in canonical_ids) + "\n"
+        )
+        print(f"Wrote {len(canonical_ids)} canonical IDs to {output_file.name}")
+
         link_duplicates(client, duplicate_groups)
+
         print("Duplicate linking complete.")
