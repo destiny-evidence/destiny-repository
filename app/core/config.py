@@ -546,6 +546,14 @@ class Settings(BaseSettings):
         description="List of allowed origins for CORS.",
     )
 
+    linked_data_ontology_url: HttpUrl | None = Field(
+        default=None,
+        description=(
+            "URL of the OWL/SKOS ontology TTL used for LinkedDataEnhancement "
+            "validation (SHACL shape derivation and SKOS concept checking)."
+        ),
+    )
+
     trusted_unique_identifier_types: set[ExternalIdentifierType] = Field(
         default_factory=set,
         description=(
