@@ -23,6 +23,22 @@ _STATIC_DIR = Path(__file__).parent.parent / "static"
 _ONTOLOGY_PATH = _STATIC_DIR / "evrepo-core.ttl"
 _SHAPES_PATH = _STATIC_DIR / "evrepo-core-shapes.ttl"
 
+# Module-level singletons — parsed once, reused across service instances
+_bundled_ontology: Graph | None = None
+_bundled_shapes: Graph | None = None
+
+
+def _get_bundled_graphs() -> tuple[Graph, Graph]:
+    """Return the bundled ontology and shapes graphs, parsing on first call."""
+    global _bundled_ontology, _bundled_shapes  # noqa: PLW0603
+    if _bundled_ontology is None:
+        _bundled_ontology = Graph()
+        _bundled_ontology.parse(str(_ONTOLOGY_PATH), format="turtle")
+    if _bundled_shapes is None:
+        _bundled_shapes = Graph()
+        _bundled_shapes.parse(str(_SHAPES_PATH), format="turtle")
+    return _bundled_ontology, _bundled_shapes
+
 
 class LinkedDataValidationResult(BaseModel):
     """Result of validating a LinkedDataEnhancement."""
@@ -47,10 +63,7 @@ class LinkedDataValidationService:
     @classmethod
     def from_bundled_static(cls) -> LinkedDataValidationService:
         """Create a service from the bundled ontology and shapes files."""
-        ontology = Graph()
-        ontology.parse(str(_ONTOLOGY_PATH), format="turtle")
-        shapes = Graph()
-        shapes.parse(str(_SHAPES_PATH), format="turtle")
+        ontology, shapes = _get_bundled_graphs()
         return cls(ontology=ontology, shapes=shapes)
 
     def validate(self, data: dict) -> LinkedDataValidationResult:

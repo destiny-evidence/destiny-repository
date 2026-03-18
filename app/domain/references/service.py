@@ -501,7 +501,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         if not reference_create_result.reference:
             return reference_create_result
 
-        # Validate LinkedDataEnhancements against the ontology
+        # Validate LinkedDataEnhancements against the ontology, stripping invalid ones
+        valid_enhancements = []
         for enhancement in reference_create_result.reference.enhancements:
             if isinstance(
                 enhancement.content,
@@ -511,9 +512,18 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     data=enhancement.content.data,
                 )
                 if not result.conforms:
-                    reference_create_result.errors.append(
+                    error_msg = (
                         f"LinkedData validation failed: " f"{'; '.join(result.errors)}"
                     )
+                    logger.warning(
+                        "Rejected invalid LinkedDataEnhancement during import",
+                        entry_ref=entry_ref,
+                        errors=result.errors,
+                    )
+                    reference_create_result.errors.append(error_msg)
+                    continue
+            valid_enhancements.append(enhancement)
+        reference_create_result.reference.enhancements = valid_enhancements
 
         reference = self._anti_corruption_service.reference_from_sdk_file_input(
             reference_create_result.reference
