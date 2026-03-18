@@ -5,7 +5,6 @@ from collections import defaultdict
 from collections.abc import Collection, Iterable
 from uuid import UUID
 
-import destiny_sdk.enhancements
 from opentelemetry.trace import get_tracer
 
 from app.core.config import (
@@ -57,9 +56,6 @@ from app.domain.references.services.enhancement_service import (
     EnhancementService,
     ProcessedResults,
 )
-from app.domain.references.services.linked_data_validation_service import (
-    LinkedDataValidationService,
-)
 from app.domain.references.services.search_service import SearchService
 from app.domain.references.services.synchronizer_service import (
     Synchronizer,
@@ -92,12 +88,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
-        self._linked_data_validation_service = (
-            LinkedDataValidationService.from_bundled_static()
-        )
-        self._enhancement_service = EnhancementService(
-            anti_corruption_service, sql_uow, self._linked_data_validation_service
-        )
+        self._enhancement_service = EnhancementService(anti_corruption_service, sql_uow)
         self._deduplication_service = DeduplicationService(
             anti_corruption_service, sql_uow, es_uow
         )
@@ -500,30 +491,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference_create_result = ReferenceCreateResult.from_raw(record_str, entry_ref)
         if not reference_create_result.reference:
             return reference_create_result
-
-        # Validate LinkedDataEnhancements against the ontology, stripping invalid ones
-        valid_enhancements = []
-        for enhancement in reference_create_result.reference.enhancements:
-            if isinstance(
-                enhancement.content,
-                destiny_sdk.enhancements.LinkedDataEnhancement,
-            ):
-                result = self._linked_data_validation_service.validate(
-                    data=enhancement.content.data,
-                )
-                if not result.conforms:
-                    error_msg = (
-                        f"LinkedData validation failed: " f"{'; '.join(result.errors)}"
-                    )
-                    logger.warning(
-                        "Rejected invalid LinkedDataEnhancement during import",
-                        entry_ref=entry_ref,
-                        errors=result.errors,
-                    )
-                    reference_create_result.errors.append(error_msg)
-                    continue
-            valid_enhancements.append(enhancement)
-        reference_create_result.reference.enhancements = valid_enhancements
 
         reference = self._anti_corruption_service.reference_from_sdk_file_input(
             reference_create_result.reference

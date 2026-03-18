@@ -2,29 +2,12 @@
 
 from __future__ import annotations
 
-import functools
-from pathlib import Path
-
 from pydantic import BaseModel, Field
 from pyld import jsonld
 from pyld.jsonld import JsonLdError
 from pyshacl import validate as shacl_validate
 from pyshacl.errors import ReportableRuntimeError
 from rdflib import Graph, URIRef
-
-_STATIC_DIR = Path(__file__).parent.parent / "static"
-_ONTOLOGY_PATH = _STATIC_DIR / "evrepo-core.ttl"
-_SHAPES_PATH = _STATIC_DIR / "evrepo-core-shapes.ttl"
-
-
-@functools.cache
-def _get_bundled_graphs() -> tuple[Graph, Graph]:
-    """Return the bundled ontology and shapes graphs, parsing on first call."""
-    ontology = Graph()
-    ontology.parse(str(_ONTOLOGY_PATH), format="turtle")
-    shapes = Graph()
-    shapes.parse(str(_SHAPES_PATH), format="turtle")
-    return ontology, shapes
 
 
 class LinkedDataValidationResult(BaseModel):
@@ -47,10 +30,10 @@ class LinkedDataValidationService:
         self._shapes = shapes
 
     @classmethod
-    def from_bundled_static(cls) -> LinkedDataValidationService:
-        """Create a service from the bundled ontology and shapes files."""
-        ontology, shapes = _get_bundled_graphs()
-        return cls(ontology=ontology, shapes=shapes)
+    def from_vocabulary_url(cls, _vocabulary_url: str) -> LinkedDataValidationService:
+        """Create a service by fetching a vocabulary and its shapes from a URL."""
+        msg = "Vocabulary resolution is not yet implemented. "
+        raise NotImplementedError(msg)
 
     def validate(self, data: dict) -> LinkedDataValidationResult:
         """

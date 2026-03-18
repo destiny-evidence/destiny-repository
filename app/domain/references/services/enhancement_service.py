@@ -62,10 +62,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow)
-        self._linked_data_validation_service = (
-            linked_data_validation_service
-            or LinkedDataValidationService.from_bundled_static()
-        )
+        self._linked_data_validation_service = linked_data_validation_service
 
     async def mark_robot_enhancement_batch_failed(
         self, robot_enhancement_batch_id: UUID, error: str
@@ -252,6 +249,9 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         enhancement: destiny_sdk.enhancements.Enhancement,
     ) -> destiny_sdk.robots.LinkedRobotError | None:
         """Validate a LinkedDataEnhancement against the ontology, if applicable."""
+        if self._linked_data_validation_service is None:
+            return None
+
         if not isinstance(
             enhancement.content,
             destiny_sdk.enhancements.LinkedDataEnhancement,
