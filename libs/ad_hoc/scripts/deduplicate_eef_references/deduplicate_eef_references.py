@@ -206,7 +206,7 @@ if __name__ == "__main__":
     else:
         duplicate_ids = {ref.id for group in duplicate_groups for ref in group[1:]}
         canonical_ids = [ref.id for ref in references if ref.id not in duplicate_ids]
-        output_file = SCRIPT_DIR / "canonical_ids.txt"
+        output_file = SCRIPT_DIR / f"canonical_ids_{args.azure_application_id}.txt"
         output_file.write_text(
             "\n".join(str(ref_id) for ref_id in canonical_ids) + "\n"
         )
