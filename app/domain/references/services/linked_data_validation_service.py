@@ -19,7 +19,9 @@ logger = get_logger(__name__)
 # Suppress pyld's noisy INFO logging
 logging.getLogger("pyld").setLevel(logging.WARNING)
 
-_SHAPES_PATH = Path(__file__).parent.parent / "vocabularies" / "evrepo-core-shapes.ttl"
+_STATIC_DIR = Path(__file__).parent.parent / "static"
+_ONTOLOGY_PATH = _STATIC_DIR / "evrepo-core.ttl"
+_SHAPES_PATH = _STATIC_DIR / "evrepo-core-shapes.ttl"
 
 
 class LinkedDataValidationResult(BaseModel):
