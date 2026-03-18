@@ -511,7 +511,7 @@ class LinkedDataEnhancement(BaseModel):
         context = self.data["@context"]
         if not isinstance(context, str):
             msg = "@context must be a string URI."
-            raise TypeError(msg)
+            raise ValueError(msg)  # noqa: TRY004
 
         if context != str(self.context_uri):
             msg = (
