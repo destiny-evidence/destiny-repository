@@ -56,6 +56,9 @@ from app.domain.references.services.enhancement_service import (
     EnhancementService,
     ProcessedResults,
 )
+from app.domain.references.services.linked_data_validation_service import (
+    LinkedDataValidationService,
+)
 from app.domain.references.services.search_service import SearchService
 from app.domain.references.services.synchronizer_service import (
     Synchronizer,
@@ -85,10 +88,13 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         anti_corruption_service: ReferenceAntiCorruptionService,
         sql_uow: AsyncSqlUnitOfWork,
         es_uow: AsyncESUnitOfWork,
+        linked_data_validation_service: LinkedDataValidationService | None = None,
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
-        self._enhancement_service = EnhancementService(anti_corruption_service, sql_uow)
+        self._enhancement_service = EnhancementService(
+            anti_corruption_service, sql_uow, linked_data_validation_service
+        )
         self._deduplication_service = DeduplicationService(
             anti_corruption_service, sql_uow, es_uow
         )

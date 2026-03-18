@@ -26,6 +26,9 @@ from app.domain.references.models.validators import (
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.linked_data_validation_service import (
+    LinkedDataValidationService,
+)
 from app.domain.service import GenericService
 from app.persistence.blob.models import (
     BlobStorageFile,
@@ -55,9 +58,11 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         self,
         anti_corruption_service: ReferenceAntiCorruptionService,
         sql_uow: AsyncSqlUnitOfWork,
+        linked_data_validation_service: LinkedDataValidationService | None = None,
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow)
+        self._linked_data_validation_service = linked_data_validation_service
 
     async def mark_robot_enhancement_batch_failed(
         self, robot_enhancement_batch_id: UUID, error: str
@@ -301,6 +306,25 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             enhancement_to_add
         )
         trace_attribute(Attributes.ENHANCEMENT_ID, str(enhancement.id))
+
+        # Validate LinkedDataEnhancements against the ontology
+        if self._linked_data_validation_service is not None and isinstance(
+            enhancement_to_add.content,
+            destiny_sdk.enhancements.LinkedDataEnhancement,
+        ):
+            validation_result = self._linked_data_validation_service.validate(
+                data=enhancement_to_add.content.data,
+            )
+            if not validation_result.conforms:
+                error_msg = "; ".join(validation_result.errors)
+                return (
+                    self._anti_corruption_service.robot_result_validation_entry_to_sdk(
+                        RobotResultValidationEntry(
+                            reference_id=enhancement_to_add.reference_id,
+                            error=f"LinkedData validation failed: {error_msg}",
+                        )
+                    ).to_jsonl()
+                )
 
         status, message = await add_enhancement(enhancement)
 
