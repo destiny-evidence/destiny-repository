@@ -37,27 +37,21 @@ class LinkedDataValidationService:
     def __init__(
         self,
         ontology: Graph,
-        shapes: Graph | None = None,
+        shapes: Graph,
     ) -> None:
-        """Initialise with an ontology graph and optional SHACL shapes graph."""
+        """Initialise with an ontology graph and SHACL shapes graph."""
         self._ontology = ontology
-        self._shapes = shapes if shapes is not None else self._load_default_shapes()
+        self._shapes = shapes
         self._concept_uris = _extract_concept_uris(ontology)
 
     @classmethod
-    def from_ontology_path(
-        cls, ontology_path: Path | str
-    ) -> LinkedDataValidationService:
-        """Create a service from a local ontology TTL file."""
+    def from_bundled_static(cls) -> LinkedDataValidationService:
+        """Create a service from the bundled ontology and shapes files."""
         ontology = Graph()
-        ontology.parse(str(ontology_path), format="turtle")
-        return cls(ontology=ontology)
-
-    def _load_default_shapes(self) -> Graph:
-        """Load the bundled SHACL shapes."""
+        ontology.parse(str(_ONTOLOGY_PATH), format="turtle")
         shapes = Graph()
         shapes.parse(str(_SHAPES_PATH), format="turtle")
-        return shapes
+        return cls(ontology=ontology, shapes=shapes)
 
     def validate(self, data: dict) -> LinkedDataValidationResult:
         """
