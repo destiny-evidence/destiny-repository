@@ -54,24 +54,26 @@ def get_eef_reference_ids(client: OAuthClient) -> list[UUID]:
     """Fetch EEF reference IDs by traversing import records via the API."""
     _client = client.get_client()
 
-    all_records = TypeAdapter(list[ImportRecordRead]).validate_json(
-        _client.get("/imports/records/", timeout=30).content
-    )
+    response = _client.get("/imports/records/", timeout=30)
+    response.raise_for_status()
+    all_records = TypeAdapter(list[ImportRecordRead]).validate_json(response.content)
     eef_records = [
         r for r in all_records if r.source_name.startswith(EEF_SOURCE_PREFIX)
     ]
 
     reference_ids: list[UUID] = []
     for record in eef_records:
-        batches = TypeAdapter(list[ImportBatchRead]).validate_json(
-            _client.get(f"/imports/records/{record.id}/batches/", timeout=30).content
-        )
+        response = _client.get(f"/imports/records/{record.id}/batches/", timeout=30)
+        response.raise_for_status()
+        batches = TypeAdapter(list[ImportBatchRead]).validate_json(response.content)
         for batch in batches:
+            response = _client.get(
+                f"/imports/records/{record.id}/batches/{batch.id}/results/",
+                timeout=60,
+            )
+            response.raise_for_status()
             results = TypeAdapter(list[ImportResultRead]).validate_json(
-                _client.get(
-                    f"/imports/records/{record.id}/batches/{batch.id}/results/",
-                    timeout=60,
-                ).content
+                response.content
             )
             reference_ids.extend(r.reference_id for r in results if r.reference_id)
 
@@ -138,11 +140,12 @@ def link_duplicates(
     chunks = list(batched(decisions, MAKE_DUPLICATE_DECISION_CHUNK_SIZE))
     for i, chunk in enumerate(chunks, 1):
         print(f"  Chunk {i}/{len(chunks)} ({len(chunk)} decisions)")
-        client.get_client().post(
+        response = client.get_client().post(
             "/references/duplicate-decisions",
             json=[d.model_dump(mode="json") for d in chunk],
             timeout=60,
         )
+        response.raise_for_status()
     print("Done.")
 
 
