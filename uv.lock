@@ -1,6 +1,9 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = "==3.14.*"
+
+[manifest]
+excludes = ["ecdsa"]
 
 [[package]]
 name = "accessible-pygments"
@@ -569,6 +572,7 @@ dependencies = [
     { name = "pyld" },
     { name = "pyshacl" },
     { name = "python-jose", extra = ["cryptography"] },
+    { name = "rdflib" },
     { name = "sqlalchemy-utils" },
     { name = "structlog" },
     { name = "taskiq", extra = ["reload"] },
@@ -639,6 +643,7 @@ requires-dist = [
     { name = "pyld", specifier = ">=2.0.4,<3" },
     { name = "pyshacl", specifier = ">=0.30.0,<1" },
     { name = "python-jose", extras = ["cryptography"], specifier = ">=3.5.0,<4" },
+    { name = "rdflib", specifier = ">=7.0.0,<8" },
     { name = "sqlalchemy-utils", specifier = ">=0.41.2,<0.42" },
     { name = "structlog", specifier = ">=25.1.0,<26" },
     { name = "taskiq", extras = ["reload"], specifier = ">=0.12.1" },
@@ -759,18 +764,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ae/ed/aefcc8cd0ba62a0560c3c18c33925362d46c6075480bfa4df87b28e169a9/docutils-0.21.2.tar.gz", hash = "sha256:3a6b18732edf182daa3cd12775bbb338cf5691468f91eeeb109deff6ebfa986f", size = 2204444, upload-time = "2024-04-23T18:57:18.24Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8f/d7/9322c609343d929e75e7e5e6255e614fcc67572cfd083959cdef3b7aad79/docutils-0.21.2-py3-none-any.whl", hash = "sha256:dafca5b9e384f0e419294eb4d2ff9fa826435bf15f15b7bd45723e8ad76811b2", size = 587408, upload-time = "2024-04-23T18:57:14.835Z" },
-]
-
-[[package]]
-name = "ecdsa"
-version = "0.19.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "six" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/c0/1f/924e3caae75f471eae4b26bd13b698f6af2c44279f67af317439c2f4c46a/ecdsa-0.19.1.tar.gz", hash = "sha256:478cba7b62555866fcb3bb3fe985e06decbdb68ef55713c4e5ab98c57d508e61", size = 201793, upload-time = "2025-03-13T11:52:43.25Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/cb/a3/460c57f094a4a165c84a1341c373b0a4f5ec6ac244b998d5021aade89b77/ecdsa-0.19.1-py2.py3-none-any.whl", hash = "sha256:30638e27cf77b7e15c4c4cc1973720149e1033827cfd00661ca5c8cc0cdb24c3", size = 150607, upload-time = "2025-03-13T11:52:41.757Z" },
 ]
 
 [[package]]
@@ -2208,7 +2201,6 @@ name = "python-jose"
 version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ecdsa" },
     { name = "pyasn1" },
     { name = "rsa" },
 ]
