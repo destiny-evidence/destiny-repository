@@ -501,6 +501,27 @@ class LinkedDataEnhancement(BaseModel):
         ),
     )
 
+    @model_validator(mode="after")
+    def validate_context(self) -> Self:
+        """Validate that data contains a @context matching context_uri."""
+        if "@context" not in self.data:
+            msg = "data must contain a '@context' key."
+            raise ValueError(msg)
+
+        context = self.data["@context"]
+        if not isinstance(context, str):
+            msg = "@context must be a string URI."
+            raise TypeError(msg)
+
+        if context != str(self.context_uri):
+            msg = (
+                f"@context URI '{context}' does not match "
+                f"context_uri '{self.context_uri}'."
+            )
+            raise ValueError(msg)
+
+        return self
+
     @property
     def fingerprint(self) -> str:
         """The unique fingerprint of this linked data enhancement."""
