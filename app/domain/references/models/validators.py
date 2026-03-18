@@ -28,6 +28,9 @@ from app.domain.references.models.models import (
     IdentifierLookup,
     Visibility,
 )
+from app.domain.references.services.linked_data_validation_service import (
+    LinkedDataValidationService,
+)
 from app.utils.types import JSON
 
 logger = get_logger(__name__)
@@ -109,12 +112,33 @@ class EnhancementParseResult(BaseModel):
     )
 
     @classmethod
-    def from_raw(cls, raw_enhancement: JSON, entry_ref: int) -> Self:
+    def from_raw(
+        cls,
+        raw_enhancement: JSON,
+        entry_ref: int,
+        linked_data_validation_service: LinkedDataValidationService | None = None,
+    ) -> Self:
         """Parse an enhancement from raw JSON."""
         try:
             enhancement = destiny_sdk.enhancements.EnhancementFileInput.model_validate(
                 raw_enhancement
             )
+
+            # Validate LinkedDataEnhancements against the ontology
+            if linked_data_validation_service is not None and isinstance(
+                enhancement.content,
+                destiny_sdk.enhancements.LinkedDataEnhancement,
+            ):
+                result = linked_data_validation_service.validate(
+                    data=enhancement.content.data,
+                )
+                if not result.conforms:
+                    return cls(
+                        error=f"Enhancement {entry_ref}:\n"
+                        f"LinkedData validation failed: "
+                        f"{'; '.join(result.errors)}"
+                    )
+
             return cls(enhancement=enhancement)
         except (TypeError, ValueError) as error:
             return cls(
@@ -180,6 +204,7 @@ class ReferenceCreateResult(BaseModel):
         cls,
         record_str: str,
         entry_ref: int,
+        linked_data_validation_service: LinkedDataValidationService | None = None,
     ) -> Self:
         """Parse a reference file input from a string and validate it."""
         try:
@@ -208,7 +233,9 @@ class ReferenceCreateResult(BaseModel):
             )
 
         enhancement_results: list[EnhancementParseResult] = [
-            EnhancementParseResult.from_raw(enhancement, entry_ref)
+            EnhancementParseResult.from_raw(
+                enhancement, entry_ref, linked_data_validation_service
+            )
             for entry_ref, enhancement in enumerate(validated_input.enhancements, 1)
         ]
 
@@ -258,12 +285,13 @@ class EnhancementResultValidator(BaseModel):
     )
 
     @classmethod
-    def from_raw(
+    def from_raw(  # noqa: PLR0911
         cls,
         entry: str,
         entry_ref: int,
         expected_reference_ids: set[UUID],
         processed_reference_ids: set[UUID] | None = None,
+        linked_data_validation_service: LinkedDataValidationService | None = None,
     ) -> Self:
         """Create a EnhancementResult from a jsonl entry."""
         file_entry_validator: TypeAdapter[destiny_sdk.robots.EnhancementResultEntry] = (
@@ -306,6 +334,25 @@ class EnhancementResultValidator(BaseModel):
                         message="Robot returned illegal raw enhancement type",
                     )
                 )
+
+            # Validate LinkedDataEnhancements against the ontology
+            if linked_data_validation_service is not None and isinstance(
+                file_entry.content,
+                destiny_sdk.enhancements.LinkedDataEnhancement,
+            ):
+                result = linked_data_validation_service.validate(
+                    data=file_entry.content.data,
+                )
+                if not result.conforms:
+                    return cls(
+                        robot_error=destiny_sdk.robots.LinkedRobotError(
+                            reference_id=file_entry.reference_id,
+                            message=(
+                                "LinkedData validation failed: "
+                                f"{'; '.join(result.errors)}"
+                            ),
+                        )
+                    )
 
             return cls(
                 enhancement_to_add=file_entry,

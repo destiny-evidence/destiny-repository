@@ -92,6 +92,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
+        self._linked_data_validation_service = linked_data_validation_service
         self._enhancement_service = EnhancementService(
             anti_corruption_service, sql_uow, linked_data_validation_service
         )
@@ -494,7 +495,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> ReferenceCreateResult:
         """Ingest a reference from a file."""
         # Full deduplication flow
-        reference_create_result = ReferenceCreateResult.from_raw(record_str, entry_ref)
+        reference_create_result = ReferenceCreateResult.from_raw(
+            record_str, entry_ref, self._linked_data_validation_service
+        )
         if not reference_create_result.reference:
             return reference_create_result
         reference = self._anti_corruption_service.reference_from_sdk_file_input(

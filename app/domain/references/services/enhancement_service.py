@@ -307,25 +307,6 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         )
         trace_attribute(Attributes.ENHANCEMENT_ID, str(enhancement.id))
 
-        # Validate LinkedDataEnhancements against the ontology
-        if self._linked_data_validation_service is not None and isinstance(
-            enhancement_to_add.content,
-            destiny_sdk.enhancements.LinkedDataEnhancement,
-        ):
-            validation_result = self._linked_data_validation_service.validate(
-                data=enhancement_to_add.content.data,
-            )
-            if not validation_result.conforms:
-                error_msg = "; ".join(validation_result.errors)
-                return (
-                    self._anti_corruption_service.robot_result_validation_entry_to_sdk(
-                        RobotResultValidationEntry(
-                            reference_id=enhancement_to_add.reference_id,
-                            error=f"LinkedData validation failed: {error_msg}",
-                        )
-                    ).to_jsonl()
-                )
-
         status, message = await add_enhancement(enhancement)
 
         if status == PendingEnhancementStatus.COMPLETED:
@@ -422,6 +403,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                             line_no,
                             expected_reference_ids,
                             processed_reference_ids,
+                            self._linked_data_validation_service,
                         )
                         line_no += 1
 
