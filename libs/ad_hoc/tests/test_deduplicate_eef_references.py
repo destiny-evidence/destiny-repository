@@ -2,11 +2,9 @@
 
 from uuid import uuid4
 
-import pytest
 from deduplicate_eef_references.deduplicate_eef_references import (
     _build_decisions,
     group_references,
-    parse_reference_ids,
 )
 from destiny_sdk.deduplication import ManualDuplicateDetermination
 from destiny_sdk.identifiers import ExternalIdentifierType
@@ -36,50 +34,6 @@ def _eric(value: str) -> dict:
         "identifier": value,
         "identifier_type": ExternalIdentifierType.ERIC,
     }
-
-
-class TestParseReferenceIds:
-    """Tests for parse_reference_ids."""
-
-    def test_extracts_ids_between_markers(self) -> None:
-        """IDs between the delimiters are returned."""
-        output = (
-            "some preamble\n"
-            "---BEGIN_RESULTS---\n"
-            "id-1\n"
-            "id-2\n"
-            "id-3\n"
-            "---END_RESULTS---\n"
-            "some epilogue\n"
-        )
-        assert parse_reference_ids(output) == ["id-1", "id-2", "id-3"]
-
-    def test_strips_whitespace_and_skips_blank_lines(self) -> None:
-        """Whitespace is stripped and blank lines are ignored."""
-        output = (
-            "---BEGIN_RESULTS---\n"
-            "  id-1  \n"
-            "\n"
-            "  \n"
-            "id-2\n"
-            "---END_RESULTS---\n"
-        )
-        assert parse_reference_ids(output) == ["id-1", "id-2"]
-
-    def test_empty_results(self) -> None:
-        """No IDs between delimiters returns an empty list."""
-        output = "---BEGIN_RESULTS---\n---END_RESULTS---\n"
-        assert parse_reference_ids(output) == []
-
-    def test_missing_begin_marker_raises(self) -> None:
-        """Missing BEGIN marker raises ValueError."""
-        with pytest.raises(ValueError, match="substring not found"):
-            parse_reference_ids("no markers here")
-
-    def test_missing_end_marker_raises(self) -> None:
-        """Missing END marker raises ValueError."""
-        with pytest.raises(ValueError, match="substring not found"):
-            parse_reference_ids("---BEGIN_RESULTS---\nid-1\n")
 
 
 class TestGroupReferences:

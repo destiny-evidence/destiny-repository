@@ -99,6 +99,21 @@ import_batch_router = APIRouter(
 )
 
 
+@import_record_router.get("/")
+async def list_records(
+    import_service: Annotated[ImportService, Depends(import_service)],
+    import_anti_corruption_service: Annotated[
+        ImportAntiCorruptionService, Depends(import_anti_corruption_service)
+    ],
+) -> list[destiny_sdk.imports.ImportRecordRead]:
+    """List all import records."""
+    records = await import_service.get_import_records()
+    return [
+        import_anti_corruption_service.import_record_to_sdk(record)
+        for record in records
+    ]
+
+
 @import_record_router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_record(
     import_record: destiny_sdk.imports.ImportRecordIn,

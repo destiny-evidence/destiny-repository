@@ -5,7 +5,7 @@
 # ]
 # ///
 
-# ruff: noqa: S603, S607, T201
+# ruff: noqa: T201
 
 """
 Script to manually deduplicate EEF references.
@@ -14,13 +14,8 @@ Some EEF works have multiple study arms, represented as individual references in
 DESTINY repository. This script identifies and links duplicate references based on
 all external identifiers matching.
 
-DB reads are performed by exec'ing a Python script into a running container
-app, which has network access to the database and the necessary packages
-(asyncpg, azure-identity) already installed. API writes use the public URL.
-
 ```
 uv run --script deduplicate_eef_references.py \
-    --environment development \
     --api-url ... \
     --azure-client-id ... \
     --azure-application-id ... \
@@ -31,13 +26,10 @@ See also: https://github.com/destiny-evidence/destiny-repository/issues/570
 """
 
 import argparse
-import base64
-import os
-import pty
-import subprocess
 from collections import defaultdict
 from itertools import batched
 from pathlib import Path
+from uuid import UUID
 
 from destiny_sdk.client import OAuthClient, OAuthMiddleware
 from destiny_sdk.deduplication import (
@@ -45,91 +37,56 @@ from destiny_sdk.deduplication import (
     ManualDuplicateDetermination,
 )
 from destiny_sdk.identifiers import IdentifierLookup
+from destiny_sdk.imports import ImportBatchRead, ImportRecordRead, ImportResultRead
 from destiny_sdk.references import Reference
+from pydantic import TypeAdapter
 
 SCRIPT_DIR = Path(__file__).parent
-REMOTE_QUERY_SCRIPT = SCRIPT_DIR / "_remote_get_eef_reference_ids.py"
+
+EEF_SOURCE_PREFIX = "eef-eppi-review-export"
 
 # API limitations
 LOOKUP_REFERENCES_CHUNK_SIZE = 100
 MAKE_DUPLICATE_DECISION_CHUNK_SIZE = 10
 
 
-def get_eef_reference_ids(environment: str) -> list[str]:
-    """Fetch EEF reference IDs by exec'ing a Python script into the container."""
-    app_name = f"destiny-repository-{environment[:4]}-app"
-    resource_group = f"rg-destiny-repository-{environment}"
-    container = subprocess.run(
-        [
-            "az",
-            "containerapp",
-            "show",
-            "--name",
-            app_name,
-            "--resource-group",
-            resource_group,
-            "--query",
-            "properties.template.containers[0].name",
-            "-o",
-            "tsv",
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+def get_eef_reference_ids(client: OAuthClient) -> list[UUID]:
+    """Fetch EEF reference IDs by traversing import records via the API."""
+    _client = client.get_client()
 
-    # az containerapp exec splits --command on spaces (direct exec, no shell),
-    # so we use python3 -c with a space-free expression to bootstrap the
-    # remote script. exec also requires stdin to be a TTY.
-    encoded = base64.b64encode(REMOTE_QUERY_SCRIPT.read_bytes()).decode()
-    bootstrap = (
-        f"exec(compile(__import__('base64').b64decode('{encoded}')"
-        ",'<remote>','exec'),{'__name__':'__main__'})"
+    all_records = TypeAdapter(list[ImportRecordRead]).validate_json(
+        _client.get("/imports/records/", timeout=30).content
     )
-    primary_fd, replica_fd = pty.openpty()
-    try:
-        result = subprocess.run(
-            [
-                "az",
-                "containerapp",
-                "exec",
-                "--name",
-                app_name,
-                "--resource-group",
-                resource_group,
-                "--container",
-                container,
-                "--command",
-                f"python3 -c {bootstrap}",
-            ],
-            stdin=replica_fd,
-            capture_output=True,
-            text=True,
-            check=True,
+    eef_records = [
+        r for r in all_records if r.source_name.startswith(EEF_SOURCE_PREFIX)
+    ]
+
+    reference_ids: list[UUID] = []
+    for record in eef_records:
+        batches = TypeAdapter(list[ImportBatchRead]).validate_json(
+            _client.get(f"/imports/records/{record.id}/batches/", timeout=30).content
         )
-    finally:
-        os.close(replica_fd)
-        os.close(primary_fd)
+        for batch in batches:
+            results = TypeAdapter(list[ImportResultRead]).validate_json(
+                _client.get(
+                    f"/imports/records/{record.id}/batches/{batch.id}/results/",
+                    timeout=60,
+                ).content
+            )
+            reference_ids.extend(r.reference_id for r in results if r.reference_id)
 
-    return parse_reference_ids(result.stdout)
-
-
-def parse_reference_ids(output: str) -> list[str]:
-    """Extract reference IDs from delimited remote script output."""
-    start = output.index("---BEGIN_RESULTS---") + len("---BEGIN_RESULTS---") + 1
-    end = output.index("---END_RESULTS---")
-    return [line.strip() for line in output[start:end].splitlines() if line.strip()]
+    return reference_ids
 
 
 def get_references(
     client: OAuthClient,
-    ids: list[str],
+    ids: list[UUID],
 ) -> list[Reference]:
     """Fetch structured references in chunks from the API given a list of IDs."""
     return [
         ref
         for chunk in batched(ids, LOOKUP_REFERENCES_CHUNK_SIZE)
-        for ref in client.lookup(chunk)
+        for ref in client.lookup([IdentifierLookup.from_identifier(i) for i in chunk])
     ]
 
 
@@ -192,12 +149,6 @@ def link_duplicates(
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="Deduplicate EEF references")
     arg_parser.add_argument(
-        "--environment",
-        required=True,
-        help="Environment to run the script against",
-        choices=["development", "staging", "production"],
-    )
-    arg_parser.add_argument(
         "--api-url",
         required=True,
         help="Public API URL (e.g. https://destiny-repository.example.com)",
@@ -233,8 +184,8 @@ if __name__ == "__main__":
         ),
     )
 
-    print(f"Fetching EEF reference IDs from {args.environment}...")
-    ids = get_eef_reference_ids(args.environment)
+    print("Fetching EEF reference IDs from API...")
+    ids = get_eef_reference_ids(client)
     print(f"Found {len(ids)} EEF references.")
 
     print("Looking up references from API...")
@@ -252,7 +203,7 @@ if __name__ == "__main__":
     else:
         duplicate_ids = {ref.id for group in duplicate_groups for ref in group[1:]}
         canonical_ids = [ref.id for ref in references if ref.id not in duplicate_ids]
-        output_file = SCRIPT_DIR / f"canonical_ids_{args.environment}.txt"
+        output_file = SCRIPT_DIR / "canonical_ids.txt"
         output_file.write_text(
             "\n".join(str(ref_id) for ref_id in canonical_ids) + "\n"
         )
