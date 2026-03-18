@@ -1,29 +1,15 @@
 """Tests for LinkedDataValidationService."""
 
-from pathlib import Path
-
 import pytest
-from rdflib import Graph
 
 from app.domain.references.services.linked_data_validation_service import (
     LinkedDataValidationService,
 )
 
-ONTOLOGY_PATH = (
-    Path(__file__).parents[4] / "fixtures" / "vocabularies" / "evrepo-core.ttl"
-)
-
 
 @pytest.fixture
-def ontology() -> Graph:
-    g = Graph()
-    g.parse(str(ONTOLOGY_PATH), format="turtle")
-    return g
-
-
-@pytest.fixture
-def service(ontology: Graph) -> LinkedDataValidationService:
-    return LinkedDataValidationService(ontology=ontology)
+def service() -> LinkedDataValidationService:
+    return LinkedDataValidationService.from_bundled_static()
 
 
 EVREPO = "https://vocab.evidence-repository.org/"
