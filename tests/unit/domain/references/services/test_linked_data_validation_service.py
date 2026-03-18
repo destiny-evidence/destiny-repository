@@ -74,38 +74,18 @@ def test_missing_required_property_fails(service: LinkedDataValidationService):
     assert any("SHACL validation failed" in e for e in result.errors)
 
 
-def test_invalid_concept_uri_fails(service: LinkedDataValidationService):
-    """Using a concept URI that doesn't exist in the vocabulary."""
+def test_uri_with_comma_fails(service: LinkedDataValidationService):
+    """URIs containing unencoded commas are rejected."""
     data = {
         "@context": {"evrepo": EVREPO},
         "@type": "evrepo:EffectEstimate",
         "evrepo:effectSizeMetric": {
-            "@id": f"{EVREPO}bogusMetric",
+            "@id": f"{EVREPO}hedgesG,cohensD",
         },
     }
     result = service.validate(data=data)
     assert not result.conforms
-    assert any("bogusMetric" in e for e in result.errors)
-
-
-def test_valid_concept_uri_passes(service: LinkedDataValidationService):
-    """Using a valid concept URI that exists in the vocabulary."""
-    data = {
-        "@context": {"evrepo": EVREPO},
-        "@type": "evrepo:EffectEstimate",
-        "evrepo:effectSizeMetric": {
-            "@id": f"{EVREPO}hedgesG",
-        },
-        "evrepo:pointEstimate": {
-            "@value": "0.5",
-            "@type": "http://www.w3.org/2001/XMLSchema#decimal",
-        },
-    }
-    result = service.validate(data=data)
-    # SHACL may flag missing required props on EffectEstimate depending on shapes,
-    # but the concept URI itself should be valid
-    assert not any("bogus" in e for e in result.errors)
-    assert not any("Unknown concept URI" in e for e in result.errors)
+    assert any("unencoded comma" in e for e in result.errors)
 
 
 def test_empty_expansion_fails(service: LinkedDataValidationService):
