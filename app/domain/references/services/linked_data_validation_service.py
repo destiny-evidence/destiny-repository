@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import functools
-import logging
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -12,13 +11,6 @@ from pyld.jsonld import JsonLdError
 from pyshacl import validate as shacl_validate
 from pyshacl.errors import ReportableRuntimeError
 from rdflib import OWL, RDF, RDFS, SKOS, Graph, URIRef
-
-from app.core.telemetry.logger import get_logger
-
-logger = get_logger(__name__)
-
-# Suppress pyld's noisy INFO logging
-logging.getLogger("pyld").setLevel(logging.WARNING)
 
 _STATIC_DIR = Path(__file__).parent.parent / "static"
 _ONTOLOGY_PATH = _STATIC_DIR / "evrepo-core.ttl"
