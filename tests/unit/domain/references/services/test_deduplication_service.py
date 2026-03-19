@@ -319,7 +319,7 @@ async def test_determine_and_map_duplicate_happy_path(
     )
     # Split: determine then map
     determined = await service.determine_canonical_from_candidates(decision)
-    out_decision, decision_changed = await service.map_duplicate_decision(determined)
+    out_decision, decision_changed, _ = await service.map_duplicate_decision(determined)
     assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
     assert out_decision.canonical_reference_id == canonical.id
     assert decision_changed
@@ -366,7 +366,7 @@ async def test_determine_and_map_duplicate_no_change(
     )
     # Split: determine then map
     determined = await service.determine_canonical_from_candidates(decision)
-    out_decision, decision_changed = await service.map_duplicate_decision(determined)
+    out_decision, decision_changed, _ = await service.map_duplicate_decision(determined)
     assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
     assert out_decision.canonical_reference_id == canonical.id
     assert decision_changed is False
@@ -433,7 +433,7 @@ async def test_determine_and_map_duplicate_decoupled_canonical_change(
         fake_uow(),
     )
     determined = await service.determine_canonical_from_candidates(decision)
-    out_decision, decision_changed = await service.map_duplicate_decision(determined)
+    out_decision, decision_changed, _ = await service.map_duplicate_decision(determined)
     assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
     assert (
         "Decouple reason: Existing duplicate decision changed." in out_decision.detail
@@ -487,7 +487,7 @@ async def test_determine_and_map_duplicate_decoupled_different_canonical(
         fake_uow(),
     )
     determined = await service.determine_canonical_from_candidates(decision)
-    out_decision, decision_changed = await service.map_duplicate_decision(determined)
+    out_decision, decision_changed, _ = await service.map_duplicate_decision(determined)
     assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
     assert (
         "Decouple reason: Existing duplicate decision changed." in out_decision.detail
@@ -499,6 +499,10 @@ async def test_determine_and_map_duplicate_decoupled_different_canonical(
 async def test_determine_and_map_duplicate_decoupled_has_duplicates(
     fake_uow, fake_repository, anti_corruption_service
 ):
+    candidate = MagicMock(spec=Reference)
+    candidate.id = uuid7()
+    candidate.is_canonical = True
+
     """Reference with existing duplicates cannot become a duplicate itself."""
     existing_duplicate = Reference(
         id=uuid7(),
@@ -512,10 +516,6 @@ async def test_determine_and_map_duplicate_decoupled_has_duplicates(
         duplicate_decision=None,
         duplicate_references=[existing_duplicate],
     )
-
-    candidate = MagicMock(spec=Reference)
-    candidate.id = uuid7()
-    candidate.is_canonical = True
 
     decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
@@ -535,7 +535,7 @@ async def test_determine_and_map_duplicate_decoupled_has_duplicates(
     )
 
     determined = await service.determine_canonical_from_candidates(decision)
-    out_decision, decision_changed = await service.map_duplicate_decision(determined)
+    out_decision, decision_changed, _ = await service.map_duplicate_decision(determined)
     assert out_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
     assert "Decouple reason: Reference has existing duplicates" in out_decision.detail
     assert decision_changed
@@ -607,7 +607,7 @@ async def test_determine_and_map_duplicate_now_duplicate(
         fake_uow(),
     )
     determined = await service.determine_canonical_from_candidates(decision)
-    out_decision, decision_changed = await service.map_duplicate_decision(determined)
+    out_decision, decision_changed, _ = await service.map_duplicate_decision(determined)
     assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
     assert decision_changed
     old_decision = await dec_repo.get_by_pk(active_decision.id)
