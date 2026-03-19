@@ -1,6 +1,8 @@
 """Projection functions for reference domain data."""
 
 from collections import defaultdict
+from functools import cache
+from pathlib import Path
 from uuid import UUID
 
 import destiny_sdk
@@ -17,6 +19,23 @@ from app.domain.references.models.models import (
     Reference,
     ReferenceSearchFields,
 )
+from app.domain.references.services.linked_data_projection import (
+    LinkedDataProjection,
+    LinkedDataProjector,
+)
+
+_STATIC_VOCAB_DIR = (
+    Path(__file__).parent.parent.parent.parent / "static" / "vocab" / "esea"
+)
+
+
+@cache
+def _get_linked_data_projector() -> LinkedDataProjector:
+    """Lazy-initialize the LinkedDataProjector with static vocabulary files."""
+    return LinkedDataProjector(
+        vocabulary_path=_STATIC_VOCAB_DIR / "esea-vocab.ttl",
+        context_path=_STATIC_VOCAB_DIR / "esea-context.jsonld",
+    )
 
 
 class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
@@ -52,6 +71,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             singly_projected_annotations: dict[
                 tuple[str, str | None], destiny_sdk.enhancements.Annotation
             ] = {}
+            linked_data_projection: LinkedDataProjection | None = None
 
             for enhancement in cls.__priority_sorted_enhancements(
                 canonical_id=reference.id, enhancements=reference.enhancements
@@ -79,6 +99,13 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
 
                 elif enhancement.content.enhancement_type == EnhancementType.ABSTRACT:
                     abstract = enhancement.content.abstract
+
+                elif (
+                    enhancement.content.enhancement_type == EnhancementType.LINKED_DATA
+                ):
+                    linked_data_projection = _get_linked_data_projector().project(
+                        enhancement.content
+                    )
 
                 elif enhancement.content.enhancement_type == EnhancementType.ANNOTATION:
                     # Pre-work: collect annotations by scheme, preserving the
@@ -121,6 +148,17 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                 destiny_inclusion_score=cls.__positive_annotation_score(
                     destiny_inclusion_annotation
                 ),
+                linked_data_concepts=sorted(linked_data_projection.concepts)
+                if linked_data_projection
+                else [],
+                linked_data_labels=sorted(linked_data_projection.labels)
+                if linked_data_projection
+                else [],
+                linked_data_evaluated_properties=sorted(
+                    linked_data_projection.evaluated_properties
+                )
+                if linked_data_projection
+                else [],
             )
 
         except Exception as exc:

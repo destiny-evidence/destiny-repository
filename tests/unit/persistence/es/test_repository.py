@@ -7,6 +7,9 @@ from elasticsearch import AsyncElasticsearch
 from elasticsearch.helpers import async_bulk
 
 from app.core.exceptions import ESQueryError
+from app.domain.references.models.es import ReferenceDocument
+from app.domain.references.models.models import Visibility
+from app.domain.references.repository import ReferenceESRepository
 from app.persistence.es.repository import GenericAsyncESRepository
 from tests.persistence_models import SimpleDoc, SimpleDomainModel
 
@@ -342,3 +345,78 @@ async def test_query_string_search_with_document(
     assert results.hits[0].document.title == "test document"
     assert results.hits[0].document.year == 2023
     assert results.hits[0].document.content == "This is sample content for testing"
+
+
+@pytest.fixture
+async def reference_repository(
+    es_client: AsyncElasticsearch,
+) -> ReferenceESRepository:
+    """Create a reference repository with test index."""
+    return ReferenceESRepository(client=es_client)
+
+
+@pytest.fixture
+async def linked_data_ref(
+    es_client: AsyncElasticsearch,
+) -> str:
+    """Index a reference with linked data fields populated."""
+    ref_id = uuid7()
+    doc = ReferenceDocument(
+        meta={"id": ref_id},
+        visibility=Visibility.PUBLIC,
+        title="Effectiveness of reading interventions",
+        linked_data_concepts=[
+            "https://vocab.esea.education/C00008",
+            "https://vocab.esea.education/C00002",
+        ],
+        linked_data_labels=["Journal Article", "Primary Education"],
+        linked_data_evaluated_properties=[
+            "https://vocab.esea.education/documentType",
+            "https://vocab.esea.education/educationLevel",
+        ],
+    )
+    await doc.save(using=es_client)
+    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+    return str(ref_id)
+
+
+ESEA_CONCEPT = "https://vocab.esea.education/C00008"
+ESEA_PROP = "https://vocab.esea.education/documentType"
+
+
+@pytest.mark.parametrize(
+    ("query", "should_match"),
+    [
+        # Exact concept URI match (Keyword field, quoted to avoid colon parsing)
+        (f'linked_data_concepts:"{ESEA_CONCEPT}"', True),
+        ('linked_data_concepts:"https://vocab.esea.education/C99999"', False),
+        # Full-text label search (Text field)
+        ("linked_data_labels:Journal", True),
+        ("linked_data_labels:Primary", True),
+        ("linked_data_labels:Nonexistent", False),
+        # Exact property URI match (Keyword field, quoted)
+        (f'linked_data_evaluated_properties:"{ESEA_PROP}"', True),
+        (
+            "linked_data_evaluated_properties:"
+            '"https://vocab.esea.education/nonexistent"',
+            False,
+        ),
+        # Field existence
+        ("_exists_:linked_data_concepts", True),
+    ],
+)
+async def test_linked_data_field_search(
+    reference_repository: ReferenceESRepository,
+    linked_data_ref: str,
+    query: str,
+    *,
+    should_match: bool,
+):
+    """Test that linked data fields are queryable via Lucene query string."""
+    results = await reference_repository.search_with_query_string(query)
+
+    if should_match:
+        assert len(results.hits) == 1
+        assert str(results.hits[0].id) == linked_data_ref
+    else:
+        assert len(results.hits) == 0

@@ -314,6 +314,24 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     ``inclusion:destiny`` in ``annotations``.
     """
 
+    linked_data_concepts: list[str] | None = mapped_field(
+        Keyword(required=False),
+        default=None,
+    )
+    """Full concept URIs from LinkedDataEnhancements."""
+
+    linked_data_labels: list[str] | None = mapped_field(
+        Text(required=False),
+        default=None,
+    )
+    """SKOS prefLabel values for linked data concepts, for text search."""
+
+    linked_data_evaluated_properties: list[str] | None = mapped_field(
+        Keyword(required=False),
+        default=None,
+    )
+    """Property URIs for all evaluated linked data dimensions."""
+
     @classmethod
     def from_projection(cls, projection: ReferenceSearchFields) -> Self:
         """Create a ReferenceCandidateCanonicalMixin from the search projection."""
@@ -326,6 +344,9 @@ class ReferenceSearchFieldsMixin(InnerDoc):
             annotations=projection.annotations,
             evaluated_schemes=projection.evaluated_schemes,
             inclusion_destiny=projection.destiny_inclusion_score,
+            linked_data_concepts=projection.linked_data_concepts,
+            linked_data_labels=projection.linked_data_labels,
+            linked_data_evaluated_properties=projection.linked_data_evaluated_properties,
         )
 
     @classmethod
