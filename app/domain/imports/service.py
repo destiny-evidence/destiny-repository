@@ -56,6 +56,11 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         return await self._get_import_record(import_record_id)
 
     @sql_unit_of_work
+    async def get_import_records(self, limit: int) -> list[ImportRecord]:
+        """Get import records, up to the given limit."""
+        return await self.sql_uow.imports.get_some(limit)
+
+    @sql_unit_of_work
     async def get_import_record_with_batches(self, pk: UUID) -> ImportRecord:
         """Get a single import, eager loading its batches."""
         return await self.sql_uow.imports.get_by_pk(

@@ -3,7 +3,7 @@
 from typing import Annotated
 
 import destiny_sdk
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
@@ -97,6 +97,22 @@ import_batch_router = APIRouter(
         Depends(validate_import_record),
     ],
 )
+
+
+@import_record_router.get("/")
+async def list_records(
+    import_service: Annotated[ImportService, Depends(import_service)],
+    import_anti_corruption_service: Annotated[
+        ImportAntiCorruptionService, Depends(import_anti_corruption_service)
+    ],
+    limit: Annotated[int, Query(ge=1, le=10_000)] = 1_000,
+) -> list[destiny_sdk.imports.ImportRecordRead]:
+    """List import records."""
+    records = await import_service.get_import_records(limit)
+    return [
+        import_anti_corruption_service.import_record_to_sdk(record)
+        for record in records
+    ]
 
 
 @import_record_router.post("/", status_code=status.HTTP_201_CREATED)
