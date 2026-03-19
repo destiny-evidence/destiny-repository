@@ -717,8 +717,10 @@ async def test_get_reference_changesets_from_enhancements(fake_uow, fake_reposit
 
 
 @pytest.mark.asyncio
-async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_robot):
-    """Test the creation of a robot enhancement batch."""
+async def test_claim_and_create_robot_enhancement_batch(
+    fake_repository, fake_uow, test_robot
+):
+    """Test atomic claiming of pending enhancements and batch creation."""
     mock_blob_repository = AsyncMock()
     mock_blob_repository.upload_file_to_blob_storage.return_value = BlobStorageFile(
         location="minio",
@@ -757,27 +759,35 @@ async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_ro
             """Get hydrated references by IDs (simplified for testing)."""
             return await self.get_by_pks(reference_ids)
 
+    class FakePendingEnhancementRepository(fake_repository):
+        async def find_available_for_robot(self, robot_id, limit):
+            """Fake implementation of the locking query."""
+            results = [
+                pe
+                for pe in self.repository.values()
+                if pe.robot_id == robot_id
+                and pe.robot_enhancement_batch_id is None
+                and pe.status == PendingEnhancementStatus.PENDING
+            ]
+            return results[:limit]
+
     uow = fake_uow(
         references=FakeReferencesRepository(init_entries=references),
-        pending_enhancements=fake_repository(init_entries=pending_enhancements),
+        pending_enhancements=FakePendingEnhancementRepository(
+            init_entries=pending_enhancements
+        ),
         robot_enhancement_batches=fake_repository(),
     )
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
 
-    batch_pending_enhancements = await service.get_pending_enhancements_for_robot(
-        robot_id=test_robot.id, limit=10
-    )
-
-    assert len(batch_pending_enhancements) == 3
-
     lease = datetime.timedelta(minutes=5)
     expected_expiry_time = utc_now() + lease
 
-    created_batch = await service.create_robot_enhancement_batch(
+    created_batch = await service.claim_and_create_robot_enhancement_batch(
         robot_id=test_robot.id,
-        pending_enhancements=batch_pending_enhancements,
+        limit=10,
         lease_duration=lease,
         blob_repository=mock_blob_repository,
     )
@@ -812,6 +822,36 @@ async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_ro
 
     assert created_batch.reference_data_file is not None
     assert created_batch.reference_data_file.endswith(".jsonl")
+
+
+@pytest.mark.asyncio
+async def test_claim_and_create_robot_enhancement_batch_returns_none_when_empty(
+    fake_repository, fake_uow, test_robot
+):
+    """Test that None is returned when no pending enhancements are available."""
+    mock_blob_repository = AsyncMock()
+
+    class FakePendingEnhancementRepository(fake_repository):
+        async def find_available_for_robot(self, robot_id, limit):
+            return []
+
+    uow = fake_uow(
+        pending_enhancements=FakePendingEnhancementRepository(),
+        robot_enhancement_batches=fake_repository(),
+    )
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+
+    result = await service.claim_and_create_robot_enhancement_batch(
+        robot_id=test_robot.id,
+        limit=10,
+        lease_duration=datetime.timedelta(minutes=5),
+        blob_repository=mock_blob_repository,
+    )
+
+    assert result is None
+    mock_blob_repository.upload_file_to_blob_storage.assert_not_awaited()
 
 
 @pytest.mark.asyncio
