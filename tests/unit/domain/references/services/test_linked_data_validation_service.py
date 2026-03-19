@@ -16,9 +16,7 @@ _FIXTURES_DIR = Path(__file__).parent / "fixtures"
 def service() -> LinkedDataValidationService:
     ontology = Graph()
     ontology.parse(str(_FIXTURES_DIR / "evrepo-core.ttl"), format="turtle")
-    shapes = Graph()
-    shapes.parse(str(_FIXTURES_DIR / "evrepo-core-shapes.ttl"), format="turtle")
-    return LinkedDataValidationService(ontology=ontology, shapes=shapes)
+    return LinkedDataValidationService(ontology=ontology)
 
 
 EVREPO = "https://vocab.evidence-repository.org/"
