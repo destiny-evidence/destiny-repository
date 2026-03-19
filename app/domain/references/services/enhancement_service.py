@@ -59,11 +59,13 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         self,
         anti_corruption_service: ReferenceAntiCorruptionService,
         sql_uow: AsyncSqlUnitOfWork,
-        linked_data_validation_service: LinkedDataValidationService,
+        linked_data_validation_service: LinkedDataValidationService | None = None,
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow)
-        self._linked_data_validation_service = linked_data_validation_service
+        self._linked_data_validation_service = (
+            linked_data_validation_service or LinkedDataValidationService()
+        )
 
     async def mark_robot_enhancement_batch_failed(
         self, robot_enhancement_batch_id: UUID, error: str
