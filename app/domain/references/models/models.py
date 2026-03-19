@@ -524,6 +524,25 @@ class ReferenceSearchFields(ProjectedBaseModel):
         ),
     )
 
+    linked_data_concepts: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Full concept URIs from LinkedDataEnhancements with coded status."
+        ),
+    )
+
+    linked_data_labels: list[str] = Field(
+        default_factory=list,
+        description="SKOS prefLabel values for each linked data concept.",
+    )
+
+    linked_data_evaluated_properties: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Property URIs for all dimensions evaluated in LinkedDataEnhancements."
+        ),
+    )
+
     def to_canonical_candidate_search_fields(self) -> CandidateCanonicalSearchFields:
         """Return fields needed for candidate canonical selection."""
         return CandidateCanonicalSearchFields(
@@ -545,7 +564,15 @@ class ReferenceSearchFields(ProjectedBaseModel):
             return value
         return cls._normalise_string(value)
 
-    @field_validator("authors", "annotations", "evaluated_schemes", mode="after")
+    @field_validator(
+        "authors",
+        "annotations",
+        "evaluated_schemes",
+        "linked_data_concepts",
+        "linked_data_labels",
+        "linked_data_evaluated_properties",
+        mode="after",
+    )
     @classmethod
     def normalise_string_list_validator(cls, value: list[str]) -> list[str]:
         """Normalise string list fields by stripping whitespace."""
