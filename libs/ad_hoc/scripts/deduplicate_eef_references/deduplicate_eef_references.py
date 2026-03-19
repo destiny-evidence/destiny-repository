@@ -141,7 +141,7 @@ def link_duplicates(
     for i, chunk in enumerate(chunks, 1):
         print(f"  Chunk {i}/{len(chunks)} ({len(chunk)} decisions)")
         response = client.get_client().post(
-            "/references/duplicate-decisions",
+            "/references/duplicate-decisions/",
             json=[d.model_dump(mode="json") for d in chunk],
             timeout=60,
         )
