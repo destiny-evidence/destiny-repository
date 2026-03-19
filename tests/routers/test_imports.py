@@ -120,6 +120,38 @@ def valid_import() -> SQLImportRecord:
     )
 
 
+async def test_list_imports(
+    session: AsyncSession, client: AsyncClient, valid_import: SQLImportRecord
+) -> None:
+    """Test that we can list all import records."""
+    session.add(valid_import)
+    import2 = SQLImportRecord(
+        search_string="another search",
+        searched_at=datetime.datetime.now(datetime.UTC),
+        processor_name="test processor 2",
+        processor_version="0.0.2",
+        notes=None,
+        source_name="EEF",
+        expected_reference_count=5,
+        status=ImportRecordStatus.CREATED,
+    )
+    session.add(import2)
+    await session.commit()
+
+    response = await client.get("/v1/imports/records/")
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.json()) == 2
+    returned_ids = {r["id"] for r in response.json()}
+    assert returned_ids == {str(valid_import.id), str(import2.id)}
+
+
+async def test_list_imports_empty(client: AsyncClient) -> None:
+    """Test that listing imports returns an empty list when none exist."""
+    response = await client.get("/v1/imports/records/")
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == []
+
+
 async def test_get_import(
     session: AsyncSession, client: AsyncClient, valid_import: SQLImportRecord
 ) -> None:

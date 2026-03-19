@@ -274,6 +274,28 @@ class GenericAsyncSqlRepository(
         return [ref.to_domain(preload=preload) for ref in result.scalars().all()]
 
     @trace_repository_method(tracer)
+    async def get_some(
+        self,
+        limit: int,
+        preload: list[GenericSQLPreloadableType] | None = None,
+    ) -> list[GenericDomainModelType]:
+        """
+        Get a limited number of records from the repository.
+
+        Args:
+        - limit (int): The maximum number of records to return.
+        - preload (list[str]): A list of attributes to preload using a join.
+
+        Returns:
+        - list[GenericDomainModelType]: A list of domain models.
+
+        """
+        options = self._get_relationship_loads(preload)
+        query = select(self._persistence_cls).options(*options).limit(limit)
+        result = await self._session.execute(query)
+        return [ref.to_domain(preload=preload) for ref in result.scalars().all()]
+
+    @trace_repository_method(tracer)
     async def verify_pk_existence(self, pks: list[UUID]) -> None:
         """
         Check if every pk exists in the database.
