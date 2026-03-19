@@ -15,6 +15,7 @@ from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
+    EnhancementType,
     PendingEnhancement,
     PendingEnhancementStatus,
     RobotEnhancementBatch,
@@ -58,7 +59,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         self,
         anti_corruption_service: ReferenceAntiCorruptionService,
         sql_uow: AsyncSqlUnitOfWork,
-        linked_data_validation_service: LinkedDataValidationService | None = None,
+        linked_data_validation_service: LinkedDataValidationService,
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow)
@@ -249,18 +250,15 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         enhancement: destiny_sdk.enhancements.Enhancement,
     ) -> destiny_sdk.robots.LinkedRobotError | None:
         """Validate a LinkedDataEnhancement against the ontology, if applicable."""
-        if self._linked_data_validation_service is None:
-            return None
-
-        if not isinstance(
-            enhancement.content,
-            destiny_sdk.enhancements.LinkedDataEnhancement,
-        ):
+        if enhancement.content.enhancement_type != EnhancementType.LINKED_DATA:
             return None
 
         result = self._linked_data_validation_service.validate(
             data=enhancement.content.data,
+            vocabulary_uri=str(enhancement.content.vocabulary_uri),
         )
+        if result is None:
+            return None
         if not result.conforms:
             return destiny_sdk.robots.LinkedRobotError(
                 reference_id=enhancement.reference_id,

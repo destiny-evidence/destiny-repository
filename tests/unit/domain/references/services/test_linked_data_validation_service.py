@@ -58,8 +58,12 @@ VALID_DATA = {
 }
 
 
+VOCAB_URI = "https://vocab.evidence-repository.org/vocabulary/v1"
+
+
 def test_valid_data_conforms(service: LinkedDataValidationService):
-    result = service.validate(data=VALID_DATA)
+    result = service.validate(data=VALID_DATA, vocabulary_uri=VOCAB_URI)
+    assert result is not None
     assert result.conforms
     assert result.errors == []
 
@@ -76,7 +80,8 @@ def test_missing_required_property_fails(service: LinkedDataValidationService):
             },
         },
     }
-    result = service.validate(data=data)
+    result = service.validate(data=data, vocabulary_uri=VOCAB_URI)
+    assert result is not None
     assert not result.conforms
     assert any("SHACL validation failed" in e for e in result.errors)
 
@@ -90,19 +95,22 @@ def test_uri_with_comma_fails(service: LinkedDataValidationService):
             "@id": f"{EVREPO}hedgesG,cohensD",
         },
     }
-    result = service.validate(data=data)
+    result = service.validate(data=data, vocabulary_uri=VOCAB_URI)
+    assert result is not None
     assert not result.conforms
     assert any("unencoded comma" in e for e in result.errors)
 
 
 def test_empty_expansion_fails(service: LinkedDataValidationService):
     """Empty JSON-LD that expands to nothing."""
-    result = service.validate(data={"@context": {}})
+    result = service.validate(data={"@context": {}}, vocabulary_uri=VOCAB_URI)
+    assert result is not None
     assert not result.conforms
     assert any("empty graph" in e for e in result.errors)
 
 
 def test_malformed_jsonld_fails(service: LinkedDataValidationService):
     """JSON-LD that cannot be expanded."""
-    result = service.validate(data={"@context": 12345})
+    result = service.validate(data={"@context": 12345}, vocabulary_uri=VOCAB_URI)
+    assert result is not None
     assert not result.conforms
