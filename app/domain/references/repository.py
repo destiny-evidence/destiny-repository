@@ -23,7 +23,7 @@ from sqlalchemy import (
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.core.config import DedupCandidateScoringConfig
+from app.core.config import DedupCandidateScoringConfig, get_settings
 from app.core.telemetry.repository import trace_repository_method
 from app.domain.references.models.es import (
     ReferenceDocument,
@@ -89,6 +89,7 @@ from app.persistence.repository import GenericAsyncRepository
 from app.persistence.sql.repository import GenericAsyncSqlRepository
 from app.utils.regex import UNICODE_LETTER_PATTERN, is_meaningful_token
 
+settings = get_settings()
 tracer = trace.get_tracer(__name__)
 
 
@@ -559,6 +560,9 @@ class RobotAutomationESRepository(
         :return: The results of the percolation.
         :rtype: list[RobotAutomationPercolationResult]
         """
+        if not settings.feature_flags.enable_percolation:
+            return []
+
         documents = [
             (
                 self._persistence_cls.percolatable_document_from_domain(percolatable)
