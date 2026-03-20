@@ -361,6 +361,39 @@ def test_linked_data_enhancement_requires_valid_urls():
         )
 
 
+def test_linked_data_enhancement_missing_context_key():
+    with pytest.raises(ValidationError, match="@context"):
+        destiny_sdk.enhancements.LinkedDataEnhancement(
+            context_uri="https://vocab.evrepo.org/context/v1.jsonld",
+            vocabulary_uri="https://vocab.evrepo.org/vocabulary/v1",
+            data={"@type": "ScholarlyArticle", "name": "Test"},
+        )
+
+
+def test_linked_data_enhancement_non_string_context():
+    with pytest.raises(ValidationError, match="@context must be a string URI"):
+        destiny_sdk.enhancements.LinkedDataEnhancement(
+            context_uri="https://vocab.evrepo.org/context/v1.jsonld",
+            vocabulary_uri="https://vocab.evrepo.org/vocabulary/v1",
+            data={
+                "@context": ["https://vocab.evrepo.org/context/v1.jsonld"],
+                "@type": "ScholarlyArticle",
+            },
+        )
+
+
+def test_linked_data_enhancement_mismatched_context():
+    with pytest.raises(ValidationError, match="does not match"):
+        destiny_sdk.enhancements.LinkedDataEnhancement(
+            context_uri="https://vocab.evrepo.org/context/v1.jsonld",
+            vocabulary_uri="https://vocab.evrepo.org/vocabulary/v1",
+            data={
+                "@context": "https://wrong.example.com/context.jsonld",
+                "@type": "ScholarlyArticle",
+            },
+        )
+
+
 def test_pagination_empty_string_to_none():
     """Test that empty pagination strings are converted to None."""
     pagination = destiny_sdk.enhancements.Pagination(

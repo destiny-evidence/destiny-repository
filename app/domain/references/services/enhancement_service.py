@@ -15,6 +15,7 @@ from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
+    EnhancementType,
     PendingEnhancement,
     PendingEnhancementStatus,
     RobotEnhancementBatch,
@@ -25,6 +26,9 @@ from app.domain.references.models.validators import (
 )
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
+)
+from app.domain.references.services.linked_data_validation_service import (
+    LinkedDataValidationService,
 )
 from app.domain.service import GenericService
 from app.persistence.blob.models import (
@@ -55,9 +59,13 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         self,
         anti_corruption_service: ReferenceAntiCorruptionService,
         sql_uow: AsyncSqlUnitOfWork,
+        linked_data_validation_service: LinkedDataValidationService | None = None,
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow)
+        self._linked_data_validation_service = (
+            linked_data_validation_service or LinkedDataValidationService()
+        )
 
     async def mark_robot_enhancement_batch_failed(
         self, robot_enhancement_batch_id: UUID, error: str
@@ -238,6 +246,29 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         return await self._anti_corruption_service.enhancement_request_to_sdk_robot(
             enhancement_request
         )
+
+    def _validate_linked_data_enhancement(
+        self,
+        enhancement: destiny_sdk.enhancements.Enhancement,
+    ) -> destiny_sdk.robots.LinkedRobotError | None:
+        """Validate a LinkedDataEnhancement against the ontology, if applicable."""
+        if enhancement.content.enhancement_type != EnhancementType.LINKED_DATA:
+            return None
+
+        result = self._linked_data_validation_service.validate(
+            data=enhancement.content.data,
+            vocabulary_uri=str(enhancement.content.vocabulary_uri),
+        )
+        if result is None:
+            return None
+        if not result.conforms:
+            return destiny_sdk.robots.LinkedRobotError(
+                reference_id=enhancement.reference_id,
+                message=(
+                    "LinkedData validation failed: " f"{'; '.join(result.errors)}"
+                ),
+            )
+        return None
 
     async def _process_robot_error_line(
         self,
@@ -422,15 +453,29 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                             processed_reference_ids.add(
                                 validated_result.enhancement_to_add.reference_id
                             )
-                            result_entry = await self._process_enhancement_line(
+
+                            # Validate LinkedDataEnhancements against ontology
+                            ld_error = self._validate_linked_data_enhancement(
                                 validated_result.enhancement_to_add,
-                                add_enhancement,
-                                line_no,
-                                attempted_reference_ids,
-                                results,
-                                successful_reference_ids,
-                                discarded_enhancement_reference_ids,
                             )
+                            if ld_error:
+                                validated_result = EnhancementResultValidator(
+                                    robot_error=ld_error,
+                                )
+                                result_entry = await self._process_robot_error_line(
+                                    ld_error,
+                                    attempted_reference_ids,
+                                )
+                            else:
+                                result_entry = await self._process_enhancement_line(
+                                    validated_result.enhancement_to_add,
+                                    add_enhancement,
+                                    line_no,
+                                    attempted_reference_ids,
+                                    results,
+                                    successful_reference_ids,
+                                    discarded_enhancement_reference_ids,
+                                )
 
                         if result_entry:  # Only yield non-empty results
                             yield result_entry
