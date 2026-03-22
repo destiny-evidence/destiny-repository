@@ -7,6 +7,7 @@ import destiny_sdk
 import httpx
 import pytest
 
+from app.core.exceptions import MessageTooLargeError
 from app.domain.imports.models.models import (
     ImportBatch,
     ImportBatchStatus,
@@ -309,6 +310,55 @@ class TestDistributeImportBatch:
 
         assert client.attempt_count == 2
         assert queued_lines == ["ref1", "ref2", "ref3", "ref4"]
+        assert client.streamed_url == str(import_batch.storage_url)
+
+    @pytest.mark.asyncio
+    async def test_proceeds_when_a_reference_is_too_large_to_queue(
+        self, monkeypatch, fake_uow
+    ):
+        """Test batch continues if distribution encounters an oversized reference."""
+
+        import_batch = ImportBatch(
+            id=uuid7(),
+            storage_url="https://fake-storage-url.com",
+            status=ImportBatchStatus.CREATED,
+            import_record_id=uuid7(),
+        )
+
+        real_big_reference = "Too Dang Big"
+        lines = ["ref1", real_big_reference, "ref2"]
+
+        client = self.FakeClient(lines)
+        # Accept **kwargs to absorb follow_redirects=False
+        monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: client)
+
+        queued_lines = []
+
+        async def fake_register_result(result):
+            return result
+
+        async def fake_update_result(import_result_id, **kwargs: object):  # noqa: ARG001
+            return import_result_id
+
+        async def fake_queue_task_with_trace(*args, otel_enabled):  # noqa: ARG001
+            if args[2] == real_big_reference:
+                raise MessageTooLargeError(detail="message size limit exceeded.")
+            queued_lines.append(args[2])
+
+        service = ImportService(
+            ImportAntiCorruptionService(), fake_uow(batches=[import_batch], results=[])
+        )
+        monkeypatch.setattr(service, "register_result", fake_register_result)
+        monkeypatch.setattr(service, "update_import_result", fake_update_result)
+        monkeypatch.setattr(
+            "app.domain.imports.service.queue_task_with_trace",
+            fake_queue_task_with_trace,
+        )
+
+        await service.distribute_import_batch(import_batch)
+
+        assert client.attempt_count == 1
+        assert queued_lines == ["ref1", "ref2"]
         assert client.streamed_url == str(import_batch.storage_url)
 
 
