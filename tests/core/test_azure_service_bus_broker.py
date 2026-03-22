@@ -15,11 +15,12 @@ from azure.servicebus.aio import (
     ServiceBusClient,
 )
 from azure.servicebus.amqp import AmqpAnnotatedMessage
+from azure.servicebus.exceptions import MessageSizeExceededError
 from taskiq import BrokerMessage
 from taskiq.utils import maybe_awaitable
 
 from app.core.azure_service_bus_broker import AzureServiceBusBroker
-from app.core.exceptions import MessageBrokerError
+from app.core.exceptions import MessageBrokerError, MessageTooLargeError
 
 
 async def get_first_task(broker: AzureServiceBusBroker):
@@ -229,6 +230,31 @@ async def test_priority_handling(
     assert isinstance(sent_message, AmqpAnnotatedMessage)
     assert sent_message.header is not None
     assert sent_message.header.priority == 5
+
+
+@pytest.mark.anyio
+async def test_raise_custom_exception_on_oversized_message(
+    broker: AzureServiceBusBroker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that messages that are too large raise a MessageTooLargeError."""
+
+    async def mock_send_messages(message: AmqpAnnotatedMessage) -> None:  # noqa: ARG001
+        raise MessageSizeExceededError(message="message size limit exceeded")
+
+    monkeypatch.setattr(broker.sender, "send_messages", mock_send_messages)
+
+    with pytest.raises(MessageTooLargeError, match="size limit exceeded"):
+        await broker.kick(
+            BrokerMessage(
+                task_id=uuid7().hex,
+                task_name=uuid7().hex,
+                message=b"A big message we definitely cannot possibly process this",
+                labels={
+                    "label1": "val1",
+                },
+            )
+        )
 
 
 @pytest.mark.anyio

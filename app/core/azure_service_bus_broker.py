@@ -24,11 +24,12 @@ from azure.servicebus.aio import (
     ServiceBusSession,
 )
 from azure.servicebus.amqp import AmqpAnnotatedMessage, AmqpMessageBodyType
+from azure.servicebus.exceptions import MessageSizeExceededError
 from pydantic import TypeAdapter
 from taskiq import AckableMessage, AsyncBroker, BrokerMessage
 
 from app.core.config import get_settings
-from app.core.exceptions import MessageBrokerError
+from app.core.exceptions import MessageBrokerError, MessageTooLargeError
 from app.core.telemetry.logger import get_logger
 
 _T = TypeVar("_T")
@@ -151,6 +152,7 @@ class AzureServiceBusBroker(AsyncBroker):
         appropriate metadata and routing.
 
         :raises MessageBrokerError:detail= if startup wasn't called.
+        :raises MessageTooLargeError:detail= if the message is too large.
         :param message: message to send.
         """
         if self.sender is None or self.service_bus_client is None:
@@ -174,20 +176,24 @@ class AzureServiceBusBroker(AsyncBroker):
             },
         )
 
-        # Handle delay
-        delay = parse_val(int, message.labels.get("delay"))
+        try:
+            # Handle delay
+            delay = parse_val(int, message.labels.get("delay"))
+            logger.debug("Sending message...", task_id=message.task_id, delay=delay)
 
-        logger.debug("Sending message...", task_id=message.task_id, delay=delay)
-
-        if delay is None:
-            # Send message directly to main queue
-            async with self._send_lock:
-                await self.sender.send_messages(service_bus_message)
-        else:
-            # Use Azure's built-in scheduled messages feature
-            scheduled_time = datetime.now(UTC) + timedelta(seconds=delay)
-            async with self._send_lock:
-                await self.sender.schedule_messages(service_bus_message, scheduled_time)
+            if delay is None:
+                # Send message directly to main queue
+                async with self._send_lock:
+                    await self.sender.send_messages(service_bus_message)
+            else:
+                # Use Azure's built-in scheduled messages feature
+                scheduled_time = datetime.now(UTC) + timedelta(seconds=delay)
+                async with self._send_lock:
+                    await self.sender.schedule_messages(
+                        service_bus_message, scheduled_time
+                    )
+        except MessageSizeExceededError as exc:
+            raise MessageTooLargeError(detail=exc.message) from exc
 
     async def listen(self) -> AsyncGenerator[AckableMessage, None]:
         """
