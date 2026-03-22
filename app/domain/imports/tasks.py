@@ -74,10 +74,13 @@ async def get_reference_service(
 
 
 @broker.task
-async def distribute_import_batch(import_batch_id: UUID) -> None:
+async def distribute_import_batch(
+    import_record_id: UUID, import_batch_id: UUID
+) -> None:
     """Async logic for processing an import batch."""
     name_span("Distribute import batch")
     trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_batch_id))
+    trace_attribute(Attributes.IMPORT_RECORD_ID, str(import_record_id))
     async with get_sql_unit_of_work() as sql_uow:
         import_service = await get_import_service(sql_uow=sql_uow)
 
