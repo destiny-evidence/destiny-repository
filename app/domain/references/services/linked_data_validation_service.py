@@ -122,7 +122,7 @@ class LinkedDataValidationService:
             errors.append(f"SHACL validation failed:\n{results_text}")
 
         return LinkedDataValidationResult(
-            conforms=len(errors) == 0,
+            conforms=conforms,
             errors=errors,
         )
 
