@@ -7,7 +7,7 @@ from pyld import jsonld
 from pyld.jsonld import JsonLdError
 from pyshacl import validate as shacl_validate
 from pyshacl.errors import ReportableRuntimeError
-from rdflib import Graph, URIRef
+from rdflib import Graph
 
 from app.core.config import get_settings
 
@@ -50,7 +50,7 @@ class LinkedDataValidationService:
         # https://github.com/destiny-evidence/destiny-repository/issues/593
         return None
 
-    def validate(  # noqa: PLR0911
+    def validate(
         self, data: dict, vocabulary_uri: str
     ) -> LinkedDataValidationResult | None:
         """
@@ -61,8 +61,7 @@ class LinkedDataValidationService:
         Validates:
         1. JSON-LD expansion succeeds and produces a non-empty graph.
         2. The expanded data can be converted to an rdflib graph.
-        3. No URIs in the data contain unencoded commas.
-        4. The data conforms to the SHACL shapes.
+        3. The data conforms to the SHACL shapes.
         """
         ontology = self._ontology or self._resolve_ontology(vocabulary_uri)
         if ontology is None:
@@ -98,12 +97,7 @@ class LinkedDataValidationService:
                 errors=[f"Failed to convert JSON-LD to RDF graph: {exc}"],
             )
 
-        # Step 3: Reject URIs containing unencoded commas
-        comma_errors = _validate_no_comma_uris(data_graph)
-        if comma_errors:
-            return LinkedDataValidationResult(conforms=False, errors=comma_errors)
-
-        # Step 4: SHACL validation
+        # Step 3: SHACL validation
         try:
             conforms, _graph, results_text = shacl_validate(
                 data_graph,
@@ -125,17 +119,3 @@ class LinkedDataValidationService:
             conforms=conforms,
             errors=errors,
         )
-
-
-def _validate_no_comma_uris(data_graph: Graph) -> list[str]:
-    """Reject URIs containing unencoded commas."""
-    errors: list[str] = []
-    seen: set[str] = set()
-    for s, p, o in data_graph:
-        for node in (s, p, o):
-            if isinstance(node, URIRef):
-                uri = str(node)
-                if "," in uri and uri not in seen:
-                    seen.add(uri)
-                    errors.append(f"URI contains unencoded comma: '{uri}'")
-    return errors

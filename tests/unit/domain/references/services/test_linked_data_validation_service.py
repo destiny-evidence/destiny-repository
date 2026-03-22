@@ -86,21 +86,6 @@ def test_missing_required_property_fails(service: LinkedDataValidationService):
     assert any("SHACL validation failed" in e for e in result.errors)
 
 
-def test_uri_with_comma_fails(service: LinkedDataValidationService):
-    """URIs containing unencoded commas are rejected."""
-    data = {
-        "@context": {"evrepo": EVREPO},
-        "@type": "evrepo:EffectEstimate",
-        "evrepo:effectSizeMetric": {
-            "@id": f"{EVREPO}hedgesG,cohensD",
-        },
-    }
-    result = service.validate(data=data, vocabulary_uri=VOCAB_URI)
-    assert result is not None
-    assert not result.conforms
-    assert any("unencoded comma" in e for e in result.errors)
-
-
 def test_empty_expansion_fails(service: LinkedDataValidationService):
     """Empty JSON-LD that expands to nothing."""
     result = service.validate(data={"@context": {}}, vocabulary_uri=VOCAB_URI)
