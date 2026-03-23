@@ -499,9 +499,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             return reference_create_result
 
         # Strip linked data enhancements that fail validation
-        ref_input = reference_create_result.reference
         valid_enhancements = []
-        for enhancement in ref_input.enhancements or []:
+        for enhancement in reference_create_result.reference.enhancements or []:
             if enhancement.content.enhancement_type == EnhancementType.LINKED_DATA:
                 ld_result = self._linked_data_validation_service.validate(
                     data=enhancement.content.data,
@@ -511,7 +510,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     reference_create_result.errors.extend(ld_result.errors)
                     continue
             valid_enhancements.append(enhancement)
-        ref_input.enhancements = valid_enhancements
+        reference_create_result.reference.enhancements = valid_enhancements
 
         reference = self._anti_corruption_service.reference_from_sdk_file_input(
             reference_create_result.reference
