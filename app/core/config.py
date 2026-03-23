@@ -327,6 +327,8 @@ class TOML(BaseModel):
 class FeatureFlags(BaseModel):
     """Feature flags for the application."""
 
+    enable_percolation: bool = True
+
 
 class DedupCandidateScoringConfig(BaseModel):
     """Configuration for deduplication candidate search scoring."""
