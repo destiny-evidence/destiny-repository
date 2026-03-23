@@ -7,6 +7,7 @@ values and handling messaging operations.
 """
 
 import asyncio
+import gzip
 from collections.abc import AsyncGenerator, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TypeVar
@@ -36,6 +37,8 @@ _T = TypeVar("_T")
 
 settings = get_settings()
 logger = get_logger(__name__)
+
+_COMPRESSION_THRESHOLD_BYTES = 200 * 1024
 
 
 def parse_val(
@@ -163,16 +166,23 @@ class AzureServiceBusBroker(AsyncBroker):
         if priority is not None:
             headers["priority"] = priority
 
+        body = message.message
+        compressed = False
+        if len(body) > _COMPRESSION_THRESHOLD_BYTES:
+            body = gzip.compress(body)
+            compressed = True
+
         # Create service bus message
         service_bus_message = AmqpAnnotatedMessage(
-            data_body=message.message,
+            data_body=body,
             header=headers,
             properties={
                 "message_id": message.task_id,
                 "correlation_id": message.task_id,
             },
             application_properties={
-                "renew_lock": str(message.labels.get("renew_lock", False))
+                "renew_lock": str(message.labels.get("renew_lock", False)),
+                "compressed": compressed,
             },
         )
 
@@ -221,17 +231,17 @@ class AzureServiceBusBroker(AsyncBroker):
                     async def ack_message(
                         sb_message: ServiceBusReceivedMessage = sb_message,
                     ) -> None:
-                        logger.info(
-                            "Attempting to complete message", message=str(sb_message)
-                        )
+                        task_id = sb_message.properties.message_id
+                        logger.info("Attempting to complete message", task_id=task_id)
                         if self.receiver is not None:
                             async with self._receive_lock:
-                                logger.info("Completing message", sb_message=sb_message)
+                                logger.info("Completing message", task_id=task_id)
                                 await self.receiver.complete_message(sb_message)
-                                logger.info("Completed message")
+                                logger.info("Completed message", task_id=task_id)
                         else:
                             logger.error(
-                                "Receiver is None. Cannot complete the message."
+                                "Receiver is None. Cannot complete the message.",
+                                task_id=task_id,
                             )
 
                     async def lock_renewal_failure_callback(
@@ -240,7 +250,7 @@ class AzureServiceBusBroker(AsyncBroker):
                     ) -> None:
                         logger.error(
                             "Lock renewal failed for message",
-                            message=str(sb_message),
+                            task_id=sb_message.properties.message_id,
                             exception=exception,
                         )
                         logger.info("Attempting to re-register lock renewal")
@@ -283,6 +293,15 @@ class AzureServiceBusBroker(AsyncBroker):
                             body_type=body_type,
                         )
                         data = str(raw_body).encode("utf-8")
+
+                    if TypeAdapter(bool).validate_python(
+                        properties.get(
+                            b"compressed", properties.get("compressed", False)
+                        )
+                        if properties
+                        else False
+                    ):
+                        data = gzip.decompress(data)
 
                     ackable = AckableMessage(
                         data=data,
