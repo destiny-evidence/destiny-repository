@@ -1083,17 +1083,27 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     @sql_unit_of_work
-    async def get_pending_enhancements_for_robot(
-        self, robot_id: UUID, limit: int
-    ) -> list[PendingEnhancement]:
-        """Get pending enhancements for a robot."""
-        pending_enhancements = await self.sql_uow.pending_enhancements.find(
-            robot_id=robot_id,
-            robot_enhancement_batch_id=None,
-            status=PendingEnhancementStatus.PENDING,
-            order_by="created_at",
-            limit=limit,
+    async def claim_and_create_robot_enhancement_batch(
+        self,
+        robot_id: UUID,
+        limit: int,
+        lease_duration: datetime.timedelta,
+        blob_repository: BlobRepository,
+    ) -> RobotEnhancementBatch | None:
+        """
+        Atomically claim pending enhancements and create a robot enhancement batch.
+
+        Returns None if no pending enhancements are available.
+        """
+        pending_enhancements = (
+            await self.sql_uow.pending_enhancements.find_available_for_robot(
+                robot_id=robot_id,
+                limit=limit,
+            )
         )
+
+        if not pending_enhancements:
+            return None
 
         # There is a restriction in EnhancementService._categorize_enhancements
         # that reference IDs are unique per batch. The below adapter is a band-aid to
@@ -1101,31 +1111,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         # given reference ID are filtered out, and hence not accepted, and can be picked
         # up in a future batch.
         # See https://github.com/destiny-evidence/destiny-repository/issues/353.
-        return list(
+        pending_enhancements = list(
             {pe.reference_id: pe for pe in reversed(pending_enhancements)}.values()
         )
 
-    @sql_unit_of_work
-    async def create_robot_enhancement_batch(
-        self,
-        robot_id: UUID,
-        pending_enhancements: list[PendingEnhancement],
-        lease_duration: datetime.timedelta,
-        blob_repository: BlobRepository,
-    ) -> RobotEnhancementBatch:
-        """
-        Create a robot enhancement batch.
-
-        Args:
-            robot_id (UUID): The ID of the robot.
-            pending_enhancements (list[PendingEnhancement]): The list of pending
-                enhancements to include in the batch.
-            blob_repository (BlobRepository): The blob repository.
-
-        Returns:
-            RobotEnhancementBatch: The created robot enhancement batch.
-
-        """
         robot_enhancement_batch = RobotEnhancementBatch(robot_id=robot_id)
 
         await self.sql_uow.robot_enhancement_batches.add(robot_enhancement_batch)

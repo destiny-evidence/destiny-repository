@@ -768,6 +768,33 @@ class PendingEnhancementSQLRepository(
         return await super().bulk_update_by_filter(filter_conditions, **kwargs)
 
     @trace_repository_method(tracer)
+    async def find_available_for_robot(
+        self,
+        robot_id: UUID,
+        limit: int,
+    ) -> list[DomainPendingEnhancement]:
+        """
+        Find pending enhancements available for a robot, locking rows.
+
+        Uses SELECT ... FOR UPDATE SKIP LOCKED to prevent concurrent robot
+        replicas from claiming the same pending enhancements.
+        """
+        query = (
+            select(SQLPendingEnhancement)
+            .where(
+                SQLPendingEnhancement.robot_id == robot_id,
+                SQLPendingEnhancement.robot_enhancement_batch_id.is_(None),
+                SQLPendingEnhancement.status == PendingEnhancementStatus.PENDING,
+            )
+            .order_by(SQLPendingEnhancement.created_at)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+
+        result = await self._session.execute(query)
+        return [record.to_domain() for record in result.scalars().all()]
+
+    @trace_repository_method(tracer)
     async def count_retry_depth(self, pending_enhancement_id: UUID) -> int:
         """
         Count how many times a pending enhancement has been retried.
