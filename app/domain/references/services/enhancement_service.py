@@ -250,11 +250,11 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
     def _validate_linked_data_enhancement(
         self,
         enhancement: destiny_sdk.enhancements.Enhancement,
-    ) -> destiny_sdk.robots.LinkedRobotError | None:
+    ) -> destiny_sdk.robots.LinkedRobotError:
         """Validate a LinkedDataEnhancement against the ontology, if applicable."""
         if enhancement.content.enhancement_type != EnhancementType.LINKED_DATA:
-            return None
-
+            msg = "Enhancement must be of type LINKED_DATA for LinkedData validation."
+            raise TypeError(msg)
         result = self._linked_data_validation_service.validate(
             data=enhancement.content.data,
             vocabulary_uri=str(enhancement.content.vocabulary_uri),
@@ -455,15 +455,16 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                             )
 
                             # Validate LinkedDataEnhancements against ontology
-                            ld_error = self._validate_linked_data_enhancement(
-                                validated_result.enhancement_to_add,
-                            )
-                            if ld_error:
-                                validated_result = EnhancementResultValidator(
-                                    robot_error=ld_error,
+                            if (
+                                validated_result.enhancement_to_add.content.enhancement_type
+                                == EnhancementType.LINKED_DATA
+                            ) and (
+                                ld_error := self._validate_linked_data_enhancement(
+                                    validated_result.enhancement_to_add,
                                 )
+                            ):
                                 result_entry = await self._process_robot_error_line(
-                                    ld_error,
+                                    EnhancementResultValidator(robot_error=ld_error),
                                     attempted_reference_ids,
                                 )
                             else:
