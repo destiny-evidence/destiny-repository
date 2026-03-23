@@ -478,14 +478,6 @@ class LinkedDataEnhancement(BaseModel):
 
     enhancement_type: Literal[EnhancementType.LINKED_DATA] = EnhancementType.LINKED_DATA
 
-    context_uri: HttpUrl = Field(
-        description=(
-            "The URI of the JSON-LD @context document used to interpret the data. "
-            "This pins the enhancement to a specific version of the vocabulary mapping."
-        ),
-        examples=["https://vocab.evrepo.org/context/v1.jsonld"],
-    )
-
     vocabulary_uri: HttpUrl = Field(
         description=(
             "The URI of the vocabulary against which this data was produced. "
@@ -496,14 +488,15 @@ class LinkedDataEnhancement(BaseModel):
 
     data: dict[str, JsonValue] = Field(
         description=(
-            "The JSON-LD content. When combined with the @context, this forms a "
-            "complete linked data graph."
+            "The JSON-LD content. Must contain an '@context' key with a valid "
+            "URI string. When combined with the @context, this forms a complete "
+            "linked data graph."
         ),
     )
 
     @model_validator(mode="after")
     def validate_context(self) -> Self:
-        """Validate that data contains a @context matching context_uri."""
+        """Validate that data contains a @context with a valid URI."""
         if "@context" not in self.data:
             msg = "data must contain a '@context' key."
             raise ValueError(msg)
@@ -513,12 +506,8 @@ class LinkedDataEnhancement(BaseModel):
             msg = "@context must be a string URI."
             raise ValueError(msg)  # noqa: TRY004
 
-        if context != str(self.context_uri):
-            msg = (
-                f"@context URI '{context}' does not match "
-                f"context_uri '{self.context_uri}'."
-            )
-            raise ValueError(msg)
+        # Validate it's a well-formed URL
+        HttpUrl(context)
 
         return self
 
