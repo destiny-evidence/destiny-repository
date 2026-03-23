@@ -10,8 +10,8 @@ from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from sqlalchemy.exc import DBAPIError
 
 from app.core.config import get_settings
-from app.core.exceptions import SQLIntegrityError
-from app.core.telemetry.attributes import Attributes, trace_attribute
+from app.core.exceptions import MessageTooLargeError, SQLIntegrityError
+from app.core.telemetry.attributes import Attributes, sample_trace, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.otel import new_linked_trace
 from app.core.telemetry.taskiq import queue_task_with_trace
@@ -245,14 +245,22 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                 )
             )
             trace_attribute(Attributes.IMPORT_RESULT_ID, str(import_result.id))
-            await queue_task_with_trace(
-                ("app.domain.imports.tasks", "import_reference"),
-                import_result.id,
-                line,
-                line_number,
-                settings.import_reference_retry_count,
-                otel_enabled=settings.otel_enabled,
-            )
+            try:
+                await queue_task_with_trace(
+                    ("app.domain.imports.tasks", "import_reference"),
+                    import_result.id,
+                    line,
+                    line_number,
+                    settings.import_reference_retry_count,
+                    otel_enabled=settings.otel_enabled,
+                )
+            except MessageTooLargeError as exc:
+                sample_trace()
+                await self.update_import_result(
+                    import_result_id=import_result.id,
+                    status=ImportResultStatus.FAILED,
+                    failure_details=exc.detail,
+                )
 
     async def distribute_import_batch(self, import_batch: ImportBatch) -> None:
         """Distribute an import batch, retrying on connection errors."""
