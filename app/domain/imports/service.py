@@ -11,7 +11,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.core.config import get_settings
 from app.core.exceptions import MessageTooLargeError, SQLIntegrityError
-from app.core.telemetry.attributes import Attributes, trace_attribute
+from app.core.telemetry.attributes import Attributes, sample_trace, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.otel import new_linked_trace
 from app.core.telemetry.taskiq import queue_task_with_trace
@@ -255,6 +255,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                     otel_enabled=settings.otel_enabled,
                 )
             except MessageTooLargeError as exc:
+                sample_trace()
                 await self.update_import_result(
                     import_result_id=import_result.id,
                     status=ImportResultStatus.FAILED,
