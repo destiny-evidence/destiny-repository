@@ -59,13 +59,11 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         self,
         anti_corruption_service: ReferenceAntiCorruptionService,
         sql_uow: AsyncSqlUnitOfWork,
-        linked_data_validation_service: LinkedDataValidationService | None = None,
+        linked_data_validation_service: LinkedDataValidationService,
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow)
-        self._linked_data_validation_service = (
-            linked_data_validation_service or LinkedDataValidationService()
-        )
+        self._linked_data_validation_service = linked_data_validation_service
 
     async def mark_robot_enhancement_batch_failed(
         self, robot_enhancement_batch_id: UUID, error: str
@@ -247,7 +245,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             enhancement_request
         )
 
-    def _validate_linked_data_enhancement(
+    async def _validate_linked_data_enhancement(
         self,
         enhancement: destiny_sdk.enhancements.Enhancement,
     ) -> destiny_sdk.robots.LinkedRobotError | None:
@@ -255,12 +253,10 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         if enhancement.content.enhancement_type != EnhancementType.LINKED_DATA:
             return None
 
-        result = self._linked_data_validation_service.validate(
+        result = await self._linked_data_validation_service.validate(
             data=enhancement.content.data,
             vocabulary_uri=str(enhancement.content.vocabulary_uri),
         )
-        if result is None:
-            return None
         if not result.conforms:
             return destiny_sdk.robots.LinkedRobotError(
                 reference_id=enhancement.reference_id,
@@ -455,7 +451,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                             )
 
                             # Validate LinkedDataEnhancements against ontology
-                            ld_error = self._validate_linked_data_enhancement(
+                            ld_error = await self._validate_linked_data_enhancement(
                                 validated_result.enhancement_to_add,
                             )
                             if ld_error:

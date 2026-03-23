@@ -65,6 +65,7 @@ from app.domain.references.services.synchronizer_service import (
 )
 from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
+from app.external.vocabulary.client import get_vocabulary_artifact_client
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
 from app.persistence.es.persistence import ESSearchResult
@@ -91,7 +92,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
-        self._linked_data_validation_service = LinkedDataValidationService()
+        self._linked_data_validation_service = LinkedDataValidationService(
+            vocab_client=get_vocabulary_artifact_client()
+        )
         self._enhancement_service = EnhancementService(
             anti_corruption_service, sql_uow, self._linked_data_validation_service
         )
@@ -503,11 +506,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         if ref_input.enhancements:
             for enhancement in ref_input.enhancements:
                 if enhancement.content.enhancement_type == EnhancementType.LINKED_DATA:
-                    ld_result = self._linked_data_validation_service.validate(
+                    ld_result = await self._linked_data_validation_service.validate(
                         data=enhancement.content.data,
                         vocabulary_uri=str(enhancement.content.vocabulary_uri),
                     )
-                    if ld_result is not None and not ld_result.conforms:
+                    if not ld_result.conforms:
                         reference_create_result.errors.extend(ld_result.errors)
                         return reference_create_result
 
