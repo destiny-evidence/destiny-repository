@@ -333,11 +333,13 @@ class TestDistributeImportBatch:
         monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: client)
 
         queued_lines = []
+        update_result_calls = []
 
         async def fake_register_result(result):
             return result
 
-        async def fake_update_result(import_result_id, **kwargs: object):  # noqa: ARG001
+        async def fake_update_result(import_result_id, **kwargs: object):
+            update_result_calls.append({"import_result_id": import_result_id, **kwargs})
             return import_result_id
 
         async def fake_queue_task_with_trace(*args, otel_enabled):  # noqa: ARG001
@@ -360,6 +362,12 @@ class TestDistributeImportBatch:
         assert client.attempt_count == 1
         assert queued_lines == ["ref1", "ref2"]
         assert client.streamed_url == str(import_batch.storage_url)
+
+        assert len(update_result_calls) == 1
+        assert update_result_calls[0]["status"] == ImportResultStatus.FAILED
+        assert (
+            update_result_calls[0]["failure_details"] == "message size limit exceeded."
+        )
 
 
 @pytest.mark.asyncio
