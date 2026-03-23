@@ -181,6 +181,7 @@ class AzureServiceBusBroker(AsyncBroker):
                 "correlation_id": message.task_id,
             },
             application_properties={
+                "message_id": message.task_id,
                 "renew_lock": str(message.labels.get("renew_lock", False)),
                 "compressed": compressed,
             },
@@ -231,7 +232,10 @@ class AzureServiceBusBroker(AsyncBroker):
                     async def ack_message(
                         sb_message: ServiceBusReceivedMessage = sb_message,
                     ) -> None:
-                        task_id = sb_message.properties.message_id
+                        task_id = sb_message.application_properties.get(
+                            b"message_id",
+                            sb_message.application_properties.get("message_id"),
+                        )
                         logger.info("Attempting to complete message", task_id=task_id)
                         if self.receiver is not None:
                             async with self._receive_lock:
@@ -250,7 +254,10 @@ class AzureServiceBusBroker(AsyncBroker):
                     ) -> None:
                         logger.error(
                             "Lock renewal failed for message",
-                            task_id=sb_message.properties.message_id,
+                            task_id=sb_message.application_properties.get(
+                                b"message_id",
+                                sb_message.application_properties.get("message_id"),
+                            ),
                             exception=exception,
                         )
                         logger.info("Attempting to re-register lock renewal")
