@@ -51,6 +51,21 @@ class MessageBrokerError(DestinyRepositoryError):
         super().__init__(detail, *args)
 
 
+class MessageTooLargeError(MessageBrokerError):
+    """An exception thrown by a message broker if the message is too large to queue."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the MessageTooLargeError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
 class NotFoundError(DestinyRepositoryError):
     """Exception for when we can't find something we expect to find."""
 

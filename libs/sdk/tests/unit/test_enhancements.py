@@ -277,7 +277,6 @@ def test_association_enhancement_invalid_identifier_type_errors():
 
 def test_linked_data_enhancement_valid():
     linked_data = destiny_sdk.enhancements.LinkedDataEnhancement(
-        context_uri="https://vocab.evrepo.org/context/v1.jsonld",
         vocabulary_uri="https://vocab.evrepo.org/vocabulary/v1",
         data={
             "@context": "https://vocab.evrepo.org/context/v1.jsonld",
@@ -295,7 +294,6 @@ def test_linked_data_enhancement_valid():
 def test_linked_data_enhancement_discriminator_resolution():
     """Enhancement.content resolves to LinkedDataEnhancement via discriminator."""
     linked_data = destiny_sdk.enhancements.LinkedDataEnhancement(
-        context_uri="https://vocab.evrepo.org/context/v1.jsonld",
         vocabulary_uri="https://vocab.evrepo.org/vocabulary/v1",
         data={
             "@context": "https://vocab.evrepo.org/context/v1.jsonld",
@@ -323,7 +321,6 @@ def test_linked_data_enhancement_discriminator_resolution():
 
 def test_linked_data_enhancement_fingerprint_deterministic():
     kwargs = {
-        "context_uri": "https://vocab.evrepo.org/context/v1.jsonld",
         "vocabulary_uri": "https://vocab.evrepo.org/vocabulary/v1",
         "data": {
             "@context": "https://vocab.evrepo.org/context/v1.jsonld",
@@ -338,7 +335,6 @@ def test_linked_data_enhancement_fingerprint_deterministic():
 
 def test_linked_data_enhancement_fingerprint_differs_with_different_data():
     common = {
-        "context_uri": "https://vocab.evrepo.org/context/v1.jsonld",
         "vocabulary_uri": "https://vocab.evrepo.org/vocabulary/v1",
     }
     a = destiny_sdk.enhancements.LinkedDataEnhancement(
@@ -352,19 +348,17 @@ def test_linked_data_enhancement_fingerprint_differs_with_different_data():
     assert a.fingerprint != b.fingerprint
 
 
-def test_linked_data_enhancement_requires_valid_urls():
+def test_linked_data_enhancement_requires_valid_context_url():
     with pytest.raises(ValidationError):
         destiny_sdk.enhancements.LinkedDataEnhancement(
-            context_uri="not-a-url",
             vocabulary_uri="https://vocab.evrepo.org/vocabulary/v1",
-            data={"@context": "https://vocab.evrepo.org/context/v1.jsonld"},
+            data={"@context": "not-a-url"},
         )
 
 
 def test_linked_data_enhancement_missing_context_key():
     with pytest.raises(ValidationError, match="@context"):
         destiny_sdk.enhancements.LinkedDataEnhancement(
-            context_uri="https://vocab.evrepo.org/context/v1.jsonld",
             vocabulary_uri="https://vocab.evrepo.org/vocabulary/v1",
             data={"@type": "ScholarlyArticle", "name": "Test"},
         )
@@ -373,22 +367,9 @@ def test_linked_data_enhancement_missing_context_key():
 def test_linked_data_enhancement_non_string_context():
     with pytest.raises(ValidationError, match="@context must be a string URI"):
         destiny_sdk.enhancements.LinkedDataEnhancement(
-            context_uri="https://vocab.evrepo.org/context/v1.jsonld",
             vocabulary_uri="https://vocab.evrepo.org/vocabulary/v1",
             data={
                 "@context": ["https://vocab.evrepo.org/context/v1.jsonld"],
-                "@type": "ScholarlyArticle",
-            },
-        )
-
-
-def test_linked_data_enhancement_mismatched_context():
-    with pytest.raises(ValidationError, match="does not match"):
-        destiny_sdk.enhancements.LinkedDataEnhancement(
-            context_uri="https://vocab.evrepo.org/context/v1.jsonld",
-            vocabulary_uri="https://vocab.evrepo.org/vocabulary/v1",
-            data={
-                "@context": "https://wrong.example.com/context.jsonld",
                 "@type": "ScholarlyArticle",
             },
         )
