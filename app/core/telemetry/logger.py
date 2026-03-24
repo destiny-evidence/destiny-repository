@@ -101,6 +101,8 @@ class LoggerConfigurer:
 
         logging.getLogger("uvicorn.access").disabled = True
         logging.getLogger("uvicorn.error").disabled = True
+        # pyld emits verbose INFO logs during JSON-LD expansion
+        logging.getLogger("pyld").setLevel(logging.WARNING)
 
         self._hydrating_processors = cast(
             list[structlog.types.Processor],
