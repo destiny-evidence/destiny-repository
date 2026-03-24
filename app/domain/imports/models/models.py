@@ -4,7 +4,7 @@ import datetime
 from enum import StrEnum, auto
 from uuid import UUID
 
-from pydantic import Field, HttpUrl, PastDatetime
+from pydantic import Field, HttpUrl
 
 from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
 
@@ -65,7 +65,7 @@ class ImportRecord(DomainBaseModel, SQLAttributeMixin):
         default=None,
         description="The search string used to produce this import",
     )
-    searched_at: PastDatetime = Field(
+    searched_at: datetime.datetime = Field(
         default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
         description="""
 The timestamp (including timezone) at which the search which produced
