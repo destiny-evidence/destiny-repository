@@ -21,9 +21,11 @@ from app.domain.references.services.anti_corruption_service import (
 from app.domain.references.services.deduplication_service import DeduplicationService
 from tests.factories import (
     BibliographicMetadataEnhancementFactory,
+    DOIIdentifierFactory,
     EnhancementFactory,
     LinkedExternalIdentifierFactory,
     OpenAlexIdentifierFactory,
+    OtherIdentifierFactory,
     RawEnhancementFactory,
     ReferenceFactory,
 )
@@ -126,6 +128,46 @@ async def test_find_exact_duplicate_only_other_identifier(
     service = DeduplicationService(anti_corruption_service, uow, fake_uow())
     result = await service.find_exact_duplicate(ref)
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_find_exact_duplicate_excludes_other_identifiers_from_query(
+    anti_corruption_service, fake_uow, fake_repository
+):
+    """Verify that 'other' type identifiers are excluded from the SQL query.
+
+    The ix_external_identifier_type_other index has poor selectivity at scale,
+    causing multi-second scans. Filtering to non-other identifiers for the SQL
+    candidate search avoids this while is_superset still validates the full match.
+    See #604.
+    """
+    open_alex_id = OpenAlexIdentifierFactory.build()
+    doi_id = DOIIdentifierFactory.build()
+    other_id = OtherIdentifierFactory.build()
+
+    ref = ReferenceFactory.build(
+        identifiers=[
+            LinkedExternalIdentifierFactory.build(identifier=open_alex_id),
+            LinkedExternalIdentifierFactory.build(identifier=doi_id),
+            LinkedExternalIdentifierFactory.build(identifier=other_id),
+        ],
+    )
+    # Candidate is a superset (has all three identifiers including other)
+    candidate = ref.model_copy(update={"id": uuid7()})
+
+    uow = fake_uow(references=fake_repository([candidate]))
+    uow.references.find_with_identifiers = AsyncMock(return_value=[candidate])
+    service = DeduplicationService(anti_corruption_service, uow, fake_uow())
+
+    result = await service.find_exact_duplicate(ref)
+    assert result == candidate
+
+    # Verify only non-other identifiers were passed to find_with_identifiers
+    call_args = uow.references.find_with_identifiers.call_args
+    queried_identifiers = call_args[0][0]
+    queried_types = {i.identifier_type for i in queried_identifiers}
+    assert ExternalIdentifierType.OTHER not in queried_types
+    assert len(queried_identifiers) == 2  # open_alex + doi, not 3
 
 
 @pytest.mark.asyncio
