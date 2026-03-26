@@ -15,11 +15,15 @@ from azure.servicebus.aio import (
     ServiceBusClient,
 )
 from azure.servicebus.amqp import AmqpAnnotatedMessage
+from azure.servicebus.exceptions import MessageSizeExceededError
 from taskiq import BrokerMessage
 from taskiq.utils import maybe_awaitable
 
-from app.core.azure_service_bus_broker import AzureServiceBusBroker
-from app.core.exceptions import MessageBrokerError
+from app.core.azure_service_bus_broker import (
+    _COMPRESSION_THRESHOLD_BYTES,
+    AzureServiceBusBroker,
+)
+from app.core.exceptions import MessageBrokerError, MessageTooLargeError
 
 
 async def get_first_task(broker: AzureServiceBusBroker):
@@ -229,6 +233,107 @@ async def test_priority_handling(
     assert isinstance(sent_message, AmqpAnnotatedMessage)
     assert sent_message.header is not None
     assert sent_message.header.priority == 5
+
+
+@pytest.mark.anyio
+async def test_raise_custom_exception_on_oversized_message(
+    broker: AzureServiceBusBroker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that messages that are too large raise a MessageTooLargeError."""
+
+    async def mock_send_messages(message: AmqpAnnotatedMessage) -> None:  # noqa: ARG001
+        raise MessageSizeExceededError(message="message size limit exceeded")
+
+    monkeypatch.setattr(broker.sender, "send_messages", mock_send_messages)
+
+    with pytest.raises(MessageTooLargeError, match="size limit exceeded"):
+        await broker.kick(
+            BrokerMessage(
+                task_id=uuid7().hex,
+                task_name=uuid7().hex,
+                message=b"A big message we definitely cannot possibly process this",
+                labels={
+                    "label1": "val1",
+                },
+            )
+        )
+
+
+@pytest.mark.anyio
+async def test_large_message_is_compressed_and_decompressed(
+    broker: AzureServiceBusBroker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that messages over 200KB are compressed and decompressed."""
+    assert broker.sender is not None
+    sent_message = None
+
+    original_send_messages = broker.sender.send_messages
+
+    async def capture_send_messages(message: AmqpAnnotatedMessage) -> None:
+        nonlocal sent_message
+        sent_message = message
+        await original_send_messages(message)
+
+    monkeypatch.setattr(broker.sender, "send_messages", capture_send_messages)
+
+    original_body = b"x" * (_COMPRESSION_THRESHOLD_BYTES + 1)
+
+    await broker.kick(
+        BrokerMessage(
+            task_id="large-task",
+            task_name="large-name",
+            message=original_body,
+            labels={},
+        )
+    )
+
+    # Confirm the wire body is compressed (smaller than original) and flagged
+    assert isinstance(sent_message, AmqpAnnotatedMessage)
+    assert sent_message.application_properties.get("compressed") is True
+    wire_body = b"".join(sent_message.body)
+    assert len(wire_body) < len(original_body)
+
+    # Confirm the received data is transparently decompressed back to the original
+    message = await asyncio.wait_for(get_first_task(broker), timeout=1.0)
+    assert message.data == original_body
+    await maybe_awaitable(message.ack())
+
+
+@pytest.mark.anyio
+async def test_small_message_is_not_compressed(
+    broker: AzureServiceBusBroker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that messages at or below 200KB are sent without compression."""
+    assert broker.sender is not None
+    sent_message = None
+
+    original_send_messages = broker.sender.send_messages
+
+    async def capture_send_messages(message: AmqpAnnotatedMessage) -> None:
+        nonlocal sent_message
+        sent_message = message
+        await original_send_messages(message)
+
+    monkeypatch.setattr(broker.sender, "send_messages", capture_send_messages)
+
+    small_body = b"small"
+    await broker.kick(
+        BrokerMessage(
+            task_id="small-task",
+            task_name="small-name",
+            message=small_body,
+            labels={},
+        )
+    )
+
+    assert isinstance(sent_message, AmqpAnnotatedMessage)
+    assert sent_message.application_properties.get("compressed") is False
+    message = await asyncio.wait_for(get_first_task(broker), timeout=1.0)
+    assert message.data == small_body
+    await maybe_awaitable(message.ack())
 
 
 @pytest.mark.anyio
