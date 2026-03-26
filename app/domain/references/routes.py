@@ -796,16 +796,18 @@ async def make_duplicate_decisions(
     """
     Manually resolve deduplication for references.
 
-    All provided decisions will be applied to their respective references and made
-    active.
-
-    This applies the decisions together before returning, so it may take
-    a short while to complete - ensure your client is configured with a long enough
-    timeout.
+    Decisions are processed sequentially in the order provided.
 
     Any decisions with determination `duplicate` must point `canonical_reference_id`
-    to a reference that is already canonical, or declared canonical in the same request.
-    If this is not the case, the request will fail with a 422 error.
+    to a reference that is already canonical. If this is not the case, the request
+    will fail with a 422 error.
+
+    If declaring a canonical reference as well as its duplicates in the same request,
+    the canonical reference must be listed before any duplicates that point to it.*
+
+    This endpoint bypasses the conflict check that would otherwise create a
+    decoupled decision, allowing destructive changes (e.g. reassigning a duplicate
+    to a different canonical).
     """
     logger.info(
         "Resolving deduplication for references.",

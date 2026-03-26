@@ -278,8 +278,11 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     async def map_duplicate_decision(
-        self, new_decision: ReferenceDuplicateDecision
-    ) -> tuple[ReferenceDuplicateDecision, bool]:
+        self,
+        new_decision: ReferenceDuplicateDecision,
+        *,
+        allow_destructive_decision: bool = False,
+    ) -> tuple[ReferenceDuplicateDecision, bool, ReferenceDuplicateDecision | None]:
         """
         Apply the persistence changes from the new duplicate decision.
 
@@ -287,8 +290,14 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
         :param new_decision: The new decision to apply.
         :type new_decision: ReferenceDuplicateDecision
-        :return: The applied decision and whether it changed.
-        :rtype: tuple[ReferenceDuplicateDecision, bool]
+        :param allow_destructive_decision: If True, bypass the conflict check that
+            would otherwise create a DECOUPLED decision. Used by the manual
+            endpoint.
+        :type allow_destructive_decision: bool
+        :return: The applied decision, whether it changed, and the previous active
+            decision (now deactivated) if one existed.
+        :rtype: tuple[ReferenceDuplicateDecision, bool,
+            ReferenceDuplicateDecision | None]
         """
         if (
             new_decision.duplicate_determination
@@ -297,6 +306,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             msg = "Only terminal duplicate determinations can be mapped."
             raise DeduplicationValueError(msg)
 
+        canonical_ref = None
         if new_decision.canonical_reference_id:
             if new_decision.canonical_reference_id == new_decision.reference_id:
                 msg = "Cannot mark a reference as a duplicate of itself."
@@ -304,7 +314,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
             canonical_ref = await self.sql_uow.references.get_by_pk(
                 new_decision.canonical_reference_id,
-                preload=["duplicate_decision"],
+                preload=["duplicate_decision", "canonical_reference"],
             )
             if not canonical_ref.is_canonical:
                 non_canonical_determination = (
@@ -343,6 +353,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                     != new_decision.canonical_reference_id
                 )
             )
+            and not allow_destructive_decision
         ):
             # Destructive change to the old canonical reference which now loses
             # a duplicate. Raise for manual review of the decision and the implications.
@@ -383,7 +394,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             new_decision
         )
 
-        return new_decision, decision_changed
+        return new_decision, decision_changed, active_decision
 
     async def shortcut_deduplication_using_identifiers(  # noqa: PLR0912
         self,
@@ -474,7 +485,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision.detail = (
                 "New reference with trusted identifier(s), no existing matches"
             )
-            reference_duplicate_decision, _ = await self.map_duplicate_decision(
+            reference_duplicate_decision, _, _ = await self.map_duplicate_decision(
                 reference_duplicate_decision
             )
             return [reference_duplicate_decision]
@@ -519,7 +530,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 "Shortcutted with trusted identifier(s)"
             )
 
-            reference_duplicate_decision, _ = await self.map_duplicate_decision(
+            reference_duplicate_decision, _, _ = await self.map_duplicate_decision(
                 reference_duplicate_decision
             )
         else:
@@ -532,7 +543,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision.detail = (
                 "Shortcutted with trusted identifier(s)"
             )
-            reference_duplicate_decision, _ = await self.map_duplicate_decision(
+            reference_duplicate_decision, _, _ = await self.map_duplicate_decision(
                 reference_duplicate_decision
             )
 
@@ -562,7 +573,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 )
                 continue
 
-            decision, _ = await self.map_duplicate_decision(
+            decision, _, _ = await self.map_duplicate_decision(
                 ReferenceDuplicateDecision(
                     reference_id=candidate_id,
                     duplicate_determination=DuplicateDetermination.DUPLICATE,
