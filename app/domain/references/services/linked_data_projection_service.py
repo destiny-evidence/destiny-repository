@@ -28,8 +28,6 @@ _STATIC_CONTEXT_PATHS: dict[str, Path] = {
     "https://vocab.esea.education/context/v1.jsonld": (
         _STATIC_VOCAB_DIR / "esea-context.jsonld"
     ),
-    # Relative URI found in existing test fixture data
-    "esea-context.jsonld": _STATIC_VOCAB_DIR / "esea-context.jsonld",
 }
 
 

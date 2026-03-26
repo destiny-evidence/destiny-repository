@@ -17,6 +17,7 @@ from app.core.config import DedupCandidateScoringConfig
 from app.core.exceptions import ESNotFoundError
 from app.domain.references.models.models import (
     Enhancement,
+    IndexableDomainReference,
     Reference,
     ReferenceWithChangeset,
     RobotAutomation,
@@ -29,6 +30,7 @@ from app.domain.references.repository import (
     RobotAutomationESRepository,
 )
 from app.utils.time_and_date import utc_now
+from tests.factories import to_indexable
 
 
 @pytest.fixture
@@ -300,7 +302,7 @@ async def test_es_repository_cycle(
         2
     ].content  # type: ignore[index]
 
-    await es_reference_repository.add(reference)
+    await es_reference_repository.add(to_indexable(reference))
 
     es_reference = await es_reference_repository.get_by_pk(reference.id)
     assert es_reference.id == reference.id
@@ -348,14 +350,14 @@ async def test_es_repository_update_existing(
     es_reference_repository: ReferenceESRepository, reference: Reference
 ):
     """Test updating an existing reference in Elasticsearch."""
-    await es_reference_repository.add(reference)
+    await es_reference_repository.add(to_indexable(reference))
     await test_es_repository_cycle(es_reference_repository, reference)
 
     # Modify the reference
     reference = reference.model_copy(
         update={"visibility": "restricted", "enhancements": []}
     )
-    await es_reference_repository.add(reference)
+    await es_reference_repository.add(to_indexable(reference))
     updated_reference = await es_reference_repository.get_by_pk(reference.id)
 
     assert updated_reference.id == reference.id
@@ -368,11 +370,11 @@ async def test_add_bulk(
     """Test bulk adding multiple references."""
     ref_ids = []
 
-    async def yield_reference() -> AsyncGenerator[Reference, None]:
+    async def yield_reference() -> AsyncGenerator[IndexableDomainReference, None]:
         for _ in range(5):
             ref_ids.append(uuid7())
-            yield reference.model_copy(
-                update={"visibility": "public", "id": ref_ids[-1]}
+            yield to_indexable(
+                reference.model_copy(update={"visibility": "public", "id": ref_ids[-1]})
             )
 
     await es_reference_repository.add_bulk(yield_reference())
@@ -632,9 +634,9 @@ async def test_canonical_candidate_search(
     )
 
     # Add all references to the repository
-    await es_reference_repository.add(matching_ref1)
-    await es_reference_repository.add(matching_ref2)
-    await es_reference_repository.add(non_matching_ref)
+    await es_reference_repository.add(to_indexable(matching_ref1))
+    await es_reference_repository.add(to_indexable(matching_ref2))
+    await es_reference_repository.add(to_indexable(non_matching_ref))
 
     await es_reference_repository._client.indices.refresh(  # noqa: SLF001
         index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001

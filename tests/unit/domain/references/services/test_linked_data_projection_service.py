@@ -102,7 +102,7 @@ class TestLinkedDataProjectionService:
         """Concepts with notReported status should be excluded from concepts
         but their property should appear in evaluated_properties."""
         data = {
-            "@context": "esea-context.jsonld",
+            "@context": "https://vocab.esea.education/context/v1.jsonld",
             "@type": "Investigation",
             "documentType": {
                 "@type": "DocumentTypeCodingAnnotation",
@@ -125,7 +125,7 @@ class TestLinkedDataProjectionService:
         self, projector
     ):
         data = {
-            "@context": "esea-context.jsonld",
+            "@context": "https://vocab.esea.education/context/v1.jsonld",
             "@type": "Investigation",
             "documentType": {
                 "@type": "DocumentTypeCodingAnnotation",
@@ -149,7 +149,10 @@ class TestLinkedDataProjectionService:
         enhancement = LinkedDataEnhancement(
             context_uri="https://vocab.esea.education/context/v1.jsonld",
             vocabulary_uri="https://vocab.esea.education/vocabulary/v1",
-            data={"@context": "esea-context.jsonld", "@type": "Investigation"},
+            data={
+                "@context": "https://vocab.esea.education/context/v1.jsonld",
+                "@type": "Investigation",
+            },
         )
         result = await projector.project(enhancement)
 

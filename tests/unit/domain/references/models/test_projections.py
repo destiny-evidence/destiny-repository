@@ -761,6 +761,7 @@ class TestLinkedDataProjection:
         return EnhancementFactory.build(
             content=LinkedDataEnhancementFactory.build(
                 data={
+                    "@context": "https://vocab.esea.education/context/v1.jsonld",
                     "@type": "Investigation",
                     "documentType": {
                         "@type": "DocumentTypeCodingAnnotation",
@@ -806,6 +807,7 @@ class TestLinkedDataProjection:
             reference_id=reference_id,
             content=LinkedDataEnhancementFactory.build(
                 data={
+                    "@context": "https://vocab.esea.education/context/v1.jsonld",
                     "@type": "Investigation",
                     "documentType": {
                         "@type": "DocumentTypeCodingAnnotation",
@@ -822,6 +824,7 @@ class TestLinkedDataProjection:
             created_at=older.created_at + timedelta(days=1),
             content=LinkedDataEnhancementFactory.build(
                 data={
+                    "@context": "https://vocab.esea.education/context/v1.jsonld",
                     "@type": "Investigation",
                     "hasFinding": [
                         {
