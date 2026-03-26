@@ -40,12 +40,14 @@ from faker.providers import BaseProvider
 
 from app.domain.references.models.models import (
     Enhancement,
+    IndexableDomainReference,
     LinkedExternalIdentifier,
     PendingEnhancement,
     PendingEnhancementStatus,
     Reference,
     Visibility,
 )
+from app.domain.references.models.projections import ReferenceSearchFieldsProjection
 from app.domain.robots.models.models import Robot
 from app.utils.time_and_date import utc_now
 
@@ -382,6 +384,15 @@ class ReferenceFactory(factory.Factory):
             ]
         else:
             self.enhancements = extracted
+
+
+def to_indexable(reference: Reference) -> IndexableDomainReference:
+    """Convert a Reference to an IndexableDomainReference for ES test indexing."""
+    search_fields = ReferenceSearchFieldsProjection.get_from_reference(reference)
+    return IndexableDomainReference(
+        **reference.model_dump(),
+        search_fields=search_fields,
+    )
 
 
 class RobotFactory(factory.Factory):

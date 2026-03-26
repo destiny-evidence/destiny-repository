@@ -20,6 +20,7 @@ from tests.factories import (
     BooleanAnnotationFactory,
     EnhancementFactory,
     ReferenceFactory,
+    to_indexable,
 )
 
 
@@ -104,9 +105,9 @@ async def test_search_with_query_string_publication_year_filter(
     )
 
     # Add references to ES
-    await es_reference_repository.add(ref_2020)
-    await es_reference_repository.add(ref_2022)
-    await es_reference_repository.add(ref_2024)
+    await es_reference_repository.add(to_indexable(ref_2020))
+    await es_reference_repository.add(to_indexable(ref_2022))
+    await es_reference_repository.add(to_indexable(ref_2024))
 
     # Refresh index to ensure documents are searchable
     await es_reference_repository._client.indices.refresh(  # noqa: SLF001
@@ -210,7 +211,7 @@ async def test_search_with_query_string_taxonomy_annotation_filter(
         ],
     )
 
-    await es_reference_repository.add(reference)
+    await es_reference_repository.add(to_indexable(reference))
     await es_reference_repository._client.indices.refresh(  # noqa: SLF001
         index=es_reference_repository._persistence_cls.Index.name,  # noqa: SLF001
     )

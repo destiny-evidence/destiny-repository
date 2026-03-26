@@ -25,6 +25,7 @@ from tests.factories import (
     BooleanAnnotationFactory,
     EnhancementFactory,
     ReferenceFactory,
+    to_indexable,
 )
 
 pytestmark = pytest.mark.usefixtures("session")
@@ -198,7 +199,7 @@ async def search_references(es_client: AsyncElasticsearch, session: AsyncSession
     es_repository = ReferenceESRepository(es_client)
     sql_repository = ReferenceSQLRepository(session)
     for reference in references:
-        await es_repository.add(reference)
+        await es_repository.add(to_indexable(reference))
         await sql_repository.merge(reference)
     await session.commit()
     await es_client.indices.refresh(index="reference")
@@ -414,7 +415,7 @@ async def cross_field_references(es_client: AsyncElasticsearch, session: AsyncSe
     es_repository = ReferenceESRepository(es_client)
     sql_repository = ReferenceSQLRepository(session)
     for reference in references:
-        await es_repository.add(reference)
+        await es_repository.add(to_indexable(reference))
         await sql_repository.merge(reference)
     await session.commit()
     await es_client.indices.refresh(index="reference")

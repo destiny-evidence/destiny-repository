@@ -3,7 +3,7 @@
 import datetime
 import json
 from enum import StrEnum, auto
-from typing import Any, Literal, Self
+from typing import Any, Literal, NamedTuple, Self
 from uuid import UUID
 
 import destiny_sdk
@@ -524,6 +524,16 @@ class ReferenceSearchFields(ProjectedBaseModel):
         ),
     )
 
+    linked_data_content: destiny_sdk.enhancements.LinkedDataEnhancement | None = Field(
+        default=None,
+        exclude=True,
+        description=(
+            "The content of the highest-priority LINKED_DATA enhancement, if any. "
+            "This is the raw enhancement content before projection into searchable "
+            "concepts and labels."
+        ),
+    )
+
     def to_canonical_candidate_search_fields(self) -> CandidateCanonicalSearchFields:
         """Return fields needed for candidate canonical selection."""
         return CandidateCanonicalSearchFields(
@@ -545,11 +555,36 @@ class ReferenceSearchFields(ProjectedBaseModel):
             return value
         return cls._normalise_string(value)
 
-    @field_validator("authors", "annotations", "evaluated_schemes", mode="after")
+    @field_validator(
+        "authors",
+        "annotations",
+        "evaluated_schemes",
+        mode="after",
+    )
     @classmethod
     def normalise_string_list_validator(cls, value: list[str]) -> list[str]:
         """Normalise string list fields by stripping whitespace."""
         return [cls._normalise_string(v) for v in value if v]
+
+
+class LinkedDataProjection(NamedTuple):
+    """Result of projecting a LinkedDataEnhancement into flat searchable fields."""
+
+    concepts: set[str]
+    labels: set[str]
+    evaluated_properties: set[str]
+
+
+class IndexableDomainReference(Reference):
+    """A Reference enriched with pre-computed projections for ES indexing."""
+
+    search_fields: ReferenceSearchFields = Field(
+        description="Pre-computed search fields for Elasticsearch indexing.",
+    )
+    linked_data_projection: LinkedDataProjection | None = Field(
+        default=None,
+        description="Pre-computed linked data projection, if any.",
+    )
 
 
 class ReferenceDuplicateDeterminationResult(BaseModel):
