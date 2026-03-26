@@ -781,11 +781,9 @@ class TestLinkedDataProjection:
         )
 
         result = ReferenceSearchFieldsProjection.get_from_reference(reference)
-        esea = "https://vocab.esea.education/"
 
-        assert f"{esea}C00008" in result.linked_data_concepts
-        assert "Journal Article" in result.linked_data_labels
-        assert f"{esea}documentType" in result.linked_data_evaluated_properties
+        assert result.linked_data_content is not None
+        assert result.linked_data_content == linked_data_enhancement.content
 
     def test_reference_without_linked_data(self):
         reference = ReferenceFactory.build(
@@ -799,9 +797,7 @@ class TestLinkedDataProjection:
 
         result = ReferenceSearchFieldsProjection.get_from_reference(reference)
 
-        assert result.linked_data_concepts == []
-        assert result.linked_data_labels == []
-        assert result.linked_data_evaluated_properties == []
+        assert result.linked_data_content is None
 
     def test_highest_priority_linked_data_wins(self):
         reference_id = uuid7()
@@ -852,11 +848,9 @@ class TestLinkedDataProjection:
         )
 
         result = ReferenceSearchFieldsProjection.get_from_reference(reference)
-        esea = "https://vocab.esea.education/"
 
-        # Newer wins — should have C00002 (educationLevel), not C00008
-        assert f"{esea}C00002" in result.linked_data_concepts
-        assert f"{esea}C00008" not in result.linked_data_concepts
+        # Newer wins — should have the newer enhancement's content
+        assert result.linked_data_content == newer.content
 
 
 class TestDeduplicatedReferenceProjection:

@@ -3,7 +3,7 @@
 import datetime
 import json
 from enum import StrEnum, auto
-from typing import Any, Literal, Self
+from typing import Any, Literal, NamedTuple, Self
 from uuid import UUID
 
 import destiny_sdk
@@ -524,22 +524,13 @@ class ReferenceSearchFields(ProjectedBaseModel):
         ),
     )
 
-    linked_data_concepts: list[str] = Field(
-        default_factory=list,
+    linked_data_content: destiny_sdk.enhancements.LinkedDataEnhancement | None = Field(
+        default=None,
+        exclude=True,
         description=(
-            "Full concept URIs from LinkedDataEnhancements with coded status."
-        ),
-    )
-
-    linked_data_labels: list[str] = Field(
-        default_factory=list,
-        description="SKOS prefLabel values for each linked data concept.",
-    )
-
-    linked_data_evaluated_properties: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Property URIs for all dimensions evaluated in LinkedDataEnhancements."
+            "The content of the highest-priority LINKED_DATA enhancement, if any. "
+            "This is the raw enhancement content before projection into searchable "
+            "concepts and labels."
         ),
     )
 
@@ -568,15 +559,32 @@ class ReferenceSearchFields(ProjectedBaseModel):
         "authors",
         "annotations",
         "evaluated_schemes",
-        "linked_data_concepts",
-        "linked_data_labels",
-        "linked_data_evaluated_properties",
         mode="after",
     )
     @classmethod
     def normalise_string_list_validator(cls, value: list[str]) -> list[str]:
         """Normalise string list fields by stripping whitespace."""
         return [cls._normalise_string(v) for v in value if v]
+
+
+class LinkedDataProjection(NamedTuple):
+    """Result of projecting a LinkedDataEnhancement into flat searchable fields."""
+
+    concepts: set[str]
+    labels: set[str]
+    evaluated_properties: set[str]
+
+
+class IndexableDomainReference(Reference):
+    """A Reference enriched with pre-computed projections for ES indexing."""
+
+    search_fields: ReferenceSearchFields = Field(
+        description="Pre-computed search fields for Elasticsearch indexing.",
+    )
+    linked_data_projection: LinkedDataProjection | None = Field(
+        default=None,
+        description="Pre-computed linked data projection, if any.",
+    )
 
 
 class ReferenceDuplicateDeterminationResult(BaseModel):

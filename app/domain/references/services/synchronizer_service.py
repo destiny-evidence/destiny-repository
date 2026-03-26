@@ -1,6 +1,7 @@
 """Service to synchronize Reference models between persistence implementations."""
 
 from collections.abc import AsyncGenerator, Iterable
+from functools import cache
 from typing import ClassVar
 from uuid import UUID
 
@@ -9,12 +10,30 @@ from opentelemetry.trace import get_tracer
 from app.core.config import ESIndexingOperation, get_settings
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
-from app.domain.references.models.models import Reference, RobotAutomation
-from app.domain.references.models.projections import DeduplicatedReferenceProjection
+from app.domain.references.models.models import (
+    IndexableDomainReference,
+    Reference,
+    RobotAutomation,
+)
+from app.domain.references.models.projections import (
+    DeduplicatedReferenceProjection,
+    ReferenceSearchFieldsProjection,
+)
+from app.domain.references.services.linked_data_projection_service import (
+    LinkedDataProjectionService,
+    StaticFileVocabularyClient,
+)
 from app.domain.service import GenericSynchronizer
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.utils.lists import list_chunker
+
+
+@cache
+def _get_linked_data_projection_service() -> LinkedDataProjectionService:
+    """Singleton LinkedDataProjectionService with internal vocabulary caching."""
+    return LinkedDataProjectionService(StaticFileVocabularyClient())
+
 
 tracer = get_tracer(__name__)
 settings = get_settings()
@@ -31,8 +50,28 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
         "duplicate_decision",
     ]
 
+    @staticmethod
+    async def _to_indexable(reference: Reference) -> IndexableDomainReference:
+        """Deduplicate a Reference and project its search fields for ES indexing."""
+        deduped = DeduplicatedReferenceProjection.get_from_reference(reference)
+        search_fields = ReferenceSearchFieldsProjection.get_from_reference(deduped)
+
+        linked_data_projection = None
+        if search_fields.linked_data_content is not None:
+            linked_data_projection = await (
+                _get_linked_data_projection_service().project(
+                    search_fields.linked_data_content
+                )
+            )
+
+        return IndexableDomainReference(
+            **deduped.model_dump(),
+            search_fields=search_fields,
+            linked_data_projection=linked_data_projection,
+        )
+
     @tracer.start_as_current_span("Sync Reference SQL->ES")
-    async def sql_to_es(self, reference_id: UUID) -> Reference:
+    async def sql_to_es(self, reference_id: UUID) -> IndexableDomainReference:
         """Synchronize a reference from SQL to Elasticsearch."""
         trace_attribute(Attributes.DB_PK, str(reference_id))
         reference = await self.sql_uow.references.get_by_pk(
@@ -45,9 +84,7 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
             await self.es_uow.references.delete_by_pk(reference.id, fail_hard=False)
             return await self.sql_to_es(reference.canonical_reference.id)
 
-        return await self.es_uow.references.add(
-            DeduplicatedReferenceProjection.get_from_reference(reference)
-        )
+        return await self.es_uow.references.add(await self._to_indexable(reference))
 
     @tracer.start_as_current_span("Sync Reference Bulk SQL->ES")
     async def bulk_sql_to_es(self, reference_ids: Iterable[UUID]) -> int:
@@ -69,7 +106,9 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
             chunk_size=chunk_size,
         )
 
-        async def reference_generator() -> AsyncGenerator[Reference, None]:
+        async def reference_generator() -> (
+            AsyncGenerator[IndexableDomainReference, None]
+        ):
             """Generate references for indexing."""
             for reference_id_chunk in list_chunker(
                 ids,
@@ -81,9 +120,7 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
                 )
                 for reference in references:
                     if reference.is_canonical_like:
-                        yield DeduplicatedReferenceProjection.get_from_reference(
-                            reference
-                        )
+                        yield await self._to_indexable(reference)
 
         return await self.es_uow.references.add_bulk(reference_generator())
 
