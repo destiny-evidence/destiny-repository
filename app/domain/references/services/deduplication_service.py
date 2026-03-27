@@ -385,7 +385,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
         return new_decision, decision_changed
 
-    async def shortcut_deduplication_using_identifiers(  # noqa: PLR0912
+    async def shortcut_deduplication_using_identifiers(  # noqa: PLR0911, PLR0912
         self,
         reference_duplicate_decision: ReferenceDuplicateDecision,
         trusted_unique_identifier_types: set[ExternalIdentifierType],
@@ -444,8 +444,40 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision.reference_id,
             preload=["identifiers", "duplicate_decision"],
         )
-        if not reference.identifiers or reference.duplicate_decision:
-            # No identifiers or already deduplicated, skip shortcutting
+        if not reference.identifiers:
+            # No identifiers so we can't deduplicate
+            return None
+
+        if reference.duplicate_decision:
+            # Temporary fix, if this reference has previously been marked
+            # the duplicate of another reference by shortcutting
+            # maintain that linking by updating this duplicate decision to
+            # also be a duplicate determination and return.
+            # This avoids the accidental unlinking we were seeing on
+            # race conditions. But also makes sure all decisions
+            # are in terminal state.
+            prev_decision = reference.duplicate_decision
+            if (
+                prev_decision.duplicate_determination
+                == DuplicateDetermination.DUPLICATE
+            ) and (
+                prev_decision.detail
+                and "Shortcutted via proxy reference" in prev_decision.detail
+            ):
+                reference_duplicate_decision.active_decision = False
+                reference_duplicate_decision.detail = prev_decision.detail
+                reference_duplicate_decision.canonical_reference_id = (
+                    prev_decision.canonical_reference_id
+                )
+                reference_duplicate_decision.duplicate_determination = (
+                    DuplicateDetermination.DUPLICATE
+                )
+
+                reference_duplicate_decision, _ = await self.map_duplicate_decision(
+                    reference_duplicate_decision
+                )
+
+                return [reference_duplicate_decision]
             return None
 
         trusted_identifiers = [
