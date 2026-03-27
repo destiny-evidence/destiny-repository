@@ -151,18 +151,13 @@ async def test_shortcut_deduplication_both_pending_decisions(
 
     assert invoke_response.status_code == status.HTTP_202_ACCEPTED
 
-    await poll_duplicate_process(session, reference_id=reference_1.id)
-
-    session.expire_all()
-
-    result = await session.execute(
-        select(SQLReferenceDuplicateDecision).where(
-            SQLReferenceDuplicateDecision.reference_id == reference_1.id,
-            SQLReferenceDuplicateDecision.active_decision.is_(True),
-        )
+    duplicate_decision = await poll_duplicate_process(
+        session, reference_id=reference_1.id
     )
-    active_decision_1 = result.scalar_one()
-    assert active_decision_1.duplicate_determination == DuplicateDetermination.CANONICAL
+
+    assert (
+        duplicate_decision.duplicate_determination == DuplicateDetermination.CANONICAL
+    )
 
     result = await session.execute(
         select(SQLReferenceDuplicateDecision).where(
@@ -170,9 +165,12 @@ async def test_shortcut_deduplication_both_pending_decisions(
             SQLReferenceDuplicateDecision.active_decision.is_(True),
         )
     )
-    active_decision_2 = result.scalar_one()
-    assert active_decision_2.duplicate_determination == DuplicateDetermination.DUPLICATE
-    assert active_decision_2.canonical_reference_id == reference_1.id
+    side_effect_decision = result.scalar_one()
+    assert (
+        side_effect_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
+    )
+    assert side_effect_decision.canonical_reference_id == reference_1.id
+    old_active_decision_id = side_effect_decision.id
 
     # Invoke deduplication for the second reference
     # We don't want this to change duplicate status
@@ -187,15 +185,15 @@ async def test_shortcut_deduplication_both_pending_decisions(
 
     assert invoke_response.status_code == status.HTTP_202_ACCEPTED
 
-    await poll_duplicate_process(session, reference_id=reference_2.id)
-
-    session.expire_all()
-    result = await session.execute(
-        select(SQLReferenceDuplicateDecision).where(
-            SQLReferenceDuplicateDecision.reference_id == reference_2.id,
-            SQLReferenceDuplicateDecision.active_decision.is_(True),
-        )
+    duplicate_decision = await poll_duplicate_process(
+        session, reference_id=reference_2.id
     )
-    active_decision_2 = result.scalar_one()
-    assert active_decision_2.duplicate_determination == DuplicateDetermination.DUPLICATE
-    assert active_decision_2.canonical_reference_id == reference_1.id
+
+    assert (
+        duplicate_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
+    )
+    assert duplicate_decision.canonical_reference_id == reference_1.id
+    assert duplicate_decision.active_decision is True
+
+    # Assert new duplicate decision has replaced previous one
+    assert duplicate_decision.id is not old_active_decision_id
