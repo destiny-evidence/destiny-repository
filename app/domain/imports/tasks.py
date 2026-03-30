@@ -4,9 +4,11 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from uuid import UUID
 
+import tenacity
 from opentelemetry import trace
 
 from app.core.config import get_settings
+from app.core.exceptions import SQLNotFoundError
 from app.core.telemetry.attributes import (
     Attributes,
     name_span,
@@ -101,9 +103,13 @@ async def import_reference(
         import_service = await get_import_service(sql_uow=sql_uow)
         reference_service = await get_reference_service(sql_uow=sql_uow, es_uow=es_uow)
 
-        import_result = await import_service.get_import_result_with_batch(
-            import_result_id
-        )
+        # Rarely we can see a race condition where the task is picked up before the
+        # queuing process has committed the record.
+        import_result = await tenacity.AsyncRetrying(
+            retry=tenacity.retry_if_exception_type(SQLNotFoundError),
+            wait=tenacity.wait_fixed(0.1),
+            stop=tenacity.stop_after_delay(2),
+        )(import_service.get_import_result_with_batch, import_result_id)
         trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_result.import_batch_id))
 
         if import_result.status in (
