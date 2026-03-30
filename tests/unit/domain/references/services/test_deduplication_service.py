@@ -1287,5 +1287,5 @@ class TestShortcutDeduplication:
         )
         assert results_decision_2[0].canonical_reference_id == ref_1.id
         assert results_decision_2[0].detail == (
-            f"Shortcutted via proxy reference {ref_1.id} " "with trusted identifier(s)"
+            f"Shortcutted via proxy reference {ref_1.id} with trusted identifier(s)"
         )

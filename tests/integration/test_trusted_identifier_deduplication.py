@@ -196,4 +196,4 @@ async def test_shortcut_deduplication_both_pending_decisions(
     assert duplicate_decision.active_decision is True
 
     # Assert new duplicate decision has replaced previous one
-    assert duplicate_decision.id is not old_active_decision_id
+    assert duplicate_decision.id != old_active_decision_id
