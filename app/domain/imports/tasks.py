@@ -109,6 +109,7 @@ async def import_reference(
             retry=tenacity.retry_if_exception_type(SQLNotFoundError),
             wait=tenacity.wait_fixed(0.1),
             stop=tenacity.stop_after_delay(2),
+            reraise=True,
         )(import_service.get_import_result_with_batch, import_result_id)
         trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_result.import_batch_id))
 
