@@ -365,11 +365,19 @@ module "container_app_ui" {
   }
 }
 
+locals {
+  # Temporary upgrade to Premium in production to handle high throughput demands.
+  # Revert to Standard when load subsides.
+  servicebus_is_premium = var.environment == "production"
+}
+
 resource "azurerm_servicebus_namespace" "this" {
-  name                = local.name
-  resource_group_name = azurerm_resource_group.this.name
-  location            = azurerm_resource_group.this.location
-  sku                 = "Standard"
+  name                         = local.name
+  resource_group_name          = azurerm_resource_group.this.name
+  location                     = azurerm_resource_group.this.location
+  sku                          = local.servicebus_is_premium ? "Premium" : "Standard"
+  capacity                     = local.servicebus_is_premium ? 2 : 0
+  premium_messaging_partitions = local.servicebus_is_premium ? 1 : null
 
   tags = local.minimum_resource_tags
 }
@@ -378,7 +386,7 @@ resource "azurerm_servicebus_queue" "taskiq" {
   name         = "taskiq"
   namespace_id = azurerm_servicebus_namespace.this.id
 
-  partitioning_enabled = true
+  partitioning_enabled = !local.servicebus_is_premium
 }
 
 resource "azurerm_storage_account" "this" {
