@@ -7,14 +7,15 @@ canonical and one duplicate — even when the second decision is processed after
 the first has already created a side-effect decision for it.
 """
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
+from collections.abc import AsyncIterator
+from uuid import UUID
 
 import pytest
+from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 from app.core.config import get_settings
@@ -36,13 +37,6 @@ from tests.factories import (
     OpenAlexIdentifierFactory,
     ReferenceFactory,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-    from uuid import UUID
-
-    from elasticsearch import AsyncElasticsearch
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 settings = get_settings()
 
