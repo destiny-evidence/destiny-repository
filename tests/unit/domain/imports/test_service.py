@@ -351,7 +351,7 @@ class TestDistributeImportBatch:
             ImportAntiCorruptionService(), fake_uow(batches=[import_batch], results=[])
         )
         monkeypatch.setattr(service, "register_result", fake_register_result)
-        monkeypatch.setattr(service, "update_import_result", fake_update_result)
+        monkeypatch.setattr(service, "_update_import_result", fake_update_result)
         monkeypatch.setattr(
             "app.domain.imports.service.queue_task_with_trace",
             fake_queue_task_with_trace,
