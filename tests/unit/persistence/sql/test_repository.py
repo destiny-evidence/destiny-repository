@@ -1,8 +1,11 @@
 """Unit tests for SQL repository functionality."""
 
+from uuid import uuid7
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import SQLNotFoundError
 from tests.persistence_models import SimpleDomainModel, SimpleSQLRepository
 
 
@@ -31,3 +34,14 @@ async def test_get_by_pks_with_duplicate_ids(
 
     assert len(results) == 1
     assert results[0].id == record.id
+
+
+async def test_get_by_pks_raises_on_missing(
+    repository: SimpleSQLRepository,
+) -> None:
+    """Should raise SQLNotFoundError when a PK doesn't exist."""
+    record = await create_simple_record(repository, title="exists")
+    missing_id = uuid7()
+
+    with pytest.raises(SQLNotFoundError, match=str(missing_id)):
+        await repository.get_by_pks([record.id, missing_id])
