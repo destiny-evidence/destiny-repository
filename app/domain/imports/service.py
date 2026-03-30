@@ -137,6 +137,12 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         self, import_result_id: UUID, **kwargs: object
     ) -> ImportResult:
         """Update the status of an import result."""
+        return await self._update_import_result(import_result_id, **kwargs)
+
+    async def _update_import_result(
+        self, import_result_id: UUID, **kwargs: object
+    ) -> ImportResult:
+        """Update the status of an import result."""
         return await self.sql_uow.imports.batches.results.update_by_pk(
             import_result_id, **kwargs
         )
@@ -256,7 +262,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                 )
             except MessageTooLargeError as exc:
                 sample_trace()
-                await self.update_import_result(
+                await self._update_import_result(
                     import_result_id=import_result.id,
                     status=ImportResultStatus.FAILED,
                     failure_details=exc.detail,
