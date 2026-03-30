@@ -151,12 +151,13 @@ async def test_shortcut_deduplication_both_pending_decisions(
 
     assert invoke_response.status_code == status.HTTP_202_ACCEPTED
 
-    duplicate_decision = await poll_duplicate_process(
+    ref_1_duplicate_decision = await poll_duplicate_process(
         session, reference_id=reference_1.id
     )
 
     assert (
-        duplicate_decision.duplicate_determination == DuplicateDetermination.CANONICAL
+        ref_1_duplicate_decision.duplicate_determination
+        == DuplicateDetermination.CANONICAL
     )
 
     result = await session.execute(
@@ -185,15 +186,30 @@ async def test_shortcut_deduplication_both_pending_decisions(
 
     assert invoke_response.status_code == status.HTTP_202_ACCEPTED
 
-    duplicate_decision = await poll_duplicate_process(
+    ref_2_duplicate_decision = await poll_duplicate_process(
         session, reference_id=reference_2.id
     )
 
     assert (
-        duplicate_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
+        ref_2_duplicate_decision.duplicate_determination
+        == DuplicateDetermination.DUPLICATE
     )
-    assert duplicate_decision.canonical_reference_id == reference_1.id
-    assert duplicate_decision.active_decision is True
+    assert ref_2_duplicate_decision.canonical_reference_id == reference_1.id
+    assert ref_2_duplicate_decision.active_decision is True
 
     # Assert new duplicate decision has replaced previous one
-    assert duplicate_decision.id != old_active_decision_id
+    assert ref_2_duplicate_decision.id != old_active_decision_id
+
+    # Test that the canonical reference active decision hasn't changed
+    result = await session.execute(
+        select(SQLReferenceDuplicateDecision).where(
+            SQLReferenceDuplicateDecision.reference_id == reference_1.id,
+            SQLReferenceDuplicateDecision.active_decision.is_(True),
+        )
+    )
+    canonical_ref_duplicate_decision = result.scalar_one()
+    assert (
+        canonical_ref_duplicate_decision.duplicate_determination
+        == DuplicateDetermination.CANONICAL
+    )
+    assert canonical_ref_duplicate_decision.id == ref_1_duplicate_decision.id

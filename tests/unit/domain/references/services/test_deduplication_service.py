@@ -1238,7 +1238,7 @@ class TestShortcutDeduplication:
             references=references,
             reference_duplicate_decisions=reference_duplicate_decisions,
         )
-        uow.references.find_with_identifiers = AsyncMock(return_value=[ref_2])
+        uow.references.find_with_identifiers = AsyncMock(return_value=[ref_1, ref_2])
 
         service = DeduplicationService(
             anti_corruption_service,
@@ -1287,5 +1287,5 @@ class TestShortcutDeduplication:
         )
         assert results_decision_2[0].canonical_reference_id == ref_1.id
         assert results_decision_2[0].detail == (
-            f"Shortcutted via proxy reference {ref_1.id} with trusted identifier(s)"
+            "Shortcutted with trusted identifier(s)"
         )
