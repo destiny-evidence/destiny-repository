@@ -128,7 +128,6 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
             batch.id, preload=["status"]
         )
 
-    @sql_unit_of_work
     async def register_result(self, result: ImportResult) -> ImportResult:
         """Register an import result, persisting it to the database."""
         return await self.sql_uow.imports.batches.results.add(result)
@@ -227,6 +226,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
             )
         return import_result, reference_result.duplicate_decision_id
 
+    @sql_unit_of_work
     async def _queue_import_line(
         self, import_batch_id: UUID, line: str, line_number: int
     ) -> None:
