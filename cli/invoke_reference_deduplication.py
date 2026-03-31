@@ -13,7 +13,7 @@ from cli.auth import CLIAuth
 from .config import get_settings
 
 
-def invoke_reference_deduplication(env: Environment, reference_ids: list[str]) -> str:
+def invoke_reference_deduplication(env: Environment, reference_ids: list[str]) -> int:
     """Invoke deduplication on a list of reference ids."""
     settings = get_settings(env)
 
