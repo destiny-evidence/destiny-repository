@@ -130,20 +130,20 @@ resource "azurerm_role_assignment" "gha_storage_blob_delegator" {
   principal_id         = azuread_service_principal.github_actions.object_id
 }
 
-resource "azurerm_role_assignment" "service_bus_receiver" {
+resource "azurerm_role_assignment" "tasks_service_bus_receiver" {
   role_definition_name = "Azure Service Bus Data Receiver"
-  scope                = azurerm_servicebus_namespace.this.id
+  scope                = local.active_servicebus_ns.id
   principal_id         = azurerm_user_assigned_identity.container_apps_tasks_identity.principal_id
 }
 
 resource "azurerm_role_assignment" "app_service_bus_sender" {
-  scope                = azurerm_servicebus_namespace.this.id
+  scope                = local.active_servicebus_ns.id
   role_definition_name = "Azure Service Bus Data Sender"
   principal_id         = azurerm_user_assigned_identity.container_apps_identity.principal_id
 }
 
 resource "azurerm_role_assignment" "tasks_service_bus_sender" {
   role_definition_name = "Azure Service Bus Data Sender"
-  scope                = azurerm_servicebus_namespace.this.id
+  scope                = local.active_servicebus_ns.id
   principal_id         = azurerm_user_assigned_identity.container_apps_tasks_identity.principal_id
 }

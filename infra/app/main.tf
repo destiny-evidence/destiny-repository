@@ -84,11 +84,11 @@ locals {
     },
     {
       name  = "MESSAGE_BROKER_NAMESPACE"
-      value = "${azurerm_servicebus_namespace.this.name}.servicebus.windows.net"
+      value = "${local.active_servicebus_ns.name}.servicebus.windows.net"
     },
     {
       name  = "MESSAGE_BROKER_QUEUE_NAME"
-      value = azurerm_servicebus_queue.taskiq.name
+      value = local.active_servicebus_queue.name
     },
     {
       name = "AZURE_BLOB_CONFIG"
@@ -151,7 +151,7 @@ locals {
   secrets = [
     {
       name  = "servicebus-connection-string"
-      value = azurerm_servicebus_namespace.this.default_primary_connection_string
+      value = local.active_servicebus_ns.default_primary_connection_string
     },
     {
       name = "es-config"
@@ -291,8 +291,8 @@ module "container_app_tasks" {
       name             = "queue-length-scale-rule"
       custom_rule_type = "azure-servicebus"
       metadata = {
-        namespace    = azurerm_servicebus_namespace.this.name
-        queueName    = azurerm_servicebus_queue.taskiq.name
+        namespace    = local.active_servicebus_ns.name
+        queueName    = local.active_servicebus_queue.name
         messageCount = var.queue_active_jobs_scaling_threshold
       }
       authentication = {
@@ -366,18 +366,16 @@ module "container_app_ui" {
 }
 
 locals {
-  # Temporary upgrade to Premium in production to handle high throughput demands.
-  # Revert to Standard when load subsides.
-  servicebus_is_premium = var.environment == "production"
+  servicebus_is_premium   = var.prod_servicebus_is_premium && var.environment == "production"
+  active_servicebus_ns    = local.servicebus_is_premium ? azurerm_servicebus_namespace.premium[0] : azurerm_servicebus_namespace.this
+  active_servicebus_queue = local.servicebus_is_premium ? azurerm_servicebus_queue.taskiq_premium[0] : azurerm_servicebus_queue.taskiq
 }
 
 resource "azurerm_servicebus_namespace" "this" {
-  name                         = local.name
-  resource_group_name          = azurerm_resource_group.this.name
-  location                     = azurerm_resource_group.this.location
-  sku                          = local.servicebus_is_premium ? "Premium" : "Standard"
-  capacity                     = local.servicebus_is_premium ? var.servicebus_capacity : 0
-  premium_messaging_partitions = local.servicebus_is_premium ? var.servicebus_partitions : null
+  name                = local.name
+  resource_group_name = azurerm_resource_group.this.name
+  location            = azurerm_resource_group.this.location
+  sku                 = "Standard"
 
   tags = local.minimum_resource_tags
 }
@@ -386,7 +384,27 @@ resource "azurerm_servicebus_queue" "taskiq" {
   name         = "taskiq"
   namespace_id = azurerm_servicebus_namespace.this.id
 
-  partitioning_enabled = !local.servicebus_is_premium
+  partitioning_enabled = true
+}
+
+resource "azurerm_servicebus_namespace" "premium" {
+  count = local.servicebus_is_premium ? 1 : 0
+
+  name                         = "${local.name}-premium"
+  resource_group_name          = azurerm_resource_group.this.name
+  location                     = azurerm_resource_group.this.location
+  sku                          = "Premium"
+  capacity                     = var.servicebus_capacity
+  premium_messaging_partitions = var.servicebus_partitions
+
+  tags = local.minimum_resource_tags
+}
+
+resource "azurerm_servicebus_queue" "taskiq_premium" {
+  count = local.servicebus_is_premium ? 1 : 0
+
+  name         = "taskiq"
+  namespace_id = azurerm_servicebus_namespace.premium[0].id
 }
 
 resource "azurerm_storage_account" "this" {

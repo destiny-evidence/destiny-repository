@@ -368,6 +368,12 @@ variable "es_migrator_reindex_polling_interval" {
 
 }
 
+variable "prod_servicebus_is_premium" {
+  description = "Temporary flag to upgrade production Service Bus to Premium for OpenAlex ingestion."
+  type        = bool
+  default     = true
+}
+
 variable "servicebus_capacity" {
   description = "Messaging units for Premium Service Bus. Must be 1, 2, 4, 8, or 16 and >= servicebus_partitions. Ignored for Standard."
   type        = number
