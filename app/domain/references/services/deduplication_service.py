@@ -444,8 +444,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision.reference_id,
             preload=["identifiers", "duplicate_decision"],
         )
-        if not reference.identifiers or reference.duplicate_decision:
-            # No identifiers or already deduplicated, skip shortcutting
+        if not reference.identifiers:
+            # No identifiers so we can't deduplicate
             return None
 
         trusted_identifiers = [

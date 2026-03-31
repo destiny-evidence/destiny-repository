@@ -6,6 +6,7 @@ from collections.abc import Collection
 from typing import Generic
 from uuid import UUID
 
+import tenacity
 from opentelemetry import trace
 from sqlalchemy import func, inspect, select, update
 from sqlalchemy.exc import IntegrityError, NoResultFound
@@ -170,22 +171,10 @@ class GenericAsyncSqlRepository(
             )
             raise SQLValueError(msg)
 
-    @trace_repository_method(tracer)
-    async def get_by_pk(
+    async def _get_by_pk(
         self, pk: UUID, preload: list[GenericSQLPreloadableType] | None = None
     ) -> GenericDomainModelType:
-        """
-        Get a record using its primary key.
-
-        Args:
-        - pk (UUID): The primary key to use to look up the record.
-        - preload (list[str]): A list of attributes to preload using a join.
-
-        Raises:
-        - NotFoundError: If the record is not found.
-
-        """
-        trace_attribute(Attributes.DB_PK, str(pk))
+        """Untraced method to get a record using its primary key."""
         options = self._get_relationship_loads(preload)
         query = (
             select(self._persistence_cls)
@@ -203,6 +192,53 @@ class GenericAsyncSqlRepository(
                 lookup_value=pk,
             ) from exc
         return result.to_domain(preload=preload)
+
+    @trace_repository_method(tracer)
+    async def get_by_pk(
+        self, pk: UUID, preload: list[GenericSQLPreloadableType] | None = None
+    ) -> GenericDomainModelType:
+        """
+        Get a record using its primary key.
+
+        Args:
+        - pk (UUID): The primary key to use to look up the record.
+        - preload (list[str]): A list of attributes to preload using a join.
+
+        Raises:
+        - NotFoundError: If the record is not found.
+
+        """
+        trace_attribute(Attributes.DB_PK, str(pk))
+        return await self._get_by_pk(pk, preload=preload)
+
+    @trace_repository_method(tracer)
+    async def wait_for_pk(
+        self,
+        pk: UUID,
+        preload: list[GenericSQLPreloadableType] | None = None,
+        timeout: float = 5,  # noqa: ASYNC109, not applicable
+        interval: float = 0.5,
+    ) -> GenericDomainModelType:
+        """
+        Wait for a record to exist using its primary key, then return it.
+
+        Args:
+        - pk (UUID): The primary key to use to look up the record.
+        - preload (list[str]): A list of attributes to preload using a join.
+        - timeout (float): Maximum time in seconds to wait for the record.
+        - interval (float): Time in seconds to wait between retries.
+
+        Raises:
+        - NotFoundError: If the record is not found within the timeout.
+
+        """
+        trace_attribute(Attributes.DB_PK, str(pk))
+        return await tenacity.AsyncRetrying(
+            retry=tenacity.retry_if_exception_type(SQLNotFoundError),
+            wait=tenacity.wait_fixed(interval),
+            stop=tenacity.stop_after_delay(timeout),
+            reraise=True,
+        )(self._get_by_pk, pk, preload=preload)
 
     @trace_repository_method(tracer)
     async def get_by_pks(
@@ -237,8 +273,9 @@ class GenericAsyncSqlRepository(
         result = await self._session.execute(query)
         db_references = result.unique().scalars().all()
 
-        if len(db_references) != len(pks) and fail_on_missing:
-            missing_pks = set(pks) - {ref.id for ref in db_references}
+        if fail_on_missing and (
+            missing_pks := set(pks) - {ref.id for ref in db_references}
+        ):
             detail = (
                 f"Unable to find {self._persistence_cls.__name__}"
                 f" with pks {missing_pks}"

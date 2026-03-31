@@ -83,12 +83,12 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         return await self.sql_uow.imports.batches.results.get_by_pk(import_result_id)
 
     @sql_unit_of_work
-    async def get_import_result_with_batch(
+    async def wait_for_import_result_with_batch(
         self,
         import_result_id: UUID,
     ) -> ImportResult:
-        """Get a single import result by id."""
-        return await self.sql_uow.imports.batches.results.get_by_pk(
+        """Wait for a single import result by id."""
+        return await self.sql_uow.imports.batches.results.wait_for_pk(
             import_result_id, preload=["import_batch"]
         )
 
@@ -128,13 +128,18 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
             batch.id, preload=["status"]
         )
 
-    @sql_unit_of_work
     async def register_result(self, result: ImportResult) -> ImportResult:
         """Register an import result, persisting it to the database."""
         return await self.sql_uow.imports.batches.results.add(result)
 
     @sql_unit_of_work
     async def update_import_result(
+        self, import_result_id: UUID, **kwargs: object
+    ) -> ImportResult:
+        """Update the status of an import result."""
+        return await self._update_import_result(import_result_id, **kwargs)
+
+    async def _update_import_result(
         self, import_result_id: UUID, **kwargs: object
     ) -> ImportResult:
         """Update the status of an import result."""
@@ -227,40 +232,34 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
             )
         return import_result, reference_result.duplicate_decision_id
 
+    @sql_unit_of_work
     async def _queue_import_line(
         self, import_batch_id: UUID, line: str, line_number: int
     ) -> None:
         """Queue a single line for import processing."""
-        with new_linked_trace(
-            "Queue import reference task",
-            attributes={
-                Attributes.FILE_LINE_NO: line_number,
-                Attributes.IMPORT_BATCH_ID: str(import_batch_id),
-            },
-        ):
-            import_result = await self.register_result(
-                ImportResult(
-                    import_batch_id=import_batch_id,
-                    status=ImportResultStatus.CREATED,
-                )
+        import_result = await self.register_result(
+            ImportResult(
+                import_batch_id=import_batch_id,
+                status=ImportResultStatus.CREATED,
             )
-            trace_attribute(Attributes.IMPORT_RESULT_ID, str(import_result.id))
-            try:
-                await queue_task_with_trace(
-                    ("app.domain.imports.tasks", "import_reference"),
-                    import_result.id,
-                    line,
-                    line_number,
-                    settings.import_reference_retry_count,
-                    otel_enabled=settings.otel_enabled,
-                )
-            except MessageTooLargeError as exc:
-                sample_trace()
-                await self.update_import_result(
-                    import_result_id=import_result.id,
-                    status=ImportResultStatus.FAILED,
-                    failure_details=exc.detail,
-                )
+        )
+        trace_attribute(Attributes.IMPORT_RESULT_ID, str(import_result.id))
+        try:
+            await queue_task_with_trace(
+                ("app.domain.imports.tasks", "import_reference"),
+                import_result.id,
+                line,
+                line_number,
+                settings.import_reference_retry_count,
+                otel_enabled=settings.otel_enabled,
+            )
+        except MessageTooLargeError as exc:
+            sample_trace()
+            await self._update_import_result(
+                import_result_id=import_result.id,
+                status=ImportResultStatus.FAILED,
+                failure_details=exc.detail,
+            )
 
     async def distribute_import_batch(self, import_batch: ImportBatch) -> None:
         """Distribute an import batch, retrying on connection errors."""
@@ -308,9 +307,18 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                             if line_number <= last_processed_line:
                                 continue
                             if line := line.strip():
-                                await self._queue_import_line(
-                                    import_batch.id, line, line_number
-                                )
+                                with new_linked_trace(
+                                    "Queue import reference task",
+                                    attributes={
+                                        Attributes.FILE_LINE_NO: line_number,
+                                        Attributes.IMPORT_BATCH_ID: str(
+                                            import_batch.id
+                                        ),
+                                    },
+                                ):
+                                    await self._queue_import_line(
+                                        import_batch.id, line, line_number
+                                    )
                             last_processed_line = line_number
 
     @sql_unit_of_work

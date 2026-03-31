@@ -1193,3 +1193,99 @@ class TestShortcutDeduplication:
         assert all(r.reference_id != existing_2.id for r in results)
         # Verify the bulk guard was called once with all candidate IDs
         duplicate_repo.get_active_decision_determinations.assert_awaited_once()
+
+    async def test_shortcut_deduplication_multiple_decision_processing(
+        self,
+        trusted_identifier: LinkedExternalIdentifier,
+        anti_corruption_service: ReferenceAntiCorruptionService,
+        fake_uow,
+        fake_repository,
+    ):
+        """
+        When two pre-existing references share a trusted identifier and both
+        have pending duplicate decisions, running shortcut deduplication both
+        references should result in a candidate and a duplicate.
+
+        This can sometimes happen if we end up with duplicate delivery of our
+        ingest reference tasks.
+        """
+        ref_1: Reference = ReferenceFactory.build(identifiers=[trusted_identifier])
+        ref_2: Reference = ReferenceFactory.build(identifiers=[trusted_identifier])
+
+        references = fake_repository([ref_1, ref_2])
+
+        decision_1 = ReferenceDuplicateDecision(
+            reference_id=ref_1.id,
+            duplicate_determination=DuplicateDetermination.PENDING,
+        )
+        decision_2 = ReferenceDuplicateDecision(
+            reference_id=ref_2.id,
+            duplicate_determination=DuplicateDetermination.PENDING,
+        )
+
+        reference_duplicate_decisions = fake_repository([decision_1, decision_2])
+
+        link_fake_repos(
+            reference_duplicate_decisions,
+            references,
+            fk="reference_id",
+            attr="duplicate_decision",
+            filter_field="active_decision",
+            filter_value=True,
+        )
+
+        uow = fake_uow(
+            references=references,
+            reference_duplicate_decisions=reference_duplicate_decisions,
+        )
+        uow.references.find_with_identifiers = AsyncMock(return_value=[ref_1, ref_2])
+
+        service = DeduplicationService(
+            anti_corruption_service,
+            sql_uow=uow,
+            es_uow=fake_uow(),
+        )
+
+        results_decision_1 = await service.shortcut_deduplication_using_identifiers(
+            decision_1,
+            trusted_unique_identifier_types={ExternalIdentifierType.OPEN_ALEX},
+        )
+
+        assert results_decision_1
+        assert len(results_decision_1) == 2
+
+        assert results_decision_1[0].reference_id == ref_1.id
+        assert (
+            results_decision_1[0].duplicate_determination
+            == DuplicateDetermination.CANONICAL
+        )
+        assert results_decision_1[0].detail == "Shortcutted with trusted identifier(s)"
+
+        assert results_decision_1[1].reference_id == ref_2.id
+        assert (
+            results_decision_1[1].duplicate_determination
+            == DuplicateDetermination.DUPLICATE
+        )
+        assert results_decision_1[1].canonical_reference_id == ref_1.id
+        assert results_decision_1[1].detail == (
+            f"Shortcutted via proxy reference {ref_1.id} " "with trusted identifier(s)"
+        )
+
+        results_decision_2 = await service.shortcut_deduplication_using_identifiers(
+            decision_2,
+            trusted_unique_identifier_types={ExternalIdentifierType.OPEN_ALEX},
+        )
+
+        assert results_decision_2
+        assert len(results_decision_2) == 1
+        assert results_decision_2
+
+        assert results_decision_2[0].reference_id == ref_2.id
+        assert (
+            results_decision_2[0].duplicate_determination
+            == DuplicateDetermination.DUPLICATE
+        )
+        assert results_decision_2[0].canonical_reference_id == ref_1.id
+        assert results_decision_2[0].detail == (
+            "Shortcutted with trusted identifier(s)"
+        )
