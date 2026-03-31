@@ -237,8 +237,9 @@ class GenericAsyncSqlRepository(
         result = await self._session.execute(query)
         db_references = result.unique().scalars().all()
 
-        if len(db_references) != len(pks) and fail_on_missing:
-            missing_pks = set(pks) - {ref.id for ref in db_references}
+        if fail_on_missing and (
+            missing_pks := set(pks) - {ref.id for ref in db_references}
+        ):
             detail = (
                 f"Unable to find {self._persistence_cls.__name__}"
                 f" with pks {missing_pks}"
