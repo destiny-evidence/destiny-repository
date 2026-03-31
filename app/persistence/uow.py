@@ -101,8 +101,8 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
         traceback: TracebackType | None,
     ) -> None:
         """Clean up any connections and rollback if an exception has been raised."""
-        if exc_value:
-            if exc_type in (IntegrityError, NotFoundError):
+        if exc_type:
+            if issubclass(exc_type, IntegrityError | NotFoundError):
                 # IntegrityError and NotFoundError are relatively expected exceptions
                 # that don't require a full stack trace in the logs. It can still be
                 # seen in the trace span.
@@ -112,7 +112,7 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
                 )
             else:
                 logger.exception("Rolling back unit of work.")
-            set_span_status(trace.StatusCode.ERROR, str(exc_value), exc_value)
+                set_span_status(trace.StatusCode.ERROR, str(exc_value), exc_value)
             await self.rollback()
         else:
             set_span_status(trace.StatusCode.OK)
