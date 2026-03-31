@@ -405,6 +405,8 @@ resource "azurerm_servicebus_queue" "taskiq_premium" {
 
   name         = "taskiq"
   namespace_id = azurerm_servicebus_namespace.premium[0].id
+
+  partitioning_enabled = true
 }
 
 resource "azurerm_storage_account" "this" {
