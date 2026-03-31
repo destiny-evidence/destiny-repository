@@ -17,8 +17,8 @@ from .config import get_settings
 
 def check_import_batch_status(
     env: Environment, import_record_id: UUID, import_batch_id: UUID
-) -> destiny_sdk.robots.ProvisionedRobot:
-    """Register a robot to destiny repository."""
+) -> destiny_sdk.imports.ImportBatchSummary:
+    """Check the status of an import batch."""
     settings = get_settings(env)
 
     with httpx.Client() as client:
