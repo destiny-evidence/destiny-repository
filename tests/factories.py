@@ -40,11 +40,11 @@ from faker.providers import BaseProvider
 
 from app.domain.references.models.models import (
     Enhancement,
-    IndexableDomainReference,
     LinkedExternalIdentifier,
     PendingEnhancement,
     PendingEnhancementStatus,
     Reference,
+    ReferenceSearchProjection,
     Visibility,
 )
 from app.domain.references.models.projections import ReferenceSearchFieldsProjection
@@ -386,11 +386,17 @@ class ReferenceFactory(factory.Factory):
             self.enhancements = extracted
 
 
-def to_indexable(reference: Reference) -> IndexableDomainReference:
-    """Convert a Reference to an IndexableDomainReference for ES test indexing."""
+def to_indexable(reference: Reference) -> ReferenceSearchProjection:
+    """Convert a Reference to an ReferenceSearchProjection for ES test indexing."""
     search_fields = ReferenceSearchFieldsProjection.get_from_reference(reference)
-    return IndexableDomainReference(
-        **reference.model_dump(),
+    return ReferenceSearchProjection(
+        id=reference.id,
+        visibility=reference.visibility,
+        duplicate_determination=(
+            reference.duplicate_decision.duplicate_determination
+            if reference.duplicate_decision
+            else None
+        ),
         search_fields=search_fields,
     )
 

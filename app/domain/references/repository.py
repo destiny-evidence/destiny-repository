@@ -33,8 +33,8 @@ from app.domain.references.models.models import (
     CandidateCanonicalSearchFields,
     DuplicateDetermination,
     GenericExternalIdentifier,
-    IndexableDomainReference,
     PendingEnhancementStatus,
+    ReferenceSearchProjection,
     ReferenceWithChangeset,
     RobotAutomationPercolationResult,
 )
@@ -235,7 +235,7 @@ class ReferenceSQLRepository(
 
 
 class ReferenceESRepository(
-    GenericAsyncESRepository[IndexableDomainReference, ReferenceDocument],
+    GenericAsyncESRepository[ReferenceSearchProjection, ReferenceDocument],
     ReferenceRepositoryBase,
 ):
     """Concrete implementation of a repository for references using Elasticsearch."""
@@ -244,7 +244,7 @@ class ReferenceESRepository(
         """Initialize the repository with the Elasticsearch client."""
         super().__init__(
             client,
-            IndexableDomainReference,
+            ReferenceSearchProjection,
             ReferenceDocument,
         )
 

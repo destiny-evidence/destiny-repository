@@ -11,8 +11,8 @@ from app.core.config import ESIndexingOperation, get_settings
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
-    IndexableDomainReference,
     Reference,
+    ReferenceSearchProjection,
     RobotAutomation,
 )
 from app.domain.references.models.projections import (
@@ -51,7 +51,7 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
     ]
 
     @staticmethod
-    async def _to_indexable(reference: Reference) -> IndexableDomainReference:
+    async def _to_indexable(reference: Reference) -> ReferenceSearchProjection:
         """Deduplicate a Reference and project its search fields for ES indexing."""
         deduped = DeduplicatedReferenceProjection.get_from_reference(reference)
         search_fields = ReferenceSearchFieldsProjection.get_from_reference(deduped)
@@ -64,14 +64,20 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
                 )
             )
 
-        return IndexableDomainReference(
-            **deduped.model_dump(),
+        return ReferenceSearchProjection(
+            id=deduped.id,
+            visibility=deduped.visibility,
+            duplicate_determination=(
+                deduped.duplicate_decision.duplicate_determination
+                if deduped.duplicate_decision
+                else None
+            ),
             search_fields=search_fields,
             linked_data_projection=linked_data_projection,
         )
 
     @tracer.start_as_current_span("Sync Reference SQL->ES")
-    async def sql_to_es(self, reference_id: UUID) -> IndexableDomainReference:
+    async def sql_to_es(self, reference_id: UUID) -> ReferenceSearchProjection:
         """Synchronize a reference from SQL to Elasticsearch."""
         trace_attribute(Attributes.DB_PK, str(reference_id))
         reference = await self.sql_uow.references.get_by_pk(
@@ -107,7 +113,7 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
         )
 
         async def reference_generator() -> (
-            AsyncGenerator[IndexableDomainReference, None]
+            AsyncGenerator[ReferenceSearchProjection, None]
         ):
             """Generate references for indexing."""
             for reference_id_chunk in list_chunker(

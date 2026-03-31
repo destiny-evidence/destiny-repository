@@ -17,8 +17,8 @@ from app.core.config import DedupCandidateScoringConfig
 from app.core.exceptions import ESNotFoundError
 from app.domain.references.models.models import (
     Enhancement,
-    IndexableDomainReference,
     Reference,
+    ReferenceSearchProjection,
     ReferenceWithChangeset,
     RobotAutomation,
 )
@@ -370,7 +370,7 @@ async def test_add_bulk(
     """Test bulk adding multiple references."""
     ref_ids = []
 
-    async def yield_reference() -> AsyncGenerator[IndexableDomainReference, None]:
+    async def yield_reference() -> AsyncGenerator[ReferenceSearchProjection, None]:
         for _ in range(5):
             ref_ids.append(uuid7())
             yield to_indexable(

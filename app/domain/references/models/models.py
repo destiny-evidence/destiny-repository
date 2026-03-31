@@ -3,7 +3,7 @@
 import datetime
 import json
 from enum import StrEnum, auto
-from typing import Any, Literal, NamedTuple, Self
+from typing import Any, Literal, Self
 from uuid import UUID
 
 import destiny_sdk
@@ -567,17 +567,31 @@ class ReferenceSearchFields(ProjectedBaseModel):
         return [cls._normalise_string(v) for v in value if v]
 
 
-class LinkedDataProjection(NamedTuple):
+class LinkedDataProjection(ProjectedBaseModel):
     """Result of projecting a LinkedDataEnhancement into flat searchable fields."""
 
-    concepts: set[str]
-    labels: set[str]
-    evaluated_properties: set[str]
+    concepts: set[str] = Field(default_factory=set)
+    labels: set[str] = Field(default_factory=set)
+    evaluated_properties: set[str] = Field(default_factory=set)
 
 
-class IndexableDomainReference(Reference):
-    """A Reference enriched with pre-computed projections for ES indexing."""
+class ReferenceSearchProjection(SQLAttributeMixin):
+    """
+    Pre-computed projection of a Reference for ES indexing.
 
+    Contains only the fields that ES indexes, constructed by the synchronizer
+    from a Reference and its projections. Inherits SQLAttributeMixin for the
+    id field and to satisfy the GenericDomainModelType bound required by the
+    ES persistence layer.
+    """
+
+    visibility: Visibility = Field(
+        description="The level of visibility of the reference.",
+    )
+    duplicate_determination: DuplicateDetermination | None = Field(
+        default=None,
+        description="The duplicate determination, if any.",
+    )
     search_fields: ReferenceSearchFields = Field(
         description="Pre-computed search fields for Elasticsearch indexing.",
     )
