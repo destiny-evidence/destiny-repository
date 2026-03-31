@@ -376,8 +376,8 @@ resource "azurerm_servicebus_namespace" "this" {
   resource_group_name          = azurerm_resource_group.this.name
   location                     = azurerm_resource_group.this.location
   sku                          = local.servicebus_is_premium ? "Premium" : "Standard"
-  capacity                     = local.servicebus_is_premium ? 2 : 0
-  premium_messaging_partitions = local.servicebus_is_premium ? 1 : null
+  capacity                     = local.servicebus_is_premium ? var.servicebus_capacity : 0
+  premium_messaging_partitions = local.servicebus_is_premium ? var.servicebus_partitions : null
 
   tags = local.minimum_resource_tags
 }

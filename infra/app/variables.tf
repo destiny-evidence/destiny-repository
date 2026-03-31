@@ -368,6 +368,28 @@ variable "es_migrator_reindex_polling_interval" {
 
 }
 
+variable "servicebus_capacity" {
+  description = "Messaging units for Premium Service Bus. Must be 1, 2, 4, 8, or 16 and >= servicebus_partitions. Ignored for Standard."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = contains([1, 2, 4, 8, 16], var.servicebus_capacity)
+    error_message = "Capacity must be 1, 2, 4, 8, or 16 messaging units."
+  }
+}
+
+variable "servicebus_partitions" {
+  description = "Number of partitions for Premium Service Bus. Must be 1, 2, or 4 and <= servicebus_capacity. Ignored for Standard."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = contains([1, 2, 4], var.servicebus_partitions)
+    error_message = "Partitions must be 1, 2, or 4."
+  }
+}
+
 variable "message_lock_renewal_duration" {
   description = "Duration to renew message locks for in seconds"
   type        = number
