@@ -83,12 +83,12 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         return await self.sql_uow.imports.batches.results.get_by_pk(import_result_id)
 
     @sql_unit_of_work
-    async def get_import_result_with_batch(
+    async def wait_for_import_result_with_batch(
         self,
         import_result_id: UUID,
     ) -> ImportResult:
-        """Get a single import result by id."""
-        return await self.sql_uow.imports.batches.results.get_by_pk(
+        """Wait for a single import result by id."""
+        return await self.sql_uow.imports.batches.results.wait_for_pk(
             import_result_id, preload=["import_batch"]
         )
 
