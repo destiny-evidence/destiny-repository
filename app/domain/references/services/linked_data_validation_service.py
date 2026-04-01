@@ -10,6 +10,7 @@ from pyshacl.errors import ReportableRuntimeError
 from rdflib import Graph
 
 from app.core.config import get_settings
+from app.external.vocabulary.client import VocabularyArtifactClient
 
 _SHAPES_PATH = get_settings().project_root / "app" / "static" / "evrepo-core-shapes.ttl"
 
@@ -32,46 +33,37 @@ class LinkedDataValidationResult(BaseModel):
 class LinkedDataValidationService:
     """Validates LinkedDataEnhancements using JSON-LD expansion and SHACL."""
 
-    def __init__(self, ontology: Graph | None = None) -> None:
-        """Initialise with the bundled SHACL shapes and optional ontology."""
+    def __init__(self, vocab_client: VocabularyArtifactClient) -> None:
+        """Initialise with the bundled SHACL shapes and a vocabulary client."""
         self._shapes = _get_bundled_shapes()
-        self._ontology = ontology
+        self._vocab_client = vocab_client
 
-    def _resolve_ontology(
+    async def validate(
         self,
-        vocabulary_uri: str,  # noqa: ARG002
-    ) -> Graph | None:
-        """
-        Resolve a vocabulary URI to an ontology graph.
-
-        Returns None if the vocabulary is not yet available.
-        """
-        # TODO(Adam): resolve ontology graph from vocabulary_uri
-        # https://github.com/destiny-evidence/destiny-repository/issues/593
-        return None
-
-    def validate(
-        self, data: dict, vocabulary_uri: str
-    ) -> LinkedDataValidationResult | None:
+        data: dict,
+        vocabulary_uri: str,
+    ) -> LinkedDataValidationResult:
         """
         Validate a LinkedDataEnhancement's data field.
-
-        Returns None if the vocabulary is not yet available.
 
         Validates:
         1. JSON-LD expansion succeeds and produces a non-empty graph.
         2. The expanded data can be converted to an rdflib graph.
         3. The data conforms to the SHACL shapes.
+
+        :raises VocabularyFetchError: If vocabulary artifacts cannot be fetched.
         """
-        ontology = self._ontology or self._resolve_ontology(vocabulary_uri)
-        if ontology is None:
-            return None
+        context_uri = data["@context"]
+        ontology = await self._vocab_client.get_vocabulary(vocabulary_uri)
+        await self._vocab_client.get_context(context_uri)
+
+        loader_options = {"documentLoader": self._vocab_client.document_loader}
 
         errors: list[str] = []
 
         # Step 1: JSON-LD expansion
         try:
-            expanded = jsonld.expand(data)
+            expanded = jsonld.expand(data, options=loader_options)
         except JsonLdError as exc:
             return LinkedDataValidationResult(
                 conforms=False,
@@ -88,7 +80,10 @@ class LinkedDataValidationService:
         try:
             data_graph = Graph()
             data_graph.parse(
-                data=jsonld.to_rdf(data, {"format": "application/n-quads"}),
+                data=jsonld.to_rdf(
+                    data,
+                    {**loader_options, "format": "application/n-quads"},
+                ),
                 format="nquads",
             )
         except (JsonLdError, ValueError) as exc:

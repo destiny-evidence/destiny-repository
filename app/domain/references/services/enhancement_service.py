@@ -8,6 +8,7 @@ import destiny_sdk
 from opentelemetry import trace
 
 from app.core.config import get_settings
+from app.core.exceptions import VocabularyFetchError
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.otel import new_linked_trace
@@ -59,13 +60,11 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         self,
         anti_corruption_service: ReferenceAntiCorruptionService,
         sql_uow: AsyncSqlUnitOfWork,
-        linked_data_validation_service: LinkedDataValidationService | None = None,
+        linked_data_validation_service: LinkedDataValidationService,
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow)
-        self._linked_data_validation_service = (
-            linked_data_validation_service or LinkedDataValidationService()
-        )
+        self._linked_data_validation_service = linked_data_validation_service
 
     async def mark_robot_enhancement_batch_failed(
         self, robot_enhancement_batch_id: UUID, error: str
@@ -247,20 +246,33 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             enhancement_request
         )
 
-    def _validate_linked_data_enhancement(
+    async def _validate_linked_data_enhancement(
         self,
         enhancement: destiny_sdk.enhancements.Enhancement,
-    ) -> destiny_sdk.robots.LinkedRobotError:
+    ) -> destiny_sdk.robots.LinkedRobotError | None:
         """Validate a LinkedDataEnhancement against the ontology, if applicable."""
         if enhancement.content.enhancement_type != EnhancementType.LINKED_DATA:
             msg = "Enhancement must be of type LINKED_DATA for LinkedData validation."
             raise TypeError(msg)
-        result = self._linked_data_validation_service.validate(
-            data=enhancement.content.data,
-            vocabulary_uri=str(enhancement.content.vocabulary_uri),
-        )
-        if result is None:
-            return None
+        try:
+            result = await self._linked_data_validation_service.validate(
+                data=enhancement.content.data,
+                vocabulary_uri=str(enhancement.content.vocabulary_uri),
+            )
+        except VocabularyFetchError as exc:
+            logger.warning(
+                "Vocabulary failed to fetch or parse.",
+                reference_id=str(enhancement.reference_id),
+                exc=repr(exc),
+            )
+            return destiny_sdk.robots.LinkedRobotError(
+                reference_id=enhancement.reference_id,
+                message=(
+                    "Could not fetch or parse the vocabulary needed to "
+                    "validate this enhancement. This may be transient. "
+                    f"Detail: {exc}"
+                ),
+            )
         if not result.conforms:
             return destiny_sdk.robots.LinkedRobotError(
                 reference_id=enhancement.reference_id,
@@ -459,12 +471,13 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                                 validated_result.enhancement_to_add.content.enhancement_type
                                 == EnhancementType.LINKED_DATA
                             ) and (
-                                ld_error := self._validate_linked_data_enhancement(
+                                ld_error
+                                := await self._validate_linked_data_enhancement(
                                     validated_result.enhancement_to_add,
                                 )
                             ):
                                 result_entry = await self._process_robot_error_line(
-                                    EnhancementResultValidator(robot_error=ld_error),
+                                    ld_error,
                                     attempted_reference_ids,
                                 )
                             else:
