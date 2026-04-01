@@ -89,7 +89,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
     ) -> ImportResult:
         """Wait for a single import result by id."""
         return await self.sql_uow.imports.batches.results.wait_for_pk(
-            import_result_id, preload=["import_batch"]
+            import_result_id, preload=["import_batch"], timeout=2, interval=0.1
         )
 
     @sql_unit_of_work

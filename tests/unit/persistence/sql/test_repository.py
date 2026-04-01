@@ -53,15 +53,7 @@ async def test_wait_for_pk_retries_until_record_appears(
 ) -> None:
     """Should retry and return the record once it becomes available."""
     record = SimpleDomainModel(title="delayed")
-    not_found = SQLNotFoundError(
-        detail="not found",
-        lookup_model="Test",
-        lookup_type="id",
-        lookup_value=record.id,
-    )
-    with patch.object(
-        repository, "_get_by_pk", AsyncMock(side_effect=[not_found, record])
-    ):
+    with patch.object(repository, "_get_by_pk", AsyncMock(side_effect=[None, record])):
         result = await repository.wait_for_pk(record.id, timeout=1, interval=0.05)
 
     assert result.id == record.id

@@ -9,7 +9,7 @@ from uuid import UUID
 import tenacity
 from opentelemetry import trace
 from sqlalchemy import func, inspect, select, update
-from sqlalchemy.exc import IntegrityError, NoResultFound
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import (
     InstrumentedAttribute,
@@ -173,7 +173,7 @@ class GenericAsyncSqlRepository(
 
     async def _get_by_pk(
         self, pk: UUID, preload: list[GenericSQLPreloadableType] | None = None
-    ) -> GenericDomainModelType:
+    ) -> GenericDomainModelType | None:
         """Untraced method to get a record using its primary key."""
         options = self._get_relationship_loads(preload)
         query = (
@@ -181,17 +181,8 @@ class GenericAsyncSqlRepository(
             .where(self._persistence_cls.id == pk)
             .options(*options)
         )
-        try:
-            result = (await self._session.execute(query)).unique().scalar_one()
-        except NoResultFound as exc:
-            detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
-            raise SQLNotFoundError(
-                detail=detail,
-                lookup_model=self._persistence_cls.__name__,
-                lookup_type="id",
-                lookup_value=pk,
-            ) from exc
-        return result.to_domain(preload=preload)
+        result = (await self._session.execute(query)).unique().scalar_one_or_none()
+        return result.to_domain(preload=preload) if result is not None else None
 
     @trace_repository_method(tracer)
     async def get_by_pk(
@@ -209,7 +200,16 @@ class GenericAsyncSqlRepository(
 
         """
         trace_attribute(Attributes.DB_PK, str(pk))
-        return await self._get_by_pk(pk, preload=preload)
+        record = await self._get_by_pk(pk, preload=preload)
+        if record is None:
+            detail = f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
+            raise SQLNotFoundError(
+                detail=detail,
+                lookup_model=self._persistence_cls.__name__,
+                lookup_type="id",
+                lookup_value=pk,
+            )
+        return record
 
     @trace_repository_method(tracer)
     async def wait_for_pk(
@@ -233,12 +233,23 @@ class GenericAsyncSqlRepository(
 
         """
         trace_attribute(Attributes.DB_PK, str(pk))
-        return await tenacity.AsyncRetrying(
-            retry=tenacity.retry_if_exception_type(SQLNotFoundError),
-            wait=tenacity.wait_fixed(interval),
-            stop=tenacity.stop_after_delay(timeout),
-            reraise=True,
-        )(self._get_by_pk, pk, preload=preload)
+        try:
+            return await tenacity.AsyncRetrying(
+                retry=tenacity.retry_if_result(lambda record: record is None),
+                wait=tenacity.wait_fixed(interval),
+                stop=tenacity.stop_after_delay(timeout),
+            )(self._get_by_pk, pk, preload=preload)
+        except tenacity.RetryError as exc:
+            detail = (
+                f"Unable to find {self._persistence_cls.__name__} with pk {pk}"
+                f" after waiting for {timeout} seconds."
+            )
+            raise SQLNotFoundError(
+                detail=detail,
+                lookup_model=self._persistence_cls.__name__,
+                lookup_type="id",
+                lookup_value=pk,
+            ) from exc
 
     @trace_repository_method(tracer)
     async def get_by_pks(
