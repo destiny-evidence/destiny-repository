@@ -16,6 +16,7 @@ from app.core.exceptions import (
     DuplicateEnhancementError,
     InvalidParentEnhancementError,
     SQLNotFoundError,
+    VocabularyFetchError,
 )
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
@@ -506,10 +507,22 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         valid_enhancements = []
         for enhancement in reference_create_result.reference.enhancements or []:
             if enhancement.content.enhancement_type == EnhancementType.LINKED_DATA:
-                ld_result = await self._linked_data_validation_service.validate(
-                    data=enhancement.content.data,
-                    vocabulary_uri=str(enhancement.content.vocabulary_uri),
-                )
+                try:
+                    ld_result = await self._linked_data_validation_service.validate(
+                        data=enhancement.content.data,
+                        vocabulary_uri=str(enhancement.content.vocabulary_uri),
+                    )
+                except VocabularyFetchError as exc:
+                    logger.warning(
+                        "Vocabulary failed to fetch or parse.",
+                        exc=repr(exc),
+                    )
+                    reference_create_result.errors.append(
+                        "Could not fetch or parse the vocabulary needed to "
+                        "validate this enhancement. This may be transient. "
+                        f"Detail: {exc}"
+                    )
+                    continue
                 if not ld_result.conforms:
                     reference_create_result.errors.extend(ld_result.errors)
                     continue

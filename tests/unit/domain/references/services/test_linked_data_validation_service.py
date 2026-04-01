@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from rdflib import Graph
 
+from app.core.exceptions import VocabularyFetchError
 from app.domain.references.services.linked_data_validation_service import (
     LinkedDataValidationService,
 )
@@ -114,3 +115,16 @@ async def test_malformed_jsonld_fails(service: LinkedDataValidationService):
     """JSON-LD that cannot be expanded."""
     result = await service.validate(data={"@context": 12345}, vocabulary_uri=VOCAB_URI)
     assert not result.conforms
+
+
+@pytest.mark.asyncio
+async def test_vocabulary_fetch_error_propagates(
+    vocab_client: MagicMock,
+):
+    """VocabularyFetchError propagates instead of returning conforms=False."""
+    vocab_client.get_vocabulary = AsyncMock(
+        side_effect=VocabularyFetchError("http://example.com", "connection refused"),
+    )
+    service = LinkedDataValidationService(vocab_client=vocab_client)
+    with pytest.raises(VocabularyFetchError):
+        await service.validate(data=VALID_DATA, vocabulary_uri=VOCAB_URI)

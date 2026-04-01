@@ -4,6 +4,7 @@ import httpx
 import pytest
 from pytest_httpx import HTTPXMock
 
+from app.core.exceptions import VocabularyFetchError
 from app.external.vocabulary.client import (
     ContextNotPreFetchedError,
     VocabularyArtifactClient,
@@ -85,8 +86,11 @@ class TestGetVocabulary:
     ):
         httpx_mock.add_response(url=VOCAB_URI, status_code=404)
 
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(VocabularyFetchError) as exc_info:
             await client.get_vocabulary(VOCAB_URI)
+
+        assert exc_info.value.uri == VOCAB_URI
+        assert exc_info.value.__cause__ is not None
 
     @pytest.mark.asyncio
     async def test_failed_fetch_not_cached(
@@ -94,7 +98,7 @@ class TestGetVocabulary:
     ):
         httpx_mock.add_response(url=VOCAB_URI, status_code=500)
 
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(VocabularyFetchError):
             await client.get_vocabulary(VOCAB_URI)
 
         # Subsequent call should retry, not return a cached error
@@ -106,6 +110,17 @@ class TestGetVocabulary:
 
         graph = await client.get_vocabulary(VOCAB_URI)
         assert len(graph) > 0
+
+    @pytest.mark.asyncio
+    async def test_malformed_body_raises(
+        self, client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+    ):
+        httpx_mock.add_response(url=VOCAB_URI, text="this is not valid turtle {{{}}")
+
+        with pytest.raises(VocabularyFetchError) as exc_info:
+            await client.get_vocabulary(VOCAB_URI)
+
+        assert "Failed to parse" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_retries_on_transport_error(
@@ -172,8 +187,11 @@ class TestGetContext:
     ):
         httpx_mock.add_response(url=CONTEXT_URI, status_code=404)
 
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(VocabularyFetchError) as exc_info:
             await client.get_context(CONTEXT_URI)
+
+        assert exc_info.value.uri == CONTEXT_URI
+        assert exc_info.value.__cause__ is not None
 
     @pytest.mark.asyncio
     async def test_failed_fetch_not_cached(
@@ -181,13 +199,24 @@ class TestGetContext:
     ):
         httpx_mock.add_response(url=CONTEXT_URI, status_code=500)
 
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(VocabularyFetchError):
             await client.get_context(CONTEXT_URI)
 
         httpx_mock.add_response(url=CONTEXT_URI, json=SAMPLE_CONTEXT)
 
         doc = await client.get_context(CONTEXT_URI)
         assert doc == SAMPLE_CONTEXT
+
+    @pytest.mark.asyncio
+    async def test_malformed_body_raises(
+        self, client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+    ):
+        httpx_mock.add_response(url=CONTEXT_URI, text="not json {{{")
+
+        with pytest.raises(VocabularyFetchError) as exc_info:
+            await client.get_context(CONTEXT_URI)
+
+        assert "Failed to parse" in str(exc_info.value)
 
 
 class TestDocumentLoader:

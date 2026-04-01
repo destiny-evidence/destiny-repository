@@ -9,7 +9,7 @@ from opentelemetry import trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from rdflib import Graph
 
-from app.core.exceptions import ContextNotPreFetchedError
+from app.core.exceptions import ContextNotPreFetchedError, VocabularyFetchError
 from app.core.telemetry.logger import get_logger
 
 logger = get_logger(__name__)
@@ -37,16 +37,24 @@ class VocabularyArtifactClient:
         :param uri: Full URI of the vocabulary document (including version).
         :param rdf_format: Optional RDF format hint, default is "turtle".
         :return: The parsed vocabulary as an rdflib Graph.
-        :raises httpx.HTTPStatusError: On non-2xx responses after retries.
-        :raises httpx.TransportError: If all retry attempts are exhausted.
+        :raises VocabularyFetchError: On network failure or malformed response body.
         """
         if uri in self._vocabulary_cache:
             return self._vocabulary_cache[uri]
 
-        response = await self._fetch(uri)
+        try:
+            response = await self._fetch(uri)
+        except (httpx.HTTPStatusError, httpx.TransportError) as exc:
+            raise VocabularyFetchError(uri, repr(exc)) from exc
 
-        graph = Graph()
-        graph.parse(data=response.text, format=rdf_format)
+        try:
+            graph = Graph()
+            graph.parse(data=response.text, format=rdf_format)
+        except Exception as exc:
+            raise VocabularyFetchError(
+                uri, f"Failed to parse response as {rdf_format}: {exc}"
+            ) from exc
+
         self._vocabulary_cache[uri] = graph
         return graph
 
@@ -56,14 +64,23 @@ class VocabularyArtifactClient:
 
         :param uri: Full URI of the context document (including version).
         :return: The parsed JSON-LD context as a dict.
-        :raises httpx.HTTPStatusError: On non-2xx responses after retries.
-        :raises httpx.TransportError: If all retry attempts are exhausted.
+        :raises VocabularyFetchError: On network failure or malformed response body.
         """
         if uri in self._context_cache:
             return self._context_cache[uri]
 
-        response = await self._fetch(uri)
-        doc = response.json()
+        try:
+            response = await self._fetch(uri)
+        except (httpx.HTTPStatusError, httpx.TransportError) as exc:
+            raise VocabularyFetchError(uri, repr(exc)) from exc
+
+        try:
+            doc = response.json()
+        except ValueError as exc:
+            raise VocabularyFetchError(
+                uri, f"Failed to parse response as JSON: {exc}"
+            ) from exc
+
         self._context_cache[uri] = doc
         return doc
 

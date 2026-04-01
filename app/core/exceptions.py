@@ -616,3 +616,12 @@ class ContextNotPreFetchedError(DestinyRepositoryError):
             f"Call get_context('{uri}') before using document_loader."
         )
         self.uri = uri
+
+
+class VocabularyFetchError(DestinyRepositoryError):
+    """Raised when a vocabulary artifact cannot be fetched or parsed."""
+
+    def __init__(self, uri: str, detail: str) -> None:
+        """Initialize the VocabularyFetchError exception."""
+        super().__init__(f"Failed to fetch vocabulary artifact '{uri}': {detail}")
+        self.uri = uri

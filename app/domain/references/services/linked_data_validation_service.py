@@ -2,7 +2,6 @@
 
 import functools
 
-import httpx
 from pydantic import BaseModel, Field
 from pyld import jsonld
 from pyld.jsonld import JsonLdError
@@ -11,10 +10,7 @@ from pyshacl.errors import ReportableRuntimeError
 from rdflib import Graph
 
 from app.core.config import get_settings
-from app.core.telemetry.logger import get_logger
 from app.external.vocabulary.client import VocabularyArtifactClient
-
-logger = get_logger(__name__)
 
 _SHAPES_PATH = get_settings().project_root / "app" / "static" / "evrepo-core-shapes.ttl"
 
@@ -54,22 +50,12 @@ class LinkedDataValidationService:
         1. JSON-LD expansion succeeds and produces a non-empty graph.
         2. The expanded data can be converted to an rdflib graph.
         3. The data conforms to the SHACL shapes.
+
+        :raises VocabularyFetchError: If vocabulary artifacts cannot be fetched.
         """
         context_uri = data["@context"]
-        try:
-            ontology = await self._vocab_client.get_vocabulary(vocabulary_uri)
-            await self._vocab_client.get_context(context_uri)
-        except (httpx.HTTPStatusError, httpx.TransportError) as exc:
-            logger.warning(
-                "Failed to fetch vocabulary artifacts for validation.",
-                vocabulary_uri=vocabulary_uri,
-                context_uri=context_uri,
-                exc=repr(exc),
-            )
-            return LinkedDataValidationResult(
-                conforms=False,
-                errors=[f"Failed to fetch vocabulary artifacts: {exc}"],
-            )
+        ontology = await self._vocab_client.get_vocabulary(vocabulary_uri)
+        await self._vocab_client.get_context(context_uri)
 
         loader_options = {"documentLoader": self._vocab_client.document_loader}
 
