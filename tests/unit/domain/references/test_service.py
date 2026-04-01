@@ -611,6 +611,25 @@ async def test_get_deduplicated_canonical_references(
     )
 
 
+@pytest.mark.asyncio
+async def test_get_deduplicated_canonical_references_all_duplicates(
+    fake_repository, fake_uow, canonical_reference, get_duplicate_reference
+):
+    """All-duplicate input should return the canonical without raising ValueError."""
+    duplicate_reference = get_duplicate_reference(canonical_reference.id)
+    canonical_reference.duplicate_references = [duplicate_reference]
+    refs = fake_repository([canonical_reference, duplicate_reference])
+    uow = fake_uow(references=refs)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+    canonical_list = await service._get_deduplicated_canonical_references(  # noqa: SLF001
+        references=[duplicate_reference]
+    )
+    assert len(canonical_list) == 1
+    assert canonical_list[0].id == canonical_reference.id
+
+
 async def test_get_canonical_reference_with_implied_changeset(
     fake_uow, fake_repository
 ):

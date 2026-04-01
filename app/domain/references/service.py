@@ -275,9 +275,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     reference.duplicate_decision.canonical_reference_id
                 )
 
-        canonical_references = await self._get_deduplicated_references(
-            references=canonical_references
-        )
+        if canonical_references:
+            canonical_references = await self._get_deduplicated_references(
+                references=canonical_references
+            )
 
         if duplicate_canonical_ids:
             canonical_references += await self._get_deduplicated_references(
