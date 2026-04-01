@@ -461,7 +461,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                                 )
                             ):
                                 result_entry = await self._process_robot_error_line(
-                                    EnhancementResultValidator(robot_error=ld_error),
+                                    ld_error,
                                     attempted_reference_ids,
                                 )
                             else:
