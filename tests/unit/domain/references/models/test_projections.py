@@ -30,6 +30,7 @@ from tests.factories import (
     DOIIdentifierFactory,
     EnhancementFactory,
     ERICIdentifierFactory,
+    LinkedDataEnhancementFactory,
     LinkedExternalIdentifierFactory,
     OpenAlexIdentifierFactory,
     OtherIdentifierFactory,
@@ -750,6 +751,109 @@ class TestReferenceSearchFieldsProjection:
             annotation
         )
         assert result == expected
+
+
+class TestLinkedDataProjection:
+    """Test linked data projection via ReferenceSearchFieldsProjection."""
+
+    @pytest.fixture
+    def linked_data_enhancement(self) -> Enhancement:
+        return EnhancementFactory.build(
+            content=LinkedDataEnhancementFactory.build(
+                data={
+                    "@context": "https://vocab.esea.education/context/v1.jsonld",
+                    "@type": "Investigation",
+                    "documentType": {
+                        "@type": "DocumentTypeCodingAnnotation",
+                        "codedValue": {"@id": "esea:C00008"},
+                        "status": "evrepo:coded",
+                    },
+                },
+            ),
+        )
+
+    def test_reference_with_linked_data_enhancement(self, linked_data_enhancement):
+        reference_id = uuid7()
+        linked_data_enhancement.reference_id = reference_id
+
+        reference = ReferenceFactory.build(
+            id=reference_id,
+            enhancements=[linked_data_enhancement],
+        )
+
+        result = ReferenceSearchFieldsProjection.get_from_reference(reference)
+
+        assert result.linked_data_content is not None
+        assert result.linked_data_content == linked_data_enhancement.content
+
+    def test_reference_without_linked_data(self):
+        reference = ReferenceFactory.build(
+            id=uuid7(),
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(),
+                ),
+            ],
+        )
+
+        result = ReferenceSearchFieldsProjection.get_from_reference(reference)
+
+        assert result.linked_data_content is None
+
+    def test_highest_priority_linked_data_wins(self):
+        reference_id = uuid7()
+
+        older = EnhancementFactory.build(
+            reference_id=reference_id,
+            content=LinkedDataEnhancementFactory.build(
+                data={
+                    "@context": "https://vocab.esea.education/context/v1.jsonld",
+                    "@type": "Investigation",
+                    "documentType": {
+                        "@type": "DocumentTypeCodingAnnotation",
+                        "codedValue": {"@id": "esea:C00008"},
+                        "status": "evrepo:coded",
+                    },
+                },
+            ),
+        )
+
+        assert older.created_at
+        newer = EnhancementFactory.build(
+            reference_id=reference_id,
+            created_at=older.created_at + timedelta(days=1),
+            content=LinkedDataEnhancementFactory.build(
+                data={
+                    "@context": "https://vocab.esea.education/context/v1.jsonld",
+                    "@type": "Investigation",
+                    "hasFinding": [
+                        {
+                            "@type": "Finding",
+                            "hasContext": {
+                                "@type": "Context",
+                                "educationLevel": [
+                                    {
+                                        "@type": "EducationLevelCodingAnnotation",
+                                        "codedValue": {"@id": "esea:C00002"},
+                                        "status": "evrepo:coded",
+                                    }
+                                ],
+                            },
+                        }
+                    ],
+                },
+            ),
+        )
+
+        reference = ReferenceFactory.build(
+            id=reference_id,
+            enhancements=[older, newer],
+        )
+
+        result = ReferenceSearchFieldsProjection.get_from_reference(reference)
+
+        # Newer wins — should have the newer enhancement's content
+        assert result.linked_data_content == newer.content
 
 
 class TestDeduplicatedReferenceProjection:

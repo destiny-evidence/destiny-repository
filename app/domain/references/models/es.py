@@ -24,14 +24,15 @@ from app.domain.references.models.models import (
     EnhancementType,
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
+    LinkedDataProjection,
     LinkedExternalIdentifier,
     Reference,
     ReferenceSearchFields,
+    ReferenceSearchProjection,
     ReferenceWithChangeset,
     RobotAutomation,
     Visibility,
 )
-from app.domain.references.models.projections import ReferenceSearchFieldsProjection
 from app.persistence.es.persistence import GenericESPersistence, GenericNestedDocument
 
 EXCLUDED_ENHANCEMENT_TYPES = {
@@ -314,30 +315,56 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     ``inclusion:destiny`` in ``annotations``.
     """
 
-    @classmethod
-    def from_projection(cls, projection: ReferenceSearchFields) -> Self:
-        """Create a ReferenceCandidateCanonicalMixin from the search projection."""
-        return cls(
-            abstract=projection.abstract,
-            title=projection.title,
-            authors=projection.authors,
-            publication_date=projection.publication_date,
-            publication_year=projection.publication_year,
-            annotations=projection.annotations,
-            evaluated_schemes=projection.evaluated_schemes,
-            inclusion_destiny=projection.destiny_inclusion_score,
-        )
+    linked_data_concepts: list[str] | None = mapped_field(
+        Keyword(required=False),
+        default=None,
+    )
+    """Full concept URIs from LinkedDataEnhancements."""
+
+    linked_data_labels: list[str] | None = mapped_field(
+        Text(required=False),
+        default=None,
+    )
+    """SKOS prefLabel values for linked data concepts, for text search."""
+
+    linked_data_evaluated_properties: list[str] | None = mapped_field(
+        Keyword(required=False),
+        default=None,
+    )
+    """Property URIs for all evaluated linked data dimensions."""
 
     @classmethod
-    def from_domain(cls, reference: Reference) -> Self:
-        """Create the ES ReferenceDeduplicationMixin."""
-        return cls.from_projection(
-            ReferenceSearchFieldsProjection.get_from_reference(reference)
+    def from_projections(
+        cls,
+        search_fields: ReferenceSearchFields,
+        linked_data_projection: LinkedDataProjection | None = None,
+    ) -> Self:
+        """Create a ReferenceSearchFieldsMixin from pre-computed projections."""
+        return cls(
+            abstract=search_fields.abstract,
+            title=search_fields.title,
+            authors=search_fields.authors,
+            publication_date=search_fields.publication_date,
+            publication_year=search_fields.publication_year,
+            annotations=search_fields.annotations,
+            evaluated_schemes=search_fields.evaluated_schemes,
+            inclusion_destiny=search_fields.destiny_inclusion_score,
+            linked_data_concepts=sorted(linked_data_projection.concepts)
+            if linked_data_projection
+            else None,
+            linked_data_labels=sorted(linked_data_projection.labels)
+            if linked_data_projection
+            else None,
+            linked_data_evaluated_properties=sorted(
+                linked_data_projection.evaluated_properties
+            )
+            if linked_data_projection
+            else None,
         )
 
 
 class ReferenceDocument(
-    GenericESPersistence[Reference],
+    GenericESPersistence[ReferenceSearchProjection],
     ReferenceSearchFieldsMixin,
 ):
     """
@@ -364,30 +391,31 @@ class ReferenceDocument(
     )
 
     @classmethod
-    def from_domain(cls, domain_obj: Reference) -> Self:
-        """Create a persistence model from a domain model."""
+    def from_domain(cls, domain_obj: ReferenceSearchProjection) -> Self:
+        """Create a persistence model from an ReferenceSearchProjection."""
         return cls(
             # Parent's parent does accept meta, but mypy doesn't like it here.
             meta={"id": domain_obj.id},  # type: ignore[call-arg]
             visibility=domain_obj.visibility,
-            duplicate_determination=(
-                domain_obj.duplicate_decision.duplicate_determination
-                if domain_obj.duplicate_decision
-                else None
-            ),
-            **ReferenceSearchFieldsMixin.from_domain(domain_obj).to_dict(),
+            duplicate_determination=domain_obj.duplicate_determination,
+            **ReferenceSearchFieldsMixin.from_projections(
+                domain_obj.search_fields,
+                domain_obj.linked_data_projection,
+            ).to_dict(),
         )
 
-    def to_domain(self) -> Reference:
+    def to_domain(self) -> ReferenceSearchProjection:
         """
         Create a minimal domain model from this persistence model.
 
         Since ES is now search-only, full hydration should be done from PostgreSQL.
-        This returns a minimal Reference with only the ID and visibility.
+        This returns a minimal ReferenceSearchProjection with only the ID, visibility,
+        and empty search fields.
         """
-        return Reference(
+        return ReferenceSearchProjection(
             id=self.meta.id,  # Pydantic handles str -> UUID coercion
             visibility=self.visibility,
+            search_fields=ReferenceSearchFields(),
         )
 
 
