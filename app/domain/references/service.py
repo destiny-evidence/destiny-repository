@@ -28,7 +28,6 @@ from app.domain.references.models.models import (
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifier,
-    ExternalIdentifierType,
     IdentifierLookup,
     LinkedExternalIdentifier,
     PendingEnhancement,
@@ -376,38 +375,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def add_enhancement(self, enhancement: Enhancement) -> Reference:
         """Add an enhancement to a reference."""
         return await self._add_enhancement(enhancement)
-
-    async def _get_hydrated_references(
-        self,
-        reference_ids: list[UUID],
-        enhancement_types: list[EnhancementType] | None = None,
-        external_identifier_types: list[ExternalIdentifierType] | None = None,
-    ) -> list[Reference]:
-        """Get a list of references with enhancements and identifiers by id."""
-        return await self.sql_uow.references.get_hydrated(
-            reference_ids,
-            enhancement_types=[
-                enhancement_type.value for enhancement_type in enhancement_types
-            ]
-            if enhancement_types
-            else None,
-            external_identifier_types=[
-                external_identifier_type.value
-                for external_identifier_type in external_identifier_types
-            ]
-            if external_identifier_types
-            else None,
-        )
-
-    async def _get_jsonl_hydrated_references(
-        self,
-        reference_ids: list[UUID],
-    ) -> list[str]:
-        """Get a list of JSONL strings for hydrated references by id."""
-        return [
-            self._anti_corruption_service.reference_to_sdk(ref).to_jsonl()
-            for ref in await self._get_hydrated_references(reference_ids)
-        ]
 
     async def _get_jsonl_deduplicated_references(
         self,
