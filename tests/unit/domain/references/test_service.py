@@ -37,6 +37,7 @@ from app.domain.references.services.anti_corruption_service import (
 from app.domain.robots.models.models import Robot
 from app.persistence.blob.models import BlobStorageFile
 from app.utils.time_and_date import utc_now
+from tests.factories import PendingEnhancementFactory, ReferenceFactory
 
 
 @pytest.fixture
@@ -748,22 +749,20 @@ async def test_claim_and_create_robot_enhancement_batch(
         path="robot_enhancement_batch_reference_data",
     )
 
-    references = [Reference(id=uuid7()) for _ in range(3)]
+    references = ReferenceFactory.build_batch(3)
     pending_enhancements = [
-        PendingEnhancement(
+        PendingEnhancementFactory.build(
             reference_id=ref.id,
             robot_id=test_robot.id,
-            enhancement_request_id=uuid7(),
         )
         for ref in references
     ]
     # Add one more pending enhancement on the same reference - see note in service
     # about uniqueness restriction
     pending_enhancements.append(
-        PendingEnhancement(
+        PendingEnhancementFactory.build(
             reference_id=references[0].id,
             robot_id=test_robot.id,
-            enhancement_request_id=uuid7(),
         )
     )
 
@@ -838,6 +837,12 @@ async def test_claim_and_create_robot_enhancement_batch(
     assert {data["id"] for data in (json.loads(line) for line in content_lines)} == {
         str(ref.id) for ref in references
     }
+
+    # Verify all enhancements on each reference have created_at populated
+    for line in content_lines:
+        ref_data = json.loads(line)
+        assert ref_data.get("enhancements"), "Reference should have enhancements"
+        assert all(e.get("created_at") for e in ref_data["enhancements"])
 
     assert created_batch.reference_data_file is not None
     assert created_batch.reference_data_file.endswith(".jsonl")
