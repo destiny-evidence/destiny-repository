@@ -37,7 +37,7 @@ from app.domain.references.services.anti_corruption_service import (
 from app.domain.robots.models.models import Robot
 from app.persistence.blob.models import BlobStorageFile
 from app.utils.time_and_date import utc_now
-from tests.factories import PendingEnhancementFactory, ReferenceFactory
+from tests.factories import ReferenceFactory
 
 
 @pytest.fixture
@@ -749,20 +749,22 @@ async def test_claim_and_create_robot_enhancement_batch(
         path="robot_enhancement_batch_reference_data",
     )
 
-    references = ReferenceFactory.build_batch(3)
+    references = [Reference(id=uuid7()) for _ in range(3)]
     pending_enhancements = [
-        PendingEnhancementFactory.build(
+        PendingEnhancement(
             reference_id=ref.id,
             robot_id=test_robot.id,
+            enhancement_request_id=uuid7(),
         )
         for ref in references
     ]
     # Add one more pending enhancement on the same reference - see note in service
     # about uniqueness restriction
     pending_enhancements.append(
-        PendingEnhancementFactory.build(
+        PendingEnhancement(
             reference_id=references[0].id,
             robot_id=test_robot.id,
+            enhancement_request_id=uuid7(),
         )
     )
 
@@ -837,12 +839,6 @@ async def test_claim_and_create_robot_enhancement_batch(
     assert {data["id"] for data in (json.loads(line) for line in content_lines)} == {
         str(ref.id) for ref in references
     }
-
-    # Verify all enhancements on each reference have created_at populated
-    for line in content_lines:
-        ref_data = json.loads(line)
-        assert ref_data.get("enhancements"), "Reference should have enhancements"
-        assert all(e.get("created_at") for e in ref_data["enhancements"])
 
     assert created_batch.reference_data_file is not None
     assert created_batch.reference_data_file.endswith(".jsonl")
@@ -1226,3 +1222,34 @@ async def test_expire_and_replace_stale_pending_enhancements_at_retry_limit(
         and "Pending enhancement exceeded retry limit" in record.getMessage()
     ]
     assert len(warning_logs) == 2
+
+
+@pytest.mark.asyncio
+async def test_get_jsonl_hydrated_references(fake_repository, fake_uow):
+    """Test the generation of JSONL reference files."""
+    references = ReferenceFactory.build_batch(3, identifiers=[])
+
+    class FakeReferencesRepository(fake_repository):
+        async def get_hydrated(
+            self,
+            reference_ids: list,
+            enhancement_types: list | None = None,
+            external_identifier_types: list | None = None,
+        ) -> list:
+            return await self.get_by_pks(reference_ids)
+
+    uow = fake_uow(
+        references=FakeReferencesRepository(init_entries=references),
+    )
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+
+    lines = await service._get_jsonl_hydrated_references(  # noqa: SLF001
+        [ref.id for ref in references]
+    )
+
+    for line in lines:
+        ref_data = json.loads(line)
+        assert ref_data["enhancements"], "Reference should have enhancements"
+        assert all(e.get("created_at") for e in ref_data["enhancements"])

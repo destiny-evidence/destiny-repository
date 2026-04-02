@@ -35,6 +35,7 @@ def test_bibliographic_metadata_enhancement_valid():
         enhancement_type=destiny_sdk.enhancements.EnhancementType.BIBLIOGRAPHIC,
         content=bibliographic,
         reference_id=uuid7(),
+        created_at=datetime.datetime.now(tz=datetime.UTC),
     )
     assert (
         enhancement.content.enhancement_type
@@ -99,6 +100,7 @@ def test_abstract_content_enhancement_valid():
         enhancement_type=destiny_sdk.enhancements.EnhancementType.ABSTRACT,
         content=abstract_content,
         reference_id=uuid7(),
+        created_at=datetime.datetime.now(tz=datetime.UTC),
     )
     assert enhancement.content.abstract == "This is a test abstract."
 
@@ -125,6 +127,7 @@ def test_annotation_enhancement_valid():
         enhancement_type=destiny_sdk.enhancements.EnhancementType.ANNOTATION,
         content=annotations_content,
         reference_id=uuid7(),
+        created_at=datetime.datetime.now(tz=datetime.UTC),
     )
     assert enhancement.content.annotations[0].label == "Machine Learning"
 
@@ -151,6 +154,7 @@ def test_location_enhancement_valid():
         enhancement_type=destiny_sdk.enhancements.EnhancementType.LOCATION,
         content=location_content,
         reference_id=uuid7(),
+        created_at=datetime.datetime.now(tz=datetime.UTC),
     )
     assert enhancement.content.locations[0].license == "cc-by"
 
@@ -245,6 +249,7 @@ def test_association_enhancement_valid():
         enhancement_type=destiny_sdk.enhancements.EnhancementType.REFERENCE_ASSOCIATION,
         content=association_content,
         reference_id=uuid7(),
+        created_at=datetime.datetime.now(tz=datetime.UTC),
     )
     assert (
         enhancement.content.association_type
@@ -308,6 +313,7 @@ def test_linked_data_enhancement_discriminator_resolution():
         robot_version="1.0",
         content=linked_data,
         reference_id=uuid7(),
+        created_at=datetime.datetime.now(tz=datetime.UTC),
     )
     assert isinstance(
         enhancement.content, destiny_sdk.enhancements.LinkedDataEnhancement
