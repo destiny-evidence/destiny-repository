@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID, uuid7
 
 import destiny_sdk
@@ -40,6 +41,7 @@ def test_es_parsing():
                         "publisher": "Research for Dummies",
                         "title": "Research!",
                     },
+                    "created_at": "2024-01-01T00:00:00Z",
                 },
                 {
                     "id": "df4de714-269e-4d1c-abeb-16e260b029ec",
@@ -51,6 +53,7 @@ def test_es_parsing():
                         "process": "other",
                         "abstract": "We did research.",
                     },
+                    "created_at": "2024-01-01T00:00:00Z",
                 },
                 {
                     "id": "d4c2d0a0-af3a-4985-bcf6-1a9d58ab06ee",
@@ -69,6 +72,7 @@ def test_es_parsing():
                             }
                         ],
                     },
+                    "created_at": "2024-01-01T00:00:00Z",
                 },
             ],
         },
@@ -97,6 +101,7 @@ def test_jsonl_serialization():
                     process=destiny_sdk.enhancements.AbstractProcessType.UNINVERTED,
                     abstract="This is a funky paragraph separator: \u2029.",
                 ),
+                created_at=datetime.now(tz=UTC),
             )
         ],
         identifiers=[

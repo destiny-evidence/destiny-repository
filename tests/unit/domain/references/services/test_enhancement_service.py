@@ -170,6 +170,7 @@ def make_enhancement_result_entry(reference_id: UUID, *, as_error: bool) -> str:
             },
             "source": "test_source",
             "visibility": "public",
+            "created_at": datetime.now(tz=UTC).isoformat(),
         }
     )
 
@@ -449,6 +450,7 @@ async def test_process_robot_enhancement_batch_result_raw_enhancement(fake_uow):
                     },
                     "source": "test_source",
                     "visibility": "public",
+                    "created_at": datetime.now(tz=UTC).isoformat(),
                 }
             )
         ]

@@ -1,5 +1,6 @@
 """Unit tests for the models in the references module."""
 
+from datetime import UTC, datetime
 from uuid import uuid7
 
 import destiny_sdk
@@ -92,6 +93,7 @@ async def test_enhancement_unserializable_failure(
                 source="dummy",
                 visibility="public",
                 content=dodgy_enhancement,
+                created_at=datetime.now(tz=UTC),
             )
         )
 

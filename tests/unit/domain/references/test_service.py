@@ -37,6 +37,7 @@ from app.domain.references.services.anti_corruption_service import (
 from app.domain.robots.models.models import Robot
 from app.persistence.blob.models import BlobStorageFile
 from app.utils.time_and_date import utc_now
+from tests.factories import ReferenceFactory
 
 
 @pytest.fixture
@@ -1221,3 +1222,34 @@ async def test_expire_and_replace_stale_pending_enhancements_at_retry_limit(
         and "Pending enhancement exceeded retry limit" in record.getMessage()
     ]
     assert len(warning_logs) == 2
+
+
+@pytest.mark.asyncio
+async def test_get_jsonl_hydrated_references(fake_repository, fake_uow):
+    """Test the generation of JSONL reference files."""
+    references = ReferenceFactory.build_batch(3, identifiers=[])
+
+    class FakeReferencesRepository(fake_repository):
+        async def get_hydrated(
+            self,
+            reference_ids: list,
+            enhancement_types: list | None = None,
+            external_identifier_types: list | None = None,
+        ) -> list:
+            return await self.get_by_pks(reference_ids)
+
+    uow = fake_uow(
+        references=FakeReferencesRepository(init_entries=references),
+    )
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+
+    lines = await service._get_jsonl_hydrated_references(  # noqa: SLF001
+        [ref.id for ref in references]
+    )
+
+    for line in lines:
+        ref_data = json.loads(line)
+        assert ref_data["enhancements"], "Reference should have enhancements"
+        assert all(e.get("created_at") for e in ref_data["enhancements"])
