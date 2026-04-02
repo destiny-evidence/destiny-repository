@@ -19,7 +19,9 @@ from app.domain.references.models.models import (
     DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
+    EnhancementType,
     ExternalIdentifierAdapter,
+    ExternalIdentifierType,
     LinkedExternalIdentifier,
     PendingEnhancement,
     PendingEnhancementStatus,
@@ -28,6 +30,7 @@ from app.domain.references.models.models import (
     ReferenceWithChangeset,
     RobotAutomationPercolationResult,
     RobotEnhancementBatch,
+    Visibility,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.service import ReferenceService
@@ -748,7 +751,7 @@ async def test_claim_and_create_robot_enhancement_batch(
         path="robot_enhancement_batch_reference_data",
     )
 
-    references = [Reference(id=uuid7()) for _ in range(3)]
+    references = [Reference(id=uuid7(), duplicate_references=[]) for _ in range(3)]
     pending_enhancements = [
         PendingEnhancement(
             reference_id=ref.id,
@@ -767,17 +770,6 @@ async def test_claim_and_create_robot_enhancement_batch(
         )
     )
 
-    # Create a specialized fake references repository with get_hydrated method
-    class FakeReferencesRepository(fake_repository):
-        async def get_hydrated(
-            self,
-            reference_ids: list,
-            enhancement_types: list | None = None,
-            external_identifier_types: list | None = None,
-        ) -> list:
-            """Get hydrated references by IDs (simplified for testing)."""
-            return await self.get_by_pks(reference_ids)
-
     class FakePendingEnhancementRepository(fake_repository):
         async def find_available_for_robot(self, robot_id, limit):
             """Fake implementation of the locking query."""
@@ -791,7 +783,7 @@ async def test_claim_and_create_robot_enhancement_batch(
             return results[:limit]
 
     uow = fake_uow(
-        references=FakeReferencesRepository(init_entries=references),
+        references=fake_repository(init_entries=references),
         pending_enhancements=FakePendingEnhancementRepository(
             init_entries=pending_enhancements
         ),
@@ -841,6 +833,96 @@ async def test_claim_and_create_robot_enhancement_batch(
 
     assert created_batch.reference_data_file is not None
     assert created_batch.reference_data_file.endswith(".jsonl")
+
+
+@pytest.mark.asyncio
+async def test_get_jsonl_deduplicated_references(fake_repository, fake_uow):
+    """Test that _get_jsonl_deduplicated_references returns flattened JSONL
+    containing enhancements and identifiers from both canonical and duplicate
+    references, with duplicate_references stripped from output.
+    """
+    import destiny_sdk.enhancements
+    import destiny_sdk.identifiers
+
+    # Duplicate reference with its own enhancement and identifier
+    duplicate_ref = Reference(
+        id=uuid7(),
+        enhancements=[
+            Enhancement(
+                id=uuid7(),
+                source="duplicate_source",
+                visibility=Visibility.PUBLIC,
+                content=destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+                    enhancement_type=EnhancementType.BIBLIOGRAPHIC,
+                    title="Duplicate Title",
+                ),
+                reference_id=uuid7(),
+            )
+        ],
+        identifiers=[
+            LinkedExternalIdentifier(
+                id=uuid7(),
+                identifier=destiny_sdk.identifiers.DOIIdentifier(
+                    identifier="10.1000/duplicate",
+                    identifier_type=ExternalIdentifierType.DOI,
+                ),
+                reference_id=uuid7(),
+            )
+        ],
+        duplicate_references=[],
+    )
+
+    # Canonical reference with its own enhancement, identifier, and the duplicate linked
+    canonical_ref = Reference(
+        id=uuid7(),
+        enhancements=[
+            Enhancement(
+                id=uuid7(),
+                source="canonical_source",
+                visibility=Visibility.PUBLIC,
+                content=destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+                    enhancement_type=EnhancementType.BIBLIOGRAPHIC,
+                    title="Canonical Title",
+                ),
+                reference_id=uuid7(),
+            )
+        ],
+        identifiers=[
+            LinkedExternalIdentifier(
+                id=uuid7(),
+                identifier=destiny_sdk.identifiers.DOIIdentifier(
+                    identifier="10.1000/canonical",
+                    identifier_type=ExternalIdentifierType.DOI,
+                ),
+                reference_id=uuid7(),
+            )
+        ],
+        duplicate_references=[duplicate_ref],
+    )
+
+    uow = fake_uow(references=fake_repository(init_entries=[canonical_ref]))
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+
+    result = await service._get_jsonl_deduplicated_references([canonical_ref.id])  # noqa: SLF001
+
+    assert len(result) == 1
+
+    data = json.loads(result[0])
+
+    # Flattened: should contain enhancements from both canonical and duplicate
+    assert len(data["enhancements"]) == 2
+    enhancement_sources = {e["source"] for e in data["enhancements"]}
+    assert enhancement_sources == {"canonical_source", "duplicate_source"}
+
+    # Flattened: should contain identifiers from both canonical and duplicate
+    doi_values = {i["identifier"] for i in data["identifiers"]}
+    assert "10.1000/canonical" in doi_values
+    assert "10.1000/duplicate" in doi_values
+
+    # duplicate_references should not appear in SDK output
+    assert "duplicate_references" not in data
 
 
 @pytest.mark.asyncio

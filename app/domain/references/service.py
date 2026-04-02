@@ -409,6 +409,19 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             for ref in await self._get_hydrated_references(reference_ids)
         ]
 
+    async def _get_jsonl_deduplicated_references(
+        self,
+        reference_ids: list[UUID],
+    ) -> list[str]:
+        """Get JSONL strings for deduplicated (flattened) references by id."""
+        deduplicated = await self._get_deduplicated_references(
+            reference_ids=reference_ids
+        )
+        return [
+            self._anti_corruption_service.reference_to_sdk(ref).to_jsonl()
+            for ref in deduplicated
+        ]
+
     @sql_unit_of_work
     async def get_all_reference_ids(
         self, min_id: UUID | None, max_id: UUID | None
@@ -1131,7 +1144,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
 
         file_stream = FileStream(
-            self._get_jsonl_hydrated_references,
+            self._get_jsonl_deduplicated_references,
             [
                 {
                     "reference_ids": reference_id_chunk,
