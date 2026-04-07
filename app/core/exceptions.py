@@ -604,3 +604,24 @@ class StateTransitionError(DestinyRepositoryError):
         self.current_state = current_state
         self.attempted_state = attempted_state
         super().__init__(detail)
+
+
+class ContextNotPreFetchedError(DestinyRepositoryError):
+    """Raised when document_loader is called for a URI that hasn't been pre-fetched."""
+
+    def __init__(self, uri: str) -> None:
+        """Initialize the ContextNotPreFetchedError exception."""
+        super().__init__(
+            f"Context URI '{uri}' has not been pre-fetched. "
+            f"Call get_context('{uri}') before using document_loader."
+        )
+        self.uri = uri
+
+
+class VocabularyFetchError(DestinyRepositoryError):
+    """Raised when a vocabulary artifact cannot be fetched or parsed."""
+
+    def __init__(self, uri: str, detail: str) -> None:
+        """Initialize the VocabularyFetchError exception."""
+        super().__init__(f"Failed to fetch vocabulary artifact '{uri}': {detail}")
+        self.uri = uri

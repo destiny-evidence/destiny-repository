@@ -1,22 +1,38 @@
 """Tests for LinkedDataValidationService."""
 
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from rdflib import Graph
 
+from app.core.exceptions import VocabularyFetchError
 from app.domain.references.services.linked_data_validation_service import (
     LinkedDataValidationService,
 )
+from app.external.vocabulary.client import VocabularyArtifactClient
 
 _FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture
-def service() -> LinkedDataValidationService:
-    ontology = Graph()
-    ontology.parse(str(_FIXTURES_DIR / "evrepo-core.ttl"), format="turtle")
-    return LinkedDataValidationService(ontology=ontology)
+def ontology() -> Graph:
+    g = Graph()
+    g.parse(str(_FIXTURES_DIR / "evrepo-core.ttl"), format="turtle")
+    return g
+
+
+@pytest.fixture
+def vocab_client(ontology: Graph) -> VocabularyArtifactClient:
+    client = MagicMock(spec=VocabularyArtifactClient)
+    client.get_vocabulary = AsyncMock(return_value=ontology)
+    client.get_context = AsyncMock()
+    return client
+
+
+@pytest.fixture
+def service(vocab_client: VocabularyArtifactClient) -> LinkedDataValidationService:
+    return LinkedDataValidationService(vocab_client=vocab_client)
 
 
 EVREPO = "https://vocab.evidence-repository.org/"
@@ -61,14 +77,15 @@ VALID_DATA = {
 VOCAB_URI = "https://vocab.evidence-repository.org/vocabulary/v1"
 
 
-def test_valid_data_conforms(service: LinkedDataValidationService):
-    result = service.validate(data=VALID_DATA, vocabulary_uri=VOCAB_URI)
-    assert result is not None
+@pytest.mark.asyncio
+async def test_valid_data_conforms(service: LinkedDataValidationService):
+    result = await service.validate(data=VALID_DATA, vocabulary_uri=VOCAB_URI)
     assert result.conforms
     assert result.errors == []
 
 
-def test_missing_required_property_fails(service: LinkedDataValidationService):
+@pytest.mark.asyncio
+async def test_missing_required_property_fails(service: LinkedDataValidationService):
     """Finding missing required properties fails validation."""
     data = {
         "@context": {"evrepo": EVREPO},
@@ -80,22 +97,34 @@ def test_missing_required_property_fails(service: LinkedDataValidationService):
             },
         },
     }
-    result = service.validate(data=data, vocabulary_uri=VOCAB_URI)
-    assert result is not None
+    result = await service.validate(data=data, vocabulary_uri=VOCAB_URI)
     assert not result.conforms
     assert any("SHACL validation failed" in e for e in result.errors)
 
 
-def test_empty_expansion_fails(service: LinkedDataValidationService):
+@pytest.mark.asyncio
+async def test_empty_expansion_fails(service: LinkedDataValidationService):
     """Empty JSON-LD that expands to nothing."""
-    result = service.validate(data={"@context": {}}, vocabulary_uri=VOCAB_URI)
-    assert result is not None
+    result = await service.validate(data={"@context": {}}, vocabulary_uri=VOCAB_URI)
     assert not result.conforms
     assert any("empty graph" in e for e in result.errors)
 
 
-def test_malformed_jsonld_fails(service: LinkedDataValidationService):
+@pytest.mark.asyncio
+async def test_malformed_jsonld_fails(service: LinkedDataValidationService):
     """JSON-LD that cannot be expanded."""
-    result = service.validate(data={"@context": 12345}, vocabulary_uri=VOCAB_URI)
-    assert result is not None
+    result = await service.validate(data={"@context": 12345}, vocabulary_uri=VOCAB_URI)
     assert not result.conforms
+
+
+@pytest.mark.asyncio
+async def test_vocabulary_fetch_error_propagates(
+    vocab_client: MagicMock,
+):
+    """VocabularyFetchError propagates instead of returning conforms=False."""
+    vocab_client.get_vocabulary = AsyncMock(
+        side_effect=VocabularyFetchError("http://example.com", "connection refused"),
+    )
+    service = LinkedDataValidationService(vocab_client=vocab_client)
+    with pytest.raises(VocabularyFetchError):
+        await service.validate(data=VALID_DATA, vocabulary_uri=VOCAB_URI)
