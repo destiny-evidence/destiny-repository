@@ -839,8 +839,6 @@ async def test_get_jsonl_deduplicated_references(fake_repository, fake_uow):
     containing enhancements and identifiers from both canonical and duplicate
     references, with duplicate_references stripped from output.
     """
-    from tests.factories import ReferenceFactory
-
     duplicate_ref = ReferenceFactory(duplicate_references=[])
     canonical_ref = ReferenceFactory(duplicate_references=[duplicate_ref])
 
@@ -860,6 +858,9 @@ async def test_get_jsonl_deduplicated_references(fake_repository, fake_uow):
     duplicate_sources = {e.source for e in duplicate_ref.enhancements}
     output_sources = {e["source"] for e in data["enhancements"]}
     assert output_sources == canonical_sources | duplicate_sources
+
+    # Enhancements should contain created_at
+    assert all(e.get("created_at") for e in data["enhancements"])
 
     # Flattened: should contain identifiers from both
     assert len(data["identifiers"]) == len(canonical_ref.identifiers) + len(
@@ -1248,34 +1249,3 @@ async def test_expire_and_replace_stale_pending_enhancements_at_retry_limit(
         and "Pending enhancement exceeded retry limit" in record.getMessage()
     ]
     assert len(warning_logs) == 2
-
-
-@pytest.mark.asyncio
-async def test_get_jsonl_hydrated_references(fake_repository, fake_uow):
-    """Test the generation of JSONL reference files."""
-    references = ReferenceFactory.build_batch(3, identifiers=[])
-
-    class FakeReferencesRepository(fake_repository):
-        async def get_hydrated(
-            self,
-            reference_ids: list,
-            enhancement_types: list | None = None,
-            external_identifier_types: list | None = None,
-        ) -> list:
-            return await self.get_by_pks(reference_ids)
-
-    uow = fake_uow(
-        references=FakeReferencesRepository(init_entries=references),
-    )
-    service = ReferenceService(
-        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
-    )
-
-    lines = await service._get_jsonl_hydrated_references(  # noqa: SLF001
-        [ref.id for ref in references]
-    )
-
-    for line in lines:
-        ref_data = json.loads(line)
-        assert ref_data["enhancements"], "Reference should have enhancements"
-        assert all(e.get("created_at") for e in ref_data["enhancements"])
