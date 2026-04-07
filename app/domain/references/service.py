@@ -16,6 +16,7 @@ from app.core.exceptions import (
     DuplicateEnhancementError,
     InvalidParentEnhancementError,
     SQLNotFoundError,
+    VocabularyFetchError,
 )
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
@@ -28,7 +29,6 @@ from app.domain.references.models.models import (
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifier,
-    ExternalIdentifierType,
     IdentifierLookup,
     LinkedExternalIdentifier,
     PendingEnhancement,
@@ -65,6 +65,7 @@ from app.domain.references.services.synchronizer_service import (
 )
 from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
+from app.external.vocabulary.client import get_vocabulary_artifact_client
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
 from app.persistence.es.persistence import ESSearchResult
@@ -91,7 +92,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
-        self._linked_data_validation_service = LinkedDataValidationService()
+        self._linked_data_validation_service = LinkedDataValidationService(
+            vocab_client=get_vocabulary_artifact_client()
+        )
         self._enhancement_service = EnhancementService(
             anti_corruption_service, sql_uow, self._linked_data_validation_service
         )
@@ -377,36 +380,17 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Add an enhancement to a reference."""
         return await self._add_enhancement(enhancement)
 
-    async def _get_hydrated_references(
-        self,
-        reference_ids: list[UUID],
-        enhancement_types: list[EnhancementType] | None = None,
-        external_identifier_types: list[ExternalIdentifierType] | None = None,
-    ) -> list[Reference]:
-        """Get a list of references with enhancements and identifiers by id."""
-        return await self.sql_uow.references.get_hydrated(
-            reference_ids,
-            enhancement_types=[
-                enhancement_type.value for enhancement_type in enhancement_types
-            ]
-            if enhancement_types
-            else None,
-            external_identifier_types=[
-                external_identifier_type.value
-                for external_identifier_type in external_identifier_types
-            ]
-            if external_identifier_types
-            else None,
-        )
-
-    async def _get_jsonl_hydrated_references(
+    async def _get_jsonl_deduplicated_references(
         self,
         reference_ids: list[UUID],
     ) -> list[str]:
-        """Get a list of JSONL strings for hydrated references by id."""
+        """Get JSONL strings for deduplicated (flattened) references by id."""
+        deduplicated = await self._get_deduplicated_references(
+            reference_ids=reference_ids
+        )
         return [
             self._anti_corruption_service.reference_to_sdk(ref).to_jsonl()
-            for ref in await self._get_hydrated_references(reference_ids)
+            for ref in deduplicated
         ]
 
     @sql_unit_of_work
@@ -503,11 +487,23 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         valid_enhancements = []
         for enhancement in reference_create_result.reference.enhancements or []:
             if enhancement.content.enhancement_type == EnhancementType.LINKED_DATA:
-                ld_result = self._linked_data_validation_service.validate(
-                    data=enhancement.content.data,
-                    vocabulary_uri=str(enhancement.content.vocabulary_uri),
-                )
-                if ld_result is not None and not ld_result.conforms:
+                try:
+                    ld_result = await self._linked_data_validation_service.validate(
+                        data=enhancement.content.data,
+                        vocabulary_uri=str(enhancement.content.vocabulary_uri),
+                    )
+                except VocabularyFetchError as exc:
+                    logger.warning(
+                        "Vocabulary failed to fetch or parse.",
+                        exc=repr(exc),
+                    )
+                    reference_create_result.errors.append(
+                        "Could not fetch or parse the vocabulary needed to "
+                        "validate this enhancement. This may be transient. "
+                        f"Detail: {exc}"
+                    )
+                    continue
+                if not ld_result.conforms:
                     reference_create_result.errors.extend(ld_result.errors)
                     continue
             valid_enhancements.append(enhancement)
@@ -1131,7 +1127,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
 
         file_stream = FileStream(
-            self._get_jsonl_hydrated_references,
+            self._get_jsonl_deduplicated_references,
             [
                 {
                     "reference_ids": reference_id_chunk,

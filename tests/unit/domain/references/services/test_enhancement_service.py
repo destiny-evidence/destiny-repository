@@ -123,7 +123,9 @@ async def test_build_robot_request_happy_path(fake_uow, fake_repository):
     )
     uow = fake_uow(enhancement_requests=fake_repository([enhancement_request]))
     mock_blob_repo = MagicMock()
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), uow)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow, MagicMock()
+    )
     mock_blob_repo.upload_file_to_blob_storage = AsyncMock(
         return_value=BlobStorageFile(
             location="minio",
@@ -190,7 +192,9 @@ async def test_process_robot_enhancement_batch_result_happy_path():
         [make_enhancement_result_entry(reference_id, as_error=False)]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), None)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), None, MagicMock()
+    )
 
     # Fake add_enhancement always returns success
     async def fake_add_enhancement(enhancement):
@@ -243,7 +247,9 @@ async def test_process_robot_enhancement_batch_result_handles_both_entry_types()
         ]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), None)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), None, MagicMock()
+    )
 
     # Fake add_enhancement returns success for enhancement
     async def fake_add_enhancement(enhancement):
@@ -291,7 +297,9 @@ async def test_process_robot_enhancement_batch_result_missing_reference_id():
         [make_enhancement_result_entry(reference_id_1, as_error=False)]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), None)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), None, MagicMock()
+    )
 
     added_enhancements = []
 
@@ -346,7 +354,9 @@ async def test_process_robot_enhancement_batch_result_surplus_reference_id(fake_
         ]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), uow)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow, MagicMock()
+    )
 
     # Fake add_enhancement returns success for enhancement
     async def fake_add_enhancement(enhancement):
@@ -394,7 +404,9 @@ async def test_process_robot_enhancement_batch_result_parse_failure(fake_uow):
     mock_blob_repo = MagicMock()
     fake_stream = create_fake_stream(["not a json"])
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), uow)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow, MagicMock()
+    )
 
     async def fake_add_enhancement(_):
         msg = "How did we get here?"
@@ -456,7 +468,9 @@ async def test_process_robot_enhancement_batch_result_raw_enhancement(fake_uow):
         ]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), uow)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow, MagicMock()
+    )
 
     async def fake_add_enhancement(_):
         msg = "How did we get here?"
@@ -500,7 +514,9 @@ async def test_process_robot_enhancement_batch_result_add_enhancement_fails(fake
         [make_enhancement_result_entry(reference_id, as_error=False)]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), uow)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow, MagicMock()
+    )
 
     async def fake_add_enhancement(_enhancement):
         return (
@@ -541,7 +557,9 @@ async def test_process_robot_enhancement_batch_result_empty_result_file():
 
     mock_blob_repo = MagicMock()
     mock_blob_repo.stream_file_from_blob_storage = create_empty_stream()
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), None)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), None, MagicMock()
+    )
 
     async def fake_add_enhancement(_):
         msg = "How did we get here?"
@@ -586,7 +604,9 @@ async def test_process_robot_enhancement_batch_result_duplicate_reference_ids():
         ]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), None)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), None, MagicMock()
+    )
 
     enhancement_results = []
 
@@ -649,7 +669,9 @@ async def test_process_robot_enhancement_batch_result_multiple_pending_enhanceme
         ]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), uow)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow, MagicMock()
+    )
 
     async def fake_add_enhancement(enhancement):
         return (
@@ -698,7 +720,9 @@ async def test_process_robot_enhancement_batch_result_discarded_enhancements():
         [make_enhancement_result_entry(reference_id, as_error=False)]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), None)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), None, MagicMock()
+    )
 
     # Fake add_enhancement always returns success
     async def fake_add_enhancement(enhancement):
