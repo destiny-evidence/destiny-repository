@@ -21,9 +21,9 @@ from app.domain.references.models.projections import (
 )
 from app.domain.references.services.linked_data_projection_service import (
     LinkedDataProjectionService,
-    StaticFileVocabularyClient,
 )
 from app.domain.service import GenericSynchronizer
+from app.external.vocabulary.client import get_vocabulary_artifact_client
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.utils.lists import list_chunker
@@ -32,7 +32,7 @@ from app.utils.lists import list_chunker
 @cache
 def _get_linked_data_projection_service() -> LinkedDataProjectionService:
     """Singleton LinkedDataProjectionService with internal vocabulary caching."""
-    return LinkedDataProjectionService(StaticFileVocabularyClient())
+    return LinkedDataProjectionService(get_vocabulary_artifact_client())
 
 
 tracer = get_tracer(__name__)

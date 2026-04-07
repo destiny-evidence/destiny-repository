@@ -2,72 +2,15 @@
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
 
 from destiny_sdk.enhancements import LinkedDataEnhancement
 from rdflib import Graph, Namespace, URIRef
 from rdflib.namespace import RDF, SKOS
 
 from app.domain.references.models.models import LinkedDataProjection
+from app.external.vocabulary.client import VocabularyArtifactClient
 
 EVREPO = Namespace("https://vocab.evidence-repository.org/")
-
-
-# -- transitional static-file client ------------------------------------------
-
-_STATIC_VOCAB_DIR = (
-    Path(__file__).parent.parent.parent.parent / "static" / "vocab" / "esea"
-)
-
-_STATIC_VOCABULARY_PATHS: dict[str, Path] = {
-    "https://vocab.esea.education/vocabulary/v1": (
-        _STATIC_VOCAB_DIR / "esea-vocab.ttl"
-    ),
-}
-_STATIC_CONTEXT_PATHS: dict[str, Path] = {
-    "https://vocab.esea.education/context/v1.jsonld": (
-        _STATIC_VOCAB_DIR / "esea-context.jsonld"
-    ),
-}
-
-
-class StaticFileVocabularyClient:
-    """
-    Resolves vocabulary URIs to bundled static files.
-
-    Drop-in replacement for ``VocabularyArtifactClient`` until #600 lands.
-    """
-
-    def __init__(self) -> None:
-        """Initialise with empty caches."""
-        self._vocabulary_cache: dict[str, Graph] = {}
-        self._context_cache: dict[str, dict] = {}
-
-    async def get_vocabulary(self, uri: str) -> Graph:
-        """Return a cached vocabulary graph, loading from static files on first access."""  # noqa: E501
-        if uri not in self._vocabulary_cache:
-            path = _STATIC_VOCABULARY_PATHS.get(uri)
-            if path is None:
-                msg = f"No static vocabulary registered for URI: {uri}"
-                raise ValueError(msg)
-            graph = Graph()
-            graph.parse(path, format="turtle")
-            self._vocabulary_cache[uri] = graph
-        return self._vocabulary_cache[uri]
-
-    async def get_context(self, uri: str) -> dict:
-        """Return a cached context dict, loading from static files on first access."""
-        if uri not in self._context_cache:
-            path = _STATIC_CONTEXT_PATHS.get(uri)
-            if path is None:
-                msg = f"No static context registered for URI: {uri}"
-                raise ValueError(msg)
-            with path.open() as f:
-                self._context_cache[uri] = json.load(f)
-        return self._context_cache[uri]
-
-
-# -- projection service -------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -88,7 +31,7 @@ class LinkedDataProjectionService:
     Derived lookups (concept labels, scheme mappings) are cached per vocabulary URI.
     """
 
-    def __init__(self, vocabulary_client: StaticFileVocabularyClient) -> None:
+    def __init__(self, vocabulary_client: VocabularyArtifactClient) -> None:
         """Initialise with a vocabulary client and empty lookup caches."""
         self._vocabulary_client = vocabulary_client
         self._vocabularies: dict[str, _LoadedVocabulary] = {}

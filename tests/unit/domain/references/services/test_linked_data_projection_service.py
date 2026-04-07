@@ -2,21 +2,34 @@
 
 import json
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from destiny_sdk.enhancements import LinkedDataEnhancement
+from rdflib import Graph
 
+from app.core.config import get_settings
 from app.domain.references.services.linked_data_projection_service import (
     LinkedDataProjectionService,
-    StaticFileVocabularyClient,
 )
+from app.external.vocabulary.client import VocabularyArtifactClient
 
 ESEA_NS = "https://vocab.esea.education/"
+
+_STATIC_VOCAB_DIR = get_settings().project_root / "app" / "static" / "vocab" / "esea"
 
 
 @pytest.fixture
 def projector() -> LinkedDataProjectionService:
-    return LinkedDataProjectionService(StaticFileVocabularyClient())
+    vocab_graph = Graph()
+    vocab_graph.parse(_STATIC_VOCAB_DIR / "esea-vocab.ttl", format="turtle")
+    with (_STATIC_VOCAB_DIR / "esea-context.jsonld").open() as f:
+        context = json.load(f)
+
+    client = MagicMock(spec=VocabularyArtifactClient)
+    client.get_vocabulary = AsyncMock(return_value=vocab_graph)
+    client.get_context = AsyncMock(return_value=context)
+    return LinkedDataProjectionService(client)
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
