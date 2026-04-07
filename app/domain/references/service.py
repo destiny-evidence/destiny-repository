@@ -16,6 +16,7 @@ from app.core.exceptions import (
     DuplicateEnhancementError,
     InvalidParentEnhancementError,
     SQLNotFoundError,
+    VocabularyFetchError,
 )
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
@@ -28,7 +29,6 @@ from app.domain.references.models.models import (
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifier,
-    ExternalIdentifierType,
     IdentifierLookup,
     LinkedExternalIdentifier,
     PendingEnhancement,
@@ -56,12 +56,16 @@ from app.domain.references.services.enhancement_service import (
     EnhancementService,
     ProcessedResults,
 )
+from app.domain.references.services.linked_data_validation_service import (
+    LinkedDataValidationService,
+)
 from app.domain.references.services.search_service import SearchService
 from app.domain.references.services.synchronizer_service import (
     Synchronizer,
 )
 from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
+from app.external.vocabulary.client import get_vocabulary_artifact_client
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
 from app.persistence.es.persistence import ESSearchResult
@@ -88,7 +92,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
-        self._enhancement_service = EnhancementService(anti_corruption_service, sql_uow)
+        self._linked_data_validation_service = LinkedDataValidationService(
+            vocab_client=get_vocabulary_artifact_client()
+        )
+        self._enhancement_service = EnhancementService(
+            anti_corruption_service, sql_uow, self._linked_data_validation_service
+        )
         self._deduplication_service = DeduplicationService(
             anti_corruption_service, sql_uow, es_uow
         )
@@ -266,9 +275,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     reference.duplicate_decision.canonical_reference_id
                 )
 
-        canonical_references = await self._get_deduplicated_references(
-            references=canonical_references
-        )
+        if canonical_references:
+            canonical_references = await self._get_deduplicated_references(
+                references=canonical_references
+            )
 
         if duplicate_canonical_ids:
             canonical_references += await self._get_deduplicated_references(
@@ -370,36 +380,17 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Add an enhancement to a reference."""
         return await self._add_enhancement(enhancement)
 
-    async def _get_hydrated_references(
-        self,
-        reference_ids: list[UUID],
-        enhancement_types: list[EnhancementType] | None = None,
-        external_identifier_types: list[ExternalIdentifierType] | None = None,
-    ) -> list[Reference]:
-        """Get a list of references with enhancements and identifiers by id."""
-        return await self.sql_uow.references.get_hydrated(
-            reference_ids,
-            enhancement_types=[
-                enhancement_type.value for enhancement_type in enhancement_types
-            ]
-            if enhancement_types
-            else None,
-            external_identifier_types=[
-                external_identifier_type.value
-                for external_identifier_type in external_identifier_types
-            ]
-            if external_identifier_types
-            else None,
-        )
-
-    async def _get_jsonl_hydrated_references(
+    async def _get_jsonl_deduplicated_references(
         self,
         reference_ids: list[UUID],
     ) -> list[str]:
-        """Get a list of JSONL strings for hydrated references by id."""
+        """Get JSONL strings for deduplicated (flattened) references by id."""
+        deduplicated = await self._get_deduplicated_references(
+            reference_ids=reference_ids
+        )
         return [
             self._anti_corruption_service.reference_to_sdk(ref).to_jsonl()
-            for ref in await self._get_hydrated_references(reference_ids)
+            for ref in deduplicated
         ]
 
     @sql_unit_of_work
@@ -491,6 +482,33 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference_create_result = ReferenceCreateResult.from_raw(record_str, entry_ref)
         if not reference_create_result.reference:
             return reference_create_result
+
+        # Strip linked data enhancements that fail validation
+        valid_enhancements = []
+        for enhancement in reference_create_result.reference.enhancements or []:
+            if enhancement.content.enhancement_type == EnhancementType.LINKED_DATA:
+                try:
+                    ld_result = await self._linked_data_validation_service.validate(
+                        data=enhancement.content.data,
+                        vocabulary_uri=str(enhancement.content.vocabulary_uri),
+                    )
+                except VocabularyFetchError as exc:
+                    logger.warning(
+                        "Vocabulary failed to fetch or parse.",
+                        exc=repr(exc),
+                    )
+                    reference_create_result.errors.append(
+                        "Could not fetch or parse the vocabulary needed to "
+                        "validate this enhancement. This may be transient. "
+                        f"Detail: {exc}"
+                    )
+                    continue
+                if not ld_result.conforms:
+                    reference_create_result.errors.extend(ld_result.errors)
+                    continue
+            valid_enhancements.append(enhancement)
+        reference_create_result.reference.enhancements = valid_enhancements
+
         reference = self._anti_corruption_service.reference_from_sdk_file_input(
             reference_create_result.reference
         )
@@ -1064,17 +1082,27 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     @sql_unit_of_work
-    async def get_pending_enhancements_for_robot(
-        self, robot_id: UUID, limit: int
-    ) -> list[PendingEnhancement]:
-        """Get pending enhancements for a robot."""
-        pending_enhancements = await self.sql_uow.pending_enhancements.find(
-            robot_id=robot_id,
-            robot_enhancement_batch_id=None,
-            status=PendingEnhancementStatus.PENDING,
-            order_by="created_at",
-            limit=limit,
+    async def claim_and_create_robot_enhancement_batch(
+        self,
+        robot_id: UUID,
+        limit: int,
+        lease_duration: datetime.timedelta,
+        blob_repository: BlobRepository,
+    ) -> RobotEnhancementBatch | None:
+        """
+        Atomically claim pending enhancements and create a robot enhancement batch.
+
+        Returns None if no pending enhancements are available.
+        """
+        pending_enhancements = (
+            await self.sql_uow.pending_enhancements.find_available_for_robot(
+                robot_id=robot_id,
+                limit=limit,
+            )
         )
+
+        if not pending_enhancements:
+            return None
 
         # There is a restriction in EnhancementService._categorize_enhancements
         # that reference IDs are unique per batch. The below adapter is a band-aid to
@@ -1082,31 +1110,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         # given reference ID are filtered out, and hence not accepted, and can be picked
         # up in a future batch.
         # See https://github.com/destiny-evidence/destiny-repository/issues/353.
-        return list(
+        pending_enhancements = list(
             {pe.reference_id: pe for pe in reversed(pending_enhancements)}.values()
         )
 
-    @sql_unit_of_work
-    async def create_robot_enhancement_batch(
-        self,
-        robot_id: UUID,
-        pending_enhancements: list[PendingEnhancement],
-        lease_duration: datetime.timedelta,
-        blob_repository: BlobRepository,
-    ) -> RobotEnhancementBatch:
-        """
-        Create a robot enhancement batch.
-
-        Args:
-            robot_id (UUID): The ID of the robot.
-            pending_enhancements (list[PendingEnhancement]): The list of pending
-                enhancements to include in the batch.
-            blob_repository (BlobRepository): The blob repository.
-
-        Returns:
-            RobotEnhancementBatch: The created robot enhancement batch.
-
-        """
         robot_enhancement_batch = RobotEnhancementBatch(robot_id=robot_id)
 
         await self.sql_uow.robot_enhancement_batches.add(robot_enhancement_batch)
@@ -1121,7 +1128,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
 
         file_stream = FileStream(
-            self._get_jsonl_hydrated_references,
+            self._get_jsonl_deduplicated_references,
             [
                 {
                     "reference_ids": reference_id_chunk,

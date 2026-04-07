@@ -545,19 +545,17 @@ async def request_robot_enhancement_batch(
             "Using max_pending_enhancements_batch_size: %d",
             limit,
         )
-    pending_enhancements = await reference_service.get_pending_enhancements_for_robot(
-        robot_id=robot_id,
-        limit=limit,
+    robot_enhancement_batch = (
+        await reference_service.claim_and_create_robot_enhancement_batch(
+            robot_id=robot_id,
+            limit=limit,
+            lease_duration=lease,
+            blob_repository=blob_repository,
+        )
     )
-    if not pending_enhancements:
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    robot_enhancement_batch = await reference_service.create_robot_enhancement_batch(
-        robot_id=robot_id,
-        pending_enhancements=pending_enhancements,
-        lease_duration=lease,
-        blob_repository=blob_repository,
-    )
+    if not robot_enhancement_batch:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     return await anti_corruption_service.robot_enhancement_batch_to_sdk_robot(
         robot_enhancement_batch

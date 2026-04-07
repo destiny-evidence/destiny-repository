@@ -74,10 +74,13 @@ async def get_reference_service(
 
 
 @broker.task
-async def distribute_import_batch(import_batch_id: UUID) -> None:
+async def distribute_import_batch(
+    import_record_id: UUID, import_batch_id: UUID
+) -> None:
     """Async logic for processing an import batch."""
     name_span("Distribute import batch")
     trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_batch_id))
+    trace_attribute(Attributes.IMPORT_RECORD_ID, str(import_record_id))
     async with get_sql_unit_of_work() as sql_uow:
         import_service = await get_import_service(sql_uow=sql_uow)
 
@@ -98,7 +101,9 @@ async def import_reference(
         import_service = await get_import_service(sql_uow=sql_uow)
         reference_service = await get_reference_service(sql_uow=sql_uow, es_uow=es_uow)
 
-        import_result = await import_service.get_import_result_with_batch(
+        # Rarely we can see a race condition where the task is picked up before the
+        # queuing process has committed the record.
+        import_result = await import_service.wait_for_import_result_with_batch(
             import_result_id
         )
         trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_result.import_batch_id))

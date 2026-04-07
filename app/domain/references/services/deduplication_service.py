@@ -75,12 +75,14 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             )
             return None
 
-        # First, find candidates. These are the references with all identical
-        # identifiers to the given reference.
+        # Find candidates using only non-"other" identifiers. The "other" type
+        # index (ix_external_identifier_type_other) has poor selectivity at scale,
+        # causing multi-second scans. is_superset validates the full match. (#604)
         candidates = await self.sql_uow.references.find_with_identifiers(
             [
                 GenericExternalIdentifier.from_specific(identifier.identifier)
                 for identifier in reference.identifiers
+                if identifier.identifier.identifier_type != ExternalIdentifierType.OTHER
             ],
             preload=["identifiers", "enhancements", "duplicate_decision"],
         )
@@ -453,8 +455,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision.reference_id,
             preload=["identifiers", "duplicate_decision"],
         )
-        if not reference.identifiers or reference.duplicate_decision:
-            # No identifiers or already deduplicated, skip shortcutting
+        if not reference.identifiers:
+            # No identifiers so we can't deduplicate
             return None
 
         trusted_identifiers = [

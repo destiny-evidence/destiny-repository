@@ -51,6 +51,21 @@ class MessageBrokerError(DestinyRepositoryError):
         super().__init__(detail, *args)
 
 
+class MessageTooLargeError(MessageBrokerError):
+    """An exception thrown by a message broker if the message is too large to queue."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the MessageTooLargeError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
 class NotFoundError(DestinyRepositoryError):
     """Exception for when we can't find something we expect to find."""
 
@@ -589,3 +604,24 @@ class StateTransitionError(DestinyRepositoryError):
         self.current_state = current_state
         self.attempted_state = attempted_state
         super().__init__(detail)
+
+
+class ContextNotPreFetchedError(DestinyRepositoryError):
+    """Raised when document_loader is called for a URI that hasn't been pre-fetched."""
+
+    def __init__(self, uri: str) -> None:
+        """Initialize the ContextNotPreFetchedError exception."""
+        super().__init__(
+            f"Context URI '{uri}' has not been pre-fetched. "
+            f"Call get_context('{uri}') before using document_loader."
+        )
+        self.uri = uri
+
+
+class VocabularyFetchError(DestinyRepositoryError):
+    """Raised when a vocabulary artifact cannot be fetched or parsed."""
+
+    def __init__(self, uri: str, detail: str) -> None:
+        """Initialize the VocabularyFetchError exception."""
+        super().__init__(f"Failed to fetch vocabulary artifact '{uri}': {detail}")
+        self.uri = uri

@@ -7,7 +7,6 @@ from pydantic import (
     BaseModel,
     Field,
     HttpUrl,
-    PastDatetime,
 )
 
 from .core import UUID
@@ -69,7 +68,7 @@ class _ImportRecordBase(BaseModel):
         default=None,
         description="The search string used to produce this import",
     )
-    searched_at: PastDatetime = Field(
+    searched_at: datetime.datetime = Field(
         default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
         description="""
 The timestamp (including timezone) at which the search which produced

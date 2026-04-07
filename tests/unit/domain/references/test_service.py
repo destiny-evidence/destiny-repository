@@ -611,6 +611,25 @@ async def test_get_deduplicated_canonical_references(
     )
 
 
+@pytest.mark.asyncio
+async def test_get_deduplicated_canonical_references_all_duplicates(
+    fake_repository, fake_uow, canonical_reference, get_duplicate_reference
+):
+    """All-duplicate input should return the canonical without raising ValueError."""
+    duplicate_reference = get_duplicate_reference(canonical_reference.id)
+    canonical_reference.duplicate_references = [duplicate_reference]
+    refs = fake_repository([canonical_reference, duplicate_reference])
+    uow = fake_uow(references=refs)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+    canonical_list = await service._get_deduplicated_canonical_references(  # noqa: SLF001
+        references=[duplicate_reference]
+    )
+    assert len(canonical_list) == 1
+    assert canonical_list[0].id == canonical_reference.id
+
+
 async def test_get_canonical_reference_with_implied_changeset(
     fake_uow, fake_repository
 ):
@@ -717,8 +736,10 @@ async def test_get_reference_changesets_from_enhancements(fake_uow, fake_reposit
 
 
 @pytest.mark.asyncio
-async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_robot):
-    """Test the creation of a robot enhancement batch."""
+async def test_claim_and_create_robot_enhancement_batch(
+    fake_repository, fake_uow, test_robot
+):
+    """Test atomic claiming of pending enhancements and batch creation."""
     mock_blob_repository = AsyncMock()
     mock_blob_repository.upload_file_to_blob_storage.return_value = BlobStorageFile(
         location="minio",
@@ -727,7 +748,7 @@ async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_ro
         path="robot_enhancement_batch_reference_data",
     )
 
-    references = [Reference(id=uuid7()) for _ in range(3)]
+    references = [Reference(id=uuid7(), duplicate_references=[]) for _ in range(3)]
     pending_enhancements = [
         PendingEnhancement(
             reference_id=ref.id,
@@ -746,38 +767,35 @@ async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_ro
         )
     )
 
-    # Create a specialized fake references repository with get_hydrated method
-    class FakeReferencesRepository(fake_repository):
-        async def get_hydrated(
-            self,
-            reference_ids: list,
-            enhancement_types: list | None = None,
-            external_identifier_types: list | None = None,
-        ) -> list:
-            """Get hydrated references by IDs (simplified for testing)."""
-            return await self.get_by_pks(reference_ids)
+    class FakePendingEnhancementRepository(fake_repository):
+        async def find_available_for_robot(self, robot_id, limit):
+            """Fake implementation of the locking query."""
+            results = [
+                pe
+                for pe in self.repository.values()
+                if pe.robot_id == robot_id
+                and pe.robot_enhancement_batch_id is None
+                and pe.status == PendingEnhancementStatus.PENDING
+            ]
+            return results[:limit]
 
     uow = fake_uow(
-        references=FakeReferencesRepository(init_entries=references),
-        pending_enhancements=fake_repository(init_entries=pending_enhancements),
+        references=fake_repository(init_entries=references),
+        pending_enhancements=FakePendingEnhancementRepository(
+            init_entries=pending_enhancements
+        ),
         robot_enhancement_batches=fake_repository(),
     )
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
 
-    batch_pending_enhancements = await service.get_pending_enhancements_for_robot(
-        robot_id=test_robot.id, limit=10
-    )
-
-    assert len(batch_pending_enhancements) == 3
-
     lease = datetime.timedelta(minutes=5)
     expected_expiry_time = utc_now() + lease
 
-    created_batch = await service.create_robot_enhancement_batch(
+    created_batch = await service.claim_and_create_robot_enhancement_batch(
         robot_id=test_robot.id,
-        pending_enhancements=batch_pending_enhancements,
+        limit=10,
         lease_duration=lease,
         blob_repository=mock_blob_repository,
     )
@@ -812,6 +830,73 @@ async def test_create_robot_enhancement_batch(fake_repository, fake_uow, test_ro
 
     assert created_batch.reference_data_file is not None
     assert created_batch.reference_data_file.endswith(".jsonl")
+
+
+@pytest.mark.asyncio
+async def test_get_jsonl_deduplicated_references(fake_repository, fake_uow):
+    """Test that _get_jsonl_deduplicated_references returns flattened JSONL
+    containing enhancements and identifiers from both canonical and duplicate
+    references, with duplicate_references stripped from output.
+    """
+    from tests.factories import ReferenceFactory
+
+    duplicate_ref = ReferenceFactory(duplicate_references=[])
+    canonical_ref = ReferenceFactory(duplicate_references=[duplicate_ref])
+
+    uow = fake_uow(references=fake_repository(init_entries=[canonical_ref]))
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+
+    result = await service._get_jsonl_deduplicated_references([canonical_ref.id])  # noqa: SLF001
+
+    assert len(result) == 1
+
+    data = json.loads(result[0])
+
+    # Flattened: should contain enhancements from canonical + duplicate
+    canonical_sources = {e.source for e in canonical_ref.enhancements}
+    duplicate_sources = {e.source for e in duplicate_ref.enhancements}
+    output_sources = {e["source"] for e in data["enhancements"]}
+    assert output_sources == canonical_sources | duplicate_sources
+
+    # Flattened: should contain identifiers from both
+    assert len(data["identifiers"]) == len(canonical_ref.identifiers) + len(
+        duplicate_ref.identifiers
+    )
+
+    # duplicate_references should not appear in SDK output
+    assert "duplicate_references" not in data
+
+
+@pytest.mark.asyncio
+async def test_claim_and_create_robot_enhancement_batch_returns_none_when_empty(
+    fake_repository, fake_uow, test_robot
+):
+    """Test that None is returned when no pending enhancements are available."""
+    mock_blob_repository = AsyncMock()
+
+    class FakePendingEnhancementRepository(fake_repository):
+        async def find_available_for_robot(self, robot_id, limit):
+            return []
+
+    uow = fake_uow(
+        pending_enhancements=FakePendingEnhancementRepository(),
+        robot_enhancement_batches=fake_repository(),
+    )
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+
+    result = await service.claim_and_create_robot_enhancement_batch(
+        robot_id=test_robot.id,
+        limit=10,
+        lease_duration=datetime.timedelta(minutes=5),
+        blob_repository=mock_blob_repository,
+    )
+
+    assert result is None
+    mock_blob_repository.upload_file_to_blob_storage.assert_not_awaited()
 
 
 @pytest.mark.asyncio

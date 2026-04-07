@@ -535,14 +535,9 @@ async def test_request_robot_enhancement_batch(
         session, pending_enhancement
     )
 
-    mock_get_pending = AsyncMock(return_value=[pending_enhancement])
-    mock_create_batch = AsyncMock(return_value=robot_enhancement_batch)
-
+    mock_claim = AsyncMock(return_value=robot_enhancement_batch)
     monkeypatch.setattr(
-        ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
-    )
-    monkeypatch.setattr(
-        ReferenceService, "create_robot_enhancement_batch", mock_create_batch
+        ReferenceService, "claim_and_create_robot_enhancement_batch", mock_claim
     )
 
     response = await client.post(
@@ -550,11 +545,9 @@ async def test_request_robot_enhancement_batch(
     )
 
     assert response.status_code == status.HTTP_200_OK
-    mock_get_pending.assert_awaited_once_with(robot_id=robot.id, limit=10)
-
-    mock_create_batch.assert_awaited_once_with(
+    mock_claim.assert_awaited_once_with(
         robot_id=robot.id,
-        pending_enhancements=[pending_enhancement],
+        limit=10,
         lease_duration=datetime.timedelta(minutes=5),
         blob_repository=ANY,
     )
@@ -568,13 +561,9 @@ async def test_request_robot_enhancement_batch_no_pending_enhancements(
     """Test requesting a batch when there are no pending enhancements."""
     robot = await add_robot(session)
 
-    mock_get_pending = AsyncMock(return_value=[])
-    mock_create_batch = AsyncMock()
+    mock_claim = AsyncMock(return_value=None)
     monkeypatch.setattr(
-        ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
-    )
-    monkeypatch.setattr(
-        ReferenceService, "create_robot_enhancement_batch", mock_create_batch
+        ReferenceService, "claim_and_create_robot_enhancement_batch", mock_claim
     )
 
     response = await client.post(
@@ -582,8 +571,7 @@ async def test_request_robot_enhancement_batch_no_pending_enhancements(
     )
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
-    mock_get_pending.assert_awaited_once_with(robot_id=robot.id, limit=10)
-    mock_create_batch.assert_not_awaited()
+    mock_claim.assert_awaited_once()
 
 
 async def test_request_robot_enhancement_batch_limit_exceeded(
@@ -594,9 +582,9 @@ async def test_request_robot_enhancement_batch_limit_exceeded(
     """Test requesting a batch with limit exceeding maximum allowed."""
     robot = await add_robot(session)
 
-    mock_get_pending = AsyncMock(return_value=[])
+    mock_claim = AsyncMock(return_value=None)
     monkeypatch.setattr(
-        ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
+        ReferenceService, "claim_and_create_robot_enhancement_batch", mock_claim
     )
 
     # Request with a very high limit
@@ -605,9 +593,9 @@ async def test_request_robot_enhancement_batch_limit_exceeded(
     )
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
-    # Should be called with the default max limit, not the requested limit
-    mock_get_pending.assert_awaited_once()
-    call_args = mock_get_pending.call_args
+    # Should be called with the capped limit, not the requested limit
+    mock_claim.assert_awaited_once()
+    call_args = mock_claim.call_args
     assert call_args.kwargs["limit"] == 10000  # Should be capped at max limit
 
 
@@ -616,9 +604,9 @@ async def test_request_robot_enhancement_batch_invalid_robot_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test requesting a batch with invalid robot ID format."""
-    mock_get_pending = AsyncMock(return_value=[])
+    mock_claim = AsyncMock(return_value=None)
     monkeypatch.setattr(
-        ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
+        ReferenceService, "claim_and_create_robot_enhancement_batch", mock_claim
     )
 
     response = await client.post(
@@ -626,7 +614,7 @@ async def test_request_robot_enhancement_batch_invalid_robot_id(
     )
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
-    mock_get_pending.assert_not_awaited()
+    mock_claim.assert_not_awaited()
 
 
 async def test_request_robot_enhancement_batch_missing_robot_id(
@@ -634,15 +622,15 @@ async def test_request_robot_enhancement_batch_missing_robot_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test requesting a batch without robot_id parameter."""
-    mock_get_pending = AsyncMock(return_value=[])
+    mock_claim = AsyncMock(return_value=None)
     monkeypatch.setattr(
-        ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
+        ReferenceService, "claim_and_create_robot_enhancement_batch", mock_claim
     )
 
     response = await client.post("/v1/robot-enhancement-batches/?limit=10")
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
-    mock_get_pending.assert_not_awaited()
+    mock_claim.assert_not_awaited()
 
 
 async def test_get_robot_enhancement_batch_happy_path(

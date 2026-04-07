@@ -109,7 +109,11 @@ class EnhancementParseResult(BaseModel):
     )
 
     @classmethod
-    def from_raw(cls, raw_enhancement: JSON, entry_ref: int) -> Self:
+    def from_raw(
+        cls,
+        raw_enhancement: JSON,
+        entry_ref: int,
+    ) -> Self:
         """Parse an enhancement from raw JSON."""
         try:
             enhancement = destiny_sdk.enhancements.EnhancementFileInput.model_validate(
