@@ -44,8 +44,10 @@ from app.domain.references.models.models import (
     PendingEnhancement,
     PendingEnhancementStatus,
     Reference,
+    ReferenceSearchProjection,
     Visibility,
 )
+from app.domain.references.models.projections import ReferenceSearchFieldsProjection
 from app.domain.robots.models.models import Robot
 from app.utils.time_and_date import utc_now
 
@@ -382,6 +384,21 @@ class ReferenceFactory(factory.Factory):
             ]
         else:
             self.enhancements = extracted
+
+
+def to_indexable(reference: Reference) -> ReferenceSearchProjection:
+    """Convert a Reference to an ReferenceSearchProjection for ES test indexing."""
+    search_fields = ReferenceSearchFieldsProjection.get_from_reference(reference)
+    return ReferenceSearchProjection(
+        id=reference.id,
+        visibility=reference.visibility,
+        duplicate_determination=(
+            reference.duplicate_decision.duplicate_determination
+            if reference.duplicate_decision
+            else None
+        ),
+        search_fields=search_fields,
+    )
 
 
 class RobotFactory(factory.Factory):

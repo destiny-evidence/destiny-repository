@@ -52,6 +52,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             singly_projected_annotations: dict[
                 tuple[str, str | None], destiny_sdk.enhancements.Annotation
             ] = {}
+            linked_data_content = None
 
             for enhancement in cls.__priority_sorted_enhancements(
                 canonical_id=reference.id, enhancements=reference.enhancements
@@ -79,6 +80,11 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
 
                 elif enhancement.content.enhancement_type == EnhancementType.ABSTRACT:
                     abstract = enhancement.content.abstract
+
+                elif (
+                    enhancement.content.enhancement_type == EnhancementType.LINKED_DATA
+                ):
+                    linked_data_content = enhancement.content
 
                 elif enhancement.content.enhancement_type == EnhancementType.ANNOTATION:
                     # Pre-work: collect annotations by scheme, preserving the
@@ -121,6 +127,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                 destiny_inclusion_score=cls.__positive_annotation_score(
                     destiny_inclusion_annotation
                 ),
+                linked_data_content=linked_data_content,
             )
 
         except Exception as exc:

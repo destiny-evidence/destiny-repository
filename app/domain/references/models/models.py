@@ -524,6 +524,16 @@ class ReferenceSearchFields(ProjectedBaseModel):
         ),
     )
 
+    linked_data_content: destiny_sdk.enhancements.LinkedDataEnhancement | None = Field(
+        default=None,
+        exclude=True,
+        description=(
+            "The content of the highest-priority LINKED_DATA enhancement, if any. "
+            "This is the raw enhancement content before projection into searchable "
+            "concepts and labels."
+        ),
+    )
+
     def to_canonical_candidate_search_fields(self) -> CandidateCanonicalSearchFields:
         """Return fields needed for candidate canonical selection."""
         return CandidateCanonicalSearchFields(
@@ -545,11 +555,50 @@ class ReferenceSearchFields(ProjectedBaseModel):
             return value
         return cls._normalise_string(value)
 
-    @field_validator("authors", "annotations", "evaluated_schemes", mode="after")
+    @field_validator(
+        "authors",
+        "annotations",
+        "evaluated_schemes",
+        mode="after",
+    )
     @classmethod
     def normalise_string_list_validator(cls, value: list[str]) -> list[str]:
         """Normalise string list fields by stripping whitespace."""
         return [cls._normalise_string(v) for v in value if v]
+
+
+class LinkedDataProjection(ProjectedBaseModel):
+    """Result of projecting a LinkedDataEnhancement into flat searchable fields."""
+
+    concepts: set[str] = Field(default_factory=set)
+    labels: set[str] = Field(default_factory=set)
+    evaluated_properties: set[str] = Field(default_factory=set)
+
+
+class ReferenceSearchProjection(SQLAttributeMixin):
+    """
+    Pre-computed projection of a Reference for ES indexing.
+
+    Contains only the fields that ES indexes, constructed by the synchronizer
+    from a Reference and its projections. Inherits SQLAttributeMixin for the
+    id field and to satisfy the GenericDomainModelType bound required by the
+    ES persistence layer.
+    """
+
+    visibility: Visibility = Field(
+        description="The level of visibility of the reference.",
+    )
+    duplicate_determination: DuplicateDetermination | None = Field(
+        default=None,
+        description="The duplicate determination, if any.",
+    )
+    search_fields: ReferenceSearchFields = Field(
+        description="Pre-computed search fields for Elasticsearch indexing.",
+    )
+    linked_data_projection: LinkedDataProjection | None = Field(
+        default=None,
+        description="Pre-computed linked data projection, if any.",
+    )
 
 
 class ReferenceDuplicateDeterminationResult(BaseModel):

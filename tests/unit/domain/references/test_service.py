@@ -37,6 +37,7 @@ from app.domain.references.services.anti_corruption_service import (
 from app.domain.robots.models.models import Robot
 from app.persistence.blob.models import BlobStorageFile
 from app.utils.time_and_date import utc_now
+from tests.factories import ReferenceFactory
 
 
 @pytest.fixture
@@ -838,8 +839,6 @@ async def test_get_jsonl_deduplicated_references(fake_repository, fake_uow):
     containing enhancements and identifiers from both canonical and duplicate
     references, with duplicate_references stripped from output.
     """
-    from tests.factories import ReferenceFactory
-
     duplicate_ref = ReferenceFactory(duplicate_references=[])
     canonical_ref = ReferenceFactory(duplicate_references=[duplicate_ref])
 
@@ -859,6 +858,9 @@ async def test_get_jsonl_deduplicated_references(fake_repository, fake_uow):
     duplicate_sources = {e.source for e in duplicate_ref.enhancements}
     output_sources = {e["source"] for e in data["enhancements"]}
     assert output_sources == canonical_sources | duplicate_sources
+
+    # Enhancements should contain created_at
+    assert all(e.get("created_at") for e in data["enhancements"])
 
     # Flattened: should contain identifiers from both
     assert len(data["identifiers"]) == len(canonical_ref.identifiers) + len(
