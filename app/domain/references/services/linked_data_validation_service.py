@@ -93,6 +93,10 @@ class LinkedDataValidationService:
             )
 
         # Step 3: SHACL validation
+        # Merge ontology into data graph so sh:class constraints can resolve
+        # concept types. pyshacl's sh:class only checks rdf:type triples in the
+        # data graph, not ont_graph — even with ont_graph set.
+        data_graph += ontology
         try:
             conforms, _graph, results_text = shacl_validate(
                 data_graph,
