@@ -217,3 +217,18 @@ Annotations
 .. autoattribute:: app.domain.references.models.es.ReferenceSearchFieldsMixin.inclusion_destiny
     :no-index:
     :annotation: float[0-1]
+
+Linked Data
+^^^^^^^^^^^
+
+.. autoattribute:: app.domain.references.models.es.ReferenceSearchFieldsMixin.linked_data_concepts
+    :no-index:
+    :annotation: list[str]
+
+.. autoattribute:: app.domain.references.models.es.ReferenceSearchFieldsMixin.linked_data_labels
+    :no-index:
+    :annotation: list[str]
+
+.. autoattribute:: app.domain.references.models.es.ReferenceSearchFieldsMixin.linked_data_evaluated_properties
+    :no-index:
+    :annotation: list[str]

@@ -36,6 +36,7 @@ from tests.factories import (
     LinkedExternalIdentifierFactory,
     OpenAlexIdentifierFactory,
     ReferenceFactory,
+    to_indexable,
 )
 
 settings = get_settings()
@@ -128,7 +129,7 @@ async def test_shortcut_deduplication_both_pending_decisions(
     es_repository = ReferenceESRepository(es_client)
     sql_repository = ReferenceSQLRepository(session)
     for reference in [reference_1, reference_2]:
-        await es_repository.add(reference)
+        await es_repository.add(to_indexable(reference))
         await sql_repository.merge(reference)
     await session.commit()
     await es_client.indices.refresh(index="reference")
