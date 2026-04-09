@@ -38,6 +38,7 @@ from app.domain.robots.models.models import Robot
 from app.persistence.blob.models import BlobStorageFile
 from app.utils.time_and_date import utc_now
 from tests.factories import ReferenceFactory
+from tests.unit.domain.conftest import FakeRepository
 
 
 @pytest.fixture
@@ -1152,6 +1153,65 @@ async def test_make_duplicate_decisions_preserves_order(fake_repository, fake_uo
         call(duplicate_decision, allow_destructive_decision=True),
         call(canonical_decision, allow_destructive_decision=True),
     ]
+
+
+@pytest.mark.asyncio
+async def test_make_duplicate_decisions_reapplies_side_effects_for_old_canonical(
+    fake_repository, fake_uow
+):
+    """Moving a duplicate to a new canonical re-triggers side effects on the old one."""
+    old_canonical_id = uuid7()
+    new_canonical_id = uuid7()
+    duplicate_id = uuid7()
+
+    old_canonical_decision = ReferenceDuplicateDecision(
+        reference_id=old_canonical_id,
+        duplicate_determination=DuplicateDetermination.CANONICAL,
+    )
+    old_canonical_ref = Reference(
+        id=old_canonical_id,
+        duplicate_decision=old_canonical_decision,
+    )
+
+    new_decision = ReferenceDuplicateDecision(
+        reference_id=duplicate_id,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=new_canonical_id,
+    )
+    old_decision = ReferenceDuplicateDecision(
+        reference_id=duplicate_id,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=old_canonical_id,
+    )
+
+    mock_map = AsyncMock(return_value=(new_decision, True, old_decision))
+    mock_side_effects = AsyncMock()
+
+    references_repo = FakeRepository(init_entries=[old_canonical_ref])
+    sql_uow = fake_uow(references=references_repo)
+
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), sql_uow, fake_uow()
+    )
+
+    with (
+        patch.object(
+            service._deduplication_service,  # noqa: SLF001
+            "map_duplicate_decision",
+            mock_map,
+        ),
+        patch.object(
+            service,
+            "apply_reference_duplicate_decision_side_effects",
+            mock_side_effects,
+        ),
+    ):
+        results = await service.make_duplicate_decisions([new_decision])
+
+    assert len(results) == 1
+    assert mock_side_effects.await_count == 2
+    mock_side_effects.assert_any_await(new_decision, decision_changed=True)
+    mock_side_effects.assert_any_await(old_canonical_decision, decision_changed=True)
 
 
 @pytest.mark.asyncio
