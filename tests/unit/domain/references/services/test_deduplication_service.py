@@ -541,11 +541,11 @@ async def test_determine_and_map_duplicate_decoupled_different_canonical(
 async def test_determine_and_map_duplicate_decoupled_has_duplicates(
     fake_uow, fake_repository, anti_corruption_service
 ):
+    """Reference with existing duplicates cannot become a duplicate itself."""
     candidate = MagicMock(spec=Reference)
     candidate.id = uuid7()
     candidate.is_canonical = True
 
-    """Reference with existing duplicates cannot become a duplicate itself."""
     existing_duplicate = Reference(
         id=uuid7(),
         identifiers=[],
