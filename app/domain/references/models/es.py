@@ -38,6 +38,7 @@ from app.persistence.es.persistence import GenericESPersistence, GenericNestedDo
 EXCLUDED_ENHANCEMENT_TYPES = {
     EnhancementType.RAW,
     EnhancementType.REFERENCE_ASSOCIATION,
+    EnhancementType.LINKED_DATA,
 }
 
 # Fields excluded from ES indexing. These are not useful for candidate generation

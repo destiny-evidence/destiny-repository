@@ -74,6 +74,46 @@ VALID_DATA = {
 }
 
 
+VALID_DATA_WITH_ONTOLOGY_CONCEPT = {
+    "@context": {"evrepo": EVREPO},
+    "@type": "evrepo:LinkedDataEnhancement",
+    "evrepo:hasInvestigation": {
+        "@type": "evrepo:Investigation",
+        "evrepo:hasFinding": {
+            "@type": "evrepo:Finding",
+            "evrepo:hasContext": {"@type": "evrepo:Context"},
+            "evrepo:hasOutcome": {
+                "@type": "evrepo:Outcome",
+                "evrepo:name": "Reading comprehension",
+            },
+            "evrepo:evaluates": {
+                "@type": "evrepo:Intervention",
+                "evrepo:name": "Tutoring",
+            },
+            "evrepo:comparedTo": {"@type": "evrepo:ControlCondition"},
+            "evrepo:hasArmData": {
+                "@type": "evrepo:ObservedResult",
+                "evrepo:forCondition": {"@type": "evrepo:Intervention"},
+                "evrepo:n": {
+                    "@value": 50,
+                    "@type": "http://www.w3.org/2001/XMLSchema#integer",
+                },
+            },
+            "evrepo:hasEffectEstimate": {
+                "@type": "evrepo:EffectEstimate",
+                "evrepo:pointEstimate": {
+                    "@value": "0.35",
+                    "@type": "http://www.w3.org/2001/XMLSchema#decimal",
+                },
+                "evrepo:effectSizeMetric": {
+                    "@id": "https://vocab.evidence-repository.org/hedgesG",
+                },
+            },
+        },
+    },
+}
+
+
 VOCAB_URI = "https://vocab.evidence-repository.org/vocabulary/v1"
 
 
@@ -82,6 +122,23 @@ async def test_valid_data_conforms(service: LinkedDataValidationService):
     result = await service.validate(data=VALID_DATA, vocabulary_uri=VOCAB_URI)
     assert result.conforms
     assert result.errors == []
+
+
+@pytest.mark.asyncio
+async def test_ontology_concept_types_resolved_via_graph_merge(
+    service: LinkedDataValidationService,
+):
+    """sh:class constraints on ontology-typed concepts pass.
+
+    effectSizeMetric references evrepo:hedgesG, whose rdf:type
+    EffectSizeMetricConcept lives in the ontology, not in the LDE data.
+    Without merging the ontology into the data graph before SHACL
+    validation, pyshacl cannot resolve the type and the constraint fails.
+    """
+    result = await service.validate(
+        data=VALID_DATA_WITH_ONTOLOGY_CONCEPT, vocabulary_uri=VOCAB_URI
+    )
+    assert result.conforms, f"Expected conforms=True, got errors: {result.errors}"
 
 
 @pytest.mark.asyncio
