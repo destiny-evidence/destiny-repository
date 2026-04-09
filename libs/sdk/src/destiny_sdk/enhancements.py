@@ -618,10 +618,13 @@ class Enhancement(_JsonlFileInputMixIn, BaseModel):
             description="The content of the enhancement.",
         ),
     ]
-    created_at: datetime.datetime = Field(
+    created_at: datetime.datetime | None = Field(
+        default=None,
         description=(
-            "The ISO8601 datetime when the enhancement was added to the repository."
-        )
+            "The ISO8601 datetime when the enhancement was added to the repository. "
+            "This field is populated by the repository, if it is included on an "
+            "incoming enhancement it will be ignored."
+        ),
     )
 
 
