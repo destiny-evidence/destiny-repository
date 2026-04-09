@@ -803,7 +803,7 @@ async def make_duplicate_decisions(
     will fail with a 422 error.
 
     If declaring a canonical reference as well as its duplicates in the same request,
-    the canonical reference must be listed before any duplicates that point to it.*
+    the canonical reference must be listed before any duplicates that point to it.
 
     This endpoint bypasses the conflict check that would otherwise create a
     decoupled decision, allowing destructive changes (e.g. reassigning a duplicate

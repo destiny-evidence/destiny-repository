@@ -1315,7 +1315,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 # We forcibly moved this duplicate, either to be a duplicate of a
                 # different canonical, or to be canonical itself. Re-apply any
                 # side effects for the old canonical reference, to allow it to
-                # retrigger and automations and recalculate enhancements without
+                # retrigger any automations and recalculate enhancements without
                 # the old duplicate's data.
                 old_canonical = await self.sql_uow.references.get_by_pk(
                     old_decision.canonical_reference_id,
