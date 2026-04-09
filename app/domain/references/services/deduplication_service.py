@@ -306,7 +306,6 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             msg = "Only terminal duplicate determinations can be mapped."
             raise DeduplicationValueError(msg)
 
-        canonical_ref = None
         if new_decision.canonical_reference_id:
             if new_decision.canonical_reference_id == new_decision.reference_id:
                 msg = "Cannot mark a reference as a duplicate of itself."
