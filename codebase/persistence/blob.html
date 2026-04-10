@@ -1,0 +1,977 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Blob Storage &#8212; DESTINY Repository v1.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../_static/autodoc_pydantic.css" />
+    <link rel="stylesheet" type="text/css" href="../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=cf3b3841" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+    <script src="../../_static/documentation_options.js?v=e160b93e"></script>
+    <script src="../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'codebase/persistence/blob';</script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Persistence Models" href="models.html" />
+    <link rel="prev" title="Elasticsearch" href="es.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">DESTINY Repository v1.0 documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../procedures/procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="../codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../sdk/sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../procedures/procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="../codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../sdk/sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../structure.html">Structure</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../config.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../models/imports.html">Import Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../models/references.html">Reference Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../models/robots.html">Robot Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="es.html">Elasticsearch</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Blob Storage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models.html">Persistence Models</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../codebase.html" class="nav-link">Codebase</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Blob Storage</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="blob-storage">
+<h1>Blob Storage<a class="headerlink" href="#blob-storage" title="Link to this heading">#</a></h1>
+<p>Blob storage is used for storing large and/or ephemeral data that is not suitable for other persistence stores. This includes:
+- Large permanent data files such as full texts of documents.
+- Temporary files that are generated during processing but not needed long-term.
+- Large payloads that are not suitable for REST APIs, such as the enhancement process.</p>
+<nav class="contents local" id="table-of-contents">
+<p class="topic-title">Table of Contents</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="#interface" id="id1">Interface</a></p>
+<ul>
+<li><p><a class="reference internal" href="#representation" id="id2">Representation</a></p></li>
+<li><p><a class="reference internal" href="#client" id="id3">Client</a></p></li>
+<li><p><a class="reference internal" href="#blob-repository" id="id4">Blob Repository</a></p></li>
+<li><p><a class="reference internal" href="#file-content" id="id5">File Content</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#implementations" id="id6">Implementations</a></p>
+<ul>
+<li><p><a class="reference internal" href="#azure" id="id7">Azure</a></p></li>
+<li><p><a class="reference internal" href="#minio" id="id8">MinIO</a></p></li>
+</ul>
+</li>
+</ul>
+</nav>
+<section id="interface">
+<h2><a class="toc-backref" href="#id1" role="doc-backlink">Interface</a><a class="headerlink" href="#interface" title="Link to this heading">#</a></h2>
+<p>External actors such as robots interact with blob storage purely through <code class="docutils literal notranslate"><span class="pre">GET/PUT</span></code> signed URLs, they are not granted direct access to the storage itself. These have short-lived signatures, typically valid for one hour, but can be refreshed by re-requesting the resource from the Repository API.</p>
+<p>The repository codebase interacts with blob storage through the <code class="xref py py-class docutils literal notranslate"><span class="pre">BlobStorageRepository</span></code> interface, which provides methods for uploading and downloading files, as well as managing file metadata. This interface is primarily a streaming interface, allowing for efficient handling of large files for upload and download without loading them entirely into memory. When getting, files are streamed line-by-line to the caller, and when putting, files can either be streamed with the <a class="reference internal" href="#app.persistence.blob.stream.FileStream" title="app.persistence.blob.stream.FileStream"><code class="xref py py-class docutils literal notranslate"><span class="pre">FileStream</span></code></a> class or compiled into an in-memory <code class="docutils literal notranslate"><span class="pre">BytesIO</span></code> object for simpler cases.</p>
+<section id="representation">
+<h3><a class="toc-backref" href="#id2" role="doc-backlink">Representation</a><a class="headerlink" href="#representation" title="Link to this heading">#</a></h3>
+<p>Blob files are represented in the repository as a <a class="reference internal" href="#app.persistence.blob.models.BlobStorageFile" title="app.persistence.blob.models.BlobStorageFile"><code class="xref py py-class docutils literal notranslate"><span class="pre">BlobStorageFile</span></code></a> object.</p>
+<p id="module-app.persistence.blob.models">Models for handling files in blob storage.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="app.persistence.blob.models.BlobSignedUrlType">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">app.persistence.blob.models.</span></span><span class="sig-name descname"><span class="pre">BlobSignedUrlType</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">values</span></span></em><span class="sig-paren">)</span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/models.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.models.BlobSignedUrlType" title="Link to this definition">#</a></dt>
+<dd><p>Blob Storage interaction types.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.persistence.blob.models.BlobSignedUrlType.DOWNLOAD">
+<span class="sig-name descname"><span class="pre">DOWNLOAD</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'download'</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/models.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.models.BlobSignedUrlType.DOWNLOAD" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.persistence.blob.models.BlobSignedUrlType.UPLOAD">
+<span class="sig-name descname"><span class="pre">UPLOAD</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'upload'</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/models.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.models.BlobSignedUrlType.UPLOAD" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class pydantic_model">
+<dt class="sig sig-object py" id="app.persistence.blob.models.BlobStorageFile">
+<em class="property"><span class="pre">pydantic</span> <span class="pre">model</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">app.persistence.blob.models.</span></span><span class="sig-name descname"><span class="pre">BlobStorageFile</span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/models.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.models.BlobStorageFile" title="Link to this definition">#</a></dt>
+<dd><p>Model to represent Blob Storage files.</p>
+<p><details  class="autodoc_pydantic_collapsable_erd">
+<summary>Show Entity Relationship Diagram</summary><div class="graphviz"><img src="../../_images/graphviz-0be2fc10c27322d3ef84ac4a0fa5cf8ba6054221.png" alt="digraph &quot;Entity Relationship Diagram created by erdantic&quot; {
+   graph [fontcolor=gray66,
+      fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
+      fontsize=9,
+      nodesep=0.5,
+      rankdir=LR,
+      ranksep=1.5
+   ];
+   node [fontname=&quot;Times New Roman,Times,Liberation Serif,serif&quot;,
+      fontsize=14,
+      label=&quot;\N&quot;,
+      shape=plain
+   ];
+   edge [dir=both];
+   &quot;app.persistence.blob.models.BlobStorageFile&quot;   [label=&lt;&lt;table border=&quot;0&quot; cellborder=&quot;1&quot; cellspacing=&quot;0&quot;&gt;&lt;tr&gt;&lt;td port=&quot;_root&quot; colspan=&quot;2&quot;&gt;&lt;b&gt;BlobStorageFile&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;location&lt;/td&gt;&lt;td port=&quot;location&quot;&gt;BlobStorageLocation&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;container&lt;/td&gt;&lt;td port=&quot;container&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;path&lt;/td&gt;&lt;td port=&quot;path&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;filename&lt;/td&gt;&lt;td port=&quot;filename&quot;&gt;str&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&gt;,
+      tooltip=&quot;app.persistence.blob.models.BlobStorageFile&amp;#xA;&amp;#xA;Model to represent Blob Storage files.&amp;#xA;&quot;];
+}" class="graphviz" /></div>
+</details></p><p><details  class="autodoc_pydantic_collapsable_json">
+<summary>Show JSON schema</summary><div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">   </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;BlobStorageFile&quot;</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Model to represent Blob Storage files.&quot;</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;object&quot;</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">&quot;properties&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;location&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">&quot;$ref&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;#/$defs/BlobStorageLocation&quot;</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The location of the blob storage.&quot;</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">&quot;container&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The name of the container in Azure Blob Storage.&quot;</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">&quot;pattern&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;^[^/]*$&quot;</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Container&quot;</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">&quot;path&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The path to the file in Azure Blob Storage.&quot;</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Path&quot;</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">&quot;filename&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The name of the file in Azure Blob Storage.&quot;</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">&quot;pattern&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;^[^/]*$&quot;</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Filename&quot;</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">   </span><span class="p">},</span>
+<span class="w">   </span><span class="nt">&quot;$defs&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;BlobStorageLocation&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">         </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Blob Storage locations.&quot;</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">&quot;enum&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="s2">&quot;azure&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;minio&quot;</span>
+<span class="w">         </span><span class="p">],</span>
+<span class="w">         </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;BlobStorageLocation&quot;</span><span class="p">,</span>
+<span class="w">         </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;string&quot;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">   </span><span class="p">},</span>
+<span class="w">   </span><span class="nt">&quot;required&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">&quot;location&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">&quot;container&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">&quot;path&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">&quot;filename&quot;</span>
+<span class="w">   </span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</details></p><dl class="field-list simple">
+<dt class="field-odd">Config<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>frozen</strong>: <em>bool = True</em></p></li>
+</ul>
+</dd>
+<dt class="field-even">Fields<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><a class="reference internal" href="#app.persistence.blob.models.BlobStorageFile.container" title="app.persistence.blob.models.BlobStorageFile.container"><code class="xref py py-obj docutils literal notranslate"><span class="pre">container</span> <span class="pre">(str)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.persistence.blob.models.BlobStorageFile.filename" title="app.persistence.blob.models.BlobStorageFile.filename"><code class="xref py py-obj docutils literal notranslate"><span class="pre">filename</span> <span class="pre">(str)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.persistence.blob.models.BlobStorageFile.location" title="app.persistence.blob.models.BlobStorageFile.location"><code class="xref py py-obj docutils literal notranslate"><span class="pre">location</span> <span class="pre">(app.persistence.blob.models.BlobStorageLocation)</span></code></a></p></li>
+<li><p><a class="reference internal" href="#app.persistence.blob.models.BlobStorageFile.path" title="app.persistence.blob.models.BlobStorageFile.path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">path</span> <span class="pre">(str)</span></code></a></p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.persistence.blob.models.BlobStorageFile.container">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">container</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"> <span class="pre">[Required]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/models.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.models.BlobStorageFile.container" title="Link to this definition">#</a></dt>
+<dd><p>The name of the container in Azure Blob Storage.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Constraints<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pattern</strong> = ^[^/]*$</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.persistence.blob.models.BlobStorageFile.filename">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">filename</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"> <span class="pre">[Required]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/models.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.models.BlobStorageFile.filename" title="Link to this definition">#</a></dt>
+<dd><p>The name of the file in Azure Blob Storage.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Constraints<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pattern</strong> = ^[^/]*$</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.persistence.blob.models.BlobStorageFile.location">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">location</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#app.persistence.blob.models.BlobStorageLocation" title="app.persistence.blob.models.BlobStorageLocation"><span class="pre">BlobStorageLocation</span></a></em><em class="property"> <span class="pre">[Required]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/models.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.models.BlobStorageFile.location" title="Link to this definition">#</a></dt>
+<dd><p>The location of the blob storage.</p>
+</dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="app.persistence.blob.models.BlobStorageFile.path">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">path</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"> <span class="pre">[Required]</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/models.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.models.BlobStorageFile.path" title="Link to this definition">#</a></dt>
+<dd><p>The path to the file in Azure Blob Storage.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.persistence.blob.models.BlobStorageFile.from_sql">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_sql</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sql</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Self</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/models.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.models.BlobStorageFile.from_sql" title="Link to this definition">#</a></dt>
+<dd><p>Populate the model from a SQL representation.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.persistence.blob.models.BlobStorageFile.to_sql">
+<span class="sig-name descname"><span class="pre">to_sql</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/models.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.models.BlobStorageFile.to_sql" title="Link to this definition">#</a></dt>
+<dd><p>Return the SQL persistence representation of the file.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="app.persistence.blob.models.BlobStorageFile.content_type">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">content_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/models.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.models.BlobStorageFile.content_type" title="Link to this definition">#</a></dt>
+<dd><p>Return the content type of the file based on its extension.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="app.persistence.blob.models.BlobStorageLocation">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">app.persistence.blob.models.</span></span><span class="sig-name descname"><span class="pre">BlobStorageLocation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">values</span></span></em><span class="sig-paren">)</span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/models.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.models.BlobStorageLocation" title="Link to this definition">#</a></dt>
+<dd><p>Blob Storage locations.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.persistence.blob.models.BlobStorageLocation.AZURE">
+<span class="sig-name descname"><span class="pre">AZURE</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'azure'</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/models.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.models.BlobStorageLocation.AZURE" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="app.persistence.blob.models.BlobStorageLocation.MINIO">
+<span class="sig-name descname"><span class="pre">MINIO</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'minio'</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/models.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.models.BlobStorageLocation.MINIO" title="Link to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="client">
+<h3><a class="toc-backref" href="#id3" role="doc-backlink">Client</a><a class="headerlink" href="#client" title="Link to this heading">#</a></h3>
+<p>Each blob storage client implements the <a class="reference internal" href="#app.persistence.blob.client.GenericBlobStorageClient" title="app.persistence.blob.client.GenericBlobStorageClient"><code class="xref py py-class docutils literal notranslate"><span class="pre">GenericBlobStorageClient</span></code></a> interface, which defines methods for interacting with blob storage.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="app.persistence.blob.client.GenericBlobStorageClient">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">app.persistence.blob.client.</span></span><span class="sig-name descname"><span class="pre">GenericBlobStorageClient</span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/client.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.client.GenericBlobStorageClient" title="Link to this definition">#</a></dt>
+<dd><p>Abstract base class for blob storage clients.</p>
+<p>This class defines the interface for blob storage operations.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="app.persistence.blob.client.GenericBlobStorageClient.generate_signed_url">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">generate_signed_url</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#app.persistence.blob.models.BlobStorageFile" title="app.persistence.blob.models.BlobStorageFile"><span class="pre">BlobStorageFile</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">interaction_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#app.persistence.blob.models.BlobSignedUrlType" title="app.persistence.blob.models.BlobSignedUrlType"><span class="pre">BlobSignedUrlType</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/client.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.client.GenericBlobStorageClient.generate_signed_url" title="Link to this definition">#</a></dt>
+<dd><p>Generate a signed URL for the file in blob storage.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>file</strong> (<a class="reference internal" href="#app.persistence.blob.models.BlobStorageFile" title="app.persistence.blob.models.BlobStorageFile"><em>BlobStorageFile</em></a>) – The file for which to generate the signed URL.</p></li>
+<li><p><strong>interaction_type</strong> (<a class="reference internal" href="#app.persistence.blob.models.BlobSignedUrlType" title="app.persistence.blob.models.BlobSignedUrlType"><em>BlobSignedUrlType</em></a>) – The type of interaction (upload or download).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The signed URL for the file.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.persistence.blob.client.GenericBlobStorageClient.stream_file">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">stream_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#app.persistence.blob.models.BlobStorageFile" title="app.persistence.blob.models.BlobStorageFile"><span class="pre">BlobStorageFile</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">AsyncGenerator</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/client.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.client.GenericBlobStorageClient.stream_file" title="Link to this definition">#</a></dt>
+<dd><p>Stream a file line-by-line from the blob storage.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>file</strong> (<a class="reference internal" href="#app.persistence.blob.models.BlobStorageFile" title="app.persistence.blob.models.BlobStorageFile"><em>BlobStorageFile</em></a>) – The file to stream.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>An async generator that yields lines from the file.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>AsyncGenerator[str, None]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.persistence.blob.client.GenericBlobStorageClient.upload_file">
+<em class="property"><span class="k"><span class="pre">abstractmethod</span></span><span class="w"> </span><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">upload_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">content</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#app.persistence.blob.stream.FileStream" title="app.persistence.blob.stream.FileStream"><span class="pre">FileStream</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">BytesIO</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#app.persistence.blob.models.BlobStorageFile" title="app.persistence.blob.models.BlobStorageFile"><span class="pre">BlobStorageFile</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/client.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.client.GenericBlobStorageClient.upload_file" title="Link to this definition">#</a></dt>
+<dd><p>Upload a file to the blob storage.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>content</strong> (<a class="reference internal" href="#app.persistence.blob.stream.FileStream" title="app.persistence.blob.stream.FileStream"><em>FileStream</em></a><em> | </em><em>BytesIO</em>) – The content of the file to upload.</p></li>
+<li><p><strong>file</strong> (<a class="reference internal" href="#app.persistence.blob.models.BlobStorageFile" title="app.persistence.blob.models.BlobStorageFile"><em>BlobStorageFile</em></a>) – The file to upload.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="blob-repository">
+<h3><a class="toc-backref" href="#id4" role="doc-backlink">Blob Repository</a><a class="headerlink" href="#blob-repository" title="Link to this heading">#</a></h3>
+<p>The codebase interacts with the blob clients through the <code class="xref py py-class docutils literal notranslate"><span class="pre">BlobStorageRepository</span></code> interface:</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="app.persistence.blob.repository.BlobRepository">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">app.persistence.blob.repository.</span></span><span class="sig-name descname"><span class="pre">BlobRepository</span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/repository.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.repository.BlobRepository" title="Link to this definition">#</a></dt>
+<dd><p>Repository for managing files in blob storage.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="app.persistence.blob.repository.BlobRepository.get_signed_url">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_signed_url</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#app.persistence.blob.models.BlobStorageFile" title="app.persistence.blob.models.BlobStorageFile"><span class="pre">BlobStorageFile</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">interaction_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#app.persistence.blob.models.BlobSignedUrlType" title="app.persistence.blob.models.BlobSignedUrlType"><span class="pre">BlobSignedUrlType</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">HttpUrl</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/repository.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.repository.BlobRepository.get_signed_url" title="Link to this definition">#</a></dt>
+<dd><p>Generate a signed URL for a file in Blob Storage.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>file</strong> (<a class="reference internal" href="#app.persistence.blob.models.BlobStorageFile" title="app.persistence.blob.models.BlobStorageFile"><em>BlobStorageFile</em></a>) – The file for which to generate the signed URL.</p></li>
+<li><p><strong>interaction_type</strong> (<a class="reference internal" href="#app.persistence.blob.models.BlobSignedUrlType" title="app.persistence.blob.models.BlobSignedUrlType"><em>BlobSignedUrlType</em></a>) – The type of interaction (upload or download).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The signed URL for the file.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>HttpUrl</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.persistence.blob.repository.BlobRepository.stream_file_from_blob_storage">
+<span class="sig-name descname"><span class="pre">stream_file_from_blob_storage</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#app.persistence.blob.models.BlobStorageFile" title="app.persistence.blob.models.BlobStorageFile"><span class="pre">BlobStorageFile</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">AsyncGenerator</span><span class="p"><span class="pre">[</span></span><span class="pre">AsyncIterator</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/repository.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.repository.BlobRepository.stream_file_from_blob_storage" title="Link to this definition">#</a></dt>
+<dd><p>Stream a file line-by-line from Blob Storage.</p>
+<p>Usage:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">async</span> <span class="k">with</span> <span class="n">blob_repo</span><span class="o">.</span><span class="n">stream_file_from_blob_storage</span><span class="p">(</span><span class="n">file</span><span class="p">)</span> <span class="k">as</span> <span class="n">stream</span><span class="p">:</span>
+    <span class="k">async</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">stream</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>file</strong> (<a class="reference internal" href="#app.persistence.blob.models.BlobStorageFile" title="app.persistence.blob.models.BlobStorageFile"><em>BlobStorageFile</em></a>) – The file to stream.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>An async generator that yields lines one at a time from the file.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>AsyncGenerator[str, None]</p>
+</dd>
+<dt class="field-even">Yield<span class="colon">:</span></dt>
+<dd class="field-even"><p>Lines from the file, one at a time.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Iterator[AsyncGenerator[AsyncIterator[str], None]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.persistence.blob.repository.BlobRepository.upload_file_to_blob_storage">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">upload_file_to_blob_storage</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">content</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#app.persistence.blob.stream.FileStream" title="app.persistence.blob.stream.FileStream"><span class="pre">FileStream</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">BytesIO</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">container</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">location</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#app.persistence.blob.models.BlobStorageLocation" title="app.persistence.blob.models.BlobStorageLocation"><span class="pre">BlobStorageLocation</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#app.persistence.blob.models.BlobStorageFile" title="app.persistence.blob.models.BlobStorageFile"><span class="pre">BlobStorageFile</span></a></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/repository.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.repository.BlobRepository.upload_file_to_blob_storage" title="Link to this definition">#</a></dt>
+<dd><p>Upload a file to Blob Storage.</p>
+<p>See <a class="reference internal" href="#app.persistence.blob.stream.FileStream" title="app.persistence.blob.stream.FileStream"><code class="xref py py-class docutils literal notranslate"><span class="pre">app.persistence.blob.stream.FileStream</span></code></a> for
+examples of how to create and use a <code class="docutils literal notranslate"><span class="pre">FileStream</span></code> object.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>content</strong> (<a class="reference internal" href="#app.persistence.blob.stream.FileStream" title="app.persistence.blob.stream.FileStream"><em>FileStream</em></a><em> | </em><em>BytesIO</em>) – The content of the file to upload.</p></li>
+<li><p><strong>path</strong> (<em>str</em>) – The path to upload the file to.</p></li>
+<li><p><strong>filename</strong> (<em>str</em>) – The name of the file to upload.</p></li>
+<li><p><strong>container</strong> (<em>str</em><em> | </em><em>None</em>) – The container to upload the file to, defaults to
+<a class="reference internal" href="../config.html#app.core.config.Settings.default_blob_container" title="app.core.config.Settings.default_blob_container"><code class="xref py py-attr docutils literal notranslate"><span class="pre">app.core.config.Settings.default_blob_container</span></code></a>.</p></li>
+<li><p><strong>location</strong> (<a class="reference internal" href="#app.persistence.blob.models.BlobStorageLocation" title="app.persistence.blob.models.BlobStorageLocation"><em>BlobStorageLocation</em></a><em> | </em><em>None</em>) – The location of the blob storage, defaults to
+<a class="reference internal" href="../config.html#app.core.config.Settings.default_blob_location" title="app.core.config.Settings.default_blob_location"><code class="xref py py-attr docutils literal notranslate"><span class="pre">app.core.config.Settings.default_blob_location</span></code></a>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The information of the uploaded file.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#app.persistence.blob.models.BlobStorageFile" title="app.persistence.blob.models.BlobStorageFile">BlobStorageFile</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="file-content">
+<h3><a class="toc-backref" href="#id5" role="doc-backlink">File Content</a><a class="headerlink" href="#file-content" title="Link to this heading">#</a></h3>
+<p>When getting, the file content is streamed line-by-line to the caller, allowing for efficient handling of large files without loading them entirely into memory.</p>
+<p>When putting, files can either be streamed with the <a class="reference internal" href="#app.persistence.blob.stream.FileStream" title="app.persistence.blob.stream.FileStream"><code class="xref py py-class docutils literal notranslate"><span class="pre">FileStream</span></code></a> class or compiled into an in-memory <code class="docutils literal notranslate"><span class="pre">BytesIO</span></code> object for simpler cases.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="app.persistence.blob.stream.FileStream">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">app.persistence.blob.stream.</span></span><span class="sig-name descname"><span class="pre">FileStream</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fn</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Awaitable</span><span class="p"><span class="pre">[</span></span><span class="pre">Streamable</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fn_kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">generator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">AsyncGenerator</span><span class="p"><span class="pre">[</span></span><span class="pre">Streamable</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/stream.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.stream.FileStream" title="Link to this definition">#</a></dt>
+<dd><p>A helper class to convert a service function or generator into an async file stream.</p>
+<p>This allows memory-efficient streaming of data from a function that returns a string
+or list of strings.</p>
+<p>Example usage:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">get_chunk</span><span class="p">(</span><span class="n">ids</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">UUID</span><span class="p">],</span> <span class="n">other_arg</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">DomainModel</span><span class="p">]:</span>
+    <span class="k">return</span> <span class="n">repository</span><span class="o">.</span><span class="n">get_strings</span><span class="p">(</span><span class="n">ids</span><span class="p">,</span> <span class="n">other_arg</span><span class="p">)</span>
+
+<span class="n">file_stream</span> <span class="o">=</span> <span class="n">FileStream</span><span class="p">(</span><span class="n">fn</span><span class="o">=</span><span class="n">get_chunk</span><span class="p">,</span> <span class="n">fn_kwargs</span><span class="o">=</span><span class="p">[</span>
+    <span class="p">{</span><span class="s2">&quot;ids&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">id1</span><span class="p">,</span> <span class="n">id2</span><span class="p">],</span> <span class="s2">&quot;other_arg&quot;</span><span class="p">:</span> <span class="s2">&quot;value&quot;</span><span class="p">},</span>
+    <span class="p">{</span><span class="s2">&quot;ids&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">id3</span><span class="p">,</span> <span class="n">id4</span><span class="p">],</span> <span class="s2">&quot;other_arg&quot;</span><span class="p">:</span> <span class="s2">&quot;value&quot;</span><span class="p">}</span>
+<span class="p">])</span>
+<span class="n">blob_repository</span><span class="o">.</span><span class="n">upload_file_to_blob_storage</span><span class="p">(</span>
+    <span class="n">content</span><span class="o">=</span><span class="n">file_stream</span><span class="p">,</span>
+    <span class="n">path</span><span class="o">=</span><span class="s2">&quot;path/to/file.jsonl&quot;</span><span class="p">,</span>
+    <span class="n">filename</span><span class="o">=</span><span class="s2">&quot;file.jsonl&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="app.persistence.blob.stream.FileStream.read">
+<em class="property"><span class="k"><span class="pre">async</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">read</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">BytesIO</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/stream.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.stream.FileStream.read" title="Link to this definition">#</a></dt>
+<dd><p>Read all data from the FileStream into memory and return as a file-like object.</p>
+<p>For implementations where async generators are not supported we read all data
+into memory and return a BytesIO object. Currently this applies only to MinIO
+which is only used for local and testing purposes. If this becomes a problem
+we can also look into composing blobs: <a class="reference external" href="https://min.io/docs/minio/linux/developers/python/API.html#compose_object">https://min.io/docs/minio/linux/developers/python/API.html#compose_object</a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A BytesIO object containing all the data.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>BytesIO</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="app.persistence.blob.stream.FileStream.stream">
+<span class="sig-name descname"><span class="pre">stream</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">AsyncGenerator</span><span class="p"><span class="pre">[</span></span><span class="pre">bytes</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/app/persistence/blob/stream.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#app.persistence.blob.stream.FileStream.stream" title="Link to this definition">#</a></dt>
+<dd><p>Stream data from the FileStream’s function or generator.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>An async generator yielding bytes.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>AsyncGenerator[bytes, None]</p>
+</dd>
+<dt class="field-odd">Yield<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The next chunk of data.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Iterator[AsyncGenerator[bytes, None]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+<section id="implementations">
+<h2><a class="toc-backref" href="#id6" role="doc-backlink">Implementations</a><a class="headerlink" href="#implementations" title="Link to this heading">#</a></h2>
+<section id="azure">
+<h3><a class="toc-backref" href="#id7" role="doc-backlink">Azure</a><a class="headerlink" href="#azure" title="Link to this heading">#</a></h3>
+<p>Azure Blob Storage is used for application deployments. At present there is one container, <code class="docutils literal notranslate"><span class="pre">destiny-repository-&lt;env&gt;-ops</span></code>, which is used only for ephemeral operational data. The file tree is as below:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>destiny-repository-&lt;env&gt;-ops/
+    ├── enhancement_result/
+    │   └── &lt;request_id&gt;_robot.jsonl - the enhancement result as published by the robot to the repository
+    │   └── &lt;request_id&gt;_repo.jsonl  - the validation result of importing the above as published by the repository
+    ├── enhancement_request_reference_data/
+    │   └── &lt;request_id&gt;.jsonl - the reference data provided to the robot for the enhancement request
+</pre></div>
+</div>
+</section>
+<section id="minio">
+<h3><a class="toc-backref" href="#id8" role="doc-backlink">MinIO</a><a class="headerlink" href="#minio" title="Link to this heading">#</a></h3>
+<p>MinIO is used for testing and local development. It is S3-compatible, if an AWS implementation is ever desired. However the current implementation is synchronous and so does not utilise the memory efficiency of the FileStream interface.</p>
+</section>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="es.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Elasticsearch</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="models.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Persistence Models</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#interface">Interface</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#representation">Representation</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.models.BlobSignedUrlType"><code class="docutils literal notranslate"><span class="pre">BlobSignedUrlType</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.models.BlobSignedUrlType.DOWNLOAD"><code class="docutils literal notranslate"><span class="pre">BlobSignedUrlType.DOWNLOAD</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.models.BlobSignedUrlType.UPLOAD"><code class="docutils literal notranslate"><span class="pre">BlobSignedUrlType.UPLOAD</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.models.BlobStorageFile"><code class="docutils literal notranslate"><span class="pre">BlobStorageFile</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.models.BlobStorageFile.container"><code class="docutils literal notranslate"><span class="pre">BlobStorageFile.container</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.models.BlobStorageFile.filename"><code class="docutils literal notranslate"><span class="pre">BlobStorageFile.filename</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.models.BlobStorageFile.location"><code class="docutils literal notranslate"><span class="pre">BlobStorageFile.location</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.models.BlobStorageFile.path"><code class="docutils literal notranslate"><span class="pre">BlobStorageFile.path</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.models.BlobStorageFile.from_sql"><code class="docutils literal notranslate"><span class="pre">BlobStorageFile.from_sql()</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.models.BlobStorageFile.to_sql"><code class="docutils literal notranslate"><span class="pre">BlobStorageFile.to_sql()</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.models.BlobStorageFile.content_type"><code class="docutils literal notranslate"><span class="pre">BlobStorageFile.content_type</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.models.BlobStorageLocation"><code class="docutils literal notranslate"><span class="pre">BlobStorageLocation</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.models.BlobStorageLocation.AZURE"><code class="docutils literal notranslate"><span class="pre">BlobStorageLocation.AZURE</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.models.BlobStorageLocation.MINIO"><code class="docutils literal notranslate"><span class="pre">BlobStorageLocation.MINIO</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#client">Client</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.client.GenericBlobStorageClient"><code class="docutils literal notranslate"><span class="pre">GenericBlobStorageClient</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.client.GenericBlobStorageClient.generate_signed_url"><code class="docutils literal notranslate"><span class="pre">GenericBlobStorageClient.generate_signed_url()</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.client.GenericBlobStorageClient.stream_file"><code class="docutils literal notranslate"><span class="pre">GenericBlobStorageClient.stream_file()</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.client.GenericBlobStorageClient.upload_file"><code class="docutils literal notranslate"><span class="pre">GenericBlobStorageClient.upload_file()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#blob-repository">Blob Repository</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.repository.BlobRepository"><code class="docutils literal notranslate"><span class="pre">BlobRepository</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.repository.BlobRepository.get_signed_url"><code class="docutils literal notranslate"><span class="pre">BlobRepository.get_signed_url()</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.repository.BlobRepository.stream_file_from_blob_storage"><code class="docutils literal notranslate"><span class="pre">BlobRepository.stream_file_from_blob_storage()</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.repository.BlobRepository.upload_file_to_blob_storage"><code class="docutils literal notranslate"><span class="pre">BlobRepository.upload_file_to_blob_storage()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#file-content">File Content</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.stream.FileStream"><code class="docutils literal notranslate"><span class="pre">FileStream</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.stream.FileStream.read"><code class="docutils literal notranslate"><span class="pre">FileStream.read()</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#app.persistence.blob.stream.FileStream.stream"><code class="docutils literal notranslate"><span class="pre">FileStream.stream()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#implementations">Implementations</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#azure">Azure</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#minio">MinIO</a></li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, DESTINY Team.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.16.1.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
