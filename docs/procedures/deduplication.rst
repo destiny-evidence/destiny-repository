@@ -182,7 +182,9 @@ This algorithm is still being built out. For now, we have a placeholder that we 
 Manual Resolution
 -----------------
 
-Duplicate decisions that are :attr:`Decoupled <app.domain.references.models.models.DuplicateDetermination.DECOUPLED>` or :attr:`Unresolved <app.domain.references.models.models.DuplicateDetermination.UNRESOLVED>` can be handled here. This is not yet implemented.
+The ``POST /references/duplicate-decisions/`` endpoint provides an interface to manually make duplicate decisions.
+
+This may be useful if the automated process raises a reference for manual review, or if a user simply wants to manually deduplicate references.
 
 
 Action Decision

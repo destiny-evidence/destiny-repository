@@ -1071,6 +1071,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         (
             reference_duplicate_decision,
             decision_changed,
+            _,
         ) = await self._deduplication_service.map_duplicate_decision(
             reference_duplicate_decision
         )
@@ -1288,26 +1289,42 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """
         Make duplicate decisions for a list of reference duplicate decisions.
 
-        If both canonical and duplicate determinations are present, canonical decisions
-        will be processed first to allow subsequent duplicate decisions to point to them
+        Decisions are processed in the order provided. If a duplicate decision
+        references a canonical that is declared in the same request, the canonical
+        must appear first.
         """
         results: list[ReferenceDuplicateDecision] = []
-        # Process canonical decisions first so they can then be duplicated
-        for duplicate_decision in sorted(
-            duplicate_decisions,
-            key=lambda decision: decision.duplicate_determination
-            == DuplicateDetermination.CANONICAL,
-            reverse=True,
-        ):
+        for duplicate_decision in duplicate_decisions:
             (
                 reference_duplicate_decision,
                 decision_changed,
+                old_decision,
             ) = await self._deduplication_service.map_duplicate_decision(
-                duplicate_decision
+                duplicate_decision, allow_destructive_decision=True
             )
             await self.apply_reference_duplicate_decision_side_effects(
                 reference_duplicate_decision,
                 decision_changed=decision_changed,
             )
+            if (
+                old_decision
+                and old_decision.canonical_reference_id
+                and reference_duplicate_decision.canonical_reference_id
+                != old_decision.canonical_reference_id
+            ):
+                # We forcibly moved this duplicate, either to be a duplicate of a
+                # different canonical, or to be canonical itself. Re-apply any
+                # side effects for the old canonical reference, to allow it to
+                # retrigger any automations and recalculate enhancements without
+                # the old duplicate's data.
+                old_canonical = await self.sql_uow.references.get_by_pk(
+                    old_decision.canonical_reference_id,
+                    preload=["duplicate_decision"],
+                )
+                if old_canonical.duplicate_decision:
+                    await self.apply_reference_duplicate_decision_side_effects(
+                        old_canonical.duplicate_decision,
+                        decision_changed=True,
+                    )
             results.append(reference_duplicate_decision)
         return results
