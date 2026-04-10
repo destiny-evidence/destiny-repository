@@ -43,7 +43,7 @@ FAKE_KEYCLOAK_CLIENT_ID = "destiny-repository-client"
 FAKE_KEYCLOAK_ISSUER = f"{FAKE_KEYCLOAK_URL}/realms/{FAKE_KEYCLOAK_REALM}"
 
 FAKE_AZURE_APP_ID = "test_application_id"
-FAKE_AZURE_LOGIN_URL = "https://login.microsoftonline.com"
+FAKE_AZURE_LOGIN_URL = auth_settings.azure_login_url
 FAKE_AZURE_ISSUER = f"{FAKE_AZURE_LOGIN_URL}/v2.0"
 
 
