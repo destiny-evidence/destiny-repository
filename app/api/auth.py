@@ -12,6 +12,7 @@ This module is based on the following references :
 """
 
 import hmac
+from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from enum import StrEnum, auto
 from typing import Annotated, Any, Protocol
@@ -113,6 +114,15 @@ class AuthMethod(Protocol):
         raise NotImplementedError
 
 
+class JwtAuth(AuthMethod, ABC):
+    """Abstract base for JWT-based authentication methods."""
+
+    @abstractmethod
+    async def verify_token(self, token: str) -> dict[str, Any]:
+        """Verify a JWT and return the decoded claims."""
+        ...
+
+
 class StrategyAuth(AuthMethod):
     """
     A meta-auth method which chooses the auth method at runtime.
@@ -210,7 +220,7 @@ class CachingStrategyAuth(StrategyAuth):
         self._cached_strategy = None
 
 
-class AzureJwtAuth(AuthMethod):
+class AzureJwtAuth(JwtAuth):
     """
     AuthMethod for authorizing requests using the JWT provided by Azure.
 
@@ -396,7 +406,7 @@ class AzureJwtAuth(AuthMethod):
         return self._require_scope_or_role(verified_claims)
 
 
-class KeycloakJwtAuth(AuthMethod):
+class KeycloakJwtAuth(JwtAuth):
     """
     AuthMethod for authorizing requests using JWTs issued by Keycloak.
 
@@ -614,6 +624,90 @@ class KeycloakJwtAuth(AuthMethod):
         return self._require_scope_or_role(verified_claims)
 
 
+class MultiIssuerJwtAuth(JwtAuth):
+    """
+    Accepts JWTs from both Azure AD and Keycloak.
+
+    Routes tokens to the correct validator by peeking at the unverified
+    ``iss`` claim. The peeked claim is used ONLY for routing — each
+    delegated validator performs full cryptographic verification.
+    """
+
+    def __init__(
+        self,
+        azure_auth: AzureJwtAuth,
+        keycloak_auth: KeycloakJwtAuth,
+    ) -> None:
+        """
+        Initialize multi-issuer auth with both Azure AD and Keycloak validators.
+
+        Issuer patterns are derived from the auth instances themselves:
+        - Azure: ``{login_url}/v2.0`` (matching AzureJwtAuth.verify_token)
+        - Keycloak: ``keycloak_auth.issuer`` (set during KeycloakJwtAuth.__init__)
+
+        Args:
+            azure_auth: The Azure AD JWT validator
+            keycloak_auth: The Keycloak JWT validator
+
+        """
+        self._azure_auth = azure_auth
+        self._keycloak_auth = keycloak_auth
+        self._azure_issuer = f"{azure_auth.login_url}/v2.0"
+        self._keycloak_issuer = keycloak_auth.issuer
+
+    def _select_validator(self, token: str) -> JwtAuth:
+        """
+        Route to the correct validator based on the unverified issuer.
+
+        The ``iss`` claim is peeked without cryptographic verification
+        and is used solely for routing. The selected validator performs
+        full token verification independently.
+        """
+        try:
+            unverified = jwt.get_unverified_claims(token)
+        except Exception as exc:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to parse authentication token.",
+            ) from exc
+
+        issuer = unverified.get("iss")
+        if not issuer:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token does not contain an issuer claim.",
+            )
+
+        if issuer == self._azure_issuer:
+            return self._azure_auth
+        if issuer == self._keycloak_issuer:
+            return self._keycloak_auth
+
+        raise AuthError(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token issuer is not recognized.",
+        )
+
+    async def verify_token(self, token: str) -> dict[str, Any]:
+        """Route to the correct validator and verify the token."""
+        validator = self._select_validator(token)
+        return await validator.verify_token(token)
+
+    async def __call__(
+        self,
+        request: Request,
+        credentials: HTTPAuthorizationCredentials | None,
+    ) -> bool:
+        """Authenticate by routing to the correct issuer-specific validator."""
+        if not credentials:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authorization HTTPBearer header missing.",
+            )
+        validator = self._select_validator(credentials.credentials)
+        return await validator(request=request, credentials=credentials)
+
+
 class SuccessAuth(AuthMethod):
     """
     A fake auth class that will always respond successfully.
@@ -643,6 +737,48 @@ class SuccessAuth(AuthMethod):
         return True
 
 
+def _build_jwt_auth(
+    application_id: str,
+    scope: AuthScope | None,
+    role: AuthRole | None,
+) -> JwtAuth:
+    """Build the appropriate JWT auth based on the configured provider."""
+    if settings.auth_provider == "azure":
+        return AzureJwtAuth(
+            application_id=application_id,
+            scope=scope,
+            role=role,
+        )
+
+    if not settings.keycloak_url or not settings.keycloak_client_id:
+        msg = (
+            f"auth_provider='{settings.auth_provider}' requires "
+            "keycloak_url and keycloak_client_id"
+        )
+        raise ValueError(msg)
+
+    keycloak_auth = KeycloakJwtAuth(
+        keycloak_url=settings.keycloak_url,
+        realm=settings.keycloak_realm,
+        client_id=settings.keycloak_client_id,
+        scope=scope,
+        role=role,
+        issuer_url=settings.keycloak_issuer_url,
+    )
+
+    if settings.auth_provider == "keycloak":
+        return keycloak_auth
+
+    return MultiIssuerJwtAuth(
+        azure_auth=AzureJwtAuth(
+            application_id=application_id,
+            scope=scope,
+            role=role,
+        ),
+        keycloak_auth=keycloak_auth,
+    )
+
+
 def choose_auth_strategy(
     application_id: str,
     auth_scope: AuthScope | None = None,
@@ -654,29 +790,7 @@ def choose_auth_strategy(
     if bypass_auth:
         return SuccessAuth()
 
-    # Check auth provider setting
-    if settings.auth_provider == "keycloak":
-        if not settings.keycloak_url or not settings.keycloak_client_id:
-            msg = (
-                "Keycloak auth provider selected but keycloak_url or "
-                "keycloak_client_id is not configured"
-            )
-            raise ValueError(msg)
-        return KeycloakJwtAuth(
-            keycloak_url=settings.keycloak_url,
-            realm=settings.keycloak_realm,
-            client_id=settings.keycloak_client_id,
-            scope=auth_scope,
-            role=auth_role,
-            issuer_url=settings.keycloak_issuer_url,
-        )
-
-    # Default to Azure AD
-    return AzureJwtAuth(
-        application_id=application_id,
-        scope=auth_scope,
-        role=auth_role,
-    )
+    return _build_jwt_auth(application_id, auth_scope, auth_role)
 
 
 class HMACMultiClientAuth(AuthMethod):
@@ -795,7 +909,7 @@ class HybridAuth(AuthMethod):
 
     def __init__(
         self,
-        jwt_auth: AzureJwtAuth | KeycloakJwtAuth,
+        jwt_auth: JwtAuth,
         hmac_auth: HMACMultiClientAuth,
     ) -> None:
         """
@@ -804,7 +918,7 @@ class HybridAuth(AuthMethod):
         Note both methods use the Authentication header, so we will never
         attempt to use both at the same time.
 
-        :param jwt_auth: The JWT authentication method to use (Azure or Keycloak)
+        :param jwt_auth: The JWT authentication method to use
         :param hmac_auth: The HMAC authentication method to use
         """
         self._jwt_auth = jwt_auth
@@ -843,31 +957,8 @@ def choose_hybrid_auth_strategy(  # noqa: PLR0913
     if bypass_auth:
         return SuccessAuth()
 
-    # Choose JWT auth based on provider
-    if settings.auth_provider == "keycloak":
-        if not settings.keycloak_url or not settings.keycloak_client_id:
-            msg = (
-                "Keycloak auth provider selected but keycloak_url or "
-                "keycloak_client_id is not configured"
-            )
-            raise ValueError(msg)
-        jwt_auth: AzureJwtAuth | KeycloakJwtAuth = KeycloakJwtAuth(
-            keycloak_url=settings.keycloak_url,
-            realm=settings.keycloak_realm,
-            client_id=settings.keycloak_client_id,
-            scope=jwt_scope,
-            role=jwt_role,
-            issuer_url=settings.keycloak_issuer_url,
-        )
-    else:
-        jwt_auth = AzureJwtAuth(
-            application_id=application_id,
-            scope=jwt_scope,
-            role=jwt_role,
-        )
-
     return HybridAuth(
-        jwt_auth=jwt_auth,
+        jwt_auth=_build_jwt_auth(application_id, jwt_scope, jwt_role),
         hmac_auth=HMACMultiClientAuth(
             get_client_secret=get_client_secret,
             client_type=hmac_client_type,
