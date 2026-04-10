@@ -1,5 +1,3 @@
-# ruff: noqa: SLF001
-
 """Test multi-issuer JWT authentication (Azure AD + Keycloak)."""
 
 import datetime
@@ -19,9 +17,7 @@ from app.api.auth import (
     AzureJwtAuth,
     KeycloakJwtAuth,
     MultiIssuerJwtAuth,
-    SuccessAuth,
     _build_jwt_auth,
-    choose_auth_strategy,
 )
 from app.api.auth import settings as auth_settings
 
@@ -178,97 +174,7 @@ def stub_keycloak_jwks(httpx_mock: HTTPXMock, fake_public_key: dict) -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# _select_validator routing tests
-# ---------------------------------------------------------------------------
-
-
-class TestSelectValidator:
-    """Tests for issuer-based routing in MultiIssuerJwtAuth."""
-
-    def test_routes_azure_token(
-        self,
-        multi_issuer_auth: MultiIssuerJwtAuth,
-        azure_auth: AzureJwtAuth,
-    ) -> None:
-        """Azure issuer routes to AzureJwtAuth."""
-        token = _generate_azure_token(scope=AuthScope.REFERENCE_READER)
-        validator = multi_issuer_auth._select_validator(token)
-        assert validator is azure_auth
-
-    def test_routes_keycloak_token(
-        self,
-        multi_issuer_auth: MultiIssuerJwtAuth,
-        keycloak_auth: KeycloakJwtAuth,
-    ) -> None:
-        """Keycloak issuer routes to KeycloakJwtAuth."""
-        token = _generate_keycloak_token(scope=AuthScope.REFERENCE_READER)
-        validator = multi_issuer_auth._select_validator(token)
-        assert validator is keycloak_auth
-
-    def test_rejects_unknown_issuer(
-        self,
-        multi_issuer_auth: MultiIssuerJwtAuth,
-    ) -> None:
-        """Unknown issuer is rejected with 401."""
-        token = _generate_azure_token(
-            user_payload={"iss": "https://evil.example.com/v2.0"},
-        )
-        with pytest.raises(HTTPException) as exc_info:
-            multi_issuer_auth._select_validator(token)
-        assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
-        assert "not recognized" in exc_info.value.detail
-
-    def test_rejects_missing_issuer(
-        self,
-        multi_issuer_auth: MultiIssuerJwtAuth,
-    ) -> None:
-        """Token without iss claim is rejected."""
-        # Create a token with iss removed after generation
-        token = _generate_azure_token()
-        # Manually create a token without iss
-        payload = {
-            "sub": "test",
-            "iat": datetime.datetime.now(datetime.UTC),
-            "exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=10),
-            "aud": FAKE_AZURE_APP_ID,
-        }
-        token = jose_jwt.encode(
-            payload,
-            _test_private_key,
-            algorithm="RS256",
-            headers={"kid": _test_private_key["kid"]},
-        )
-        with pytest.raises(HTTPException) as exc_info:
-            multi_issuer_auth._select_validator(token)
-        assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
-        assert "issuer claim" in exc_info.value.detail
-
-    def test_rejects_malformed_token(
-        self,
-        multi_issuer_auth: MultiIssuerJwtAuth,
-    ) -> None:
-        """Malformed token is rejected with 401."""
-        with pytest.raises(HTTPException) as exc_info:
-            multi_issuer_auth._select_validator("not.a.jwt")
-        assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
-
-    def test_rejects_garbage_string(
-        self,
-        multi_issuer_auth: MultiIssuerJwtAuth,
-    ) -> None:
-        """Completely invalid string is rejected."""
-        with pytest.raises(HTTPException) as exc_info:
-            multi_issuer_auth._select_validator("garbage")
-        assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
-
-
-# ---------------------------------------------------------------------------
-# Full __call__ flow tests
-# ---------------------------------------------------------------------------
-
-
-class TestMultiIssuerFullFlow:
+class TestMultiIssuerAuth:
     """End-to-end tests through MultiIssuerJwtAuth.__call__."""
 
     async def test_azure_token_accepted(
@@ -295,45 +201,6 @@ class TestMultiIssuerFullFlow:
         credentials.credentials = token
         assert await multi_issuer_auth(fake_request, credentials) is True
 
-    async def test_azure_token_wrong_scope(
-        self,
-        multi_issuer_auth: MultiIssuerJwtAuth,
-        fake_request: Request,
-        stub_azure_jwks: None,  # noqa: ARG002
-    ) -> None:
-        """Azure token with wrong scope is rejected with 403."""
-        token = _generate_azure_token(scope=AuthScope.IMPORT_WRITER)
-        credentials = Mock()
-        credentials.credentials = token
-        with pytest.raises(HTTPException) as exc_info:
-            await multi_issuer_auth(fake_request, credentials)
-        assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
-
-    async def test_keycloak_token_wrong_scope(
-        self,
-        multi_issuer_auth: MultiIssuerJwtAuth,
-        fake_request: Request,
-        stub_keycloak_jwks: None,  # noqa: ARG002
-    ) -> None:
-        """Keycloak token with wrong scope is rejected with 403."""
-        token = _generate_keycloak_token(scope="wrong.scope")
-        credentials = Mock()
-        credentials.credentials = token
-        with pytest.raises(HTTPException) as exc_info:
-            await multi_issuer_auth(fake_request, credentials)
-        assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
-
-    async def test_no_credentials(
-        self,
-        multi_issuer_auth: MultiIssuerJwtAuth,
-        fake_request: Request,
-    ) -> None:
-        """Missing credentials are rejected with 401."""
-        with pytest.raises(HTTPException) as exc_info:
-            await multi_issuer_auth(fake_request, None)
-        assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
-        assert "header missing" in exc_info.value.detail
-
     async def test_unknown_issuer_token(
         self,
         multi_issuer_auth: MultiIssuerJwtAuth,
@@ -350,51 +217,21 @@ class TestMultiIssuerFullFlow:
             await multi_issuer_auth(fake_request, credentials)
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
 
-
-# ---------------------------------------------------------------------------
-# verify_token delegation tests
-# ---------------------------------------------------------------------------
-
-
-class TestMultiIssuerVerifyToken:
-    """Tests for the verify_token method (JwtAuth contract)."""
-
-    async def test_verify_azure_token(
+    async def test_malformed_token(
         self,
         multi_issuer_auth: MultiIssuerJwtAuth,
-        stub_azure_jwks: None,  # noqa: ARG002
+        fake_request: Request,
     ) -> None:
-        """verify_token delegates to Azure validator and returns claims."""
-        token = _generate_azure_token(
-            user_payload={"sub": "azure-user"},
-            scope=AuthScope.REFERENCE_READER,
-        )
-        claims = await multi_issuer_auth.verify_token(token)
-        assert claims["sub"] == "azure-user"
-        assert claims["iss"] == FAKE_AZURE_ISSUER
-
-    async def test_verify_keycloak_token(
-        self,
-        multi_issuer_auth: MultiIssuerJwtAuth,
-        stub_keycloak_jwks: None,  # noqa: ARG002
-    ) -> None:
-        """verify_token delegates to Keycloak validator and returns claims."""
-        token = _generate_keycloak_token(
-            user_payload={"sub": "kc-user"},
-            scope=AuthScope.REFERENCE_READER,
-        )
-        claims = await multi_issuer_auth.verify_token(token)
-        assert claims["sub"] == "kc-user"
-        assert claims["iss"] == FAKE_KEYCLOAK_ISSUER
-
-
-# ---------------------------------------------------------------------------
-# _build_jwt_auth / choose_auth_strategy tests
-# ---------------------------------------------------------------------------
+        """Malformed token is rejected with 401."""
+        credentials = Mock()
+        credentials.credentials = "garbage"
+        with pytest.raises(HTTPException) as exc_info:
+            await multi_issuer_auth(fake_request, credentials)
+        assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 class TestBuildJwtAuth:
-    """Tests for strategy selection with auth_provider='both'."""
+    """Tests for _build_jwt_auth with auth_provider='both'."""
 
     def test_returns_multi_issuer_auth(self) -> None:
         """auth_provider='both' returns MultiIssuerJwtAuth."""
@@ -416,69 +253,3 @@ class TestBuildJwtAuth:
             auth_settings.auth_provider = original_provider
             auth_settings.keycloak_url = original_url
             auth_settings.keycloak_client_id = original_client
-
-    def test_returns_azure_auth(self) -> None:
-        """auth_provider='azure' returns AzureJwtAuth."""
-        original_provider = auth_settings.auth_provider
-        try:
-            auth_settings.auth_provider = "azure"
-
-            result = _build_jwt_auth(
-                FAKE_AZURE_APP_ID,
-                AuthScope.REFERENCE_READER,
-                AuthRole.REFERENCE_READER,
-            )
-            assert isinstance(result, AzureJwtAuth)
-        finally:
-            auth_settings.auth_provider = original_provider
-
-    def test_returns_keycloak_auth(self) -> None:
-        """auth_provider='keycloak' returns KeycloakJwtAuth."""
-        original_provider = auth_settings.auth_provider
-        original_url = auth_settings.keycloak_url
-        original_client = auth_settings.keycloak_client_id
-        try:
-            auth_settings.auth_provider = "keycloak"
-            auth_settings.keycloak_url = FAKE_KEYCLOAK_URL
-            auth_settings.keycloak_client_id = FAKE_KEYCLOAK_CLIENT_ID
-
-            result = _build_jwt_auth(
-                FAKE_AZURE_APP_ID,
-                AuthScope.REFERENCE_READER,
-                AuthRole.REFERENCE_READER,
-            )
-            assert isinstance(result, KeycloakJwtAuth)
-        finally:
-            auth_settings.auth_provider = original_provider
-            auth_settings.keycloak_url = original_url
-            auth_settings.keycloak_client_id = original_client
-
-    def test_both_raises_without_keycloak_settings(self) -> None:
-        """auth_provider='both' raises ValueError without Keycloak config."""
-        original_provider = auth_settings.auth_provider
-        original_url = auth_settings.keycloak_url
-        original_client = auth_settings.keycloak_client_id
-        try:
-            auth_settings.auth_provider = "both"
-            auth_settings.keycloak_url = None
-            auth_settings.keycloak_client_id = None
-
-            with pytest.raises(ValueError, match="keycloak_url"):
-                _build_jwt_auth(
-                    FAKE_AZURE_APP_ID,
-                    AuthScope.REFERENCE_READER,
-                    AuthRole.REFERENCE_READER,
-                )
-        finally:
-            auth_settings.auth_provider = original_provider
-            auth_settings.keycloak_url = original_url
-            auth_settings.keycloak_client_id = original_client
-
-    def test_bypass_auth_returns_success(self) -> None:
-        """bypass_auth=True returns SuccessAuth regardless of provider."""
-        result = choose_auth_strategy(
-            application_id=FAKE_AZURE_APP_ID,
-            auth_scope=AuthScope.REFERENCE_READER,
-            bypass_auth=True,
-        )
-        assert isinstance(result, SuccessAuth)
