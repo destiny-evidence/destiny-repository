@@ -28,7 +28,7 @@ evrepo:InvestigationShape a sh:NodeShape ;
         sh:minCount 1 ;
     ] .
 
-# --- Finding must have Context, Outcome, at least one arm, and an effect estimate ---
+# --- Finding must have Context and Outcome; arm data and effect estimates are optional ---
 
 evrepo:FindingShape a sh:NodeShape ;
     sh:targetClass evrepo:Finding ;
@@ -49,7 +49,6 @@ evrepo:FindingShape a sh:NodeShape ;
     ] , [
         sh:path evrepo:hasArmData ;
         sh:class evrepo:ObservedResult ;
-        sh:minCount 1 ;
     ] , [
         sh:path evrepo:hasEffectEstimate ;
         sh:class evrepo:EffectEstimate ;
