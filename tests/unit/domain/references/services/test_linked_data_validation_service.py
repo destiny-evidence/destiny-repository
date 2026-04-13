@@ -114,6 +114,35 @@ VALID_DATA_WITH_ONTOLOGY_CONCEPT = {
 }
 
 
+VALID_DATA_WITHOUT_ARM_DATA = {
+    "@context": {"evrepo": EVREPO},
+    "@type": "evrepo:LinkedDataEnhancement",
+    "evrepo:hasInvestigation": {
+        "@type": "evrepo:Investigation",
+        "evrepo:hasFinding": {
+            "@type": "evrepo:Finding",
+            "evrepo:hasContext": {"@type": "evrepo:Context"},
+            "evrepo:hasOutcome": {
+                "@type": "evrepo:Outcome",
+                "evrepo:name": "Reading comprehension",
+            },
+            "evrepo:evaluates": {
+                "@type": "evrepo:Intervention",
+                "evrepo:name": "Tutoring",
+            },
+            "evrepo:comparedTo": {"@type": "evrepo:ControlCondition"},
+            "evrepo:hasEffectEstimate": {
+                "@type": "evrepo:EffectEstimate",
+                "evrepo:pointEstimate": {
+                    "@value": "0.35",
+                    "@type": "http://www.w3.org/2001/XMLSchema#decimal",
+                },
+            },
+        },
+    },
+}
+
+
 VOCAB_URI = "https://vocab.evidence-repository.org/vocabulary/v1"
 
 
@@ -137,6 +166,15 @@ async def test_ontology_concept_types_resolved_via_graph_merge(
     """
     result = await service.validate(
         data=VALID_DATA_WITH_ONTOLOGY_CONCEPT, vocabulary_uri=VOCAB_URI
+    )
+    assert result.conforms, f"Expected conforms=True, got errors: {result.errors}"
+
+
+@pytest.mark.asyncio
+async def test_finding_without_arm_data_conforms(service: LinkedDataValidationService):
+    """Finding without hasArmData should conform — arm data is optional."""
+    result = await service.validate(
+        data=VALID_DATA_WITHOUT_ARM_DATA, vocabulary_uri=VOCAB_URI
     )
     assert result.conforms, f"Expected conforms=True, got errors: {result.errors}"
 
