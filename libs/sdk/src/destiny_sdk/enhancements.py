@@ -620,6 +620,7 @@ class Enhancement(_JsonlFileInputMixIn, BaseModel):
     ]
     created_at: datetime.datetime | None = Field(
         default=None,
+        frozen=True,
         description=(
             "The ISO8601 datetime when the enhancement was added to the repository. "
             "This field is populated by the repository, if it is included on an "
