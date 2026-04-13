@@ -132,8 +132,9 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         try:
             enhancement_model = enhancement_in.model_dump()
 
-            ## The SDK isn't allowed to pass in ids, so ignore this.
+            ## The SDK isn't allowed to pass in ids or created_ats, so ignore these.
             enhancement_model.pop("id", None)
+            enhancement_model.pop("created_at", None)
 
             enhancement = Enhancement.model_validate(
                 enhancement_model
