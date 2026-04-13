@@ -31,12 +31,11 @@ class TestEnhancementFromSdk:
                 process=AbstractProcessType.OTHER,
                 abstract="Test abstract content.",
             ),
+            created_at=datetime.datetime.now(datetime.UTC),
         )
 
     def test_created_at_is_stripped(self, service, sdk_enhancement):
         """SDK-provided created_at should be ignored during translation."""
-        sdk_enhancement.created_at = datetime.datetime.now(datetime.UTC)
-
         domain_enhancement = service.enhancement_from_sdk(sdk_enhancement)
 
         assert domain_enhancement.created_at is None
