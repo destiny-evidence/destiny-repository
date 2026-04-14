@@ -46,7 +46,7 @@ resource "azuread_group_member" "container_app_tasks_to_crud" {
 
 
 data "azurerm_container_app" "keycloak" {
-  count               = var.auth_provider == "keycloak" ? 1 : 0
+  count               = var.auth_provider == "azure" ? 0 : 1
   name                = "destiny-shared-keycloak"
   resource_group_name = var.shared_infra_resource_group_name
 }
@@ -139,11 +139,11 @@ locals {
     },
     {
       name  = "KEYCLOAK_URL"
-      value = var.auth_provider == "keycloak" ? "https://${data.azurerm_container_app.keycloak[0].ingress[0].fqdn}" : ""
+      value = length(data.azurerm_container_app.keycloak) > 0 ? "https://${data.azurerm_container_app.keycloak[0].ingress[0].fqdn}" : ""
     },
     {
       name  = "KEYCLOAK_CLIENT_ID"
-      value = var.auth_provider == "keycloak" ? "destiny-repository-client-${var.environment}" : ""
+      value = length(data.azurerm_container_app.keycloak) > 0 ? "destiny-repository-client-${var.environment}" : ""
     },
   ]
 
@@ -345,11 +345,11 @@ module "container_app_ui" {
     },
     {
       name  = "KEYCLOAK_URL"
-      value = var.auth_provider == "keycloak" ? "https://${data.azurerm_container_app.keycloak[0].ingress[0].fqdn}" : ""
+      value = length(data.azurerm_container_app.keycloak) > 0 ? "https://${data.azurerm_container_app.keycloak[0].ingress[0].fqdn}" : ""
     },
     {
       name  = "KEYCLOAK_CLIENT_ID"
-      value = var.auth_provider == "keycloak" ? "destiny-auth-ui-client-${var.environment}" : ""
+      value = length(data.azurerm_container_app.keycloak) > 0 ? "destiny-auth-ui-client-${var.environment}" : ""
     },
   ]
 
