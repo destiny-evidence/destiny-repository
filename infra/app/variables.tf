@@ -40,9 +40,14 @@ variable "tasks_max_replicas" {
 }
 
 variable "auth_provider" {
-  description = "Authentication provider: 'azure' or 'keycloak'"
+  description = "Authentication provider to use for JWT validation."
   type        = string
   default     = "azure"
+
+  validation {
+    condition     = contains(["azure", "keycloak", "both"], var.auth_provider)
+    error_message = "auth_provider must be one of: azure, keycloak, both."
+  }
 }
 
 variable "shared_container_registry_name" {
