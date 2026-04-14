@@ -6,6 +6,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from authlib.common.security import generate_token
 from authlib.integrations.httpx_client import OAuth2Client
 
 
@@ -206,11 +207,16 @@ class KeycloakAuthCodeFlow:
         if scopes:
             scope_str = f"{scope_str} {' '.join(scopes)}"
 
-        # Generate authorization URL with PKCE
+        # Generate PKCE code_verifier. authlib derives the S256 code_challenge
+        # from this for the authorization request, and sends it back with the
+        # token exchange to prove possession.
+        code_verifier = generate_token(48)
+
         auth_url, _state = client.create_authorization_url(
             self.authorization_endpoint,
             redirect_uri=self.redirect_uri,
             scope=scope_str,
+            code_verifier=code_verifier,
         )
 
         # Store the received authorization response
@@ -261,12 +267,11 @@ class KeycloakAuthCodeFlow:
             msg = f"Authentication failed: {received_response['error']}"
             raise RuntimeError(msg)
 
-        # Exchange authorization code for tokens using authlib
-        # authlib handles PKCE verification automatically
         token = client.fetch_token(
             self.token_endpoint,
             authorization_response=received_response["url"],
             redirect_uri=self.redirect_uri,
+            code_verifier=code_verifier,
         )
 
         return TokenResponse(
