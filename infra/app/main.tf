@@ -1,7 +1,7 @@
 # Azure container registry will be defined in shared infrastructure repository
 data "azurerm_container_registry" "this" {
-  name                = var.container_registry_name
-  resource_group_name = var.container_registry_resource_group
+  name                = var.shared_container_registry_name
+  resource_group_name = var.shared_resource_group_name
 }
 
 resource "azurerm_resource_group" "this" {
@@ -44,12 +44,6 @@ resource "azuread_group_member" "container_app_tasks_to_crud" {
   member_object_id = azurerm_user_assigned_identity.container_apps_tasks_identity.principal_id
 }
 
-
-data "azurerm_container_app" "keycloak" {
-  count               = var.auth_provider == "azure" ? 0 : 1
-  name                = "destiny-shared-keycloak"
-  resource_group_name = var.shared_infra_resource_group_name
-}
 
 locals {
   # When external directory is enabled, use the external directory app and tenant
@@ -139,11 +133,11 @@ locals {
     },
     {
       name  = "KEYCLOAK_URL"
-      value = length(data.azurerm_container_app.keycloak) > 0 ? "https://${data.azurerm_container_app.keycloak[0].ingress[0].fqdn}" : ""
+      value = var.auth_provider != "azure" ? var.shared_keycloak_url : ""
     },
     {
       name  = "KEYCLOAK_CLIENT_ID"
-      value = length(data.azurerm_container_app.keycloak) > 0 ? "destiny-repository-client-${var.environment}" : ""
+      value = var.auth_provider != "azure" ? "destiny-repository-client-${var.environment}" : ""
     },
   ]
 
@@ -345,11 +339,11 @@ module "container_app_ui" {
     },
     {
       name  = "KEYCLOAK_URL"
-      value = length(data.azurerm_container_app.keycloak) > 0 ? "https://${data.azurerm_container_app.keycloak[0].ingress[0].fqdn}" : ""
+      value = var.auth_provider != "azure" ? var.shared_keycloak_url : ""
     },
     {
       name  = "KEYCLOAK_CLIENT_ID"
-      value = length(data.azurerm_container_app.keycloak) > 0 ? "destiny-auth-ui-client-${var.environment}" : ""
+      value = var.auth_provider != "azure" ? "destiny-auth-ui-client-${var.environment}" : ""
     },
   ]
 
