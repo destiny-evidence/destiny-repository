@@ -1,0 +1,33 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.LinkedDataProjection
+
+Result of projecting a LinkedDataEnhancement into flat searchable fields.
+" alt="" coords="677,333,895,445"/>
+<area shape="rect" id="node2" title="app.domain.references.models.models.ReferenceSearchFields
+
+Projection representing fields used for searching references.
+
+This model is a projection of
+:class:`app.domain.references.models.models.Reference`.
+
+This is injected into the root of Elasticsearch Reference documents for easy
+searching.
+" alt="" coords="572,5,1000,285"/>
+<area shape="rect" id="node3" title="destiny_sdk.enhancements.LinkedDataEnhancement
+
+An enhancement for storing structured data in a linked data format.
+
+The content is a JSON&#45;LD document conforming to the vocabulary and
+context specified. This enhancement type is produced by mapping robots
+that transform RawEnhancement data into the shared vocabulary.
+" alt="" coords="1144,259,1621,371"/>
+<area shape="rect" id="node4" title="app.domain.references.models.models.ReferenceSearchProjection
+
+Pre&#45;computed projection of a Reference for ES indexing.
+
+Contains only the fields that ES indexes, constructed by the synchronizer
+from a Reference and its projections. Inherits SQLAttributeMixin for the
+id field and to satisfy the GenericDomainModelType bound required by the
+ES persistence layer.
+" alt="" coords="5,43,428,211"/>
+</map>

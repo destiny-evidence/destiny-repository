@@ -1,0 +1,605 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>SDK Labs &#8212; DESTINY Repository v1.0 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=8878045cc6db502f8baf" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=cf3b3841" />
+  
+  <!-- So that users can add custom icons -->
+  <script src="../_static/scripts/fontawesome.js?digest=8878045cc6db502f8baf"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
+
+    <script src="../_static/documentation_options.js?v=e160b93e"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'sdk/labs';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="CLI" href="../cli/cli.html" />
+    <link rel="prev" title="SDK Robot Client" href="robot-client.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="" />
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">DESTINY Repository v1.0 documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../procedures/procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../codebase/codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../procedures/procedures.html">
+    Procedures
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../codebase/codebase.html">
+    Codebase
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="sdk.html">
+    SDK
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../cli/cli.html">
+    CLI
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-external" href="https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc">
+    API
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button pst-js-only" aria-label="Color mode" data-bs-title="Color mode"  data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <i class="theme-switch fa-solid fa-sun                fa-lg" data-mode="light" title="Light"></i>
+  <i class="theme-switch fa-solid fa-moon               fa-lg" data-mode="dark"  title="Dark"></i>
+  <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"  title="System Settings"></i>
+</button></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><p aria-level="2" class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="schemas.html">SDK Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="client.html">SDK Client</a></li>
+<li class="toctree-l1"><a class="reference internal" href="robot-client.html">SDK Robot Client</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">SDK Labs</a></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="sdk.html" class="nav-link">SDK</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">SDK Labs</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="sdk-labs">
+<h1>SDK Labs<a class="headerlink" href="#sdk-labs" title="Link to this heading">#</a></h1>
+<p>The <code class="docutils literal notranslate"><span class="pre">labs</span></code> module of the DESTINY Repository SDK provides experimental features and interfaces for interacting with the DESTINY data repository.</p>
+<p>Anything in this module should be considered experimental and may change or be deprecated in the future.</p>
+<p>There may be additional dependencies required to use some features of this module. These can be installed by specifying the <code class="docutils literal notranslate"><span class="pre">labs</span></code> extra when installing the SDK:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>destiny-sdk<span class="o">[</span>labs<span class="o">]</span>
+
+uv<span class="w"> </span>add<span class="w"> </span>destiny-sdk<span class="w"> </span>--extra<span class="w"> </span>labs
+</pre></div>
+</div>
+<nav class="contents local" id="contents">
+<ul class="simple">
+<li><p><a class="reference internal" href="#references" id="id1">References</a></p></li>
+</ul>
+</nav>
+<section id="references">
+<h2><a class="toc-backref" href="#id1" role="doc-backlink">References</a><a class="headerlink" href="#references" title="Link to this heading">#</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="libs.sdk.src.destiny_sdk.labs.references.LabsReference">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">libs.sdk.src.destiny_sdk.labs.references.</span></span><span class="sig-name descname"><span class="pre">LabsReference</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">reference</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="schemas.html#libs.sdk.src.destiny_sdk.references.Reference" title="libs.sdk.src.destiny_sdk.references.Reference"><span class="pre">Reference</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="schemas.html#libs.sdk.src.destiny_sdk.references.ReferenceFileInput" title="libs.sdk.src.destiny_sdk.references.ReferenceFileInput"><span class="pre">ReferenceFileInput</span></a></span></em><span class="sig-paren">)</span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/libs/sdk/src/destiny_sdk/labs/references.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference" title="Link to this definition">#</a></dt>
+<dd><p>Experimental presenter class for Reference with added convenience methods.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="libs.sdk.src.destiny_sdk.labs.references.LabsReference.abstract">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">abstract</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/libs/sdk/src/destiny_sdk/labs/references.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.abstract" title="Link to this definition">#</a></dt>
+<dd><p>Return an abstract for the reference.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="libs.sdk.src.destiny_sdk.labs.references.LabsReference.doi">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">doi</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/libs/sdk/src/destiny_sdk/labs/references.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.doi" title="Link to this definition">#</a></dt>
+<dd><p>Return a DOI for the reference.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="libs.sdk.src.destiny_sdk.labs.references.LabsReference.first_author">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">first_author</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/libs/sdk/src/destiny_sdk/labs/references.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.first_author" title="Link to this definition">#</a></dt>
+<dd><p>The first author of the reference as str.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="libs.sdk.src.destiny_sdk.labs.references.LabsReference.has_bool_annotation">
+<span class="sig-name descname"><span class="pre">has_bool_annotation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scheme</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">expected_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/libs/sdk/src/destiny_sdk/labs/references.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.has_bool_annotation" title="Link to this definition">#</a></dt>
+<dd><p>Check if a specific annotation exists and is true.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>source</strong> – Optional filter for Enhancement.source</p></li>
+<li><p><strong>scheme</strong> – Optional filter for Annotation.scheme</p></li>
+<li><p><strong>label</strong> – Optional filter for Annotation.label</p></li>
+<li><p><strong>expected_value</strong> – Specify expected boolean annotation value</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Returns the boolean value for the first annotation matching
+the filters or None if nothing is found.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="libs.sdk.src.destiny_sdk.labs.references.LabsReference.it_annotations">
+<span class="sig-name descname"><span class="pre">it_annotations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">annotation_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="schemas.html#libs.sdk.src.destiny_sdk.enhancements.AnnotationType" title="libs.sdk.src.destiny_sdk.enhancements.AnnotationType"><span class="pre">AnnotationType</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scheme</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Generator</span><span class="p"><span class="pre">[</span></span><span class="pre">Annotated</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="schemas.html#libs.sdk.src.destiny_sdk.enhancements.BooleanAnnotation" title="libs.sdk.src.destiny_sdk.enhancements.BooleanAnnotation"><span class="pre">BooleanAnnotation</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="schemas.html#libs.sdk.src.destiny_sdk.enhancements.ScoreAnnotation" title="libs.sdk.src.destiny_sdk.enhancements.ScoreAnnotation"><span class="pre">ScoreAnnotation</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">FieldInfo</span><span class="p"><span class="pre">(</span></span><span class="n"><span class="pre">annotation</span></span><span class="o"><span class="pre">=</span></span><span class="pre">NoneType</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="n"><span class="pre">required</span></span><span class="o"><span class="pre">=</span></span><span class="k"><span class="pre">True</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="n"><span class="pre">discriminator</span></span><span class="o"><span class="pre">=</span></span><span class="s"><span class="pre">'annotation_type'</span></span><span class="p"><span class="pre">)</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/libs/sdk/src/destiny_sdk/labs/references.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.it_annotations" title="Link to this definition">#</a></dt>
+<dd><p>Iterate annotation enhancements for the given filters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>source</strong> – Optional filter for Enhancement.source</p></li>
+<li><p><strong>annotation_type</strong> – Optional filter for
+AnnotationEnhancement.annotation_type</p></li>
+<li><p><strong>scheme</strong> – Optional filter for Annotation.scheme</p></li>
+<li><p><strong>label</strong> – Optional filter for Annotation.label</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="libs.sdk.src.destiny_sdk.labs.references.LabsReference.it_bibliographics">
+<span class="sig-name descname"><span class="pre">it_bibliographics</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Generator</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="schemas.html#libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement" title="libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement"><span class="pre">BibliographicMetadataEnhancement</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/libs/sdk/src/destiny_sdk/labs/references.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.it_bibliographics" title="Link to this definition">#</a></dt>
+<dd><p>Iterate bibliographic enhancements.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="libs.sdk.src.destiny_sdk.labs.references.LabsReference.model_config">
+<span class="sig-name descname"><span class="pre">model_config</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ClassVar</span><span class="p"><span class="pre">[</span></span><span class="pre">ConfigDict</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{}</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/libs/sdk/src/destiny_sdk/labs/references.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.model_config" title="Link to this definition">#</a></dt>
+<dd><p>Configuration for the model, should be a dictionary conforming to [<cite>ConfigDict</cite>][pydantic.config.ConfigDict].</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="libs.sdk.src.destiny_sdk.labs.references.LabsReference.openalex_id">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">openalex_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/libs/sdk/src/destiny_sdk/labs/references.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.openalex_id" title="Link to this definition">#</a></dt>
+<dd><p>Return an OpenAlex ID for the reference.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="libs.sdk.src.destiny_sdk.labs.references.LabsReference.publication_year">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">publication_year</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/libs/sdk/src/destiny_sdk/labs/references.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.publication_year" title="Link to this definition">#</a></dt>
+<dd><p>Return a publication year for the reference.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="libs.sdk.src.destiny_sdk.labs.references.LabsReference.pubmed_id">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">pubmed_id</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/libs/sdk/src/destiny_sdk/labs/references.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.pubmed_id" title="Link to this definition">#</a></dt>
+<dd><p>Return a pubmed ID for the reference.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="libs.sdk.src.destiny_sdk.labs.references.LabsReference.title">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">title</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="reference external" href="https://github.com/destiny-evidence/destiny-repository/blob/main/libs/sdk/src/destiny_sdk/labs/references.py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.title" title="Link to this definition">#</a></dt>
+<dd><p>The title of the reference. If multiple are present, return first one.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="robot-client.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">SDK Robot Client</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="../cli/cli.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">CLI</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#references">References</a><ul class="visible nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference"><code class="docutils literal notranslate"><span class="pre">LabsReference</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.abstract"><code class="docutils literal notranslate"><span class="pre">LabsReference.abstract</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.doi"><code class="docutils literal notranslate"><span class="pre">LabsReference.doi</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.first_author"><code class="docutils literal notranslate"><span class="pre">LabsReference.first_author</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.has_bool_annotation"><code class="docutils literal notranslate"><span class="pre">LabsReference.has_bool_annotation()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.it_annotations"><code class="docutils literal notranslate"><span class="pre">LabsReference.it_annotations()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.it_bibliographics"><code class="docutils literal notranslate"><span class="pre">LabsReference.it_bibliographics()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.model_config"><code class="docutils literal notranslate"><span class="pre">LabsReference.model_config</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.openalex_id"><code class="docutils literal notranslate"><span class="pre">LabsReference.openalex_id</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.publication_year"><code class="docutils literal notranslate"><span class="pre">LabsReference.publication_year</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.pubmed_id"><code class="docutils literal notranslate"><span class="pre">LabsReference.pubmed_id</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#libs.sdk.src.destiny_sdk.labs.references.LabsReference.title"><code class="docutils literal notranslate"><span class="pre">LabsReference.title</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=8878045cc6db502f8baf"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2025, DESTINY Team.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.16.1.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
