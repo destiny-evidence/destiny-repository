@@ -13,17 +13,17 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "4.58.0"
+      version = "4.69.0"
     }
 
     azuread = {
       source  = "hashicorp/azuread"
-      version = "3.1.0"
+      version = "3.8.0"
     }
 
     azapi = {
       source  = "Azure/azapi"
-      version = "2.7.0"
+      version = "2.9.0"
     }
 
     github = {
