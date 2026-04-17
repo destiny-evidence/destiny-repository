@@ -40,9 +40,29 @@ variable "tasks_max_replicas" {
 }
 
 variable "auth_provider" {
-  description = "Authentication provider: 'azure' or 'keycloak'"
+  description = "Authentication provider to use for JWT validation."
   type        = string
   default     = "azure"
+
+  validation {
+    condition     = contains(["azure", "keycloak", "both"], var.auth_provider)
+    error_message = "auth_provider must be one of: azure, keycloak, both."
+  }
+}
+
+variable "shared_container_registry_name" {
+  description = "Name of the shared container registry. Sourced from the destiny-evidence-shared TFC variable set."
+  type        = string
+}
+
+variable "shared_resource_group_name" {
+  description = "Resource group containing shared infrastructure (Keycloak, registry, etc). Sourced from the destiny-evidence-shared TFC variable set."
+  type        = string
+}
+
+variable "shared_keycloak_url" {
+  description = "Public-facing Keycloak base URL. Used both as the iss claim expected by the server and as the authority for the UI. Sourced from the destiny-evidence-shared TFC variable set."
+  type        = string
 }
 
 variable "azure_tenant_id" {
@@ -101,22 +121,6 @@ variable "container_app_tasks_n_concurrent_jobs" {
   description = "Number of concurrent jobs for the tasks container app"
   type        = number
   default     = 4
-}
-
-variable "container_registry_name" {
-  description = "The name of the container registry being used"
-  type        = string
-}
-
-variable "container_registry_resource_group" {
-  description = "The name of the resource group the container registry is in"
-  type        = string
-}
-
-variable "shared_infra_resource_group_name" {
-  description = "Resource group containing shared infrastructure (Keycloak, registry, etc.)"
-  type        = string
-  default     = "rg-destiny-evidence-shared"
 }
 
 variable "cpu_scaling_threshold" {

@@ -368,16 +368,19 @@ class Settings(BaseSettings):
     otel_enabled: bool = False
 
     # Authentication provider selection
-    auth_provider: Literal["azure", "keycloak"] = Field(
+    auth_provider: Literal["azure", "keycloak", "both"] = Field(
         default="azure",
-        description="The authentication provider to use: 'azure' or 'keycloak'.",
+        description=(
+            "The authentication provider to use: "
+            "'azure', 'keycloak', or 'both' for multi-issuer."
+        ),
     )
 
     # Azure AD settings
     azure_application_id: str
     azure_login_url: str = "https://login.microsoftonline.com"
 
-    # Keycloak settings (only used when auth_provider == "keycloak")
+    # Keycloak settings (used when auth_provider is "keycloak" or "both")
     keycloak_url: str | None = Field(
         default=None,
         description="The base URL of the Keycloak server (used for JWKS fetching).",
@@ -399,6 +402,18 @@ class Settings(BaseSettings):
         default=None,
         description="The Keycloak client ID for token validation.",
     )
+
+    @model_validator(mode="after")
+    def _validate_keycloak_settings(self) -> Self:
+        if self.auth_provider in ("keycloak", "both") and (
+            not self.keycloak_url or not self.keycloak_client_id
+        ):
+            msg = (
+                f"auth_provider='{self.auth_provider}' requires "
+                "keycloak_url and keycloak_client_id to be set"
+            )
+            raise ValueError(msg)
+        return self
 
     message_broker_url: str | None = None
     message_broker_namespace: str | None = None
