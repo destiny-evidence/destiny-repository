@@ -215,7 +215,7 @@ module "container_app" {
 
   env_vars = concat(local.env_vars, [{
     name  = "CORS_ALLOW_ORIGINS",
-    value = jsonencode(["*"])
+    value = jsonencode(var.cors_allow_origins)
   }])
 
   secrets = local.secrets

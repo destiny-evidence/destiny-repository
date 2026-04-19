@@ -65,6 +65,38 @@ variable "shared_keycloak_url" {
   type        = string
 }
 
+variable "shared_frontdoor_profile_name" {
+  description = "Name of the shared Azure Front Door profile used to expose the API publicly. Sourced from the destiny-evidence-shared TFC variable set."
+  type        = string
+}
+
+variable "dnsimple_account_id" {
+  description = "DNSimple account ID used to manage DNS records for evidence-repository.org. Sourced from the destiny-evidence-shared TFC variable set."
+  type        = string
+}
+
+variable "dnsimple_token" {
+  description = "DNSimple API token used to manage DNS records. Sourced from the destiny-evidence-shared TFC variable set."
+  type        = string
+  sensitive   = true
+}
+
+variable "dnsimple_zone_name" {
+  description = "DNSimple zone (apex domain) that owns the API hostname."
+  type        = string
+  default     = "evidence-repository.org"
+}
+
+variable "api_subdomain" {
+  description = "Subdomain (relative to dnsimple_zone_name) for the API Front Door endpoint. For example: 'api' in production, 'api.stag' in staging."
+  type        = string
+}
+
+variable "cors_allow_origins" {
+  description = "Origins permitted by the API's CORS policy (e.g. https://data.evidence-repository.org)."
+  type        = list(string)
+}
+
 variable "azure_tenant_id" {
   description = "ID of the azure application "
   type        = string
