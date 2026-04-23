@@ -171,6 +171,13 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         :return: The updated decision with candidate IDs and status.
         :rtype: ReferenceDuplicateDecision
         """
+        if not settings.feature_flags.enable_canonical_candidate_search:
+            return await self.sql_uow.reference_duplicate_decisions.update_by_pk(
+                reference_duplicate_decision.id,
+                duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
+                detail="Canonical candidate search is disabled.",
+            )
+
         reference = await self.sql_uow.references.get_by_pk(
             reference_duplicate_decision.reference_id,
             preload=["enhancements", "identifiers"],
