@@ -337,8 +337,9 @@ module "container_app_ui" {
       value = local.auth_application_id
     },
     {
-      name  = "AUTH_PROVIDER"
-      value = var.auth_provider
+      name = "AUTH_PROVIDER"
+      # UI drives a single login flow; map "both" to azure as the default.
+      value = var.auth_provider == "both" ? "azure" : var.auth_provider
     },
     {
       name  = "KEYCLOAK_URL"
