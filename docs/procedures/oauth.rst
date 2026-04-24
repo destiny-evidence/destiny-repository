@@ -83,7 +83,7 @@ The API base URL for each environment is as follows:
 .. csv-table:: API URLs
     :header: "Environment", "API URL"
 
-    "Development", "https://destiny-repository-deve-app.gentlecoast-c1c9497a.swedencentral.azurecontainerapps.io"
+    "Development", "https://api.dev.evidence-repository.org"
     "Staging", "https://destiny-repository-stag-app.proudmeadow-2a76e8ac.swedencentral.azurecontainerapps.io"
     "Production", "https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io"
 
@@ -120,8 +120,7 @@ Script template
     # Easy access of configurations listed in the tables above
     CONFIGS = {
         "development": {
-            "url": "https://destiny-repository-deve-app.gentlecoast-c1c9497a"
-                   ".swedencentral.azurecontainerapps.io",
+            "url": "https://api.dev.evidence-repository.org",
             "login_url": "https://login.microsoftonline.com/f870e5ae-5521-4a94-b9ff-cdde7d36dd35",
             "client": "0fde62ae-2203-44a5-9722-73e965325ae7",
             "app": "0a4b8df7-5c97-42b2-be07-2bb25e06dbb2",

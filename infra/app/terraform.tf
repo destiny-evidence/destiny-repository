@@ -50,6 +50,11 @@ terraform {
       source  = "hashicorp/random"
       version = "3.7.1"
     }
+
+    dnsimple = {
+      source  = "dnsimple/dnsimple"
+      version = "2.0.1"
+    }
   }
 }
 
@@ -88,6 +93,11 @@ provider "elasticstack" {
     username  = ec_deployment.cluster.elasticsearch_username
     password  = ec_deployment.cluster.elasticsearch_password
   }
+}
+
+provider "dnsimple" {
+  account = var.dnsimple_account_id
+  token   = var.dnsimple_token
 }
 
 provider "honeycombio" {

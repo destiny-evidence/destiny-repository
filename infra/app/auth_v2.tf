@@ -265,6 +265,7 @@ resource "azuread_application_redirect_uris" "external_directory_ui_redirect" {
   type           = "SPA"
 
   redirect_uris = [
+    "https://${local.ui_hostname}",
     "https://${data.azurerm_container_app.ui.ingress[0].fqdn}",
   ]
 }
