@@ -69,7 +69,7 @@ resource "azurerm_cdn_frontdoor_route" "api" {
   https_redirect_enabled          = true
   patterns_to_match               = ["/*"]
   supported_protocols             = ["Http", "Https"]
-  link_to_default_domain          = true
+  link_to_default_domain          = false
 }
 
 resource "dnsimple_zone_record" "api_validation" {
@@ -136,7 +136,7 @@ resource "azurerm_cdn_frontdoor_route" "ui" {
   https_redirect_enabled          = true
   patterns_to_match               = ["/*"]
   supported_protocols             = ["Http", "Https"]
-  link_to_default_domain          = true
+  link_to_default_domain          = false
 }
 
 resource "dnsimple_zone_record" "ui_validation" {
