@@ -56,6 +56,10 @@ resource "azurerm_cdn_frontdoor_custom_domain" "api" {
   tls {
     certificate_type = "ManagedCertificate"
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "azurerm_cdn_frontdoor_route" "api" {
@@ -122,6 +126,10 @@ resource "azurerm_cdn_frontdoor_custom_domain" "ui" {
 
   tls {
     certificate_type = "ManagedCertificate"
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
