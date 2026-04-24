@@ -49,7 +49,7 @@ resource "azurerm_cdn_frontdoor_origin" "api" {
 }
 
 resource "azurerm_cdn_frontdoor_custom_domain" "api" {
-  name                     = "cd-api-${local.name}"
+  name                     = replace(local.api_hostname, ".", "-")
   cdn_frontdoor_profile_id = data.azurerm_cdn_frontdoor_profile.shared.id
   host_name                = local.api_hostname
 
@@ -120,7 +120,7 @@ resource "azurerm_cdn_frontdoor_origin" "ui" {
 }
 
 resource "azurerm_cdn_frontdoor_custom_domain" "ui" {
-  name                     = "cd-ui-${local.name}"
+  name                     = replace(local.ui_hostname, ".", "-")
   cdn_frontdoor_profile_id = data.azurerm_cdn_frontdoor_profile.shared.id
   host_name                = local.ui_hostname
 
