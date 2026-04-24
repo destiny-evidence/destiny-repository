@@ -186,15 +186,16 @@ locals {
 
 data "azurerm_container_app" "api" {
   # Used as the Front Door origin host_name.
+  # No depends_on: the module.container_app.container_app_name reference
+  # is sufficient for ordering, and adding depends_on forces the data read
+  # to be deferred to apply, cascading "known after apply" into every consumer.
   name                = module.container_app.container_app_name
   resource_group_name = azurerm_resource_group.this.name
-  depends_on          = [module.container_app]
 }
 
 data "azurerm_container_app" "ui" {
   name                = module.container_app_ui.container_app_name
   resource_group_name = azurerm_resource_group.this.name
-  depends_on          = [module.container_app_ui]
 }
 
 module "container_app" {
