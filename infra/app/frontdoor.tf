@@ -76,6 +76,16 @@ resource "azurerm_cdn_frontdoor_route" "api" {
   link_to_default_domain          = false
 }
 
+
+resource "azurerm_cdn_frontdoor_custom_domain_association" "api" {
+  cdn_frontdoor_custom_domain_id = azurerm_cdn_frontdoor_custom_domain.api.id
+  cdn_frontdoor_route_ids        = [azurerm_cdn_frontdoor_route.api.id]
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 resource "dnsimple_zone_record" "api_validation" {
   zone_name = var.dnsimple_zone_name
   name      = "_dnsauth.${var.api_subdomain}"
@@ -145,6 +155,15 @@ resource "azurerm_cdn_frontdoor_route" "ui" {
   patterns_to_match               = ["/*"]
   supported_protocols             = ["Http", "Https"]
   link_to_default_domain          = false
+}
+
+resource "azurerm_cdn_frontdoor_custom_domain_association" "ui" {
+  cdn_frontdoor_custom_domain_id = azurerm_cdn_frontdoor_custom_domain.ui.id
+  cdn_frontdoor_route_ids        = [azurerm_cdn_frontdoor_route.ui.id]
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "dnsimple_zone_record" "ui_validation" {
