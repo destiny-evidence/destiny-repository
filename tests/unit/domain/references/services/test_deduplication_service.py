@@ -303,6 +303,45 @@ async def test_nominate_candidate_canonicals_candidates_found(
 
 
 @pytest.mark.asyncio
+async def test_nominate_candidate_canonicals_flag_disabled(
+    searchable_reference,
+    anti_corruption_service,
+    fake_uow,
+    fake_repository,
+    monkeypatch,
+):
+    """When the feature flag is off, the decision is UNSEARCHABLE and ES is skipped."""
+    from app.domain.references.services import deduplication_service as dedup_module
+
+    monkeypatch.setattr(
+        dedup_module.settings.feature_flags,
+        "enable_canonical_candidate_search",
+        False,
+    )
+
+    decision = ReferenceDuplicateDecision(
+        reference_id=searchable_reference.id,
+        duplicate_determination=DuplicateDetermination.PENDING,
+    )
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(
+            reference_duplicate_decisions=fake_repository([decision]),
+            references=fake_repository([searchable_reference]),
+        ),
+        fake_uow(),
+    )
+    service.es_uow = MagicMock()
+    service.es_uow.references.search_for_candidate_canonicals = AsyncMock()
+
+    result = await service.nominate_candidate_canonicals(decision)
+    assert result.duplicate_determination == DuplicateDetermination.UNSEARCHABLE
+    assert not result.candidate_canonical_ids
+    assert result.detail == "Canonical candidate search is disabled."
+    service.es_uow.references.search_for_candidate_canonicals.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_nominate_candidate_canonicals_no_candidates(
     searchable_reference, anti_corruption_service, fake_uow, fake_repository
 ):

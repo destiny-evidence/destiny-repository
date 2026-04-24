@@ -328,6 +328,7 @@ class FeatureFlags(BaseModel):
     """Feature flags for the application."""
 
     enable_percolation: bool = True
+    enable_canonical_candidate_search: bool = True
 
 
 class DedupCandidateScoringConfig(BaseModel):
