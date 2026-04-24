@@ -3,9 +3,14 @@ output "api_hostname" {
   value       = local.api_hostname
 }
 
-output "api_frontdoor_endpoint_host_name" {
-  description = "Azure-assigned hostname of the API Front Door endpoint (CNAME target)."
-  value       = azurerm_cdn_frontdoor_endpoint.api.host_name
+output "ui_hostname" {
+  description = "Public hostname served by Front Door for the UI."
+  value       = local.ui_hostname
+}
+
+output "frontdoor_endpoint_host_name" {
+  description = "Azure-assigned hostname of the Front Door endpoint shared by API and UI (CNAME target)."
+  value       = azurerm_cdn_frontdoor_endpoint.this.host_name
 }
 
 output "elasticsearch_password" {

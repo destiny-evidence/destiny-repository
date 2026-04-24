@@ -92,6 +92,11 @@ variable "api_subdomain" {
   type        = string
 }
 
+variable "ui_subdomain" {
+  description = "Subdomain (relative to dnsimple_zone_name) for the UI Front Door endpoint. For example: 'ui' in production, 'ui.stag' in staging."
+  type        = string
+}
+
 variable "cors_allow_origins" {
   description = "Origins permitted by the API's CORS policy (e.g. https://data.evidence-repository.org)."
   type        = list(string)
