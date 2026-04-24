@@ -139,6 +139,13 @@ locals {
       name  = "KEYCLOAK_CLIENT_ID"
       value = var.auth_provider != "azure" ? "destiny-repository-client-${var.environment}" : ""
     },
+    {
+      name = "CORS_ALLOW_ORIGINS",
+      value = jsonencode(concat(var.cors_allow_origins, [
+        "https://${local.ui_hostname}",
+        "https://${data.azurerm_container_app.ui.ingress[0].fqdn}",
+      ]))
+    },
   ]
 
 
@@ -178,8 +185,7 @@ locals {
 }
 
 data "azurerm_container_app" "api" {
-  # This data source is used to get the latest revision FQDN for the container app
-  # so that we can use it in the eppi-import GitHub Action.
+  # Used as the Front Door origin host_name.
   name                = module.container_app.container_app_name
   resource_group_name = azurerm_resource_group.this.name
   depends_on          = [module.container_app]
@@ -213,10 +219,7 @@ module "container_app" {
     client_id    = azurerm_user_assigned_identity.container_apps_identity.client_id
   }
 
-  env_vars = concat(local.env_vars, [{
-    name  = "CORS_ALLOW_ORIGINS",
-    value = jsonencode(var.cors_allow_origins)
-  }])
+  env_vars = local.env_vars
 
   secrets = local.secrets
 
@@ -327,7 +330,7 @@ module "container_app_ui" {
     },
     {
       name  = "NEXT_PUBLIC_API_URL"
-      value = "https://${data.azurerm_container_app.api.ingress[0].fqdn}/v1/"
+      value = "https://${local.api_hostname}/v1/"
     },
     {
       name  = "NEXT_PUBLIC_AZURE_APPLICATION_ID"
