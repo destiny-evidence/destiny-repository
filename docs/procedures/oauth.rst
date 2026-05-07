@@ -44,7 +44,7 @@ Interaction with the DESTINY Repository API requires first obtaining an authenti
 Provisioning
 ------------
 
-In order to obtain a token from the DESTINY authentication server, you will need to be enrolled in our tenant ``JT_AD``. Please reach out if you need access.
+In order to obtain a token from the DESTINY authentication server, you will need to be enrolled in our auth server. Please reach out if you need access.
 
 Everyone will have ``reference.reader``, but please reach out if you need additional permission scopes. You can see the available scopes per API resource in `the API documentation <https://api.evidence-repository.org/redoc>`_ - it is listed under each sub-category.
 
