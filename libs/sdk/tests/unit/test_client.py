@@ -253,6 +253,45 @@ class TestOAuthClient:
         assert "Invalid query parameter" in str(exc_info.value)
 
 
+class TestOAuthClientEnvShortcut:
+    """Tests for the OAuthClient ``env`` constructor shortcut."""
+
+    @pytest.mark.parametrize(
+        ("env", "expected_base_url"),
+        [
+            ("development", "https://api.dev.evidence-repository.org"),
+            ("staging", "https://api.staging.evidence-repository.org"),
+            ("production", "https://api.evidence-repository.org"),
+        ],
+    )
+    def test_env_derives_base_url_and_auth(
+        self, env: str, expected_base_url: str
+    ) -> None:
+        """env fills in base_url from DEFAULT_API_URLS and builds OAuthMiddleware."""
+        client = OAuthClient(env=env)  # type: ignore[arg-type]
+        assert str(client._client.base_url) == f"{expected_base_url}/v1/"  # noqa: SLF001
+        assert isinstance(client._client.auth, OAuthMiddleware)  # noqa: SLF001
+
+    def test_explicit_base_url_overrides_env_default(self) -> None:
+        """An explicit base_url is preserved when env is also provided."""
+        client = OAuthClient(env="production", base_url="https://override.example.com")
+        assert (
+            str(client._client.base_url)  # noqa: SLF001
+            == "https://override.example.com/v1/"
+        )
+
+    def test_explicit_auth_overrides_env_default(self, base_url: str) -> None:
+        """An explicit auth is preserved when env is also provided."""
+        custom_auth = httpx.BasicAuth("user", "pass")
+        client = OAuthClient(env="production", base_url=base_url, auth=custom_auth)
+        assert client._client.auth is custom_auth  # noqa: SLF001
+
+    def test_rejects_missing_base_url_and_env(self) -> None:
+        """Constructing without base_url or env raises ValueError."""
+        with pytest.raises(ValueError, match="base_url is required"):
+            OAuthClient()
+
+
 class TestAzureOAuthMiddleware:
     """Tests for AzureOAuthMiddleware authentication."""
 
@@ -568,7 +607,7 @@ class TestOAuthMiddleware:
             "destiny_sdk.client.PublicClientApplication", MockPublicClientApp
         )
 
-        with pytest.warns(DeprecationWarning, match="Azure AD"):
+        with pytest.warns(DeprecationWarning, match="deprecated"):
             middleware = OAuthMiddleware(
                 azure_login_url="test-url",
                 azure_client_id="test-client",

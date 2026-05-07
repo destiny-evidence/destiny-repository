@@ -9,6 +9,22 @@ API Authentication
 
     This document is about API authentication for anyone **except** robots. For robots, refer to :doc:`HMAC Auth <../sdk/robot-client>`.
 
+Quickstart
+----------
+
+For Python users, the quickest way to get started is with the :doc:`SDK <../sdk/client>`, which will handle authentication for you. Just create a client with the appropriate environment and you're good to go:
+
+.. code-block:: python
+
+    # Requires destiny-sdk>=0.12.0
+    from destiny_sdk.client import OAuthClient
+    client = OAuthClient(env="staging")
+    response = client.search(query="example")
+    print(response)
+
+Read on for the underlying OAuth2 flow, alternative authentication methods (Postman, curl, service accounts), and overriding configuration.
+
+
 Background
 ----------
 
@@ -143,33 +159,6 @@ When making API requests, include the token in the ``Authorization`` header foll
         -H "Authorization: Bearer $ACCESS_TOKEN"
 
 The tokens will expire after a certain period (usually two hours). After expiration, you will need to obtain a new token using the same method as before.
-
-
-Script template
----------------
-
-.. code-block:: python
-
-    # Easy access of configurations listed in the tables above
-    CONFIGS = {
-        "development": {"url": "https://api.dev.evidence-repository.org"},
-        "staging": {"url": "https://api.staging.evidence-repository.org"},
-        "production": {"url": "https://api.evidence-repository.org"},
-    }
-
-    # Select environment
-    ENV = "staging"
-
-    # Use the SDK
-    from destiny_sdk.client import OAuthClient, OAuthMiddleware
-    client = OAuthClient(
-        base_url=CONFIGS[ENV]["url"],
-        auth=OAuthMiddleware(env=ENV),
-    )
-    response = client.search(query="example")
-    print(response)
-
-
 
 
 Troubleshooting

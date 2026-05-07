@@ -37,6 +37,14 @@ python_version = ".".join(map(str, sys.version_info[:3]))
 user_agent = f"python@{python_version}/destiny-sdk@{sdk_version}"
 
 
+_DEFAULT_API_URLS: dict[str, str] = {
+    "development": "https://api.dev.evidence-repository.org",
+    "staging": "https://api.staging.evidence-repository.org",
+    "production": "https://api.evidence-repository.org",
+}
+_ENV_TYPE = Literal["development", "staging", "production"]
+
+
 class HMACSigningAuth(httpx.Auth):
     """Client that adds an HMAC signature to a request."""
 
@@ -645,7 +653,7 @@ class OAuthMiddleware(httpx.Auth):
 
     def __init__(  # noqa: PLR0913
         self,
-        env: Literal["development", "staging", "production"] | None = None,
+        env: _ENV_TYPE | None = None,
         auth_url: str = "https://auth.evidence-repository.org",
         realm: str = "destiny",
         client_id: str | None = None,
@@ -726,8 +734,10 @@ class OAuthClient:
 
     .. code-block:: python
 
-        from destiny_sdk.client import OAuthClient, OAuthMiddleware
+        from destiny_sdk.client import OAuthClient
 
+        # Either use env for defaults or provide explicit auth and base_url
+        client = OAuthClient(env="production")
         client = OAuthClient(
             base_url="https://destiny-repository.example.com",
             auth=OAuthMiddleware(...),
@@ -742,23 +752,40 @@ class OAuthClient:
 
     def __init__(
         self,
-        base_url: HttpUrl | str,
+        env: _ENV_TYPE | None = None,
+        base_url: HttpUrl | str | None = None,
         auth: httpx.Auth | None = None,
         timeout: int = 10,
     ) -> None:
         """
         Initialize the client.
 
-        :param base_url: The base URL for the Destiny Repository API.
-        :type base_url: HttpUrl
-        :param auth: The middleware for authentication. If not provided, only
-            unauthenticated requests can be made. This should almost always be an
-            instance of ``OAuthMiddleware``, unless you need to create a custom auth
-            class.
+        :param env: The Destiny environment. When set, fills in defaults for
+            ``base_url`` and ``auth`` if either is omitted.
+        :type env: _ENV_TYPE | None
+        :param base_url: The base URL for the Destiny Repository API. Required
+            unless ``env`` is provided, in which case it defaults to the API URL
+            for that environment.
+        :type base_url: HttpUrl | str | None
+        :param auth: The middleware for authentication. If not provided and
+            ``env`` is given, an :class:`OAuthMiddleware` configured for that
+            environment is used. If neither is provided, only unauthenticated
+            requests can be made.
         :type auth: httpx.Auth | None
         :param timeout: The timeout for requests, in seconds. Defaults to 10 seconds.
         :type timeout: int
+        :raises ValueError: If neither ``base_url`` nor ``env`` is provided.
         """
+        if env is not None:
+            if base_url is None:
+                base_url = _DEFAULT_API_URLS[env]
+            if auth is None:
+                auth = OAuthMiddleware(env=env)
+
+        if base_url is None:
+            msg = "base_url is required when env is not provided"
+            raise ValueError(msg)
+
         self._client = httpx.Client(
             base_url=str(base_url).removesuffix("/").removesuffix("/v1") + "/v1",
             headers={
