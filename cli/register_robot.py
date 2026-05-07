@@ -1,4 +1,4 @@
-"""A utility to register a robot in azure. Utilised get_token()."""
+"""A utility to register a robot in the Destiny Repository."""
 
 # ruff: noqa: T201
 import argparse
