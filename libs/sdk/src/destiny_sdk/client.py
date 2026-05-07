@@ -2,7 +2,9 @@
 
 import sys
 import time
+import warnings
 from collections.abc import Generator
+from typing import Literal
 
 import httpx
 from msal import (
@@ -201,9 +203,9 @@ class RobotClient:
 Client = RobotClient
 
 
-class OAuthMiddleware(httpx.Auth):
+class AzureOAuthMiddleware(httpx.Auth):
     """
-    Auth middleware that handles OAuth2 token retrieval and refresh.
+    Auth middleware that handles Azure AD OAuth2 token retrieval and refresh.
 
     This is generally used in conjunction with
     :class:`OAuthClient <libs.sdk.src.destiny_sdk.client.OAuthClient>`.
@@ -218,7 +220,7 @@ class OAuthMiddleware(httpx.Auth):
 
     .. code-block:: python
 
-        auth = OAuthMiddleware(
+        auth = AzureOAuthMiddleware(
             azure_client_id="client-id",
             azure_application_id="application-id",
             azure_login_url="login-url",
@@ -232,7 +234,7 @@ class OAuthMiddleware(httpx.Auth):
 
     .. code-block:: python
 
-        auth = OAuthMiddleware(
+        auth = AzureOAuthMiddleware(
             azure_client_id="client-id",
             azure_application_id="application-id",
             azure_login_url="login-url",
@@ -247,7 +249,7 @@ class OAuthMiddleware(httpx.Auth):
 
     .. code-block:: python
 
-        auth = OAuthMiddleware(
+        auth = AzureOAuthMiddleware(
             azure_client_id="your-managed-identity-client-id",
             azure_application_id="application-id",
             use_managed_identity=True,
@@ -615,6 +617,93 @@ class KeycloakOAuthMiddleware(httpx.Auth):
                 token = self._get_token(force_refresh=True)
                 request.headers["Authorization"] = f"Bearer {token}"
                 yield request
+
+
+class OAuthMiddleware(httpx.Auth):
+    """
+    Auth middleware that routes to either Keycloak or Azure OAuth backends.
+
+    The backend is selected by which kwargs are provided:
+
+    - **Keycloak** (default): the routing target unless any Azure kwarg is given.
+      ``env`` (recommended) or ``client_id``is required.
+    - **Azure AD** (deprecated): pass any ``azure_*`` kwarg or
+      ``use_managed_identity=True``.
+
+    .. code-block:: python
+
+        auth = OAuthMiddleware(env="production")
+
+    """
+
+    def __init__(  # noqa: PLR0913
+        self,
+        auth_url: str = "https://auth.evidence-repository.org",
+        realm: str = "destiny",
+        env: Literal["development", "staging", "production"] | None = None,
+        client_id: str | None = None,
+        client_secret: SecretStr | None = None,
+        scopes: list[str] | None = None,
+        callback_port: int = 8400,
+        azure_client_id: str | None = None,
+        azure_application_id: str | None = None,
+        azure_login_url: HttpUrl | str | None = None,
+        azure_client_secret: SecretStr | None = None,
+        *,
+        use_managed_identity: bool = False,
+    ) -> None:
+        """Initialize the OAuth middleware."""
+        azure_args_present = any(
+            [
+                azure_client_id,
+                azure_application_id,
+                azure_login_url,
+                azure_client_secret,
+                use_managed_identity,
+            ]
+        )
+
+        self._inner: httpx.Auth
+        if azure_args_present:
+            warnings.warn(
+                "Azure authentication via OAuthMiddleware is deprecated and will soon "
+                "be removed. Migrate to Keycloak by removing azure_* kwargs.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if not azure_client_id or not azure_application_id:
+                msg = (
+                    "azure_client_id and azure_application_id are required for "
+                    "Azure AD authentication."
+                )
+                raise ValueError(msg)
+            self._inner = AzureOAuthMiddleware(
+                azure_client_id=azure_client_id,
+                azure_application_id=azure_application_id,
+                azure_login_url=azure_login_url,
+                azure_client_secret=azure_client_secret,
+                use_managed_identity=use_managed_identity,
+            )
+        else:
+            if env and not client_id:
+                client_id = f"destiny-auth-client-{env}"
+            if not client_id:
+                msg = "client_id is required if env is not provided"
+                raise ValueError(msg)
+            self._inner = KeycloakOAuthMiddleware(
+                keycloak_url=auth_url,
+                realm=realm,
+                client_id=client_id,
+                client_secret=client_secret,
+                scopes=scopes,
+                callback_port=callback_port,
+            )
+
+    def auth_flow(
+        self, request: httpx.Request
+    ) -> Generator[httpx.Request, httpx.Response]:
+        """Delegate authentication to the routed inner middleware."""
+        return self._inner.auth_flow(request)
 
 
 class OAuthClient:

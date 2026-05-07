@@ -6,6 +6,7 @@ from uuid import UUID, uuid7
 import httpx
 import pytest
 from destiny_sdk.client import (
+    AzureOAuthMiddleware,
     KeycloakOAuthMiddleware,
     OAuthClient,
     OAuthMiddleware,
@@ -252,8 +253,8 @@ class TestOAuthClient:
         assert "Invalid query parameter" in str(exc_info.value)
 
 
-class TestOAuthMiddleware:
-    """Tests for OAuthMiddleware authentication."""
+class TestAzureOAuthMiddleware:
+    """Tests for AzureOAuthMiddleware authentication."""
 
     @pytest.fixture
     def mock_public_client_app(self):
@@ -300,7 +301,7 @@ class TestOAuthMiddleware:
             mock_public_client_app,
         )
 
-        middleware = OAuthMiddleware(
+        middleware = AzureOAuthMiddleware(
             azure_login_url="test-url",
             azure_client_id="test-client",
             azure_application_id="test-app",
@@ -328,7 +329,7 @@ class TestOAuthMiddleware:
             mock_confidential_client_app,
         )
 
-        middleware = OAuthMiddleware(
+        middleware = AzureOAuthMiddleware(
             azure_login_url="test-url",
             azure_client_id="test-client",
             azure_application_id="test-app",
@@ -364,7 +365,7 @@ class TestOAuthMiddleware:
             MockManagedIdentityClient,
         )
 
-        middleware = OAuthMiddleware(
+        middleware = AzureOAuthMiddleware(
             use_managed_identity=True,
             azure_client_id="test-client",
             azure_application_id="test-app",
@@ -398,7 +399,7 @@ class TestOAuthMiddleware:
             MockPublicClientAppWithCount,
         )
 
-        middleware = OAuthMiddleware(
+        middleware = AzureOAuthMiddleware(
             azure_login_url="test-url",
             azure_client_id="test-client",
             azure_application_id="test-app",
@@ -517,3 +518,115 @@ class TestKeycloakOAuthMiddleware:
 
         assert retry_request.headers["Authorization"] == f"Bearer {refreshed_token}"
         assert call_count["count"] == 2
+
+
+class TestOAuthMiddleware:
+    """Tests for the OAuthMiddleware router."""
+
+    def test_routes_to_keycloak_on_auth_url(self, httpx_mock: HTTPXMock) -> None:
+        """Keycloak kwargs route through to KeycloakOAuthMiddleware."""
+        mock_token = "router_keycloak_token"
+        httpx_mock.add_response(
+            url="http://localhost:8080/realms/destiny/protocol/openid-connect/token",
+            method="POST",
+            json={
+                "access_token": mock_token,
+                "expires_in": 300,
+                "token_type": "Bearer",
+                "scope": "openid",
+            },
+        )
+
+        middleware = OAuthMiddleware(
+            auth_url="http://localhost:8080",
+            realm="destiny",
+            client_id="test-service-client",
+            client_secret=SecretStr("test-secret"),
+        )
+
+        assert isinstance(middleware._inner, KeycloakOAuthMiddleware)  # noqa: SLF001
+
+        request = httpx.Request("GET", "https://api.example.com/test")
+        flow = middleware.auth_flow(request)
+        authenticated_request = next(flow)
+        assert authenticated_request.headers["Authorization"] == f"Bearer {mock_token}"
+
+    def test_routes_to_azure_with_deprecation_warning(self, monkeypatch) -> None:
+        """Azure kwargs route through to AzureOAuthMiddleware with a warning."""
+
+        class MockPublicClientApp(PublicClientApplication):
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def acquire_token_silent(self, scopes, account, *, force_refresh=False):
+                return {"access_token": "azure_router_token"}
+
+            def get_accounts(self):
+                return []
+
+        monkeypatch.setattr(
+            "destiny_sdk.client.PublicClientApplication", MockPublicClientApp
+        )
+
+        with pytest.warns(DeprecationWarning, match="Azure AD"):
+            middleware = OAuthMiddleware(
+                azure_login_url="test-url",
+                azure_client_id="test-client",
+                azure_application_id="test-app",
+            )
+
+        assert isinstance(middleware._inner, AzureOAuthMiddleware)  # noqa: SLF001
+
+        request = httpx.Request("GET", "https://api.example.com/test")
+        flow = middleware.auth_flow(request)
+        authenticated_request = next(flow)
+        assert (
+            authenticated_request.headers["Authorization"]
+            == "Bearer azure_router_token"
+        )
+
+    def test_env_derives_client_id(self) -> None:
+        """env derives client_id as destiny-auth-client-{env}."""
+        middleware = OAuthMiddleware(env="staging")
+        inner = middleware._inner  # noqa: SLF001
+        assert isinstance(inner, KeycloakOAuthMiddleware)
+        assert inner._auth_flow.client_id == "destiny-auth-client-staging"  # noqa: SLF001
+
+    def test_explicit_client_id_overrides_env_derivation(self) -> None:
+        """An explicit client_id is preserved when env is also provided."""
+        middleware = OAuthMiddleware(env="production", client_id="my-explicit-client")
+        inner = middleware._inner  # noqa: SLF001
+        assert isinstance(inner, KeycloakOAuthMiddleware)
+        assert inner._auth_flow.client_id == "my-explicit-client"  # noqa: SLF001
+
+    def test_rejects_keycloak_without_env_or_client_id(self) -> None:
+        """Keycloak path requires either env or client_id."""
+        with pytest.raises(ValueError, match="client_id is required"):
+            OAuthMiddleware()
+
+    def test_azure_takes_precedence_over_keycloak_kwargs(self, monkeypatch) -> None:
+        """When Azure kwargs are present, Keycloak kwargs are ignored."""
+
+        class MockPublicClientApp(PublicClientApplication):
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def acquire_token_silent(self, scopes, account, *, force_refresh=False):
+                return {"access_token": "azure_precedence_token"}
+
+            def get_accounts(self):
+                return []
+
+        monkeypatch.setattr(
+            "destiny_sdk.client.PublicClientApplication", MockPublicClientApp
+        )
+
+        with pytest.warns(DeprecationWarning):
+            middleware = OAuthMiddleware(
+                env="production",
+                azure_login_url="test-url",
+                azure_client_id="test-client",
+                azure_application_id="test-app",
+            )
+
+        assert isinstance(middleware._inner, AzureOAuthMiddleware)  # noqa: SLF001
