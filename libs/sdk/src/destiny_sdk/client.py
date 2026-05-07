@@ -626,21 +626,28 @@ class OAuthMiddleware(httpx.Auth):
     The backend is selected by which kwargs are provided:
 
     - **Keycloak** (default): the routing target unless any Azure kwarg is given.
-      ``env`` (recommended) or ``client_id``is required.
+      ``env`` (recommended) or ``client_id`` is required.
     - **Azure AD** (deprecated): pass any ``azure_*`` kwarg or
       ``use_managed_identity=True``.
 
     .. code-block:: python
 
+        # Interactive login for user accounts
         auth = OAuthMiddleware(env="production")
+
+        # Client credentials flow for service accounts
+        auth = OAuthMiddleware(
+            client_id="your-client-id",
+            client_secret="your-client-secret"
+        )
 
     """
 
     def __init__(  # noqa: PLR0913
         self,
+        env: Literal["development", "staging", "production"] | None = None,
         auth_url: str = "https://auth.evidence-repository.org",
         realm: str = "destiny",
-        env: Literal["development", "staging", "production"] | None = None,
         client_id: str | None = None,
         client_secret: SecretStr | None = None,
         scopes: list[str] | None = None,
@@ -810,8 +817,8 @@ class OAuthClient:
         :type sort: str | None
         :param page: The page number of results to retrieve.
         :type page: int
-        :param timeout: The timeout for the request, in seconds. If provided, this will override
-        the client timeout.
+        :param timeout: The timeout for the request, in seconds. If provided, this
+            will override the client timeout.
         :type timeout: int | None
         :return: The response from the API.
         :rtype: libs.sdk.src.destiny_sdk.references.ReferenceSearchResult
@@ -845,8 +852,8 @@ class OAuthClient:
 
         :param identifiers: The identifiers to look up.
         :type identifiers: list[str | libs.sdk.src.destiny_sdk.identifiers.IdentifierLookup]
-        :param timeout: The timeout for the request, in seconds. If provided, this will override
-        the client timeout.
+        :param timeout: The timeout for the request, in seconds. If provided, this
+            will override the client timeout.
         :type timeout: int | None
         :return: The list of references matching the identifiers.
         :rtype: list[libs.sdk.src.destiny_sdk.references.Reference]
