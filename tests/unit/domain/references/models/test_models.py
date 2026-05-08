@@ -9,12 +9,17 @@ import pytest
 from app.core.exceptions import SDKToDomainError
 from app.domain.references.models.models import (
     CandidateCanonicalSearchFields,
+    Enhancement,
+    FullTextEnhancement,
     GenericExternalIdentifier,
+    Visibility,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.persistence.blob.models import BlobStorageFile
+from tests.factories import FullTextEnhancementFactory
 
 
 async def test_generic_external_identifier_from_specific_without_other():
@@ -46,6 +51,31 @@ def test_reference_create_result_error_str_multiple():
     result = ReferenceCreateResult(errors=["first error", " second error "])
     # strips and joins with blank line
     assert result.error_str == "first error\n\nsecond error"
+
+
+def test_full_text_enhancement_discriminator_resolves_to_domain():
+    """
+    A FULL_TEXT payload resolves to the domain FullTextEnhancement.
+
+    The SDK ships its own FullTextEnhancement with file_url: HttpUrl. The
+    domain variant uses BlobStorageFile. If someone reorders the union or
+    accidentally lists the SDK type in EnhancementContent, this round trip
+    would fail.
+    """
+    full_text = FullTextEnhancementFactory.build()
+    enhancement = Enhancement(
+        id=uuid7(),
+        source="test",
+        visibility=Visibility.PUBLIC,
+        content=full_text,
+        reference_id=uuid7(),
+        created_at=datetime.now(tz=UTC),
+    )
+
+    restored = Enhancement.model_validate(enhancement.model_dump())
+    assert isinstance(restored.content, FullTextEnhancement)
+    assert isinstance(restored.content.file_url, BlobStorageFile)
+    assert restored.content.file_url == full_text.file_url
 
 
 @pytest.fixture

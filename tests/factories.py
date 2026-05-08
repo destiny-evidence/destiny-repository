@@ -40,6 +40,7 @@ from faker.providers import BaseProvider
 
 from app.domain.references.models.models import (
     Enhancement,
+    FullTextEnhancement,
     LinkedExternalIdentifier,
     PendingEnhancement,
     PendingEnhancementStatus,
@@ -49,6 +50,7 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.projections import ReferenceSearchFieldsProjection
 from app.domain.robots.models.models import Robot
+from app.persistence.blob.models import BlobStorageFile, BlobStorageLocation
 from app.utils.time_and_date import utc_now
 
 
@@ -310,6 +312,33 @@ class LinkedDataEnhancementFactory(factory.Factory):
         lambda: fake.pydict(value_types=[str, int, float, bool])
         | {"@context": fake.uri()}
     )
+
+
+class BlobStorageFileFactory(factory.Factory):
+    class Meta:
+        model = BlobStorageFile
+
+    location = BlobStorageLocation.MINIO
+    container = factory.Faker("word")
+    path = factory.LazyFunction(lambda: "/".join(fake.words(nb=2)))
+    filename = factory.LazyFunction(lambda: f"{fake.word()}.pdf")
+
+
+class FullTextEnhancementFactory(factory.Factory):
+    class Meta:
+        model = FullTextEnhancement
+
+    enhancement_type = EnhancementType.FULL_TEXT
+    file_url = factory.LazyFunction(lambda: BlobStorageFileFactory.build())
+    byte_size = factory.Faker("pyint", min_value=1, max_value=10_000_000)
+    sha256_checksum = factory.Faker("sha256")
+    mime_type = "application/pdf"
+    version = factory.Faker("enum", enum_cls=DriverVersion)
+    is_oa = factory.Faker("pybool")
+    license = factory.Faker("license_plate")
+    source = factory.Faker("company")
+    source_url = factory.Faker("url")
+    retrieved_at = factory.Faker("date_time_this_month")
 
 
 class RawEnhancementFactory(factory.Factory):
