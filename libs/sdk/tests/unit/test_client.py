@@ -353,11 +353,12 @@ class TestAzureOAuthMiddleware:
             mock_public_client_app,
         )
 
-        middleware = AzureOAuthMiddleware(
-            azure_login_url="test-url",
-            azure_client_id="test-client",
-            azure_application_id="test-app",
-        )
+        with pytest.warns(DeprecationWarning, match="public client"):
+            middleware = AzureOAuthMiddleware(
+                azure_login_url="test-url",
+                azure_client_id="test-client",
+                azure_application_id="test-app",
+            )
 
         # Create a test request
         request = httpx.Request("GET", "https://api.example.com/test")
@@ -381,12 +382,13 @@ class TestAzureOAuthMiddleware:
             mock_confidential_client_app,
         )
 
-        middleware = AzureOAuthMiddleware(
-            azure_login_url="test-url",
-            azure_client_id="test-client",
-            azure_application_id="test-app",
-            azure_client_secret=SecretStr("test-secret"),
-        )
+        with pytest.warns(DeprecationWarning, match="confidential-client"):
+            middleware = AzureOAuthMiddleware(
+                azure_login_url="test-url",
+                azure_client_id="test-client",
+                azure_application_id="test-app",
+                azure_client_secret=SecretStr("test-secret"),
+            )
 
         # Create a test request
         request = httpx.Request("GET", "https://api.example.com/test")
@@ -398,8 +400,12 @@ class TestAzureOAuthMiddleware:
         assert "Authorization" in authenticated_request.headers
         assert authenticated_request.headers["Authorization"] == f"Bearer {mock_token}"
 
-    def test_managed_identity_auth_flow(self, monkeypatch) -> None:
-        """Test OAuth middleware auth flow with managed identity."""
+    def test_managed_identity_auth_flow(self, monkeypatch, recwarn) -> None:
+        """Test OAuth middleware auth flow with managed identity.
+
+        Also asserts that managed identity is NOT covered by the Azure
+        deprecation warning — only the public/confidential flows are.
+        """
 
         mock_token = "managed_identity_token_789"
 
@@ -422,6 +428,11 @@ class TestAzureOAuthMiddleware:
             azure_client_id="test-client",
             azure_application_id="test-app",
         )
+
+        deprecations = [
+            w for w in recwarn.list if issubclass(w.category, DeprecationWarning)
+        ]
+        assert not deprecations
 
         # Create a test request
         request = httpx.Request("GET", "https://api.example.com/test")
@@ -451,11 +462,12 @@ class TestAzureOAuthMiddleware:
             MockPublicClientAppWithCount,
         )
 
-        middleware = AzureOAuthMiddleware(
-            azure_login_url="test-url",
-            azure_client_id="test-client",
-            azure_application_id="test-app",
-        )
+        with pytest.warns(DeprecationWarning, match="public client"):
+            middleware = AzureOAuthMiddleware(
+                azure_login_url="test-url",
+                azure_client_id="test-client",
+                azure_application_id="test-app",
+            )
 
         request = httpx.Request("GET", "https://api.example.com/test")
 
@@ -604,7 +616,7 @@ class TestOAuthMiddleware:
         assert authenticated_request.headers["Authorization"] == f"Bearer {mock_token}"
 
     def test_routes_to_azure_with_deprecation_warning(self, monkeypatch) -> None:
-        """Azure kwargs route through to AzureOAuthMiddleware with a warning."""
+        """Azure public-client kwargs route through with a deprecation warning."""
 
         class MockPublicClientApp(PublicClientApplication):
             def __init__(self, *args, **kwargs):
@@ -620,7 +632,7 @@ class TestOAuthMiddleware:
             "destiny_sdk.client.PublicClientApplication", MockPublicClientApp
         )
 
-        with pytest.warns(DeprecationWarning, match="deprecated"):
+        with pytest.warns(DeprecationWarning, match="public client"):
             middleware = OAuthMiddleware(
                 azure_login_url="test-url",
                 azure_client_id="test-client",
@@ -636,6 +648,34 @@ class TestOAuthMiddleware:
             authenticated_request.headers["Authorization"]
             == "Bearer azure_router_token"
         )
+
+    def test_routes_to_managed_identity_without_warning(
+        self, monkeypatch, recwarn
+    ) -> None:
+        """Managed identity is not deprecated; routing to it must not warn."""
+
+        class MockManagedIdentityClient(ManagedIdentityClient):
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def acquire_token_for_client(self, resource):
+                return {"access_token": "mi_token"}
+
+        monkeypatch.setattr(
+            "destiny_sdk.client.ManagedIdentityClient", MockManagedIdentityClient
+        )
+
+        middleware = OAuthMiddleware(
+            use_managed_identity=True,
+            azure_client_id="test-client",
+            azure_application_id="test-app",
+        )
+
+        assert isinstance(middleware._inner, AzureOAuthMiddleware)  # noqa: SLF001
+        deprecations = [
+            w for w in recwarn.list if issubclass(w.category, DeprecationWarning)
+        ]
+        assert not deprecations
 
     def test_env_derives_client_id(self) -> None:
         """env derives client_id as destiny-auth-client-{env}."""
@@ -673,7 +713,7 @@ class TestOAuthMiddleware:
             "destiny_sdk.client.PublicClientApplication", MockPublicClientApp
         )
 
-        with pytest.warns(DeprecationWarning):
+        with pytest.warns(DeprecationWarning, match="public client"):
             middleware = OAuthMiddleware(
                 env="production",
                 azure_login_url="test-url",

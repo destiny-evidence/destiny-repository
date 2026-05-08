@@ -218,9 +218,16 @@ class AzureOAuthMiddleware(httpx.Auth):
     This is generally used in conjunction with
     :class:`OAuthClient <libs.sdk.src.destiny_sdk.client.OAuthClient>`.
 
+    .. note::
+
+        The interactive (public client) and confidential-client flows below are
+        **deprecated** and will be removed in a future release; migrate to Keycloak
+        via :class:`OAuthMiddleware`. **Managed identity remains supported** for
+        Azure-hosted services.
+
     Supports three authentication flows:
 
-    **Public Client Application (human login)**
+    **Public Client Application (human login) — deprecated**
 
     Initial login will be interactive through a browser window. Subsequent token
     retrievals will use cached tokens and refreshes where possible, and only prompt
@@ -234,7 +241,7 @@ class AzureOAuthMiddleware(httpx.Auth):
             azure_login_url="login-url",
         )
 
-    **Confidential Client Application (client credentials)**
+    **Confidential Client Application (client credentials) — deprecated**
 
     Suitable for service-to-service authentication where no user interaction is
     possible or desired. Reach out if you need help setting up a confidential client
@@ -315,6 +322,13 @@ class AzureOAuthMiddleware(httpx.Auth):
                     "when not using managed identity authentication"
                 )
                 raise ValueError(msg)
+            warnings.warn(
+                "Azure confidential-client (azure_client_secret) auth is deprecated "
+                "and will be removed in a future release. Migrate to Keycloak via "
+                "OAuthMiddleware. Azure managed identity remains supported.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             self._oauth_app = ConfidentialClientApplication(
                 client_id=azure_client_id,
                 authority=str(azure_login_url),
@@ -328,6 +342,13 @@ class AzureOAuthMiddleware(httpx.Auth):
                     "when not using managed identity authentication"
                 )
                 raise ValueError(msg)
+            warnings.warn(
+                "Azure interactive (public client) auth is deprecated and will be "
+                "removed in a future release. Migrate to Keycloak via "
+                "OAuthMiddleware. Azure managed identity remains supported.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             self._oauth_app = PublicClientApplication(
                 azure_client_id,
                 authority=str(azure_login_url),
@@ -635,8 +656,10 @@ class OAuthMiddleware(httpx.Auth):
 
     - **Keycloak** (default): the routing target unless any Azure kwarg is given.
       ``env`` (recommended) or ``client_id`` is required.
-    - **Azure AD** (deprecated): pass any ``azure_*`` kwarg or
-      ``use_managed_identity=True``.
+    - **Azure AD**: pass any ``azure_*`` kwarg or ``use_managed_identity=True``.
+      Managed identity is supported. The interactive (public-client) and
+      confidential-client (``azure_client_secret``) flows are **deprecated** and
+      will be removed in a future release; migrate those callers to Keycloak.
 
     .. code-block:: python
 
@@ -680,12 +703,6 @@ class OAuthMiddleware(httpx.Auth):
 
         self._inner: httpx.Auth
         if azure_args_present:
-            warnings.warn(
-                "Azure authentication via OAuthMiddleware is deprecated and will soon "
-                "be removed. Migrate to Keycloak by removing azure_* kwargs.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
             if not azure_client_id or not azure_application_id:
                 msg = (
                     "azure_client_id and azure_application_id are required for "
