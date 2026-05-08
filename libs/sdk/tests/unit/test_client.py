@@ -117,13 +117,16 @@ class TestRobotClient:
 
 
 class TestOAuthClient:
-    """Tests for OAuthClient without authentication."""
+    """Tests for OAuthClient request handling."""
 
     @pytest.fixture
     def oauth_client(self, base_url):
-        return OAuthClient(base_url=base_url, auth=None)
+        # Auth is required; use a no-op stand-in so tests focus on request shape,
+        # not authentication. AzureOAuthMiddleware/KeycloakOAuthMiddleware are
+        # exercised separately below.
+        return OAuthClient(base_url=base_url, auth=httpx.BasicAuth("user", "pass"))
 
-    def test_search_unauthenticated(
+    def test_search(
         self,
         httpx_mock: HTTPXMock,
         oauth_client: OAuthClient,
@@ -131,7 +134,7 @@ class TestOAuthClient:
         test_reference_id: UUID,
         mock_reference_response: dict,
     ) -> None:
-        """Test that search works without authentication."""
+        """Test that search builds the expected request and parses results."""
         httpx_mock.add_response(
             url=f"{base_url}/v1/references/search/?q=test+query&page=1",
             method="GET",
@@ -286,9 +289,19 @@ class TestOAuthClientEnvShortcut:
         client = OAuthClient(env="production", base_url=base_url, auth=custom_auth)
         assert client._client.auth is custom_auth  # noqa: SLF001
 
-    def test_rejects_missing_base_url_and_env(self) -> None:
-        """Constructing without base_url or env raises ValueError."""
-        with pytest.raises(ValueError, match="base_url is required"):
+    def test_rejects_missing_auth_when_env_omitted(self) -> None:
+        """Without env, auth must be provided explicitly."""
+        with pytest.raises(ValueError, match=r"^auth required"):
+            OAuthClient(base_url="https://example.com")
+
+    def test_rejects_missing_base_url_when_env_omitted(self) -> None:
+        """Without env, base_url must be provided explicitly even if auth is."""
+        with pytest.raises(ValueError, match=r"^base_url required"):
+            OAuthClient(auth=httpx.BasicAuth("user", "pass"))
+
+    def test_rejects_missing_auth_and_base_url(self) -> None:
+        """When both are missing the error names both."""
+        with pytest.raises(ValueError, match=r"^auth and base_url required"):
             OAuthClient()
 
 

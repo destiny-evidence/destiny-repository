@@ -65,8 +65,9 @@ for row in rows:
     group = row["group"]
     sso = row["google_sso"].lower() == "true"
 
-    existing = api.get("/users", params={"email": email, "exact": "true"}).json()
-    if existing:
+    existing = api.get("/users", params={"email": email, "exact": "true"})
+    existing.raise_for_status()
+    if existing.json():
         print(f"  skip   {email} (already exists)")
         continue
 

@@ -776,16 +776,15 @@ class OAuthClient:
         :raises ValueError: If neither ``base_url`` nor ``env`` is provided.
         """
         if env is not None:
-            if base_url is None:
-                base_url = _DEFAULT_API_URLS[env]
-            if auth is None:
-                auth = OAuthMiddleware(env=env)
-        elif auth is None:
-            msg = "auth is required when env is not provided"
-            raise ValueError(msg)
-
-        if base_url is None:
-            msg = "base_url is required when env is not provided"
+            base_url = base_url or _DEFAULT_API_URLS[env]
+            auth = auth or OAuthMiddleware(env=env)
+        elif auth is None or base_url is None:
+            missing = [
+                name
+                for name, value in (("auth", auth), ("base_url", base_url))
+                if value is None
+            ]
+            msg = f"{' and '.join(missing)} required when env is not provided"
             raise ValueError(msg)
 
         self._client = httpx.Client(
