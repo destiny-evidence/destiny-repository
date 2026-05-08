@@ -769,8 +769,7 @@ class OAuthClient:
         :type base_url: HttpUrl | str | None
         :param auth: The middleware for authentication. If not provided and
             ``env`` is given, an :class:`OAuthMiddleware` configured for that
-            environment is used. If neither is provided, only unauthenticated
-            requests can be made.
+            environment is used.
         :type auth: httpx.Auth | None
         :param timeout: The timeout for requests, in seconds. Defaults to 10 seconds.
         :type timeout: int
@@ -781,6 +780,9 @@ class OAuthClient:
                 base_url = _DEFAULT_API_URLS[env]
             if auth is None:
                 auth = OAuthMiddleware(env=env)
+        elif auth is None:
+            msg = "auth is required when env is not provided"
+            raise ValueError(msg)
 
         if base_url is None:
             msg = "base_url is required when env is not provided"
@@ -795,8 +797,7 @@ class OAuthClient:
             timeout=timeout,
         )
 
-        if auth:
-            self._client.auth = auth
+        self._client.auth = auth
 
     def _raise_for_status(self, response: httpx.Response) -> None:
         """
