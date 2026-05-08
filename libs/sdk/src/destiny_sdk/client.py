@@ -700,7 +700,6 @@ class OAuthMiddleware(httpx.Auth):
                 use_managed_identity,
             ]
         )
-
         self._inner: httpx.Auth
         if azure_args_present:
             if not azure_client_id or not azure_application_id:
@@ -717,6 +716,14 @@ class OAuthMiddleware(httpx.Auth):
                 use_managed_identity=use_managed_identity,
             )
         else:
+            if client_secret and not client_id:
+                msg = (
+                    "client_secret requires an explicit client_id; the "
+                    "env-derived client_id is a public client and cannot use "
+                    "client credentials. Supply your own client_id, or omit "
+                    "client_secret for interactive login."
+                )
+                raise ValueError(msg)
             if env and not client_id:
                 client_id = f"destiny-auth-client-{env}"
             if not client_id:

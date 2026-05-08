@@ -696,8 +696,24 @@ class TestOAuthMiddleware:
         with pytest.raises(ValueError, match="client_id is required"):
             OAuthMiddleware()
 
+    def test_rejects_client_secret_without_explicit_client_id(self) -> None:
+        """client_secret with no explicit client_id is rejected.
+
+        Without env, the existing client_id check would catch the missing
+        client_id, but the more specific message tells the user what they
+        actually got wrong (a secret on a public client).
+        """
+        with pytest.raises(ValueError, match="client_secret requires"):
+            OAuthMiddleware(client_secret=SecretStr("foo"))
+        with pytest.raises(ValueError, match="client_secret requires"):
+            OAuthMiddleware(env="production", client_secret=SecretStr("foo"))
+
     def test_azure_takes_precedence_over_keycloak_kwargs(self, monkeypatch) -> None:
-        """When Azure kwargs are present, Keycloak kwargs are ignored."""
+        """When Azure kwargs are present, Keycloak kwargs are ignored.
+
+        The Azure deprecation warning makes it clear which backend was
+        selected, so we don't emit a separate "kwargs ignored" warning.
+        """
 
         class MockPublicClientApp(PublicClientApplication):
             def __init__(self, *args, **kwargs):
