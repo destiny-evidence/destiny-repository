@@ -21,6 +21,10 @@ resource "azurerm_subnet" "db" {
   virtual_network_name = azurerm_virtual_network.this.name
   address_prefixes     = ["10.0.2.0/24"]
 
+  # Required by PostgreSQL flexible server for WAL upload to Azure Storage.
+  # https://learn.microsoft.com/en-us/azure/postgresql/network/concepts-networking-private
+  service_endpoints = ["Microsoft.Storage"]
+
   delegation {
     name = "fs"
     service_delegation {
