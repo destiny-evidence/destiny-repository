@@ -122,19 +122,17 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
 
     async def full_text_enhancement_content_to_sdk(
         self,
-        full_text_enhancement_content: FullTextEnhancement,
+        full_text: FullTextEnhancement,
     ) -> destiny_sdk.enhancements.FullTextEnhancement:
-        """Signs full text URLs for SDK usage."""
+        """Convert to the SDK shape, signing the blob into a download URL."""
         try:
             return destiny_sdk.enhancements.FullTextEnhancement(
-                enhancement_type=full_text_enhancement_content.enhancement_type,
+                enhancement_type=full_text.enhancement_type,
                 file_url=await self._sign_url(
-                    full_text_enhancement_content.blob,
+                    full_text.blob,
                     BlobSignedUrlType.DOWNLOAD,
                 ),
-                **full_text_enhancement_content.model_dump(
-                    exclude={"enhancement_type", "blob"}
-                ),
+                **full_text.model_dump(exclude={"enhancement_type", "blob"}),
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
@@ -148,8 +146,9 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                 content = await self.full_text_enhancement_content_to_sdk(
                     enhancement.content
                 )
-                return destiny_sdk.references.Enhancement.model_validate(
-                    enhancement.model_dump() | {"content": content.model_dump()}
+                return destiny_sdk.references.Enhancement(
+                    **enhancement.model_dump(exclude={"content"}),
+                    content=content,
                 )
             return destiny_sdk.references.Enhancement.model_validate(
                 enhancement.model_dump()

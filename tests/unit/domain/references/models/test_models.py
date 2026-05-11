@@ -12,14 +12,13 @@ from app.domain.references.models.models import (
     Enhancement,
     FullTextEnhancement,
     GenericExternalIdentifier,
-    Visibility,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.persistence.blob.models import BlobStorageFile
-from tests.factories import FullTextEnhancementFactory
+from tests.factories import EnhancementFactory, FullTextEnhancementFactory
 
 
 async def test_generic_external_identifier_from_specific_without_other():
@@ -63,14 +62,7 @@ def test_full_text_enhancement_discriminator_resolves_to_domain():
     would fail.
     """
     full_text = FullTextEnhancementFactory.build()
-    enhancement = Enhancement(
-        id=uuid7(),
-        source="test",
-        visibility=Visibility.PUBLIC,
-        content=full_text,
-        reference_id=uuid7(),
-        created_at=datetime.now(tz=UTC),
-    )
+    enhancement = EnhancementFactory.build(content=full_text)
 
     restored = Enhancement.model_validate(enhancement.model_dump())
     assert isinstance(restored.content, FullTextEnhancement)
