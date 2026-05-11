@@ -418,6 +418,15 @@ resource "azurerm_storage_account" "this" {
   account_replication_type = "LRS"
   tags                     = local.minimum_resource_tags
 
+  blob_properties {
+    delete_retention_policy {
+      days = 7
+    }
+    container_delete_retention_policy {
+      days = 7
+    }
+  }
+
   # Avoid accidental blob storage deletion
   lifecycle {
     prevent_destroy = true
@@ -444,6 +453,13 @@ resource "azurerm_storage_container" "file_uploads" {
 resource "azurerm_storage_container" "import_files" {
   # This is a container designed for storing pre-processed jsonl files to be imported into the DESTINY repository.
   name                  = "import-files"
+  storage_account_id    = azurerm_storage_account.this.id
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_container" "full_texts" {
+  # This is a container designed for storing full-text files.
+  name                  = "full-texts"
   storage_account_id    = azurerm_storage_account.this.id
   container_access_type = "private"
 }
