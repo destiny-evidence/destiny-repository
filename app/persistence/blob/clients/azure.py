@@ -46,7 +46,6 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
         """
         self.account_url = config.account_url
         self.account_name = config.storage_account_name
-        self.container = config.container
         self.credential = config.credential
         self.presigned_url_expiry_seconds = presigned_url_expiry_seconds
         self.uses_managed_identity = config.uses_managed_identity
@@ -75,7 +74,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
     ) -> None:
         """Upload a file to Azure Blob Storage using async streaming."""
         blob_client = self.blob_service_client.get_blob_client(
-            container=self.container, blob=f"{file.path}/{file.filename}"
+            container=file.container, blob=f"{file.path}/{file.filename}"
         )
         try:
             if isinstance(content, FileStream):
@@ -97,7 +96,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
         Splits the file content by newline.
         """
         blob_client = self.blob_service_client.get_blob_client(
-            container=self.container, blob=f"{file.path}/{file.filename}"
+            container=file.container, blob=f"{file.path}/{file.filename}"
         )
         try:
             stream = await blob_client.download_blob()
@@ -145,7 +144,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             )
             sas_token = generate_blob_sas(
                 account_name=self.account_name,
-                container_name=self.container,
+                container_name=file.container,
                 blob_name=blob_name,
                 account_key=self.credential if not self.uses_managed_identity else None,
                 user_delegation_key=await self._get_user_delegation_key()
@@ -159,6 +158,6 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             msg = f"Failed to generate signed URL for Azure Blob Storage: {e}"
             raise AzureBlobStorageError(msg) from e
         else:
-            url = f"{self.account_url}/{self.container}/{blob_name}?{sas_token}"
+            url = f"{self.account_url}/{file.container}/{blob_name}?{sas_token}"
             self.presigned_url_cache[lookup_key] = url
             return url

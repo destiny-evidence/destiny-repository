@@ -353,7 +353,10 @@ def _add_env(
                     "HOST": minio_config["endpoint"].replace("localhost", host_name),
                     "ACCESS_KEY": minio_config["access_key"],
                     "SECRET_KEY": minio_config["secret_key"],
-                    "BUCKET": bucket_name,
+                    "CONTAINERS": {
+                        "operations": bucket_name,
+                        "full_texts": bucket_name,
+                    },
                 }
             ),
         )

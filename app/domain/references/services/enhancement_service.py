@@ -7,7 +7,6 @@ from uuid import UUID
 import destiny_sdk
 from opentelemetry import trace
 
-from app.core.config import get_settings
 from app.core.exceptions import VocabularyFetchError
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
@@ -40,7 +39,6 @@ from app.persistence.blob.stream import FileStream
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 logger = get_logger(__name__)
-settings = get_settings()
 tracer = trace.get_tracer(__name__)
 
 
@@ -164,6 +162,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
 
     async def build_robot_enhancement_batch(
         self,
+        blob_repository: BlobRepository,
         robot_enhancement_batch: RobotEnhancementBatch,
         reference_data_file: BlobStorageFile,
     ) -> RobotEnhancementBatch:
@@ -171,6 +170,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         Create a robot enhancement batch.
 
         Args:
+            blob_repository (BlobRepository)
             robot_enhancement_batch (RobotEnhancementBatch): The robot enhancement
                 object.
             reference_data_file (BlobStorageFile): The blob storage file object.
@@ -179,9 +179,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             RobotEnhancementBatch: The created robot enhancement batch.
 
         """
-        result_file = BlobStorageFile(
-            location=settings.default_blob_location,
-            container=settings.default_blob_container,
+        result_file = blob_repository.destination(
             path="robot_enhancement_batch_result_data",
             filename=f"{robot_enhancement_batch.id}_robot.jsonl",
         )
@@ -229,9 +227,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         )
 
         enhancement_request.reference_data_file = file
-        enhancement_request.result_file = BlobStorageFile(
-            location=settings.default_blob_location,
-            container=settings.default_blob_container,
+        enhancement_request.result_file = blob_repository.destination(
             path="enhancement_result",
             filename=f"{enhancement_request.id}_robot.jsonl",
         )

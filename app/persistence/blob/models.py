@@ -25,6 +25,13 @@ class BlobStorageLocation(StrEnum):
     MINIO = auto()
 
 
+class BlobContainer(StrEnum):
+    """Blob containers."""
+
+    OPERATIONS = auto()
+    FULL_TEXTS = auto()
+
+
 class BlobStorageFile(BaseModel):
     """Model to represent Blob Storage files."""
 

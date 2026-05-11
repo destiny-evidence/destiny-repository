@@ -1150,6 +1150,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
         return await self._enhancement_service.build_robot_enhancement_batch(
+            blob_repository=blob_repository,
             robot_enhancement_batch=robot_enhancement_batch,
             reference_data_file=reference_data_file,
         )

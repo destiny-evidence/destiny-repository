@@ -13,12 +13,14 @@ from pydantic import (
     FilePath,
     HttpUrl,
     PostgresDsn,
+    field_validator,
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import ExternalIdentifierType
+from app.persistence.blob.models import BlobContainer, BlobStorageLocation
 from app.utils.time_and_date import iso8601_duration_adapter
 
 logger = get_logger(__name__)
@@ -157,23 +159,44 @@ class ESConfig(BaseModel):
         return self
 
 
-class MinioConfig(BaseModel):
+class BlobBackendConfig(BaseModel):
+    """Shared shape for blob storage backend configurations."""
+
+    containers: dict[BlobContainer, str]
+    presigned_url_expiry_seconds: int = 60 * 60  # 1 hour
+
+    @field_validator("containers")
+    @classmethod
+    def _all_containers_required(
+        cls, v: dict[BlobContainer, str]
+    ) -> dict[BlobContainer, str]:
+        missing = set(BlobContainer) - set(v)
+        if missing:
+            msg = (
+                f"Blob backend config is missing containers: "
+                f"{sorted(c.value for c in missing)}"
+            )
+            raise ValueError(msg)
+        return v
+
+
+class MinioConfig(BlobBackendConfig):
     """Minio configuration."""
+
+    location: Literal[BlobStorageLocation.MINIO] = BlobStorageLocation.MINIO
 
     host: str
     access_key: str
     secret_key: str
-    bucket: str = "destiny-repository"
-    presigned_url_expiry_seconds: int = 60 * 60  # 1 hour
 
 
-class AzureBlobConfig(BaseModel):
+class AzureBlobConfig(BlobBackendConfig):
     """Azure Blob Storage configuration."""
 
+    location: Literal[BlobStorageLocation.AZURE] = BlobStorageLocation.AZURE
+
     storage_account_name: str
-    container: str
     credential: str | None = None
-    presigned_url_expiry_seconds: int = 60 * 60  # 1 hour
     user_delegation_key_duration: int = 60 * 60 * 24  # 1 day
 
     @property
@@ -592,36 +615,25 @@ class Settings(BaseSettings):
         return True
 
     @property
-    def default_blob_location(self) -> str:
-        """Return the default blob location."""
+    def active_blob_backend(self) -> AzureBlobConfig | MinioConfig:
+        """Return the blob backend config in use for this environment."""
         if self.running_locally:
             if self.minio_config:
-                return "minio"
+                return self.minio_config
             if self.azure_blob_config:
-                return "azure"
+                return self.azure_blob_config
             if self.env == Environment.TEST:
-                # If we reach here, we are in a test environment and haven't
-                # specified a blob config, so assume it is mocked. Just return
-                # minio to keep pydantic happy.
-                return "minio"
-        return "azure"
-
-    @property
-    def default_blob_container(self) -> str:
-        """Return the default blob container."""
-        if self.running_locally:
-            if self.minio_config:
-                return self.minio_config.bucket
-            if self.azure_blob_config:
-                return self.azure_blob_config.container
-            if self.env == Environment.TEST:
-                # If we reach here, we are in a test environment and haven't
-                # specified a blob config, so assume it is mocked.
-                return "test"
+                # No blob config in tests; assume mocked.
+                return MinioConfig(
+                    host="test",
+                    access_key="test",
+                    secret_key="test",  # noqa: S106
+                    containers={c: "test" for c in BlobContainer},
+                )
         if not self.azure_blob_config:
             msg = "Azure Blob Storage configuration is not given."
             raise ValueError(msg)
-        return self.azure_blob_config.container
+        return self.azure_blob_config
 
     @property
     def trace_repr(self) -> str:

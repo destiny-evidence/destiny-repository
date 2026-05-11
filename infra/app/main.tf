@@ -88,7 +88,10 @@ locals {
       name = "AZURE_BLOB_CONFIG"
       value = jsonencode({
         storage_account_name = azurerm_storage_account.this.name
-        container            = azurerm_storage_container.operations.name
+        containers = {
+          operations = azurerm_storage_container.operations.name
+          full_texts = azurerm_storage_container.full_texts.name
+        }
       })
     },
     {

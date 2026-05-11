@@ -749,6 +749,15 @@ async def test_claim_and_create_robot_enhancement_batch(
         filename="test.jsonl",
         path="robot_enhancement_batch_reference_data",
     )
+    # destination is sync; override AsyncMock's default async-by-attribute behaviour.
+    mock_blob_repository.destination = Mock(
+        return_value=BlobStorageFile(
+            location="minio",
+            container="test",
+            filename="test_robot.jsonl",
+            path="robot_enhancement_batch_result_data",
+        )
+    )
 
     references = [Reference(id=uuid7(), duplicate_references=[]) for _ in range(3)]
     pending_enhancements = [
