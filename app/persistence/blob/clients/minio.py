@@ -4,7 +4,6 @@ import datetime
 from collections.abc import AsyncGenerator
 from io import BytesIO
 
-from cachetools import TTLCache
 from minio import Minio
 from minio.error import S3Error
 from opentelemetry import trace
@@ -48,12 +47,6 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
             access_key=self.access_key,
             secret_key=self.secret_key,
             secure=False,
-        )
-        self.presigned_url_cache: TTLCache[
-            tuple[BlobStorageFile, BlobSignedUrlType], str
-        ] = TTLCache(
-            maxsize=1000,
-            ttl=self.presigned_url_expiry_seconds / 2,
         )
 
     @trace_blob_client_method(tracer)
@@ -112,8 +105,6 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
         interaction_type: BlobSignedUrlType,
     ) -> str:
         """Get a signed URL for a file in MinIO."""
-        if url := self.presigned_url_cache.get(lookup_key := (file, interaction_type)):
-            return url
         try:
             if interaction_type == BlobSignedUrlType.DOWNLOAD:
                 url = self.client.presigned_get_object(
@@ -138,5 +129,4 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
             if not url:
                 msg = "Failed to generate signed URL from MinIO."
                 raise MinioBlobStorageError(msg)
-            self.presigned_url_cache[lookup_key] = url
             return url

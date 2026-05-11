@@ -62,12 +62,6 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             maxsize=1, ttl=self.user_delegation_key_duration / 2
         )
         self._user_delegation_key_lock = asyncio.Lock()
-        self.presigned_url_cache: TTLCache[
-            tuple[BlobStorageFile, BlobSignedUrlType], str
-        ] = TTLCache(
-            maxsize=1000,
-            ttl=self.presigned_url_expiry_seconds / 2,
-        )
 
     @trace_blob_client_method(tracer)
     async def upload_file(
@@ -144,8 +138,6 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
         interaction_type: BlobSignedUrlType,
     ) -> str:
         """Get a signed URL for a file in Azure Blob Storage."""
-        if url := self.presigned_url_cache.get(lookup_key := (file, interaction_type)):
-            return url
         try:
             blob_name = f"{file.path}/{file.filename}"
 
@@ -170,6 +162,4 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             msg = f"Failed to generate signed URL for Azure Blob Storage: {e}"
             raise AzureBlobStorageError(msg) from e
         else:
-            url = f"{self.account_url}/{self.container}/{blob_name}?{sas_token}"
-            self.presigned_url_cache[lookup_key] = url
-            return url
+            return f"{self.account_url}/{self.container}/{blob_name}?{sas_token}"
