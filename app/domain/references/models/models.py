@@ -310,8 +310,8 @@ class FullTextEnhancement(DomainBaseModel):
     """
 
     enhancement_type: Literal[EnhancementType.FULL_TEXT] = EnhancementType.FULL_TEXT
-    file_url: BlobStorageFile = Field(
-        description="Signed URL to the full text file",
+    blob: BlobStorageFile = Field(
+        description="Blob storage pointer to the full text file.",
     )
     byte_size: int | None = Field(
         default=None,

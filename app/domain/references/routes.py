@@ -354,7 +354,7 @@ async def search_references(
         if search_result.hits
         else []
     )
-    return anti_corruption_service.two_stage_reference_search_result_to_sdk(
+    return await anti_corruption_service.two_stage_reference_search_result_to_sdk(
         search_result, references
     )
 
@@ -376,7 +376,7 @@ async def get_reference(
 ) -> destiny_sdk.references.Reference:
     """Get a reference by id."""
     reference = await reference_service.get_reference(reference_id)
-    return anti_corruption_service.reference_to_sdk(reference)
+    return await anti_corruption_service.reference_to_sdk(reference)
 
 
 class IdentifierLookupQueryParams(BaseModel):
@@ -435,12 +435,9 @@ async def lookup_references(
     identifier_lookups = anti_corruption_service.identifier_lookups_from_sdk(
         identifiers
     )
-    return [
-        anti_corruption_service.reference_to_sdk(reference)
-        for reference in await reference_service.get_references_from_identifiers(
-            identifier_lookups
-        )
-    ]
+    return await anti_corruption_service.references_to_sdk(
+        await reference_service.get_references_from_identifiers(identifier_lookups)
+    )
 
 
 @enhancement_request_automation_router.post(

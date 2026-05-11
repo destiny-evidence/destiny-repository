@@ -1,5 +1,6 @@
 """Azure implementation for Blob Storage operations."""
 
+import asyncio
 import datetime
 from collections.abc import AsyncGenerator
 from io import BytesIO
@@ -57,9 +58,10 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             if self.uses_managed_identity
             else self.credential,
         )
-        self._user_delegation_key_cache: TTLCache[None, GenericBlobStorageClient] = (
-            TTLCache(maxsize=1, ttl=self.user_delegation_key_duration / 2)
+        self._user_delegation_key_cache: TTLCache[None, UserDelegationKey] = TTLCache(
+            maxsize=1, ttl=self.user_delegation_key_duration / 2
         )
+        self._user_delegation_key_lock = asyncio.Lock()
         self.presigned_url_cache: TTLCache[
             tuple[BlobStorageFile, BlobSignedUrlType], str
         ] = TTLCache(
@@ -115,16 +117,25 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             raise AzureBlobStorageError(msg) from e
 
     async def _get_user_delegation_key(self) -> UserDelegationKey:
-        """Get a user delegation key from managed identity."""
-        user_delegation_key = await self.blob_service_client.get_user_delegation_key(
-            datetime.datetime.now(datetime.UTC),
-            datetime.datetime.now(datetime.UTC)
-            + datetime.timedelta(seconds=self.user_delegation_key_duration),
-        )
-        if not user_delegation_key.value:
-            msg = "Failed to get user delegation key from Azure Blob Storage."
-            raise AzureBlobStorageError(msg)
-        return user_delegation_key
+        """Get a user delegation key from managed identity, cached."""
+        if cached := self._user_delegation_key_cache.get(None):
+            return cached
+        async with self._user_delegation_key_lock:
+            # Re-check under the lock so concurrent callers single-flight the fetch.
+            if cached := self._user_delegation_key_cache.get(None):
+                return cached
+            user_delegation_key = (
+                await self.blob_service_client.get_user_delegation_key(
+                    datetime.datetime.now(datetime.UTC),
+                    datetime.datetime.now(datetime.UTC)
+                    + datetime.timedelta(seconds=self.user_delegation_key_duration),
+                )
+            )
+            if not user_delegation_key.value:
+                msg = "Failed to get user delegation key from Azure Blob Storage."
+                raise AzureBlobStorageError(msg)
+            self._user_delegation_key_cache[None] = user_delegation_key
+            return user_delegation_key
 
     @trace_blob_client_method(tracer)
     async def generate_signed_url(

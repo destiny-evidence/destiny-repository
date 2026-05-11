@@ -329,7 +329,7 @@ class FullTextEnhancementFactory(factory.Factory):
         model = FullTextEnhancement
 
     enhancement_type = EnhancementType.FULL_TEXT
-    file_url = factory.LazyFunction(lambda: BlobStorageFileFactory.build())
+    blob = factory.LazyFunction(lambda: BlobStorageFileFactory.build())
     byte_size = factory.Faker("pyint", min_value=1, max_value=10_000_000)
     sha256_checksum = factory.Faker("sha256")
     mime_type = "application/pdf"

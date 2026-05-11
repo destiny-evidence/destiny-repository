@@ -74,8 +74,8 @@ def test_full_text_enhancement_discriminator_resolves_to_domain():
 
     restored = Enhancement.model_validate(enhancement.model_dump())
     assert isinstance(restored.content, FullTextEnhancement)
-    assert isinstance(restored.content.file_url, BlobStorageFile)
-    assert restored.content.file_url == full_text.file_url
+    assert isinstance(restored.content.blob, BlobStorageFile)
+    assert restored.content.blob == full_text.blob
 
 
 @pytest.fixture

@@ -1,5 +1,6 @@
 """Anti-corruption service for references domain."""
 
+import asyncio
 from uuid import UUID
 
 import destiny_sdk
@@ -10,7 +11,9 @@ from app.domain.references.models.models import (
     AnnotationFilter,
     Enhancement,
     EnhancementRequest,
+    EnhancementType,
     ExternalIdentifierAdapter,
+    FullTextEnhancement,
     IdentifierLookup,
     LinkedExternalIdentifier,
     PublicationYearRange,
@@ -64,11 +67,15 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         else:
             return reference
 
-    def reference_to_sdk(
+    async def reference_to_sdk(
         self, reference: Reference
     ) -> destiny_sdk.references.Reference:
         """Convert the reference to a Reference SDK model."""
         try:
+            enhancements = [
+                await self.enhancement_to_sdk(enhancement)
+                for enhancement in reference.enhancements or []
+            ]
             return destiny_sdk.references.Reference(
                 id=reference.id,
                 visibility=reference.visibility,
@@ -76,13 +83,18 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     self.external_identifier_to_sdk(identifier).identifier
                     for identifier in reference.identifiers or []
                 ],
-                enhancements=[
-                    self.enhancement_to_sdk(enhancement)
-                    for enhancement in reference.enhancements or []
-                ],
+                enhancements=enhancements,
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
+
+    async def references_to_sdk(
+        self, references: list[Reference]
+    ) -> list[destiny_sdk.references.Reference]:
+        """Convert a collection of references concurrently."""
+        return list(
+            await asyncio.gather(*(self.reference_to_sdk(r) for r in references))
+        )
 
     def external_identifier_to_sdk(
         self, identifier: LinkedExternalIdentifier
@@ -112,11 +124,37 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         else:
             return identifier
 
-    def enhancement_to_sdk(
+    async def full_text_enhancement_content_to_sdk(
+        self,
+        full_text_enhancement_content: FullTextEnhancement,
+    ) -> destiny_sdk.enhancements.FullTextEnhancement:
+        """Signs full text URLs for SDK usage."""
+        try:
+            return destiny_sdk.enhancements.FullTextEnhancement(
+                enhancement_type=full_text_enhancement_content.enhancement_type,
+                file_url=await self._blob_repository.get_signed_url(
+                    full_text_enhancement_content.blob,
+                    BlobSignedUrlType.DOWNLOAD,
+                ),
+                **full_text_enhancement_content.model_dump(
+                    exclude={"enhancement_type", "blob"}
+                ),
+            )
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
+
+    async def enhancement_to_sdk(
         self, enhancement: Enhancement
     ) -> destiny_sdk.references.Enhancement:
         """Convert the enhancement to an Enhancement SDK model."""
         try:
+            if enhancement.content.enhancement_type == EnhancementType.FULL_TEXT:
+                content = await self.full_text_enhancement_content_to_sdk(
+                    enhancement.content
+                )
+                return destiny_sdk.references.Enhancement.model_validate(
+                    enhancement.model_dump() | {"content": content.model_dump()}
+                )
             return destiny_sdk.references.Enhancement.model_validate(
                 enhancement.model_dump()
             )
@@ -321,7 +359,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
-    def two_stage_reference_search_result_to_sdk(
+    async def two_stage_reference_search_result_to_sdk(
         self,
         search_result: ESSearchResult,
         references: list[Reference],
@@ -329,6 +367,10 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         """Convert a search result and retrieved references to the SDK model."""
         try:
             hit_order = {hit.id: i for i, hit in enumerate(search_result.hits)}
+            sdk_references = await self.references_to_sdk(
+                # Sort references according to search order
+                sorted(references, key=lambda r: hit_order[r.id])
+            )
             return destiny_sdk.references.ReferenceSearchResult(
                 total={
                     "count": search_result.total.value,
@@ -338,11 +380,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     "count": len(search_result.hits),
                     "number": search_result.page,
                 },
-                references=[
-                    self.reference_to_sdk(reference)
-                    # Sort references according to search order
-                    for reference in sorted(references, key=lambda r: hit_order[r.id])
-                ],
+                references=sdk_references,
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
