@@ -25,16 +25,21 @@ from app.domain.references.models.models import (
 )
 from app.domain.service import GenericAntiCorruptionService
 from app.persistence.blob.models import BlobSignedUrlType
-from app.persistence.blob.repository import BlobRepository
+from app.persistence.blob.repository import URLSigner
 from app.persistence.es.persistence import ESSearchResult
 
 
 class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     """Anti-corruption service for translating between Reference domain and SDK."""
 
-    def __init__(self, blob_repository: BlobRepository) -> None:
-        """Initialize the anti-corruption service."""
-        self._blob_repository = blob_repository
+    def __init__(self, sign_url: URLSigner) -> None:
+        """
+        Initialize the anti-corruption service.
+
+        :param sign_url: Callable that signs a blob storage file into a URL.
+            Typically ``BlobRepository.get_signed_url``.
+        """
+        self._sign_url = sign_url
         super().__init__()
 
     def reference_from_sdk_file_input(
@@ -132,7 +137,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         try:
             return destiny_sdk.enhancements.FullTextEnhancement(
                 enhancement_type=full_text_enhancement_content.enhancement_type,
-                file_url=await self._blob_repository.get_signed_url(
+                file_url=await self._sign_url(
                     full_text_enhancement_content.blob,
                     BlobSignedUrlType.DOWNLOAD,
                 ),
@@ -208,18 +213,18 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             return destiny_sdk.robots.EnhancementRequestRead.model_validate(
                 enhancement_request.model_dump()
                 | {
-                    "reference_data_url": await self._blob_repository.get_signed_url(
+                    "reference_data_url": await self._sign_url(
                         enhancement_request.reference_data_file,
                         BlobSignedUrlType.DOWNLOAD,
                     )
                     if enhancement_request.reference_data_file
                     else None,
-                    "result_storage_url": await self._blob_repository.get_signed_url(
+                    "result_storage_url": await self._sign_url(
                         enhancement_request.result_file, BlobSignedUrlType.UPLOAD
                     )
                     if enhancement_request.result_file
                     else None,
-                    "validation_result_url": await self._blob_repository.get_signed_url(
+                    "validation_result_url": await self._sign_url(
                         enhancement_request.validation_result_file,
                         BlobSignedUrlType.DOWNLOAD,
                     )
@@ -238,12 +243,12 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         try:
             return destiny_sdk.robots.RobotRequest(
                 id=enhancement_request.id,
-                reference_storage_url=await self._blob_repository.get_signed_url(
+                reference_storage_url=await self._sign_url(
                     enhancement_request.reference_data_file, BlobSignedUrlType.DOWNLOAD
                 )
                 if enhancement_request.reference_data_file
                 else None,
-                result_storage_url=await self._blob_repository.get_signed_url(
+                result_storage_url=await self._sign_url(
                     enhancement_request.result_file, BlobSignedUrlType.UPLOAD
                 )
                 if enhancement_request.result_file
@@ -261,18 +266,18 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             return destiny_sdk.robots.RobotEnhancementBatchRead.model_validate(
                 robot_enhancement_batch.model_dump()
                 | {
-                    "reference_data_url": await self._blob_repository.get_signed_url(
+                    "reference_data_url": await self._sign_url(
                         robot_enhancement_batch.reference_data_file,
                         BlobSignedUrlType.DOWNLOAD,
                     )
                     if robot_enhancement_batch.reference_data_file
                     else None,
-                    "result_storage_url": await self._blob_repository.get_signed_url(
+                    "result_storage_url": await self._sign_url(
                         robot_enhancement_batch.result_file, BlobSignedUrlType.UPLOAD
                     )
                     if robot_enhancement_batch.result_file
                     else None,
-                    "validation_result_url": await self._blob_repository.get_signed_url(
+                    "validation_result_url": await self._sign_url(
                         robot_enhancement_batch.validation_result_file,
                         BlobSignedUrlType.DOWNLOAD,
                     )
@@ -291,13 +296,13 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         try:
             return destiny_sdk.robots.RobotEnhancementBatch(
                 id=robot_enhancement_batch.id,
-                reference_storage_url=await self._blob_repository.get_signed_url(
+                reference_storage_url=await self._sign_url(
                     robot_enhancement_batch.reference_data_file,
                     BlobSignedUrlType.DOWNLOAD,
                 )
                 if robot_enhancement_batch.reference_data_file
                 else None,
-                result_storage_url=await self._blob_repository.get_signed_url(
+                result_storage_url=await self._sign_url(
                     robot_enhancement_batch.result_file, BlobSignedUrlType.UPLOAD
                 )
                 if robot_enhancement_batch.result_file

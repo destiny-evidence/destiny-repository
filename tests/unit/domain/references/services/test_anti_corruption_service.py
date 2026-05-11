@@ -1,7 +1,7 @@
 """Tests for ReferenceAntiCorruptionService."""
 
 import datetime
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock
 from uuid import uuid7
 
 import destiny_sdk
@@ -19,7 +19,7 @@ class TestEnhancementFromSdk:
 
     @pytest.fixture
     def service(self):
-        return ReferenceAntiCorruptionService(blob_repository=MagicMock())
+        return ReferenceAntiCorruptionService(sign_url=AsyncMock())
 
     @pytest.fixture
     def sdk_enhancement(self):

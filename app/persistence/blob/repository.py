@@ -1,6 +1,6 @@
 """Service for managing files in blob storage."""
 
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from io import BytesIO
 
@@ -26,6 +26,9 @@ from app.persistence.blob.stream import FileStream
 
 settings = get_settings()
 logger = get_logger(__name__)
+
+
+type URLSigner = Callable[[BlobStorageFile, BlobSignedUrlType], Awaitable[HttpUrl]]
 
 
 class BlobRepository:

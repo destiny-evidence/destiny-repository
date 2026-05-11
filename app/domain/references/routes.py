@@ -100,7 +100,7 @@ def reference_anti_corruption_service(
     blob_repository: Annotated[BlobRepository, Depends(blob_repository)],
 ) -> ReferenceAntiCorruptionService:
     """Return the reference anti-corruption service."""
-    return ReferenceAntiCorruptionService(blob_repository=blob_repository)
+    return ReferenceAntiCorruptionService(sign_url=blob_repository.get_signed_url)
 
 
 def robot_anti_corruption_service() -> RobotAntiCorruptionService:
