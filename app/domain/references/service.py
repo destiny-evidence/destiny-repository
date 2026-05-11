@@ -388,8 +388,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         deduplicated = await self._get_deduplicated_references(
             reference_ids=reference_ids
         )
-        sdk_refs = await self._anti_corruption_service.references_to_sdk(deduplicated)
-        return [ref.to_jsonl() for ref in sdk_refs]
+        return [
+            (await self._anti_corruption_service.reference_to_sdk(ref)).to_jsonl()
+            for ref in deduplicated
+        ]
 
     @sql_unit_of_work
     async def get_all_reference_ids(

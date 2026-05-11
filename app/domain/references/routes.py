@@ -435,9 +435,12 @@ async def lookup_references(
     identifier_lookups = anti_corruption_service.identifier_lookups_from_sdk(
         identifiers
     )
-    return await anti_corruption_service.references_to_sdk(
-        await reference_service.get_references_from_identifiers(identifier_lookups)
-    )
+    return [
+        await anti_corruption_service.reference_to_sdk(reference)
+        for reference in await reference_service.get_references_from_identifiers(
+            identifier_lookups
+        )
+    ]
 
 
 @enhancement_request_automation_router.post(

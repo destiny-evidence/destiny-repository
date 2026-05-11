@@ -1,6 +1,5 @@
 """Anti-corruption service for references domain."""
 
-import asyncio
 from uuid import UUID
 
 import destiny_sdk
@@ -92,14 +91,6 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
-
-    async def references_to_sdk(
-        self, references: list[Reference]
-    ) -> list[destiny_sdk.references.Reference]:
-        """Convert a collection of references concurrently."""
-        return list(
-            await asyncio.gather(*(self.reference_to_sdk(r) for r in references))
-        )
 
     def external_identifier_to_sdk(
         self, identifier: LinkedExternalIdentifier
@@ -372,10 +363,11 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         """Convert a search result and retrieved references to the SDK model."""
         try:
             hit_order = {hit.id: i for i, hit in enumerate(search_result.hits)}
-            sdk_references = await self.references_to_sdk(
+            sdk_references = [
+                await self.reference_to_sdk(reference)
                 # Sort references according to search order
-                sorted(references, key=lambda r: hit_order[r.id])
-            )
+                for reference in sorted(references, key=lambda r: hit_order[r.id])
+            ]
             return destiny_sdk.references.ReferenceSearchResult(
                 total={
                     "count": search_result.total.value,
