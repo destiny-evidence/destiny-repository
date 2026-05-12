@@ -224,6 +224,13 @@ class BlobRepository:
         :param destination: The destination to copy the file to.
         :type destination: BlobStorageFile
         """
+        if destination.location != self._write_backend.location:
+            msg = (
+                f"Destination location {destination.location} does not match the "
+                f"active write backend {self._write_backend.location}."
+            )
+            raise BlobStorageError(msg)
+
         src_client = await self._preload_config(source)
         dest_client = await self._preload_config(destination)
 

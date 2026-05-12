@@ -308,6 +308,23 @@ async def test_copy_empty_source_yields_known_sha256():
     assert dest_client.uploaded_chunks == []
 
 
+@pytest.mark.asyncio
+async def test_copy_rejects_destination_on_other_backend():
+    """A destination not on the active write backend should be refused."""
+    source = BlobStorageFile.from_uri("https://example.com/foo.pdf")
+    destination = BlobStorageFile(
+        location=BlobStorageLocation.AZURE,
+        container="cont",
+        path="p",
+        filename="foo.pdf",
+    )
+
+    repo = BlobRepository()
+    assert repo._write_backend.location == BlobStorageLocation.MINIO  # noqa: SLF001
+    with pytest.raises(BlobStorageError):
+        await repo.copy(source, destination)
+
+
 class DummyClient(GenericBlobStorageClient):
     async def upload_file(self, content, file):
         self.uploaded = (content, file)
