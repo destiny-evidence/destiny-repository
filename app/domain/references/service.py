@@ -1,6 +1,7 @@
 """The service for interacting with and managing references."""
 
 import datetime
+import mimetypes
 from collections import defaultdict
 from collections.abc import Collection, Iterable
 from uuid import UUID
@@ -14,7 +15,11 @@ from app.core.config import (
 )
 from app.core.exceptions import (
     DuplicateEnhancementError,
+    FullTextDownloadError,
+    FullTextIngestionError,
+    FullTextIntegrityError,
     InvalidParentEnhancementError,
+    RemoteBlobStorageError,
     SQLNotFoundError,
     VocabularyFetchError,
 )
@@ -29,6 +34,7 @@ from app.domain.references.models.models import (
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifier,
+    FullTextEnhancement,
     IdentifierLookup,
     LinkedExternalIdentifier,
     PendingEnhancement,
@@ -66,6 +72,10 @@ from app.domain.references.services.synchronizer_service import (
 from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
 from app.external.vocabulary.client import get_vocabulary_artifact_client
+from app.persistence.blob.models import (
+    BlobContainer,
+    BlobStorageLocation,
+)
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
 from app.persistence.es.persistence import ESSearchResult
@@ -472,12 +482,112 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         return await self.sql_uow.external_identifiers.add(db_identifier)
 
+    async def _copy_full_text(
+        self,
+        content: FullTextEnhancement,
+        reference_id: UUID,
+        enhancement_id: UUID,
+        blob_repository: BlobRepository,
+    ) -> None:
+        """
+        Copy a single FT enhancement's content into our blob storage.
+
+        Mutates ``content`` in place: ``blob`` is swapped to the owned location
+        and ``byte_size`` / ``sha256_checksum`` are populated from the copy
+        result if they were not declared.
+
+        :raises FullTextDownloadError: if the remote fetch fails.
+        :raises FullTextIntegrityError: if declared sha256 or byte_size
+            disagrees with the computed value.
+        """
+        source = content.blob
+        extension = mimetypes.guess_extension(content.mime_type) or ".bin"
+        destination = blob_repository.destination(
+            path=str(enhancement_id),
+            filename=f"{reference_id}{extension}",
+            container=BlobContainer.FULL_TEXTS,
+        )
+
+        try:
+            result = await blob_repository.copy(source, destination)
+        except RemoteBlobStorageError as exc:
+            msg = f"Failed to fetch full text from {source.to_uri()}: {exc.detail}"
+            raise FullTextDownloadError(msg) from exc
+
+        if (
+            content.sha256_checksum is not None
+            and content.sha256_checksum != result.sha256_checksum
+        ):
+            msg = (
+                f"sha256 mismatch for full text from {source.to_uri()}: "
+                f"declared {content.sha256_checksum!r}, "
+                f"computed {result.sha256_checksum!r}"
+            )
+            raise FullTextIntegrityError(msg)
+
+        if content.byte_size is not None and content.byte_size != result.byte_size:
+            msg = (
+                f"byte_size mismatch for full text from {source.to_uri()}: "
+                f"declared {content.byte_size}, computed {result.byte_size}"
+            )
+            raise FullTextIntegrityError(msg)
+
+        content.blob = result.destination
+        if content.sha256_checksum is None:
+            content.sha256_checksum = result.sha256_checksum
+        if content.byte_size is None:
+            content.byte_size = result.byte_size
+
+    async def _materialise_full_texts(
+        self,
+        reference: Reference,
+        blob_repository: BlobRepository,
+    ) -> list[str]:
+        """Copy every REMOTE full-text enhancement into our blob storage."""
+        if not reference.enhancements:
+            return []
+
+        errors: list[str] = []
+        materialised: list[Enhancement] = []
+
+        for enhancement in reference.enhancements:
+            content = enhancement.content
+            if (
+                not isinstance(content, FullTextEnhancement)
+                or content.blob.location != BlobStorageLocation.REMOTE
+            ):
+                materialised.append(enhancement)
+                continue
+
+            try:
+                await self._copy_full_text(
+                    content,
+                    reference_id=reference.id,
+                    enhancement_id=enhancement.id,
+                    blob_repository=blob_repository,
+                )
+            except FullTextIngestionError as exc:
+                logger.warning(
+                    "Failed to materialise full text enhancement.",
+                    reference_id=str(reference.id),
+                    enhancement_id=str(enhancement.id),
+                    exc=repr(exc),
+                )
+                errors.append(str(exc))
+                continue
+
+            materialised.append(enhancement)
+
+        reference.enhancements = materialised
+        return errors
+
     @sql_unit_of_work
     @es_unit_of_work
     async def ingest_reference(
         self,
         record_str: str,
         entry_ref: int,
+        blob_repository: BlobRepository,
     ) -> ReferenceCreateResult:
         """Ingest a reference from a file."""
         # Full deduplication flow
@@ -516,6 +626,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         reference_create_result.reference_id = reference.id
         trace_attribute(Attributes.REFERENCE_ID, str(reference.id))
+
+        reference_create_result.errors.extend(
+            await self._materialise_full_texts(reference, blob_repository)
+        )
 
         canonical_reference = await self._deduplication_service.find_exact_duplicate(
             reference
