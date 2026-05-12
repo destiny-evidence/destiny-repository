@@ -486,6 +486,71 @@ class RemoteBlobStorageError(BlobStorageError):
         super().__init__(detail, *args)
 
 
+class FullTextIngestionError(DestinyRepositoryError):
+    """Base exception for failures materialising a full-text enhancement."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the FullTextIngestionError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class FullTextDownloadError(FullTextIngestionError):
+    """The source URL could not be fetched (timeout, 4xx/5xx, connection error)."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the FullTextDownloadError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class FullTextIntegrityError(FullTextIngestionError):
+    """Downloaded bytes don't match declared sha256 or byte_size."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the FullTextIntegrityError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class UnmaterialisedFullTextError(FullTextIngestionError):
+    """
+    A full-text enhancement reached the persistence boundary unmaterialised.
+
+    Raised when the materialisation step was skipped or failed to swap a
+    REMOTE blob for an owned one before SQL/ES write.
+    """
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the UnmaterialisedFullTextError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
 class AuthError(destiny_sdk.auth.AuthException):
     """An exception thrown by the authentication system."""
 

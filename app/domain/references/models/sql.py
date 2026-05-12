@@ -18,7 +18,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.exceptions import SQLPreloadError
+from app.core.exceptions import SQLPreloadError, UnmaterialisedFullTextError
 from app.domain.references.models.models import (
     DuplicateDetermination,
     EnhancementRequestStatus,
@@ -52,6 +52,7 @@ from app.domain.references.models.models import (
 from app.domain.references.models.models import (
     RobotEnhancementBatch as DomainRobotEnhancementBatch,
 )
+from app.persistence.blob.models import BlobStorageLocation
 from app.persistence.sql.generics import GenericSQLPreloadableType
 from app.persistence.sql.persistence import (
     GenericSQLPersistence,
@@ -307,6 +308,15 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         timestamps when converting from the domain. They're purely managed
         by the persistence model.
         """
+        if (
+            domain_obj.content.enhancement_type == EnhancementType.FULL_TEXT
+            and domain_obj.content.blob.location == BlobStorageLocation.REMOTE
+        ):
+            msg = (
+                "Attempted to persist a full text enhancement that has not been "
+                "copied to repository storage, which is not allowed."
+            )
+            raise UnmaterialisedFullTextError(msg)
         return cls(
             id=domain_obj.id,
             reference_id=domain_obj.reference_id,
