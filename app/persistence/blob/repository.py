@@ -8,7 +8,12 @@ from io import BytesIO
 from cachetools import LRUCache
 from pydantic import HttpUrl
 
-from app.core.config import get_settings
+from app.core.config import (
+    AzureBlobConfig,
+    Environment,
+    MinioConfig,
+    get_settings,
+)
 from app.core.exceptions import (
     AzureBlobStorageError,
     BlobStorageError,
@@ -40,10 +45,34 @@ class BlobRepository:
 
     def __init__(self) -> None:
         """Initialize the BlobRepository."""
+        self._write_backend: AzureBlobConfig | MinioConfig = (
+            self._select_write_backend()
+        )
         self._config_cache: LRUCache[BlobStorageFile, GenericBlobStorageClient] = (
             LRUCache(maxsize=1000)
         )
         self._remote_client: RemoteBlobStorageClient | None = None
+
+    @staticmethod
+    def _select_write_backend() -> AzureBlobConfig | MinioConfig:
+        """Select the blob backend that new files will be written to."""
+        if settings.running_locally:
+            if settings.minio_config:
+                return settings.minio_config
+            if settings.azure_blob_config:
+                return settings.azure_blob_config
+            if settings.env == Environment.TEST:
+                # No blob config in tests; assume mocked.
+                return MinioConfig(
+                    host="test",
+                    access_key="test",
+                    secret_key="test",  # noqa: S106
+                    containers={c: "test" for c in BlobContainer},
+                )
+        if not settings.azure_blob_config:
+            msg = "Azure Blob Storage configuration is not given."
+            raise ValueError(msg)
+        return settings.azure_blob_config
 
     async def _preload_config(
         self,
@@ -103,10 +132,9 @@ class BlobRepository:
         Useful for pre-allocating a location that will be written to later
         (e.g. a record stored before its content is uploaded).
         """
-        backend = settings.active_blob_backend
         return BlobStorageFile(
-            location=backend.location,
-            container=backend.containers[container],
+            location=self._write_backend.location,
+            container=self._write_backend.containers[container],
             path=path,
             filename=filename,
         )
