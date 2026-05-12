@@ -1257,9 +1257,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self.sql_uow.reference_downloads.get_by_pk(reference_download_id)
 
     @sql_unit_of_work
-    async def _claim_reference_download(
-        self, reference_download_id: UUID
-    ) -> bool:
+    async def _claim_reference_download(self, reference_download_id: UUID) -> bool:
         """Atomically transition pending → running. Returns True if claimed."""
         updated = await self.sql_uow.reference_downloads.bulk_update_by_filter(
             filter_conditions={
