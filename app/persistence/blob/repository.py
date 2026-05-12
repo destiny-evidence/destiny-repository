@@ -3,6 +3,7 @@
 import hashlib
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from functools import cached_property
 from io import BytesIO
 
 from cachetools import LRUCache
@@ -56,6 +57,27 @@ class BlobRepository:
     @staticmethod
     def _select_write_backend() -> AzureBlobConfig | MinioConfig:
         """Select the blob backend that new files will be written to."""
+        if settings.running_locally:
+            if settings.minio_config:
+                return settings.minio_config
+            if settings.azure_blob_config:
+                return settings.azure_blob_config
+            if settings.env == Environment.TEST:
+                # No blob config in tests; assume mocked.
+                return MinioConfig(
+                    host="test",
+                    access_key="test",
+                    secret_key="test",  # noqa: S106
+                    containers={c: "test" for c in BlobContainer},
+                )
+        if not settings.azure_blob_config:
+            msg = "Azure Blob Storage configuration is not given."
+            raise ValueError(msg)
+        return settings.azure_blob_config
+
+    @cached_property
+    def _write_backend(self) -> AzureBlobConfig | MinioConfig:
+        """The blob backend that new files will be written to."""
         if settings.running_locally:
             if settings.minio_config:
                 return settings.minio_config
