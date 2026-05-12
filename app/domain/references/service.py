@@ -475,7 +475,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     @es_unit_of_work
     async def ingest_reference(
-        self, record_str: str, entry_ref: int
+        self,
+        record_str: str,
+        entry_ref: int,
     ) -> ReferenceCreateResult:
         """Ingest a reference from a file."""
         # Full deduplication flow

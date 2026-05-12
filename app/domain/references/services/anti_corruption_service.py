@@ -23,7 +23,7 @@ from app.domain.references.models.models import (
     RobotResultValidationEntry,
 )
 from app.domain.service import GenericAntiCorruptionService
-from app.persistence.blob.models import BlobSignedUrlType
+from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import URLSigner
 from app.persistence.es.persistence import ESSearchResult
 
@@ -60,9 +60,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                 for identifier in reference_in.identifiers or []
             ]
             reference.enhancements = [
-                Enhancement.model_validate(
-                    enhancement.model_dump() | {"reference_id": reference.id}
-                )
+                self.enhancement_from_sdk(enhancement, reference_id=reference.id)
                 for enhancement in reference_in.enhancements or []
             ]
             reference.check_serializability()
@@ -137,6 +135,21 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
 
+    def full_text_enhancement_content_from_sdk(
+        self,
+        full_text_in: destiny_sdk.enhancements.FullTextEnhancement,
+    ) -> FullTextEnhancement:
+        """Create a FullTextEnhancement from the SDK model, hydrating blob from URL."""
+        try:
+            full_text = FullTextEnhancement.model_validate(
+                full_text_in.model_dump(exclude={"file_url"})
+                | {"blob": BlobStorageFile.from_uri(str(full_text_in.file_url))}
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
+        else:
+            return full_text
+
     async def enhancement_to_sdk(
         self, enhancement: Enhancement
     ) -> destiny_sdk.references.Enhancement:
@@ -158,12 +171,22 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
 
     def enhancement_from_sdk(
         self,
-        enhancement_in: destiny_sdk.references.Enhancement,
+        enhancement_in: (
+            destiny_sdk.references.Enhancement
+            | destiny_sdk.enhancements.EnhancementFileInput
+        ),
         reference_id: UUID | None = None,
     ) -> Enhancement:
         """Create an Enhancement from the SDK model with optional ID grafting."""
         try:
             enhancement_model = enhancement_in.model_dump()
+
+            if enhancement_in.content.enhancement_type == EnhancementType.FULL_TEXT:
+                enhancement_model["content"] = (
+                    self.full_text_enhancement_content_from_sdk(
+                        enhancement_in.content
+                    ).model_dump()
+                )
 
             ## The SDK isn't allowed to pass in ids or created_ats, so ignore these.
             enhancement_model.pop("id", None)

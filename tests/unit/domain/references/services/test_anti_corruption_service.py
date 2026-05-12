@@ -10,10 +10,14 @@ from destiny_sdk.enhancements import AbstractProcessType
 from destiny_sdk.visibility import Visibility
 from pydantic import HttpUrl
 
+from app.domain.references.models.models import (
+    EnhancementType,
+    FullTextEnhancement,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
-from app.persistence.blob.models import BlobSignedUrlType
+from app.persistence.blob.models import BlobSignedUrlType, BlobStorageLocation
 from tests.factories import (
     AbstractContentEnhancementFactory,
     EnhancementFactory,
@@ -81,3 +85,69 @@ class TestFullTextEnhancementToSdk:
         await service.enhancement_to_sdk(enhancement)
 
         sign_url.assert_not_awaited()
+
+
+class TestFullTextEnhancementFromSdk:
+    """Tests for the SDK to domain hydration path on full-text enhancements."""
+
+    @pytest.fixture
+    def service(self):
+        return ReferenceAntiCorruptionService(sign_url=AsyncMock())
+
+    @pytest.fixture
+    def sdk_full_text(self):
+        return destiny_sdk.enhancements.FullTextEnhancement(
+            file_url="https://example.com/papers/foo.pdf",
+            byte_size=12345,
+            sha256_checksum="a" * 64,
+            mime_type="application/pdf",
+            version=destiny_sdk.enhancements.DriverVersion.PUBLISHED_VERSION,
+            is_oa=True,
+            license="cc-by",
+            source="openalex",
+            source_url="https://example.com/source",
+            retrieved_at=datetime.datetime.now(datetime.UTC),
+        )
+
+    def test_content_from_sdk_hydrates_with_full_metadata(self, service, sdk_full_text):
+        """Leaf converter: REMOTE blob hydrates from URL, all metadata preserved."""
+        domain_ft = service.full_text_enhancement_content_from_sdk(sdk_full_text)
+
+        assert isinstance(domain_ft, FullTextEnhancement)
+        assert domain_ft.blob.location == BlobStorageLocation.REMOTE
+        assert domain_ft.blob.to_uri() == str(sdk_full_text.file_url)
+        assert domain_ft.byte_size == sdk_full_text.byte_size
+        assert domain_ft.sha256_checksum == sdk_full_text.sha256_checksum
+        assert domain_ft.mime_type == sdk_full_text.mime_type
+        assert domain_ft.version == sdk_full_text.version
+        assert domain_ft.is_oa == sdk_full_text.is_oa
+        assert domain_ft.license == sdk_full_text.license
+        assert domain_ft.source == sdk_full_text.source
+        assert str(domain_ft.source_url) == str(sdk_full_text.source_url)
+        assert domain_ft.retrieved_at == sdk_full_text.retrieved_at
+
+    def test_reference_from_sdk_file_input_routes_through_hydration(
+        self, service, sdk_full_text
+    ):
+        """The file-input path runs FT content through the hydration codepath."""
+        reference = service.reference_from_sdk_file_input(
+            destiny_sdk.references.ReferenceFileInput(
+                visibility=Visibility.PUBLIC,
+                identifiers=[
+                    destiny_sdk.identifiers.DOIIdentifier(identifier="10.1000/xyz"),
+                ],
+                enhancements=[
+                    destiny_sdk.enhancements.EnhancementFileInput(
+                        source="test-source",
+                        visibility=Visibility.PUBLIC,
+                        content=sdk_full_text,
+                    ),
+                ],
+            )
+        )
+
+        domain_ft = reference.enhancements[0].content
+        assert isinstance(domain_ft, FullTextEnhancement)
+        assert domain_ft.enhancement_type == EnhancementType.FULL_TEXT
+        assert domain_ft.blob.location == BlobStorageLocation.REMOTE
+        assert domain_ft.blob.to_uri() == str(sdk_full_text.file_url)
