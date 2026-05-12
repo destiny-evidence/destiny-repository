@@ -220,15 +220,18 @@ class BlobRepository:
         Stream a file from source to destination, computing sha256 and size.
 
         Source may be any location (including REMOTE); destination must be
-        an owned location.
+        on the active write backend.
 
         :param source: The source file to copy.
         :type source: BlobStorageFile
         :param destination: The destination to copy the file to.
         :type destination: BlobStorageFile
         """
-        if destination.location == BlobStorageLocation.REMOTE:
-            msg = "Cannot copy to a REMOTE destination."
+        if destination.location != self._write_backend.location:
+            msg = (
+                f"Destination location {destination.location} does not match the "
+                f"active write backend {self._write_backend.location}."
+            )
             raise BlobStorageError(msg)
 
         src_client = await self._preload_config(source)

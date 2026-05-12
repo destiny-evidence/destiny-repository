@@ -296,7 +296,7 @@ async def test_copy_empty_source_yields_known_sha256():
 
 @pytest.mark.asyncio
 async def test_copy_rejects_remote_destination():
-    """A REMOTE destination is nonsensical and should be refused."""
+    """A REMOTE destination is not the active write backend and should be refused."""
     source = BlobStorageFile(
         location=BlobStorageLocation.MINIO,
         container="cont",
@@ -306,6 +306,23 @@ async def test_copy_rejects_remote_destination():
     destination = BlobStorageFile.from_uri("https://example.com/where.pdf")
 
     repo = BlobRepository()
+    with pytest.raises(BlobStorageError):
+        await repo.copy(source, destination)
+
+
+@pytest.mark.asyncio
+async def test_copy_rejects_destination_on_other_backend():
+    """A destination not on the active write backend should be refused."""
+    source = BlobStorageFile.from_uri("https://example.com/foo.pdf")
+    destination = BlobStorageFile(
+        location=BlobStorageLocation.AZURE,
+        container="cont",
+        path="p",
+        filename="foo.pdf",
+    )
+
+    repo = BlobRepository()
+    assert repo._write_backend.location == BlobStorageLocation.MINIO  # noqa: SLF001
     with pytest.raises(BlobStorageError):
         await repo.copy(source, destination)
 
