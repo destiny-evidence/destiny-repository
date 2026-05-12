@@ -110,6 +110,13 @@ class ReferenceDownloadRead(BaseModel):
         default=None,
         description="The number of references included in the produced file.",
     )
+    truncated: bool = Field(
+        default=False,
+        description=(
+            "Whether the matching result set exceeded the 10,000-result cap. "
+            "When true, the JSONL contains only the first 10,000 matches."
+        ),
+    )
     error: str | None = Field(
         default=None,
         description="Error encountered while producing the download.",

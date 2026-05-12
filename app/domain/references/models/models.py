@@ -417,11 +417,9 @@ class ReferenceDownload(DomainBaseModel, SQLAttributeMixin):
     query: str = Field(
         description="The Lucene query string the download is filtering on.",
     )
-    annotations: list[str] | None = Field(
+    annotation_filters: list["AnnotationFilter"] | None = Field(
         default=None,
-        description=(
-            "Raw annotation filter strings as accepted by `/references/search/`."
-        ),
+        description="Parsed annotation filters to apply to the search, if any.",
     )
     start_year: int | None = Field(
         default=None,
@@ -446,6 +444,13 @@ class ReferenceDownload(DomainBaseModel, SQLAttributeMixin):
     n_references: int | None = Field(
         default=None,
         description="The number of references in the produced file.",
+    )
+    truncated: bool = Field(
+        default=False,
+        description=(
+            "Whether the matching result set was larger than the 10,000-result "
+            "cap. When true, the JSONL contains only the first 10,000 matches."
+        ),
     )
     error: str | None = Field(
         default=None,

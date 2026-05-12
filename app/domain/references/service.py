@@ -71,7 +71,7 @@ from app.external.vocabulary.client import get_vocabulary_artifact_client
 from app.persistence.blob.models import BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
-from app.persistence.es.persistence import ESSearchResult
+from app.persistence.es.persistence import ESSearchResult, ESSearchTotal
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.es.uow import unit_of_work as es_unit_of_work
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -1234,17 +1234,16 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def request_reference_download(
         self,
         query: str,
-        annotations: list[str] | None,
-        start_year: int | None,
-        end_year: int | None,
+        annotation_filters: list[AnnotationFilter] | None,
+        publication_year_range: PublicationYearRange | None,
         sort: list[str] | None,
     ) -> ReferenceDownload:
         """Create a pending reference download job."""
         reference_download = ReferenceDownload(
             query=query,
-            annotations=annotations,
-            start_year=start_year,
-            end_year=end_year,
+            annotation_filters=annotation_filters,
+            start_year=publication_year_range.start if publication_year_range else None,
+            end_year=publication_year_range.end if publication_year_range else None,
             sort=sort,
         )
         await self.sql_uow.reference_downloads.add(reference_download)
@@ -1273,6 +1272,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference_download_id: UUID,
         result_file: BlobStorageFile,
         n_references: int,
+        *,
+        truncated: bool,
     ) -> ReferenceDownload:
         """Mark a reference download as completed."""
         return await self.sql_uow.reference_downloads.update_by_pk(
@@ -1280,6 +1281,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             status=ReferenceDownloadStatus.COMPLETED,
             result_file=result_file.to_sql(),
             n_references=n_references,
+            truncated=truncated,
         )
 
     @sql_unit_of_work
@@ -1296,19 +1298,17 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @es_unit_of_work
     async def _collect_reference_download_ids(
         self, reference_download: ReferenceDownload
-    ) -> list[UUID]:
-        """Page through ES to gather every reference ID matching the download query."""
-        annotations = (
-            [
-                self._anti_corruption_service.annotation_filter_from_query_parameter(s)
-                for s in reference_download.annotations
-            ]
-            if reference_download.annotations
-            else None
-        )
+    ) -> tuple[list[UUID], bool]:
+        """
+        Page through ES to gather every reference ID matching the download query.
+
+        Returns the deduplicated list of IDs and a flag indicating whether the
+        matching set was larger than the 10,000-result cap.
+        """
         publication_year_range = (
-            self._anti_corruption_service.publication_year_range_from_query_parameter(
-                reference_download.start_year, reference_download.end_year
+            PublicationYearRange(
+                start=reference_download.start_year,
+                end=reference_download.end_year,
             )
             if reference_download.start_year or reference_download.end_year
             else None
@@ -1320,23 +1320,37 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         max_results = 10_000
         max_page = max_results // page_size
 
-        reference_ids: list[UUID] = []
+        seen_ids: dict[UUID, None] = {}
+        first_total: ESSearchTotal | None = None
+        truncated = False
         for page in range(1, max_page + 1):
             search_result = await self._search_service.search_with_query_string(
                 reference_download.query,
                 page=page,
                 page_size=page_size,
-                annotations=annotations,
+                annotations=reference_download.annotation_filters,
                 publication_year_range=publication_year_range,
                 sort=reference_download.sort,
             )
+            if first_total is None:
+                first_total = search_result.total
             if not search_result.hits:
                 break
-            reference_ids.extend(hit.id for hit in search_result.hits)
+            # ES from/size can repeat an id across pages if the index changes mid-walk.
+            for hit in search_result.hits:
+                seen_ids.setdefault(hit.id, None)
             if len(search_result.hits) < page_size:
                 break
+        else:
+            # Loop consumed all max_page iterations of full pages — we hit the
+            # cap. `gte` covers the common case (ES stopped counting at
+            # `track_total_hits`); `value > max_results` covers a raised
+            # `max_results` where ES still tracks the exact count past our cap.
+            truncated = first_total is not None and (
+                first_total.relation == "gte" or first_total.value > max_results
+            )
 
-        return reference_ids
+        return list(seen_ids), truncated
 
     @sql_unit_of_work
     async def _stream_reference_download_jsonl(
@@ -1350,8 +1364,18 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             UploadFile.ROBOT_ENHANCEMENT_REFERENCE_DATA,
             settings.default_upload_file_chunk_size,
         )
+        # A reference id with no SQL row produces no JSONL line, so the file
+        # can have fewer lines than `reference_ids` has entries.
+        n_emitted = 0
+
+        async def emit_jsonl_chunk(reference_ids: list[UUID]) -> list[str]:
+            nonlocal n_emitted
+            lines = await self._get_jsonl_deduplicated_references(reference_ids)
+            n_emitted += len(lines)
+            return lines
+
         file_stream = FileStream(
-            self._get_jsonl_deduplicated_references,
+            emit_jsonl_chunk,
             [
                 {"reference_ids": chunk}
                 for chunk in list_chunker(reference_ids, chunk_size)
@@ -1362,7 +1386,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             path="reference_downloads",
             filename=f"{reference_download_id}.jsonl",
         )
-        return result_file, len(reference_ids)
+        return result_file, n_emitted
 
     async def run_reference_download(
         self,
@@ -1375,14 +1399,17 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_download = await self.get_reference_download(
                 reference_download_id
             )
-            reference_ids = await self._collect_reference_download_ids(
+            reference_ids, truncated = await self._collect_reference_download_ids(
                 reference_download
             )
             result_file, n_references = await self._stream_reference_download_jsonl(
                 reference_download_id, reference_ids, blob_repository
             )
             await self._complete_reference_download(
-                reference_download_id, result_file, n_references
+                reference_download_id,
+                result_file,
+                n_references,
+                truncated=truncated,
             )
         except Exception as exc:
             logger.exception(

@@ -8,6 +8,7 @@ from sqlalchemy import (
     UUID as SQL_UUID,
 )
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
@@ -21,6 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.exceptions import SQLPreloadError
 from app.domain.references.models.models import (
+    AnnotationFilter,
     DuplicateDetermination,
     EnhancementRequestStatus,
     EnhancementType,
@@ -443,7 +445,9 @@ class ReferenceDownload(GenericSQLPersistence[DomainReferenceDownload]):
     __tablename__ = "reference_download"
 
     query: Mapped[str] = mapped_column(String, nullable=False)
-    annotations: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    annotation_filters: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
     start_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     end_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sort: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
@@ -452,6 +456,9 @@ class ReferenceDownload(GenericSQLPersistence[DomainReferenceDownload]):
 
     result_file: Mapped[str | None] = mapped_column(String, nullable=True)
     n_references: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    truncated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     error: Mapped[str | None] = mapped_column(String, nullable=True)
 
     @classmethod
@@ -460,7 +467,9 @@ class ReferenceDownload(GenericSQLPersistence[DomainReferenceDownload]):
         return cls(
             id=domain_obj.id,
             query=domain_obj.query,
-            annotations=domain_obj.annotations,
+            annotation_filters=[f.model_dump() for f in domain_obj.annotation_filters]
+            if domain_obj.annotation_filters
+            else None,
             start_year=domain_obj.start_year,
             end_year=domain_obj.end_year,
             sort=domain_obj.sort,
@@ -469,6 +478,7 @@ class ReferenceDownload(GenericSQLPersistence[DomainReferenceDownload]):
             if domain_obj.result_file
             else None,
             n_references=domain_obj.n_references,
+            truncated=domain_obj.truncated,
             error=domain_obj.error,
         )
 
@@ -480,7 +490,11 @@ class ReferenceDownload(GenericSQLPersistence[DomainReferenceDownload]):
         return DomainReferenceDownload(
             id=self.id,
             query=self.query,
-            annotations=self.annotations,
+            annotation_filters=[
+                AnnotationFilter.model_validate(f) for f in self.annotation_filters
+            ]
+            if self.annotation_filters
+            else None,
             start_year=self.start_year,
             end_year=self.end_year,
             sort=self.sort,
@@ -489,6 +503,7 @@ class ReferenceDownload(GenericSQLPersistence[DomainReferenceDownload]):
             if self.result_file
             else None,
             n_references=self.n_references,
+            truncated=self.truncated,
             error=self.error,
         )
 

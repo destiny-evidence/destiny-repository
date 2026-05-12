@@ -57,6 +57,7 @@ from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
 from app.domain.references.service import ReferenceService
+from app.domain.references.services.search_service import SearchService
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
@@ -950,7 +951,7 @@ async def test_request_reference_download_happy_path(
     monkeypatch.setattr(
         ReferenceService,
         "_collect_reference_download_ids",
-        AsyncMock(return_value=[fake_reference_id]),
+        AsyncMock(return_value=([fake_reference_id], False)),
     )
     monkeypatch.setattr(
         ReferenceService,
@@ -967,6 +968,7 @@ async def test_request_reference_download_happy_path(
     download_id = body["id"]
     assert body["status"] == "pending"
     assert body["result_url"] is None
+    assert body["truncated"] is False
 
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()
@@ -976,6 +978,7 @@ async def test_request_reference_download_happy_path(
     status_body = status_response.json()
     assert status_body["status"] == "completed"
     assert status_body["n_references"] == 1
+    assert status_body["truncated"] is False
     assert status_body["result_url"] is not None
     assert status_body["error"] is None
 
@@ -1011,8 +1014,6 @@ async def test_collect_reference_download_ids_pages_at_1000(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Pages at size=1000 and stops on the first partial page."""
-    from app.domain.references.services.search_service import SearchService
-
     page_one_ids = [uuid7() for _ in range(1000)]
     page_two_ids = [uuid7() for _ in range(1000)]
     page_three_ids = [uuid7() for _ in range(500)]
@@ -1041,16 +1042,197 @@ async def test_collect_reference_download_ids_pages_at_1000(
     download = ReferenceDownload(query="climate")
 
     # Bypass the @es_unit_of_work decorator since we're testing the body directly.
-    ids = await ReferenceService._collect_reference_download_ids.__wrapped__(  # type: ignore[attr-defined]  # noqa: SLF001
+    ids, truncated = await ReferenceService._collect_reference_download_ids.__wrapped__(  # type: ignore[attr-defined]  # noqa: SLF001
         service, download
     )
 
     assert ids == page_one_ids + page_two_ids + page_three_ids
+    assert truncated is False
     assert mock_search.await_count == 3
     for call_idx, expected_page in enumerate((1, 2, 3), start=0):
         kwargs = mock_search.call_args_list[call_idx].kwargs
         assert kwargs["page"] == expected_page
         assert kwargs["page_size"] == 1000
+
+
+async def test_collect_reference_download_ids_flags_truncated_on_gte_total(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When ES reports `gte` at the cap, the result is flagged as truncated."""
+    pages = [
+        ESSearchResult(
+            hits=[ESHit(id=uuid7(), score=1.0) for _ in range(1000)],
+            total=ESSearchTotal(value=10_000, relation="gte"),
+            page=p,
+        )
+        for p in range(1, 11)
+    ]
+    mock_search = AsyncMock(side_effect=pages)
+    monkeypatch.setattr(SearchService, "search_with_query_string", mock_search)
+
+    service = ReferenceService.__new__(ReferenceService)
+    service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
+    download = ReferenceDownload(query="climate")
+
+    ids, truncated = await ReferenceService._collect_reference_download_ids.__wrapped__(  # type: ignore[attr-defined]  # noqa: SLF001
+        service, download
+    )
+
+    assert len(ids) == 10_000
+    assert truncated is True
+    assert mock_search.await_count == 10
+
+
+async def test_collect_reference_download_ids_dedupes_across_pages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """IDs that appear on multiple pages (ES race) are deduplicated."""
+    shared_id = uuid7()
+    page_one_ids = [uuid7() for _ in range(999)] + [shared_id]
+    page_two_ids = [shared_id] + [uuid7() for _ in range(500)]
+    pages = [
+        ESSearchResult(
+            hits=[ESHit(id=i, score=1.0) for i in page_one_ids],
+            total=ESSearchTotal(value=1500, relation="eq"),
+            page=1,
+        ),
+        ESSearchResult(
+            hits=[ESHit(id=i, score=1.0) for i in page_two_ids],
+            total=ESSearchTotal(value=1500, relation="eq"),
+            page=2,
+        ),
+    ]
+    monkeypatch.setattr(
+        SearchService, "search_with_query_string", AsyncMock(side_effect=pages)
+    )
+
+    service = ReferenceService.__new__(ReferenceService)
+    service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
+    download = ReferenceDownload(query="climate")
+
+    ids, truncated = await ReferenceService._collect_reference_download_ids.__wrapped__(  # type: ignore[attr-defined]  # noqa: SLF001
+        service, download
+    )
+
+    # 999 unique on page 1 + shared + 500 unique on page 2 = 1500.
+    assert len(ids) == 1500
+    assert len(set(ids)) == len(ids)
+    assert truncated is False
+
+
+async def test_collect_reference_download_ids_flags_truncated_on_eq_above_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If ES tracks the exact count past the cap, `eq` total > cap is truncated."""
+    # Simulates an ES setup where `track_total_hits` exceeds our `max_results`:
+    # ES reports relation=eq with a value larger than the cap.
+    pages = [
+        ESSearchResult(
+            hits=[ESHit(id=uuid7(), score=1.0) for _ in range(1000)],
+            total=ESSearchTotal(value=25_000, relation="eq"),
+            page=p,
+        )
+        for p in range(1, 11)
+    ]
+    monkeypatch.setattr(
+        SearchService, "search_with_query_string", AsyncMock(side_effect=pages)
+    )
+
+    service = ReferenceService.__new__(ReferenceService)
+    service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
+    download = ReferenceDownload(query="climate")
+
+    ids, truncated = await ReferenceService._collect_reference_download_ids.__wrapped__(  # type: ignore[attr-defined]  # noqa: SLF001
+        service, download
+    )
+
+    assert len(ids) == 10_000
+    assert truncated is True
+
+
+async def test_collect_reference_download_ids_dedup_does_not_flag_truncated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dedup shrinking len(ids) below total.value must not mis-flag truncated."""
+    # 10 full pages of 1000, each repeating one id from the previous page.
+    # Pre-dedup hits == 10_000 (matches total.value=eq), post-dedup == 9_991.
+    base_ids = [uuid7() for _ in range(9_991)]
+    pages = [
+        ESSearchResult(
+            hits=[
+                ESHit(id=i, score=1.0) for i in base_ids[p * 999 : (p + 1) * 999 + 1]
+            ],
+            total=ESSearchTotal(value=10_000, relation="eq"),
+            page=p + 1,
+        )
+        for p in range(10)
+    ]
+    monkeypatch.setattr(
+        SearchService, "search_with_query_string", AsyncMock(side_effect=pages)
+    )
+
+    service = ReferenceService.__new__(ReferenceService)
+    service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
+    download = ReferenceDownload(query="climate")
+
+    ids, truncated = await ReferenceService._collect_reference_download_ids.__wrapped__(  # type: ignore[attr-defined]  # noqa: SLF001
+        service, download
+    )
+
+    assert len(ids) == 9_991
+    # ES reported exactly 10_000 matches and we paged the full window. Dedup
+    # collapsed duplicates rather than truncating — must not be flagged.
+    assert truncated is False
+
+
+async def test_search_references_rejects_malformed_annotation(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+) -> None:
+    """Search returns 400 on malformed annotation — was a 500 before parse hardening."""
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "climate", "annotation": "inclusion:destiny@notanumber"},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_search_references_rejects_inverted_year_range(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+) -> None:
+    """Search returns 400 on end < start — was a 500 before parse hardening."""
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "climate", "start_year": 2025, "end_year": 2020},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_request_reference_download_rejects_malformed_annotation(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """A malformed annotation filter returns 400 at request time, not job failure."""
+    response = await client.post(
+        "/v1/references/download/",
+        params={"q": "climate", "annotation": "inclusion:destiny@notanumber"},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_request_reference_download_rejects_inverted_year_range(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """An inverted publication year range returns 400 at request time."""
+    response = await client.post(
+        "/v1/references/download/",
+        params={"q": "climate", "start_year": 2025, "end_year": 2020},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
 async def test_get_reference_download_pending_has_no_url(

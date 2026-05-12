@@ -24,7 +24,7 @@ from fastapi import (
     status,
 )
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
@@ -244,11 +244,14 @@ def parse_publication_year_range(
     ] = None,
 ) -> PublicationYearRange | None:
     """Parse a publication year range from a query parameter."""
-    if start_year or end_year:
+    if not (start_year or end_year):
+        return None
+    try:
         return anti_corruption_service.publication_year_range_from_query_parameter(
             start_year, end_year
         )
-    return None
+    except ValidationError as exc:
+        raise ParseError(detail=str(exc)) from exc
 
 
 def parse_annotation_filters(
@@ -280,12 +283,15 @@ def parse_annotation_filters(
     """Parse annotation filters from query parameters."""
     if not annotation:
         return []
-    return [
-        anti_corruption_service.annotation_filter_from_query_parameter(
-            annotation_filter_string
-        )
-        for annotation_filter_string in annotation
-    ]
+    try:
+        return [
+            anti_corruption_service.annotation_filter_from_query_parameter(
+                annotation_filter_string
+            )
+            for annotation_filter_string in annotation
+        ]
+    except (ValueError, ValidationError) as exc:
+        raise ParseError(detail=str(exc)) from exc
 
 
 @search_router.get(
@@ -387,24 +393,14 @@ async def request_reference_download(
         str,
         Query(description="The query string."),
     ],
-    annotations: Annotated[
-        list[str],
-        Query(
-            alias="annotation",
-            description=(
-                "A list of annotation filters to apply to the search. "
-                "Same format as `/references/search/`."
-            ),
-        ),
-    ] = None,
-    start_year: Annotated[
-        int,
-        Query(description="Filter for references published on or after this year."),
-    ] = None,
-    end_year: Annotated[
-        int,
-        Query(description="Filter for references published on or before this year."),
-    ] = None,
+    annotation_filters: Annotated[
+        list[AnnotationFilter],
+        Depends(parse_annotation_filters),
+    ],
+    publication_year_range: Annotated[
+        PublicationYearRange | None,
+        Depends(parse_publication_year_range),
+    ],
     sort: Annotated[
         list[str],
         Query(
@@ -418,9 +414,8 @@ async def request_reference_download(
     """Queue a reference download job and return its id and pending status."""
     reference_download = await reference_service.request_reference_download(
         query=q,
-        annotations=annotations,
-        start_year=start_year,
-        end_year=end_year,
+        annotation_filters=annotation_filters or None,
+        publication_year_range=publication_year_range,
         sort=sort,
     )
     await queue_task_with_trace(
