@@ -1010,6 +1010,10 @@ async def test_request_reference_download_marks_failed_on_error(
     assert status_body["error"] == "kaboom"
 
 
+# Undecorated body — tests drive the implementation with mocks instead of a UoW.
+_collect_download_ids = ReferenceService._collect_reference_download_ids.__wrapped__  # type: ignore[attr-defined]  # noqa: SLF001
+
+
 async def test_collect_reference_download_ids_pages_at_1000(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1042,9 +1046,7 @@ async def test_collect_reference_download_ids_pages_at_1000(
     download = ReferenceDownload(query="climate")
 
     # Bypass the @es_unit_of_work decorator since we're testing the body directly.
-    ids, truncated = await ReferenceService._collect_reference_download_ids.__wrapped__(  # type: ignore[attr-defined]  # noqa: SLF001
-        service, download
-    )
+    ids, truncated = await _collect_download_ids(service, download)
 
     assert ids == page_one_ids + page_two_ids + page_three_ids
     assert truncated is False
@@ -1074,9 +1076,7 @@ async def test_collect_reference_download_ids_flags_truncated_on_gte_total(
     service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
     download = ReferenceDownload(query="climate")
 
-    ids, truncated = await ReferenceService._collect_reference_download_ids.__wrapped__(  # type: ignore[attr-defined]  # noqa: SLF001
-        service, download
-    )
+    ids, truncated = await _collect_download_ids(service, download)
 
     assert len(ids) == 10_000
     assert truncated is True
@@ -1110,9 +1110,7 @@ async def test_collect_reference_download_ids_dedupes_across_pages(
     service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
     download = ReferenceDownload(query="climate")
 
-    ids, truncated = await ReferenceService._collect_reference_download_ids.__wrapped__(  # type: ignore[attr-defined]  # noqa: SLF001
-        service, download
-    )
+    ids, truncated = await _collect_download_ids(service, download)
 
     # 999 unique on page 1 + shared + 500 unique on page 2 = 1500.
     assert len(ids) == 1500
@@ -1142,9 +1140,7 @@ async def test_collect_reference_download_ids_flags_truncated_on_eq_above_cap(
     service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
     download = ReferenceDownload(query="climate")
 
-    ids, truncated = await ReferenceService._collect_reference_download_ids.__wrapped__(  # type: ignore[attr-defined]  # noqa: SLF001
-        service, download
-    )
+    ids, truncated = await _collect_download_ids(service, download)
 
     assert len(ids) == 10_000
     assert truncated is True
@@ -1175,9 +1171,7 @@ async def test_collect_reference_download_ids_dedup_does_not_flag_truncated(
     service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
     download = ReferenceDownload(query="climate")
 
-    ids, truncated = await ReferenceService._collect_reference_download_ids.__wrapped__(  # type: ignore[attr-defined]  # noqa: SLF001
-        service, download
-    )
+    ids, truncated = await _collect_download_ids(service, download)
 
     assert len(ids) == 9_991
     # ES reported exactly 10_000 matches and we paged the full window. Dedup
@@ -1205,9 +1199,7 @@ async def test_collect_reference_download_ids_handles_empty_result_set(
     service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
     download = ReferenceDownload(query="climate")
 
-    ids, truncated = await ReferenceService._collect_reference_download_ids.__wrapped__(  # type: ignore[attr-defined]  # noqa: SLF001
-        service, download
-    )
+    ids, truncated = await _collect_download_ids(service, download)
 
     assert ids == []
     assert truncated is False
@@ -1233,9 +1225,7 @@ async def test_collect_reference_download_ids_exactly_at_cap_not_truncated(
     service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
     download = ReferenceDownload(query="climate")
 
-    ids, truncated = await ReferenceService._collect_reference_download_ids.__wrapped__(  # type: ignore[attr-defined]  # noqa: SLF001
-        service, download
-    )
+    ids, truncated = await _collect_download_ids(service, download)
 
     assert len(ids) == 10_000
     # ES says eq=10_000: it counted exactly to the cap, so we got everything.

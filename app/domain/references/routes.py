@@ -375,13 +375,11 @@ async def search_references(
     "/",
     status_code=status.HTTP_202_ACCEPTED,
     description=(
-        "Queue a download job that produces a JSONL file of every reference matching "
-        "the given search. Accepts the same filter parameters as `/references/search/` "
-        "without pagination; the JSONL line shape matches the reference structure "
-        "returned by `/references/search/`. The response includes an ID that can be "
-        "polled at `GET /references/download/{id}/` until the job is complete and a "
-        "signed URL is available. Subject to the same 10,000-result limit as "
-        "`/references/search/`."
+        "Queue a download job that produces a JSONL file of references matching the "
+        "given search. Accepts the same filter parameters as `/references/search/` "
+        "without pagination. Poll `GET /references/download/{id}/` until the job "
+        "completes and a signed URL is available; if the matching set exceeds the "
+        "10,000-result cap the response includes `truncated: true`."
     ),
 )
 async def request_reference_download(
@@ -427,7 +425,15 @@ async def request_reference_download(
     return await anti_corruption_service.reference_download_to_sdk(reference_download)
 
 
-@download_router.get("/{reference_download_id}/")
+@download_router.get(
+    "/{reference_download_id}/",
+    description=(
+        "Get the status of a reference download job. Once `status` is "
+        "`completed`, the response includes a signed `result_url` for the "
+        "produced JSONL file. The URL is re-signed on each call, so an "
+        "expired URL can be refreshed by polling again."
+    ),
+)
 async def get_reference_download(
     reference_download_id: Annotated[
         destiny_sdk.UUID, Path(description="The ID of the reference download job.")
