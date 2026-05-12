@@ -298,9 +298,11 @@ async def test_es_repository_cycle(
     es_reference_repository: ReferenceESRepository, reference: Reference
 ):
     """Test saving and getting a reference by primary key from Elasticsearch."""
-    bibliographic_enhancement: destiny_sdk.enhancements.BibliographicMetadataEnhancement = reference.enhancements[
-        2
-    ].content  # type: ignore[index]
+    content = reference.enhancements[2].content  # type: ignore[index]
+    assert isinstance(
+        content, destiny_sdk.enhancements.BibliographicMetadataEnhancement
+    )
+    bibliographic_enhancement = content
 
     await es_reference_repository.add(to_indexable(reference))
 

@@ -42,7 +42,7 @@ async def search_service(
 ) -> SearchService:
     """Fixture to create a search service with ES and SQL unit of work."""
     blob_repo = BlobRepository()
-    anti_corruption_service = ReferenceAntiCorruptionService(blob_repo)
+    anti_corruption_service = ReferenceAntiCorruptionService(blob_repo.get_signed_url)
     es_uow = AsyncESUnitOfWork(es_client)
     es_uow._is_active = True  # noqa: SLF001
     es_uow.references = es_reference_repository

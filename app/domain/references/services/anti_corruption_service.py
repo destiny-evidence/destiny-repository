@@ -10,7 +10,9 @@ from app.domain.references.models.models import (
     AnnotationFilter,
     Enhancement,
     EnhancementRequest,
+    EnhancementType,
     ExternalIdentifierAdapter,
+    FullTextEnhancement,
     IdentifierLookup,
     LinkedExternalIdentifier,
     PublicationYearRange,
@@ -22,16 +24,21 @@ from app.domain.references.models.models import (
 )
 from app.domain.service import GenericAntiCorruptionService
 from app.persistence.blob.models import BlobSignedUrlType
-from app.persistence.blob.repository import BlobRepository
+from app.persistence.blob.repository import URLSigner
 from app.persistence.es.persistence import ESSearchResult
 
 
 class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     """Anti-corruption service for translating between Reference domain and SDK."""
 
-    def __init__(self, blob_repository: BlobRepository) -> None:
-        """Initialize the anti-corruption service."""
-        self._blob_repository = blob_repository
+    def __init__(self, sign_url: URLSigner) -> None:
+        """
+        Initialize the anti-corruption service.
+
+        :param sign_url: Callable that signs a blob storage file into a URL.
+            Typically ``BlobRepository.get_signed_url``.
+        """
+        self._sign_url = sign_url
         super().__init__()
 
     def reference_from_sdk_file_input(
@@ -64,11 +71,15 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         else:
             return reference
 
-    def reference_to_sdk(
+    async def reference_to_sdk(
         self, reference: Reference
     ) -> destiny_sdk.references.Reference:
         """Convert the reference to a Reference SDK model."""
         try:
+            enhancements = [
+                await self.enhancement_to_sdk(enhancement)
+                for enhancement in reference.enhancements or []
+            ]
             return destiny_sdk.references.Reference(
                 id=reference.id,
                 visibility=reference.visibility,
@@ -76,10 +87,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     self.external_identifier_to_sdk(identifier).identifier
                     for identifier in reference.identifiers or []
                 ],
-                enhancements=[
-                    self.enhancement_to_sdk(enhancement)
-                    for enhancement in reference.enhancements or []
-                ],
+                enhancements=enhancements,
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
@@ -112,11 +120,36 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         else:
             return identifier
 
-    def enhancement_to_sdk(
+    async def full_text_enhancement_content_to_sdk(
+        self,
+        full_text: FullTextEnhancement,
+    ) -> destiny_sdk.enhancements.FullTextEnhancement:
+        """Convert to the SDK shape, signing the blob into a download URL."""
+        try:
+            return destiny_sdk.enhancements.FullTextEnhancement(
+                enhancement_type=full_text.enhancement_type,
+                file_url=await self._sign_url(
+                    full_text.blob,
+                    BlobSignedUrlType.DOWNLOAD,
+                ),
+                **full_text.model_dump(exclude={"enhancement_type", "blob"}),
+            )
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
+
+    async def enhancement_to_sdk(
         self, enhancement: Enhancement
     ) -> destiny_sdk.references.Enhancement:
         """Convert the enhancement to an Enhancement SDK model."""
         try:
+            if enhancement.content.enhancement_type == EnhancementType.FULL_TEXT:
+                content = await self.full_text_enhancement_content_to_sdk(
+                    enhancement.content
+                )
+                return destiny_sdk.references.Enhancement(
+                    **enhancement.model_dump(exclude={"content"}),
+                    content=content,
+                )
             return destiny_sdk.references.Enhancement.model_validate(
                 enhancement.model_dump()
             )
@@ -170,18 +203,18 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             return destiny_sdk.robots.EnhancementRequestRead.model_validate(
                 enhancement_request.model_dump()
                 | {
-                    "reference_data_url": await self._blob_repository.get_signed_url(
+                    "reference_data_url": await self._sign_url(
                         enhancement_request.reference_data_file,
                         BlobSignedUrlType.DOWNLOAD,
                     )
                     if enhancement_request.reference_data_file
                     else None,
-                    "result_storage_url": await self._blob_repository.get_signed_url(
+                    "result_storage_url": await self._sign_url(
                         enhancement_request.result_file, BlobSignedUrlType.UPLOAD
                     )
                     if enhancement_request.result_file
                     else None,
-                    "validation_result_url": await self._blob_repository.get_signed_url(
+                    "validation_result_url": await self._sign_url(
                         enhancement_request.validation_result_file,
                         BlobSignedUrlType.DOWNLOAD,
                     )
@@ -200,12 +233,12 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         try:
             return destiny_sdk.robots.RobotRequest(
                 id=enhancement_request.id,
-                reference_storage_url=await self._blob_repository.get_signed_url(
+                reference_storage_url=await self._sign_url(
                     enhancement_request.reference_data_file, BlobSignedUrlType.DOWNLOAD
                 )
                 if enhancement_request.reference_data_file
                 else None,
-                result_storage_url=await self._blob_repository.get_signed_url(
+                result_storage_url=await self._sign_url(
                     enhancement_request.result_file, BlobSignedUrlType.UPLOAD
                 )
                 if enhancement_request.result_file
@@ -223,18 +256,18 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             return destiny_sdk.robots.RobotEnhancementBatchRead.model_validate(
                 robot_enhancement_batch.model_dump()
                 | {
-                    "reference_data_url": await self._blob_repository.get_signed_url(
+                    "reference_data_url": await self._sign_url(
                         robot_enhancement_batch.reference_data_file,
                         BlobSignedUrlType.DOWNLOAD,
                     )
                     if robot_enhancement_batch.reference_data_file
                     else None,
-                    "result_storage_url": await self._blob_repository.get_signed_url(
+                    "result_storage_url": await self._sign_url(
                         robot_enhancement_batch.result_file, BlobSignedUrlType.UPLOAD
                     )
                     if robot_enhancement_batch.result_file
                     else None,
-                    "validation_result_url": await self._blob_repository.get_signed_url(
+                    "validation_result_url": await self._sign_url(
                         robot_enhancement_batch.validation_result_file,
                         BlobSignedUrlType.DOWNLOAD,
                     )
@@ -253,13 +286,13 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         try:
             return destiny_sdk.robots.RobotEnhancementBatch(
                 id=robot_enhancement_batch.id,
-                reference_storage_url=await self._blob_repository.get_signed_url(
+                reference_storage_url=await self._sign_url(
                     robot_enhancement_batch.reference_data_file,
                     BlobSignedUrlType.DOWNLOAD,
                 )
                 if robot_enhancement_batch.reference_data_file
                 else None,
-                result_storage_url=await self._blob_repository.get_signed_url(
+                result_storage_url=await self._sign_url(
                     robot_enhancement_batch.result_file, BlobSignedUrlType.UPLOAD
                 )
                 if robot_enhancement_batch.result_file
@@ -321,7 +354,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
-    def two_stage_reference_search_result_to_sdk(
+    async def two_stage_reference_search_result_to_sdk(
         self,
         search_result: ESSearchResult,
         references: list[Reference],
@@ -329,6 +362,11 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         """Convert a search result and retrieved references to the SDK model."""
         try:
             hit_order = {hit.id: i for i, hit in enumerate(search_result.hits)}
+            sdk_references = [
+                await self.reference_to_sdk(reference)
+                # Sort references according to search order
+                for reference in sorted(references, key=lambda r: hit_order[r.id])
+            ]
             return destiny_sdk.references.ReferenceSearchResult(
                 total={
                     "count": search_result.total.value,
@@ -338,11 +376,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     "count": len(search_result.hits),
                     "number": search_result.page,
                 },
-                references=[
-                    self.reference_to_sdk(reference)
-                    # Sort references according to search order
-                    for reference in sorted(references, key=lambda r: hit_order[r.id])
-                ],
+                references=sdk_references,
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception

@@ -123,9 +123,6 @@ async def test_build_robot_request_happy_path(fake_uow, fake_repository):
     )
     uow = fake_uow(enhancement_requests=fake_repository([enhancement_request]))
     mock_blob_repo = MagicMock()
-    service = EnhancementService(
-        ReferenceAntiCorruptionService(mock_blob_repo), uow, MagicMock()
-    )
     mock_blob_repo.upload_file_to_blob_storage = AsyncMock(
         return_value=BlobStorageFile(
             location="minio",
@@ -135,6 +132,11 @@ async def test_build_robot_request_happy_path(fake_uow, fake_repository):
         )
     )
     mock_blob_repo.get_signed_url = AsyncMock(return_value="http://signed.url/")
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo.get_signed_url),
+        uow,
+        MagicMock(),
+    )
     result = await service.build_robot_request(
         mock_blob_repo, references, enhancement_request
     )

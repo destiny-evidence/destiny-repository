@@ -15,6 +15,7 @@ from destiny_sdk.enhancements import (
     AnnotationType,
     AuthorPosition,
     BibliographicMetadataEnhancement,
+    BooleanAnnotation,
     EnhancementType,
 )
 from destiny_sdk.identifiers import ExternalIdentifierType
@@ -160,7 +161,7 @@ class LabsReference(BaseModel):
             scheme=scheme,
             label=label,
         ):
-            if annotation.value == expected_value:
+            if cast(BooleanAnnotation, annotation).value == expected_value:
                 return True
             found_annotation = True
         return False if found_annotation else None
