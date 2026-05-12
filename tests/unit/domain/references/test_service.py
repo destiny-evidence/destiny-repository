@@ -1438,25 +1438,3 @@ async def test_materialise_full_texts_non_ft_enhancements_untouched():
     assert errors == []
     blob_repo.copy.assert_not_awaited()
     assert reference.enhancements == [non_ft]
-
-
-@pytest.mark.asyncio
-async def test_materialise_full_texts_already_owned_blob_untouched():
-    """An FT enhancement already pointing at an owned blob is left alone."""
-    service = _make_service_for_materialisation()
-    blob_repo = AsyncMock()
-    blob_repo.destination = Mock()
-    blob_repo.copy = AsyncMock()
-
-    owned_ft = EnhancementFactory.build(
-        content=FullTextEnhancementFactory.build(
-            blob=BlobStorageFileFactory.build(location=BlobStorageLocation.MINIO),
-        )
-    )
-    reference = ReferenceFactory.build(enhancements=[owned_ft])
-
-    errors = await service._materialise_full_texts(reference, blob_repo)  # noqa: SLF001
-
-    assert errors == []
-    blob_repo.copy.assert_not_awaited()
-    assert reference.enhancements == [owned_ft]

@@ -1,10 +1,11 @@
 import json
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import UUID, uuid7
 
 import pytest
 
+from app.core.exceptions import RemoteBlobStorageError
 from app.domain.references.models.models import (
     EnhancementRequest,
     EnhancementRequestStatus,
@@ -20,7 +21,11 @@ from app.domain.references.services.enhancement_service import (
     EnhancementService,
     ProcessedResults,
 )
-from app.persistence.blob.models import BlobStorageFile
+from app.persistence.blob.models import (
+    BlobCopyResult,
+    BlobStorageFile,
+    BlobStorageLocation,
+)
 
 
 def create_fake_stream(entries):
@@ -778,10 +783,6 @@ def make_full_text_result_entry(reference_id: UUID) -> str:
 @pytest.mark.asyncio
 async def test_process_robot_result_materialises_full_text_before_persistence():
     """A REMOTE full-text enhancement is copied to our blob before add_enhancement."""
-    from unittest.mock import Mock
-
-    from app.persistence.blob.models import BlobCopyResult, BlobStorageLocation
-
     reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
@@ -844,8 +845,6 @@ async def test_process_robot_result_materialises_full_text_before_persistence():
 @pytest.mark.asyncio
 async def test_process_robot_result_full_text_download_failure_skips_add():
     """A failed FT fetch surfaces as a validation error; add_enhancement is skipped."""
-    from app.core.exceptions import RemoteBlobStorageError
-
     reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
