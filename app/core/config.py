@@ -615,27 +615,6 @@ class Settings(BaseSettings):
         return True
 
     @property
-    def active_blob_backend(self) -> AzureBlobConfig | MinioConfig:
-        """Return the blob backend config in use for this environment."""
-        if self.running_locally:
-            if self.minio_config:
-                return self.minio_config
-            if self.azure_blob_config:
-                return self.azure_blob_config
-            if self.env == Environment.TEST:
-                # No blob config in tests; assume mocked.
-                return MinioConfig(
-                    host="test",
-                    access_key="test",
-                    secret_key="test",  # noqa: S106
-                    containers={c: "test" for c in BlobContainer},
-                )
-        if not self.azure_blob_config:
-            msg = "Azure Blob Storage configuration is not given."
-            raise ValueError(msg)
-        return self.azure_blob_config
-
-    @property
     def trace_repr(self) -> str:
         """Get a string representation of the config for tracing."""
         return (
