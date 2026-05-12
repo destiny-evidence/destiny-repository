@@ -1314,10 +1314,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             else None
         )
 
-        # ES enforces max_result_window=10_000 so page_size * max_page must not
-        # exceed that. Lifting the cap is tracked in destiny-repository#661.
         page_size = 1000
-        max_results = 10_000
+        max_results = SearchService.MAX_RESULT_WINDOW
         max_page = max_results // page_size
 
         seen_ids: dict[UUID, None] = {}

@@ -1185,6 +1185,73 @@ async def test_collect_reference_download_ids_dedup_does_not_flag_truncated(
     assert truncated is False
 
 
+async def test_collect_reference_download_ids_handles_empty_result_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Zero hits returns ([], False) without crashing."""
+    monkeypatch.setattr(
+        SearchService,
+        "search_with_query_string",
+        AsyncMock(
+            return_value=ESSearchResult(
+                hits=[],
+                total=ESSearchTotal(value=0, relation="eq"),
+                page=1,
+            )
+        ),
+    )
+
+    service = ReferenceService.__new__(ReferenceService)
+    service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
+    download = ReferenceDownload(query="climate")
+
+    ids, truncated = await ReferenceService._collect_reference_download_ids.__wrapped__(  # type: ignore[attr-defined]  # noqa: SLF001
+        service, download
+    )
+
+    assert ids == []
+    assert truncated is False
+
+
+async def test_collect_reference_download_ids_exactly_at_cap_not_truncated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A result set of exactly 10,000 with `eq` total must not be flagged truncated."""
+    pages = [
+        ESSearchResult(
+            hits=[ESHit(id=uuid7(), score=1.0) for _ in range(1000)],
+            total=ESSearchTotal(value=10_000, relation="eq"),
+            page=p,
+        )
+        for p in range(1, 11)
+    ]
+    monkeypatch.setattr(
+        SearchService, "search_with_query_string", AsyncMock(side_effect=pages)
+    )
+
+    service = ReferenceService.__new__(ReferenceService)
+    service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
+    download = ReferenceDownload(query="climate")
+
+    ids, truncated = await ReferenceService._collect_reference_download_ids.__wrapped__(  # type: ignore[attr-defined]  # noqa: SLF001
+        service, download
+    )
+
+    assert len(ids) == 10_000
+    # ES says eq=10_000: it counted exactly to the cap, so we got everything.
+    assert truncated is False
+
+
+async def test_request_reference_download_rejects_empty_query(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """Empty `q` returns 422 from FastAPI's min_length validation."""
+    response = await client.post("/v1/references/download/", params={"q": ""})
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
 async def test_search_references_rejects_malformed_annotation(
     session: AsyncSession,  # noqa: ARG001
     client: AsyncClient,

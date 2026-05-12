@@ -30,6 +30,11 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         "abstract",
     )
 
+    # ES's default `track_total_hits` threshold. Pagination beyond this
+    # produces `relation == "gte"` totals rather than exact counts. Lifting
+    # the cap is tracked in destiny-repository#661.
+    MAX_RESULT_WINDOW = 10_000
+
     def __init__(
         self,
         anti_corruption_service: ReferenceAntiCorruptionService,

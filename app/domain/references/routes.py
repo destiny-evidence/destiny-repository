@@ -335,7 +335,7 @@ async def search_references(
         int,
         Query(
             ge=1,
-            le=10_000 / 20,  # Elasticsearch max result window divided by page size
+            le=SearchService.MAX_RESULT_WINDOW / 20,
             description="The page number to retrieve, indexed from 1. "
             "Each page contains 20 results.",
         ),
@@ -391,7 +391,7 @@ async def request_reference_download(
     ],
     q: Annotated[
         str,
-        Query(description="The query string."),
+        Query(min_length=1, description="The query string."),
     ],
     annotation_filters: Annotated[
         list[AnnotationFilter],
