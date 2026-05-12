@@ -473,24 +473,24 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         return await self.sql_uow.external_identifiers.add(db_identifier)
 
-    async def _materialise_full_texts(
+    async def _store_full_texts(
         self,
         reference: Reference,
         blob_repository: BlobRepository,
     ) -> list[str]:
-        """Copy every REMOTE full-text enhancement into our blob storage."""
+        """Copy every remote full-text enhancement into our blob storage."""
         if not reference.enhancements:
             return []
 
         errors: list[str] = []
-        materialised: list[Enhancement] = []
+        stored: list[Enhancement] = []
 
         for enhancement in reference.enhancements:
             if (
                 enhancement.content.enhancement_type != EnhancementType.FULL_TEXT
                 or not enhancement.content.blob.is_remote
             ):
-                materialised.append(enhancement)
+                stored.append(enhancement)
                 continue
 
             try:
@@ -502,7 +502,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 )
             except FullTextIngestionError as exc:
                 logger.warning(
-                    "Failed to materialise full text enhancement.",
+                    "Failed to store full text enhancement.",
                     reference_id=str(reference.id),
                     enhancement_id=str(enhancement.id),
                     exc=repr(exc),
@@ -510,9 +510,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 errors.append(str(exc))
                 continue
 
-            materialised.append(enhancement)
+            stored.append(enhancement)
 
-        reference.enhancements = materialised
+        reference.enhancements = stored
         return errors
 
     @sql_unit_of_work
@@ -562,7 +562,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         trace_attribute(Attributes.REFERENCE_ID, str(reference.id))
 
         reference_create_result.errors.extend(
-            await self._materialise_full_texts(reference, blob_repository)
+            await self._store_full_texts(reference, blob_repository)
         )
 
         canonical_reference = await self._deduplication_service.find_exact_duplicate(

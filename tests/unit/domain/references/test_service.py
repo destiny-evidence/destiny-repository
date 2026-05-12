@@ -1327,8 +1327,8 @@ async def test_expire_and_replace_stale_pending_enhancements_at_retry_limit(
     assert len(warning_logs) == 2
 
 
-def _make_service_for_materialisation():
-    """Build a ReferenceService against fake uows for materialisation tests."""
+def _make_service_for_storage():
+    """Build a ReferenceService against fake uows for storage tests."""
     return ReferenceService(
         ReferenceAntiCorruptionService(sign_url=AsyncMock()),
         Mock(),
@@ -1337,7 +1337,7 @@ def _make_service_for_materialisation():
 
 
 def _remote_ft_enhancement(*, sha256_declared: bool, byte_size_declared: bool):
-    """Build an Enhancement carrying a FullTextEnhancement with REMOTE blob."""
+    """Build an Enhancement carrying a FullTextEnhancement with remote blob."""
     ft = FullTextEnhancementFactory.build(
         blob=BlobStorageFile.from_uri("https://example.com/papers/foo.pdf"),
         sha256_checksum="a" * 64 if sha256_declared else None,
@@ -1351,9 +1351,9 @@ def _owned_destination():
 
 
 @pytest.mark.asyncio
-async def test_materialise_full_texts_copies_remote_fts_and_swaps_blob():
-    """All REMOTE FTs are copied; blob swapped, computed metadata populated."""
-    service = _make_service_for_materialisation()
+async def test_store_full_texts_copies_remote_fts_and_swaps_blob():
+    """All remote FTs are copied; blob swapped, computed metadata populated."""
+    service = _make_service_for_storage()
     blob_repo = AsyncMock()
     destination = _owned_destination()
     blob_repo.destination = Mock(return_value=destination)
@@ -1369,7 +1369,7 @@ async def test_materialise_full_texts_copies_remote_fts_and_swaps_blob():
     ft = _remote_ft_enhancement(sha256_declared=False, byte_size_declared=False)
     reference = ReferenceFactory.build(enhancements=[ft])
 
-    errors = await service._materialise_full_texts(reference, blob_repo)  # noqa: SLF001
+    errors = await service._store_full_texts(reference, blob_repo)  # noqa: SLF001
 
     assert errors == []
     blob_repo.copy.assert_awaited_once()
@@ -1379,9 +1379,9 @@ async def test_materialise_full_texts_copies_remote_fts_and_swaps_blob():
 
 
 @pytest.mark.asyncio
-async def test_materialise_full_texts_sha256_mismatch_drops_enhancement():
+async def test_store_full_texts_sha256_mismatch_drops_enhancement():
     """Declared sha256 mismatch fails the FT enhancement and surfaces an error."""
-    service = _make_service_for_materialisation()
+    service = _make_service_for_storage()
     blob_repo = AsyncMock()
     destination = _owned_destination()
     blob_repo.destination = Mock(return_value=destination)
@@ -1397,7 +1397,7 @@ async def test_materialise_full_texts_sha256_mismatch_drops_enhancement():
     bad = _remote_ft_enhancement(sha256_declared=True, byte_size_declared=False)
     reference = ReferenceFactory.build(enhancements=[bad])
 
-    errors = await service._materialise_full_texts(reference, blob_repo)  # noqa: SLF001
+    errors = await service._store_full_texts(reference, blob_repo)  # noqa: SLF001
 
     assert len(errors) == 1
     assert "sha256 mismatch" in errors[0]
@@ -1405,9 +1405,9 @@ async def test_materialise_full_texts_sha256_mismatch_drops_enhancement():
 
 
 @pytest.mark.asyncio
-async def test_materialise_full_texts_download_error_drops_enhancement():
+async def test_store_full_texts_download_error_drops_enhancement():
     """Remote fetch failures fail the FT enhancement and surface as errors."""
-    service = _make_service_for_materialisation()
+    service = _make_service_for_storage()
     blob_repo = AsyncMock()
     blob_repo.destination = Mock(return_value=_owned_destination())
     blob_repo.copy = AsyncMock(side_effect=RemoteBlobStorageError("publisher is down"))
@@ -1415,7 +1415,7 @@ async def test_materialise_full_texts_download_error_drops_enhancement():
     ft = _remote_ft_enhancement(sha256_declared=False, byte_size_declared=False)
     reference = ReferenceFactory.build(enhancements=[ft])
 
-    errors = await service._materialise_full_texts(reference, blob_repo)  # noqa: SLF001
+    errors = await service._store_full_texts(reference, blob_repo)  # noqa: SLF001
 
     assert len(errors) == 1
     assert "publisher is down" in errors[0]
@@ -1423,9 +1423,9 @@ async def test_materialise_full_texts_download_error_drops_enhancement():
 
 
 @pytest.mark.asyncio
-async def test_materialise_full_texts_non_ft_enhancements_untouched():
+async def test_store_full_texts_non_ft_enhancements_untouched():
     """Non-FT enhancements pass through without blob calls."""
-    service = _make_service_for_materialisation()
+    service = _make_service_for_storage()
     blob_repo = AsyncMock()
     blob_repo.destination = Mock()
     blob_repo.copy = AsyncMock()
@@ -1433,7 +1433,7 @@ async def test_materialise_full_texts_non_ft_enhancements_untouched():
     non_ft = EnhancementFactory.build()  # random non-FT content
     reference = ReferenceFactory.build(enhancements=[non_ft])
 
-    errors = await service._materialise_full_texts(reference, blob_repo)  # noqa: SLF001
+    errors = await service._store_full_texts(reference, blob_repo)  # noqa: SLF001
 
     assert errors == []
     blob_repo.copy.assert_not_awaited()

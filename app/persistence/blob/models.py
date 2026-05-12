@@ -32,10 +32,10 @@ class BlobStorageLocation(StrEnum):
     HTTP = auto()
     HTTPS = auto()
 
-
-_REMOTE_LOCATIONS: frozenset[BlobStorageLocation] = frozenset(
-    {BlobStorageLocation.HTTP, BlobStorageLocation.HTTPS}
-)
+    @classmethod
+    def remote(cls) -> frozenset["BlobStorageLocation"]:
+        """Return the set of remote blob storage locations."""
+        return frozenset({cls.HTTP, cls.HTTPS})
 
 
 class BlobContainer(StrEnum):
@@ -84,7 +84,7 @@ class BlobStorageFile(BaseModel):
     @property
     def is_remote(self) -> bool:
         """Whether this blob lives at a URL we don't own (http/https)."""
-        return self.location in _REMOTE_LOCATIONS
+        return self.location in BlobStorageLocation.remote()
 
     @model_validator(mode="before")
     @classmethod
@@ -136,7 +136,7 @@ class BlobStorageFile(BaseModel):
         return {
             "location": location,
             "container": parts[0],
-            "path": "/".join(parts[1:-1]),
+            "path": "/".join(parts[1:-1]),  # empty string if no path
             "filename": parts[-1],
         }
 

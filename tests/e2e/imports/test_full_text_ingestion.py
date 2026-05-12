@@ -1,4 +1,4 @@
-"""End-to-end test for full-text enhancement materialisation during import."""
+"""End-to-end test for full-text enhancement storage during import."""
 
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
@@ -60,7 +60,7 @@ async def test_happy_full_text_ingestion(
     minio_proxy_client: httpx.AsyncClient,
 ):
     """
-    Full-text materialisation round-trip.
+    Full-text storage round-trip.
 
     A reference imported with a FullTextEnhancement file_url has its bytes
     copied into our blob storage, and the reference returned from the API

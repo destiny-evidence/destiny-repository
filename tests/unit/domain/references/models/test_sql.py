@@ -3,7 +3,7 @@ from uuid import uuid7
 import destiny_sdk
 import pytest
 
-from app.core.exceptions import UnmaterialisedFullTextError
+from app.core.exceptions import UnstoredFullTextError
 from app.domain.references.models.models import (
     EnhancementType,
     ExternalIdentifierType,
@@ -217,7 +217,7 @@ async def test_enhancement_from_and_to_domain():
     assert domain_enh.reference.visibility == dummy_sql_ref.visibility
 
 
-def test_enhancement_from_domain_rejects_unmaterialised_full_text():
+def test_enhancement_from_domain_rejects_unstored_full_text():
     """Persisting an FT enhancement with a remote blob is refused."""
     remote_blob = BlobStorageFileFactory.build(
         location=BlobStorageLocation.HTTPS,
@@ -228,7 +228,7 @@ def test_enhancement_from_domain_rejects_unmaterialised_full_text():
     full_text = FullTextEnhancementFactory.build(blob=remote_blob)
     enhancement = EnhancementFactory.build(content=full_text)
 
-    with pytest.raises(UnmaterialisedFullTextError):
+    with pytest.raises(UnstoredFullTextError):
         Enhancement.from_domain(enhancement)
 
 

@@ -99,7 +99,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             container=BlobContainer.FULL_TEXTS,
         )
         logger.info(
-            "Materialising full text enhancement.",
+            "Storing full text enhancement.",
             reference_id=str(reference_id),
             enhancement_id=str(enhancement_id),
             source_uri=source.to_uri(),
@@ -137,7 +137,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             content.byte_size = result.byte_size
 
         logger.info(
-            "Materialised full text enhancement.",
+            "Stored full text enhancement.",
             reference_id=str(reference_id),
             enhancement_id=str(enhancement_id),
             byte_size=result.byte_size,
@@ -422,7 +422,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         )
         trace_attribute(Attributes.ENHANCEMENT_ID, str(enhancement.id))
 
-        # Materialise REMOTE FT blobs before they reach the persistence boundary.
+        # Store remote FT blobs before they reach the persistence boundary.
         if enhancement.content.enhancement_type == EnhancementType.FULL_TEXT:
             try:
                 await self.copy_full_text(
@@ -433,7 +433,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                 )
             except FullTextIngestionError as exc:
                 logger.warning(
-                    "Failed to materialise full text enhancement from robot result.",
+                    "Failed to store full text enhancement from robot result.",
                     line_no=line_no,
                     reference_id=str(enhancement.reference_id),
                     enhancement_id=str(enhancement.id),

@@ -18,7 +18,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.exceptions import SQLPreloadError, UnmaterialisedFullTextError
+from app.core.exceptions import SQLPreloadError, UnstoredFullTextError
 from app.domain.references.models.models import (
     DuplicateDetermination,
     EnhancementRequestStatus,
@@ -315,7 +315,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
                 "Attempted to persist a full text enhancement that has not been "
                 "copied to repository storage, which is not allowed."
             )
-            raise UnmaterialisedFullTextError(msg)
+            raise UnstoredFullTextError(msg)
         return cls(
             id=domain_obj.id,
             reference_id=domain_obj.reference_id,

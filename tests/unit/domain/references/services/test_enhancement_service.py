@@ -781,8 +781,8 @@ def make_full_text_result_entry(reference_id: UUID) -> str:
 
 
 @pytest.mark.asyncio
-async def test_process_robot_result_materialises_full_text_before_persistence():
-    """A REMOTE full-text enhancement is copied to our blob before add_enhancement."""
+async def test_process_robot_result_stores_full_text_before_persistence():
+    """A remote full-text enhancement is copied to our blob before add_enhancement."""
     reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
@@ -837,7 +837,7 @@ async def test_process_robot_result_materialises_full_text_before_persistence():
     assert len(messages) == 1
     assert messages[0].error is None
     mock_blob_repo.copy.assert_awaited_once()
-    # The enhancement reaching add_enhancement has an owned blob, not REMOTE.
+    # The enhancement reaching add_enhancement has an owned blob, not remote.
     assert len(added) == 1
     assert added[0].content.blob.location == BlobStorageLocation.MINIO
 

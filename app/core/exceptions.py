@@ -487,7 +487,7 @@ class RemoteBlobStorageError(BlobStorageError):
 
 
 class FullTextIngestionError(DestinyRepositoryError):
-    """Base exception for failures materialising a full-text enhancement."""
+    """Base exception for failures storing a full-text enhancement."""
 
     def __init__(self, detail: str, *args: object) -> None:
         """
@@ -531,17 +531,17 @@ class FullTextIntegrityError(FullTextIngestionError):
         super().__init__(detail, *args)
 
 
-class UnmaterialisedFullTextError(FullTextIngestionError):
+class UnstoredFullTextError(FullTextIngestionError):
     """
-    A full-text enhancement reached the persistence boundary unmaterialised.
+    A full-text enhancement reached the persistence boundary unstored.
 
-    Raised when the materialisation step was skipped or failed to swap a
-    REMOTE blob for an owned one before SQL/ES write.
+    Raised when the storage step was skipped or failed to swap a
+    remote blob for an owned one before SQL/ES write.
     """
 
     def __init__(self, detail: str, *args: object) -> None:
         """
-        Initialize the UnmaterialisedFullTextError exception.
+        Initialize the UnstoredFullTextError exception.
 
         Args:
             detail (str): The detail message for the exception.

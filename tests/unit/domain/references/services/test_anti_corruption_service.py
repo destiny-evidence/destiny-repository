@@ -110,7 +110,7 @@ class TestFullTextEnhancementFromSdk:
         )
 
     def test_content_from_sdk_hydrates_with_full_metadata(self, service, sdk_full_text):
-        """Leaf converter: REMOTE blob hydrates from URL, all metadata preserved."""
+        """Remote blob hydrates from URL, all metadata preserved."""
         domain_ft = service.full_text_enhancement_content_from_sdk(sdk_full_text)
 
         assert isinstance(domain_ft, FullTextEnhancement)

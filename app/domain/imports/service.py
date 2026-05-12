@@ -161,7 +161,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
 
         :param reference_service: The reference service to use for ingestion.
         :type reference_service: ReferenceService
-        :param blob_repository: Used to materialise full-text enhancements during
+        :param blob_repository: Used to store full-text enhancements during
             ingestion.
         :type blob_repository: BlobRepository
         :param import_result: The import result to update.

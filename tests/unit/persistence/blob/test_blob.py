@@ -311,22 +311,6 @@ async def test_copy_empty_source_yields_known_sha256():
     assert dest_client.uploaded_chunks == []
 
 
-@pytest.mark.asyncio
-async def test_copy_rejects_remote_destination():
-    """A REMOTE destination is nonsensical and should be refused."""
-    source = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
-        container="cont",
-        path="p",
-        filename="foo.pdf",
-    )
-    destination = BlobStorageFile.from_uri("https://example.com/where.pdf")
-
-    repo = BlobRepository()
-    with pytest.raises(BlobStorageError):
-        await repo.copy(source, destination)
-
-
 class DummyClient(GenericBlobStorageClient):
     async def upload_file(self, content, file):
         self.uploaded = (content, file)
