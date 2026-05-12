@@ -9,7 +9,6 @@ from unittest.mock import patch
 
 import pytest
 
-from app.core.config import get_settings
 from app.core.exceptions import BlobStorageError
 from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.models import (
@@ -27,10 +26,8 @@ async def test_upload_file_to_blob_storage():
     repo = BlobRepository()
     content = BytesIO(b"test data")
     dummy_client = DummyClient()
-    expected_container = get_settings().active_blob_backend.containers[
-        BlobContainer.FULL_TEXTS
-    ]
-    expected_location = get_settings().active_blob_backend.location
+    expected_container = repo._write_backend.containers[BlobContainer.FULL_TEXTS]  # noqa: SLF001
+    expected_location = repo._write_backend.location  # noqa: SLF001
     with patch.object(repo, "_preload_config", return_value=dummy_client):
         result = await repo.upload_file_to_blob_storage(
             content=content,
