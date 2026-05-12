@@ -364,6 +364,19 @@ class FullTextEnhancement(DomainBaseModel):
         description="The timestamp when this full text was retrieved.",
     )
 
+    @property
+    def fingerprint(self) -> str:
+        """
+        The unique fingerprint of this full text enhancement.
+
+        Excludes retrieved_at: refetching the same file shouldn't produce
+        a different fingerprint.
+        """
+        return json.dumps(
+            self.model_dump(mode="json", exclude={"retrieved_at"}, exclude_none=True),
+            sort_keys=True,
+        )
+
 
 EnhancementContent = Annotated[
     destiny_sdk.enhancements.BibliographicMetadataEnhancement
