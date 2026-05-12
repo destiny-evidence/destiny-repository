@@ -36,7 +36,11 @@ class RemoteBlobStorageClient(GenericBlobStorageClient):
         content: FileStream | BytesIO | AsyncIterator[bytes],
         file: BlobStorageFile,
     ) -> None:
-        """Raise - uploads to remote URLs are not supported."""
+        """
+        Raise, uploads to remote URLs are not supported.
+
+        (They could be in the future if we wanted to support PUTs to arbitrary URLs).
+        """
         del content, file
         msg = "Upload is not supported for RemoteBlobStorageClient."
         raise RemoteBlobStorageError(msg)
@@ -62,7 +66,7 @@ class RemoteBlobStorageClient(GenericBlobStorageClient):
         file: BlobStorageFile,
         interaction_type: BlobSignedUrlType,
     ) -> str:
-        """Raise - remote URLs are themselves already URLs."""
+        """Raise, remote URLs are themselves already URLs."""
         del file, interaction_type
         msg = "Signed URL generation is not supported for RemoteBlobStorageClient."
         raise RemoteBlobStorageError(msg)
