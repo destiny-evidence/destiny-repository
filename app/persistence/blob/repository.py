@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
+from functools import cached_property
 from io import BytesIO
 
 from cachetools import LRUCache
@@ -39,16 +40,13 @@ class BlobRepository:
 
     def __init__(self) -> None:
         """Initialize the BlobRepository."""
-        self._write_backend: AzureBlobConfig | MinioConfig = (
-            self._select_write_backend()
-        )
         self._config_cache: LRUCache[BlobStorageFile, GenericBlobStorageClient] = (
             LRUCache(maxsize=1000)
         )
 
-    @staticmethod
-    def _select_write_backend() -> AzureBlobConfig | MinioConfig:
-        """Select the blob backend that new files will be written to."""
+    @cached_property
+    def _write_backend(self) -> AzureBlobConfig | MinioConfig:
+        """The blob backend that new files will be written to."""
         if settings.running_locally:
             if settings.minio_config:
                 return settings.minio_config
