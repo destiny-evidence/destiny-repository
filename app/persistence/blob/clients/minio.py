@@ -1,7 +1,7 @@
 """Minio implementations for blob storage operations."""
 
 import datetime
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from io import BytesIO
 
 from minio import Minio
@@ -52,48 +52,46 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
     @trace_blob_client_method(tracer)
     async def upload_file(
         self,
-        content: FileStream | BytesIO,
+        content: FileStream | BytesIO | AsyncIterator[bytes],
         file: BlobStorageFile,
     ) -> None:
         """Upload a file to MinIO."""
         try:
             if isinstance(content, FileStream):
-                content = await content.read()
+                buffer = await content.read()
+            elif isinstance(content, BytesIO):
+                buffer = content
+            else:
+                # Async iterator of bytes: buffer in memory. MinIO is dev/test only,
+                # so memory pressure is acceptable.
+                buffer = BytesIO()
+                async for chunk in content:
+                    buffer.write(chunk)
+                buffer.seek(0)
             self.client.put_object(
                 bucket_name=file.container,
                 object_name=f"{file.path}/{file.filename}",
-                data=content,
-                length=content.getbuffer().nbytes,
-                content_type=file.content_type,
+                data=buffer,
+                length=buffer.getbuffer().nbytes,
+                content_type=file.content_type or "application/octet-stream",
             )
         except S3Error as e:
             msg = f"Failed to upload file to MinIO: {e}"
             raise MinioBlobStorageError(msg) from e
 
     @trace_blob_client_generator(tracer)
-    async def stream_file(
+    async def stream_chunks(
         self,
         file: BlobStorageFile,
-    ) -> AsyncGenerator[str, None]:
-        """
-        Yield lines from a file in MinIO as a generator.
-
-        Splits the file content by newline.
-        """
+    ) -> AsyncGenerator[bytes, None]:
+        """Yield raw byte chunks from a file in MinIO."""
         try:
             response = self.client.get_object(
                 bucket_name=file.container,
                 object_name=f"{file.path}/{file.filename}",
             )
-            buffer = ""
             for chunk in response.stream(1024):
-                text = chunk.decode("utf-8")
-                buffer += text
-                while "\n" in buffer:
-                    line, buffer = buffer.split("\n", 1)
-                    yield line
-            if buffer:
-                yield buffer
+                yield chunk
         except S3Error as e:
             msg = f"Failed to get file from MinIO: {e}"
             raise MinioBlobStorageError(msg) from e

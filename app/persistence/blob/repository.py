@@ -1,5 +1,6 @@
 """Service for managing files in blob storage."""
 
+import hashlib
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from io import BytesIO
@@ -17,8 +18,10 @@ from app.core.telemetry.logger import get_logger
 from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.clients.azure import AzureBlobStorageClient
 from app.persistence.blob.clients.minio import MinioBlobStorageClient
+from app.persistence.blob.clients.remote import RemoteBlobStorageClient
 from app.persistence.blob.models import (
     BlobContainer,
+    BlobCopyResult,
     BlobSignedUrlType,
     BlobStorageFile,
     BlobStorageLocation,
@@ -40,6 +43,7 @@ class BlobRepository:
         self._config_cache: LRUCache[BlobStorageFile, GenericBlobStorageClient] = (
             LRUCache(maxsize=1000)
         )
+        self._remote_client: RemoteBlobStorageClient | None = None
 
     async def _preload_config(
         self,
@@ -77,6 +81,10 @@ class BlobRepository:
             config = MinioBlobStorageClient(
                 settings.minio_config, settings.presigned_url_expiry_seconds
             )
+        elif file.location == BlobStorageLocation.REMOTE:
+            if self._remote_client is None:
+                self._remote_client = RemoteBlobStorageClient()
+            config = self._remote_client
         else:
             msg = "Unsupported blob storage location."
             raise BlobStorageError(msg)
@@ -176,3 +184,43 @@ class BlobRepository:
         """
         client = await self._preload_config(file)
         return HttpUrl(await client.generate_signed_url(file, interaction_type))
+
+    async def copy(
+        self, source: BlobStorageFile, destination: BlobStorageFile
+    ) -> BlobCopyResult:
+        """
+        Stream a file from source to destination, computing sha256 and size.
+
+        Source may be any location (including REMOTE); destination must be
+        an owned location.
+
+        :param source: The source file to copy.
+        :type source: BlobStorageFile
+        :param destination: The destination to copy the file to.
+        :type destination: BlobStorageFile
+        """
+        if destination.location == BlobStorageLocation.REMOTE:
+            msg = "Cannot copy to a REMOTE destination."
+            raise BlobStorageError(msg)
+
+        src_client = await self._preload_config(source)
+        dest_client = await self._preload_config(destination)
+
+        hasher = hashlib.sha256()
+        size = 0
+
+        async def hashed_chunks() -> AsyncIterator[bytes]:
+            nonlocal size
+            async for chunk in src_client.stream_chunks(source):
+                hasher.update(chunk)
+                size += len(chunk)
+                yield chunk
+
+        await dest_client.upload_file(hashed_chunks(), destination)
+
+        return BlobCopyResult(
+            source=source,
+            destination=destination,
+            byte_size=size,
+            sha256_checksum=hasher.hexdigest(),
+        )

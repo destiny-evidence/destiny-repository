@@ -2,7 +2,7 @@
 
 import asyncio
 import datetime
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from io import BytesIO
 
 from azure.identity.aio import DefaultAzureCredential
@@ -65,7 +65,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
     @trace_blob_client_method(tracer)
     async def upload_file(
         self,
-        content: FileStream | BytesIO,
+        content: FileStream | BytesIO | AsyncIterator[bytes],
         file: BlobStorageFile,
     ) -> None:
         """Upload a file to Azure Blob Storage using async streaming."""
@@ -82,29 +82,18 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             raise AzureBlobStorageError(msg) from e
 
     @trace_blob_client_generator(tracer)
-    async def stream_file(
+    async def stream_chunks(
         self,
         file: BlobStorageFile,
-    ) -> AsyncGenerator[str, None]:
-        """
-        Yield lines from a file in Azure Blob Storage as a generator.
-
-        Splits the file content by newline.
-        """
+    ) -> AsyncGenerator[bytes, None]:
+        """Yield raw byte chunks from a file in Azure Blob Storage."""
         blob_client = self.blob_service_client.get_blob_client(
             container=file.container, blob=f"{file.path}/{file.filename}"
         )
         try:
             stream = await blob_client.download_blob()
-            buffer = ""
             async for chunk in stream.chunks():
-                text = chunk.decode("utf-8")
-                buffer += text
-                while "\n" in buffer:
-                    line, buffer = buffer.split("\n", 1)
-                    yield line
-            if buffer:
-                yield buffer
+                yield chunk
         except Exception as e:
             msg = f"Failed to stream file from Azure Blob Storage: {e}"
             raise AzureBlobStorageError(msg) from e
