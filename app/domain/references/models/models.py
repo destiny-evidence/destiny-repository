@@ -369,11 +369,14 @@ class FullTextEnhancement(DomainBaseModel):
         """
         The unique fingerprint of this full text enhancement.
 
-        Excludes retrieved_at: refetching the same file shouldn't produce
-        a different fingerprint.
+        Excludes retrieved_at and blob location.
         """
         return json.dumps(
-            self.model_dump(mode="json", exclude={"retrieved_at"}, exclude_none=True),
+            self.model_dump(
+                mode="json",
+                exclude={"retrieved_at", "blob"},
+                exclude_none=True,
+            ),
             sort_keys=True,
         )
 

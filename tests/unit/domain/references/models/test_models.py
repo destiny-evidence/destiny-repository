@@ -18,7 +18,11 @@ from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.persistence.blob.models import BlobStorageFile
-from tests.factories import EnhancementFactory, FullTextEnhancementFactory
+from tests.factories import (
+    BlobStorageFileFactory,
+    EnhancementFactory,
+    FullTextEnhancementFactory,
+)
 
 
 async def test_generic_external_identifier_from_specific_without_other():
@@ -77,10 +81,15 @@ def test_full_text_enhancement_fingerprint_stable_across_identical_content():
     assert a.fingerprint == b.fingerprint
 
 
-def test_full_text_enhancement_fingerprint_ignores_retrieved_at():
-    """retrieved_at describes when we fetched, not what we fetched."""
+def test_full_text_enhancement_fingerprint_ignores_retrieved_at_and_blob():
+    """blob describes where we stored it, not what it is."""
     a = FullTextEnhancementFactory.build()
-    b = a.model_copy(update={"retrieved_at": datetime(2020, 1, 1, tzinfo=UTC)})
+    b = a.model_copy(
+        update={
+            "retrieved_at": datetime(2020, 1, 1, tzinfo=UTC),
+            "blob": BlobStorageFileFactory.build(),
+        }
+    )
     assert a.fingerprint == b.fingerprint
 
 
