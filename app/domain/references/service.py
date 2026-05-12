@@ -473,48 +473,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         return await self.sql_uow.external_identifiers.add(db_identifier)
 
-    async def _store_full_texts(
-        self,
-        reference: Reference,
-        blob_repository: BlobRepository,
-    ) -> list[str]:
-        """Copy every remote full-text enhancement into our blob storage."""
-        if not reference.enhancements:
-            return []
-
-        errors: list[str] = []
-        stored: list[Enhancement] = []
-
-        for enhancement in reference.enhancements:
-            if (
-                enhancement.content.enhancement_type != EnhancementType.FULL_TEXT
-                or not enhancement.content.blob.is_remote
-            ):
-                stored.append(enhancement)
-                continue
-
-            try:
-                await self._enhancement_service.copy_full_text(
-                    enhancement.content,
-                    reference_id=reference.id,
-                    enhancement_id=enhancement.id,
-                    blob_repository=blob_repository,
-                )
-            except FullTextIngestionError as exc:
-                logger.warning(
-                    "Failed to store full text enhancement.",
-                    reference_id=str(reference.id),
-                    enhancement_id=str(enhancement.id),
-                    exc=repr(exc),
-                )
-                errors.append(str(exc))
-                continue
-
-            stored.append(enhancement)
-
-        reference.enhancements = stored
-        return errors
-
     @sql_unit_of_work
     @es_unit_of_work
     async def ingest_reference(
@@ -561,9 +519,26 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference_create_result.reference_id = reference.id
         trace_attribute(Attributes.REFERENCE_ID, str(reference.id))
 
-        reference_create_result.errors.extend(
-            await self._store_full_texts(reference, blob_repository)
-        )
+        kept_enhancements: list[Enhancement] = []
+        for domain_enhancement in reference.enhancements or []:
+            if domain_enhancement.content.enhancement_type != EnhancementType.FULL_TEXT:
+                kept_enhancements.append(domain_enhancement)
+                continue
+            try:
+                await self._enhancement_service.store_full_text(
+                    domain_enhancement, blob_repository
+                )
+            except FullTextIngestionError as exc:
+                logger.warning(
+                    "Failed to store full text enhancement.",
+                    reference_id=str(reference.id),
+                    enhancement_id=str(domain_enhancement.id),
+                    exc=repr(exc),
+                )
+                reference_create_result.errors.append(str(exc))
+                continue
+            kept_enhancements.append(domain_enhancement)
+        reference.enhancements = kept_enhancements
 
         canonical_reference = await self._deduplication_service.find_exact_duplicate(
             reference

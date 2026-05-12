@@ -5,7 +5,12 @@ from uuid import UUID, uuid7
 
 import pytest
 
-from app.core.exceptions import RemoteBlobStorageError
+from app.core.exceptions import (
+    FullTextDownloadError,
+    FullTextIngestionError,
+    FullTextIntegrityError,
+    RemoteBlobStorageError,
+)
 from app.domain.references.models.models import (
     EnhancementRequest,
     EnhancementRequestStatus,
@@ -25,6 +30,11 @@ from app.persistence.blob.models import (
     BlobCopyResult,
     BlobStorageFile,
     BlobStorageLocation,
+)
+from tests.factories import (
+    BlobStorageFileFactory,
+    EnhancementFactory,
+    FullTextEnhancementFactory,
 )
 
 
@@ -882,3 +892,113 @@ async def test_process_robot_result_full_text_download_failure_skips_add():
     assert "publisher unreachable" in messages[0].error
     add_enhancement.assert_not_awaited()
     assert results.imported_enhancement_ids == set()
+
+
+def _ft_enhancement(*, remote: bool, sha256_declared: bool, byte_size_declared: bool):
+    """Build an Enhancement carrying a FullTextEnhancement, remote or owned."""
+    blob = (
+        BlobStorageFile.from_uri("https://example.com/papers/foo.pdf")
+        if remote
+        else BlobStorageFileFactory.build(location=BlobStorageLocation.MINIO)
+    )
+    ft = FullTextEnhancementFactory.build(
+        blob=blob,
+        sha256_checksum="a" * 64 if sha256_declared else None,
+        byte_size=12345 if byte_size_declared else None,
+    )
+    return EnhancementFactory.build(content=ft)
+
+
+def _owned_destination():
+    return BlobStorageFileFactory.build(location=BlobStorageLocation.MINIO)
+
+
+def _service_with_blob_repo(blob_repo):
+    return EnhancementService(
+        ReferenceAntiCorruptionService(blob_repo), None, MagicMock()
+    )
+
+
+@pytest.mark.asyncio
+async def test_store_full_text_copies_remote_ft_and_swaps_blob():
+    """Remote FT is copied; blob swapped, computed metadata populated."""
+    destination = _owned_destination()
+    blob_repo = MagicMock()
+    blob_repo.destination = Mock(return_value=destination)
+    blob_repo.copy = AsyncMock(
+        return_value=BlobCopyResult(
+            source=BlobStorageFile.from_uri("https://example.com/papers/foo.pdf"),
+            destination=destination,
+            byte_size=999,
+            sha256_checksum="b" * 64,
+        )
+    )
+
+    ft = _ft_enhancement(remote=True, sha256_declared=False, byte_size_declared=False)
+
+    await _service_with_blob_repo(blob_repo).store_full_text(ft, blob_repo)
+
+    blob_repo.copy.assert_awaited_once()
+    assert ft.content.blob.location == BlobStorageLocation.MINIO
+    assert ft.content.sha256_checksum == "b" * 64
+    assert ft.content.byte_size == 999
+
+
+@pytest.mark.asyncio
+async def test_store_full_text_sha256_mismatch_raises_integrity_error():
+    """Declared sha256 mismatch raises FullTextIntegrityError."""
+    destination = _owned_destination()
+    blob_repo = MagicMock()
+    blob_repo.destination = Mock(return_value=destination)
+    blob_repo.copy = AsyncMock(
+        return_value=BlobCopyResult(
+            source=BlobStorageFile.from_uri("https://example.com/papers/foo.pdf"),
+            destination=destination,
+            byte_size=12345,
+            sha256_checksum="WRONG" + "a" * 59,
+        )
+    )
+
+    ft = _ft_enhancement(remote=True, sha256_declared=True, byte_size_declared=False)
+
+    with pytest.raises(FullTextIntegrityError, match="sha256 mismatch"):
+        await _service_with_blob_repo(blob_repo).store_full_text(ft, blob_repo)
+
+
+@pytest.mark.asyncio
+async def test_store_full_text_remote_fetch_failure_raises_download_error():
+    """Remote fetch failure raises FullTextDownloadError."""
+    blob_repo = MagicMock()
+    blob_repo.destination = Mock(return_value=_owned_destination())
+    blob_repo.copy = AsyncMock(side_effect=RemoteBlobStorageError("publisher is down"))
+
+    ft = _ft_enhancement(remote=True, sha256_declared=False, byte_size_declared=False)
+
+    with pytest.raises(FullTextDownloadError, match="publisher is down"):
+        await _service_with_blob_repo(blob_repo).store_full_text(ft, blob_repo)
+
+
+@pytest.mark.asyncio
+async def test_store_full_text_non_remote_raises_ingestion_error():
+    """Non-remote blob is an upstream invariant violation: raises and skips copy."""
+    blob_repo = MagicMock()
+    blob_repo.copy = AsyncMock()
+
+    ft = _ft_enhancement(remote=False, sha256_declared=False, byte_size_declared=False)
+
+    with pytest.raises(FullTextIngestionError, match="non-remote blob"):
+        await _service_with_blob_repo(blob_repo).store_full_text(ft, blob_repo)
+    blob_repo.copy.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_store_full_text_non_ft_raises_value_error():
+    """Calling with a non-FT enhancement is a caller bug: raises ValueError."""
+    blob_repo = MagicMock()
+    blob_repo.copy = AsyncMock()
+
+    non_ft = EnhancementFactory.build()
+
+    with pytest.raises(ValueError, match="non-full-text"):
+        await _service_with_blob_repo(blob_repo).store_full_text(non_ft, blob_repo)
+    blob_repo.copy.assert_not_awaited()
