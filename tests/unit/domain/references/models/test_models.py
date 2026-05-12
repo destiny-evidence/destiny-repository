@@ -70,6 +70,27 @@ def test_full_text_enhancement_discriminator_resolves_to_domain():
     assert restored.content.blob == full_text.blob
 
 
+def test_full_text_enhancement_fingerprint_stable_across_identical_content():
+    """Two full-texts with identical content fields share a fingerprint."""
+    a = FullTextEnhancementFactory.build()
+    b = a.model_copy(deep=True)
+    assert a.fingerprint == b.fingerprint
+
+
+def test_full_text_enhancement_fingerprint_ignores_retrieved_at():
+    """retrieved_at describes when we fetched, not what we fetched."""
+    a = FullTextEnhancementFactory.build()
+    b = a.model_copy(update={"retrieved_at": datetime(2020, 1, 1, tzinfo=UTC)})
+    assert a.fingerprint == b.fingerprint
+
+
+def test_full_text_enhancement_fingerprint_changes_with_content():
+    """Changing the sha256 (the canonical content-identity field) shifts it."""
+    a = FullTextEnhancementFactory.build()
+    b = a.model_copy(update={"sha256_checksum": "different"})
+    assert a.fingerprint != b.fingerprint
+
+
 @pytest.fixture
 def anti_corruption_service(fake_repository) -> ReferenceAntiCorruptionService:
     return ReferenceAntiCorruptionService(fake_repository)
