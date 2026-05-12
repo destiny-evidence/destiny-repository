@@ -756,11 +756,6 @@ async def test_process_robot_enhancement_batch_result_discarded_enhancements():
     assert len(results.successful_pending_enhancement_ids) == 0
 
 
-# ---------------------------------------------------------------------------
-# Full-text materialisation from robot results
-# ---------------------------------------------------------------------------
-
-
 def make_full_text_result_entry(reference_id: UUID) -> str:
     """Helper to create an EnhancementResultEntry containing a FullTextEnhancement."""
     return json.dumps(

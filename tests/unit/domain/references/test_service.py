@@ -1327,11 +1327,6 @@ async def test_expire_and_replace_stale_pending_enhancements_at_retry_limit(
     assert len(warning_logs) == 2
 
 
-# ---------------------------------------------------------------------------
-# Full-text materialisation
-# ---------------------------------------------------------------------------
-
-
 def _make_service_for_materialisation():
     """Build a ReferenceService against fake uows for materialisation tests."""
     return ReferenceService(
