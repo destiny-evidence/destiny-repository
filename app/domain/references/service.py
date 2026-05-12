@@ -1257,14 +1257,18 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self.sql_uow.reference_downloads.get_by_pk(reference_download_id)
 
     @sql_unit_of_work
-    async def _mark_reference_download_running(
+    async def _claim_reference_download(
         self, reference_download_id: UUID
-    ) -> ReferenceDownload:
-        """Mark a reference download as running."""
-        return await self.sql_uow.reference_downloads.update_by_pk(
-            pk=reference_download_id,
+    ) -> bool:
+        """Atomically transition pending → running. Returns True if claimed."""
+        updated = await self.sql_uow.reference_downloads.bulk_update_by_filter(
+            filter_conditions={
+                "id": reference_download_id,
+                "status": ReferenceDownloadStatus.PENDING,
+            },
             status=ReferenceDownloadStatus.RUNNING,
         )
+        return updated > 0
 
     @sql_unit_of_work
     async def _complete_reference_download(
@@ -1285,10 +1289,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     @sql_unit_of_work
-    async def _fail_reference_download(
+    async def fail_reference_download(
         self, reference_download_id: UUID, error: str
     ) -> ReferenceDownload:
-        """Mark a reference download as failed."""
+        """Mark a reference download as failed with the given error message."""
         return await self.sql_uow.reference_downloads.update_by_pk(
             pk=reference_download_id,
             status=ReferenceDownloadStatus.FAILED,
@@ -1392,7 +1396,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         blob_repository: BlobRepository,
     ) -> None:
         """Run a queued reference download job end-to-end."""
-        await self._mark_reference_download_running(reference_download_id)
+        # Conditional pending→running keeps redeliveries from clobbering a row
+        # that's already running, completed, or failed.
+        if not await self._claim_reference_download(reference_download_id):
+            logger.info(
+                "Skipping reference download — not in pending state",
+                reference_download_id=str(reference_download_id),
+            )
+            return
         try:
             reference_download = await self.get_reference_download(
                 reference_download_id
@@ -1414,7 +1425,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 "Reference download job failed",
                 reference_download_id=str(reference_download_id),
             )
-            await self._fail_reference_download(reference_download_id, str(exc))
+            await self.fail_reference_download(reference_download_id, str(exc))
 
     @tracer.start_as_current_span("Detect and dispatch robot automations")
     async def _detect_and_dispatch_robot_automations(

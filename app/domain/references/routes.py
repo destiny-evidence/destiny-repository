@@ -377,9 +377,8 @@ async def search_references(
     description=(
         "Queue a download job that produces a JSONL file of references matching the "
         "given search. Accepts the same filter parameters as `/references/search/` "
-        "without pagination. Poll `GET /references/download/{id}/` until the job "
-        "completes and a signed URL is available; if the matching set exceeds the "
-        "10,000-result cap the response includes `truncated: true`."
+        "without pagination. Returns the job id with `status: pending`; poll "
+        "`GET /references/download/{id}/` until the job completes."
     ),
 )
 async def request_reference_download(
@@ -416,12 +415,29 @@ async def request_reference_download(
         publication_year_range=publication_year_range,
         sort=sort,
     )
-    await queue_task_with_trace(
-        run_reference_download_task,
-        long_running=True,
-        reference_download_id=reference_download.id,
-        otel_enabled=settings.otel_enabled,
-    )
+    try:
+        await queue_task_with_trace(
+            run_reference_download_task,
+            long_running=True,
+            reference_download_id=reference_download.id,
+            otel_enabled=settings.otel_enabled,
+        )
+    except Exception as exc:
+        # If the broker is unreachable the row would otherwise be stuck in
+        # `pending` forever, so flip it to `failed` and surface a retryable
+        # error to the caller.
+        logger.exception(
+            "Failed to enqueue reference download task",
+            reference_download_id=str(reference_download.id),
+        )
+        reference_download = await reference_service.fail_reference_download(
+            reference_download.id,
+            f"Failed to enqueue download task: {exc}",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not enqueue reference download job; please retry.",
+        ) from exc
     return await anti_corruption_service.reference_download_to_sdk(reference_download)
 
 
@@ -430,8 +446,10 @@ async def request_reference_download(
     description=(
         "Get the status of a reference download job. Once `status` is "
         "`completed`, the response includes a signed `result_url` for the "
-        "produced JSONL file. The URL is re-signed on each call, so an "
-        "expired URL can be refreshed by polling again."
+        "produced JSONL file, and `truncated: true` if the matching set "
+        "exceeded the 10,000-result cap (the file contains only the first "
+        "10,000 matches). The URL is re-signed on each call, so an expired "
+        "URL can be refreshed by polling again."
     ),
 )
 async def get_reference_download(

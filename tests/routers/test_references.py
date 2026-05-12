@@ -11,6 +11,7 @@ from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from pydantic import HttpUrl
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
@@ -58,6 +59,7 @@ from app.domain.references.models.sql import (
 )
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.search_service import SearchService
+from app.domain.references.tasks import run_reference_download_task
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
@@ -1290,6 +1292,73 @@ async def test_request_reference_download_rejects_inverted_year_range(
         params={"q": "climate", "start_year": 2025, "end_year": 2020},
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_request_reference_download_marks_failed_when_enqueue_fails(
+    session: AsyncSession,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """If queueing the task fails, the row is flipped to failed and 503 returned."""
+    monkeypatch.setattr(
+        references,
+        "queue_task_with_trace",
+        AsyncMock(side_effect=RuntimeError("broker down")),
+    )
+
+    response = await client.post("/v1/references/download/", params={"q": "climate"})
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+
+    rows = (await session.execute(select(SQLReferenceDownload))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].status == "failed"
+    assert "broker down" in rows[0].error
+
+
+async def test_run_reference_download_task_skips_non_pending_row(
+    session: AsyncSession,
+    mock_blob_repository: None,  # noqa: ARG001
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A redelivered task must not redo work or clobber an already-completed row."""
+    existing_file = BlobStorageFile(
+        location="minio",
+        container="destiny-repository",
+        path="reference_downloads",
+        filename="prior.jsonl",
+    )
+    download = SQLReferenceDownload(
+        query="climate",
+        status="completed",
+        result_file=existing_file.to_sql(),
+        n_references=42,
+        truncated=False,
+    )
+    session.add(download)
+    await session.commit()
+    download_id = download.id
+
+    collect_mock = AsyncMock()
+    stream_mock = AsyncMock()
+    monkeypatch.setattr(
+        ReferenceService, "_collect_reference_download_ids", collect_mock
+    )
+    monkeypatch.setattr(
+        ReferenceService, "_stream_reference_download_jsonl", stream_mock
+    )
+
+    assert isinstance(broker, InMemoryBroker)
+    await run_reference_download_task.kiq(reference_download_id=download_id)
+    await broker.wait_all()
+
+    collect_mock.assert_not_awaited()
+    stream_mock.assert_not_awaited()
+
+    await session.refresh(download)
+    assert download.status == "completed"
+    assert download.result_file == existing_file.to_sql()
+    assert download.n_references == 42
 
 
 async def test_get_reference_download_pending_has_no_url(
