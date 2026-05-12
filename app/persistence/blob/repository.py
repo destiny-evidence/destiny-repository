@@ -81,7 +81,7 @@ class BlobRepository:
             config = MinioBlobStorageClient(
                 settings.minio_config, settings.presigned_url_expiry_seconds
             )
-        elif file.location == BlobStorageLocation.REMOTE:
+        elif file.is_remote:
             if self._remote_client is None:
                 self._remote_client = RemoteBlobStorageClient()
             config = self._remote_client
@@ -199,8 +199,8 @@ class BlobRepository:
         :param destination: The destination to copy the file to.
         :type destination: BlobStorageFile
         """
-        if destination.location == BlobStorageLocation.REMOTE:
-            msg = "Cannot copy to a REMOTE destination."
+        if destination.is_remote:
+            msg = "Cannot copy to a remote destination."
             raise BlobStorageError(msg)
 
         src_client = await self._preload_config(source)

@@ -98,6 +98,13 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             filename=f"{reference_id}{extension}",
             container=BlobContainer.FULL_TEXTS,
         )
+        logger.info(
+            "Materialising full text enhancement.",
+            reference_id=str(reference_id),
+            enhancement_id=str(enhancement_id),
+            source_uri=source.to_uri(),
+            destination_uri=destination.to_uri(),
+        )
 
         try:
             result = await blob_repository.copy(source, destination)
@@ -128,6 +135,14 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             content.sha256_checksum = result.sha256_checksum
         if content.byte_size is None:
             content.byte_size = result.byte_size
+
+        logger.info(
+            "Materialised full text enhancement.",
+            reference_id=str(reference_id),
+            enhancement_id=str(enhancement_id),
+            byte_size=result.byte_size,
+            sha256_checksum=result.sha256_checksum,
+        )
 
     async def mark_robot_enhancement_batch_failed(
         self, robot_enhancement_batch_id: UUID, error: str

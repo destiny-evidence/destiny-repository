@@ -52,7 +52,6 @@ from app.domain.references.models.models import (
 from app.domain.references.models.models import (
     RobotEnhancementBatch as DomainRobotEnhancementBatch,
 )
-from app.persistence.blob.models import BlobStorageLocation
 from app.persistence.sql.generics import GenericSQLPreloadableType
 from app.persistence.sql.persistence import (
     GenericSQLPersistence,
@@ -310,7 +309,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         """
         if (
             domain_obj.content.enhancement_type == EnhancementType.FULL_TEXT
-            and domain_obj.content.blob.location == BlobStorageLocation.REMOTE
+            and domain_obj.content.blob.is_remote
         ):
             msg = (
                 "Attempted to persist a full text enhancement that has not been "

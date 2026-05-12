@@ -17,7 +17,7 @@ from app.domain.references.models.models import (
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
-from app.persistence.blob.models import BlobSignedUrlType, BlobStorageLocation
+from app.persistence.blob.models import BlobSignedUrlType
 from tests.factories import (
     AbstractContentEnhancementFactory,
     EnhancementFactory,
@@ -114,7 +114,7 @@ class TestFullTextEnhancementFromSdk:
         domain_ft = service.full_text_enhancement_content_from_sdk(sdk_full_text)
 
         assert isinstance(domain_ft, FullTextEnhancement)
-        assert domain_ft.blob.location == BlobStorageLocation.REMOTE
+        assert domain_ft.blob.is_remote
         assert domain_ft.blob.to_uri() == str(sdk_full_text.file_url)
         assert domain_ft.byte_size == sdk_full_text.byte_size
         assert domain_ft.sha256_checksum == sdk_full_text.sha256_checksum
@@ -149,5 +149,5 @@ class TestFullTextEnhancementFromSdk:
         domain_ft = reference.enhancements[0].content
         assert isinstance(domain_ft, FullTextEnhancement)
         assert domain_ft.enhancement_type == EnhancementType.FULL_TEXT
-        assert domain_ft.blob.location == BlobStorageLocation.REMOTE
+        assert domain_ft.blob.is_remote
         assert domain_ft.blob.to_uri() == str(sdk_full_text.file_url)

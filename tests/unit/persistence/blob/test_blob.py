@@ -183,18 +183,32 @@ async def test_blobstoragefile_serializes_to_uri_in_json_mode():
     assert file.model_dump(mode="json") == "azure://cont/some/path/file.txt"
 
 
-def test_blobstoragefile_remote_uri_round_trip():
-    """REMOTE blobs round-trip via https URIs."""
-    uri = "https://example.com/papers/2024/paper.pdf"
+@pytest.mark.parametrize(
+    ("uri", "expected_location"),
+    [
+        (
+            "https://example.com/papers/2024/paper.pdf",
+            BlobStorageLocation.HTTPS,
+        ),
+        (
+            "http://host.docker.internal:8080/papers/foo.pdf",
+            BlobStorageLocation.HTTP,
+        ),
+    ],
+)
+def test_blobstoragefile_remote_uri_round_trip(uri, expected_location):
+    """Remote blobs round-trip via http(s) URIs, preserving the scheme."""
     file = BlobStorageFile.from_uri(uri)
-    assert file.location == BlobStorageLocation.REMOTE
+    assert file.location == expected_location
+    assert file.is_remote
     assert file.to_uri() == uri
 
 
 def test_blobstoragefile_remote_coerces_from_url_string():
-    """Pydantic validation accepts an http(s) URL transparently as a REMOTE blob."""
+    """Pydantic validation accepts an https URL transparently as a remote blob."""
     file = BlobStorageFile.model_validate("https://example.com/papers/foo.pdf")
-    assert file.location == BlobStorageLocation.REMOTE
+    assert file.is_remote
+    assert file.location == BlobStorageLocation.HTTPS
     assert file.filename == "foo.pdf"
 
 

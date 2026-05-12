@@ -67,7 +67,6 @@ from app.domain.references.services.synchronizer_service import (
 from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
 from app.external.vocabulary.client import get_vocabulary_artifact_client
-from app.persistence.blob.models import BlobStorageLocation
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
 from app.persistence.es.persistence import ESSearchResult
@@ -489,7 +488,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         for enhancement in reference.enhancements:
             if (
                 enhancement.content.enhancement_type != EnhancementType.FULL_TEXT
-                or enhancement.content.blob.location != BlobStorageLocation.REMOTE
+                or not enhancement.content.blob.is_remote
             ):
                 materialised.append(enhancement)
                 continue

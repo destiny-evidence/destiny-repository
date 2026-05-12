@@ -218,9 +218,9 @@ async def test_enhancement_from_and_to_domain():
 
 
 def test_enhancement_from_domain_rejects_unmaterialised_full_text():
-    """Persisting an FT enhancement with a REMOTE blob is refused."""
+    """Persisting an FT enhancement with a remote blob is refused."""
     remote_blob = BlobStorageFileFactory.build(
-        location=BlobStorageLocation.REMOTE,
+        location=BlobStorageLocation.HTTPS,
         container="example.com",
         path="papers",
         filename="foo.pdf",
