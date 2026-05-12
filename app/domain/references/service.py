@@ -35,6 +35,8 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     PublicationYearRange,
     Reference,
+    ReferenceDownload,
+    ReferenceDownloadStatus,
     ReferenceDuplicateDecision,
     ReferenceIds,
     ReferenceWithChangeset,
@@ -66,6 +68,7 @@ from app.domain.references.services.synchronizer_service import (
 from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
 from app.external.vocabulary.client import get_vocabulary_artifact_client
+from app.persistence.blob.models import BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
 from app.persistence.es.persistence import ESSearchResult
@@ -1226,6 +1229,167 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             publication_year_range=publication_year_range,
             sort=sort,
         )
+
+    @sql_unit_of_work
+    async def request_reference_download(
+        self,
+        query: str,
+        annotations: list[str] | None,
+        start_year: int | None,
+        end_year: int | None,
+        sort: list[str] | None,
+    ) -> ReferenceDownload:
+        """Create a pending reference download job."""
+        reference_download = ReferenceDownload(
+            query=query,
+            annotations=annotations,
+            start_year=start_year,
+            end_year=end_year,
+            sort=sort,
+        )
+        await self.sql_uow.reference_downloads.add(reference_download)
+        return reference_download
+
+    @sql_unit_of_work
+    async def get_reference_download(
+        self, reference_download_id: UUID
+    ) -> ReferenceDownload:
+        """Get a reference download job by id."""
+        return await self.sql_uow.reference_downloads.get_by_pk(reference_download_id)
+
+    @sql_unit_of_work
+    async def _mark_reference_download_running(
+        self, reference_download_id: UUID
+    ) -> ReferenceDownload:
+        """Mark a reference download as running."""
+        return await self.sql_uow.reference_downloads.update_by_pk(
+            pk=reference_download_id,
+            status=ReferenceDownloadStatus.RUNNING,
+        )
+
+    @sql_unit_of_work
+    async def _complete_reference_download(
+        self,
+        reference_download_id: UUID,
+        result_file: BlobStorageFile,
+        n_references: int,
+    ) -> ReferenceDownload:
+        """Mark a reference download as completed."""
+        return await self.sql_uow.reference_downloads.update_by_pk(
+            pk=reference_download_id,
+            status=ReferenceDownloadStatus.COMPLETED,
+            result_file=result_file.to_sql(),
+            n_references=n_references,
+        )
+
+    @sql_unit_of_work
+    async def _fail_reference_download(
+        self, reference_download_id: UUID, error: str
+    ) -> ReferenceDownload:
+        """Mark a reference download as failed."""
+        return await self.sql_uow.reference_downloads.update_by_pk(
+            pk=reference_download_id,
+            status=ReferenceDownloadStatus.FAILED,
+            error=error,
+        )
+
+    @es_unit_of_work
+    async def _collect_reference_download_ids(
+        self, reference_download: ReferenceDownload
+    ) -> list[UUID]:
+        """Page through ES to gather every reference ID matching the download query."""
+        annotations = (
+            [
+                self._anti_corruption_service.annotation_filter_from_query_parameter(s)
+                for s in reference_download.annotations
+            ]
+            if reference_download.annotations
+            else None
+        )
+        publication_year_range = (
+            self._anti_corruption_service.publication_year_range_from_query_parameter(
+                reference_download.start_year, reference_download.end_year
+            )
+            if reference_download.start_year or reference_download.end_year
+            else None
+        )
+
+        # ES enforces max_result_window=10_000 so page_size * max_page must not
+        # exceed that. Lifting the cap is tracked in destiny-repository#661.
+        page_size = 1000
+        max_results = 10_000
+        max_page = max_results // page_size
+
+        reference_ids: list[UUID] = []
+        for page in range(1, max_page + 1):
+            search_result = await self._search_service.search_with_query_string(
+                reference_download.query,
+                page=page,
+                page_size=page_size,
+                annotations=annotations,
+                publication_year_range=publication_year_range,
+                sort=reference_download.sort,
+            )
+            if not search_result.hits:
+                break
+            reference_ids.extend(hit.id for hit in search_result.hits)
+            if len(search_result.hits) < page_size:
+                break
+
+        return reference_ids
+
+    @sql_unit_of_work
+    async def _stream_reference_download_jsonl(
+        self,
+        reference_download_id: UUID,
+        reference_ids: list[UUID],
+        blob_repository: BlobRepository,
+    ) -> tuple[BlobStorageFile, int]:
+        """Stream matching references to blob storage as JSONL."""
+        chunk_size = settings.upload_file_chunk_size_override.get(
+            UploadFile.ROBOT_ENHANCEMENT_REFERENCE_DATA,
+            settings.default_upload_file_chunk_size,
+        )
+        file_stream = FileStream(
+            self._get_jsonl_deduplicated_references,
+            [
+                {"reference_ids": chunk}
+                for chunk in list_chunker(reference_ids, chunk_size)
+            ],
+        )
+        result_file = await blob_repository.upload_file_to_blob_storage(
+            content=file_stream,
+            path="reference_downloads",
+            filename=f"{reference_download_id}.jsonl",
+        )
+        return result_file, len(reference_ids)
+
+    async def run_reference_download(
+        self,
+        reference_download_id: UUID,
+        blob_repository: BlobRepository,
+    ) -> None:
+        """Run a queued reference download job end-to-end."""
+        await self._mark_reference_download_running(reference_download_id)
+        try:
+            reference_download = await self.get_reference_download(
+                reference_download_id
+            )
+            reference_ids = await self._collect_reference_download_ids(
+                reference_download
+            )
+            result_file, n_references = await self._stream_reference_download_jsonl(
+                reference_download_id, reference_ids, blob_repository
+            )
+            await self._complete_reference_download(
+                reference_download_id, result_file, n_references
+            )
+        except Exception as exc:
+            logger.exception(
+                "Reference download job failed",
+                reference_download_id=str(reference_download_id),
+            )
+            await self._fail_reference_download(reference_download_id, str(exc))
 
     @tracer.start_as_current_span("Detect and dispatch robot automations")
     async def _detect_and_dispatch_robot_automations(

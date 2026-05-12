@@ -15,6 +15,7 @@ from app.domain.references.models.models import (
     LinkedExternalIdentifier,
     PublicationYearRange,
     Reference,
+    ReferenceDownload,
     ReferenceDuplicateDecision,
     RobotAutomation,
     RobotEnhancementBatch,
@@ -186,6 +187,26 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                         BlobSignedUrlType.DOWNLOAD,
                     )
                     if enhancement_request.validation_result_file
+                    else None,
+                },
+            )
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
+
+    async def reference_download_to_sdk(
+        self,
+        reference_download: ReferenceDownload,
+    ) -> destiny_sdk.references.ReferenceDownloadRead:
+        """Convert the reference download to the SDK model."""
+        try:
+            return destiny_sdk.references.ReferenceDownloadRead.model_validate(
+                reference_download.model_dump()
+                | {
+                    "result_url": await self._blob_repository.get_signed_url(
+                        reference_download.result_file,
+                        BlobSignedUrlType.DOWNLOAD,
+                    )
+                    if reference_download.result_file
                     else None,
                 },
             )

@@ -63,6 +63,19 @@ class EnhancementRequestStatus(StrEnum):
     """All enhancements have been created."""
 
 
+class ReferenceDownloadStatus(StrEnum):
+    """The status of a reference download job."""
+
+    PENDING = auto()
+    """Download job has been queued."""
+    RUNNING = auto()
+    """Download job is being processed."""
+    COMPLETED = auto()
+    """Download job has completed and the file is available."""
+    FAILED = auto()
+    """Download job failed before producing a file."""
+
+
 class Visibility(StrEnum):
     """
     The visibility of a data element in the repository.
@@ -396,6 +409,48 @@ Errors for individual references are provided <TBC>.
     def n_references(self) -> int:
         """The number of references in the request."""
         return len(self.reference_ids)
+
+
+class ReferenceDownload(DomainBaseModel, SQLAttributeMixin):
+    """A queued job that produces a JSONL file of references matching a search."""
+
+    query: str = Field(
+        description="The Lucene query string the download is filtering on.",
+    )
+    annotations: list[str] | None = Field(
+        default=None,
+        description=(
+            "Raw annotation filter strings as accepted by `/references/search/`."
+        ),
+    )
+    start_year: int | None = Field(
+        default=None,
+        description="Inclusive lower bound on publication year, if any.",
+    )
+    end_year: int | None = Field(
+        default=None,
+        description="Inclusive upper bound on publication year, if any.",
+    )
+    sort: list[str] | None = Field(
+        default=None,
+        description="Sort fields, in the same form `/references/search/` accepts.",
+    )
+    status: ReferenceDownloadStatus = Field(
+        default=ReferenceDownloadStatus.PENDING,
+        description="The current status of the download job.",
+    )
+    result_file: BlobStorageFile | None = Field(
+        default=None,
+        description="The JSONL file produced by the job, once completed.",
+    )
+    n_references: int | None = Field(
+        default=None,
+        description="The number of references in the produced file.",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message, if the job failed.",
+    )
 
 
 class RobotResultValidationEntry(DomainBaseModel):

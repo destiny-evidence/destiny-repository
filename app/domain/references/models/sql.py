@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     UniqueConstraint,
 )
@@ -26,6 +27,7 @@ from app.domain.references.models.models import (
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
     PendingEnhancementStatus,
+    ReferenceDownloadStatus,
     Visibility,
 )
 from app.domain.references.models.models import (
@@ -42,6 +44,9 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.models import (
     Reference as DomainReference,
+)
+from app.domain.references.models.models import (
+    ReferenceDownload as DomainReferenceDownload,
 )
 from app.domain.references.models.models import (
     ReferenceDuplicateDecision as DomainReferenceDuplicateDecision,
@@ -429,6 +434,62 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             pending_enhancements=[pe.to_domain() for pe in self.pending_enhancements]
             if "pending_enhancements" in (preload or [])
             else [],
+        )
+
+
+class ReferenceDownload(GenericSQLPersistence[DomainReferenceDownload]):
+    """SQL Persistence model for a ReferenceDownload job."""
+
+    __tablename__ = "reference_download"
+
+    query: Mapped[str] = mapped_column(String, nullable=False)
+    annotations: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    start_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    end_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sort: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+
+    status: Mapped[ReferenceDownloadStatus] = mapped_column(String, nullable=False)
+
+    result_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    n_references: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    @classmethod
+    def from_domain(cls, domain_obj: DomainReferenceDownload) -> Self:
+        """Create a persistence model from a domain ReferenceDownload object."""
+        return cls(
+            id=domain_obj.id,
+            query=domain_obj.query,
+            annotations=domain_obj.annotations,
+            start_year=domain_obj.start_year,
+            end_year=domain_obj.end_year,
+            sort=domain_obj.sort,
+            status=domain_obj.status,
+            result_file=domain_obj.result_file.to_sql()
+            if domain_obj.result_file
+            else None,
+            n_references=domain_obj.n_references,
+            error=domain_obj.error,
+        )
+
+    def to_domain(
+        self,
+        preload: list[GenericSQLPreloadableType] | None = None,  # noqa: ARG002
+    ) -> DomainReferenceDownload:
+        """Convert the persistence model into a Domain ReferenceDownload object."""
+        return DomainReferenceDownload(
+            id=self.id,
+            query=self.query,
+            annotations=self.annotations,
+            start_year=self.start_year,
+            end_year=self.end_year,
+            sort=self.sort,
+            status=self.status,
+            result_file=BlobStorageFile.from_sql(self.result_file)
+            if self.result_file
+            else None,
+            n_references=self.n_references,
+            error=self.error,
         )
 
 

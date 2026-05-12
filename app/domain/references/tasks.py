@@ -174,6 +174,28 @@ async def validate_and_import_robot_enhancement_batch_result(
 
 
 @broker.task
+async def run_reference_download_task(reference_download_id: UUID) -> None:
+    """Run a reference download job and write its result to blob storage."""
+    name_span("Run reference download")
+    trace_attribute(Attributes.REFERENCE_DOWNLOAD_ID, str(reference_download_id))
+    logger.info(
+        "Running reference download",
+        reference_download_id=str(reference_download_id),
+    )
+    async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
+        blob_repository = await get_blob_repository()
+        reference_anti_corruption_service = ReferenceAntiCorruptionService(
+            blob_repository
+        )
+        reference_service = await get_reference_service(
+            reference_anti_corruption_service, sql_uow, es_uow
+        )
+        await reference_service.run_reference_download(
+            reference_download_id, blob_repository
+        )
+
+
+@broker.task
 async def repair_reference_index() -> None:
     """Async logic for repairing the reference index."""
     name_span("Repair index")

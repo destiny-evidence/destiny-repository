@@ -60,6 +60,7 @@ from app.domain.references.services.anti_corruption_service import (
 )
 from app.domain.references.services.search_service import SearchService
 from app.domain.references.tasks import (
+    run_reference_download_task,
     validate_and_import_robot_enhancement_batch_result,
 )
 from app.domain.robots.service import RobotService
@@ -191,6 +192,11 @@ reference_router = APIRouter(
 search_router = APIRouter(
     prefix="/search",
     tags=["search"],
+    dependencies=[Depends(reference_reader_auth)],
+)
+download_router = APIRouter(
+    prefix="/download",
+    tags=["download"],
     dependencies=[Depends(reference_reader_auth)],
 )
 enhancement_request_router = APIRouter(
@@ -359,9 +365,94 @@ async def search_references(
     )
 
 
-# NB it's important this occurs before defining `/references/{reference_id}/` route
+@download_router.post(
+    "/",
+    status_code=status.HTTP_202_ACCEPTED,
+    description=(
+        "Queue a download job that produces a JSONL file of every reference matching "
+        "the given search. Accepts the same filter parameters as `/references/search/` "
+        "without pagination; the JSONL line shape matches the reference structure "
+        "returned by `/references/search/`. The response includes an ID that can be "
+        "polled at `GET /references/download/{id}/` until the job is complete and a "
+        "signed URL is available. Subject to the same 10,000-result limit as "
+        "`/references/search/`."
+    ),
+)
+async def request_reference_download(
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    q: Annotated[
+        str,
+        Query(description="The query string."),
+    ],
+    annotations: Annotated[
+        list[str],
+        Query(
+            alias="annotation",
+            description=(
+                "A list of annotation filters to apply to the search. "
+                "Same format as `/references/search/`."
+            ),
+        ),
+    ] = None,
+    start_year: Annotated[
+        int,
+        Query(description="Filter for references published on or after this year."),
+    ] = None,
+    end_year: Annotated[
+        int,
+        Query(description="Filter for references published on or before this year."),
+    ] = None,
+    sort: Annotated[
+        list[str],
+        Query(
+            description=(
+                "A list of fields to sort the results by. "
+                "Same format as `/references/search/`."
+            ),
+        ),
+    ] = None,
+) -> destiny_sdk.references.ReferenceDownloadRead:
+    """Queue a reference download job and return its id and pending status."""
+    reference_download = await reference_service.request_reference_download(
+        query=q,
+        annotations=annotations,
+        start_year=start_year,
+        end_year=end_year,
+        sort=sort,
+    )
+    await queue_task_with_trace(
+        run_reference_download_task,
+        long_running=True,
+        reference_download_id=reference_download.id,
+        otel_enabled=settings.otel_enabled,
+    )
+    return await anti_corruption_service.reference_download_to_sdk(reference_download)
+
+
+@download_router.get("/{reference_download_id}/")
+async def get_reference_download(
+    reference_download_id: Annotated[
+        destiny_sdk.UUID, Path(description="The ID of the reference download job.")
+    ],
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+) -> destiny_sdk.references.ReferenceDownloadRead:
+    """Get the status of a reference download job, including its signed URL."""
+    reference_download = await reference_service.get_reference_download(
+        reference_download_id
+    )
+    return await anti_corruption_service.reference_download_to_sdk(reference_download)
+
+
+# NB it's important these occur before defining `/references/{reference_id}/` route
 # to avoid route conflicts. Order matters for FastAPI route matching.
 reference_router.include_router(search_router)
+reference_router.include_router(download_router)
 
 
 @reference_router.get("/{reference_id}/")

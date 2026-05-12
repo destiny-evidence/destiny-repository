@@ -54,6 +54,9 @@ from app.domain.references.models.models import (
     Reference as DomainReference,
 )
 from app.domain.references.models.models import (
+    ReferenceDownload as DomainReferenceDownload,
+)
+from app.domain.references.models.models import (
     ReferenceDuplicateDecision as DomainReferenceDuplicateDecision,
 )
 from app.domain.references.models.models import (
@@ -76,6 +79,7 @@ from app.domain.references.models.sql import (
     PendingEnhancement as SQLPendingEnhancement,
 )
 from app.domain.references.models.sql import Reference as SQLReference
+from app.domain.references.models.sql import ReferenceDownload as SQLReferenceDownload
 from app.domain.references.models.sql import (
     ReferenceDuplicateDecision as SQLReferenceDuplicateDecision,
 )
@@ -508,6 +512,30 @@ class EnhancementRequestSQLRepository(
                 enhancement_request, status_set
             )
         return enhancement_request
+
+
+class ReferenceDownloadRepositoryBase(
+    GenericAsyncRepository[DomainReferenceDownload, GenericPersistenceType],
+    ABC,
+):
+    """Abstract implementation of a repository for reference download jobs."""
+
+
+class ReferenceDownloadSQLRepository(
+    GenericAsyncSqlRepository[
+        DomainReferenceDownload, SQLReferenceDownload, Literal["__none__"]
+    ],
+    ReferenceDownloadRepositoryBase,
+):
+    """Concrete implementation of a repository for reference downloads using SQL."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Initialize the repository with the database session."""
+        super().__init__(
+            session,
+            DomainReferenceDownload,
+            SQLReferenceDownload,
+        )
 
 
 class RobotAutomationRepositoryBase(

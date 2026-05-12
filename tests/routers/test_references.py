@@ -35,6 +35,7 @@ from app.domain.references.models.models import (
     DuplicateDetermination,
     EnhancementRequestStatus,
     PendingEnhancementStatus,
+    ReferenceDownload,
     Visibility,
 )
 from app.domain.references.models.sql import Enhancement as SQLEnhancement
@@ -46,6 +47,9 @@ from app.domain.references.models.sql import (
     PendingEnhancement as SQLPendingEnhancement,
 )
 from app.domain.references.models.sql import Reference as SQLReference
+from app.domain.references.models.sql import (
+    ReferenceDownload as SQLReferenceDownload,
+)
 from app.domain.references.models.sql import (
     ReferenceDuplicateDecision as SQLReferenceDuplicateDecision,
 )
@@ -926,6 +930,148 @@ async def test_search_references_with_annotation_filters(
     assert call_kwargs["annotations"][3].scheme == "test:scheme"
     assert call_kwargs["annotations"][3].label == "label/with/lots/of/slashes"
     assert call_kwargs["annotations"][3].score is None
+
+
+async def test_request_reference_download_happy_path(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """Test queuing a reference download, then polling its completed status."""
+    fake_reference_id = uuid7()
+    fake_result_file = BlobStorageFile(
+        location="minio",
+        container="destiny-repository",
+        path="reference_downloads",
+        filename="fake.jsonl",
+    )
+
+    monkeypatch.setattr(
+        ReferenceService,
+        "_collect_reference_download_ids",
+        AsyncMock(return_value=[fake_reference_id]),
+    )
+    monkeypatch.setattr(
+        ReferenceService,
+        "_stream_reference_download_jsonl",
+        AsyncMock(return_value=(fake_result_file, 1)),
+    )
+
+    response = await client.post(
+        "/v1/references/download/",
+        params={"q": "climate", "start_year": 2020},
+    )
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    body = response.json()
+    download_id = body["id"]
+    assert body["status"] == "pending"
+    assert body["result_url"] is None
+
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+
+    status_response = await client.get(f"/v1/references/download/{download_id}/")
+    assert status_response.status_code == status.HTTP_200_OK
+    status_body = status_response.json()
+    assert status_body["status"] == "completed"
+    assert status_body["n_references"] == 1
+    assert status_body["result_url"] is not None
+    assert status_body["error"] is None
+
+
+async def test_request_reference_download_marks_failed_on_error(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """Test that a failure during the download job is reflected via the status API."""
+    monkeypatch.setattr(
+        ReferenceService,
+        "_collect_reference_download_ids",
+        AsyncMock(side_effect=RuntimeError("kaboom")),
+    )
+
+    response = await client.post("/v1/references/download/", params={"q": "climate"})
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    download_id = response.json()["id"]
+
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+
+    status_response = await client.get(f"/v1/references/download/{download_id}/")
+    status_body = status_response.json()
+    assert status_body["status"] == "failed"
+    assert status_body["result_url"] is None
+    assert status_body["error"] == "kaboom"
+
+
+async def test_collect_reference_download_ids_pages_at_1000(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pages at size=1000 and stops on the first partial page."""
+    from app.domain.references.services.search_service import SearchService
+
+    page_one_ids = [uuid7() for _ in range(1000)]
+    page_two_ids = [uuid7() for _ in range(1000)]
+    page_three_ids = [uuid7() for _ in range(500)]
+    pages = [
+        ESSearchResult(
+            hits=[ESHit(id=i, score=1.0) for i in page_one_ids],
+            total=ESSearchTotal(value=2500, relation="eq"),
+            page=1,
+        ),
+        ESSearchResult(
+            hits=[ESHit(id=i, score=1.0) for i in page_two_ids],
+            total=ESSearchTotal(value=2500, relation="eq"),
+            page=2,
+        ),
+        ESSearchResult(
+            hits=[ESHit(id=i, score=1.0) for i in page_three_ids],
+            total=ESSearchTotal(value=2500, relation="eq"),
+            page=3,
+        ),
+    ]
+    mock_search = AsyncMock(side_effect=pages)
+    monkeypatch.setattr(SearchService, "search_with_query_string", mock_search)
+
+    service = ReferenceService.__new__(ReferenceService)
+    service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
+    download = ReferenceDownload(query="climate")
+
+    # Bypass the @es_unit_of_work decorator since we're testing the body directly.
+    ids = await ReferenceService._collect_reference_download_ids.__wrapped__(  # type: ignore[attr-defined]  # noqa: SLF001
+        service, download
+    )
+
+    assert ids == page_one_ids + page_two_ids + page_three_ids
+    assert mock_search.await_count == 3
+    for call_idx, expected_page in enumerate((1, 2, 3), start=0):
+        kwargs = mock_search.call_args_list[call_idx].kwargs
+        assert kwargs["page"] == expected_page
+        assert kwargs["page_size"] == 1000
+
+
+async def test_get_reference_download_pending_has_no_url(
+    session: AsyncSession,
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """A pending download exposes no signed URL until the file is ready."""
+    download = SQLReferenceDownload(
+        query="climate",
+        status="pending",
+    )
+    session.add(download)
+    await session.commit()
+
+    response = await client.get(f"/v1/references/download/{download.id}/")
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["status"] == "pending"
+    assert body["result_url"] is None
+    assert body["n_references"] is None
 
 
 async def test_make_duplicate_decisions_mark_canonical_and_duplicate(
