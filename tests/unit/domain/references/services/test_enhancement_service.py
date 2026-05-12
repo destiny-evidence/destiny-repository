@@ -754,3 +754,137 @@ async def test_process_robot_enhancement_batch_result_discarded_enhancements():
     assert {pending_enhancement.id} == results.discarded_pending_enhancement_ids
     assert len(results.failed_pending_enhancement_ids) == 0
     assert len(results.successful_pending_enhancement_ids) == 0
+
+
+# ---------------------------------------------------------------------------
+# Full-text materialisation from robot results
+# ---------------------------------------------------------------------------
+
+
+def make_full_text_result_entry(reference_id: UUID) -> str:
+    """Helper to create an EnhancementResultEntry containing a FullTextEnhancement."""
+    return json.dumps(
+        {
+            "reference_id": str(reference_id),
+            "content": {
+                "enhancement_type": "full_text",
+                "file_url": "https://example.com/papers/foo.pdf",
+                "byte_size": 12345,
+                "sha256_checksum": "a" * 64,
+                "mime_type": "application/pdf",
+            },
+            "source": "test_source",
+            "visibility": "public",
+            "created_at": datetime.now(tz=UTC).isoformat(),
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_process_robot_result_materialises_full_text_before_persistence():
+    """A REMOTE full-text enhancement is copied to our blob before add_enhancement."""
+    from unittest.mock import Mock
+
+    from app.persistence.blob.models import BlobCopyResult, BlobStorageLocation
+
+    reference_id = uuid7()
+    pending_enhancement = create_pending_enhancement(reference_id)
+    result_file = create_result_file()
+
+    owned_destination = BlobStorageFile(
+        location=BlobStorageLocation.MINIO,
+        container="full-texts",
+        path="some-path",
+        filename="some-file.pdf",
+    )
+    copy_result = BlobCopyResult(
+        source=BlobStorageFile.from_uri("https://example.com/papers/foo.pdf"),
+        destination=owned_destination,
+        byte_size=12345,
+        sha256_checksum="a" * 64,
+    )
+
+    mock_blob_repo = MagicMock()
+    mock_blob_repo.stream_file_from_blob_storage = create_fake_stream(
+        [make_full_text_result_entry(reference_id)]
+    )
+    mock_blob_repo.destination = Mock(return_value=owned_destination)
+    mock_blob_repo.copy = AsyncMock(return_value=copy_result)
+
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), None, MagicMock()
+    )
+
+    added: list = []
+
+    async def fake_add_enhancement(enhancement):
+        added.append(enhancement)
+        return (
+            PendingEnhancementStatus.COMPLETED,
+            f"Reference {enhancement.reference_id}: Enhancement added.",
+        )
+
+    results = create_processed_results()
+
+    messages = [
+        RobotResultValidationEntry.model_validate_json(msg)
+        async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
+            mock_blob_repo,
+            result_file,
+            [pending_enhancement],
+            fake_add_enhancement,
+            results,
+        )
+    ]
+
+    assert len(messages) == 1
+    assert messages[0].error is None
+    mock_blob_repo.copy.assert_awaited_once()
+    # The enhancement reaching add_enhancement has an owned blob, not REMOTE.
+    assert len(added) == 1
+    assert added[0].content.blob.location == BlobStorageLocation.MINIO
+
+
+@pytest.mark.asyncio
+async def test_process_robot_result_full_text_download_failure_skips_add():
+    """A failed FT fetch surfaces as a validation error; add_enhancement is skipped."""
+    from app.core.exceptions import RemoteBlobStorageError
+
+    reference_id = uuid7()
+    pending_enhancement = create_pending_enhancement(reference_id)
+    result_file = create_result_file()
+
+    mock_blob_repo = MagicMock()
+    mock_blob_repo.stream_file_from_blob_storage = create_fake_stream(
+        [make_full_text_result_entry(reference_id)]
+    )
+    mock_blob_repo.destination = MagicMock()
+    mock_blob_repo.copy = AsyncMock(
+        side_effect=RemoteBlobStorageError("publisher unreachable")
+    )
+
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), None, MagicMock()
+    )
+
+    add_enhancement = AsyncMock()
+    results = create_processed_results()
+
+    messages = [
+        RobotResultValidationEntry.model_validate_json(msg)
+        async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
+            mock_blob_repo,
+            result_file,
+            [pending_enhancement],
+            add_enhancement,
+            results,
+        )
+    ]
+
+    assert len(messages) == 1
+    assert messages[0].error is not None
+    assert "publisher unreachable" in messages[0].error
+    add_enhancement.assert_not_awaited()
+    assert results.imported_enhancement_ids == set()
