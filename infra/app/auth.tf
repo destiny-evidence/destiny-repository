@@ -136,7 +136,7 @@ resource "azuread_application_app_role" "reference_full_text_reader" {
   description          = "Can view the full texts of references"
   display_name         = "Reference Full Text Reader"
   role_id              = random_uuid.reference_full_text_reader_role.result
-  value                = "reference.full_text.reader.all"
+  value                = "reference.full_text.reader"
 }
 
 resource "azuread_application_app_role" "reference_deduplicator" {

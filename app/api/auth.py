@@ -446,18 +446,18 @@ class AzureJwtAuth(JwtAuth):
         verified_claims = await self.verify_token(credentials.credentials)
         subject_type = self._require_scope_or_role(verified_claims)
 
-        scope_strs = set(verified_claims.get("scp", "").split())
-        role_strs = set(verified_claims.get("roles", []))
+        scopes = set(verified_claims.get("scp", "").split())
+        roles = set(verified_claims.get("roles", []))
 
         span = trace.get_current_span()
         span.set_attribute(Attributes.USER_AUTH_METHOD, "azure-jwt")
         span.set_attribute(Attributes.USER_SUBJECT_TYPE, subject_type.value)
         if oid := verified_claims.get("oid"):
             span.set_attribute(Attributes.USER_ID, oid)
-        if role_strs:
-            span.set_attribute(Attributes.USER_ROLES, ",".join(role_strs))
+        if roles:
+            span.set_attribute(Attributes.USER_ROLES, ",".join(roles))
 
-        return derive_entitlements(subject_type, frozenset(scope_strs | role_strs))
+        return derive_entitlements(subject_type, frozenset(scopes | roles))
 
 
 class KeycloakJwtAuth(JwtAuth):
@@ -595,7 +595,7 @@ class KeycloakJwtAuth(JwtAuth):
             response.raise_for_status()
             return KeySet.import_key_set(response.json())
 
-    def _extract_role_strs(self, verified_claims: dict[str, Any]) -> frozenset[str]:
+    def _extract_roles(self, verified_claims: dict[str, Any]) -> frozenset[str]:
         """Collect all role strings from realm_access and resource_access."""
         realm_roles = verified_claims.get("realm_access", {}).get("roles", [])
         client_roles = (
@@ -623,7 +623,7 @@ class KeycloakJwtAuth(JwtAuth):
             if self.scope.value in scopes:
                 return SubjectType.USER
 
-        if self.role and self.role.value in self._extract_role_strs(verified_claims):
+        if self.role and self.role.value in self._extract_roles(verified_claims):
             return SubjectType.SERVICE
 
         raise AuthError(
@@ -646,18 +646,18 @@ class KeycloakJwtAuth(JwtAuth):
         verified_claims = await self.verify_token(credentials.credentials)
         subject_type = self._require_scope_or_role(verified_claims)
 
-        scope_strs = set(verified_claims.get("scope", "").split())
-        role_strs = self._extract_role_strs(verified_claims)
+        scopes = set(verified_claims.get("scope", "").split())
+        roles = self._extract_roles(verified_claims)
 
         span = trace.get_current_span()
         span.set_attribute(Attributes.USER_AUTH_METHOD, "keycloak-jwt")
         span.set_attribute(Attributes.USER_SUBJECT_TYPE, subject_type.value)
         if sub := verified_claims.get("sub"):
             span.set_attribute(Attributes.USER_ID, sub)
-        if role_strs:
-            span.set_attribute(Attributes.USER_ROLES, ",".join(role_strs))
+        if roles:
+            span.set_attribute(Attributes.USER_ROLES, ",".join(roles))
 
-        return derive_entitlements(subject_type, frozenset(scope_strs | role_strs))
+        return derive_entitlements(subject_type, frozenset(scopes | roles))
 
 
 class MultiIssuerJwtAuth(JwtAuth):
