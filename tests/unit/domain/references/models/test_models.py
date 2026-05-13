@@ -1,6 +1,7 @@
 """Unit tests for the models in the references module."""
 
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 from uuid import uuid7
 
 import destiny_sdk
@@ -101,8 +102,8 @@ def test_full_text_enhancement_fingerprint_changes_with_content():
 
 
 @pytest.fixture
-def anti_corruption_service(fake_repository) -> ReferenceAntiCorruptionService:
-    return ReferenceAntiCorruptionService(fake_repository)
+def anti_corruption_service() -> ReferenceAntiCorruptionService:
+    return ReferenceAntiCorruptionService(sign_url=AsyncMock())
 
 
 async def test_linked_external_identifier_roundtrip(
