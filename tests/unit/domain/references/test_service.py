@@ -31,6 +31,9 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.service import ReferenceService
+from app.domain.references.services.access_control_service import (
+    ReferenceAccessControlService,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -813,6 +816,7 @@ async def test_claim_and_create_robot_enhancement_batch(
         limit=10,
         lease_duration=lease,
         blob_repository=mock_blob_repository,
+        access_control_service=ReferenceAccessControlService(),
     )
 
     assert isinstance(created_batch, RobotEnhancementBatch)
@@ -861,7 +865,9 @@ async def test_get_jsonl_deduplicated_references(fake_repository, fake_uow):
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
 
-    result = await service._get_jsonl_deduplicated_references([canonical_ref.id])  # noqa: SLF001
+    result = await service._get_jsonl_deduplicated_references(  # noqa: SLF001
+        ReferenceAccessControlService(), [canonical_ref.id]
+    )
 
     assert len(result) == 1
 
@@ -909,6 +915,7 @@ async def test_claim_and_create_robot_enhancement_batch_returns_none_when_empty(
         limit=10,
         lease_duration=datetime.timedelta(minutes=5),
         blob_repository=mock_blob_repository,
+        access_control_service=ReferenceAccessControlService(),
     )
 
     assert result is None

@@ -56,6 +56,9 @@ from app.domain.references.models.models import (
     ReferenceIds,
 )
 from app.domain.references.service import ReferenceService
+from app.domain.references.services.access_control_service import (
+    ReferenceAccessControlService,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -185,6 +188,22 @@ reference_deduplication_auth = CachingStrategyAuth(
 )
 
 
+def reference_reader_access_control_service(
+    entitlements: Annotated[frozenset[Entitlement], Depends(reference_reader_auth)],
+) -> ReferenceAccessControlService:
+    """Build the reference ACL for routes guarded by the reference-reader auth."""
+    return ReferenceAccessControlService(entitlements=entitlements)
+
+
+def reference_hybrid_access_control_service(
+    entitlements: Annotated[
+        frozenset[Entitlement], Depends(enhancement_request_hybrid_auth)
+    ],
+) -> ReferenceAccessControlService:
+    """Build the reference ACL for routes guarded by the hybrid (JWT/HMAC) auth."""
+    return ReferenceAccessControlService(entitlements=entitlements)
+
+
 reference_router = APIRouter(
     prefix="/references",
     tags=["references"],
@@ -307,6 +326,9 @@ async def search_references(
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
+    access_control_service: Annotated[
+        ReferenceAccessControlService, Depends(reference_reader_access_control_service)
+    ],
     q: Annotated[
         str,
         Query(
@@ -357,7 +379,8 @@ async def search_references(
         else []
     )
     return await anti_corruption_service.two_stage_reference_search_result_to_sdk(
-        search_result, references
+        search_result,
+        [access_control_service.redact(reference) for reference in references],
     )
 
 
@@ -375,10 +398,15 @@ async def get_reference(
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
+    access_control_service: Annotated[
+        ReferenceAccessControlService, Depends(reference_reader_access_control_service)
+    ],
 ) -> destiny_sdk.references.Reference:
     """Get a reference by id."""
     reference = await reference_service.get_reference(reference_id)
-    return await anti_corruption_service.reference_to_sdk(reference)
+    return await anti_corruption_service.reference_to_sdk(
+        access_control_service.redact(reference)
+    )
 
 
 class IdentifierLookupQueryParams(BaseModel):
@@ -429,6 +457,9 @@ async def lookup_references(
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
+    access_control_service: Annotated[
+        ReferenceAccessControlService, Depends(reference_reader_access_control_service)
+    ],
     identifiers: Annotated[
         list[destiny_sdk.identifiers.IdentifierLookup], Depends(parse_identifiers)
     ],
@@ -438,7 +469,9 @@ async def lookup_references(
         identifiers
     )
     return [
-        await anti_corruption_service.reference_to_sdk(reference)
+        await anti_corruption_service.reference_to_sdk(
+            access_control_service.redact(reference)
+        )
         for reference in await reference_service.get_references_from_identifiers(
             identifier_lookups
         )
@@ -521,6 +554,10 @@ async def request_robot_enhancement_batch(
         ReferenceAntiCorruptionService,
         Depends(reference_anti_corruption_service),
     ],
+    access_control_service: Annotated[
+        ReferenceAccessControlService,
+        Depends(reference_hybrid_access_control_service),
+    ],
     limit: Annotated[
         int,
         Query(
@@ -553,6 +590,7 @@ async def request_robot_enhancement_batch(
             limit=limit,
             lease_duration=lease,
             blob_repository=blob_repository,
+            access_control_service=access_control_service,
         )
     )
 

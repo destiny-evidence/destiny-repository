@@ -550,6 +550,7 @@ async def test_request_robot_enhancement_batch(
         limit=10,
         lease_duration=datetime.timedelta(minutes=5),
         blob_repository=ANY,
+        access_control_service=ANY,
     )
 
 

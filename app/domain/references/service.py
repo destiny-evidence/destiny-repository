@@ -49,6 +49,9 @@ from app.domain.references.repository import (
     EnhancementRequestSQLPreloadable,
     RobotEnhancementBatchSQLPreloadable,
 )
+from app.domain.references.services.access_control_service import (
+    ReferenceAccessControlService,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -383,6 +386,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
     async def _get_jsonl_deduplicated_references(
         self,
+        access_control_service: ReferenceAccessControlService,
         reference_ids: list[UUID],
     ) -> list[str]:
         """Get JSONL strings for deduplicated (flattened) references by id."""
@@ -390,7 +394,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_ids=reference_ids
         )
         return [
-            (await self._anti_corruption_service.reference_to_sdk(ref)).to_jsonl()
+            (
+                await self._anti_corruption_service.reference_to_sdk(
+                    access_control_service.redact(ref)
+                )
+            ).to_jsonl()
             for ref in deduplicated
         ]
 
@@ -1113,6 +1121,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         limit: int,
         lease_duration: datetime.timedelta,
         blob_repository: BlobRepository,
+        access_control_service: ReferenceAccessControlService,
     ) -> RobotEnhancementBatch | None:
         """
         Atomically claim pending enhancements and create a robot enhancement batch.
@@ -1156,6 +1165,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             self._get_jsonl_deduplicated_references,
             [
                 {
+                    "access_control_service": access_control_service,
                     "reference_ids": reference_id_chunk,
                 }
                 for reference_id_chunk in list_chunker(
