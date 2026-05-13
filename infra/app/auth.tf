@@ -2,6 +2,7 @@
 resource "random_uuid" "administrator_role" {}
 resource "random_uuid" "importer_role" {}
 resource "random_uuid" "reference_reader_role" {}
+resource "random_uuid" "reference_full_text_reader_role" {}
 resource "random_uuid" "reference_deduplicator_role" {}
 resource "random_uuid" "robot_writer_role" {}
 resource "random_uuid" "enhancement_request_writer_role" {}
@@ -10,6 +11,7 @@ resource "random_uuid" "enhancement_request_writer_role" {}
 resource "random_uuid" "administrator_scope" {}
 resource "random_uuid" "importer_scope" {}
 resource "random_uuid" "reference_reader_scope" {}
+resource "random_uuid" "reference_full_text_reader_scope" {}
 resource "random_uuid" "reference_deduplicator_scope" {}
 resource "random_uuid" "robot_writer_scope" {}
 resource "random_uuid" "enhancement_request_writer_scope" {}
@@ -51,6 +53,15 @@ resource "azuread_application" "destiny_repository" {
       value                      = "reference.reader.all"
       user_consent_description   = "Allow you to view references"
       user_consent_display_name  = "Reference Reader"
+    }
+    oauth2_permission_scope {
+      admin_consent_description  = "Allow the app to view the full texts of references as the signed-in user"
+      admin_consent_display_name = "Reference Full Text Reader as user"
+      id                         = random_uuid.reference_full_text_reader_scope.result
+      type                       = "User"
+      value                      = "reference.full_text.reader.all"
+      user_consent_description   = "Allow you to view the full texts of references"
+      user_consent_display_name  = "Reference Full Text Reader"
     }
     oauth2_permission_scope {
       admin_consent_description  = "Allow the app to deduplicate references as the signed-in user"
@@ -117,6 +128,15 @@ resource "azuread_application_app_role" "reference_reader" {
   display_name         = "Reference Reader"
   role_id              = random_uuid.reference_reader_role.result
   value                = "reference.reader"
+}
+
+resource "azuread_application_app_role" "reference_full_text_reader" {
+  application_id       = azuread_application.destiny_repository.id
+  allowed_member_types = ["Application"]
+  description          = "Can view the full texts of references"
+  display_name         = "Reference Full Text Reader"
+  role_id              = random_uuid.reference_full_text_reader_role.result
+  value                = "reference.full_text.reader.all"
 }
 
 resource "azuread_application_app_role" "reference_deduplicator" {
