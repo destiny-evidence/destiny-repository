@@ -32,6 +32,7 @@ from app.api.auth import (
     AuthRole,
     AuthScope,
     CachingStrategyAuth,
+    Entitlement,
     HMACClientType,
     choose_auth_strategy,
     choose_hybrid_auth_strategy,
@@ -163,7 +164,7 @@ async def enhancement_request_hybrid_auth(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
     robot_service: Annotated[RobotService, Depends(robot_service)],
-) -> bool:
+) -> frozenset[Entitlement]:
     """Choose enhancement request writer scope auth strategy for our authorization."""
     return await choose_hybrid_auth_strategy(
         application_id=settings.azure_application_id,
@@ -178,6 +179,7 @@ async def enhancement_request_hybrid_auth(
 reference_reader_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_reference_reader,
 )
+
 reference_deduplication_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_reference_deduplicator,
 )

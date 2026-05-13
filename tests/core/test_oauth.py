@@ -199,7 +199,7 @@ async def test_requires_read_all_scope_success(
     token = generate_fake_token(scope=FakeAuthScopes.READ_ALL.value)
     credentials = Mock()
     credentials.credentials = token
-    assert await auth(fake_request, credentials) is True
+    assert isinstance(await auth(fake_request, credentials), frozenset)
 
 
 async def test_requires_read_all_role_success(
@@ -215,7 +215,7 @@ async def test_requires_read_all_role_success(
     token = generate_fake_token(role=FakeAuthScopes.READ_ALL.value)
     credentials = Mock()
     credentials.credentials = token
-    assert await auth_with_role(fake_request, credentials) is True
+    assert isinstance(await auth_with_role(fake_request, credentials), frozenset)
 
 
 async def test_requires_read_all_scope_not_found(
@@ -302,5 +302,5 @@ async def test_fake_auth_success(
     auth = SuccessAuth()
     creds = Mock(credentials=generate_fake_token())
 
-    assert await auth(fake_request, creds)
-    assert await auth(fake_request, None)
+    assert isinstance(await auth(fake_request, creds), frozenset)
+    assert isinstance(await auth(fake_request, None), frozenset)
