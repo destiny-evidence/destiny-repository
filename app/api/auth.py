@@ -96,26 +96,34 @@ class Entitlement(StrEnum):
 
 _ROBOT_ENTITLEMENTS: frozenset[Entitlement] = frozenset({Entitlement.FULL_TEXT})
 
+_ENTITLEMENT_TO_GRANTS: dict[Entitlement, frozenset[str]] = {
+    Entitlement.FULL_TEXT: frozenset(
+        {
+            AuthScope.REFERENCE_FULL_TEXT_READER.value,
+            AuthRole.REFERENCE_FULL_TEXT_READER.value,
+        }
+    ),
+}
+
 
 def derive_entitlements(
     subject_type: SubjectType,
-    *,
-    granted_scopes: frozenset[AuthScope] = frozenset(),
-    granted_roles: frozenset[AuthRole] = frozenset(),
+    granted: frozenset[str] = frozenset(),
 ) -> frozenset[Entitlement]:
-    """Compute the entitlements granted to a principal."""
+    """
+    Compute the entitlements granted to a principal.
+
+    ``granted`` is the union of scope and role strings carried in the token.
+    """
     if subject_type is SubjectType.BYPASS:
         return frozenset(Entitlement)
     if subject_type is SubjectType.ROBOT:
         return _ROBOT_ENTITLEMENTS
-
-    entitlements: set[Entitlement] = set()
-    if (
-        AuthScope.REFERENCE_FULL_TEXT_READER in granted_scopes
-        or AuthRole.REFERENCE_FULL_TEXT_READER in granted_roles
-    ):
-        entitlements.add(Entitlement.FULL_TEXT)
-    return frozenset(entitlements)
+    return frozenset(
+        entitlement
+        for entitlement, grants in _ENTITLEMENT_TO_GRANTS.items()
+        if grants & granted
+    )
 
 
 class AuthMethod(Protocol):
@@ -449,11 +457,7 @@ class AzureJwtAuth(JwtAuth):
         if role_strs:
             span.set_attribute(Attributes.USER_ROLES, ",".join(role_strs))
 
-        return derive_entitlements(
-            subject_type,
-            granted_scopes=frozenset(s for s in AuthScope if s.value in scope_strs),
-            granted_roles=frozenset(r for r in AuthRole if r.value in role_strs),
-        )
+        return derive_entitlements(subject_type, frozenset(scope_strs | role_strs))
 
 
 class KeycloakJwtAuth(JwtAuth):
@@ -653,11 +657,7 @@ class KeycloakJwtAuth(JwtAuth):
         if role_strs:
             span.set_attribute(Attributes.USER_ROLES, ",".join(role_strs))
 
-        return derive_entitlements(
-            subject_type,
-            granted_scopes=frozenset(s for s in AuthScope if s.value in scope_strs),
-            granted_roles=frozenset(r for r in AuthRole if r.value in role_strs),
-        )
+        return derive_entitlements(subject_type, frozenset(scope_strs | role_strs))
 
 
 class MultiIssuerJwtAuth(JwtAuth):
