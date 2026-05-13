@@ -1257,8 +1257,16 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self.sql_uow.reference_downloads.get_by_pk(reference_download_id)
 
     @sql_unit_of_work
-    async def _claim_reference_download(self, reference_download_id: UUID) -> bool:
-        """Atomically transition pending → running. Returns True if claimed."""
+    async def _claim_reference_download(
+        self, reference_download_id: UUID
+    ) -> ReferenceDownload | None:
+        """
+        Atomically transition pending → running, returning the claimed row.
+
+        Returns ``None`` if the row was not in `pending`. The fetch happens in
+        the same UoW as the update so the caller can't see a row that has
+        since been mutated by another transaction.
+        """
         updated = await self.sql_uow.reference_downloads.bulk_update_by_filter(
             filter_conditions={
                 "id": reference_download_id,
@@ -1266,7 +1274,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             },
             status=ReferenceDownloadStatus.RUNNING,
         )
-        return updated > 0
+        if updated == 0:
+            return None
+        return await self.sql_uow.reference_downloads.get_by_pk(reference_download_id)
 
     @sql_unit_of_work
     async def _complete_reference_download(
@@ -1396,16 +1406,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Run a queued reference download job end-to-end."""
         # Conditional pending→running keeps redeliveries from clobbering a row
         # that's already running, completed, or failed.
-        if not await self._claim_reference_download(reference_download_id):
+        reference_download = await self._claim_reference_download(reference_download_id)
+        if reference_download is None:
             logger.info(
                 "Skipping reference download — not in pending state",
                 reference_download_id=str(reference_download_id),
             )
             return
         try:
-            reference_download = await self.get_reference_download(
-                reference_download_id
-            )
             reference_ids, truncated = await self._collect_reference_download_ids(
                 reference_download
             )
