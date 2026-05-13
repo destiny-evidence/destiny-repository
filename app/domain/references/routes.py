@@ -244,14 +244,14 @@ def parse_publication_year_range(
     ] = None,
 ) -> PublicationYearRange | None:
     """Parse a publication year range from a query parameter."""
-    if not (start_year or end_year):
-        return None
-    try:
-        return anti_corruption_service.publication_year_range_from_query_parameter(
-            start_year, end_year
-        )
-    except ValidationError as exc:
-        raise ParseError(detail=str(exc)) from exc
+    if start_year or end_year:
+        try:
+            return anti_corruption_service.publication_year_range_from_query_parameter(
+                start_year, end_year
+            )
+        except ValidationError as exc:
+            raise ParseError(detail=str(exc)) from exc
+    return None
 
 
 def parse_annotation_filters(
@@ -341,7 +341,7 @@ async def search_references(
         ),
     ] = 1,
     sort: Annotated[
-        list[str],
+        list[str] | None,
         Query(
             description="A list of fields to sort the results by. "
             "Prefix a field with `-` to sort in descending order. "
@@ -399,7 +399,7 @@ async def request_reference_download(
         Depends(parse_publication_year_range),
     ],
     sort: Annotated[
-        list[str],
+        list[str] | None,
         Query(
             description=(
                 "A list of fields to sort the results by. "

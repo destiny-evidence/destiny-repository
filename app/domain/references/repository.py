@@ -87,6 +87,7 @@ from app.domain.references.models.sql import RobotAutomation as SQLRobotAutomati
 from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
+from app.persistence.blob.models import BlobStorageFile
 from app.persistence.es.persistence import ESScoreResult
 from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
@@ -536,6 +537,14 @@ class ReferenceDownloadSQLRepository(
             DomainReferenceDownload,
             SQLReferenceDownload,
         )
+
+    @trace_repository_method(tracer)
+    async def update_by_pk(self, pk: UUID, **kwargs: object) -> DomainReferenceDownload:
+        """Encode any BlobStorageFile field at the persistence boundary."""
+        result_file = kwargs.get("result_file")
+        if isinstance(result_file, BlobStorageFile):
+            kwargs["result_file"] = result_file.to_sql()
+        return await super().update_by_pk(pk, **kwargs)
 
 
 class RobotAutomationRepositoryBase(

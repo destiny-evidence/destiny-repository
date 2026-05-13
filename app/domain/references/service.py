@@ -1281,7 +1281,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self.sql_uow.reference_downloads.update_by_pk(
             pk=reference_download_id,
             status=ReferenceDownloadStatus.COMPLETED,
-            result_file=result_file.to_sql(),
+            result_file=result_file,
             n_references=n_references,
             truncated=truncated,
         )
