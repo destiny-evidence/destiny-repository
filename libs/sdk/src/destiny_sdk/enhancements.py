@@ -520,7 +520,13 @@ class LinkedDataEnhancement(BaseModel):
 
 
 class FullTextEnhancement(BaseModel):
-    """An enhancement for storing a link to the full text and its metadata."""
+    """
+    An enhancement for storing a link to the full text and its metadata.
+
+    Full texts are not for the sharing of copyrighted material without a license.
+    They are to maintain files for validation and to allow permitted text and data
+    mining activities.
+    """
 
     enhancement_type: Literal[EnhancementType.FULL_TEXT] = EnhancementType.FULL_TEXT
     file_url: HttpUrl = Field(
