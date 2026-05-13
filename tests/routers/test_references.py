@@ -125,6 +125,7 @@ def mock_blob_repository(monkeypatch: pytest.MonkeyPatch) -> None:
             self,
             file: BlobStorageFile,
             interaction_type: BlobSignedUrlType,
+            content_disposition: str | None = "application",  # noqa: ARG002
         ) -> HttpUrl:
             return HttpUrl(f"http://signed/{file.filename}/{interaction_type}")
 
