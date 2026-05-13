@@ -401,10 +401,11 @@ async def request_reference_download(
     sort: Annotated[
         list[str] | None,
         Query(
-            description=(
-                "A list of fields to sort the results by. "
-                "Same format as `/references/search/`."
-            ),
+            description="A list of fields to sort the results by. "
+            "Prefix a field with `-` to sort in descending order. "
+            "If omitted, will sort by relevance score descending. "
+            "Multiple sort fields can be provided and will be applied "
+            "in the order given. Sort fields cannot be `text` fields.",
         ),
     ] = None,
 ) -> destiny_sdk.references.ReferenceDownloadRead:
