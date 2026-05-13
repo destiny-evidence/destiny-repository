@@ -543,12 +543,6 @@ resource "azurerm_role_assignment" "blob_storage_rw" {
   principal_id         = each.value
 }
 
-resource "azurerm_security_center_storage_defender" "this" {
-  storage_account_id                          = azurerm_storage_account.this.id
-  malware_scanning_on_upload_enabled          = true
-  malware_scanning_on_upload_cap_gb_per_month = 1000
-}
-
 resource "ec_deployment" "cluster" {
   name                   = "${var.app_name}-${substr(var.environment, 0, 4)}-es"
   region                 = var.elasticsearch_region
