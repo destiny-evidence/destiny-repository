@@ -1009,7 +1009,7 @@ async def test_request_reference_download_marks_failed_on_error(
     status_body = status_response.json()
     assert status_body["status"] == "failed"
     assert status_body["result_url"] is None
-    assert status_body["error"] == "kaboom"
+    assert "kaboom" in status_body["error"]
 
 
 # Undecorated body — tests drive the implementation with mocks instead of a UoW.

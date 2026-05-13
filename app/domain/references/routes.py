@@ -249,7 +249,7 @@ def parse_publication_year_range(
             return anti_corruption_service.publication_year_range_from_query_parameter(
                 start_year, end_year
             )
-        except ValidationError as exc:
+        except (ValueError, ValidationError) as exc:
             raise ParseError(detail=str(exc)) from exc
     return None
 

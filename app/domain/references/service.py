@@ -1423,7 +1423,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 "Reference download job failed",
                 reference_download_id=str(reference_download_id),
             )
-            await self.fail_reference_download(reference_download_id, str(exc))
+            await self.fail_reference_download(
+                reference_download_id, f"Failed to run download task: {exc}"
+            )
 
     @tracer.start_as_current_span("Detect and dispatch robot automations")
     async def _detect_and_dispatch_robot_automations(
